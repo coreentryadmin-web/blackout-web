@@ -2603,3 +2603,9 @@ than an end-of-session patch.
 - **What was broken:** `fetchUwDeskRestSupplemental` (NOPE/max pain/IV) and `buildSpxDeskFlow` (6-endpoint UW fan-out) called `runUwPooled` without `runWithBackgroundUwSweep`, unlike `fetchDeskEnrichmentFields` and `desk-warm`. Cron cold rebuilds (`spx-evaluate`, `spx-signal-observe`, `market-regime-detector`) could consume UW slots reserved for live member traffic.
 - **What changed:** Wrap both UW blocks in `runWithBackgroundUwSweep`; extend static regression test to cover all three paths.
 - **RTH check:** During RTH, confirm SPX desk flow lane + supplemental fields (NOPE, max pain, IV rank on SPX Slayer) populate normally; no elevated UW 429s or member-facing staleness on concurrent desk loads when crons fire (CloudWatch `uw-rate-limiter` / cron `elapsed=` logs).
+
+### 34. Meridian API routes — unrounded floats at boundary — fix/meridian-roundfloats-boundary — 2026-09-05
+
+- **What was broken:** `GET /api/market/meridian/{event,timeline,lookup,peer-reactions}` returned live numeric fields (reaction %, expected move, GEX reads, peer cohort stats) without `roundFloats` at the API boundary — raw division could emit IEEE tails like `7499.360000000001`.
+- **What changed:** Wrap all four Meridian member-route success payloads with `roundFloats(...)` before `NextResponse.json`; source-scan test guards regression.
+- **RTH check:** Open Meridian earnings detail for a liquid name (NVDA/META); confirm reaction %, expected move, and positioning numbers are 2dp-clean with no IEEE float tails in Network tab responses.
