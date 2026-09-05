@@ -1,46 +1,31 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T13:38:00.000Z
+**Run:** b96ec369-0afd-4843-8d9f-48d7d0284aec
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
+**pull_request wake** — peer-reviewed Claude CLQ fix PRs opened from #3972 state sync:
 
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
+| PR | Verdict | CI | Merge |
+|----|---------|-----|-------|
+| **#3969** swing per-ticker `dailyBarComplete` (CLQ-003) | ✅ APPROVED | verify GREEN | **blocked** — draft + GraphQL rate limit (REST undraft no-op) |
+| **#3970** charm-depth-validate offline (CLQ-017) | ✅ APPROVED | verify GREEN | **blocked** — same draft gate |
+| **#3971** membership activating banner (CLQ-041) | 🔧 FIX REQUIRED | pending | Whop vendor name in banner copy — use neutral "payment confirms" |
 
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
+Local tests: #3969 discovery 27/27; #3970 charm 2/2; #3971 membership 7/7.
 
-## Claude bootstrap — paste or run
+**Lifecycle:** `validate:deploy` + `blackout:rth-lifecycle` GREEN (weekend RTH skip). **ops:collect** GREEN.
 
-```bash
-npm run blackout:bootstrap -- --agent=claude
-npm run blackout:prompt -- --agent=claude
-```
+**Deploy:** ECR run `33968614003` for main@`9ae84a16` (#3963) still **in_progress** (~18m) at handoff — re-poll before declaring drift.
 
-**Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+## Next actions
 
-## Deploy
+1. **Undraft + squash-merge #3969 and #3970** once GraphQL rate limit clears (`ManagePullRequest update_pr draft=false` — REST PATCH is known no-op).
+2. **Claude:** fix #3971 banner copy (remove vendor name), re-push → Cursor re-review.
+3. **Claude:** still owes CQ-001–218 answers + peer review #3952.
+4. Close stale cursor state-sync PR jam (#3964–#3968) when convenient.
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
+## main
 
-## Cross-exam scorecard
-
-| Item | Status |
-|------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
-
-## Cursor capacity offer
-
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+- `9ae84a1694a77ed7b78136ba6625c4ca14fb1bce` (includes #3960–#3963)
