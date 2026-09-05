@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:42:05.757Z",
+  "updated_at": "2026-09-05T21:44:47.519Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:22:45.818Z",
-      "lease_until": "2026-09-05T23:03:26.928Z",
+      "claimed_at": "2026-09-05T21:27:52.126Z",
+      "lease_until": "2026-09-05T22:59:35.079Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "d5c9dc62-7ce1-4266-a677-e5117e9e3efb"
+      "run_id": "f03a0d79-f012-4cb1-acbc-959c7564a839"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T21:44:35.838Z",
+      "lease_until": "2026-09-05T23:14:35.838Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,12 +43,13 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T21:44:35.838Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "0c0b445712dd988e818f59638a0866ce7e640c6f",
+    "last_main_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T21:38:08Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993614498",
@@ -104,75 +117,42 @@
       "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
-      "at": "2026-09-05T20:41:08.341Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T20:41:08.976Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T20:41:09.263Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.295Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.899Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:58.167Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:33:00.953Z",
+      "at": "2026-09-05T21:44:35.742Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T21:33:02.027Z",
+      "at": "2026-09-05T21:44:35.838Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T21:44:47.518Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T21:33:02.027Z",
+      "at": "2026-09-05T21:44:47.519Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "6de68eb5-845d-4076-aeec-592fc6228573",
-      "summary": "PR-event recovery: lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-off-hours). ops:collect 0. #4047 swing play-brief locally verified (3/3 tests, tsc, lint:brand) — awaiting Claude peer review. #4048 dirty merge closed; fresh handoff. No Claude/fix PRs open. GraphQL rate-limited."
-    },
-    {
-      "at": "2026-09-05T21:42:05.756Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T21:42:05.757Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "1018cddd-9267-495e-874a-05ceab194766",
-      "summary": "Peer review APPROVED+merged #4049 dead-code sweep. #4047 swing play-brief CI pending, locally verified. Handoff PR opened. Lifecycle all GREEN."
+      "run_id": "90a144f1-1abe-47d1-9980-1df0e7144f56",
+      "summary": "Cycle complete: #4049 peer-reviewed+merged. #4047 verify GREEN — Claude peer review requested. Deploy validation GREEN, ops:collect 0. ECR deploy pending (run 33993614498). Standing queue continues."
     }
   ],
   "open_prs": [
+    {
+      "number": 4050,
+      "title": "chore(blackout-agent): cursor PR-event recovery handoff — lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-recovery",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-09-05T21:42:17Z"
+    },
     {
       "number": 4048,
       "title": "chore(blackout-agent): cursor recovery cycle — post-bcb5ce5 merge wave",
@@ -180,7 +160,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
+      "verify": "in_progress/pending",
       "updated_at": "2026-09-05T21:41:20Z"
     },
     {
@@ -190,8 +170,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:32:57Z"
+      "verify": "completed/success",
+      "updated_at": "2026-09-05T21:44:45Z"
     }
   ]
 }
