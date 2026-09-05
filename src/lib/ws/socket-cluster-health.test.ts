@@ -8,6 +8,7 @@ import {
   evaluateUwClusterOk,
   readUwClusterHealth,
 } from "./socket-cluster-health";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "./timestamp-freshness";
 
 test("clusterIndexSpotChangePct: only REST-anchored snapshots carry change_pct", () => {
   assert.equal(
@@ -21,6 +22,18 @@ test("clusterIndexSpotChangePct: only REST-anchored snapshots carry change_pct",
   );
   assert.equal(clusterIndexSpotChangePct({ change_pct: 0.42 }), null);
   assert.equal(clusterIndexSpotChangePct({ change_pct: NaN, open_source: "rest" }), null);
+});
+
+test("buildUwClusterHealth: clock-skewed future heartbeat is not cluster_live", () => {
+  const now = Date.now();
+  const futureAt = now + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 60_000;
+  const uw = buildUwClusterHealth({
+    is_leader: false,
+    cluster_last_message_at: futureAt,
+    now,
+  });
+  assert.equal(uw.cluster_live, false);
+  assert.equal(uw.cluster_last_message_age_ms, 0);
 });
 
 test("evaluateUwClusterOk: follower is healthy when cluster heartbeat is fresh", () => {
