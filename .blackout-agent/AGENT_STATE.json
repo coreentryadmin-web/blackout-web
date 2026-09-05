@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T11:08:19.772Z",
+  "updated_at": "2026-09-05T11:38:50.506Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T11:31:47.579Z",
+      "lease_until": "2026-09-05T13:01:47.579Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -248,13 +248,44 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6ab35e6816e05fb1c523006c4d01a103ddae9640",
+    "last_main_sha": "467bcdcf478a698430173d076d9d51ab462ed7aa",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T10:36:36Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
     "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3945,
+      "title": "feat(swing): BUY / STILL BUY labels tied to entryability",
+      "branch": "cursor/swing-still-buy-labels",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T11:38:17Z"
+    },
+    {
+      "number": 3944,
+      "title": "fix(thermal): rebase triple-desk header change_pct on live push spot",
+      "branch": "fix/thermal-triple-desk-header-rebase",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T11:35:27Z"
+    },
+    {
+      "number": 3943,
+      "title": "refactor(swing): relocate legacy PR-5 gates to legacy-calibration/",
+      "branch": "cursor/swing-legacy-gates-calibration-move",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T11:38:45Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1325,6 +1356,81 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:38:28.730Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T11:38:28.731Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bfaf84a0-4061-4565-a61d-5a6b99dd279b",
+      "summary": "#3943 CI GREEN @ 3da52b7e, undrafted for Claude peer review. Local gates-pr5 tests 16/16. ops:collect clean. main deploy current @ 7c84207f."
+    },
+    {
+      "at": "2026-09-05T11:38:30.348Z",
+      "type": "pr_webhook",
+      "pr": 3945,
+      "event": "sweep",
+      "head": "56cd87370c22860e29443b60247fba881019ebbf",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T11:38:32.354Z",
+      "type": "pr_webhook",
+      "pr": 3944,
+      "event": "sweep",
+      "head": "c766a02343d61e339759d42b67d98995bfc5e8d5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-05T11:38:34.589Z",
+      "type": "pr_webhook",
+      "pr": 3943,
+      "event": "sweep",
+      "head": "3da52b7eca082093073df411ddb6dbd8384003e1",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T11:38:50.506Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3945": {
+      "last_event": "sweep",
+      "last_head": "56cd87370c22860e29443b60247fba881019ebbf",
+      "last_feedback_at": "2026-09-05T11:38:30.348Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3944": {
+      "last_event": "sweep",
+      "last_head": "c766a02343d61e339759d42b67d98995bfc5e8d5",
+      "last_feedback_at": "2026-09-05T11:38:32.353Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3943": {
+      "last_event": "sweep",
+      "last_head": "3da52b7eca082093073df411ddb6dbd8384003e1",
+      "last_feedback_at": "2026-09-05T11:38:34.589Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "updated"
+    }
+  }
 }
