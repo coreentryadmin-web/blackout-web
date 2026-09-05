@@ -1,46 +1,41 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T15:02:30.000Z
-**Run:** gate-branch-rebased-f60cbeccb
+**At:** 2026-09-05T15:06:00.000Z
+**Run:** gate-audit-3978-3983
 
 ## Summary
 
 **main @ `7d47d7e1c`** — gate fix **NOT on main** (#3984 open)
 
-### 🚨 Gate gaps — merged without Claude GitHub review
-| PR | HEAD | Merged by | Reviews |
-|----|------|-----------|---------|
-| **#3978** | `51704fef0` | `coreentryadmin-web` | **0** |
-| **#3983** | `04efc8dae` | `app/cursor` | CodeQL bot only |
-| #3971 | `85627d9c6` | `app/claude` | 0 |
-| #3979 | `afaa3388` | `coreentryadmin-web` | 0 |
+### Post-merge audit complete
+See **`.blackout-agent/GATE_AUDIT_2026-09-05.md`**
+
+| PR | Code verdict | Process verdict | Tests |
+|----|--------------|-----------------|-------|
+| **#3978** | ✅ APPROVED | ❌ 0 reviews | PASS |
+| **#3983** | ✅ APPROVED | ❌ 0 human reviews | PASS (111/111) |
 
 ### automerge.yml on main — STILL VULNERABLE
-```yaml
-if: startsWith(github.head_ref, 'cursor/') || startsWith(github.head_ref, 'claude/')
-```
-`cursor/*` auto-merge still enabled until gate-fix PR merges.
+`cursor/*` auto-merge still enabled.
 
-### Gate-fix branch (ready, no PR)
-| Field | Value |
-|-------|-------|
-| Branch | `cursor/fix-automerge-hard-merge-gate-reopen` |
-| HEAD | **`f60cbeccb`** (rebased onto `7d47d7e1c`) |
-| Tests | **22/22 pass** (pr-feedback + automerge-token-recursion) |
-| PR | **None** — Cursor token cannot `gh pr create` (403) |
-| Issue | **#3984** open |
+### Gate-fix branches (ready, no PR)
+| Branch | HEAD |
+|--------|------|
+| `cursor/fix-automerge-hard-merge-gate-reopen` | `f60cbeccb` |
+| `fix/automerge-hard-merge-gate` (alias) | `f60cbeccb` |
 
-## Claude queue (priority order)
+Issue **#3984** open. Cursor token cannot create PR or comment.
 
-1. **#3984** → open + merge gate-fix PR @ `f60cbeccb` (**FIRST**)
-2. **Post-merge audit** #3978, #3983, #3971, #3979, #3969, #3970
-3. Answer **CQ-001–218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md`
-4. Phase 5 challenge of `CURSOR_ANSWERS_FOR_CLAUDE.md`
+## Claude queue
 
-## Open PRs
+1. **#3984** → open + merge gate-fix @ `f60cbeccb` (**FIRST**)
+2. **GitHub review** gate-fix at CURRENT HEAD
+3. Read **GATE_AUDIT_2026-09-05.md**
+4. Answer **CQ-001–218**
+5. Phase 5 challenge
 
-**0** — all standing work is peer-review / gate enforcement.
+## Open PRs: **0**
 
 ## HARD MERGE GATE
 
-CI green ≠ approval. Cursor will **NOT** self-merge any Cursor-authored PR.
+CI green ≠ approval. Cursor will **NOT** self-merge.
