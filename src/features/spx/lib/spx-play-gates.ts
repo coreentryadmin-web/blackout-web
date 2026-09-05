@@ -4,6 +4,7 @@ import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { PlayConfirmationResult } from "@/features/spx/lib/spx-play-confirmations";
 import { buildPlayIdeaIntel } from "@/features/spx/lib/spx-play-intel";
 import { shouldBlockForTradingHalt } from "@/lib/ws/uw-socket";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isStagingDeploy } from "@/lib/clerk-env";
 import {
@@ -297,7 +298,13 @@ export function evaluatePlayGates(
         : polledAgeMs / 1000;
   }
   if (desk.gex_age_ms != null) {
-    const gexSec = desk.gex_age_ms / 1000;
+    // Same future-skew guard as gexStaleFromAge (WS_TIMESTAMP_FUTURE_TOLERANCE_MS): a negative
+    // gex_age_ms used to flow through as a negative gexSec, never exceeding playGexStaleMaxSec()
+    // even when the desk GEX stale pill was already lit.
+    const gexSec =
+      desk.gex_age_ms < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS
+        ? playGexStaleMaxSec() + 1
+        : desk.gex_age_ms / 1000;
     deskStaleSec = deskStaleSec != null ? Math.max(deskStaleSec, gexSec) : gexSec;
   }
   if (deskStaleSec != null && deskStaleSec > playGexStaleMaxSec()) {
