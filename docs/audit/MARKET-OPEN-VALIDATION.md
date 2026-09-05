@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0av. SPX play in-process caches future-at guard — fix/spx-play-cache-future-guard (pending)
+
+**What was broken:** SPX play ticket, technicals, adaptive gates, and lotto ticket caches used raw `now - entry.at < ttlMs`, so clock-skewed future `at` stamps read as infinitely fresh (same class as #3844 / #3849).
+
+**Fix:** Route all four in-process cache-hit gates through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** SPX Open desk play tickets, technicals panel, adaptive gate banner, and lotto chips should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
+
 ### 0au. VIX IV rank + SPX UW ladder cache future-at guard — fix/cache-future-guard-polygon-uw-ladder (pending #3848)
 
 **What was broken:** `fetchVixIvRankPercentile()` and `getSpxOdteScopedUwLadderMap()` used raw `now - entry.at < ttlMs`, so a clock-skewed future `at` read as infinitely fresh (same class as #3844 GEX overlay gates).
