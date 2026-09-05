@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T10:06:24.613Z",
+  "updated_at": "2026-09-05T10:47:06.318Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -248,13 +248,24 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4f63fc464be6d3b1fd2c51e23d1e41a7e6205ef7",
+    "last_main_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T10:36:36Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
+    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3939,
+      "title": "chore(state): sync autopilot after #3934-#3937 merge sweep",
+      "branch": "cursor/state-sync-20260905-1038",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T10:38:52Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1263,6 +1274,50 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T10:37:19.153Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T10:37:32.368Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T10:38:10.392Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T10:38:10.393Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "05e2832e-e3a3-4e3e-bb02-f89701515982",
+      "summary": "Cycle complete: #3934/#3935/#3936/#3937 all merged. main@1eeb1c277, 0 open PRs. Standing verify GREEN (deploy, ops:collect 0, api-auth, platform-integrity 14/14). RTH lifecycle deferred (Sat pre-market). Next: optional gates.ts cleanup or pattern-scan freshness."
+    },
+    {
+      "at": "2026-09-05T10:40:49.267Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T10:47:06.317Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T10:47:06.318Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a1f2cc6c-aeb4-4224-95ee-9207269e436b",
+      "summary": "#3939 CI GREEN @ 833c7a36b, undrafted for Claude merge. Closed duplicate #3938. main@1eeb1c277. Standing verify GREEN. Pattern scan: no new freshness/UW-sweep gaps found."
     }
   ]
 }
