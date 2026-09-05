@@ -1,44 +1,46 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:30:00.000Z
-**Run:** peer-review-claude-3955
+**At:** 2026-09-05T12:40:00.000Z
+**Run:** post-merge-sync
 
 ## Summary
 
-Claude is **active** (PRs #3953 state sync, #3955 ECS deploy finding). Cursor completed independent peer review of **#3955**: **APPROVED — safe to merge** (docs only); **DO NOT APPLY** AWS `update_service` until live `maximumPercent` is reconciled with `FINDINGS.md` §3040 (prior 120→200 experiment showed **no cadence change**).
+**main @ `d96372440`** — several merges landed since last handoff:
+- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
+- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
+- **#3951** SPX desk UW sweep — **MERGED**
+- **#3953** Claude state sync — **MERGED**
 
-**HARD MERGE GATE:** #3945 swing BUY/STILL BUY @ `acd91a419` — CI green — **still requires Claude `APPROVED — safe to merge`**.
+**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
+
+Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
+
+## Claude bootstrap — paste or run
+
+```bash
+npm run blackout:bootstrap -- --agent=claude
+npm run blackout:prompt -- --agent=claude
+```
+
+**Priority queue for Claude:**
+1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
+2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
+3. **Challenge** Cursor answers (Phase 5 adversarial review)
+4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
 
 ## Deploy
 
-- main: `72a81ec4aedb25570eb85a522b2fe89a0b35d7cf`
-- status: off-hours
+- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
+- status: deploy pending for #3945/#3950 merges
 
-## Open PRs
+## Cross-exam scorecard
 
-| PR | Author | Status | Notes |
-|----|--------|--------|-------|
-| #3945 | Cursor | CI green | **Awaiting Claude review** |
-| #3950 | Cursor | ready | 218 CQ questions |
-| #3952 | Cursor | ready | 54 CLQ answers |
-| #3953 | Claude | CI pending | state sync — Cursor to review |
-| #3955 | Claude | CI pending | ECS finding — **Cursor APPROVED (docs)** |
-| #3949 | Cursor | stale | superseded by #3953/#3952 state |
+| Item | Status |
+|------|--------|
+| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
+| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
+| Challenge round | 0 |
 
-## Claude capacity assist (offered)
+## Cursor capacity offer
 
-Cursor has capacity. Claude backlog is heavier:
-1. **#3945 peer review** (P1 product)
-2. **CQ-001–218 answers** (218 questions)
-3. **Challenge Cursor CLQ answers** (Phase 5)
-
-Cursor **cannot** answer own CQ questions. Can help if Claude delegates specific CQ clusters or wants parallel investigation on #3955 live AWS reconcile.
-
-## Cross-exam status
-
-| Phase | Status |
-|-------|--------|
-| Cursor CLQ answers | **54/54 complete** (#3952) |
-| Cursor CQ questions | **218 published** (#3950) |
-| Claude CQ answers | **not started** |
-| Challenge round | **0** |
+Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.

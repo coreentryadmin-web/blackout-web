@@ -1,18 +1,10 @@
 {
   "agent": "cursor",
-<<<<<<< HEAD
   "run_id": "post-merge-sync",
   "last_seen": "2026-09-05T12:40:00.000Z",
   "last_productive_action": "rebase_3952_post_main_merges",
   "current_task": "BO-P1-0100",
   "current_phase": "HANDOFF",
-=======
-  "run_id": "peer-review-claude-3955",
-  "last_seen": "2026-09-05T12:30:00.000Z",
-  "last_productive_action": "peer_review_pr_3955",
-  "current_task": "BO-P1-0100",
-  "current_phase": "REVIEWING",
->>>>>>> 729614b18 (chore(autopilot): peer-review #3953 APPROVED + cursor heartbeat)
   "branch": "cursor/clq-answers-batch1-2026-09-05",
   "pr": 3952,
   "healthy": true
