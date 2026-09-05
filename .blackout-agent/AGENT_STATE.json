@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T17:49:31.975Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T17:32:50.828Z",
+      "lease_until": "2026-09-05T19:04:24.646Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "3c4bb119-1ac4-4d75-a0c0-aba25e85e8cb",
       "title": null
     },
     "BO-P1-0101": {
@@ -326,48 +326,14 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "ea552b9f69c0c553d879486bbe317688148c988e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T17:22:13Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33980746889",
+    "last_deploy_sha": "ea552b9f69c0c553d879486bbe317688148c988e"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.919Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:14.071Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:14.852Z",
       "type": "context_sync",
@@ -1622,6 +1588,61 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T17:33:36.164Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:33:59.654Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:34:00.466Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:34:01.255Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:34:23.730Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:34:24.642Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:34:25.522Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:49:31.973Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:49:31.975Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "113e982f-bedc-4280-94bc-fc2f5b732991",
+      "summary": "pull_request wake: pr-sweep 0 open PRs; ops:collect 0 items; validate:deploy GREEN; platform-integrity 14/14 PASS; main"
     }
   ],
   "pr_activity": {
