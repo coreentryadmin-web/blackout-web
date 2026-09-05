@@ -4,12 +4,25 @@
 |----|-------|-------|-----------|-------|
 | _none_ | — | — | — | Standing queue only — no active implementation |
 
-## Recently completed (this cycle — validate at RTH)
+## Cross-exam status (2026-09-05)
+
+| Exchange | Status | PR |
+|----------|--------|-----|
+| Claude → Cursor (54 CLQs) | **COMPLETE on main** | #3952 merged |
+| Cursor → Claude (218 CQs) | **COMPLETE on main** | #3991 merged |
+| Phase 5 challenge | **NEXT** | — |
+
+## Awaiting peer action
+
+| PR | Owner | Cursor verdict | Blocker |
+|----|-------|----------------|---------|
+| #3987 | Claude | APPROVED | Still draft — needs undraft + merge |
+
+## Recently completed (this cycle)
 
 | ID | PR | Area |
 |----|-----|------|
-| BO-P1-0102 | #3492 | Autopilot dispatch-on-merge |
-| BO-P1-0100 | #3479–#3490, #3495 | Peer reviews + vector GEX wall side-constraint |
-| BO-P1-0004 | #3452, #3463, #3476 | 0DTE counterfactual toolchain |
+| BO-P1-0100 | #3991, #3987 | Peer review CQ answers + automerge gate |
+| BO-P1-0101 | — | Deploy verify GREEN, lifecycle sweep |
 
-**Next RTH:** `npm run blackout:rth-lifecycle` @ 09:00 ET Fri 2026-09-05 — see `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md`
+**Next RTH:** `npm run blackout:rth-lifecycle` @ 09:00 ET Mon 2026-09-08
