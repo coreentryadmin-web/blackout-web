@@ -60,7 +60,7 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, isSwingRegimeGateEnforced, swingCortexPreflightCap } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, isSwingRegimeGateEnforced, isSwingQuoteStaleGateEnforced, isSwingDailyBarGateEnforced, swingCortexPreflightCap } from "./v2/config";
 import { readSwingHaltStateForTickers } from "./v2/halt-read";
 import { regimeBandFor01 } from "./v2/regime";
 export { regimeBandFor01 };
@@ -1021,6 +1021,15 @@ export async function runSwingDiscoveryScan(
         ),
         earningsInWindow: d?.earningsInWindow === true,
         halted: haltActive.has(w.ticker.toUpperCase()),
+        // Reference bar = grouped-daily feed posted for this scan (NOT "market is open").
+        dailyBarComplete: grouped.length > 0,
+        quoteAgeMs: (() => {
+          const c = contractByKey.get(key) ?? null;
+          const at = c?.quoteUpdatedMs;
+          if (at == null || !Number.isFinite(at)) return null;
+          // Raw age (may be negative on clock-skewed quoteUpdatedMs) — evaluateQuoteStaleGate fail-closes.
+          return deps.nowMs - at;
+        })(),
       };
     });
 
@@ -1061,12 +1070,16 @@ export async function runSwingDiscoveryScan(
         (isSwingConfluenceEnforced() ||
           isSwingEarningsGateEnforced() ||
           isSwingHaltGateEnforced() ||
-          isSwingRegimeGateEnforced())
+          isSwingRegimeGateEnforced() ||
+          isSwingQuoteStaleGateEnforced() ||
+          isSwingDailyBarGateEnforced())
           ? {
               enforceConfluence: isSwingConfluenceEnforced(),
               enforceEarnings: isSwingEarningsGateEnforced(),
               enforceHalt: isSwingHaltGateEnforced(),
               enforceRegime: isSwingRegimeGateEnforced(),
+              enforceQuoteStale: isSwingQuoteStaleGateEnforced(),
+              enforceDailyBar: isSwingDailyBarGateEnforced(),
               haltFeedStale,
             }
           : undefined,
@@ -1085,7 +1098,7 @@ export async function runSwingDiscoveryScan(
       const gateRows = plan.decisions.flatMap((d) => {
         const origins = pathsByTicker.get(d.ticker.toUpperCase()) ?? null;
         return d.blockedBy
-          .filter((b) => b.startsWith("gate:G-S"))
+          .filter((b) => b.startsWith("gate:"))
           .map((b) => {
             const gate = b.split(":")[1] ?? b;
             return {

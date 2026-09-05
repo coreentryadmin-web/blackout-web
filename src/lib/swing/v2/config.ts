@@ -82,6 +82,20 @@ export function isSwingRegimeGateEnforced(env: Record<string, string | undefined
   return envTriState(env, "SWING_ENGINE_V2_ENFORCE_REGIME", true);
 }
 
+/** P4 — quote staleness at COMMIT (legacy quote_stale). LIVE when V2 is on; opt out with SWING_ENGINE_V2_ENFORCE_QUOTE_STALE=0. */
+export function isSwingQuoteStaleGateEnforced(env: Record<string, string | undefined> = process.env): boolean {
+  if (!isSwingEngineV2Enabled(env)) return false;
+  return envTriState(env, "SWING_ENGINE_V2_ENFORCE_QUOTE_STALE", true);
+}
+
+/** P4 — daily bar completeness at COMMIT (legacy daily_bar_incomplete).
+ *  OFF by default until reference-bar availability is wired (not the cash-RTH clock).
+ *  Opt in with SWING_ENGINE_V2_ENFORCE_DAILY_BAR=1. */
+export function isSwingDailyBarGateEnforced(env: Record<string, string | undefined> = process.env): boolean {
+  if (!isSwingEngineV2Enabled(env)) return false;
+  return envTriState(env, "SWING_ENGINE_V2_ENFORCE_DAILY_BAR", false);
+}
+
 /** Max watch candidates to Cortex-preflight per scan (provider budget). */
 export function swingCortexPreflightCap(env: Record<string, string | undefined> = process.env): number {
   const n = Number(env.SWING_CORTEX_PREFLIGHT_CAP ?? 12);

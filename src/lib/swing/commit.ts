@@ -98,7 +98,9 @@ export function isShadowEligibleBlockReason(reason: string): boolean {
   return (
     reason.startsWith("budget:") ||
     reason.startsWith("cap:") ||
-    reason.startsWith("gate:G-S")
+    reason.startsWith("gate:G-S") ||
+    reason === "gate:quote_stale" ||
+    reason === "gate:daily_bar_incomplete"
   );
 }
 
@@ -178,6 +180,10 @@ export interface SwingCommitCandidate {
   earningsInWindow?: boolean;
   /** Halt/LULD read — G-S12 when enforced. */
   halted?: boolean;
+  /** Quote age in ms at commit time — quote_stale gate when enforced. */
+  quoteAgeMs?: number | null;
+  /** False when grouped-daily reference feed is empty — daily_bar_incomplete gate when enforced. */
+  dailyBarComplete?: boolean | null;
   /** V2 async preflight blocks (G-S14 Cortex) evaluated before computeSwingCommitPlan. */
   preflightV2BlockedBy?: string[];
   /** G-S14 Cortex assessment when preflight ran — pinned into entry_context at commit (Q29). */
@@ -283,8 +289,16 @@ export function computeSwingCommitPlan(args: {
   book: CommitBookPosition[];
   budget?: PortfolioBudget;
   caps?: SwingCaps;
-  /** V2 commit gates (P3) — off unless caller passes enforceConfluence / enforceEarnings / enforceHalt / enforceRegime. */
-  v2?: { enforceConfluence?: boolean; enforceEarnings?: boolean; enforceHalt?: boolean; enforceRegime?: boolean; haltFeedStale?: boolean };
+  /** V2 commit gates (P3/P4) — off unless caller passes enforce* flags. */
+  v2?: {
+    enforceConfluence?: boolean;
+    enforceEarnings?: boolean;
+    enforceHalt?: boolean;
+    enforceRegime?: boolean;
+    enforceQuoteStale?: boolean;
+    enforceDailyBar?: boolean;
+    haltFeedStale?: boolean;
+  };
 }): SwingCommitPlan {
   const budget = args.budget ?? DEFAULT_PORTFOLIO_BUDGET;
   const caps = args.caps ?? DEFAULT_SWING_CAPS;
@@ -380,6 +394,32 @@ export function computeSwingCommitPlan(args: {
       const gateFails = failingSwingCommitGates(
         { discoveryPaths: cand.discoveryPaths ?? [], archetype: cand.archetype },
         { enforceConfluence: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.61 — quote freshness (legacy quote_stale), LIVE when V2 quote gate is on.
+    if (args.v2?.enforceQuoteStale) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          quoteAgeMs: cand.quoteAgeMs,
+        },
+        { enforceQuoteStale: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.62 — daily bar completeness (legacy daily_bar_incomplete), LIVE when V2 daily-bar gate is on.
+    if (args.v2?.enforceDailyBar) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          dailyBarComplete: cand.dailyBarComplete,
+        },
+        { enforceDailyBar: true },
       );
       blockedBy.push(...blockedByFromSwingGates(gateFails));
     }
