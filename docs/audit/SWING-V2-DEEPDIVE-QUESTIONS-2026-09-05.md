@@ -200,6 +200,8 @@ fixed inline here.
 
 The operator's own words: *"at any point in time if you think you need more questions, add those questions... at the end of the day I want a perfect clean swing system, member facing, no shadow no shit, all members facing live money."* This is a standing instruction, not a one-time pass — this section grows every time a genuine new gap is found. Round 2 ran 8 parallel investigations targeting exactly that bar (member notification, the shadow mechanism's own exit criteria, cron concurrency beyond the already-fixed discovery race, kill-switch granularity, multi-day options mechanics, live UI staleness honesty, and entitlement/audit-trail integrity), each candidate then independently re-verified against the actual code before being added here — 11 of 22 raw candidates survived verification; the rest were rejected as inaccurate, duplicate, or not code-grounded enough. Two of these (Q37 stale-feed false-EXIT, Q41 SSE tier-recheck) are real, actionable bugs, not just open questions — flagged for immediate fix below the table.
 
+**Status (2026-09-05):** Q31–Q41 fixes landed on `main` (#3893–#3909, #3906). Swing member Discord (#3903) merged; Banger Q32 sibling in #3911. Shadow refresh + gate evidence (#3908) closed Q33–Q35 code gaps; Q35 budget-consumption half remains P4. See `SWING-V2-DEEPDIVE-TRIAGE-RESPONSES-2026-09-05.md` round-2 table.
+
 
 ### Real-time member notification
 
