@@ -1,8 +1,8 @@
 /**
- * Swing Cortex commit preflight (P3) — reuses 0DTE readers until swing horizon lands in fetch.ts.
+ * Swing Cortex commit preflight (P3) — swing horizon via fetch.ts (weekly Vector grid).
  *
- * Design §9: evaluateCortexForCommit({ horizon: "SWING", dteWindow: [4, 15] }).
- * Interim: same readers as 0DTE with failClosedOnVetoBlind for multi-day holds.
+ * Design §9: evaluateCortexForCommit({ horizon: "swing", dteWindow: [5, 15] }).
+ * Vector scope maps to "weekly" (nearest grid for tactical multi-session holds).
  */
 
 import type { PlayDirection } from "@/lib/horizon-fanout";
@@ -26,7 +26,7 @@ export interface SwingCortexPreflightDeps {
     direction: "long" | "short",
     now: Date,
     deps?: CortexCommitDeps,
-    opts?: { failClosedOnVetoBlind?: boolean },
+    opts?: { failClosedOnVetoBlind?: boolean; horizon?: "swing" },
   ) => Promise<ZeroDteCortexAssessment>;
 }
 
@@ -63,6 +63,12 @@ export async function evaluateSwingCortexForCommit(
 ): Promise<SwingCortexPreflightResult> {
   const dir = direction === "LONG" ? "long" : "short";
   const evaluate = deps.evaluate ?? evaluateCortexForCommit;
-  const assessment = await evaluate(ticker, dir, new Date(nowMs), {}, { failClosedOnVetoBlind: true });
+  const assessment = await evaluate(
+    ticker,
+    dir,
+    new Date(nowMs),
+    {},
+    { failClosedOnVetoBlind: true, horizon: "swing" },
+  );
   return swingCortexBlockedByFromAssessment(assessment);
 }
