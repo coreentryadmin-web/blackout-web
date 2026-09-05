@@ -544,7 +544,10 @@ async function resolveDarkPool(
   } catch {
     /* Redis optional */
   }
-  if (cachedDarkPool.key === key && now - cachedDarkPool.fetchedAt < DARK_POOL_CACHE_MS) {
+  if (
+    cachedDarkPool.key === key &&
+    isWsUpdatedAtFresh(cachedDarkPool.fetchedAt, DARK_POOL_CACHE_MS, now)
+  ) {
     return cachedDarkPool.data;
   }
   const tickerFresh = await fetchUwDarkPool(ticker, opts).catch(() => null);
@@ -750,7 +753,7 @@ async function priorDayForPulseLane(): Promise<{
 }> {
   const now = Date.now();
   if (cachedPriorDay.fetchedAt > 0) {
-    if (now - cachedPriorDay.fetchedAt < 60_000) {
+    if (isWsUpdatedAtFresh(cachedPriorDay.fetchedAt, 60_000, now)) {
       return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl, pdc: cachedPriorDay.pdc };
     }
     void fetchPriorDayCached().catch(() => {});
@@ -1799,7 +1802,10 @@ async function fetchPriorDayCached(): Promise<{
   pdc: number | null;
 }> {
   const now = Date.now();
-  if (now - cachedPriorDay.fetchedAt < 60_000 && cachedPriorDay.pdh != null) {
+  if (
+    isWsUpdatedAtFresh(cachedPriorDay.fetchedAt, 60_000, now) &&
+    cachedPriorDay.pdh != null
+  ) {
     return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl, pdc: cachedPriorDay.pdc };
   }
   const today = todayEtYmd();
@@ -1848,7 +1854,12 @@ async function refreshPulseStructureCore(today: string): Promise<PulseStructureC
 function kickPulseStructureRefresh(today: string): void {
   const now = Date.now();
   const ttl = deskPulseStructureCacheTtlMs();
-  if (cachedPulseStructure.fetchedAt > 0 && now - cachedPulseStructure.fetchedAt < ttl) return;
+  if (
+    cachedPulseStructure.fetchedAt > 0 &&
+    isWsUpdatedAtFresh(cachedPulseStructure.fetchedAt, ttl, now)
+  ) {
+    return;
+  }
   if (pulseStructureInflight) return;
   pulseStructureInflight = refreshPulseStructureCore(today)
     .catch(() => cachedPulseStructure)
@@ -1861,7 +1872,10 @@ function kickPulseStructureRefresh(today: string): void {
 async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStructureCache> {
   const now = Date.now();
   const ttl = deskPulseStructureCacheTtlMs();
-  if (cachedPulseStructure.fetchedAt > 0 && now - cachedPulseStructure.fetchedAt < ttl) {
+  if (
+    cachedPulseStructure.fetchedAt > 0 &&
+    isWsUpdatedAtFresh(cachedPulseStructure.fetchedAt, ttl, now)
+  ) {
     return cachedPulseStructure;
   }
 
