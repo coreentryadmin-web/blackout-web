@@ -352,7 +352,15 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
+### 0z. Night Hawk legacy-marks missing roundFloats — fix/nighthawk-legacy-marks-roundfloats (pending PR)
+
+**What was broken:** `/api/market/nighthawk/legacy-marks` returned raw IEEE float noise on `mark`/`bid`/`ask` while sibling Night Hawk routes already call `roundFloats`. (`play-bars` fixed in #3814.)
+
+**Fix:** Wrap success payload with `roundFloats({ available: true, marks })`; source-scan regression test in `route.test.ts`.
+
+**Check at the open:** Legacy board row select → mark/bid/ask display 2dp with no long float tails.
+
+### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (SHIPPED on main)
 
 **What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.
 
