@@ -4014,6 +4014,13 @@ export function clampedCacheAgeSec(entryAtMs: number, nowMs: number): number {
   return Math.max(0, Math.round((nowMs - entryAtMs) / 1000));
 }
 
+/** True when a shared heatmap cache entry is too old or untrustably future-dated to treat as fresh. */
+export function gexHeatmapCacheEntryStale(entryAtMs: number, nowMs: number): boolean {
+  const ageMs = nowMs - entryAtMs;
+  if (ageMs < -GEX_WS_FUTURE_TOLERANCE_MS) return true;
+  return Math.max(0, ageMs) > gexHeatmapMaxStaleMs();
+}
+
 /**
  * Admin-health PEEK at the shared `gex-heatmap:{ticker}` cache entry — READ-ONLY, and
  * DELIBERATELY does not call fetchGexHeatmap: a cache miss here reports `cached:false`
@@ -4055,18 +4062,13 @@ export async function peekGexHeatmapCache(ticker: string): Promise<GexHeatmapCac
   }
 
   const now = Date.now();
-  const ageMs = now - entry.at;
   return {
     ticker: root,
     cached: true,
     last_compute_at: new Date(entry.at).toISOString(),
     age_sec: clampedCacheAgeSec(entry.at, now),
     ttl_sec: Math.round(ttlMs / 1000),
-    // Uses the raw (unclamped) ageMs, not clampedCacheAgeSec's output — a skew-negative ageMs is
-    // always < gexHeatmapMaxStaleMs() either way, so the two are equivalent here; kept unclamped
-    // to match the pre-existing staleness semantics exactly (this fix touches only the displayed
-    // age_sec, never the stale verdict).
-    stale: ageMs > gexHeatmapMaxStaleMs(),
+    stale: gexHeatmapCacheEntryStale(entry.at, now),
     spot: entry.data.spot > 0 ? entry.data.spot : null,
     events_count: entry.data.events ? entry.data.events.length : null,
   };

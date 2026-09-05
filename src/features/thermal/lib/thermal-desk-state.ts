@@ -281,8 +281,9 @@ export function thermalLayerFreshness(input: {
     crossVal = { status: "cached", asOf: null, label: "Cross-check", title: CROSS_CHECK_TITLE };
   } else {
     const cMs = Date.parse(input.crossValUwAsof);
+    const age = Number.isFinite(cMs) ? input.nowMs - cMs : null;
     crossVal = {
-      status: "live",
+      status: statusFromAge(age, OVERLAY_LIVE_MS, OVERLAY_STALE_MS),
       asOf: Number.isFinite(cMs) ? new Date(cMs) : null,
       label: "Cross-check",
       title: CROSS_CHECK_TITLE,
