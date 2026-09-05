@@ -15,6 +15,8 @@
  * navigation; short enough that admin/tool_access flips stay honest (tier-cache is 60s).
  */
 
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+
 type ClerkUser = Awaited<
   ReturnType<Awaited<ReturnType<typeof import("@clerk/nextjs/server").clerkClient>>["users"]["getUser"]>
 >;
@@ -42,7 +44,7 @@ function setResolved(userId: string, user: ClerkUser): void {
 
 export async function getClerkUserCached(userId: string): Promise<ClerkUser> {
   const hit = resolved.get(userId);
-  if (hit && Date.now() - hit.at < DEDUPE_TTL_MS) return hit.user;
+  if (hit && isWsUpdatedAtFresh(hit.at, DEDUPE_TTL_MS)) return hit.user;
 
   const pending = inflight.get(userId);
   if (pending) return pending;
