@@ -251,6 +251,15 @@ Production probe 2026-09-05T12:10Z: `/api/market/spx/desk` returned `price=7718.
 
 ---
 
+**CLQ-012** | SPX internals_estimated flag + UI surfacing
+**Verdict: PROVEN (estimation logic correct; UI gap confirmed)**
+
+**Upstream condition:** `resolveMarketInternals()` (`market-internals.ts:69-93`) sets `estimated.{tick,trin,add}` to `true` **per field** when Polygon's real `I:TICK`/`I:TRIN`/`I:ADD` index print is `null` AND a breadth-derived proxy supplies a substitute. Off-hours/weekends all three flags commonly read `true`.
+
+**UI surfacing:** `internals_estimated` on `SpxDeskPayload` (`spx-desk.ts:972`) — **`grep -rl internals_estimated src --include='*.tsx'` → 0 matches**. No visible "estimated" indicator (P2 UX gap).
+
+---
+
 **CLQ-014** | Helix SSE tier recheck per message
 **Verdict: PROVEN (per-event recheck on flows SSE)**
 
