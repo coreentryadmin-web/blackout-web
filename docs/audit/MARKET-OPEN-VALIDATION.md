@@ -486,6 +486,14 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0aa. Vector wallScope refresh future-at guard — fix/vector-snapshot-wallscope-future-at (pending)
+
+**What was broken:** `refreshWallScope` / `primeVectorWallScope` in `vector-snapshot.ts` used raw `now - wallScope.fetchedAt < refreshMs`. Future stamps from cross-replica clock skew read as "just fetched" and pin stale GEX/VEX wall scope.
+
+**Fix:** Both gates now use `isWsUpdatedAtFresh(wallScope.fetchedAt, refreshMs, now)`.
+
+**Check at the open:** Vector SPX rail — GEX/VEX wall nodes and flip should refresh on cadence during RTH; no stuck wall scope after a mid-session deploy/restart.
+
 ### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
 
 **What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.

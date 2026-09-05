@@ -26,6 +26,7 @@ import {
 } from "./vector-narrowed-wall-core";
 import { recordWallSample, type WallHistorySample } from "./vector-wall-history";
 import { roundFloats } from "@/lib/round-floats";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { getCachedVectorDarkPool, getCachedVectorDarkPoolWithAge, type VectorDarkPoolRead } from "./vector-dark-pool-cache";
 import { getCurrentSpxCandle } from "@/lib/ws/spx-candle-store";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
@@ -184,7 +185,7 @@ function refreshWallScope(ticker: string): void {
   const s = state(ticker);
   const now = Date.now();
   const refreshMs = wallScopeRefreshMs(ticker);
-  if (now - s.wallScope.fetchedAt < refreshMs || s.wallScopeInFlight) return;
+  if (isWsUpdatedAtFresh(s.wallScope.fetchedAt, refreshMs, now) || s.wallScopeInFlight) return;
   s.wallScopeInFlight = runWallScopeFetch(ticker);
 }
 
@@ -225,7 +226,7 @@ export async function primeVectorWallScope(ticker: string = VECTOR_DEFAULT_TICKE
   const now = Date.now();
   const refreshMs = wallScopeRefreshMs(t);
   if (
-    now - s.wallScope.fetchedAt < refreshMs &&
+    isWsUpdatedAtFresh(s.wallScope.fetchedAt, refreshMs, now) &&
     (s.fallbackStrikeTotals || s.fallbackVexStrikeTotals)
   ) {
     return;
