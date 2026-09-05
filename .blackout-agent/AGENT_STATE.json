@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:03:40.967Z",
+  "updated_at": "2026-09-05T17:08:47.761Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -79,13 +79,13 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:30:48.264Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
+      "claimed_at": "2026-09-05T17:04:55.905Z",
+      "lease_until": "2026-09-05T18:34:55.905Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0104": {
@@ -267,7 +267,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T16:30:48.265Z",
+      "last_seen": "2026-09-05T17:04:55.906Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -334,22 +334,6 @@
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:03.105Z",
       "type": "context_sync",
@@ -1635,6 +1619,31 @@
       "agent": "cursor",
       "run_id": "e2282697-889f-45bf-9096-d2ce946e9687",
       "summary": "PR wake cycle: #4002+#4003 merged (SPX lock fail-closed + Largo triple-hop test). Peer-reviewed APPROVED post-merge. Salvaged Phase5 docs branch cursor/cross-exam-phase5-docs-salvage pushed (awaiting PR — gh rate-limited). Platform integrity 14/14 GREEN, validate:deploy GREEN, ops:collect 0. ECR deploy pending #4003 @ 3ae28b772. Stale #3993/#3996/#3996 should close — revert risk."
+    },
+    {
+      "at": "2026-09-05T17:04:51.884Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:04:55.906Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T17:08:47.760Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:08:47.761Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "080c3701-f0d6-4b01-817d-804daf45368b",
+      "summary": "Cycle 2: #4002+#4003 merged+reviewed. Opened #4009 (Phase5 doc salvage from stale #3993). #4008 overlaps #4009 — prefer #4009. Claude draft queue: #4004/#4006/#4007. Stale close: #3993/#3996. ECR pending @ 3ae28b772. Platform integrity 14/14, ops:collect 0."
     }
   ],
   "pr_activity": {
