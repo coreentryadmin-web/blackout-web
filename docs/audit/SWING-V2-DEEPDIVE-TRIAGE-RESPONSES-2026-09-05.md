@@ -28,7 +28,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 22 | **(c)** | **PR open** — legacy `legacy:exempt` gate stamp |
 | 23 | **(a)** | Per-desk budget by design; cross-desk view not built |
 | 24 | **(a)** | Banger uncapped per operator directive |
-| 25 | **(c)** | **Answered** #3887 — keep per-desk partitions; no canonical cross-desk map |
+| 25 | **(c)** | **MERGED** #3886 — `portfolio/cross-desk-theme.ts` (`sectorFor`) canonical for future cross-desk exposure; per-desk gates unchanged |
 | 26 | **(c)** | **PR open** — CLOSED tab chain-composite P&L |
 | 27 | **(c)** | **MERGED** #3861 — Tier-0 origin failure observability |
 | 28 | **(c)** | **MERGED** #3858 — CATALYST kind for event archetypes |
