@@ -1,4 +1,5 @@
 import { fetchUwStockState } from "@/lib/providers/unusual-whales";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 /** Map Polygon index options roots (I:SPX) and equity roots to UW stock-state tickers. */
 export function uwTickerFromOptionsRoot(optionsRoot: string): string {
@@ -46,7 +47,7 @@ export async function resolveSpotFromUwStockState(
   if (!uwTicker) return null;
 
   const hit = mem.get(uwTicker);
-  if (hit && now - hit.at < MEM_TTL_MS) return hit.quote;
+  if (hit && isWsUpdatedAtFresh(hit.at, MEM_TTL_MS, now)) return hit.quote;
 
   try {
     const raw = await fetchUwStockState(uwTicker);
