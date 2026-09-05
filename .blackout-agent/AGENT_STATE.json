@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T10:47:06.318Z",
+  "updated_at": "2026-09-05T12:36:44.887Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,25 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T12:21:28.608Z",
+      "lease_until": "2026-09-05T14:06:43.645Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "run_id": "f8e311fb-6603-44e3-b31f-84621f3685a7",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-05T12:36:43.029Z",
+      "lease_until": "2026-09-05T14:06:43.645Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "f8e311fb-6603-44e3-b31f-84621f3685a7",
       "title": null
     },
     "BO-P1-0104": {
@@ -234,6 +233,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3953": {
+      "pr": 3953,
+      "head_sha": "545061c9ca4838387759106e4e41e44d4cb0036a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T12:36:34.761Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -243,29 +250,18 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T19:50:51.819Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-05T12:36:43.030Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38",
+    "last_main_sha": "e42237d77a70b0864f498f71db44f26bcc3c6020",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T12:33:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33966365895",
+    "last_deploy_sha": "5e67e18cd75e8198ac50c75a7145b8f1990ff603"
   },
-  "open_prs": [
-    {
-      "number": 3939,
-      "title": "chore(state): sync autopilot after #3934-#3937 merge sweep",
-      "branch": "cursor/state-sync-20260905-1038",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T10:38:52Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1318,6 +1314,175 @@
       "agent": "cursor",
       "run_id": "a1f2cc6c-aeb4-4224-95ee-9207269e436b",
       "summary": "#3939 CI GREEN @ 833c7a36b, undrafted for Claude merge. Closed duplicate #3938. main@1eeb1c277. Standing verify GREEN. Pattern scan: no new freshness/UW-sweep gaps found."
+    },
+    {
+      "at": "2026-09-05T12:21:18.314Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T12:21:22.354Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T12:21:23.310Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T12:21:24.466Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T12:21:28.609Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T12:21:31.250Z",
+      "type": "pr_webhook",
+      "pr": 3953,
+      "event": "sweep",
+      "head": "545061c9ca4838387759106e4e41e44d4cb0036a",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-05T12:21:32.981Z",
+      "type": "pr_webhook",
+      "pr": 3952,
+      "event": "sweep",
+      "head": "68aa704f908d70392946b01da6ae1c83c6400bd2",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T12:21:34.892Z",
+      "type": "pr_webhook",
+      "pr": 3950,
+      "event": "sweep",
+      "head": "1ef009b72d710e53493bcc8ee0474205b9a400d6",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T12:21:36.670Z",
+      "type": "pr_webhook",
+      "pr": 3949,
+      "event": "sweep",
+      "head": "8dac7eb163f40f606a9ccce05337e8878a6f6ddd",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T12:21:38.630Z",
+      "type": "pr_webhook",
+      "pr": 3945,
+      "event": "sweep",
+      "head": "acd91a4190122b971728f6d066fd74fdaebd0f6f",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T12:36:34.761Z",
+      "type": "pr_review",
+      "pr": 3953,
+      "head_sha": "545061c9ca4838387759106e4e41e44d4cb0036a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T12:36:34.761Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T12:36:39.834Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:36:39.835Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "752441df-da2e-4f69-8fae-e3fadf13f1a9",
+      "summary": "Peer-reviewed Claude #3953 APPROVED @ 545061c9 (state sync, no runtime). validate:deploy GREEN. ops:collect clean. #3945 verify GREEN awaiting Claude. Rate-limited on gh REST — subscribed CI for #3953."
+    },
+    {
+      "at": "2026-09-05T12:36:43.030Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T12:36:43.644Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:36:44.327Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:36:44.887Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3953": {
+      "last_event": "sweep",
+      "last_head": "545061c9ca4838387759106e4e41e44d4cb0036a",
+      "last_feedback_at": "2026-09-05T12:21:31.250Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3952": {
+      "last_event": "sweep",
+      "last_head": "68aa704f908d70392946b01da6ae1c83c6400bd2",
+      "last_feedback_at": "2026-09-05T12:21:32.981Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3950": {
+      "last_event": "sweep",
+      "last_head": "1ef009b72d710e53493bcc8ee0474205b9a400d6",
+      "last_feedback_at": "2026-09-05T12:21:34.892Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "updated"
+    },
+    "pr-3949": {
+      "last_event": "sweep",
+      "last_head": "8dac7eb163f40f606a9ccce05337e8878a6f6ddd",
+      "last_feedback_at": "2026-09-05T12:21:36.670Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "updated"
+    },
+    "pr-3945": {
+      "last_event": "sweep",
+      "last_head": "acd91a4190122b971728f6d066fd74fdaebd0f6f",
+      "last_feedback_at": "2026-09-05T12:21:38.630Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
