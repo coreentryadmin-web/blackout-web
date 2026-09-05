@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a0. Swing WATCH rail desync after same-scan commit — fix/swing-watch-committed-reconcile (pending)
+
+**What was broken:** When `swing-discovery` opened a real position in the same scan pass, `watchCandidates` and `playSet.SWING` were persisted unchanged — the thesis still appeared as an ordinary WATCH idea in `swing:serving:latest:v1` even though the ledger row existed (deep-dive Q3).
+
+**Fix:** `reconcileServingAfterCommits()` removes successfully committed thesis keys from `watchCandidates` and stamps matching plays `status: "COMMIT"` before snapshot persist.
+
+**Check at the open:** After POST_CLOSE swing discovery commits a name, confirm the Swings lane / persisted serving snapshot does not also list that thesis on the WATCH rail in the same scan.
+
 ### 0ax. SPX desk in-process caches future-at guard — fix/spx-desk-inprocess-cache-future-guard (merged #3862)
 
 **What was broken:** SPX desk dark pool REST cache, prior-day OHLC, and pulse structure caches used raw `now - fetchedAt < ttlMs`, so clock-skewed future `fetchedAt` stamps read as infinitely fresh (same class as #3844 / #3849).
