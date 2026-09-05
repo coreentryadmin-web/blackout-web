@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T04:19:19.308Z",
+  "updated_at": "2026-09-05T04:20:18.923Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,24 +68,24 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T03:47:27.553Z",
-      "lease_until": "2026-09-05T05:17:27.553Z",
+      "lease_until": "2026-09-05T05:48:00.347Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "e4cd2627-9f9b-4295-85b0-1d16263a2552",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-05T04:00:10.539Z",
-      "lease_until": "2026-09-05T05:30:10.539Z",
+      "lease_until": "2026-09-05T05:48:00.347Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "e4cd2627-9f9b-4295-85b0-1d16263a2552",
       "title": null
     },
     "BO-P1-0104": {
@@ -263,23 +263,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "fc35c2fcc142cd8fc8e3b4a19d465419a6a610f3",
+    "last_main_sha": "8b93ab783c727f75b8367ef72263979c89583de6",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T04:06:46Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33943337966",
-    "last_deploy_sha": "966cb7d8467e821262ca6d318c40745c16506ce6"
+    "last_deploy_at": "2026-09-05T04:19:06Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33944223680",
+    "last_deploy_sha": "8b93ab783c727f75b8367ef72263979c89583de6"
   },
   "open_prs": [
-    {
-      "number": 3845,
-      "title": "fix(swing): omit fabricated REL_STRENGTH on legacy promotion path",
-      "branch": "fix/swing-legacy-rel-strength-null-honesty",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T04:17:27Z"
-    },
     {
       "number": 3844,
       "title": "fix(gex): guard heatmap overlay/NH/explain + spot-fallback caches against future at",
@@ -288,7 +278,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T04:17:34Z"
+      "updated_at": "2026-09-05T04:19:40Z"
     }
   ],
   "events": [
@@ -1255,6 +1245,19 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T04:19:19.307Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T04:20:18.923Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T04:20:18.923Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "83427914-3a74-4f2b-8e37-17fee11f7a57",
+      "summary": "CI notify #3842 was stale (merged 966cb7d prior cycle). #3845 legacy REL_STRENGTH reviewed APPROVED+merged (8b93ab7). ECR 33944223680 pending. #3844 cursor/gex-heatmap verify pending — needs Claude peer review. validate:deploy GREEN."
     }
   ]
 }
