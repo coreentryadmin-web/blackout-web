@@ -108,6 +108,32 @@ test("structural_stop fires at ANY premium P&L — even +30% green — because t
   assert.equal(v.enforced, true, "structural stop is capital preservation — always enforced");
 });
 
+test("structural_stop: ex-div LONG adjustment prevents false breach on mechanical gap (Q39)", () => {
+  const breached = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 94,
+    structuralStopLevel: 95,
+    exDividendSession: true,
+    exDividendCash: 1,
+  });
+  assert.equal(breached.rung, "structural_stop");
+
+  const held = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 94,
+    structuralStopLevel: 95,
+    exDividendSession: true,
+    exDividendCash: 2,
+  });
+  assert.notEqual(held.rung, "structural_stop", "adjusted 94+2=96 holds above stop 95");
+});
+
 test("structural_stop is direction-aware: SHORT breaks when the underlying rises through the stop", () => {
   const v = evaluateSwingManagement({
     dossier: SHORT_STD,

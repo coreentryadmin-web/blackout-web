@@ -37,6 +37,7 @@
 import type { SwingDossier } from "./dossier";
 import type { SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
+import { underlyingPriceForStructuralStop } from "./ex-dividend-adjustment";
 import {
   deriveScaleOutAction,
   SCALE_OUT_RULES,
@@ -141,6 +142,10 @@ export interface SwingManageInput {
   addEligible?: boolean | null;
   /** Edge rungs that have graduated to enforced (PR-16 ladder output). Gates ignore this. */
   graduatedRungs?: readonly SwingManageRung[];
+  /** Ex-dividend session flag — when true, LONG structural compare uses adjusted spot (Q39). */
+  exDividendSession?: boolean;
+  /** Cash dividend amount on ex-div day (from Polygon dividends feed). */
+  exDividendCash?: number | null;
 }
 
 export interface SwingManageVerdict {
@@ -171,11 +176,26 @@ function structuralStopBroken(input: SwingManageInput): { broken: boolean; reaso
   if (price == null || stop == null || dir == null) {
     return { broken: false, reason: "no underlying / stop / direction — structural stop not evaluable" };
   }
-  if (dir === "LONG" && price <= stop) {
-    return { broken: true, reason: `underlying ${price} ≤ structural stop ${stop} — LONG thesis broken in underlying terms` };
+  const adjusted = underlyingPriceForStructuralStop(price, dir, {
+    exDividendSession: input.exDividendSession === true,
+    exDividendCash: input.exDividendCash,
+  });
+  const comparePx = adjusted.price;
+  if (dir === "LONG" && comparePx <= stop) {
+    const adj = adjusted.adjusted ? ` (ex-div adjusted from ${price})` : "";
+    return {
+      broken: true,
+      reason: `underlying ${comparePx} ≤ structural stop ${stop} — LONG thesis broken in underlying terms${adj}`,
+    };
   }
-  if (dir === "SHORT" && price >= stop) {
-    return { broken: true, reason: `underlying ${price} ≥ structural stop ${stop} — SHORT thesis broken in underlying terms` };
+  if (dir === "SHORT" && comparePx >= stop) {
+    return {
+      broken: true,
+      reason: `underlying ${comparePx} ≥ structural stop ${stop} — SHORT thesis broken in underlying terms`,
+    };
+  }
+  if (adjusted.adjusted) {
+    return { broken: false, reason: `ex-div adjusted spot holding stop — ${adjusted.detail}` };
   }
   return { broken: false, reason: "underlying holding its structural stop" };
 }
