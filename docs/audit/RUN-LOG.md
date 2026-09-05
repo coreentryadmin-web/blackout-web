@@ -11,6 +11,33 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-05 (23:28 UTC) — [DISCOVERY] `cron-dst-audit` re-verification: `banger-discovery` deployed schedule still not widened
+
+**Severity.** Not new — re-verifying an open item from `cron-dst-audit.mjs`'s 2026-08-24 re-run
+("Registry mismatch detected (registry says `20,21` @ UTC, deployed says `20` UTC only)"). No
+remediation attempted; this is a measurement re-run, same posture as the 2026-08-24 entry above it
+in this log.
+
+Confirmed LIVE via `boto3.client('events').describe_rule(Name='blackout-production-banger-discovery')`:
+`ScheduleExpression: cron(15 20 ? * MON-FRI *)`, `State: ENABLED` — still the single UTC hour, not
+the two-hour `15 20,21` window `src/app/api/cron/banger-discovery/route.ts`'s own code comment
+says is required (and that the app-side DST-aware guard already assumes is deployed — see the
+route's `SCHEDULE — TWO UTC HOURS` comment block, added by #2536 on 2026-08-21).
+
+**Why this still matters right now, not just in November.** Under EDT (current offset), `20:15
+UTC` → `16:15 ET`, which is correct (post-close). The single deployed hour is not visibly broken
+today. It silently breaks the moment EST starts (1st Sunday of November): `20:15 UTC` → `15:15 ET`,
+45 minutes BEFORE the close, exactly the defect #2536 was written to fix — and the fix cannot take
+effect because the infra side of it was never deployed. This is the same shape as the `x-autopost`
+bug that sat open from 2026-08-21 to 2026-09-04 (#3829) before someone noticed and fixed it — except
+the `x-autopost` fix was pure application code (landed in `blackout-web`), while this one requires
+an EventBridge schedule change in `blackout-infra`, a separate repo this session has no access to.
+**No code exists to write for this from `blackout-web`.** Per CLAUDE.md's "Terraform state does not
+match production" section, the safe path is a surgical, out-of-band EventBridge rule update (widen
+`ScheduleExpression` to `cron(15 20,21 ? * MON-FRI *)`), not a `terraform apply` — someone with
+`blackout-infra` access needs to make that one-line change before November.
+
+---
 ## 2026-09-05 (18:16 UTC / Sat 2026-09-05 14:17 ET) — [SEO] Lane heartbeat: sweep clean, GA4 tag confirmed
 
 **Severity.** — (no defect found)
