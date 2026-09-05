@@ -287,7 +287,7 @@ export function getVectorVexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   const s = state(t);
   refreshWallScope(t);
   const now = Date.now();
-  if (now - s.cachedVexWallsAt < VEX_WALLS_CACHE_MS) return s.cachedVexWalls;
+  if (isWsUpdatedAtFresh(s.cachedVexWallsAt, VEX_WALLS_CACHE_MS, now)) return s.cachedVexWalls;
   if (s.fallbackVexStrikeTotals && Object.keys(s.fallbackVexStrikeTotals).length > 0) {
     s.cachedVexWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackVexStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
@@ -443,7 +443,7 @@ export async function getVectorGammaFlip(ticker: string = VECTOR_DEFAULT_TICKER)
   const t = normalizeVectorTicker(ticker);
   const s = state(t);
   const now = Date.now();
-  if (now - s.cachedFlipAt < FLIP_CACHE_MS) return s.cachedFlip;
+  if (isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS, now)) return s.cachedFlip;
   try {
     const pos = await getGexPositioning(t);
     s.cachedFlip = pos?.flip ?? null;
@@ -674,7 +674,7 @@ export async function buildVectorStreamPayload(
   // exceeded the 1s hub tick budget, tripping the refreshInFlight guard in
   // vector-stream-hub and freezing the entire SSE frame — including spot price.
   const gammaFlip = s.cachedFlip;
-  if (Date.now() - s.cachedFlipAt >= FLIP_CACHE_MS && !s.flipRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS, Date.now()) && !s.flipRefreshInFlight) {
     s.flipRefreshInFlight = true;
     getGexPositioning(t)
       .then(pos => { s.cachedFlip = pos?.flip ?? null; })
