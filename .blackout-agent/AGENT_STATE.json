@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:00:43.656Z",
+  "updated_at": "2026-09-05T21:03:48.931Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T20:31:10.983Z",
-      "lease_until": "2026-09-05T22:30:42.391Z",
+      "claimed_at": "2026-09-05T21:00:06.907Z",
+      "lease_until": "2026-09-05T22:31:11.087Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "26b32120-f037-48dc-ae44-62bc91e853fa"
+      "run_id": "95c2cacc-4738-47fe-8021-419b084cd1eb"
     }
   },
   "reviews": {
@@ -178,6 +178,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:03:48.930Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:03:48.931Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b509da3e-1ba5-471c-8bc7-e84401547131",
+      "summary": "PR-event wake: main@8f1b953ba lifecycle GREEN ops:collect 0 #4045 awaits Claude peer review"
     }
   ],
   "open_prs": [
@@ -187,9 +200,9 @@
       "branch": "cursor/autopilot-handoff-4044-cycle",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
+      "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T20:59:11Z"
+      "updated_at": "2026-09-05T21:01:49Z"
     }
   ],
   "pr_activity": {
