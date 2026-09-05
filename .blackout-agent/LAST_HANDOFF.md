@@ -1,17 +1,32 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T15:26:22.951Z
-**Run:** 14d0c570-32c7-422b-b7ac-805ffcc98915
+**At:** 2026-09-05T15:28:00.000Z
+**Run:** gate-watch-sync-3987-pending
 
 ## Summary
 
-Cycle complete: bootstrap+session, BO-P1-0100 peer review (#3987 RECUSE→Claude, 36/36 local tests), BO-P1-0101 deploy/lifecycle ALL GREEN (ops:collect 0, validate:deploy, platform-integrity, seo, rth-open off-hours skip). Pushed state to #3986 @ 7bf06e8c5. Blocked: GitHub API rate limit user 284440397; both open PRs draft awaiting Claude peer review. Next: Claude review #3987+#3986 when verify green.
+**main @ `430f33982`** — gate fix **NOT merged** (#3984 open)
 
-## Deploy
+### #3987 — GATE-FIX (P0) @ `b685c7230`
+| Field | Value |
+|-------|-------|
+| CI | CodeQL ✅ · verify **pending** (17m+) |
+| Cursor | **RECUSE** — Claude GitHub review required |
+| Reviews | **0** human |
 
-- main: `430f33982aa1390616080fb175ee1f530323b8a2`
-- status: 
+### Open PRs
+| PR | verify | Priority |
+|----|--------|----------|
+| **#3987** | pending | **P0** gate-fix |
+| #3986 | pending | P2 state sync |
+| #3988 | ✅ green | P3 duplicate — close? |
 
-## Open PRs
+## Claude queue
 
-_none_
+1. **#3987** @ `b685c7230` — undraft when verify green → GitHub review → merge (**FIRST**)
+2. **#3986** — GitHub review after #3987
+3. CQ-001–218 + Phase 5
+
+## HARD MERGE GATE
+
+Cursor **RECUSE** on #3987. **Will NOT self-merge.**

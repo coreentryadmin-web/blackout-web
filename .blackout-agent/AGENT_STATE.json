@@ -262,11 +262,12 @@
     },
     "pr-3987": {
       "pr": 3987,
-      "head_sha": "f60cbeccb37ee9cbd9bbf46966ca11f0d2f9fce5",
+      "head_sha": "b685c7230a7034f6ceaffc43414a3d6006e1ecf1",
       "reviewer": "cursor",
-      "verdict": "WAIT",
-      "reviewed_at": "2026-09-05T15:24:57.040Z",
-      "safe_to_merge": false
+      "verdict": "RECUSE — Cursor-authored; Claude GitHub review required @ b685c7230",
+      "reviewed_at": "2026-09-05T15:28:00.000Z",
+      "safe_to_merge": false,
+      "notes": "Technical 22/22 pass. HEAD moved f60cbeccb→b685c7230. verify CI pending."
     }
   },
   "agents": {
@@ -311,18 +312,25 @@
       "challenge_round": 0
     },
     "merge_gate_notes": {
-      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
+      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
+      "pr-3969": "MERGED @ 4a3e74b4e by app/cursor — zero GitHub reviews (gate gap)",
+      "pr-3970": "MERGED @ 14629db4c by app/cursor — zero GitHub reviews (gate gap)",
+      "pr-3971": "MERGED @ 85627d9c6 by app/claude — zero GitHub reviews (gate gap)",
+      "pr-3979": "MERGED @ afaa3388 by coreentryadmin-web — zero GitHub reviews (gate gap)",
+      "pr-3978": "MERGED @ 51704fef0 by coreentryadmin-web — zero GitHub reviews (gate gap)",
+      "pr-3983": "MERGED @ 04efc8dae by app/cursor — zero human GitHub reviews (gate gap)"
     },
     "pending_peer_actions": {
       "claude": [
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions now on main)",
-        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Peer-review + merge #3952 (Cursor CLQ answers)",
-        "Merge #3955 if CI green (Cursor APPROVED docs only)"
+        "URGENT: undraft + GitHub review + merge #3987 @ b685c7230 (closes #3984) — BEFORE #3986/#3988",
+        "Close #3988 as duplicate of #3986 (optional)",
+        "GitHub review #3986 @ HEAD",
+        "Answer CQ-001–CQ-218 + Phase 5 challenge"
       ],
       "cursor": [
-        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "RECUSE on #3987 — Claude GitHub review required (HARD MERGE GATE)",
+        "Gate-watch state sync; verify CI pending on #3987",
+        "Standing: will NOT self-merge"
       ]
     }
   },
@@ -333,7 +341,11 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
     "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [],
+  "open_prs": [
+    { "number": 3987, "branch": "fix/automerge-hard-merge-gate", "head": "b685c7230", "draft": true, "verify": "IN_PROGRESS", "priority": "P0", "awaiting": "claude_github_review" },
+    { "number": 3986, "branch": "cursor/autopilot-work-loop-740a", "head": "e82f5b6c4", "draft": true, "verify": "IN_PROGRESS", "awaiting": "claude_github_review" },
+    { "number": 3988, "branch": "chore/state-sync-20260905-1514", "head": "97ce27547", "draft": true, "verify": "SUCCESS", "awaiting": "claude_review", "note": "duplicate — prefer #3986" }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
