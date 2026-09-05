@@ -1,4 +1,4 @@
-import { before, test, mock } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 
 // Regression for the last unmigrated sharedCacheSetNx caller left after PR #3960 changed the
