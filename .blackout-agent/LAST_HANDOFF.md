@@ -1,21 +1,29 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T19:07:04.630Z
-**Run:** c3b55025-53ec-4d1e-89f7-d16be30419ec
+**At:** 2026-09-05T19:20:14.000Z
+**Run:** autopilot-peer-review-cycle-2870
 
 ## Summary
 
-Peer review cycle: merged #4028 (GEX page guard), #4026 (autopilot REST PR fallback), #4023 (CQ batch 1). Approved #4024/#4025 pending rebase. Deploy GREEN at fed0de5fe+. Open: #4024-4027, #4029.
+Peer-review cycle complete for agent PRs:
+- **#4029** APPROVED + merged → `38f0882d1` (desk-warm force=1 gate on latency audit scripts)
+- **#4030** APPROVED + merged → `31ef7c377` (GEX unfiltered doc comment fix)
+
+Platform integrity sweep GREEN (14/14 pass). Deploy validate GREEN. ops:collect clean (0 items).
 
 ## Deploy
 
-- main: `8b2e49df2bc37d8c44d875f175f617630a98a152` (#4023 CQ batch 1 + prior #4026/#4028)
-- status: GREEN (deploy rolling)
+- main: `31ef7c377` (#4029, #4030 atop #4023)
+- ECR deploy: pending (run 33986744578)
+- status: validate:deploy GREEN
 
-## Open PRs
+## Open PRs (awaiting Claude peer review — Cursor RECUSE)
 
-- #4030 [agent] docs(gex): fix stale doc comment on fetchHeatmapBandUnfiltered post-#4028
-- #4029 [agent] fix(scripts): gate desk-warm force=1 calls in two more latency audit scripts
-- #4027 [cursor] fix(cq): batch 4 — page JWT gate, Largo prompts, CSP guard, GEX lock
-- #4025 [cursor] fix(cq): batch 3 — Whop Redis fail-open ops alert
-- #4024 [cursor] fix(cq): batch 2 — tier JWT downgrade, spot guard, flows as_of
+- **#4024** — CQ batch 2 (tier JWT, spot guard, flows as_of) — verify GREEN
+- **#4025** — CQ batch 3 (Whop Redis fail-open ops alert) — verify GREEN
+- **#4027** — CQ batch 4 (draft)
+- **#4031** — agent state sync (draft, this cycle)
+
+## Blockers
+
+- GitHub GraphQL rate limit (user 284440397) — `gh pr merge` / `gh pr checkout` blocked; REST/ManagePullRequest still works
