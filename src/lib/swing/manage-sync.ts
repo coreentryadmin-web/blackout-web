@@ -32,6 +32,7 @@
 
 import type { SwingPositionRow, SwingSnapshotInsert } from "../db";
 import type { SwingLiveQuote } from "./live-plays";
+import { structuralBreakFromSpot } from "./live-plays";
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { SWING_ARCHETYPES } from "./taxonomy";
@@ -439,6 +440,34 @@ function hasRollLedger(deps: ManageSyncDeps): deps is ManageSyncDeps & RollLedge
 }
 
 /**
+ * Q37: re-arbitrate at roll execution time. A concurrent pass or slow chain fetch can leave a ROLL plan
+ * built while the structural stop has since broken — CLOSE must win over ROLL.
+ */
+export function executionVerdictForGating(
+  row: SwingPositionRow,
+  reads: ManageSyncReads,
+  verdict: SwingManageVerdict,
+): SwingManageVerdict {
+  const direction = row.direction === "short" ? "short" : "long";
+  if (
+    !structuralBreakFromSpot(
+      direction,
+      reads.underlyingPrice ?? null,
+      row.thesis_invalidation_px,
+    )
+  ) {
+    return verdict;
+  }
+  return {
+    ...verdict,
+    action: "EXIT",
+    rung: "structural_stop",
+    reason: "structural stop at roll execution — close not roll (Q37)",
+    rollIntent: { roll: false, reason: "structural break at roll execution" },
+  };
+}
+
+/**
  * Apply the plan for ONE position: append the snapshot, then latch live state. Fail-soft — a fetch/DB error is
  * caught and returned (never thrown), so one bad position can't abort the refresh loop. The snapshot append is
  * attempted first (the durable evidence), then the live-state latch.
@@ -467,15 +496,17 @@ export async function syncSwingManagement(
       return { ...outcome, error: outcome.error ?? (err instanceof Error ? err.message : String(err)) };
     }
     if (rollPlan) {
+      const executionVerdict = executionVerdictForGating(row, reads, plan.verdict);
+      const executionDecision = decideRollAction(executionVerdict);
       const runRoll = deps.executeRoll ?? closeAndRollSwingPosition;
       try {
         // The roll executor OWNS the snapshot append for this tick (append-only, unbroken across the roll
         // boundary), so we do NOT also run the evidence-only latch — the parent is going terminal.
         const roll = await runRoll(deps, {
           parent: row,
-          verdict: plan.verdict,
+          verdict: executionVerdict,
           parentGrade: rollPlan.parentGrade,
-          childSpec: rollPlan.childSpec,
+          childSpec: executionDecision.action === "ROLL" ? rollPlan.childSpec : undefined,
           snapshot: plan.snapshot,
         });
         return {

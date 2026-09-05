@@ -68,7 +68,11 @@ import {
   readSwingServingSnapshot,
   persistSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { sharedCacheGet, sharedCacheSet, sharedCacheSetNx, sharedCacheDel } from "@/lib/shared-cache";
+import {
+  activeRefreshClaimTtlSec,
+  SWING_ACTIVE_REFRESH_CLAIM_KEY,
+} from "@/lib/swing/active-refresh-claim";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -139,6 +143,18 @@ function sessionsHeldFromRow(row: SwingPositionRow, nowMs: number): number | nul
 
 async function runSwingActiveRefreshCron(started: number): Promise<void> {
   const nowMs = started;
+  const claimPayload = { status: "running" as const, at: nowMs };
+  const acquired = await sharedCacheSetNx(
+    SWING_ACTIVE_REFRESH_CLAIM_KEY,
+    claimPayload,
+    activeRefreshClaimTtlSec(),
+  ).catch(() => false);
+  if (!acquired) {
+    console.info(
+      "[cron/swing-active-refresh] skipped — another refresh pass is still running (Q37 singleton claim)",
+    );
+    return;
+  }
   try {
     // Fetch the open book ONCE — reused as the refresh working set AND as the roll gate's book snapshot (budget
     // + caps + idempotency). `rollBook` is then GROWN in place as each roll executes this pass: buildSwingRollPlan
@@ -386,6 +402,8 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error(`[cron/swing-active-refresh] background REJECTED: ${detail}`);
+  } finally {
+    await sharedCacheDel(SWING_ACTIVE_REFRESH_CLAIM_KEY).catch(() => undefined);
   }
 }
 
