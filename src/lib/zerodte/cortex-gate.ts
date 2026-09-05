@@ -54,6 +54,7 @@
 import {
   composeCortexEvidence,
   fetchCortexInputs,
+  vectorHorizonForCortexCommit,
   CORTEX_SOURCES,
   CONVICTION_A_MIN_SCORE,
   VETO_CAPABLE_SOURCES,
@@ -64,6 +65,7 @@ import {
   type CortexVerdict,
   type EvidenceItem,
 } from "@/lib/nighthawk/cortex";
+import type { CortexCommitHorizon } from "@/lib/nighthawk/cortex/fetch";
 import type { ZeroDteGateBlock } from "./gates";
 
 /** When most sources are absent (fewer than this many answered), require a
@@ -457,7 +459,7 @@ export type CortexCommitDeps = {
   fetchInputs?: (
     ticker: string,
     direction: CortexDirection,
-    opts: { now: Date }
+    opts: { now: Date; horizon?: CortexCommitHorizon }
   ) => Promise<CortexInputs>;
   compose?: (inputs: CortexInputs) => CortexVerdict;
 };
@@ -484,10 +486,13 @@ export async function evaluateCortexForCommit(
   direction: CortexDirection,
   now: Date,
   deps: CortexCommitDeps = {},
-  opts?: { failClosedOnVetoBlind?: boolean }
+  opts?: { failClosedOnVetoBlind?: boolean; horizon?: CortexCommitHorizon }
 ): Promise<ZeroDteCortexAssessment> {
   try {
-    const inputs = await (deps.fetchInputs ?? fetchCortexInputs)(ticker, direction, { now });
+    const inputs = await (deps.fetchInputs ?? fetchCortexInputs)(ticker, direction, {
+      now,
+      horizon: opts?.horizon,
+    });
     const verdict = (deps.compose ?? composeCortexEvidence)(inputs);
     return assessCortexVerdict(verdict, opts);
   } catch (err) {

@@ -1587,6 +1587,31 @@ async function runMigrations(): Promise<void> {
     -- rows predate the hard-gate stack and whose numeric columns already tell the whole story.
     ALTER TABLE zerodte_scan_rejections ADD COLUMN IF NOT EXISTS reason TEXT;
 
+    -- swing_scan_rejections (Swing Engine V2 P1): durable near-miss / cap-drop log for the
+    -- multi-day swing discovery funnel. Tier-1 budget caps silently dropped strong names before
+    -- this table existed — recall was visible in cron logs only. gate_failed is machine-readable
+    -- (tier1_cap, confluence, cortex_veto, etc.); reason is the human sentence.
+    CREATE TABLE IF NOT EXISTS swing_scan_rejections (
+      id               BIGSERIAL PRIMARY KEY,
+      observed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      session_date     DATE NOT NULL,
+      scan_phase       TEXT,
+      ticker           TEXT NOT NULL,
+      gate_failed      TEXT NOT NULL,
+      score            NUMERIC,
+      origins          TEXT[],
+      reason           TEXT,
+      rank             INTEGER,
+      tier0_pool_size  INTEGER,
+      tier1_cap        INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_swing_scan_rejections_observed_at
+      ON swing_scan_rejections (observed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_swing_scan_rejections_ticker
+      ON swing_scan_rejections (ticker, observed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_swing_scan_rejections_session
+      ON swing_scan_rejections (session_date, observed_at DESC);
+
     -- zerodte_discovery_events (Phase 1 event sourcing): append-only lifecycle log for
     -- 0DTE discovery objects — detected, score bumps, gate blocks, commit, trim, stop.
     CREATE TABLE IF NOT EXISTS zerodte_discovery_events (
@@ -4452,6 +4477,42 @@ export async function insertZeroDteScanRejection(row: {
       row.last_seen,
       row.reason ?? null,
     ]
+  );
+}
+
+export async function insertSwingScanRejection(row: {
+  session_date: string;
+  scan_phase: string | null;
+  ticker: string;
+  gate_failed: string;
+  score: number | null;
+  origins: string[] | null;
+  reason: string | null;
+  rank: number | null;
+  tier0_pool_size: number | null;
+  tier1_cap: number | null;
+}): Promise<void> {
+  await ensureSchema();
+  await dbQuery(
+    `
+    INSERT INTO swing_scan_rejections (
+      session_date, scan_phase, ticker, gate_failed, score, origins,
+      reason, rank, tier0_pool_size, tier1_cap
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `,
+    [
+      row.session_date,
+      row.scan_phase,
+      row.ticker,
+      row.gate_failed,
+      row.score,
+      row.origins,
+      row.reason,
+      row.rank,
+      row.tier0_pool_size,
+      row.tier1_cap,
+    ],
   );
 }
 

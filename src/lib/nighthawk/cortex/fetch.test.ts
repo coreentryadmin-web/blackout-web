@@ -17,6 +17,7 @@ import {
   mapOpeningSlice,
   mapSectorSlice,
   mapWallTrendSlice,
+  vectorHorizonForCortexCommit,
   withSourceTimeout,
   type CortexFetchDeps,
   type PolygonAggBar,
@@ -374,5 +375,25 @@ describe("fetch: assembler (injected deps)", () => {
   test("withSourceTimeout resolves fast reads untouched", async () => {
     assert.equal(await withSourceTimeout(Promise.resolve(7), 50), 7);
     await assert.rejects(withSourceTimeout(new Promise(() => {}), 10), /CortexSourceTimeout|exceeded/);
+  });
+
+  test("vectorHorizonForCortexCommit: swing maps to monthly Vector grid (covers 5–15 DTE window)", () => {
+    assert.equal(vectorHorizonForCortexCommit("0dte"), "0dte");
+    assert.equal(vectorHorizonForCortexCommit("swing"), "monthly");
+  });
+
+  test("horizon=swing requests monthly Vector full state", async () => {
+    let seenHorizon: string | null = null;
+    await fetchCortexInputs("NVDA", "long", {
+      now: NOW,
+      horizon: "swing",
+      deps: deps({
+        fetchVectorFullState: async (_t, h) => {
+          seenHorizon = h;
+          return vectorState();
+        },
+      }),
+    });
+    assert.equal(seenHorizon, "monthly");
   });
 });

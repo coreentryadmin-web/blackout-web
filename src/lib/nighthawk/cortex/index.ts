@@ -39,4 +39,10 @@ export {
   SOURCE_SUPPORT_CAPS,
 } from "./compose";
 
-export { fetchCortexInputs, CORTEX_SOURCE_TIMEOUT_MS, type CortexFetchDeps } from "./fetch";
+export {
+  fetchCortexInputs,
+  CORTEX_SOURCE_TIMEOUT_MS,
+  vectorHorizonForCortexCommit,
+  type CortexCommitHorizon,
+  type CortexFetchDeps,
+} from "./fetch";
