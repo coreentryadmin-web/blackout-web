@@ -161,3 +161,9 @@ test("watchdog runs without error", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/watchdog.mjs"], { encoding: "utf8", cwd: repoRoot });
   assert.equal(r.status, 0);
 });
+
+test("sync-context preserves open_prs when gh pr list fails (rate limit)", () => {
+  const src = readFileSync(join(repoRoot, "scripts/blackout-agent/sync-context.mjs"), "utf8");
+  assert.match(src, /if \(openPrs === null\)/, "must not wipe open_prs on gh failure");
+  assert.match(src, /gh_degraded/, "must record degraded sync for downstream consumers");
+});

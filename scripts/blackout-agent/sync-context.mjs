@@ -22,8 +22,12 @@ export function syncContext() {
   const shaR = spawnSync("git", ["rev-parse", "origin/main"], { encoding: "utf8" });
   if (shaR.status === 0) state.deploy.last_main_sha = shaR.stdout.trim();
 
+  let ghDegraded = false;
+
   const deployRuns = ghJson(["run", "list", "--branch", "main", "--workflow", "ecr-push-production.yml", "--limit", "1", "--json", "status,conclusion,headSha,updatedAt,url"]);
-  if (deployRuns?.[0]) {
+  if (deployRuns === null) {
+    ghDegraded = true;
+  } else if (deployRuns[0]) {
     state.deploy.last_deploy_status = deployRuns[0].conclusion ?? deployRuns[0].status;
     state.deploy.last_deploy_at = deployRuns[0].updatedAt;
     state.deploy.last_deploy_url = deployRuns[0].url;
@@ -31,7 +35,10 @@ export function syncContext() {
   }
 
   const openPrs = ghJson(["pr", "list", "--state", "open", "--limit", "30", "--json", "number,title,headRefName,author,isDraft,statusCheckRollup,updatedAt"]);
-  state.open_prs = (openPrs ?? []).map((pr) => {
+  if (openPrs === null) {
+    ghDegraded = true;
+  } else {
+    state.open_prs = openPrs.map((pr) => {
     const verify = (pr.statusCheckRollup ?? []).find((c) => c.name === "verify");
     const authorLogin = pr.author?.login ?? "unknown";
     const agent = pr.headRefName?.startsWith("claude/")
@@ -42,7 +49,8 @@ export function syncContext() {
           ? "agent"
           : "human";
     return { number: pr.number, title: pr.title, branch: pr.headRefName, author: authorLogin, agent, draft: pr.isDraft, verify: verify ? `${verify.status}/${verify.conclusion ?? "pending"}` : "unknown", updated_at: pr.updatedAt };
-  });
+    });
+  }
 
   const activeLocks = {};
   if (existsSync(LOCKS_DIR)) {
@@ -57,9 +65,14 @@ export function syncContext() {
     }
   }
 
-  appendEvent(state, { type: "context_sync", expired_locks: expired, open_pr_count: state.open_prs.length });
+  appendEvent(state, {
+    type: "context_sync",
+    expired_locks: expired,
+    open_pr_count: state.open_prs?.length ?? 0,
+    gh_degraded: ghDegraded,
+  });
   writeAgentState(state);
-  return { state, expired, activeLocks };
+  return { state, expired, activeLocks, ghDegraded };
 }
 
 if (process.argv[1]?.endsWith("sync-context.mjs")) {
