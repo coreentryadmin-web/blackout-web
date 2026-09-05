@@ -1,7 +1,11 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
+<<<<<<< Updated upstream
   "updated_at": "2026-09-05T21:41:13.629Z",
+=======
+  "updated_at": "2026-09-05T21:50:47.547Z",
+>>>>>>> Stashed changes
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -44,11 +48,19 @@
     }
   },
   "deploy": {
+<<<<<<< Updated upstream
     "last_main_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T21:38:08Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993614498",
     "last_deploy_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c"
+=======
+    "last_main_sha": "73e58b8937d8a20704b2527c4be090315d9de015",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-05T21:45:07Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
+    "last_deploy_sha": "73e58b8937d8a20704b2527c4be090315d9de015"
+>>>>>>> Stashed changes
   },
   "events": [
     {
@@ -146,15 +158,36 @@
       "open_pr_count": 2
     },
     {
+<<<<<<< Updated upstream
       "at": "2026-09-05T21:41:13.629Z",
       "type": "handoff",
       "agent": "cursor",
       "run_id": "ae38ab43-5cdf-4a84-804e-2e4c610d7c11",
       "summary": "Post-7345b9a merge recovery: lifecycle GREEN (deploy/api-auth/platform-integrity/seo/rth-open), ops:collect 0, validate:deploy GREEN. ECR deploy #33993614498 pending. Open: #4047 swing play-brief (draft, verify pending), #4048 handoff. No Claude/fix PRs for peer review. GraphQL rate-limited; REST/gh api works."
+=======
+      "at": "2026-09-05T21:21:58.167Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T21:50:47.547Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:50:47.547Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "51f450e4-1bac-4398-a88f-8b827b93d084",
+      "summary": "Merge wave complete: #4047 swing play-brief landed main@73e58b893, #4049 dead-code cleanup@7345b9a. Lifecycle GREEN, ops:collect 0. ECR deploy #33993937878 in progress. Open: #4048 handoff only. No Claude PRs for peer review."
+>>>>>>> Stashed changes
     }
   ],
   "open_prs": [
     {
+<<<<<<< Updated upstream
       "number": 4048,
       "title": "chore(blackout-agent): cursor recovery cycle — post-bcb5ce5 merge wave",
       "branch": "cursor/cursor-agent-work-loop-03da",
@@ -173,6 +206,16 @@
       "draft": true,
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-05T21:32:57Z"
+=======
+      "number": 4052,
+      "title": "chore(blackout-agent): cursor PR-event recovery — lifecycle GREEN, #4047 merged",
+      "branch": "cursor/autopilot-work-loop-d4e7",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T21:50:42Z"
+>>>>>>> Stashed changes
     }
   ]
 }
