@@ -7,6 +7,7 @@ import {
   MANIFEST_PRODUCT_ORDER,
   PRODUCT_MANIFEST,
   manifestProductCount,
+  manifestProductCountWord,
   manifestPremiumIncludes,
 } from "./product-manifest.ts";
 import { MARKETING_PRODUCTS } from "./products.ts";
@@ -27,6 +28,7 @@ const PUBLIC_SURFACES = [
   "src/components/upgrade/UpgradePageShell.tsx",
   "src/app/(marketing)/vs/others/page.tsx",
   "src/app/(marketing)/about/page.tsx",
+  "src/app/(marketing)/pricing/page.tsx",
   "src/components/seo/JsonLd.tsx",
 ] as const;
 
@@ -253,4 +255,25 @@ test("every live product in the manifest has exactly one first-class Academy cha
     mappedSlugs.length,
     "product-to-chapter mapping must not alias two products onto the same chapter slug"
   );
+});
+
+// Regression for a P3 technical-SEO finding (2026-09-04): Pricing's <meta name="description">
+// (and the identical JSON-LD WebPageJsonLd description, and by extension the OG/Twitter copy
+// publicPageMetadata derives from the same string) said "all six trading modules plus Discord"
+// for a full product-launch cycle after the catalog grew to seven — a stale acquisition-layer
+// artifact search/answer engines could ingest as the canonical commercial summary, even though
+// the visible Pricing page content had already been updated. Fixed by deriving the description
+// from manifestProductCountWord() instead of a hand-typed number, so this can't go stale again
+// the same way without the manifest itself changing.
+test("Pricing page SEO description derives its product count from the manifest, not a hardcoded word", () => {
+  const pricingPage = readFileSync(join(REPO, "src/app/(marketing)/pricing/page.tsx"), "utf8");
+  assert.match(
+    pricingPage,
+    /manifestProductCountWord\(\)/,
+    "Pricing's SEO description must derive its product count from the manifest, not a literal string"
+  );
+  assert.doesNotMatch(pricingPage, /\bsix\b/i, "no hardcoded stale product-count word on Pricing");
+
+  const word = manifestProductCountWord();
+  assert.equal(word, "seven", "sanity check: today's live count should spell out as \"seven\"");
 });
