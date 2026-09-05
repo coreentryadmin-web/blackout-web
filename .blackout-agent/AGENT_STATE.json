@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T20:35:28.563Z",
+  "updated_at": "2026-09-05T20:48:37.525Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T20:28:37.196Z",
+      "lease_until": "2026-09-05T22:04:28.211Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "11d2cd3a-c49b-4d4d-9c2d-c4df72dc7cf5"
     }
   },
   "reviews": {
@@ -23,6 +23,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
       "safe_to_merge": true
+    },
+    "pr-4043": {
+      "pr": 4043,
+      "head_sha": "b3e0629f2cda62e70daa0e2907fe5dcfe8d63ac4",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-05T20:48:37.525Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -36,7 +44,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8ff68d3b54419b2c9a7bc705462ac8093161b32d",
+    "last_main_sha": "80ea7c31422c3afe3a1476f1c524d39da898db06",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T19:34:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
@@ -156,7 +164,57 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:48:29.309Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T20:48:29.309Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bf13fa4e-5b6c-4d11-b2ec-d35ce5aae17c",
+      "summary": "Cycle complete: #4027+#4040 merged to main (80ea7c314). #4043 peer-reviewed locally (WAIT verify). validate:deploy/api-auth/platform-integrity GREEN. ops:collect clean. ghEnv fix live — pr-sweep working."
+    },
+    {
+      "at": "2026-09-05T20:48:32.522Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T20:48:37.525Z",
+      "type": "pr_review",
+      "pr": 4043,
+      "head_sha": "b3e0629f2cda62e70daa0e2907fe5dcfe8d63ac4",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-05T20:48:37.525Z",
+      "safe_to_merge": false
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4044,
+      "title": "fix(seo): add missing /methodology page to llms.txt",
+      "branch": "fix/llms-txt-missing-methodology",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T20:45:57Z"
+    },
+    {
+      "number": 4043,
+      "title": "chore(cleanup): remove dead largoSkipBieRouter/largoBieOnly (zero real callers)",
+      "branch": "fix/ai-env-dead-bie-router-code",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T20:40:38Z"
+    }
+  ]
 }
