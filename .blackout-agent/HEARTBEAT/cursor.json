@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "f82d0479-67df-4c7f-97b9-b9779c6d36a5",
-  "last_seen": "2026-09-05T11:42:01.686Z",
+  "run_id": "b748ea67-f468-4239-929f-d15a1b3bd7a6",
+  "last_seen": "2026-09-05T13:22:34.599Z",
   "last_productive_action": "heartbeat",
-  "current_task": "BO-P1-0100",
-  "current_phase": "HANDOFF",
+  "current_task": "BO-P1-0100 PR#3962",
+  "current_phase": "REVIEW_COMPLETE",
   "branch": null,
-  "pr": 3944,
+  "pr": 3962,
   "healthy": true
 }
