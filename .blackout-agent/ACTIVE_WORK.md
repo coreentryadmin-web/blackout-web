@@ -2,7 +2,7 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | Standing queue only — no active implementation |
+| BO-P1-0100 | cursor | REVIEWING | #4024 @ d7d41c7 | Batch2 CQ rebase done — Claude Approve pending |
 
 ## Recently completed (this cycle — validate at RTH)
 
