@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T22:19:17.459Z",
+  "updated_at": "2026-09-05T23:22:50.846Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -13,6 +13,17 @@
       "pr": null,
       "reviewer": null,
       "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T23:00:56.241Z",
+      "lease_until": "2026-09-06T00:50:13.827Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "4968987e-76f2-4360-94f9-14567b63dbbd"
     }
   },
   "reviews": {
@@ -36,11 +47,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "297faf10db7a9d1340dfe580ea108ed507ce41b2",
+    "last_main_sha": "24c22fed5d3b9cc46fc99670f574d4dec0d789be",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T23:19:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33998349400",
+    "last_deploy_sha": "24c22fed5d3b9cc46fc99670f574d4dec0d789be"
   },
   "events": [
     {
@@ -171,6 +182,25 @@
     },
     {
       "at": "2026-09-05T22:19:17.459Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:22:45.184Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:22:45.185Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9e3d8d5c-d297-4850-acd3-b373ac2ca13f",
+      "summary": "workflow_run cycle: #4056 deploy GREEN → #4062 swing brief ticker-collision fix merged+validated (OPEN Management sections). Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open skip off-hours). ops:collect 0. No open PRs. main@24c22fed5 deploy rolling."
+    },
+    {
+      "at": "2026-09-05T23:22:50.846Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
