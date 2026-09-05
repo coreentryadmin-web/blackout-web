@@ -25,11 +25,6 @@ export function largoClaudeEnabled(): boolean {
   return true;
 }
 
-/** @deprecated Largo no longer runs the BIE router — always Claude + tools. Kept for call-site compat. */
-export function largoSkipBieRouter(): boolean {
-  return true;
-}
-
 /** Largo terminal requires Anthropic (Claude tool loop). */
 export function largoAvailable(): boolean {
   return largoClaudeEnabled();
@@ -42,9 +37,4 @@ export function isStagingBieMode(): boolean {
     process.env.STAGING_CLAUDE !== "1" &&
     process.env.STAGING_LARGO_CLAUDE !== "1"
   );
-}
-
-/** @deprecated Largo is Claude-only; BIE-without-Claude mode was removed. */
-export function largoBieOnly(): boolean {
-  return false;
 }
