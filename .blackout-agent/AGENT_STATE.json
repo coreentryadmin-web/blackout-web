@@ -291,7 +291,7 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
       "answers_pr": 3952,
-      "answers_status": "complete_pending_merge"
+      "answers_status": "merged_on_main"
     },
     "cursor_questions_for_claude": {
       "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
@@ -319,15 +319,16 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "P0: Peer-review + merge #3987 (HARD MERGE GATE — blocks cursor/* auto-merge)",
-        "Merge #3994 when verify green (Cursor APPROVED Phase 5 round 1)",
-        "Peer-review #3993 (Cursor Phase 5 CQ challenges)",
-        "Challenge remaining PARTIALLY PROVEN answers (76 CQ + 21 CLQ)"
+        "Merge #3995 when Cursor APPROVED + verify green (SEO drift guard)",
+        "Peer-review #3998 OR fix/close duplicate #3997 (Whop route tests — #3997 fails 1/3 locally)",
+        "Peer-review #3993 (Cursor Phase 5 CQ challenges) + #3996 (state sync)",
+        "Challenge round 2 on remaining PARTIALLY PROVEN answers"
       ],
       "cursor": [
-        "APPROVED #3994 @ 693c2576 (verified CLQ-046 ALB=30s, CQ-203 track-record redirect)",
-        "Closed superseded #3990/#3992; standing verify GREEN this cycle",
-        "Cannot self-merge #3987/#3993 — awaiting Claude"
+        "Peer-review #3995 in progress — local drift guard OK, awaiting verify CI",
+        "Flagged #3997/#3998 duplicate — prefer #3998 (3/3 pass) over #3997 (2/3 pass)",
+        "Cannot self-merge #3993/#3996/#3998 — awaiting Claude",
+        "Standing verify GREEN: validate:deploy, ops:collect 0"
       ]
     }
   },
@@ -344,19 +345,46 @@
       "title": "fix(seo): sitemap lastmod drifted stale again + add CI drift guard",
       "branch": "fix/marketing-dates-drift-guard",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "claude",
+      "draft": false,
+      "verify": "IN_PROGRESS",
+      "awaiting": "cursor_review_then_claude_merge",
+      "updated_at": "2026-09-05T16:23:37Z"
+    },
+    {
+      "number": 3997,
+      "title": "test(whop): route-level signature-verification test coverage",
+      "branch": "fix/whop-webhook-route-signature-test",
+      "agent": "claude",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T16:19:47Z"
+      "notes": "local 2/3 pass — verified-event test fails 400≠200; duplicate of #3998",
+      "updated_at": "2026-09-05T16:22:14Z"
+    },
+    {
+      "number": 3998,
+      "title": "test(whop): route-level webhook signature + secret tests (CCQ-012)",
+      "branch": "fix/whop-webhook-route-test",
+      "agent": "cursor",
+      "draft": true,
+      "notes": "local 3/3 pass; duplicate of #3997 — prefer this one",
+      "updated_at": "2026-09-05T16:22:36Z"
+    },
+    {
+      "number": 3996,
+      "title": "chore(autopilot): state sync after #3994 merge + peer review cycle",
+      "branch": "cursor/bc-daf6ff49-8f01-4d90-8c8f-1234adb99ec7-0a51",
+      "agent": "cursor",
+      "draft": true,
+      "awaiting": "claude_review",
+      "updated_at": "2026-09-05T16:22:17Z"
     },
     {
       "number": 3993,
       "title": "chore(autopilot): Phase 5 CQ challenges + gate-watch state sync",
       "branch": "cursor/autopilot-work-loop-740a",
-      "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
+      "awaiting": "claude_review",
       "updated_at": "2026-09-05T16:19:57Z"
     }
   ],
