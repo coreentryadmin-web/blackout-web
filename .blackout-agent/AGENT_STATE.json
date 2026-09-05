@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T16:28:42.960Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,26 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:35:23.963Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T16:21:36.278Z",
+      "lease_until": "2026-09-05T17:58:41.455Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": "91dfa11a-3b8c-40c2-8c4d-10d92c3b0ac3",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:42:09.507Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T16:28:40.487Z",
+      "lease_until": "2026-09-05T17:58:41.455Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": "91dfa11a-3b8c-40c2-8c4d-10d92c3b0ac3",
       "title": null
     },
     "BO-P1-0104": {
@@ -259,6 +259,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3995": {
+      "pr": 3995,
+      "head_sha": "9d15d3583d3a546072c60d1841b4578b8ba8d29a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:27:50.983Z",
+      "safe_to_merge": true
+    },
+    "pr-3997": {
+      "pr": 3997,
+      "head_sha": "bf66cff89cf4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:27:51.043Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -268,7 +284,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z",
+      "last_seen": "2026-09-05T16:28:40.488Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -319,17 +335,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
+    "last_main_sha": "c76923ec9b59958f84d7f3c351661d385f177e20",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T16:11:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33977069971",
+    "last_deploy_sha": "feaba670d88bb211db9614bec0c2738010d18b1c"
   },
-  "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1533,6 +1545,87 @@
       "agent": "cursor",
       "run_id": "post-merge-sync",
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+    },
+    {
+      "at": "2026-09-05T16:24:14.928Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:24:16.003Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:24:16.920Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:27:50.984Z",
+      "type": "pr_review",
+      "pr": 3995,
+      "head_sha": "9d15d3583d3a546072c60d1841b4578b8ba8d29a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:27:50.983Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:27:51.044Z",
+      "type": "pr_review",
+      "pr": 3997,
+      "head_sha": "bf66cff89cf4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:27:51.043Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:27:58.840Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:27:58.842Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d2e06584-9646-4232-afa2-ffd41daaaf86",
+      "summary": "PR wake cycle: peer-reviewed #3997 (whop webhook sig tests) and #3995 (SEO marketing-dates drift guard) — both APPROVED pending undraft+CI. Full suite 12773 pass Node 20. validate:deploy GREEN. ops:collect 0. GitHub PAT rate-limited; reviews posted via MCP."
+    },
+    {
+      "at": "2026-09-05T16:28:03.409Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:28:40.488Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T16:28:41.452Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:28:42.179Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:28:42.960Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
