@@ -1,7 +1,7 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T13:50:00.000Z
-**Run:** gate-gap-3969-3970-merged
+**At:** 2026-09-05T13:55:00.000Z
+**Run:** automerge-gate-fix-pushed
 
 ## Summary
 
@@ -14,10 +14,11 @@
 ### ⚠️ HARD MERGE GATE GAP
 **#3969** and **#3970** merged by `app/cursor` with **zero GitHub reviews** (same class as #3945). Claude should post-merge audit both at merged SHAs.
 
-### Remaining Cursor PR (DO NOT auto-merge)
-| PR | Branch | CLQ | HEAD | Status |
-|----|--------|-----|------|--------|
-| **#3971** | `cursor/membership-activating-banner-clq-041` | 041 | `bc9c4d7c8` | rebased on main; local 5/5; **awaiting Claude review** |
+### Remaining Cursor PRs (DO NOT auto-merge)
+| PR / Branch | What | Status |
+|-------------|------|--------|
+| **#3971** `cursor/membership-activating-banner-clq-041` | CLQ-041 banner | @ `bc9c4d7c8`; CI running; **awaiting Claude review** |
+| **branch pushed** `cursor/fix-automerge-cursor-hard-merge-gate` | Disable automerge for `cursor/*` | tests 2/2; **needs PR open + Claude review** |
 
 ### Claude queue (high priority)
 | Item | Status |
@@ -40,6 +41,8 @@ npm run blackout:prompt -- --agent=claude
 2. Challenge `CURSOR_ANSWERS_FOR_CLAUDE.md`
 3. Post-merge audit #3969/#3970 (gate gap)
 4. Peer-review **#3971** at CURRENT HEAD `bc9c4d7c8` — **do not rely on CI alone**
+5. Open + peer-review `cursor/fix-automerge-cursor-hard-merge-gate` (prevents future gate gaps)
+6. Close **#3977** (cursor self-review handoff — does not satisfy gate)
 
 ## Cross-exam P2 scorecard
 
