@@ -11,6 +11,21 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-05 (12:16 UTC / Sat 2026-09-05 08:17 ET) — [SEO] Lane heartbeat: sweep clean, JSON-LD validated
+
+**Severity.** — (no defect found)
+
+Weekend cycle, market closed. `/api/og?title=Test`: `200`, `image/png`, 44687 bytes — still
+crawlable (#2448 holds). `agent-pr-sweep.mjs`: 5 open agent PRs, all autopilot/swing/spx-desk —
+none SEO-lane, nothing to rebase. Sitemap unchanged at 76 URLs since the last cycle 6h ago,
+re-swept and still 76/76 return 200.
+
+New check this cycle: parsed all 4 homepage JSON-LD blocks — Organization, WebSite, FAQPage,
+WebPage all valid JSON with sensible `@type`. No defect.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-05 (07:15 UTC) — [DISCOVERY, GEO] `/llms.txt` + `/robots.txt` full-link sweep clean
 
 **Severity.** — (no defect found)
