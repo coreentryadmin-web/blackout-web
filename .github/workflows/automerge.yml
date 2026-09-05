@@ -2,9 +2,11 @@ name: Auto-merge agent PRs
 
 # Hands-off merging for agent PRs.
 #
-# When a NON-DRAFT pull request from an agent branch (`cursor/*` or `claude/*`) is opened
-# or updated, this enables GitHub's native auto-merge so the PR merges ITSELF the moment
-# the required `verify` check (see ci.yml) goes green — no human click required.
+# When a NON-DRAFT pull request from a `claude/*` agent branch is opened or updated, this
+# enables GitHub's native auto-merge so the PR merges ITSELF the moment the required
+# `verify` check (see ci.yml) goes green — no human click required.
+#
+# `cursor/*` branches are NOT covered — see HARD MERGE GATE comment below.
 #
 # ── WHY `claude/*` IS LISTED (added 2026-08-21, after a 36-PR jam) ────────────────────────
 #
@@ -36,8 +38,17 @@ name: Auto-merge agent PRs
 # `verify` status check, so nothing merges until CI passes. Auto-merge simply removes
 # the manual "Enable auto-merge" click.
 #
-# Scope: only agent branches (`cursor/*`, `claude/*`). Human PRs from other branches are
-# untouched and still merge manually.
+# Scope: `claude/*` only for auto-merge. `cursor/*` is EXCLUDED — see HARD MERGE GATE below.
+# Human PRs from other branches are untouched and still merge manually.
+#
+# ── HARD MERGE GATE (cursor/*) — added 2026-09-05 after #3969/#3970 gate gap ─────────────
+#
+# Adversarial review contract: Cursor-authored PRs require Claude GitHub approval at CURRENT
+# HEAD before merge. CI green is not approval. `automerge.yml` previously enabled auto-merge
+# for `cursor/*` the moment `verify` passed, which let `app/cursor` merge with zero reviews
+# (#3969, #3970 — same class as #3945). AGENT_STATE cursor self-approvals do NOT satisfy
+# the gate; only a Claude GitHub review + manual merge (or future cursor-gate with review
+# check) counts. Until then: `cursor/*` PRs never get auto-merge enabled here.
 #
 # Token: the built-in GITHUB_TOKEN is sufficient for the current ruleset (0 required
 # approvals). If approvals are ever required, swap in a PAT/app token that can approve.
@@ -78,7 +89,8 @@ permissions:
 
 jobs:
   enable-automerge:
-    if: ${{ !github.event.pull_request.draft && (startsWith(github.head_ref, 'cursor/') || startsWith(github.head_ref, 'claude/')) }}
+    # claude/* only — cursor/* excluded per HARD MERGE GATE (see header comment).
+    if: ${{ !github.event.pull_request.draft && startsWith(github.head_ref, 'claude/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
