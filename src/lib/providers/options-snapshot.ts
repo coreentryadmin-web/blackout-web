@@ -18,6 +18,7 @@
 // READ path never makes a per-user upstream call.
 
 import { polygonRawJson } from "./polygon-options-gex";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 // ---------------------------------------------------------------------------
 // Types — the VERIFIED Massive unified-snapshot result shape (options `type`)
@@ -499,7 +500,7 @@ export async function getOptionSnapshot(occ: string): Promise<OptionSnapshot | n
   const now = Date.now();
 
   const local = snapshotMem.get(occ);
-  if (local && now - local.ts <= SNAP_FRESH_MS) {
+  if (local && isWsUpdatedAtFresh(local.ts, SNAP_FRESH_MS, now)) {
     // Re-attach observation clock from cache write time for G-9 age.
     return { ...local.snap, observedAtMs: local.snap.observedAtMs ?? local.ts };
   }
@@ -507,7 +508,7 @@ export async function getOptionSnapshot(occ: string): Promise<OptionSnapshot | n
   try {
     const { sharedCacheGet } = await import("../shared-cache");
     const hit = await sharedCacheGet<CachedSnapshot>(`${SNAP_REDIS_PREFIX}${occ}`);
-    if (hit && hit.snap && typeof hit.ts === "number" && now - hit.ts <= SNAP_FRESH_MS) {
+    if (hit && hit.snap && typeof hit.ts === "number" && isWsUpdatedAtFresh(hit.ts, SNAP_FRESH_MS, now)) {
       // Re-seed the in-mem layer so subsequent reads skip Redis.
       if (!local || hit.ts > local.ts) snapshotMem.set(occ, hit);
       return { ...hit.snap, observedAtMs: hit.snap.observedAtMs ?? hit.ts };
