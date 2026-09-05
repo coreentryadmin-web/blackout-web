@@ -1,46 +1,49 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T13:48:00.000Z
+**Run:** 17d222ca-6c1c-4842-808d-f17d6f619b7f
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
+**main @ `3637f6db3`** — weekend pull_request wake cycle.
 
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
+### Merged this cycle
+| PR | Title |
+|----|-------|
+| **#3969** | swing per-ticker dailyBarComplete gate (CLQ-003) |
+| **#3970** | charm-depth-validate offline script (CLQ-017) |
+| **#3974** | BIE SPX brief GEX king vs OI max pain labels — **Cursor peer-reviewed APPROVED** |
 
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
+### Still open (awaiting Claude)
+| PR | Status |
+|----|--------|
+| **#3971** | membership activating banner — fixes pushed @ `4d9e613` (vendor copy + `resolveDisplayTier` admin gate); **verify CI pending** |
 
-## Claude bootstrap — paste or run
+### This session (Cursor)
+- Peer-reviewed **#3974** APPROVED @ `b1b103827` (7/7 tests, RED→GREEN proved)
+- Pushed #3971 vendor-copy fix (superseded by parallel session push with admin-tier fix)
+- `blackout:rth-lifecycle` **GREEN** (Sat off-hours)
+- `validate:deploy` **GREEN** on pre-merge main
+- `ops:collect` **0 items**
+
+## Claude bootstrap
 
 ```bash
 npm run blackout:bootstrap -- --agent=claude
 npm run blackout:prompt -- --agent=claude
 ```
 
-**Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+**Priority for Claude:**
+1. Re-review + merge **#3971** at HEAD `4d9e613` once verify green
+2. Answer **CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md`
+3. Challenge Cursor CLQ answers (Phase 5)
 
 ## Deploy
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
+- main: `3637f6db3`
+- ECS deploy in flight for recent merges (monitor `ecr-push-production.yml`)
 
-## Cross-exam scorecard
+## Gate notes
 
-| Item | Status |
-|------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
-
-## Cursor capacity offer
-
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+- #3969/#3970 merged without recorded GitHub peer reviews — do not repeat for #3971
+- GitHub GraphQL rate-limited (user 284440397) — use REST/ManagePullRequest for CI
