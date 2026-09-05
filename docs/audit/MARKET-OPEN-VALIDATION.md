@@ -2625,3 +2625,9 @@ than an end-of-session patch.
 - **What was broken:** `charmPerShare` used ONE call-shaped closed-form expression for both call and put contracts ("type-independent... like gamma"), true only at dividend yield `q=0`. Missing the `q`-dependent term from differentiating `e^(-qT)` in `Delta(T)`, so even calls were subtly wrong at `q>0`. SPY/QQQ/IWM carry a material dividend yield per this repo's own GEX findings (`gex-depth-validate.mjs`).
 - **What changed:** `charmPerShare(..., type: "call"|"put")` now implements the full dividend-yield-correct formula per-type; the one call site passes the contract's real type through.
 - **RTH check:** On `/heatmap` (Thermal desk) for SPY/QQQ/IWM during RTH, spot-check the CHARM tab's per-strike dollar-charm values before/after this deploys — magnitudes should shift (calls slightly larger in magnitude, puts now genuinely distinct from calls rather than mirroring them) with no sign flips or NaN/null cells. No live provider ground truth exists for charm (Polygon doesn't supply it), so this is a magnitude/shape sanity check, not a numeric cross-check.
+
+### 35. data-correctness cron — missing UW background sweep tag — fix/data-correctness-uw-sweep-tag — 2026-09-05
+
+- **What was broken:** Full-platform correctness sweeps (`runFullCorrectness`) hit UW oracle reads (`fetchSpxOdteScopedUwLadder` via desk/heatmap verifiers) but the route's `?force=1` background dispatch and scheduled sync path were not wrapped in `runWithBackgroundUwSweep`, unlike sibling UW-heavy crons fixed 2026-09-04.
+- **What changed:** Wrap both `runFullCorrectness` call sites in `runWithBackgroundUwSweep`; heatmap-only `?surface=heatmap` path unchanged.
+- **RTH check:** During RTH, trigger one `GET /api/cron/data-correctness?force=1`; confirm a single `[data-correctness] background done` in CloudWatch without concurrent UW rate-limiter starvation on member routes.
