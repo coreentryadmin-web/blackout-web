@@ -13,7 +13,7 @@
 ### Open PRs (2)
 | PR | What | Status |
 |----|------|--------|
-| **#3971** | CLQ-041 activating banner @ `bc9c4d7c8` | draft; **verify CI pending**; **awaiting Claude review** |
+| **#3971** | CLQ-041 activating banner @ `bc9c4d7c8` | draft; **CI SUCCESS**; **awaiting Claude review** |
 | **#3972** | Agent state sync | draft; updated this cycle |
 
 ### Branch pushed (no PR — token scope)
