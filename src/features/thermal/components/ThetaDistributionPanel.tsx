@@ -61,43 +61,36 @@ export function ThetaDistributionPanel({
         </div>
       </div>
 
-      {/* Top 5 strikes by theta exposure */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+        <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
           Top 5 Strikes
         </h3>
         <div className="space-y-2">
           {top5.map((bucket) => (
             <div key={bucket.strike} className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-mono text-gray-600 dark:text-gray-400">
-                  {bucket.strike.toFixed(0)}
-                </span>
+              <div className="flex items-center justify-between font-mono text-[11px]">
+                <span className="tabular-nums text-sky-300">{bucket.strike.toFixed(0)}</span>
                 <div className="flex items-center gap-2">
                   <span
                     className={clsx(
-                      "text-xs font-semibold",
-                      bucket.charmSign > 0
-                        ? "text-green-600 dark:text-green-400"
-                        : bucket.charmSign < 0
-                          ? "text-red-600 dark:text-red-400"
-                          : "text-gray-600 dark:text-gray-400"
+                      "text-xs font-semibold tabular-nums",
+                      bucket.isConcentration ? "text-cyan-400" : "text-sky-300"
                     )}
                   >
                     {bucket.charmSign > 0 ? "+" : ""}{bucket.pctOfTotal.toFixed(1)}%
                   </span>
-                  {bucket.rank === 1 && <Badge tone="accent" size="sm">Peak</Badge>}
+                  {bucket.rank === 1 && <Badge className="text-xs">Peak</Badge>}
                 </div>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">
+              <div className="h-2 w-full overflow-hidden rounded-sm border border-white/10 bg-white/[0.04]">
                 <div
                   className={clsx(
                     "h-full transition-all",
                     bucket.charmSign > 0
-                      ? "bg-green-500 dark:bg-green-600"
+                      ? "bg-cyan-400/80"
                       : bucket.charmSign < 0
-                        ? "bg-red-500 dark:bg-red-600"
-                        : "bg-gray-400 dark:bg-gray-600"
+                        ? "bg-red-500/70"
+                        : "bg-sky-400/70"
                   )}
                   style={{ width: `${(bucket.absCharm / maxCharm) * 100}%` }}
                 />
@@ -107,21 +100,20 @@ export function ThetaDistributionPanel({
         </div>
       </div>
 
-      {/* Premium decay profile */}
-      <div className="space-y-3 border-t border-gray-200 pt-4 dark:border-gray-800">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+      <div className="space-y-3 border-t border-white/10 pt-4">
+        <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
           Premium Decay Profile
         </h3>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Pin Bias</div>
-            <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100 capitalize">
+        <div className="grid grid-cols-2 gap-3 font-mono text-[11px]">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-sky-300/70">Pin Bias</div>
+            <div className="mt-1 font-semibold tabular-nums text-white capitalize">
               {analysis.pinBias}
             </div>
           </div>
-          <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Pin Strength</div>
-            <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-sky-300/70">Pin Strength</div>
+            <div className="mt-1 font-semibold tabular-nums text-white">
               {(
                 (Math.abs(analysis.netCharm) / analysis.totalAbsCharm) *
                 100
@@ -129,48 +121,47 @@ export function ThetaDistributionPanel({
               %
             </div>
           </div>
-          <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Clusters</div>
-            <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-sky-300/70">Clusters</div>
+            <div className="mt-1 font-semibold tabular-nums text-white">
               {analysis.clusterCount}
             </div>
           </div>
-          <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Max Gap</div>
-            <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-sky-300/70">Max Gap</div>
+            <div className="mt-1 font-semibold tabular-nums text-white">
               {analysis.maxGap.toFixed(1)}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Decay insights */}
-      <div className="space-y-2 border-t border-gray-200 pt-4 dark:border-gray-800">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+      <div className="space-y-2 border-t border-white/10 pt-4">
+        <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
           Decay Insights
         </h3>
-        <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+        <ul className="space-y-1 text-[11px] leading-relaxed text-sky-300/80">
           {analysis.pinUpStrikes.length > 0 && (
             <li className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
+              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400" />
               <span>Positive decay pins up at {analysis.pinUpStrikes.slice(0, 2).join(", ")}</span>
             </li>
           )}
           {analysis.pinDownStrikes.length > 0 && (
             <li className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
+              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500/70" />
               <span>Negative decay drags down at {analysis.pinDownStrikes.slice(0, 2).join(", ")}</span>
             </li>
           )}
           {analysis.concentrationStrikes.length > 0 && (
             <li className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-sky-300" />
               <span>Theta concentration at {analysis.concentrationStrikes.slice(0, 2).join(", ")}</span>
             </li>
           )}
           {analysis.maxGap > 10 && (
             <li className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-yellow-500" />
+              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
               <span>Large gap in decay ({analysis.maxGap.toFixed(0)} points)</span>
             </li>
           )}
@@ -178,7 +169,7 @@ export function ThetaDistributionPanel({
             analysis.concentrationStrikes.length === 0 &&
             analysis.maxGap <= 10 && (
               <li className="flex items-start gap-2">
-                <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+                <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-cyan-300" />
                 <span>Decay balanced across strikes — premium distributed evenly</span>
               </li>
             )}
