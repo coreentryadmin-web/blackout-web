@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:21:58.167Z",
+  "updated_at": "2026-09-05T21:45:37.074Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T21:43:06.255Z",
+      "lease_until": "2026-09-05T23:15:00.132Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "96b3e2c4-0903-4bc8-a89d-11ddb3f175ca",
+      "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T21:44:59.145Z",
+      "lease_until": "2026-09-05T23:15:00.132Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "96b3e2c4-0903-4bc8-a89d-11ddb3f175ca"
     }
   },
   "reviews": {
@@ -31,16 +43,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T21:43:06.255Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "8f1b953ba05ef5cdb818c04fa32f18e7151f9605",
+    "last_main_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T21:45:07Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
+    "last_deploy_sha": "73e58b8937d8a20704b2527c4be090315d9de015"
   },
   "events": [
     {
@@ -104,41 +117,62 @@
       "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
-      "at": "2026-09-05T20:41:08.341Z",
+      "at": "2026-09-05T21:42:51.576Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T20:41:08.976Z",
+      "at": "2026-09-05T21:42:57.717Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T20:41:09.263Z",
+      "at": "2026-09-05T21:42:59.911Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T21:21:57.295Z",
+      "at": "2026-09-05T21:43:02.242Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T21:21:57.899Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-05T21:43:06.255Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
     },
     {
-      "at": "2026-09-05T21:21:58.167Z",
+      "at": "2026-09-05T21:45:37.074Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 2
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4050,
+      "title": "chore(blackout-agent): cursor PR-event recovery handoff — lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-recovery",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:45:00Z"
+    },
+    {
+      "number": 4048,
+      "title": "chore(blackout-agent): cursor recovery cycle — post-bcb5ce5 merge wave",
+      "branch": "cursor/cursor-agent-work-loop-03da",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T21:45:33Z"
+    }
+  ]
 }
