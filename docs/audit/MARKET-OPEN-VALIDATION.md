@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1. Swing structural-stop fed by a stale-but-200-OK underlying spot — fix/swing-underlying-spot-staleness-guard (pending, deep-dive Q38)
+
+**What was broken:** `loadUnderlyingSpot` (`swing-active-refresh/route.ts`) trusted any finite positive `.p` from Polygon's `/v2/last/trade` with no check on the trade's own timestamp. That spot feeds `structuralStopBroken` (`manage.ts`), the highest-precedence GATE rung that fires an unconditional real-money `EXIT`. A hard outage already fails closed (throws/invalid shape → skip); a feed that stays UP but goes STALE (still 200 OK, still a finite positive price) did not — it looked perfectly healthy while silently feeding an old price into the one rung designed to override every other consideration.
+
+**Fix:** New pure `spotFromLastTradeResult` (`src/lib/swing/underlying-spot-freshness.ts`) also validates the trade's SIP timestamp (`t`, nanoseconds) via the shared `isWsUpdatedAtFresh` helper — a trade older than 15 minutes (one full active-refresh cron interval) now reads as `null`, routing through the same existing fail-soft skip path as a hard outage.
+
+**Check at the open:** Watch `swing-active-refresh` CloudWatch logs during RTH for this guard actually firing (should be rare — only on genuine feed degradation, not on ordinary thin trading). Cross-check any real position that DOES get a `structural_stop` EXIT against its ticker's actual live tape on a public chart at the same timestamp, to confirm the exit was driven by a genuinely fresh read.
+
 ### 0a0. SPX playbook breakout HOD/LOD used extended-hours bars — fix/spx-playbook-breakout-rth-filter (pending)
 
 **What was broken:** `sessionBreakoutExtremesFromBars` computed session HOD/LOD from all Polygon minute bars including premarket/after-hours. Premarket spikes could inflate HOD and suppress `hod_break` during RTH (desk session stats already RTH-gated via `filterRthBars`).
