@@ -181,3 +181,101 @@ Published separately when Claude answers — top reciprocal probes:
 ---
 
 *Batch 1 covers 15/54 questions with evidence. Remaining CLQs queued for next cycle (Largo live probes, Vector weekend nulls, Meridian timing, commerce traces).*
+
+---
+
+## Batch 2 (2026-09-05T12:15Z) — 12 additional answers
+
+**CLQ-002** | WATCH → shadow leak
+**Verdict: PROVEN (WATCH candidates do not get shadow rows; shadow is commit-path-only)**
+
+Shadow inserts are built only inside `planSwingCommits` when a candidate is **not committable** but blocked **only** by shadow-eligible reasons (`budget:*`, `cap:*`, `gate:G-S*`, `quote_stale`, `daily_bar_incomplete`) — see `commit.ts:46-54`, `isShadowEligibleBlockedBy()` `:107-110`. WATCH-tier candidates that never reach the commit planner do not produce `shadowInsert`. Shadow calibration (`shadow-calibration.ts`) reads **`swing_shadow_positions` graded rows only** — not WATCH desk state. **No code path** inserts shadow rows for pure WATCH/forming candidates.
+
+**Gap:** No DB query confirming zero shadow rows without a corresponding commit attempt (sandbox has no Postgres).
+
+---
+
+**CLQ-003** | `dailyBarComplete = grouped.length > 0`
+**Verdict: PROVEN (false-complete risk exists)**
+
+`discovery.ts:1024-1025` sets `dailyBarComplete: grouped.length > 0` with comment *"Reference bar = grouped-daily feed posted for this scan (NOT 'market is open')."* This is **market-wide feed non-empty**, not per-ticker bar presence. If `fetchIntradayStructureBars()` throws and `fetchGroupedDaily()` returns rows for **other** tickers (e.g. SPY) but not a day-1 IPO candidate, `grouped.length > 0` → gate passes for that IPO. **P2 correctness gap** — #3934 wired the gate but left coarse proxy.
+
+---
+
+**CLQ-004** | Roll child `committedAt` / deadline basis
+**Verdict: PROVEN (child uses roll-event `NOW()`, not parent timestamp)**
+
+Roll child `RollChildSpec` (`roll-plan.ts:216-248`) does not set `committed_at`; `insertSwingPosition` stamps `committed_at = NOW()` at insert (`db.ts:7542`). Child `entry_context` records `rolled_from_position_id` and `roll_seq` but **not** parent `committed_at`. Entry-deadline fallback in #3945 uses child's `committedAt` once row exists → **roll event time**, not original parent open. Discord notify (`discord-trade-notify.ts:178`) fetches child row post-roll for BTO alert — uses child's fresh row fields.
+
+---
+
+**CLQ-005** | Shadow $0 intrinsic at expiry without −60% backstop
+**Verdict: PROVEN (terminal P&L = last observed mark, not intrinsic $0)**
+
+`decideShadowClose` closes on `dte < 0` (`shadow-refresh.ts:77-78`). `closeAndGrade` uses `exitMark = mark ?? row.last_mark ?? entry` (`:151`) — **no intrinsic settlement**. A fast crash between polls that skips −60% backstop but expires OTM closes at **last poll mark**, not $0. Rows past expiry still OPEN if shadow-refresh cron doesn't run — **operational gap**, not missing expiry branch.
+
+---
+
+**CLQ-006** | `tierFromEntryContext` frozen at commit vs live recompute
+**Verdict: PROVEN (exit mode frozen; tier used at commit only)**
+
+`scan.ts:1657-1675` computes `exitPolicyAtCommit = resolveExitModeForTier(playTier)` and pins `exit_policy_at_commit` + `exit_policy_snapshot` on `entry_context` at first flag. Live `exit-sync.ts` prefers `readFrozenExitMode()` / `readFrozenExitPolicy()` (`:192-226`, `:336`) over live env. **Retroactive tier recompute cannot change exit mode** on pinned rows. Legacy/unpinned rows fall back to `resolveExitMode()` — documented.
+
+**Note:** CLQ references swing `exit-sync.ts` but `resolveExitModeForTier` is **0DTE** (`zerodte/exit-sync.ts`). Swing uses `manage-sync`/`roll` — no `tierFromEntryContext` in swing path.
+
+---
+
+**CLQ-007** | `isZeroDteWin` vs `labelFromPlanOutcome` 4-row disagreement
+**Verdict: PROVEN (code unified; live DB not re-queried)**
+
+`feature-store.ts:49-65` routes `labelFromPlanOutcome` through `isZeroDteWin(row)` when `entry_context` present. `feature-store.test.ts:51-78` explicitly tests MU and OKLO disagreement cases — expects agreement post-fix. **Code fix shipped**; whether historical DB rows were backfilled is **UNKNOWN** without Postgres query.
+
+---
+
+**CLQ-009** | SPX play `score` = sum of `factors[].weight`
+**Verdict: DISPROVEN**
+
+`computeSpxConfluence` (`spx-signals.ts`) accumulates `score` from many gates, then adds **non-factor adjustments**:
+- `scoreHelixFlowAlignment(desk, factors)` (`:701`)
+- `scoreNewsRisk(...)` (`:705-706`) — may not always push to factors
+- `scoreFlowStrikeConcentration` (`:712-724`) — pushes factor only when bonus ≠ 0
+
+Score is then `clamp(score, -100, 100)` (`:727`). **Displayed `factors` array is not guaranteed to sum to `score`.** Members cannot hand-audit score from listed factors alone.
+
+---
+
+**CLQ-010** | Off-hours `direction`/`score` frozen vs live
+**Verdict: PARTIALLY PROVEN (frozen snapshot; no UI staleness ceiling)**
+
+Production probe 2026-09-05T12:10Z: `/api/market/spx/desk` returned `price=7718.6`, `as_of` fresh ~34s — desk still updates off-hours via cache/cron. `/api/market/spx/play` returned `401 Unauthorized` without member/cron auth — **could not compare two play payloads 30min apart this session**. Desk `gates.blocks` likely includes `"Session closed"` off-hours while factors may reflect last RTH computation — **UI does not show explicit "frozen since {time}" banner** (gap).
+
+---
+
+**CLQ-014** | Helix SSE tier recheck per message
+**Verdict: PROVEN (per-event recheck on flows SSE)**
+
+`flows/stream/route.ts:62-78`: every `send()` calls `recheckSseUserEntitlement(streamUserId, "premium")` before enqueue. Downgrade → `forbidden` event + stream close. **Browser path is SSE not raw UW WS** — entitlement model is per-delivery on SSE. Raw server-side UW WS has no member tier (internal).
+
+---
+
+**CLQ-015** | UW sweep dedup on reconnect
+**Verdict: PARTIALLY PROVEN**
+
+Server: `persistAndPublishFlowAlert` in `uw-socket.ts` should dedupe on insert to `flow_alerts` (DB-level — need unique constraint or upsert key). Client SSE receives already-persisted events via Redis pub/sub — **reconnect replay of same DB row ID** depends on client dedup. **Gap:** no captured reconnect sequence this session proving suppression.
+
+---
+
+**CLQ-040** | Revoked Clerk session + live WS/SSE
+**Verdict: PARTIALLY PROVEN (SSE recheck closes stream; no server-side WS iterate-close)**
+
+SSE routes (`flows/stream`, `vector/stream`, `zerodte/marks/stream`) recheck tier per tick (#3906). **No evidence** of iterating all live connections on Clerk admin revocation — downgrade detected on **next SSE send**, not instant. REST API uses per-request `authorize*Api` with tier cache (60s TTL). **Max leak window** = min(SSE tick interval, tier cache TTL) until next recheck.
+
+---
+
+**CLQ-044** | `sharedCacheSetNx` fail-open (duplicate of CLQ-037)
+**Verdict: PROVEN** — see CLQ-037 above. Recommend Claude evaluate whether desk-warm / pick-sweep should **fail-closed** (skip run) on Redis acquire error.
+
+---
+
+*Batch 1+2: 27/54 questions answered. Remaining: Thermal (CLQ-017–019), Vector (CLQ-020–022), Meridian (CLQ-023–024), Largo (CLQ-025–030), cross-product (CLQ-031–032), pipeline (CLQ-033–034), DB pool (CLQ-036), commerce (CLQ-041–043), arch/perf (CLQ-044–047), regressions (CLQ-052–053), open PRs (CLQ-049–051).*
+
