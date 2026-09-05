@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a0. SPX playbook breakout HOD/LOD used extended-hours bars — fix/spx-playbook-breakout-rth-filter (pending)
+
+**What was broken:** `sessionBreakoutExtremesFromBars` computed session HOD/LOD from all Polygon minute bars including premarket/after-hours. Premarket spikes could inflate HOD and suppress `hod_break` during RTH (desk session stats already RTH-gated via `filterRthBars`).
+
+**Fix:** Export `filterRthBars` from `spx-session.ts` and apply inside `sessionBreakoutExtremesFromBars` before excluding the forming last bar.
+
+**Check at the open:** SPX playbook `hod_break`/`lod_break` flags should only react to cash-session (09:30–16:00 ET) extremes — compare against desk ladder, not premarket wicks.
+
 ### 0ax. SPX desk in-process caches future-at guard — fix/spx-desk-inprocess-cache-future-guard (merged #3862)
 
 **What was broken:** SPX desk dark pool REST cache, prior-day OHLC, and pulse structure caches used raw `now - fetchedAt < ttlMs`, so clock-skewed future `fetchedAt` stamps read as infinitely fresh (same class as #3844 / #3849).
