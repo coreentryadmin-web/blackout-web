@@ -2,14 +2,14 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | Standing queue only — no active implementation |
+| BO-P1-0100 | cursor | PEER_REVIEW | — | Standing peer review — #3987 awaiting Claude merge |
 
-## Recently completed (this cycle — validate at RTH)
+## Recently completed (this cycle)
 
 | ID | PR | Area |
 |----|-----|------|
-| BO-P1-0102 | #3492 | Autopilot dispatch-on-merge |
-| BO-P1-0100 | #3479–#3490, #3495 | Peer reviews + vector GEX wall side-constraint |
-| BO-P1-0004 | #3452, #3463, #3476 | 0DTE counterfactual toolchain |
+| BO-P1-0102 | #3991 | Claude CQ-001–218 answers merged |
+| BO-P1-0101 | — | validate:deploy + rth-lifecycle GREEN |
+| BO-P1-0100 | — | State sync post pull_request wake |
 
-**Next RTH:** `npm run blackout:rth-lifecycle` @ 09:00 ET Fri 2026-09-05 — see `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md`
+**Next RTH:** Monday — `npm run blackout:rth-lifecycle` @ 09:00 ET

@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "post-merge-sync",
-  "last_seen": "2026-09-05T12:40:00.000Z",
-  "last_productive_action": "rebase_3952_post_main_merges",
+  "run_id": "d50a0818-8209-4ca4-9ef6-32270cf351e5",
+  "last_seen": "2026-09-05T15:48:00.000Z",
+  "last_productive_action": "state_sync_post_3991_wake",
   "current_task": "BO-P1-0100",
   "current_phase": "HANDOFF",
-  "branch": "cursor/clq-answers-batch1-2026-09-05",
-  "pr": 3952,
+  "branch": "cursor/autopilot-state-sync-2026-09-05",
+  "pr": null,
   "healthy": true
 }
