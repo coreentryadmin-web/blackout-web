@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T19:07:42.137Z",
+  "updated_at": "2026-09-05T19:38:26.509Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:04:19.720Z",
-      "lease_until": "2026-09-05T20:35:21.822Z",
+      "claimed_at": "2026-09-05T19:36:24.827Z",
+      "lease_until": "2026-09-05T21:07:26.178Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "07b06eab-e0bc-45c5-af9d-be542e63217e"
+      "run_id": "b48e0826-1942-4356-931b-a22547ad477b"
     }
   },
   "reviews": {},
@@ -27,11 +27,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8b2e49df2bc37d8c44d875f175f617630a98a152",
+    "last_main_sha": "f8613a3a2593a9af78edf8488adf4df03792e784",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:06:44Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33986112563",
-    "last_deploy_sha": "8b2e49df2bc37d8c44d875f175f617630a98a152"
+    "last_deploy_at": "2026-09-05T19:34:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
+    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
   },
   "events": [
     {
@@ -45,28 +45,109 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T19:37:26.178Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-05T19:37:28.213Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-05T19:37:29.728Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-05T19:38:26.509Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-05T19:38:26.509Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "24a8be1e-8849-4d10-a86c-34c11967eeea",
+      "summary": "pull_request wake: synced main@f8613a3a2 (#4032 vector bead rail). No open PRs (pr-sweep empty). ops:collect 0 items. validate:deploy/api-auth/platform-integrity/seo/rth-lifecycle all GREEN. Weekend — RTH skipped. Deploy run 33987532744 pending at wake, prod health verified live. Peer review queue empty — standing tasks verified."
     }
   ],
   "open_prs": [
     {
-      "number": 4030,
-      "title": "docs(gex): fix stale doc comment on fetchHeatmapBandUnfiltered post-#4028",
-      "branch": "fix/gex-heatmap-unfiltered-doc-comment",
+      "number": 4039,
+      "title": "chore(blackout-agent): cursor recovery cycle — lifecycle GREEN, GitHub rate-limited",
+      "branch": "cursor/autopilot-work-loop-cddd",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-09-05T19:06:25Z"
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:36:21Z"
     },
     {
-      "number": 4029,
-      "title": "fix(scripts): gate desk-warm force=1 calls in two more latency audit scripts",
-      "branch": "fix/latency-scripts-desk-warm-hours-gate",
+      "number": 4038,
+      "title": "chore(blackout-agent): cursor recovery cycle handoff — #4035 CI fix",
+      "branch": "cursor/autopilot-state-recovery-loop-9792",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:35:29Z"
+    },
+    {
+      "number": 4037,
+      "title": "fix(spx-desk): anchor off-hours pulse to prior close on cold replica",
+      "branch": "fix/spx-desk-pulse-cold-prior-close",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-09-05T19:05:20Z"
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:38:10Z"
+    },
+    {
+      "number": 4036,
+      "title": "chore(blackout-agent): cursor cycle handoff — #4024 rebased, deploy GREEN",
+      "branch": "cursor/autopilot-work-loop-e8dd",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:35:10Z"
+    },
+    {
+      "number": 4035,
+      "title": "fix(nighthawk): swing desk grade, Largo center rail, detail header",
+      "branch": "cursor/swing-desk-layout-largo",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:32:16Z"
+    },
+    {
+      "number": 4034,
+      "title": "chore(state): sync autopilot after #4029 merge + Claude peer queue",
+      "branch": "cursor/autopilot-state-sync-1919",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:19:33Z"
+    },
+    {
+      "number": 4033,
+      "title": "chore(blackout-agent): cursor cycle handoff — merged #4029/#4030",
+      "branch": "cursor/autopilot-handoff-cycle2-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:19:10Z"
     },
     {
       "number": 4027,
@@ -76,27 +157,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:03:48Z"
-    },
-    {
-      "number": 4025,
-      "title": "fix(cq): batch 3 — Whop Redis fail-open ops alert",
-      "branch": "cursor/cq-fix-pass-batch3",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-09-05T19:07:17Z"
-    },
-    {
-      "number": 4024,
-      "title": "fix(cq): batch 2 — tier JWT downgrade, spot guard, flows as_of",
-      "branch": "cursor/cq-fix-pass-batch2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-09-05T19:06:57Z"
+      "updated_at": "2026-09-05T19:34:52Z"
     }
   ]
 }
