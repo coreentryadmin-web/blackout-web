@@ -120,13 +120,21 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
-### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — fix/vector-freshness-clock-skew (pending)
+### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — #3979 MERGED
 
 **What was broken:** `describeVectorFreshness()` clamped negative age to 0 and classified `freshnessFromAgeMs(0)` as **live**. A Vector snapshot stamped >5s ahead of the reader (cron writer vs API reader clock skew) read as falsely fresh — Largo/Cortex consumers could present stale tape as live.
 
 **Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` guard (same as `FreshnessChip`, `ageSecFromIso`) → `freshness: unknown`, `age_seconds: null`, disclosure note. Within tolerance, keep clamp-to-zero.
 
 **Check at the open:** Ask Largo a Vector question during RTH; if the underlying Redis snapshot is genuinely stale (>10m), the tool response should carry `freshness: recent/stale` with a note — never `live` on an unparseable or clock-skewed `observed_at`.
+
+### 0a-1f. SPX desk spot 0 off-hours — fix/spx-desk-offhours-last-spot (pending)
+
+**What was broken:** `buildSpxDeskPulse()` off-hours branch returned `price:0` and overwrote `lastPulseForSignals`, erasing the last RTH print. `buildSpxDesk()` returned empty when Polygon had no live index tick. `validate:platform-integrity` FAILed `spx-desk-spot — SPX 0` while Thermal matrix showed spot≈7718.
+
+**Fix:** Closed-market pulse reuses `lastPulseForSignals` with updated market labels (never clobbers). Full desk build falls back to `lastPulseForSignals` then prior session close from daily bars.
+
+**Check at the open:** Weekend/off-hours load `/terminal` — header SPX spot must match Thermal matrix within 1%, never 0 when chain data exists.
 
 ### 0a-1d. BIE SPX desk brief mislabeled GEX king as generic "pin" — fix/bie-spx-brief-magnet-labels (pending)
 
