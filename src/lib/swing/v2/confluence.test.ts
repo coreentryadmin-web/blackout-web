@@ -28,3 +28,9 @@ test("evaluateSwingConfluence: event archetype passes with 2 including catalyst 
   const v = evaluateSwingConfluence(["CATALYST", "FLOW"], "POST_EARNINGS_DRIFT");
   assert.equal(v.pass, true);
 });
+
+test("evaluateSwingConfluence: event archetype fails without CATALYST kind at count 2 (Q28)", () => {
+  const v = evaluateSwingConfluence(["FLOW", "STRUCTURE"], "EVENT_DRIVEN");
+  assert.equal(v.pass, false);
+  assert.match(v.label, /CATALYST kind/);
+});

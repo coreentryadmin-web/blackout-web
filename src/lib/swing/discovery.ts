@@ -267,6 +267,26 @@ export function signalKindsForObservation(
   return [...kinds];
 }
 
+const CONFLUENCE_PATHS = new Set<SwingDiscoveryPath>([
+  "FLOW",
+  "STRUCTURE",
+  "POSITIONING",
+  "CATALYST",
+  "BANGER",
+  "VECTOR",
+]);
+
+/** Signal kinds for G-S6 — Tier-0 paths plus grounded CATALYST pillar (deep-dive Q28). */
+export function discoveryPathsForConfluence(
+  paths: readonly SwingDiscoveryPath[],
+  dossier: SwingDossier | null | undefined,
+): SwingDiscoveryPath[] {
+  if (!dossier) return [...paths];
+  return signalKindsForObservation([...paths], dossier).filter((k): k is SwingDiscoveryPath =>
+    CONFLUENCE_PATHS.has(k as SwingDiscoveryPath),
+  );
+}
+
 // ─── PURE recall instrumentation (evidence-only — see the WHY-RECALL header) ────────
 
 /** One funnel cut: how many candidates were `seen` in this bucket vs how many survived as a usable
@@ -829,7 +849,10 @@ export async function runSwingDiscoveryScan(
         archetypeScores: classMeta?.scores ?? null,
         classificationMargin: classMeta?.margin ?? null,
         ivRank: d?.ivRank ?? null,
-        discoveryPaths: pathsByTicker.get(w.ticker.toUpperCase()) ?? [],
+        discoveryPaths: discoveryPathsForConfluence(
+          pathsByTicker.get(w.ticker.toUpperCase()) ?? [],
+          d ?? null,
+        ),
         earningsInWindow: d?.earningsInWindow === true,
       };
     });
