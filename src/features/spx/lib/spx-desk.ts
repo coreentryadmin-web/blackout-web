@@ -1998,7 +1998,15 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
       };
     }
     // Cold replica after deploy: in-process lastPulse is empty — anchor to prior session close.
-    const prior = await priorDayForPulseLane();
+    // priorDayForPulseLane() is "never block cold": on a TRUE cold cache (fetchedAt === 0, no
+    // lastPulseForSignals either) it fires the real fetch in the background and returns pdc:null
+    // immediately, so the very first off-hours request after a rollout still fell through to
+    // price:0 below. Off-hours has no fast-lane latency budget to protect, so awaiting the real
+    // fetch here (one Polygon daily-bar read) is safe and closes that window.
+    let prior = await priorDayForPulseLane();
+    if (!(prior.pdc != null && prior.pdc > 0)) {
+      prior = await fetchPriorDayCached().catch(() => prior);
+    }
     if (prior.pdc != null && prior.pdc > 0) {
       return {
         ...empty,
