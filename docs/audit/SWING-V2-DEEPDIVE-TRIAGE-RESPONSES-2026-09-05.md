@@ -160,5 +160,5 @@ All P1 items from the original queue are merged except legacy `gates.ts` cleanup
 All items merged (#3911 closed Banger Q32 sibling). Shadow graduation criteria (Q35 consumption half) staged but not yet wired to budget loosening — intentional P4.
 
 ### Remaining
-1. **Q7 partial** — legacy `src/lib/swing/gates.ts` still unwired (deprecate or port)
+1. **Q7 partial** — legacy `src/lib/swing/gates.ts` marked `@deprecated` (this PR); port quote/bar checks or delete module (P4)
 2. **Ops** — enable `SWING_DISCORD_ALERTS` + `BANGER_DISCORD_ALERTS` in production when ready
