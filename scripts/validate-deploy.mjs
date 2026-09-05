@@ -80,6 +80,17 @@ function etMinutesNow(now = new Date()) {
   return Number(parts.hour) * 60 + Number(parts.minute);
 }
 
+/** Mirror `isEtExtendedWarmHours` — weekday 4:00 AM–8:00 PM ET (no weekend warms). */
+function isEtExtendedWarmHours(now = new Date()) {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+  }).format(now);
+  if (weekday === "Sat" || weekday === "Sun") return false;
+  const mins = etMinutesNow(now);
+  return mins >= 4 * 60 && mins <= 20 * 60;
+}
+
 function resolveCronSecret() {
   const fromEnv = auditSecret("CRON_SECRET");
   if (fromEnv) return fromEnv;
@@ -360,7 +371,13 @@ const cronSecret = resolveCronSecret();
 const warmPaths = IS_STAGING
   ? ["/api/cron/desk-warm?force=1", "/api/cron/heatmap-warm?force=1", "/api/cron/zerodte-warm?force=1"]
   : ["/api/cron/desk-warm?force=1"];
-if (cronSecret) {
+// Post-deploy force=1 warms bypass the hours gate and each run takes ~30s median — many concurrent
+// agent sessions hammering this off-hours (weekends especially) recreate the tail-latency storm
+// documented in findings-staging/2026-09-05-desk-warm-weekend-force-storm.md. Only force-warm
+// inside the same extended window production's own warm crons use.
+if (cronSecret && !isEtExtendedWarmHours()) {
+  ok("cache warm skipped — outside extended warm window (weekday 4:00 AM–8:00 PM ET)");
+} else if (cronSecret) {
   for (const warmPath of warmPaths) {
     try {
       const t0 = Date.now();
@@ -383,7 +400,7 @@ if (cronSecret) {
       warn(`${warmPath} failed: ${e.message}`);
     }
   }
-} else {
+} else if (!cronSecret) {
   warn("CRON_SECRET unset — post-deploy cache warm skipped");
 }
 
