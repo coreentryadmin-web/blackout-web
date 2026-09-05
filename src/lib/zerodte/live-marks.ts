@@ -877,7 +877,7 @@ export function buildZeroDteLiveMarksPayloadFrom(
  *  which always differs via the per-build `as_of`/`mark_age_ms`). */
 export async function getZeroDteLiveMarksFrame(): Promise<{ json: string; contentKey: string }> {
   const now = Date.now();
-  if (payloadMemo && now - payloadMemo.builtAt <= PAYLOAD_MEMO_MS) {
+  if (payloadMemo && isWsUpdatedAtFresh(payloadMemo.builtAt, PAYLOAD_MEMO_MS + 1, now)) {
     return { json: payloadMemo.json, contentKey: payloadMemo.contentKey };
   }
   const sessionDate = todayEt();
