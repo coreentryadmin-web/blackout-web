@@ -136,7 +136,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | Q | Verdict | Fix status / PR |
 |---|---------|-------------------|
 | 31 | **(c)** | **MERGED** #3903 — Swing BTO/STC on open/close/roll via Chief Trade Bot |
-| 32 | **(c)** | **MERGED** #3903 (Swing) + **PR open** #3911 (Banger sibling) — member Discord parity |
+| 32 | **(c)** | **MERGED** #3903 (Swing) + **#3911** (Banger) — member Discord parity |
 | 33 | **(c)** | **MERGED** #3908 — shadow mark/close refresh loop in active-refresh |
 | 34 | **(c)** | **MERGED** #3908 — FINDINGS follow-up shadow refresh wired |
 | 35 | **(c)** | **MERGED** #3908 — staged gate evidence (`shadow-calibration.ts`: n≥10 provisional, n≥30 review-ready) |
@@ -147,7 +147,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 40 | **(c)** | **MERGED** #3895 — wire `last_mark_at` → `HorizonPlay.markAsOf` |
 | 41 | **(c)** | **MERGED** #3895 + #3906 — SSE tier recheck on marks/vector/flows streams |
 
-**Round 2 code complete on `main` @ cfbf22b6e** except Banger Q32 sibling (#3911 in flight). Ops enablement (`SWING_DISCORD_ALERTS`, `BANGER_DISCORD_ALERTS`) still off by default.
+**Round 2 code complete on `main` @ 24aedcf41** (#3911 merged). Ops enablement (`SWING_DISCORD_ALERTS`, `BANGER_DISCORD_ALERTS`) still off by default.
 
 ---
 
@@ -157,9 +157,8 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 All P1 items from the original queue are merged except legacy `gates.ts` cleanup (Q7 partial).
 
 ### Done (round 2 Q31–Q41)
-All items merged except Banger Discord (#3911). Shadow graduation criteria (Q35 consumption half) staged but not yet wired to budget loosening — intentional P4.
+All items merged (#3911 closed Banger Q32 sibling). Shadow graduation criteria (Q35 consumption half) staged but not yet wired to budget loosening — intentional P4.
 
 ### Remaining
-1. **Q7 partial** — legacy `src/lib/swing/gates.ts` still unwired (deprecate or port)
+1. **Q7 partial** — legacy `src/lib/swing/gates.ts` marked `@deprecated` (this PR); port quote/bar checks or delete module (P4)
 2. **Ops** — enable `SWING_DISCORD_ALERTS` + `BANGER_DISCORD_ALERTS` in production when ready
-3. **#3911** — Banger Discord; awaiting Claude peer review @ CURRENT HEAD
