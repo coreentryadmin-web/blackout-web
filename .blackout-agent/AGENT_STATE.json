@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T11:08:19.772Z",
+  "updated_at": "2026-09-05T11:48:40.911Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3944": {
+      "pr": 3944,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (retrospective; merged @ 4433d215c)",
+      "reviewed_at": "2026-09-05T11:48:40.433Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -248,7 +256,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6ab35e6816e05fb1c523006c4d01a103ddae9640",
+    "last_main_sha": "4433d215c6e558531790b0f3c3f5edae6dd87d89",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T10:36:36Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
@@ -1325,6 +1333,29 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:48:40.434Z",
+      "type": "pr_review",
+      "pr": 3944,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (retrospective; merged @ 4433d215c)",
+      "reviewed_at": "2026-09-05T11:48:40.433Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-05T11:48:40.910Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:48:40.911Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ec06a1c0-0346-43cb-80f0-9a7f5346d208",
+      "summary": "Reviewed PR #3944: MERGE (already merged @ 4433d215c). Thermal triple-desk change_pct rebase mirrors GexHeatmap pattern. CI green, 2/2 regression tests pass on main."
     }
   ]
 }
