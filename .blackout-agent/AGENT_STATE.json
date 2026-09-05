@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T10:47:06.318Z",
+  "updated_at": "2026-09-05T11:17:37.051Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,21 +67,20 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T11:04:27.903Z",
+      "lease_until": "2026-09-05T12:43:03.045Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "run_id": "ae8a7ae6-21a0-4e4a-a44b-4748d6d74551",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-05T11:14:16.366Z",
+      "lease_until": "2026-09-05T12:44:16.366Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -243,27 +242,27 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T19:50:51.819Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-05T11:14:16.366Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38",
+    "last_main_sha": "6ab35e6816e05fb1c523006c4d01a103ddae9640",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T11:14:44Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33962805600",
+    "last_deploy_sha": "7c84207f73129d428cdb8ca8c3e0f6cc5eec7237"
   },
   "open_prs": [
     {
-      "number": 3939,
-      "title": "chore(state): sync autopilot after #3934-#3937 merge sweep",
-      "branch": "cursor/state-sync-20260905-1038",
+      "number": 3942,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/state-sync-20260905-1114",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T10:38:52Z"
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T11:17:20Z"
     }
   ],
   "events": [
@@ -1318,6 +1317,85 @@
       "agent": "cursor",
       "run_id": "a1f2cc6c-aeb4-4224-95ee-9207269e436b",
       "summary": "#3939 CI GREEN @ 833c7a36b, undrafted for Claude merge. Closed duplicate #3938. main@1eeb1c277. Standing verify GREEN. Pattern scan: no new freshness/UW-sweep gaps found."
+    },
+    {
+      "at": "2026-09-05T11:04:27.904Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T11:09:59.497Z",
+      "type": "pr_webhook",
+      "pr": 3940,
+      "event": "manual",
+      "head": "41fc924c9232d050c67e47d4f87e52fe0c6d4b0e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T11:13:03.044Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T11:13:04.090Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T11:13:05.063Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T11:14:09.367Z",
+      "type": "pr_webhook",
+      "pr": 3940,
+      "event": "manual",
+      "head": "41fc924c9232d050c67e47d4f87e52fe0c6d4b0e",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T11:14:13.300Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T11:14:16.366Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T11:17:37.050Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T11:17:37.051Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7d3e618c-c783-4a88-a0e3-ebfd6d411008",
+      "summary": "workflow_run wake: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14, api-auth GREEN, RTH lifecycle GREEN (weekend skip). PR #3940 undrafted — verify+CodeQL GREEN, awaiting Claude merge approval (cursor/*). ECR deploy run 33961122872 still in_progress (~40m, sha 1eeb1c2). Pattern scan: no new P1 bugs in 7 failure classes. GraphQL rate-limited on user 284440397 — REST gh api works."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3940": {
+      "last_event": "manual",
+      "last_head": "41fc924c9232d050c67e47d4f87e52fe0c6d4b0e",
+      "last_feedback_at": "2026-09-05T11:14:09.367Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "updated"
+    }
+  }
 }
