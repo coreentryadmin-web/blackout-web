@@ -16,7 +16,7 @@ import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
 import { strikeTotalsForHorizonFromCells } from "./vector-narrowed-walls-from-cells";
 import { horizonsForTick } from "./vector-narrowed-write-cadence";
-import { isCompleteBuild, mergeUniverseSnapshot } from "./vector-universe-merge";
+import { isCompleteBuild, mergeUniverseSnapshot, isDepletedUniverseSnapshot } from "./vector-universe-merge";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
 import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
 import { writeWallHistorySample, type WallWriteSource } from "./vector-wall-write";
@@ -61,6 +61,12 @@ export type VectorUniverseSnapshot = {
   updatedAt: number;
   rows: VectorUniverseRow[];
 };
+
+/** Preset names the Vector scanner must always carry when ANY row is served. */
+export {
+  VECTOR_UNIVERSE_CORE_TICKERS,
+  isDepletedUniverseSnapshot,
+} from "./vector-universe-merge";
 
 const REDIS_KEY = "vector:universe:snapshot";
 /**

@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import {
   UNIVERSE_ROW_MAX_AGE_MS,
   isCompleteBuild,
+  isDepletedUniverseSnapshot,
   mergeUniverseSnapshot,
+  VECTOR_UNIVERSE_CORE_TICKERS,
 } from "./vector-universe-merge";
 
 const NOW = 1_787_070_000_000;
@@ -119,4 +121,17 @@ test("an empty build carries the whole stored roster forward untouched", () => {
   assert.deepEqual(merged.rows.map((r) => r.ticker), ["A", "B", "C"]);
   assert.equal(merged.refreshed, 0);
   assert.equal(merged.carried, 3);
+});
+
+test("isDepletedUniverseSnapshot: null or empty roster is depleted", () => {
+  assert.equal(isDepletedUniverseSnapshot(null), true);
+  assert.equal(isDepletedUniverseSnapshot({ updatedAt: NOW, rows: [] }), true);
+});
+
+test("isDepletedUniverseSnapshot: append-only weekend snapshot missing core presets", () => {
+  assert.equal(isDepletedUniverseSnapshot(snap(["NVDA", "IWM"], 0)), true);
+});
+
+test("isDepletedUniverseSnapshot: SPX/SPY/QQQ present is not depleted", () => {
+  assert.equal(isDepletedUniverseSnapshot(snap([...VECTOR_UNIVERSE_CORE_TICKERS], 0)), false);
 });

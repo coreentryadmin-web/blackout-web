@@ -46,6 +46,7 @@ export {
   type VectorUniverseRow,
   type VectorUniverseSnapshot,
 } from "./lib/vector-universe";
+export { VECTOR_UNIVERSE_CORE_TICKERS, isDepletedUniverseSnapshot } from "./lib/vector-universe-merge";
 export { buildCoachingAlerts } from "./lib/vector-coaching";
 export { fetchSpyVolumeRows } from "./lib/vector-spy-volume";
 export {

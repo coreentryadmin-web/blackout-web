@@ -72,6 +72,25 @@ export type MergeResult<TRow extends UniverseRowLike> = {
   expired: number;
 };
 
+/** Preset names the Vector scanner must always carry when ANY row is served. */
+export const VECTOR_UNIVERSE_CORE_TICKERS = ["SPX", "SPY", "QQQ"] as const;
+
+/**
+ * True when the warmed snapshot is too sparse to serve as the scanner roster.
+ *
+ * Off-hours the RTH-gated `vector-universe-snapshot` cron does not run, so rows age out of
+ * `UNIVERSE_ROW_MAX_AGE_MS` (15m) and only tickers recently viewed via `ensureTickerInUniverseSnapshot`
+ * survive — measured live 2026-09-05: a 2-row snapshot (NVDA, IWM) with SPX/SPY/QQQ absent while
+ * each ticker's heatmap was still available.
+ */
+export function isDepletedUniverseSnapshot(
+  snap: UniverseSnapshotLike | null | undefined
+): boolean {
+  if (!snap?.rows?.length) return true;
+  const present = new Set(snap.rows.map((r) => String(r.ticker ?? "").trim().toUpperCase()));
+  return VECTOR_UNIVERSE_CORE_TICKERS.some((t) => !present.has(t));
+}
+
 /**
  * Merge a freshly built roster over the stored one.
  *

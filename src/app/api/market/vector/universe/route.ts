@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi, isCronAuthorized } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { loadVectorUniverseSnapshot, refreshVectorUniverseSnapshot } from "@/features/vector";
+import { isDepletedUniverseSnapshot } from "@/features/vector/lib/vector-universe-merge";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
   // the warmed snapshot (with an inline rebuild only on a genuine cache miss).
   const force = req.nextUrl.searchParams.get("force") === "1" && isCronAuthorized(req);
   let snap = await loadVectorUniverseSnapshot();
-  if (!snap || force) {
+  if (!snap || force || isDepletedUniverseSnapshot(snap)) {
     snap = await refreshVectorUniverseSnapshot();
   }
 
