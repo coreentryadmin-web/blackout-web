@@ -526,6 +526,14 @@ just for performance findings — and is separate from, and in addition to, each
 
 **Check at the open:** Admin Operations → UW rate limiter during RTH — no member-facing 429s when `spx-evaluate` fires on a cold enrichment sticky; SPX desk enrichment panels (greek exposure, flow by expiry, macro) still populate normally.
 
+### 0ab. SPX desk GEX age Math.max(0) false-fresh on future asof — fix/spx-desk-gex-age-future-skew (pending)
+
+**What was broken:** `gexDataAgeMs()` and the canonical desk GEX path clamped `Date.now() - asofMs` with `Math.max(0, …)` before `gexStaleFromAge()`. A clock-skewed future `pos.asof` became `gex_age_ms: 0` → `gex_stale: false` even though `gexStaleFromAge(-60000)` already fail-closes.
+
+**Fix:** Remove the `Math.max(0, …)` clamp at both sites so negative age reaches `gexStaleFromAge`.
+
+**Check at the open:** SPX desk GEX stale pill fires when matrix `pos.asof` lags or skews; `/api/market/spx/bootstrap` `gex_age_ms` / `gex_stale` coherent under RTH.
+
 ### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
 
 **What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.

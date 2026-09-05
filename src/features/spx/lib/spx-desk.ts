@@ -164,7 +164,8 @@ let lastPulseForSignals: SpxDeskPulse | null = null;
 let lastGoodGexComputedAt = 0;
 /** Age (ms) of the freshest GEX strike ladder; null until one has ever been computed. */
 function gexDataAgeMs(now = Date.now()): number | null {
-  return lastGoodGexComputedAt > 0 ? Math.max(0, now - lastGoodGexComputedAt) : null;
+  // Raw age (may be negative on clock-skewed asof) — gexStaleFromAge fail-closes on future stamps.
+  return lastGoodGexComputedAt > 0 ? now - lastGoodGexComputedAt : null;
 }
 /**
  * Beyond this age the served GEX walls/flip/regime are treated as STALE (sticky fallback
@@ -433,7 +434,7 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
   if (regime !== "unknown") lastGoodGammaRegime = regime;
 
   const asofMs = Date.parse(pos.asof);
-  const gexAgeMs = Number.isFinite(asofMs) ? Math.max(0, Date.now() - asofMs) : gexDataAgeMs();
+  const gexAgeMs = Number.isFinite(asofMs) ? Date.now() - asofMs : gexDataAgeMs();
 
   return {
     gex_net: pos.net_gex,
