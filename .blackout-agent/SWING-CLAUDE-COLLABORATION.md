@@ -34,7 +34,15 @@
 | discovery spot | WATCH spot freshness | **#3902 MERGED** |
 
 ### In PR
-_None — round 2 code complete._
+_None — round 2 + Q7 P4 complete._
+
+### Merged (round 3 — freshness + Q7 P4)
+| Q | Fix | PR |
+|---|-----|-----|
+| Q7 P4 | `quote_stale` + `daily_bar_incomplete` wired into V2 commit path | **#3934 MERGED** @ `bb871d9b` |
+| Freshness | wall persist debounce + auth dedupe future-at guards | **#3933 MERGED** |
+| Desk | UW sweep on enrichment fan-out | **#3935 MERGED** |
+| SPX desk | GEX age future-skew clamp fix | **#3937 MERGED** |
 
 ### Ops (post-merge, not code)
 | Item | Status |
@@ -75,4 +83,4 @@ Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEA
 
 ## Round 2 (Q31–Q41) — **CLOSED** (2026-09-05)
 
-All round-2 items merged (#3893–#3911). Ops enablement for Discord alerts remains off-by-default until operator flips env vars. Q35 shadow→budget consumption half is intentional P4. Q7 partial (legacy `gates.ts`) remains optional cleanup.
+All round-2 items merged (#3893–#3911). Round-3 freshness sweep + Q7 P4 (#3933–#3937) merged. Ops enablement for Discord alerts remains off-by-default until operator flips env vars. Q35 shadow→budget consumption half is intentional P4. Optional cleanup: delete legacy `gates.ts` after test migration (quote/bar now live in v2).

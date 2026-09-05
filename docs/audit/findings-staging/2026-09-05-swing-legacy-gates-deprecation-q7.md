@@ -14,7 +14,9 @@ sessions reading commit.ts's calibration story.
 
 ## Remaining (P4)
 
-Port `quote_stale` / `daily_bar_incomplete` into v2 commit path, or delete `gates.ts` after test migration.
+**DONE** — `quote_stale` / `daily_bar_incomplete` ported to v2 commit path in PR #3934 (`src/lib/swing/v2/gates.ts`).
+
+Optional follow-up: delete legacy `gates.ts` after migrating its calibration-evidence unit tests.
 
 ## Verification
 
