@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T03:17:06.276Z",
+  "updated_at": "2026-09-05T06:38:24.881Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T06:20:24.589Z",
+      "lease_until": "2026-09-05T07:50:24.589Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -104,9 +104,9 @@
     "BO-P1-0103": {
       "task_id": "BO-P1-0103",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:50:51.818Z",
-      "lease_until": "2026-09-04T21:20:51.818Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-05T06:37:46.517Z",
+      "lease_until": "2026-09-05T08:07:46.517Z",
+      "phase": "SEO_CWV",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -248,7 +248,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b558e1321c827f97e43cad8eaae5937f3d4eded9",
+    "last_main_sha": "53788ae689dd8a5a5cb280ca2ada816f1ac4d940",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T22:52:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
@@ -1137,6 +1137,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:38:24.880Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:38:24.881Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3c8e558f-bb7f-4fd0-a890-b1491dc314c8",
+      "summary": "Post-merge wake @ 53788ae (#3878 swing deep-dive merged): pr-sweep 0 open PRs (gh rate-limited user 284440397), validate:deploy GREEN, ops:collect 0, platform-integrity 14/14, validate:api-auth GREEN, swing tests 506/506, pattern scan NONE. Deploy run 33949536049 rolling ECS when rate limit hit — prod HTTP healthy. SEO: llms.txt/robots/sitemap OK. Off-hours Sat — RTH skipped."
     }
   ]
 }
