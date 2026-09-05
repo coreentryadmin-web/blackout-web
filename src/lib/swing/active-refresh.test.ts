@@ -220,23 +220,68 @@ test("planManageSync: a fresh-resolved ivRank read wins over the commit-pinned v
   assert.equal((plan.snapshot.feature_vector as Record<string, unknown>).iv_rank, 61);
 });
 
-test("planManageSync: TAKE_PARTIAL latches TRIM; TRIM row sets scaledAlready", () => {
-  // Mark at 2× entry → profit ladder TAKE_PARTIAL → live status becomes TRIM.
+test("planManageSync: GRADUATED TAKE_PARTIAL latches TRIM; TRIM row sets scaledAlready", () => {
+  // Mark at 2× entry → profit ladder TAKE_PARTIAL. profit_ladder is an edge rung (manage.ts
+  // GATING_RUNGS), so it only enforces once graduated — pass that here so this test exercises the
+  // enforced path (see the un-enforced regression test below for the un-graduated case).
   const plan = planManageSync(
     positionRow({ status: "OPEN", entry_premium: 4, peak_premium: 8 }),
-    { underlyingPrice: 156, dte: 20, mark: 8 },
+    { underlyingPrice: 156, dte: 20, mark: 8, graduatedRungs: ["profit_ladder"] },
     { snapshotKind: "eod" },
   );
   assert.equal(plan.verdict.action, "TAKE_PARTIAL");
-  assert.equal(plan.liveState.status, "TRIM", "scale-out latch must advance OPEN→TRIM");
+  assert.equal(plan.verdict.enforced, true, "graduated profit_ladder enforces");
+  assert.equal(plan.liveState.status, "TRIM", "an ENFORCED scale-out latch must advance OPEN→TRIM");
 
   // Once TRIM, a further runner mark with scaledAlready inferred from status can reach EXIT_RUNNER path.
   const after = planManageSync(
     positionRow({ status: "TRIM", entry_premium: 4, peak_premium: 10 }),
-    { underlyingPrice: 156, dte: 20, mark: 7 }, // below trail after scale
+    { underlyingPrice: 156, dte: 20, mark: 7, graduatedRungs: ["profit_ladder"] }, // below trail after scale
     { snapshotKind: "eod" },
   );
   assert.equal(after.liveState.status, "TRIM", "TRIM stays sticky");
+});
+
+// Regression pin for a real bug (found during a Swing V2 architecture review, 2026-09-05): profit_ladder
+// is an EDGE rung — advisory only until the PR-16 calibration ladder graduates it (manage.ts's
+// GATING_RUNGS / ENFORCE-vs-ADVISORY split) — so an un-graduated 2x TAKE_PARTIAL must NOT latch the
+// ledger row to TRIM. Before the fix, `latchSwingLiveStatus` ignored `verdict.enforced` entirely and
+// flipped ANY TAKE_PARTIAL/EXIT_RUNNER to TRIM. Because `scaledAlready` is derived from
+// `row.status === "TRIM"` on the very next tick, and `deriveScaleOutAction` disables the −60%
+// `premium_stop` hard stop once `scaledAlready` is true, an un-enforced advisory partial that nobody
+// actually executed would permanently disable capital-preservation on a position still 100% open.
+test("planManageSync: UN-GRADUATED (advisory) TAKE_PARTIAL must NOT latch TRIM, and the −60% hard stop must stay live next tick", () => {
+  // Mark at 2× entry → profit ladder TAKE_PARTIAL, but profit_ladder is NOT in graduatedRungs — an
+  // advisory recommendation nobody has actually executed.
+  const advisory = planManageSync(
+    positionRow({ status: "OPEN", entry_premium: 4, peak_premium: 8 }),
+    { underlyingPrice: 156, dte: 20, mark: 8 }, // no graduatedRungs → profit_ladder stays advisory
+    { snapshotKind: "eod" },
+  );
+  assert.equal(advisory.verdict.action, "TAKE_PARTIAL");
+  assert.equal(advisory.verdict.rung, "profit_ladder");
+  assert.equal(advisory.verdict.enforced, false, "un-graduated profit_ladder must not enforce");
+  assert.equal(
+    advisory.liveState.status,
+    "OPEN",
+    "an UN-ENFORCED advisory TAKE_PARTIAL must not fabricate a scale-out — status stays OPEN",
+  );
+
+  // Next tick: the ledger row's real status is still OPEN (nothing was actually scaled), so
+  // scaledAlready must be derived false, and a hard-stop-level mark must still STOP_OUT — not be
+  // silently exempted as if a partial had already been banked.
+  const nextTick = planManageSync(
+    positionRow({ status: advisory.liveState.status, entry_premium: 4, peak_premium: 8 }),
+    { underlyingPrice: 156, dte: 20, mark: 1.6 }, // 0.4× entry = −60%, the hard-stop trigger
+    { snapshotKind: "eod" },
+  );
+  assert.equal(
+    nextTick.verdict.action,
+    "STOP_OUT",
+    "the −60% premium_stop capital backstop must still fire — it must not have been silently disabled",
+  );
+  assert.equal(nextTick.verdict.rung, "premium_stop");
+  assert.equal(nextTick.verdict.enforced, true, "premium_stop is a GATING rung — always enforced");
 });
 
 test("planManageSync: thesisProgress01 + sessionsHeld can fire time_stop when stagnant", () => {

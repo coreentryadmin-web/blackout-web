@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0as. Swing TRIM latch ignored `verdict.enforced`, could silently disable the −60% premium_stop — fix/swing-trim-latch-enforced (pending)
+
+**What was broken:** `latchSwingLiveStatus()` (`manage-sync.ts`) flipped a swing position's ledger `status` to `TRIM` on ANY `TAKE_PARTIAL`/`EXIT_RUNNER` verdict, without checking `verdict.enforced`. Those two actions are exclusively produced by EDGE rungs (`profit_ladder`, `catalyst_shift`, `regime_shift`, `flow_decay`, `rel_strength_loss`, `vol_collapse`) — advisory-only until the PR-16 calibration ladder graduates them — so an un-graduated 2× profit-ladder recommendation that nobody actually executed still latched TRIM. The very next refresh tick derives `scaledAlready` from `row.status === "TRIM"`, and `deriveScaleOutAction` disables the −60% `premium_stop` hard stop entirely once `scaledAlready` is true (only the trailing-stop rule re-arms). Net effect: an un-enforced advisory partial could permanently disable capital-preservation on a position that was, in reality, still 100% open and fully exposed. Found during a Swing V2 architecture-review pass (`docs/audit/SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md` #18), independently confirmed by Cursor.
+
+**Fix:** `latchSwingLiveStatus()` now only latches TRIM when `verdict.enforced === true`; an un-enforced TAKE_PARTIAL/EXIT_RUNNER leaves `status` unchanged, so `scaledAlready` stays false and the hard stop stays live next tick.
+
+**Check at the open:** For any swing position that hits a 2× profit-ladder-style mark during RTH while `profit_ladder` has NOT yet graduated (check the calibration ladder state), confirm the ledger row's `status` stays `OPEN`/`HOLD` (not `TRIM`) and that a subsequent adverse move to −60% still triggers a `STOP_OUT` rather than being silently skipped.
+
 ### 0ap. Cluster snapshot change_pct without open_source guard — fix/cluster-spot-change-open-source-guard (pending)
 
 **What was broken:** `readClusterIndexSpot()` served `change_pct` from `spx:pulse:snapshot` whenever finite, without checking `open_source`. Web-tier GEX/Thermal cache readers on the Redis cluster fallback could pair a live price with session-open–anchored change% (`ws-bar`), while the SPX desk and `liveWsIndexSpot` already null non-REST anchors.
