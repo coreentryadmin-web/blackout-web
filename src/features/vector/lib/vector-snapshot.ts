@@ -28,6 +28,7 @@ import { recordWallSample, type WallHistorySample } from "./vector-wall-history"
 import { roundFloats } from "@/lib/round-floats";
 import { getCachedVectorDarkPool, getCachedVectorDarkPoolWithAge, type VectorDarkPoolRead } from "./vector-dark-pool-cache";
 import { getCurrentSpxCandle } from "@/lib/ws/spx-candle-store";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { getVectorLiveCandle } from "./vector-live-candle";
 import { spyVolumeForMinuteBar } from "./vector-spy-volume";
@@ -184,7 +185,7 @@ function refreshWallScope(ticker: string): void {
   const s = state(ticker);
   const now = Date.now();
   const refreshMs = wallScopeRefreshMs(ticker);
-  if (now - s.wallScope.fetchedAt < refreshMs || s.wallScopeInFlight) return;
+  if (isWsUpdatedAtFresh(s.wallScope.fetchedAt, refreshMs, now) || s.wallScopeInFlight) return;
   s.wallScopeInFlight = runWallScopeFetch(ticker);
 }
 
@@ -225,7 +226,7 @@ export async function primeVectorWallScope(ticker: string = VECTOR_DEFAULT_TICKE
   const now = Date.now();
   const refreshMs = wallScopeRefreshMs(t);
   if (
-    now - s.wallScope.fetchedAt < refreshMs &&
+    isWsUpdatedAtFresh(s.wallScope.fetchedAt, refreshMs, now) &&
     (s.fallbackStrikeTotals || s.fallbackVexStrikeTotals)
   ) {
     return;
@@ -240,7 +241,7 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   const s = state(t);
   refreshWallScope(t);
   const now = Date.now();
-  if (now - s.cachedWallsAt < WALLS_CACHE_MS) return s.cachedWalls;
+  if (isWsUpdatedAtFresh(s.cachedWallsAt, WALLS_CACHE_MS, now)) return s.cachedWalls;
 
   // Dynamic WS subscription: ANY ticker with a live gex_strike_expiry feed gets
   // the WS ladder path (5s real-time walls). The static oracle set is no longer

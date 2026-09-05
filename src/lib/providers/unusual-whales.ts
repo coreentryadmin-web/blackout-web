@@ -744,7 +744,9 @@ export async function fetchMarketFlowAlertRows(params?: {
   older_than?: string;
 }): Promise<MarketFlowRow[]> {
   const now = Date.now();
-  const hasFreshCache = marketFlowCache && marketFlowCache.expiresAt > now;
+  const hasFreshCache =
+    marketFlowCache &&
+    isWsUpdatedAtFresh(marketFlowCache.cachedAt, marketFlowCacheMs(), now);
   const desired = Math.min(params?.limit ?? 50, 450);
 
   if (!params?.newer_than && !params?.older_than) {
@@ -842,7 +844,7 @@ export async function fetchMarketFlowAlertRows(params?: {
       // catch, so use the static endpoint label).
       noteUw429("market/flow-alerts");
     }
-    if (marketFlowCache && now - marketFlowCache.cachedAt <= MARKET_FLOW_MAX_STALE_MS) {
+    if (marketFlowCache && isWsUpdatedAtFresh(marketFlowCache.cachedAt, MARKET_FLOW_MAX_STALE_MS, now)) {
       console.warn("[uw] flow-alerts rate limited — serving cache:", message);
       return filterMarketFlowRows(marketFlowCache.rows, params);
     }
