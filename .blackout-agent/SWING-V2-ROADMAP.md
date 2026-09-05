@@ -17,24 +17,27 @@ Rebuild the swing hunt to **0DTE-grade quality**: whole-market recall, multi-sou
 
 | Phase | Scope | Branch/PR | Status | Claude review |
 |-------|--------|-----------|--------|---------------|
-| **P0** | Command Deck parity (live deck, thesis health, cockpit) | `cursor/swing-command-p0` #3787 | CI GREEN, rebased `aea0a0751` | **REQUIRED** before merge |
-| **P1** | Dynamic tier1 cap + rejection ledger + data-fusion types | `cursor/swing-engine-v2-p1` | **IN PROGRESS** | After CI green |
-| **P2** | POSITIONING + CATALYST origins + confluence gate | TBD | Pending P1 | Required |
+| **P0** | Command Deck parity (live deck, thesis health, cockpit) | `cursor/swing-command-p0` #3787 | **MERGED** `aea0a0751` | Done |
+| **P1** | Dynamic tier1 cap + rejection ledger + data-fusion types | `cursor/swing-engine-v2-p1` #3808 | **VERIFYING** @ `07c87dca1` | After CI green |
+| **P2** | POSITIONING + CATALYST origins + confluence gate (shadow) | `cursor/swing-engine-v2-p1` #3808 | **IN PR** (POSITIONING wired; CATALYST screen TBD) | Required |
 | **P3** | Cortex(swing) + G-S14 + absorb banger cron | TBD | Pending P2 | Required |
 | **P4** | 15m tactical manage + unified engine + UI signal stack | TBD | Pending P3 | Required |
 | **P5** | Calibration graduation + sim regression | Ongoing | Pending P4 | Periodic |
 
 ---
 
-## P1 checklist (current sprint)
+## P1+P2 checklist (current sprint)
 
 - [x] `src/lib/swing/v2/config.ts` — feature flags + env knobs
 - [x] `src/lib/swing/v2/tier1-cap.ts` — dynamic 80–200 cap
 - [x] `src/lib/swing/v2/rejections.ts` + `swing_scan_rejections` table
-- [x] `src/lib/swing/v2/data-fusion.ts` — type contract (P2 reads stubbed null)
-- [x] Wire `discovery.ts` + `swing-discovery` cron
-- [ ] Unit tests green (`tier1-cap`, `data-fusion`, `discovery` regression)
-- [ ] Open PR, CI verify green
+- [x] `src/lib/swing/v2/data-fusion.ts` — type contract
+- [x] Wire `discovery.ts` + `swing-discovery` cron (cap rejections + POSITIONING origin)
+- [x] `confluence.ts` shadow gate + near-miss logging
+- [x] `positioning-screen.ts` + cron wiring via Vector leaders
+- [x] Unit tests green (32 tests: tier1-cap, data-fusion, confluence, positioning, discovery)
+- [x] PR #3808 open, pushed @ `07c87dca1`
+- [ ] CI verify green
 - [ ] Claude adversarial review on CURRENT HEAD
 - [ ] Shadow deploy: `SWING_ENGINE_V2=1` on staging cron only
 

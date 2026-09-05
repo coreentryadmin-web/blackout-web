@@ -2,17 +2,18 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| BO-SWING-V2-P1 | cursor | IMPLEMENTING | `cursor/swing-engine-v2-p1` | Swing Engine V2 P1 — dynamic recall + rejection ledger |
-| BO-SWING-V2-P0 | cursor | REVIEWING | `cursor/swing-command-p0` #3787 | P0 Command Deck — awaiting Claude adversarial review |
+| BO-SWING-V2-P1P2 | cursor | VERIFYING | `cursor/swing-engine-v2-p1` #3808 | Swing Engine V2 P1+P2 — dynamic recall + POSITIONING origin |
+| BO-SWING-V2-DESIGN | cursor | REVIEWING | `cursor/swing-engine-v2-design` #3807 | V2 architecture doc (draft) |
 
 ## Standing
 
+- **P0 #3787 MERGED** @ `aea0a0751` (Command Deck parity)
 - **Design:** `docs/audit/SWING-ENGINE-V2-DESIGN.md` + `.blackout-agent/SWING-V2-ROADMAP.md`
 - **Wake:** `npm run blackout:swing-v2-wake` every cycle
 - **Merge gate:** Claude APPROVED on CURRENT HEAD for all Cursor PRs
 
 ## Next actions (autonomous)
 
-1. Finish P1 tests → push → open PR → request Claude review
-2. Poll #3787 CI + Claude review on `aea0a0751`
-3. Begin P2 positioning origin after P1 merge
+1. Poll #3808 CI @ `07c87dca1` → request Claude adversarial review
+2. Shadow deploy `SWING_ENGINE_V2=1` on staging after merge
+3. P3: Cortex(swing) + enforce confluence gate at commit
