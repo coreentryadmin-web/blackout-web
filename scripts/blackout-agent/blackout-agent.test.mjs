@@ -90,6 +90,22 @@ test("discoverStandingWork finds open PRs needing peer review", async () => {
   assert.match(found[0].title, /Peer review #99/);
 });
 
+test("discoverStandingWork ignores cursor self-review on cursor PRs (HARD MERGE GATE)", async () => {
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const state = {
+    open_prs: [
+      { number: 101, title: "cursor feature", branch: "cursor/foo", agent: "cursor", draft: false, verify: "COMPLETED/SUCCESS" },
+    ],
+    reviews: {
+      "pr-101": { head_sha: "abc", safe_to_merge: true, reviewer: "cursor" },
+    },
+    deploy: { last_main_sha: "abc", last_deploy_sha: "abc" },
+  };
+  const found = discoverStandingWork("claude", state);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].pr, 101);
+});
+
 test("discoverStandingWork flags deploy drift", async () => {
   const { discoverStandingWork } = await import("./select-task.mjs");
   const state = {
