@@ -684,6 +684,11 @@ export async function executeSwingCommits(deps: SwingCommitDeps, plan: SwingComm
           }
         }
         committed.push({ ticker: d.ticker, direction: d.direction, commitKey: d.commitKey, positionId });
+        void import("./discord-trade-notify")
+          .then(({ notifySwingTradeOpenFromInsert }) => notifySwingTradeOpenFromInsert(positionId, d.insert!))
+          .catch((err) => {
+            console.warn(`[swing-discord] open notify failed for ${d.ticker}:`, err);
+          });
       } catch (err) {
         errors += 1;
         committed.push({

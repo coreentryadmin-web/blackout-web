@@ -7794,6 +7794,14 @@ export async function fetchOpenSwingPositions(): Promise<SwingPositionRow[]> {
   return res.rows.map(mapSwingPositionRow);
 }
 
+/** Single position by primary key — used by swing Discord roll child BTO after active-refresh. */
+export async function fetchSwingPositionById(id: number): Promise<SwingPositionRow | null> {
+  await ensureSchema();
+  const res = await dbQuery<QueryResultRow>(`SELECT * FROM swing_positions WHERE id = $1 LIMIT 1`, [id]);
+  const row = res.rows[0];
+  return row ? mapSwingPositionRow(row) : null;
+}
+
 // ─── swing_shadow_positions accessors (2026-08-06) — DELIBERATELY SEPARATE from swing_positions above.
 // Never read by fetchOpenSwingPositions, active-refresh, budget/caps aggregation, or the member board —
 // see the table's own migration comment for why. ──────────────────────────────────────────────────────

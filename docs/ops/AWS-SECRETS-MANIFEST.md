@@ -63,6 +63,9 @@ Secrets Manager. **Never commit real values.**
 | `LEGACY_DISCORD_ALERTS` | Opt-in `1`/`true` — push Night Hawk legacy playbook plays to Chief Trade Alert Bot |
 | `LEGACY_CHIEF_TRADE_CHANNEL_ID` | Discord channel snowflake for Legacy desk (separate from 0DTE `CHIEF_TRADE_CHANNEL_ID` on the bot) |
 | `LEGACY_DISCORD_AUTHOR_NAME` | Legacy embed author (default `night-hawk-legacy`) |
+| `SWING_DISCORD_ALERTS` | Opt-in `1`/`true` — push Swing desk BTO/STC to Chief Trade Alert Bot |
+| `SWING_CHIEF_TRADE_CHANNEL_ID` | Discord channel snowflake for Swing desk (separate from 0DTE/Legacy) |
+| `SWING_DISCORD_AUTHOR_NAME` | Swing embed author (default `swing-desk`) |
 | `CHIEF_TRADE_BOT_URL` | Public Railway URL for `chief-trade-alert-bot` (`POST /api/trade`) |
 | `CHIEF_TRADE_API_SECRET` | Bearer token shared with the trade bot |
 | `CHIEF_TRADE_AUTHOR_NAME` | Embed author label (default `Night-Hawk-Bot`) |
