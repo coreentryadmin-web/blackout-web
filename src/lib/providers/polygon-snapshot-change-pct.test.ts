@@ -25,3 +25,10 @@ test("fetchStockSnapshotPerformance + fetchMarketMovers must not default missing
   assert.doesNotMatch(src, /todaysChangePerc \?\? 0/);
   assert.match(src, /snapshotChangePctFromRow/);
 });
+
+test("_rowToSnapshot uses snapshotChangePctFromRow — never fabricates flat 0%", () => {
+  const src = readFileSync("src/lib/providers/polygon.ts", "utf8");
+  const block = src.match(/function _rowToSnapshot[\s\S]*?^}/m)?.[0] ?? "";
+  assert.match(block, /change_pct: snapshotChangePctFromRow\(row\)/);
+  assert.doesNotMatch(block, /change_pct:[\s\S]*?: 0/);
+});

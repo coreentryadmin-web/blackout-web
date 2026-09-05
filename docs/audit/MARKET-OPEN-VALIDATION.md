@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1h. Polygon single-ticker snapshot fabricated flat 0% change — cursor/autopilot-work-loop-ce5a (pending)
+
+**What was broken:** `fetchStockSnapshot()` → `_rowToSnapshot()` returned `change_pct: 0` when Polygon omitted `todaysChangePerc` and `prevDay.c`, while batch movers already used `snapshotChangePctFromRow()` (null when absent).
+
+**Fix:** Wire `_rowToSnapshot` to `snapshotChangePctFromRow(row)`; type `change_pct` as `number | null`.
+
+**Check at the open:** `/api/market/quote?ticker=SPY` during pre-open with no prior close must omit change % (null/—), not show flat `0.00%`.
+
 ### 0a-1g. SPX play gate: future-skewed gex_age_ms bypassed stale block — fix/spx-play-gate-gex-age-future-guard (pending)
 
 **What was broken:** `gexStaleFromAge()` correctly lit the GEX stale pill when `pos.asof` was clock-skewed into the future (>5s), but `evaluatePlayGates()` passed the raw negative `gex_age_ms` as a negative `gexSec` that never exceeded `playGexStaleMaxSec()`. A desk with a lit GEX-stale pill could still open plays when `polled_at` was fresh.
@@ -2617,3 +2625,9 @@ than an end-of-session patch.
 - **What was broken:** `charmPerShare` used ONE call-shaped closed-form expression for both call and put contracts ("type-independent... like gamma"), true only at dividend yield `q=0`. Missing the `q`-dependent term from differentiating `e^(-qT)` in `Delta(T)`, so even calls were subtly wrong at `q>0`. SPY/QQQ/IWM carry a material dividend yield per this repo's own GEX findings (`gex-depth-validate.mjs`).
 - **What changed:** `charmPerShare(..., type: "call"|"put")` now implements the full dividend-yield-correct formula per-type; the one call site passes the contract's real type through.
 - **RTH check:** On `/heatmap` (Thermal desk) for SPY/QQQ/IWM during RTH, spot-check the CHARM tab's per-strike dollar-charm values before/after this deploys — magnitudes should shift (calls slightly larger in magnitude, puts now genuinely distinct from calls rather than mirroring them) with no sign flips or NaN/null cells. No live provider ground truth exists for charm (Polygon doesn't supply it), so this is a magnitude/shape sanity check, not a numeric cross-check.
+
+### 35. GEX full-chain escalation — flat 12-page guard truncated megacap chains (NFLX/GOOGL) — fix/gex-heatmap-unfiltered-page-guard — 2026-09-05
+
+- **What was broken:** `fetchHeatmapBandUnfiltered`'s page cap (`HEATMAP_UNFILTERED_PAGE_GUARD = 12`) was sized for "tiny low-priced chains" per its own doc comment, but `shouldEscalateToFullChain` escalates on ANY thin banded ladder regardless of price — live-caught truncating both NFLX and GOOGL mid-session ("hit 12-page guard... walls/OI/IV understated"), the third occurrence of a bug class this file already fixed twice (`fetchPolygonOiByExpiry`, the OI-by-expiry term-structure loop).
+- **What changed:** `HEATMAP_UNFILTERED_PAGE_GUARD` now shares the already-fixed, env-overridable `HEATMAP_PAGE_GUARD` (floor 40) instead of a flat 12.
+- **RTH check:** During RTH, watch CloudWatch `/ecs/blackout-production` for `[polygon-gex] fetchHeatmapBandUnfiltered(<ticker>) truncated` on any megacap/thin-ladder name that triggers full-chain escalation (NFLX/GOOGL are known repeaters) — should no longer appear at 12 pages; if it does, the shared guard's floor may need raising further, not a fourth bespoke constant.

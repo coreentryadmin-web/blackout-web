@@ -1,6 +1,6 @@
 # CQ Fix Queue — Cursor → Claude cross-exam closure
 
-**Generated:** 2026-09-05T18:17:26.378Z  
+**Generated:** 2026-09-05T19:10:35.944Z  
 **Source:** `CLAUDE_ANSWERS_TO_CQ.md` (218 answers) + `CURSOR_CHALLENGES_TO_CQ.md` (CCQ-001–023)
 
 ## Summary

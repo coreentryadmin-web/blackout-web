@@ -2053,8 +2053,8 @@ const LOW_PRICE_MIN_STRIKES_BEFORE_FULL = 12;
  *
  * 45 is chosen from measured ladders: ASTS 30 escalates, SOFI 41 escalates, NVDA 78 and SPY 266 do
  * not. SPX is dense by construction and never comes near it. The unfiltered fetch is page-bounded
- * (HEATMAP_UNFILTERED_PAGE_GUARD), and the result is only adopted when it is strictly richer, so
- * the worst case is a bounded extra fetch that changes nothing.
+ * (shares HEATMAP_PAGE_GUARD — see below), and the result is only adopted when it is strictly
+ * richer, so the worst case is a bounded extra fetch that changes nothing.
  */
 const THIN_LADDER_STRIKES_BEFORE_FULL = 45;
 
@@ -2070,7 +2070,22 @@ export function shouldEscalateToFullChain(strikesInBand: number, spot: number): 
   if (spot <= LOW_PRICE_FULL_CHAIN_SPOT_MAX && strikesInBand < LOW_PRICE_MIN_STRIKES_BEFORE_FULL) return true;
   return strikesInBand < THIN_LADDER_STRIKES_BEFORE_FULL;
 }
-const HEATMAP_UNFILTERED_PAGE_GUARD = 12;
+
+/**
+ * Live-caught (2026-09-05): NFLX and GOOGL both hit this guard mid-session ("hit 12-page guard
+ * with next_url still set — chain incomplete, walls/OI/IV understated"). This is the SAME
+ * "chasing the live chain size with a static number" bug class already fixed twice elsewhere in
+ * this file for fetchPolygonOiByExpiry (see its own doc comment above) and for the OI-by-expiry
+ * term-structure loop — except this instance was never migrated. It was written as a flat 12
+ * assuming escalation only ever fires for "tiny low-priced chains (NIO-class)" (see this
+ * function's own doc comment above), but shouldEscalateToFullChain fires for ANY thin ladder
+ * regardless of price (the ASTS fix), so it now also escalates megacap names with hundreds of
+ * strikes across many expiries — exactly what NFLX/GOOGL are. Shares HEATMAP_PAGE_GUARD directly
+ * (env-overridable, floored at 40) rather than inventing a fourth bound, same precedent as the
+ * OI-by-expiry term-structure loop above.
+ */
+const HEATMAP_UNFILTERED_PAGE_GUARD = HEATMAP_PAGE_GUARD;
+export const __test_heatmapUnfilteredPageGuard = HEATMAP_UNFILTERED_PAGE_GUARD;
 
 /**
  * Depth-ladder geometry: +/-8% of spot in 0.5% steps -> 32 bands plus spot.
