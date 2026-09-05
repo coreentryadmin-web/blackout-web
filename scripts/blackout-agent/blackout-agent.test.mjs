@@ -7,6 +7,19 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
+test("ghEnv strips GH_TOKEN so hosts.yml auth can succeed", async () => {
+  const { ghEnv } = await import("./lib/gh.mjs");
+  const prior = process.env.GH_TOKEN;
+  process.env.GH_TOKEN = "invalid-placeholder";
+  try {
+    const env = ghEnv();
+    assert.equal(env.GH_TOKEN, undefined);
+  } finally {
+    if (prior === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = prior;
+  }
+});
+
 test("claimLock: first claim succeeds", async () => {
   const { claimLock, releaseLock } = await import("./lib/locks.mjs");
   const r = claimLock("BO-TEST-0001", "cursor", { phase: "IMPLEMENTING", leaseMs: 60_000 });
@@ -197,16 +210,22 @@ test("fetchOpenPrs: a genuinely empty GraphQL result (real 0 open PRs) short-cir
   // Regression for a Cursor review nit on the REST-fallback PR: `graphql.length > 0` treated an
   // empty-but-successful `gh pr list` the same as a GraphQL FAILURE, falling through to REST and
   // spending its separate, scarcer budget on a call that was never needed.
+  if (typeof t.mock?.module !== "function") {
+    t.skip("node:test mock.module unavailable in this runner");
+    return;
+  }
   let calls = 0;
-  t.mock.module("node:child_process", {
+  t.mock.module("./lib/gh.mjs", {
     namedExports: {
-      spawnSync: (cmd, args) => {
+      ghEnv: () => ({ ...process.env }),
+      ghJson: (args) => {
         calls += 1;
-        if (cmd === "gh" && args[0] === "pr" && args[1] === "list") {
-          return { status: 0, stdout: "[]" };
+        if (args[0] === "pr" && args[1] === "list") {
+          return [];
         }
-        throw new Error(`unexpected spawnSync call: ${cmd} ${args.join(" ")}`);
+        return null;
       },
+      ghRun: () => ({ ok: false, stdout: "", stderr: "", status: 1 }),
     },
   });
   const { fetchOpenPrs } = await import(`./sync-context.mjs?t=${Date.now()}`);
