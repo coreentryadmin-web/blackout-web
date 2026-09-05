@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T02:26:27.580Z",
+  "updated_at": "2026-09-05T02:51:53.865Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T02:35:55.906Z",
+      "lease_until": "2026-09-05T04:05:55.906Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -80,8 +80,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-05T02:46:14.441Z",
+      "lease_until": "2026-09-05T04:16:14.441Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -248,7 +248,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0985f93191097d8bfab07f06212bfb6969389468",
+    "last_main_sha": "59cac866a80f166bc8fbac6ed54e1ab8813d2af7",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T22:52:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
@@ -1119,6 +1119,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T02:51:53.865Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T02:51:53.865Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0c7c27be-e550-4e27-a4d8-bef3b8960100",
+      "summary": "pull_request wake: peer-reviewed + merged #3832 (autopilot state), #3827 (ThetaDistributionPanel), #3829 (x-autopost DST fix), #3831 (cache-warmer force bypass observability). WAIT posted on draft #3830 (superseded by main). validate:deploy GREEN, platform-integrity 14/14, ops:collect 0, open PRs 0. ECR deploy pending @ 59cac866 (ThetaDistributionPanel tip). Next: poll deploy → post-merge validate; RTH lifecycle Fri 09:00 ET."
     }
   ]
 }
