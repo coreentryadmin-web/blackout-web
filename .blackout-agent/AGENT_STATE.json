@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:07:43.151Z",
+  "updated_at": "2026-09-05T12:49:42.513Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:35:23.963Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T12:42:55.393Z",
+      "lease_until": "2026-09-05T14:18:03.361Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": "6ab39316-6a3b-41b6-b41c-c80785f9b80b",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -256,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "72a81ec4aedb25570eb85a522b2fe89a0b35d7cf",
+    "last_main_sha": "3000a90c45f9abe0e31141b20da734d49f521358",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T12:48:15Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33966365895",
+    "last_deploy_sha": "5e67e18cd75e8198ac50c75a7145b8f1990ff603"
   },
   "cross_examination": {
     "phase": "QUESTIONS_PUBLISHED",
@@ -1480,6 +1480,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:49:42.512Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:49:42.513Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c722b541-e92d-4af2-ace2-89507f092c96",
+      "summary": "Post-#3955 merge cycle: main@3000a90c4, 0 open PRs. All standing verify GREEN. Pattern scan clean. ECR deploy pending@5e67e18c."
     }
   ],
   "pr_activity": {
