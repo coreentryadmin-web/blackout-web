@@ -94,6 +94,31 @@ test("an undated stored row is aged against the snapshot's own timestamp", () =>
   assert.equal(mergeUniverseSnapshot(old, [], NOW).rows.length, 0);
 });
 
+test("an undated row that keeps failing to refresh eventually expires across REPEATED cycles", () => {
+  // The single-cycle test above pins the age formula, but every real refresh persists its own
+  // `updatedAt = Date.now()` (see refreshVectorUniverseSnapshot) and feeds that snapshot back in
+  // as the NEXT cycle's `previous`. An undated row's fallback stamp must not be reset by that —
+  // otherwise a ticker whose builder keeps failing (real incident: META serving spot:null/
+  // asOf:null indefinitely while a solo GET for the same ticker returns real data) never ages out,
+  // because each cycle's `previous.updatedAt` is recent and its "age" against that never grows.
+  let snap = { updatedAt: NOW, rows: [{ ticker: "META", asOf: null }] };
+  const CYCLE_MS = 5 * 60_000; // the 5-min universe rebuild cadence
+  let now = NOW;
+  for (let i = 0; i < 4; i++) {
+    now += CYCLE_MS;
+    const merged = mergeUniverseSnapshot(snap, [], now);
+    snap = { updatedAt: now, rows: merged.rows };
+  }
+  // 4 cycles * 5min = 20min > UNIVERSE_ROW_MAX_AGE_MS (15min) of real elapsed time — the row must
+  // have expired by now, not survived by perpetually resetting its own age clock.
+  assert.deepEqual(
+    snap.rows.map((r) => r.ticker),
+    [],
+    "an undated row must expire once it has genuinely been unrefreshed longer than maxAgeMs, " +
+      "even though every intervening cycle bumped the snapshot's own updatedAt"
+  );
+});
+
 test("tickers are keyed case- and whitespace-insensitively", () => {
   const previous = { updatedAt: NOW, rows: [{ ticker: "spy", asOf: NOW }] };
   const merged = mergeUniverseSnapshot(previous, [{ ticker: " SPY ", asOf: NOW }], NOW);

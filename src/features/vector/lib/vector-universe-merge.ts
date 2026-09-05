@@ -42,6 +42,17 @@ export type UniverseRowLike = {
   ticker: string;
   /** Upstream observation time in epoch ms. Null when the builder could not date the row. */
   asOf?: number | null;
+  /**
+   * Set once — the first cycle a row is carried without a usable `asOf` — and then carried forward
+   * unchanged on every subsequent cycle it survives undated. Exists because the undated fallback
+   * used to be the SNAPSHOT's own `updatedAt`, which every refresh bumps to `Date.now()` regardless
+   * of which rows it actually refreshed; that made an undated row's computed "age" reset to ~0 on
+   * every cycle it merely survived, so it never aged out (real incident: a ticker whose builder
+   * keeps failing served spot:null/asOf:null indefinitely while a solo per-ticker fetch for the same
+   * ticker returned real, current data). Stamping `undatedSince` once and carrying it gives an
+   * undated row its own honest clock, independent of how often the container timestamp moves.
+   */
+  undatedSince?: number | null;
 };
 
 export type UniverseSnapshotLike<TRow extends UniverseRowLike = UniverseRowLike> = {
@@ -92,20 +103,30 @@ export function mergeUniverseSnapshot<TRow extends UniverseRowLike>(
   for (const row of previous?.rows ?? []) {
     const ticker = String(row?.ticker ?? "").trim().toUpperCase();
     if (!ticker) continue;
-    // A row with no usable `asOf` cannot be aged out on evidence. Treat it as expirable against
-    // the snapshot's own timestamp rather than keeping it forever — an undated row that nothing
-    // has refreshed in 15 minutes is exactly as stale as a dated one.
-    const stamp = Number.isFinite(row?.asOf as number) ? (row.asOf as number) : previous?.updatedAt;
-    const ageMs = Number.isFinite(stamp as number) ? nowMs - (stamp as number) : NaN;
+    const hasAsOf = Number.isFinite(row?.asOf as number);
+    // A row with no usable `asOf` cannot be aged out on evidence from the row itself. The first
+    // time it is seen undated, fall back to the snapshot's own `updatedAt` (a legacy row read
+    // straight from storage has no better evidence of when it went undated) — but FREEZE that as
+    // `undatedSince` on the carried row from then on, rather than re-deriving it from
+    // `previous.updatedAt` every cycle. `updatedAt` is bumped to `Date.now()` on every refresh
+    // regardless of which rows actually refreshed, so re-deriving it each time reset an undated
+    // row's "age" to ~0 every cycle it merely survived and it never aged out.
+    const undatedSince = Number.isFinite(row?.undatedSince as number)
+      ? (row.undatedSince as number)
+      : Number.isFinite(previous?.updatedAt as number)
+        ? (previous!.updatedAt as number)
+        : nowMs;
+    const stamp = hasAsOf ? (row.asOf as number) : undatedSince;
+    const ageMs = nowMs - stamp;
     // BUG FIX (2026-09-03): a future-dated stamp (cross-process clock skew across the ECS tasks
     // that write asOf/updatedAt) used to produce a negative age that never exceeded maxAgeMs,
     // carrying an untrustworthy row forward indefinitely instead of expiring it like any other
     // row whose age cannot be verified.
-    if (!Number.isFinite(ageMs) || ageMs > maxAgeMs || ageMs < -FUTURE_STAMP_TOLERANCE_MS) {
+    if (ageMs > maxAgeMs || ageMs < -FUTURE_STAMP_TOLERANCE_MS) {
       expired += 1;
       continue;
     }
-    byTicker.set(ticker, row);
+    byTicker.set(ticker, hasAsOf ? row : ({ ...row, undatedSince } as TRow));
     carried += 1;
   }
 
@@ -114,7 +135,16 @@ export function mergeUniverseSnapshot<TRow extends UniverseRowLike>(
     const ticker = String(row?.ticker ?? "").trim().toUpperCase();
     if (!ticker) continue;
     if (byTicker.has(ticker)) carried -= 1; // it is being refreshed, not carried
-    byTicker.set(ticker, row);
+    // A freshly built row can itself be undated (the builder failed to date it this cycle too) —
+    // give it the same honest clock so the NEXT cycle, where it becomes `previous`, ages it
+    // correctly instead of treating it as brand-new every time.
+    const freshHasAsOf = Number.isFinite(row?.asOf as number);
+    byTicker.set(
+      ticker,
+      freshHasAsOf || Number.isFinite(row?.undatedSince as number)
+        ? row
+        : ({ ...row, undatedSince: nowMs } as TRow)
+    );
     refreshed += 1;
   }
 
