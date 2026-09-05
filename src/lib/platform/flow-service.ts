@@ -4,7 +4,7 @@ import {
   computeFlowStrikeStacks,
 } from "@/lib/largo/flow-strike-stacks";
 import { sessionFlowSkew } from "@/lib/largo/helix-tape-analytics";
-import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import type { FlowTapeSummary } from "./types";
 
 export { subscribeFlowEvents, publishFlowEvent };
@@ -66,6 +66,7 @@ export async function getFlowTapeSummary(opts?: {
   }
   return {
     as_of,
+    session_date: etSessionDate(anchorMs),
     count: rows.length,
     total_premium: rows.reduce((s, r) => s + r.premium, 0),
     top_tickers,
