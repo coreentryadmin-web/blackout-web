@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:49:41.536Z",
+  "updated_at": "2026-09-05T18:08:43.843Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,24 +68,24 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T17:42:29.364Z",
-      "lease_until": "2026-09-05T19:12:29.364Z",
+      "lease_until": "2026-09-05T19:37:40.274Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "8ba501f0-d00d-49fc-ba67-20e51ee5ee46",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:30:48.264Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-05T17:50:55.493Z",
+      "lease_until": "2026-09-05T19:37:40.274Z",
+      "phase": "DEPLOY_VERIFY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "8ba501f0-d00d-49fc-ba67-20e51ee5ee46",
       "title": null
     },
     "BO-P1-0104": {
@@ -267,7 +267,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T16:30:48.265Z",
+      "last_seen": "2026-09-05T17:50:55.494Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -328,46 +328,12 @@
   "deploy": {
     "last_main_sha": "cd2d56e30689b04e3b480be5c75c5e9f05b37502",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T17:22:13Z",
+    "last_deploy_at": "2026-09-05T17:53:42Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33980746889",
     "last_deploy_sha": "ea552b9f69c0c553d879486bbe317688148c988e"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.919Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:14.071Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:14.852Z",
       "type": "context_sync",
@@ -1635,6 +1601,49 @@
       "agent": "cursor",
       "run_id": "867561ab-ff14-4483-8611-b957936ac1d3",
       "summary": "Pattern scan fixes: polygon _rowToSnapshot null change_pct + X ISO timestamp guards. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. PR opening on cursor/autopilot-work-loop-ce5a. GitHub API rate-limited; pr-sweep 0."
+    },
+    {
+      "at": "2026-09-05T17:50:55.494Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T18:07:34.839Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:07:40.273Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:07:41.098Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:07:41.898Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:08:43.841Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:08:43.843Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "804eab4d-32fb-4125-b1a0-a41b0160da43",
+      "summary": "Autopilot cycle: pattern-scan fixes shipped #4021 (polygon null change_pct + X timestamp guards). Lifecycle GREEN (deploy, platform-integrity 14/14, SEO 22/22, ops:collect 0). Weekend RTH skipped. No open claude/* PRs for peer review. ECR #1827 pending @ ea552b9; main @ cd2d56e30. Awaiting Claude peer-review #4021."
     }
   ],
   "pr_activity": {
