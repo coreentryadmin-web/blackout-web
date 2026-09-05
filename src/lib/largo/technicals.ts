@@ -7,6 +7,7 @@ import {
   fetchTickerEma,
   fetchTickerRsi,
 } from "@/lib/providers/polygon";
+import { rebaseChangePct } from "@/lib/providers/change-pct";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { priorEtYmd, todayEtYmd } from "@/lib/providers/spx-session";
 
@@ -48,7 +49,7 @@ export async function buildLargoTechnicals(ticker: string) {
   const from = priorEtYmd(120);
   const to = todayEtYmd();
 
-  const [quoteRaw, dailyBars, ema20, ema50, ema200, rsi14] = await Promise.all([
+  const [quoteRaw, dailyBars, ema20, ema50, ema200, rsi14, equitySnap] = await Promise.all([
     isIndex ? fetchIndexSnapshots([sym]) : null,
     isIndex
       ? fetchIndexDailyBars(sym, from, to).catch(() => [])
@@ -57,6 +58,7 @@ export async function buildLargoTechnicals(ticker: string) {
     isIndex ? fetchIndexEma(sym, 50, "day") : fetchTickerEma(stockSymbol(ticker), 50, "day"),
     isIndex ? fetchIndexEma(sym, 200, "day") : fetchTickerEma(stockSymbol(ticker), 200, "day"),
     isIndex ? fetchTickerRsi(sym, 14, "day") : fetchTickerRsi(stockSymbol(ticker), 14, "day"),
+    isIndex ? Promise.resolve(null) : fetchStockSnapshot(stockSymbol(ticker)).catch(() => null),
   ]);
 
   let price = 0;
@@ -66,14 +68,23 @@ export async function buildLargoTechnicals(ticker: string) {
   const ws = wsCandle.current && wsCandle.current.close > 0 ? wsCandle.current.close : null;
   if (ws != null) {
     price = ws;
+    if (isIndex) {
+      const row = quoteRaw?.[sym];
+      changePct = rebaseChangePct(ws, row) ?? row?.change_pct ?? null;
+    } else {
+      changePct =
+        wsCandle.changePct ??
+        rebaseChangePct(ws, equitySnap) ??
+        equitySnap?.change_pct ??
+        null;
+    }
   } else if (isIndex) {
     const row = quoteRaw?.[sym];
     price = row?.price ?? 0;
     changePct = row?.change_pct ?? null;
   } else {
-    const snap = await fetchStockSnapshot(stockSymbol(ticker));
-    price = snap?.price ?? 0;
-    changePct = snap?.change_pct ?? null;
+    price = equitySnap?.price ?? 0;
+    changePct = equitySnap?.change_pct ?? null;
   }
 
   const last = dailyBars.at(-1)?.c ?? price;
