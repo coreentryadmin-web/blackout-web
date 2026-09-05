@@ -243,6 +243,8 @@ export interface TerminalPlay {
   servingSection?: SwingServingSection | null;
   /** Live manage engine action (manage.ts) — drives EXITING / scale-out advisory on refresh. */
   manageAction?: SwingManageAction | null;
+  /** Member entry label when geometry still allows entry (buy / still_buy) — decoupled from desk OPEN. */
+  swingEntryAction?: "buy" | "still_buy" | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;

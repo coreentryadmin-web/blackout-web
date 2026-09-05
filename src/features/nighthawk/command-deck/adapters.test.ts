@@ -10,6 +10,7 @@ import {
   firstSeenIso,
 } from "./adapters.ts";
 import { overlayLegacyQuotes } from "./use-legacy-quotes.ts";
+import { swingActionDisplay } from "./play-card-lifecycle.ts";
 
 test("managementFor: RATCHET progress maps -50→0, +100→1; recommendations by P&L", () => {
   assert.equal(managementFor("RATCHET", "OPEN", -50).progress, 0);
@@ -1060,6 +1061,27 @@ test("horizon adapter: COMMIT_NOW + commit gate block → WATCH/WAIT with gate b
   assert.equal(gated.status, "WATCH");
   assert.equal(gated.recommendation, "HOLD");
   assert.equal(gated.gateBlocks?.[0]?.code, "g_s6_confluence");
+});
+
+test("horizon adapter: live OPEN + enterable geometry → STILL BUY action + swingEntryAction", () => {
+  const live = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 88,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    committedAt: "2026-09-05T14:00:00.000Z",
+    servingSection: "MANAGING",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    contract: { strike: 180, right: "C", expiry: "2026-09-19", dte: 14, mid: 5.2 },
+    entryPremium: 5.2,
+    livePnlPct: 4.5,
+  });
+  assert.equal(live.status, "OPEN");
+  assert.equal(live.swingEntryAction, "still_buy");
+  assert.equal(swingActionDisplay(live)?.label, "STILL BUY");
 });
 
 test("horizon adapter: WAITING_FOR_ENTRY → WATCH + HOLD (WAIT action)", () => {
