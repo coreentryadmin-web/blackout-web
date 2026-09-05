@@ -1,18 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T22:19:17.459Z",
+  "updated_at": "2026-09-05T22:44:32.151Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T22:20:51.679Z",
+      "lease_until": "2026-09-06T00:09:25.055Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "d71520a4-0362-4103-ba5a-6e2228408d60"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T22:20:55.252Z",
+      "lease_until": "2026-09-06T00:09:25.055Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "d71520a4-0362-4103-ba5a-6e2228408d60"
     }
   },
   "reviews": {
@@ -22,6 +33,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
+      "safe_to_merge": true
+    },
+    "pr-4055": {
+      "pr": 4055,
+      "head_sha": "73c2a4986f420b90c84a1334b75040798fb39b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T22:44:28.206Z",
       "safe_to_merge": true
     }
   },
@@ -36,11 +55,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "297faf10db7a9d1340dfe580ea108ed507ce41b2",
+    "last_main_sha": "f6ddee840a1fbb0e8120fc5ea2bd0079b898a876",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T22:35:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33996334947",
+    "last_deploy_sha": "f6ddee840a1fbb0e8120fc5ea2bd0079b898a876"
   },
   "events": [
     {
@@ -174,7 +193,65 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T22:39:11.245Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:39:25.055Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:39:26.091Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:39:27.149Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:44:28.207Z",
+      "type": "pr_review",
+      "pr": 4055,
+      "head_sha": "73c2a4986f420b90c84a1334b75040798fb39b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T22:44:28.206Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T22:44:32.151Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:44:32.151Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f23345b4-2856-4968-8a0d-2d01c8edfc27",
+      "summary": "workflow_run cycle GREEN. main@f6ddee840. Lifecycle sweep: deploy/api-auth/platform-integrity 14/14/seo 22/rth-open skip (weekend). ops:collect 0. #4055 merged (meridian dead merge cleanup) — reviewed APPROVED post-merge. #4056 draft [cursor] swing rich Ask Largo v2 — verify pending, awaiting Claude peer review (cannot self-approve). ECR deploy #4055 pending (#33996334947). Peer Claude healthy @22:19Z. No Claude/fix PRs needing review."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4056,
+      "title": "feat(swing): Rich Ask Largo intelligence — factors, levels, flow, catalysts, hold plan",
+      "branch": "cursor/swing-play-intelligence-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T22:38:38Z"
+    }
+  ]
 }
