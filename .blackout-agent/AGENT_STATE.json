@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T07:09:06.458Z",
+  "updated_at": "2026-09-05T07:09:32.865Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -233,6 +233,22 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
+      "safe_to_merge": true
+    },
+    "pr-3893": {
+      "pr": 3893,
+      "head_sha": "e29a2517c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T07:09:32.556Z",
+      "safe_to_merge": true
+    },
+    "pr-3897": {
+      "pr": 3897,
+      "head_sha": "47af423b4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T07:09:32.864Z",
       "safe_to_merge": true
     }
   },
@@ -1201,6 +1217,26 @@
       "agent": "cursor",
       "run_id": "3e22283a-4e7a-4d10-9423-ae0e40b08adb",
       "summary": "PR event wake: peer-reviewed #3893 (APPROVED), #3897 (APPROVED, merged to main 5fdd8354), #3892 (APPROVED docs). validate:deploy GREEN on new main. ops:collect 0. Open PRs: #3898 (cursor, Claude review), #3895/#3899/#3901 drafts. No merge auth in sandbox — approvals posted on PRs."
+    },
+    {
+      "at": "2026-09-05T07:09:32.557Z",
+      "type": "pr_review",
+      "pr": 3893,
+      "head_sha": "e29a2517c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T07:09:32.556Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T07:09:32.865Z",
+      "type": "pr_review",
+      "pr": 3897,
+      "head_sha": "47af423b4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T07:09:32.864Z",
+      "safe_to_merge": true
     }
   ]
 }
