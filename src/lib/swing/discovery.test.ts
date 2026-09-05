@@ -26,6 +26,8 @@ import type { MinimalFlowRow } from "../zerodte/flow-accumulation-context.ts";
 
 const ASC = Array.from({ length: 60 }, (_, i) => 100 + i);
 const FLAT_SPY = Array.from({ length: 60 }, () => 400);
+/** Risk-on SPY trend so G-S4 regime gate clears in commit-path integration tests (flat SPY → RISK_OFF). */
+const RISK_ON_SPY = Array.from({ length: 60 }, (_, i) => 380 + i * 0.5);
 
 function bullSignal(ticker: string): FlowAccumulationSignal {
   return {
@@ -201,7 +203,7 @@ function makeDeps(sessionDay: string, accessors: SwingAccumAccessors): SwingDisc
   return {
     fetchFlowWindow: async () => nvdaFlowRows(),
     fetchGroupedDaily: async () => groupedBars,
-    fetchSpyCloses: async () => FLAT_SPY,
+    fetchSpyCloses: async () => RISK_ON_SPY,
     // LIVE V2 origins — stack corroboration on NVDA so commit-path tests hit real G-S6 bars.
     fetchPositioningTickers: async () => ["NVDA"],
     fetchCatalystTickers: async () => ["NVDA"],
