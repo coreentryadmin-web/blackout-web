@@ -10,6 +10,7 @@ import {
   type PerExpiryWalls,
 } from "./vector-dte-walls-core";
 import { expiriesForHorizon, type VectorDteHorizon } from "./vector-dte-horizon";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 /**
  * Per-expiry GEX walls + gamma flip for a DTE horizon, for ANY optionable ticker.
@@ -46,7 +47,8 @@ export async function getPerExpiryGexWalls(
   const t = normalizeVectorTicker(ticker);
   const memoKey = `${t}:${horizon}`;
   const cached = memo.get(memoKey);
-  if (cached && Date.now() - cached.at < MEMO_TTL_MS) return cached.value;
+  const now = Date.now();
+  if (cached && isWsUpdatedAtFresh(cached.at, MEMO_TTL_MS, now)) return cached.value;
 
   let value: PerExpiryWalls | null = null;
   try {
