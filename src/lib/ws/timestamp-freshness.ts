@@ -1,3 +1,11 @@
+/** Trusted data age for play staleness — rejects clock-skewed future receive times. */
+export function dataAgeMsFromEpoch(receivedAtMs: number, now = Date.now()): number | null {
+  if (!Number.isFinite(receivedAtMs) || receivedAtMs <= 0) return null;
+  const rawAgeMs = now - receivedAtMs;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return Number.POSITIVE_INFINITY;
+  return Math.max(0, rawAgeMs);
+}
+
 /** Ordinary clock skew — a future `updatedAt` must not read as infinitely fresh. */
 export const WS_TIMESTAMP_FUTURE_TOLERANCE_MS = 5_000;
 

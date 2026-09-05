@@ -47,6 +47,7 @@ import {
   type VectorWallLevel,
   type VectorWalls,
 } from "@/lib/api";
+import { dataAgeMsFromEpoch } from "@/lib/ws/timestamp-freshness";
 import {
   appendVectorWallEvents,
   detectSpotStructureEvents,
@@ -3590,7 +3591,7 @@ export function VectorChart({
         sessionFlows: sessionHelixFlowsRef.current,
         darkPoolLevels: darkPoolRef.current,
       },
-      dataAgeMs: Math.max(0, Date.now() - dataReceivedAtMsRef.current),
+      dataAgeMs: dataAgeMsFromEpoch(dataReceivedAtMsRef.current),
       bie: bieContextRef.current,
     };
     const bucketKey = vectorPlayBieBucketKey(playInput);

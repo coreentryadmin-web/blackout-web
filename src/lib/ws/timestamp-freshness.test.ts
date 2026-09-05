@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ageMinFromIso, ageSecFromIso, isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "./timestamp-freshness";
+import { ageMinFromIso, ageSecFromIso, dataAgeMsFromEpoch, isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "./timestamp-freshness";
 
 test("wsUpdatedAtAgeMs clamps negative skew to 0", () => {
   const now = 1_000_000;
@@ -32,4 +32,12 @@ test("isWsUpdatedAtFresh rejects future timestamps beyond tolerance", () => {
   assert.equal(isWsUpdatedAtFresh(now + 4_000, 60_000, now), true);
   assert.equal(isWsUpdatedAtFresh(now - 30_000, 60_000, now), true);
   assert.equal(isWsUpdatedAtFresh(now - 90_000, 60_000, now), false);
+});
+
+test("dataAgeMsFromEpoch rejects clock-skewed future receive times (fail-closed)", () => {
+  const now = 1_000_000;
+  assert.equal(dataAgeMsFromEpoch(now + 6_000, now), Number.POSITIVE_INFINITY);
+  assert.equal(dataAgeMsFromEpoch(now + 4_000, now), 0);
+  assert.equal(dataAgeMsFromEpoch(now - 30_000, now), 30_000);
+  assert.equal(dataAgeMsFromEpoch(0, now), null);
 });
