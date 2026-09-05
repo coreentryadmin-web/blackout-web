@@ -139,8 +139,9 @@ function barDateET(): string {
  * testing — the WS message handlers below call this instead of computing inline, so a
  * raw-float regression can't slip back in unrounded.
  */
-export function computeSessionChangePct(current: number, sessionOpen: number): number {
-  return sessionOpen > 0 ? Number((((current - sessionOpen) / sessionOpen) * 100).toFixed(2)) : 0;
+export function computeSessionChangePct(current: number, sessionOpen: number): number | null {
+  if (!(sessionOpen > 0)) return null;
+  return Number((((current - sessionOpen) / sessionOpen) * 100).toFixed(2));
 }
 
 // ── Cross-replica leader election ──────────────────────────────────────────────────────────────
@@ -450,7 +451,7 @@ async function connectIndices() {
                 : "ws-bar";
               indexStore[agg.sym] = {
                 price: agg.c,
-                change_pct: computeSessionChangePct(agg.c, sessionOpen),
+                change_pct: computeSessionChangePct(agg.c, sessionOpen) ?? prev.change_pct,
                 session_open: sessionOpen,
                 session_date: todayET,
                 open_source: openSource,
@@ -498,7 +499,7 @@ async function connectIndices() {
                 price: val,
                 change_pct:
                   prev.session_open > 0
-                    ? computeSessionChangePct(val, prev.session_open)
+                    ? computeSessionChangePct(val, prev.session_open) ?? prev.change_pct
                     : prev.change_pct,
                 updatedAt: Date.now(),
               };

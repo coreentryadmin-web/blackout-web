@@ -41,6 +41,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
 import { roundFloats, type RoundFloatsKeyDp } from "@/lib/round-floats";
 import { getLiveOptionMark, subscribeContracts, unsubscribeContracts } from "@/lib/ws/options-socket";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import {
   advancePlayLatch,
   condorSellerPnlPct,
@@ -470,7 +471,7 @@ let activeRowsByKey = new Map<string, ZeroDteSetupLogRow>();
 let activeInflight: Promise<ActiveZeroDtePlay[]> | null = null;
 
 async function getActivePlays(now = Date.now()): Promise<ActiveZeroDtePlay[]> {
-  if (activeCache && now - activeCache.fetchedAt <= ACTIVE_SET_TTL_MS) return activeCache.plays;
+  if (activeCache && isWsUpdatedAtFresh(activeCache.fetchedAt, ACTIVE_SET_TTL_MS, now)) return activeCache.plays;
   if (activeInflight) return activeInflight;
   activeInflight = (async () => {
     try {

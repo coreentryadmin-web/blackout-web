@@ -7,8 +7,8 @@ test("computeSessionChangePct: rounds to 2dp, matching the REST sibling in polyg
   assert.equal(computeSessionChangePct(6749.36, 6700.123456), 0.73);
 });
 
-test("computeSessionChangePct: returns 0 when there is no session anchor yet", () => {
-  assert.equal(computeSessionChangePct(6749.36, 0), 0);
+test("computeSessionChangePct: returns null when there is no session anchor yet", () => {
+  assert.equal(computeSessionChangePct(6749.36, 0), null);
 });
 
 test("computeSessionChangePct: negative change rounds correctly", () => {

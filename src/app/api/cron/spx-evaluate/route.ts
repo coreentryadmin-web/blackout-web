@@ -8,6 +8,7 @@ import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guard
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { warnIfPlayTimingMisconfigured } from "@/features/spx/lib/spx-play-config";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 // Validate timing config on every cold start so ECS logs surface misconfiguration.
 warnIfPlayTimingMisconfigured();
@@ -36,7 +37,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { merged } = await loadMergedSpxDesk();
+    // loadMergedSpxDesk fans out many fetchUw* calls on cache miss — reserve one UW slot for
+    // live member traffic, same pattern as desk-warm / flow-ingest / swing-discovery.
+    const { merged } = await runWithBackgroundUwSweep(() => loadMergedSpxDesk());
     const technicals = await buildPlayTechnicals(merged.price, {
       vwap: merged.vwap,
       pdh: merged.pdh,

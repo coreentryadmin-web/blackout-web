@@ -253,7 +253,7 @@ function getFallback(ticker: string): FallbackEntry {
 function refreshFallback(ticker: string): void {
   const f = getFallback(ticker);
   const now = Date.now();
-  if (now - f.fetchedAt < REDIS_READ_REFRESH_MS || f.inflight) return;
+  if (isWsUpdatedAtFresh(f.fetchedAt, REDIS_READ_REFRESH_MS, now) || f.inflight) return;
   f.inflight = sharedCacheGet<CandleSnapshot>(redisKey(ticker))
     .then((snap) => { if (snap) f.snap = snap; f.fetchedAt = Date.now(); })
     .catch(() => { f.fetchedAt = Date.now(); })
