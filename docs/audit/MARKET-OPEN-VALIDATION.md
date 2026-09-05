@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1h. Largo compare + history: future asof read false-fresh 0s — fix/future-timestamp-age-largo (pending)
+
+**What was broken:** `ageSecondsFrom` / `ageSecondsFromIso` in Largo compare paths used `Math.max(0, …)` so a clock-skewed future `asof` reported **0 seconds old** instead of null. Largo history `formatRelative` showed **"just now"** for future timestamps.
+
+**Fix:** Align with `et-session-facts.ts` — `age < 0 ? null : age`; history list future beyond 5s tolerance → `"clock skew"`.
+
+**Check at the open:** Run a Largo Thermal compare during RTH; confirm `matrix_age_sec` / `age_seconds` is null (not 0) if upstream asof is skewed future during a deploy boundary.
+
 ### 0a-1g. SPX play gate: future-skewed gex_age_ms bypassed stale block — fix/spx-play-gate-gex-age-future-guard (pending)
 
 **What was broken:** `gexStaleFromAge()` correctly lit the GEX stale pill when `pos.asof` was clock-skewed into the future (>5s), but `evaluatePlayGates()` passed the raw negative `gex_age_ms` as a negative `gexSec` that never exceeded `playGexStaleMaxSec()`. A desk with a lit GEX-stale pill could still open plays when `polled_at` was fresh.
