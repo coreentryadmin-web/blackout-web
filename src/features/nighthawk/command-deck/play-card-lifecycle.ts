@@ -3,6 +3,7 @@ import { isoToEtClock, parseCommittedAtEt } from "@/lib/zerodte/play-timeline";
 import { trimScaleBlendedPnlAtStop } from "@/lib/zerodte/marks-math";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
 import { legacyPrimaryPeakPct, legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 /** Which lifecycle bucket drives the left-rail card layout. */
 export type PlayLifecyclePhase = "open" | "watch" | "closed";
@@ -130,7 +131,9 @@ export function eventAgeMs(iso: string | null | undefined, nowMs: number): numbe
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return null;
   const delta = nowMs - at;
-  return delta >= 0 ? delta : 0;
+  // Beyond tolerance, a future stamp is clock skew — must not clamp to 0 and read as "just fired".
+  if (delta < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return Number.POSITIVE_INFINITY;
+  return Math.max(0, delta);
 }
 
 export function freshnessTierFromAge(
