@@ -1,7 +1,8 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+import { auth } from "@/lib/auth-server";
+import { getUserProfile } from "@/lib/user-directory";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { acquireMembershipSyncSlot } from "@/lib/membership-sync-limit";
 import { publishTierChanged } from "@/lib/tier-cache";
@@ -24,9 +25,8 @@ export async function POST() {
     );
   }
 
-  const user = await currentUser();
-  const email = user?.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
-    ?.emailAddress;
+  const profile = await getUserProfile(userId);
+  const email = profile?.email ?? null;
 
   if (!email) {
     return NextResponse.json({ error: "No email on account" }, { status: 400, headers: NO_STORE_HEADERS });
