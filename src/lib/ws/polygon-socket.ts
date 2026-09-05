@@ -640,13 +640,14 @@ export function getIndexStoreStatus() {
     wsState: indicesWs ? ["CONNECTING", "OPEN", "CLOSING", "CLOSED"][indicesWs.readyState] : "NOT_CREATED",
     consecutiveFailures: indicesConsecutiveFailures,
     reconnectDelayMs: indicesReconnectDelay,
-    symbols: Object.keys(indexStore).map((sym) => ({
-      sym,
-      price: indexStore[sym].price,
-      // null when the symbol has never ticked — Date.now() - 0 would report the epoch
-      // (~56 years) as an "age" in the admin/health status endpoints. Mirrors the
-      // never-ticked guard in getIndexFeedFreshness above.
-      ageMs: indexStore[sym].updatedAt > 0 ? Date.now() - indexStore[sym].updatedAt : null,
-    })),
+    symbols: Object.keys(indexStore).map((sym) => {
+      const { ageMs } = getIndexFeedFreshness(sym);
+      return {
+        sym,
+        price: indexStore[sym].price,
+        // Reuse getIndexFeedFreshness so clock-skewed future updatedAt never reads as negative age.
+        ageMs,
+      };
+    }),
   };
 }
