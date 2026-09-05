@@ -80,7 +80,7 @@ test("the RTH gate is evaluated BEFORE the staleness check, not merged into it",
   const src = read(SNAPSHOT);
   const gateIdx = src.indexOf("if (!wallRailRecordingOpen()) return false;");
   const staleIdx = src.indexOf(
-    "isWsUpdatedAtFresh(s.cachedWallsAt, STALE_RECORD_MAX_MS + 1, nowMs)"
+    "isWsUpdatedAtFresh(s.cachedBeadRailWallsAt, STALE_RECORD_MAX_MS + 1, nowMs)"
   );
   assert.ok(gateIdx > -1, "recordVectorWallSamplesFromWarm must gate on wallRailRecordingOpen()");
   assert.ok(staleIdx > -1, "the staleness check must still exist (via isWsUpdatedAtFresh)");

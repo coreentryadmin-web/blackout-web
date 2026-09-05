@@ -4,6 +4,7 @@ import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import {
+  computeBeadRailGexWalls,
   computeGexWalls,
   mapFromStrikeTotalsRecord,
 } from "@/lib/providers/gex-wall-levels";
@@ -132,6 +133,12 @@ async function buildVectorUniverseRow(
           spot,
         })
       : { callWalls: [], putWalls: [] };
+  // Bead rail: unconstrained Sep-3 ranking — overlay/scanner use gexWalls above.
+  const beadRailGexWalls = hm?.gex?.strike_totals
+    ? computeBeadRailGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
+        maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+      })
+    : { callWalls: [], putWalls: [] };
   const vexWalls = hm?.vex?.strike_totals
     ? computeGexWalls(mapFromStrikeTotalsRecord(hm.vex.strike_totals), {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
@@ -144,7 +151,7 @@ async function buildVectorUniverseRow(
     const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker, bucketScope));
     const sample = buildWallHistorySample({
       time: sampleTime,
-      gexWalls,
+      gexWalls: beadRailGexWalls,
       gammaFlip: hm?.gex?.flip ?? null,
       vexWalls,
       vexFlip: hm?.vex?.flip ?? null,
@@ -192,13 +199,9 @@ async function buildVectorUniverseRow(
         // 0dte/weekly/monthly wall-history rails via writeWallHistorySample below, so an
         // unconstrained call here persisted "wrong side of spot" walls into history even
         // after the live rail was fixed.
-        const horizonWalls =
-          spot != null && spot > 0
-            ? computeGexWalls(totals, {
-                maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-                spot,
-              })
-            : { callWalls: [], putWalls: [] };
+        const horizonWalls = computeBeadRailGexWalls(totals, {
+          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+        });
         const horizonSample = buildWallHistorySample({
           time: sampleTime,
           gexWalls: horizonWalls,
