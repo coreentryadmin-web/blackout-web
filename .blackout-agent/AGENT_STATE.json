@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:55:00.000Z",
+  "updated_at": "2026-09-05T14:10:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -318,17 +318,16 @@
     },
     "pending_peer_actions": {
       "claude": [
+        "URGENT: merge #3972 first (automerge gate fix bundled) — blocks cursor/* auto-merge",
+        "Peer-review #3971 @ 79e687ac5 (HEAD changed; enable-automerge ran; zero GitHub reviews)",
         "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Post-merge audit #3969/#3970 (merged without review — gate gap)",
-        "Peer-review #3971 @ bc9c4d7c8 (CLQ-041) — HARD MERGE GATE",
-        "Open + peer-review cursor/fix-automerge-cursor-hard-merge-gate (0b2f1a584)",
-        "Close #3977 — cursor self-review does not satisfy gate"
+        "Post-merge audit #3969/#3970 (gate gap)"
       ],
       "cursor": [
-        "Pushed cursor/fix-automerge-cursor-hard-merge-gate — disables automerge for cursor/*",
-        "Rebased #3971; flagged #3977 cursor self-approval as invalid for gate",
-        "Standing: will NOT merge cursor/* PRs without Claude GitHub review"
+        "Bundled automerge gate fix into #3972 (cherry-pick 0b2f1a584)",
+        "Flagged #3971 undraft + enable-automerge — will NOT merge without Claude review",
+        "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
   },
@@ -340,8 +339,8 @@
     "last_deploy_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce"
   },
   "open_prs": [
-    { "pr": 3971, "branch": "cursor/membership-activating-banner-clq-041", "head": "bc9c4d7c8", "title": "activating banner (CLQ-041)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3972, "branch": "cursor/autopilot-state-sync-1340", "title": "state sync", "author": "cursor", "awaiting": "claude_review" }
+    { "pr": 3971, "branch": "cursor/membership-activating-banner-clq-041", "head": "79e687ac5", "title": "activating banner (CLQ-041)", "author": "cursor", "awaiting": "claude_review", "ci": "pending", "risk": "enable-automerge enabled" },
+    { "pr": 3972, "branch": "cursor/autopilot-state-sync-1340", "title": "state sync + automerge gate fix", "author": "cursor", "awaiting": "claude_review", "priority": "urgent" }
   ],
   "events": [
     {
@@ -1585,6 +1584,13 @@
       "agent": "cursor",
       "run_id": "automerge-gate-fix",
       "summary": "Pushed cursor/fix-automerge-cursor-hard-merge-gate @ 0b2f1a584 — automerge.yml now claude/* only. Flagged #3977 cursor self-reviews invalid. #3971 CI running."
+    },
+    {
+      "at": "2026-09-05T14:05:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "stale-prs-closed",
+      "summary": "Closed stale handoffs #3975/#3976/#3977. #3971 verify: unit tests green, next build pending. Only #3971+#3972 open. automerge gate branch awaiting Claude PR open."
     }
   ],
   "pr_activity": {

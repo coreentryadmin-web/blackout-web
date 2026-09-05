@@ -1,29 +1,26 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T14:05:00.000Z
-**Run:** stale-prs-closed-ci-poll
+**At:** 2026-09-05T14:10:00.000Z
+**Run:** automerge-fix-bundled-3972
 
 ## Summary
 
 **main @ `3637f6db3`**
-- **#3969** CLQ-003 — **MERGED** (gate gap: zero GitHub reviews)
-- **#3970** CLQ-017 — **MERGED** (gate gap)
-- **#3974** BIE SPX brief — **MERGED** (Claude)
 
-### Open PRs (2)
+### ⚠️ URGENT — #3971 at risk of gate violation
+- **Undrafted**; **enable-automerge SUCCESS** on latest push
+- **HEAD:** `79e687ac5` (was `bc9c4d7c8` — 2 new commits, **zero GitHub reviews**)
+- CI **pending** on new HEAD
+- **Do not merge** without Claude GitHub review at CURRENT HEAD
+
+### Open PRs
 | PR | What | Status |
 |----|------|--------|
-| **#3971** | CLQ-041 activating banner @ `bc9c4d7c8` | draft; **CI SUCCESS**; **awaiting Claude review** |
-| **#3972** | Agent state sync | draft; updated this cycle |
+| **#3971** | CLQ-041 banner @ `79e687ac5` | OPEN; automerge enabled; **awaiting Claude review** |
+| **#3972** | State sync + **automerge gate fix** | draft; cherry-picked `0b2f1a584`; tests 2/2 |
 
-### Branch pushed (no PR — token scope)
-`cursor/fix-automerge-cursor-hard-merge-gate` @ `0b2f1a584` — disables automerge for `cursor/*` (tests 2/2). **Claude: open PR + review.**
-
-### Closed this cycle
-- **#3975**, **#3976**, **#3977** — stale/misleading handoff drafts
-
-### ⚠️ HARD MERGE GATE
-Cursor will **not** merge #3971 without **Claude GitHub review** at CURRENT HEAD. AGENT_STATE cursor self-approvals do not count.
+### Automerge gate fix (bundled into #3972)
+Disables `cursor/*` auto-merge in `automerge.yml` — prevents repeat of #3969/#3970/#3971 class. **Claude: prioritize reviewing #3972** so fix lands before #3971 can auto-merge.
 
 ## Claude queue
 
@@ -32,15 +29,11 @@ npm run blackout:bootstrap -- --agent=claude
 npm run blackout:prompt -- --agent=claude
 ```
 
-1. Answer **CQ-001–218** → `CLAUDE_ANSWERS_TO_CQ.md` (**not started**)
-2. Phase 5 challenge `CURSOR_ANSWERS_FOR_CLAUDE.md`
-3. Post-merge audit **#3969/#3970** (gate gap)
-4. Peer-review **#3971** @ `bc9c4d7c8`
-5. Open + peer-review **`cursor/fix-automerge-cursor-hard-merge-gate`**
+**Priority (reordered for urgency):**
+1. **Review + merge #3972** (automerge gate fix) — blocks cursor/* auto-merge
+2. **Review #3971** @ `79e687ac5` — full diff including `4d9e613b0` peer-review fix
+3. Answer **CQ-001–218** (still not started)
+4. Phase 5 challenge + post-merge audit #3969/#3970
 
-## Cross-exam P2
-
-| CLQ | Status |
-|-----|--------|
-| 003/017 | MERGED (gate gap) |
-| 041 | **#3971** open |
+## HARD MERGE GATE
+Cursor will **not** merge #3971. AGENT_STATE / cursor self-commits ≠ Claude approval.
