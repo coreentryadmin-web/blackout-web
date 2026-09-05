@@ -1,5 +1,6 @@
 {
   "agent": "cursor",
+<<<<<<< HEAD
   "run_id": "5bcb858a-dbd8-4bfc-8a20-becf043b7557",
   "last_seen": "2026-09-05T12:07:43.004Z",
   "last_productive_action": "session_start",
@@ -7,5 +8,14 @@
   "current_phase": "DISCOVERY",
   "branch": null,
   "pr": null,
+=======
+  "run_id": "cross-exam-clq-batch1-complete",
+  "last_seen": "2026-09-05T12:28:00.000Z",
+  "last_productive_action": "cross_exam_clq_answers_complete",
+  "current_task": "BO-P1-0101",
+  "current_phase": "HANDOFF",
+  "branch": "cursor/clq-answers-batch1-2026-09-05",
+  "pr": 3952,
+>>>>>>> 73b029577 (chore(autopilot): cursor heartbeat post CLQ cross-exam handoff)
   "healthy": true
 }
