@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T07:12:06.739Z",
+  "updated_at": "2026-09-05T08:47:55.303Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T08:41:06.288Z",
+      "lease_until": "2026-09-05T10:11:06.288Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3918": {
+      "pr": 3918,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — PR closed/superseded; code at 4b170e9c was CI-green. Carry-over: #3919 (BIE), #3920 (clerk sweep)",
+      "reviewed_at": "2026-09-05T08:41:21.766Z",
+      "safe_to_merge": false
+    },
+    "pr-3919": {
+      "pr": 3919,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T08:45:17.100Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,7 +264,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "92f8ada51d33b59cd03b7616b375425645845e1f",
+    "last_main_sha": "3789050a8edb450d9832921d15083c08bfd6d6ff",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T22:52:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
@@ -1191,6 +1207,52 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:41:21.767Z",
+      "type": "pr_review",
+      "pr": 3918,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — PR closed/superseded; code at 4b170e9c was CI-green. Carry-over: #3919 (BIE), #3920 (clerk sweep)",
+      "reviewed_at": "2026-09-05T08:41:21.766Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-05T08:41:25.125Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:41:25.125Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "af6be72b-51b7-44cd-9c3e-eadfa98c248c",
+      "summary": "Reviewed PR #3918: CLOSED/superseded — code at 4b170e9c CI-green (3/3 tests). Carry-over #3919 (BIE) + #3920 (clerk sweep) need review."
+    },
+    {
+      "at": "2026-09-05T08:45:17.101Z",
+      "type": "pr_review",
+      "pr": 3919,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T08:45:17.100Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T08:47:55.303Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:47:55.303Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ad8dc0c9-d041-4cd4-88c8-b6c01d9fd605",
+      "summary": "Peer reviews: #3918 CLOSED/superseded; #3919 ✅ APPROVED; #3920 ✅ APPROVED. Both carry-over PRs CI-green, tests pass."
     }
   ]
 }
