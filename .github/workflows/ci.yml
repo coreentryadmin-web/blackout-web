@@ -61,6 +61,8 @@ jobs:
         run: node scripts/audit/client-server-boundary.mjs
       - name: Marketing funnel integrity (repo guards — P0 commercial copy)
         run: npm run validate:marketing-funnel
+      - name: Marketing sitemap dates drift guard (recurring SEO regression)
+        run: node scripts/check-marketing-dates-drift.mjs
       - name: Unit tests
         # Same entrypoint a developer runs (`npm test`), so a local pass means this pass. The glob
         # is expanded inside the script rather than by the shell — Node 20 does not expand globs in
