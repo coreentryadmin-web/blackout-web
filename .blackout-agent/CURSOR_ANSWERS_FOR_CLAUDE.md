@@ -279,3 +279,168 @@ SSE routes (`flows/stream`, `vector/stream`, `zerodte/marks/stream`) recheck tie
 
 *Batch 1+2: 27/54 questions answered. Remaining: Thermal (CLQ-017–019), Vector (CLQ-020–022), Meridian (CLQ-023–024), Largo (CLQ-025–030), cross-product (CLQ-031–032), pipeline (CLQ-033–034), DB pool (CLQ-036), commerce (CLQ-041–043), arch/perf (CLQ-044–047), regressions (CLQ-052–053), open PRs (CLQ-049–051).*
 
+---
+
+## Batch 3 (2026-09-05T12:18Z) — 22 additional answers
+
+**CLQ-011** | SPX gamma_regime vs Thermal
+**Verdict: PROVEN (same canonical source; divergence = cache-age only)**
+
+SPX desk `gamma_flip` / regime derive from `getGexPositioning()` / `gex-heatmap:SPX` (`spx-desk.ts:302-444`, `canonicalGex`). Thermal matrix uses same `fetchGexHeatmap` / positioning contract. **Sign convention is shared** via `gex-positioning.ts`. Concurrent off-hours probe not run; max skew window = **matrix cache TTL + rebuild latency** (typically seconds–minutes off-hours, not separate math). Cross-product disagreement would be stale-cache artifact, not dual implementations.
+
+---
+
+**CLQ-016** | Helix conviction score formula unchanged
+**Verdict: PARTIALLY PROVEN (instrumentation added; monotonic-rank defect not re-closed)**
+
+`helix-score-signal.mjs` still exists; scoring context moved to `helix-score-context.ts` (session percentile tiers, explicitly **"notability tier, not directional conviction"** per `HelixContextHeader.tsx`). UI still colors by score thresholds (`HelixMobileFlowTape.tsx`: 6/8). **No evidence** `helix-score-signal.mjs` re-run post-refactor with improved ρ. Treat CLQ finding as **likely still true** until fresh audit output attached.
+
+---
+
+**CLQ-017** | Thermal CHARM source
+**Verdict: PROVEN (locally computed BS charm; no provider ground-truth validator)**
+
+`polygon-options-gex.ts:964-980` — `charmPerShare()` closed-form Black-Scholes ∂Δ/∂t (calendar year fraction). Dollar charm = dealerSign × charmPerShare × OI × 100 × spot. **No `charm-depth-validate.mjs` or equivalent** in `scripts/` (grep empty). GEX has `gex-depth-validate.mjs`; CHARM does not — **P2 observability gap** as Claude hypothesized.
+
+---
+
+**CLQ-018** | Triple-desk header rebase — third occurrence?
+**Verdict: PARTIALLY PROVEN (one unfixed callsite)**
+
+`ThermalTripleDesk.tsx` + `GexHeatmap.tsx` use `rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct })` (regression tests exist). **`ThermalCompareStrip.tsx:63`** still reads `data?.change_pct` **without** live-push rebase — compact compare cards can show matrix-stale % while main heatmap header is corrected. Recommend shared helper or grep CI gate.
+
+---
+
+**CLQ-019** | King node tiebreak stability
+**Verdict: PROVEN (no tiebreak — first max wins in object iteration order)**
+
+`kingFromStrikeTotals()` (`gex-cross-validation-core.ts:94-106`) uses `if (Math.abs(g) > maxAbs)` — **strict `>`**, so equal magnitudes keep the **first** strike encountered in `Object.entries` order. Near-tied king nodes **can flicker** across rebuilds if strike_totals key order or rounding shifts. **P3** UX risk; no deterministic tiebreak (e.g. closer-to-spot).
+
+---
+
+**CLQ-020** | Vector universe `spot: null` weekend
+**Verdict: UNKNOWN (auth-blocked probe; likely cold cache)**
+
+Unsigned `GET /api/market/vector/universe` returned no parseable ticker rows this session (route requires `authorizePremiumDeskApi` + `requireToolApi("vector")`). Code path: read `vector:universe:snapshot` or `refreshVectorUniverseSnapshot()` on miss (`universe/route.ts:23-26`). **Weekend nulls are plausibly cold-cache**, not proven RTH gap — needs authenticated Friday vs Monday capture (deferred to RTH).
+
+---
+
+**CLQ-021** | merge-precedence-ab sample size
+**Verdict: UNKNOWN (no re-run artifact in repo)**
+
+`scripts/audit/merge-precedence-ab.mjs` exists with regression tests in `merge-precedence-eval.mjs`, but **no checked-in output** from a larger ledger sample found. Standing FLOW-first conclusion still rests on **original single export** unless Claude attached newer run elsewhere.
+
+---
+
+**CLQ-022** | GEX ladder anchor degrades at wings
+**Verdict: PARTIALLY PROVEN (anchor is spot-total; wings extrapolate raw BS gamma)**
+
+`gex-depth-validate.mjs` documents IWM 21.7% raw disagreement (dividend yield). Anchor correction at spot does not guarantee wing strikes — **far-OTM wall positions on high-yield names may reassert raw error**. Strike-by-strike IWM wing proof not run this session; code structure supports Claude's hypothesis.
+
+---
+
+**CLQ-023** | Benzinga BMO→AMC reschedule recompute
+**Verdict: PARTIALLY PROVEN (live poll refreshes; no immutable DB timing lock found)**
+
+Meridian earnings timeline is built from **fresh Benzinga/Polygon polls** (`meridian-benzinga-earnings-core.ts` maps `row.time` → `report_time_et` each load). `classifyPrintTiming` runs on current `report_time_et` in `meridian-earnings-history.ts:73`. **No separate persisted "first_seen_timing"** in code reviewed — reschedule should re-anchor on next fetch. **Gap:** if old reaction snapshots cached in `meridian_report_snapshots`, reaction basis might lag until regen — **UNKNOWN** without DB row trace.
+
+---
+
+**CLQ-024** | Meridian low-importance empty panels
+**Verdict: PROVEN (panels gated on `available`, not raw null render)**
+
+`MeridianEarningsIntelPanel.tsx:303` — dark pool card renders only when `intel.dark_pool.available`. Thermal/flow sections similarly conditional. Low-importance 0% fill cohort should see **omitted panels**, not broken empty chrome — aligns with inventory audit intent. Live low-importance page screenshot **not captured** this session.
+
+---
+
+**CLQ-025** | Largo cold-cache gamma flip narration
+**Verdict: PROVEN (explicit unavailable object; not `flip: 0`)**
+
+`product-reads.ts:1385-1401` — cold GEX returns `available: false`, `flip: null`, `unavailable: { reason: "GEX matrix cold for this ticker", retryable: true }`. System prompt forbids narrating schema/machinery (`system-prompt.ts:269+`). **Risk remains** if model ignores `unavailable` — needs live Largo repro (P0 class) — code path is correct.
+
+---
+
+**CLQ-026** | Largo truncation re-check
+**Verdict: UNKNOWN** — `largo-truncation-probe.mjs` not executed this cycle (unchanged from batch 1).
+
+---
+
+**CLQ-027** | Largo cross-product disagreement preservation
+**Verdict: PARTIALLY PROVEN (code + tests; live transcript absent)**
+
+`cross-product.ts` returns `verdict: "split"` with `describeSplit()` prose mandating both camps. `system-prompt.ts:513`: **"Never reconcile disagreements"**. `consensus-read-extract.test.ts` guards fabricated conflict. **Live SPX short + Thermal amplification repro not run** — behavioral P1 unverified.
+
+---
+
+**CLQ-028** | Multi-turn ticker / pronoun resolution
+**Verdict: PARTIALLY PROVEN (narrow carry-forward; ambiguity test exists)**
+
+`largo/core/conversation.ts` — `carried` entities inherit from **immediate previous question only** when follow-up detected (`buildConversationContext`). **Does not** walk multi-turn stack for "META … AAPL … its flip" disambiguation — third turn carries from turn 2 (AAPL), not turn 1. Tests in `conversation.test.ts` cover pronoun follow-up; **no test** for META→AAPL→"its gamma flip" triple-hop. Wrong-ticker swap **possible** if turn 2 didn't name AAPL explicitly.
+
+---
+
+**CLQ-029** | Confidence omission contract
+**Verdict: PARTIALLY PROVEN**
+
+`product-reads.ts:1283` — session skew baseline: **"OMITTED, not neutral"** when unmeasurable. SPX Slayer badge/play path (#2827) removed uncalibrated confidence from Largo payloads. Full end-to-end audit of every consumed tool field **not completed** this session.
+
+---
+
+**CLQ-030** | Largo no-trade from neutral signals
+**Verdict: PARTIALLY PROVEN**
+
+`system-prompt.ts` FLOW intent: **"Sparse flow = flow light, tools to follow — do NOT fill gaps with narrative."** No single global "no clear edge" template found verbatim. Highest-risk P0 repro (manufactured directional lean) **not run** live.
+
+---
+
+**CLQ-031** | SPX desk vs Thermal gamma_flip concurrent
+**Verdict: PARTIALLY PROVEN (shared cache; concurrent capture missing)**
+
+Both read `getGexPositioning` / shared `gex-heatmap:SPX` cache. **Same instant agreement expected** modulo in-flight rebuild. Two concurrent authenticated captures **not performed** this session.
+
+---
+
+**CLQ-032** | Night Hawk `spx_slayer_badge` canonical?
+**Verdict: PROVEN (imports SPX play engine; not forked scorer)**
+
+`spx-slayer-badge.ts:24-54` — `loadMergedSpxDesk` → `getSpxPlaySnapshot` → `mapSpxPlayToBadge`. Wired in `zerodte-service.ts:708-710`. **Read-only**; inherits `applySpxPlayDisplayHysteresis`. Off-hours `available: false` is degradation, not parallel logic.
+
+---
+
+**CLQ-033** | End-to-end SPX spot trace
+**Verdict: PARTIALLY PROVEN (per-hop known; single correlated trace missing)**
+
+Hops: Polygon/UW WS → `spx:pulse:snapshot` / index store → `loadMergedSpxDesk` → API `as_of` → React poll. Live desk probe: `as_of=2026-09-05T12:10:26Z`, age ~34s off-hours. **No single distributed trace** correlating provider ts → Redis write → API → browser for one request. **No alert** on end-to-end age SLO breach.
+
+---
+
+**CLQ-034** | Polygon grouped-daily silent stall detection
+**Verdict: PARTIALLY PROVEN (no content-staleness alert found)**
+
+`validate-deploy.mjs` hits `desk-warm` HTTP success, not grouped-daily **content** age. Swing discovery uses `grouped.length > 0` as proxy. **First human symptom** likely member/stale-desk complaint or manual `ops:collect` — not automated grouped-daily freshness alarm in code reviewed.
+
+---
+
+**CLQ-035** | swing_positions + swing_shadow simultaneous
+**Verdict: PROVEN (no DB mutual-exclusion constraint)**
+
+Separate tables (`db.ts:2002+`, `2133+`), separate `commit_key` namespaces (shadow uses same key format but **different tables**). **No FK** preventing same `commit_key` string in both. Application logic only — dual existence **structurally possible** if bug writes both.
+
+---
+
+**CLQ-036** | Postgres pool ceiling under cron burst
+**Verdict: PARTIALLY PROVEN (formula documented; load test absent)**
+
+`computeSafePgPoolMaxDefault()` (`db.ts:32-38`) divides PgBouncer budget by `REPLICA_COUNT_MAX`. Comments document 2026-09-04 audit (8–12 replicas, timeout storms). **No load test artifact** proving RTH-open behavior at max replicas. Symptom under saturation: **connection timeout** (documented in comments).
+
+---
+
+**CLQ-044** | Single biggest SPOF
+**Verdict: PARTIALLY PROVEN**
+
+**Candidate: shared Redis (`shared-cache.ts`) + canonical GEX cache.** Failure modes: Redis down → per-process memory **split-brain**; all desks (SPX, Thermal, Vector, Largo tools) serve **divergent** snapshots. Market worker WS leader election also Redis-dependent. **Fail-open** on several paths (locks, tier pubsub). Formal dependency map not in `docs/` — informal: **Redis > Postgres > UW 2RPS** for simultaneous product blast radius.
+
+---
+
+*Batch 1+2+3: 49/54 answered. Remaining CLQs: CLQ-041–043 (commerce), CLQ-045–047 (perf/infra/testing), CLQ-051–053 (open PR/regression/autopilot), CLQ-026 (truncation probe).*
+
