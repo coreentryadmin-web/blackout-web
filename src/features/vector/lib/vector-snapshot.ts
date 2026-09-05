@@ -38,6 +38,7 @@ import {
 } from "./vector-ticker";
 import { expiriesForHorizon, type VectorDteHorizon } from "./vector-dte-horizon";
 import { getPerExpiryGexWalls } from "./vector-dte-walls-server";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
 import { VECTOR_WALL_SCOPE_REFRESH_MS, VECTOR_NON_UNIVERSE_WALL_SCOPE_REFRESH_MS } from "./vector-cadence";
 const VEX_WALLS_CACHE_MS = 8_000;
@@ -184,7 +185,7 @@ function refreshWallScope(ticker: string): void {
   const s = state(ticker);
   const now = Date.now();
   const refreshMs = wallScopeRefreshMs(ticker);
-  if (now - s.wallScope.fetchedAt < refreshMs || s.wallScopeInFlight) return;
+  if (isWsUpdatedAtFresh(s.wallScope.fetchedAt, refreshMs, now) || s.wallScopeInFlight) return;
   s.wallScopeInFlight = runWallScopeFetch(ticker);
 }
 
@@ -225,7 +226,7 @@ export async function primeVectorWallScope(ticker: string = VECTOR_DEFAULT_TICKE
   const now = Date.now();
   const refreshMs = wallScopeRefreshMs(t);
   if (
-    now - s.wallScope.fetchedAt < refreshMs &&
+    isWsUpdatedAtFresh(s.wallScope.fetchedAt, refreshMs, now) &&
     (s.fallbackStrikeTotals || s.fallbackVexStrikeTotals)
   ) {
     return;
@@ -240,7 +241,7 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   const s = state(t);
   refreshWallScope(t);
   const now = Date.now();
-  if (now - s.cachedWallsAt < WALLS_CACHE_MS) return s.cachedWalls;
+  if (isWsUpdatedAtFresh(s.cachedWallsAt, WALLS_CACHE_MS, now)) return s.cachedWalls;
 
   // Dynamic WS subscription: ANY ticker with a live gex_strike_expiry feed gets
   // the WS ladder path (5s real-time walls). The static oracle set is no longer
@@ -286,7 +287,7 @@ export function getVectorVexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   const s = state(t);
   refreshWallScope(t);
   const now = Date.now();
-  if (now - s.cachedVexWallsAt < VEX_WALLS_CACHE_MS) return s.cachedVexWalls;
+  if (isWsUpdatedAtFresh(s.cachedVexWallsAt, VEX_WALLS_CACHE_MS, now)) return s.cachedVexWalls;
   if (s.fallbackVexStrikeTotals && Object.keys(s.fallbackVexStrikeTotals).length > 0) {
     s.cachedVexWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackVexStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
@@ -442,7 +443,7 @@ export async function getVectorGammaFlip(ticker: string = VECTOR_DEFAULT_TICKER)
   const t = normalizeVectorTicker(ticker);
   const s = state(t);
   const now = Date.now();
-  if (now - s.cachedFlipAt < FLIP_CACHE_MS) return s.cachedFlip;
+  if (isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS, now)) return s.cachedFlip;
   try {
     const pos = await getGexPositioning(t);
     s.cachedFlip = pos?.flip ?? null;
@@ -673,7 +674,7 @@ export async function buildVectorStreamPayload(
   // exceeded the 1s hub tick budget, tripping the refreshInFlight guard in
   // vector-stream-hub and freezing the entire SSE frame — including spot price.
   const gammaFlip = s.cachedFlip;
-  if (Date.now() - s.cachedFlipAt >= FLIP_CACHE_MS && !s.flipRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS) && !s.flipRefreshInFlight) {
     s.flipRefreshInFlight = true;
     getGexPositioning(t)
       .then(pos => { s.cachedFlip = pos?.flip ?? null; })
@@ -682,7 +683,7 @@ export async function buildVectorStreamPayload(
   }
   const vexFlip = getVectorVexFlip(t);
   const darkPool = s.cachedDarkPool;
-  if (Date.now() - s.cachedDarkPoolAt >= DARK_POOL_LOCAL_CACHE_MS && !s.darkPoolRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedDarkPoolAt, DARK_POOL_LOCAL_CACHE_MS) && !s.darkPoolRefreshInFlight) {
     s.darkPoolRefreshInFlight = true;
     getCachedVectorDarkPoolWithAge(t)
       .then(dp => { s.cachedDarkPool = dp; })
