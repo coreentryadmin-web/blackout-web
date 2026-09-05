@@ -1,4 +1,14 @@
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+
 let lastFlowDataAt: number | null = null;
+
+/** Age in ms from a flow timestamp — null when missing or clock-skewed far future. */
+export function flowTimestampAgeMs(at: number, now = Date.now()): number | null {
+  if (!Number.isFinite(at)) return null;
+  const rawAgeMs = now - at;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return null;
+  return Math.max(0, rawAgeMs);
+}
 
 /** Mark UW flow data fresh (WS, REST ingest, or desk poll). */
 export function markFlowDataFresh(at = Date.now()): void {
@@ -31,11 +41,11 @@ export function newestFlowAgeMsFromBriefs(
     if (!Number.isFinite(t)) continue;
     if (newest == null || t > newest) newest = t;
   }
-  return newest != null ? Math.max(0, now - newest) : null;
+  return newest != null ? flowTimestampAgeMs(newest, now) : null;
 }
 
 export function flowDataAgeMs(now = Date.now()): number | null {
-  return lastFlowDataAt != null ? Math.max(0, now - lastFlowDataAt) : null;
+  return lastFlowDataAt != null ? flowTimestampAgeMs(lastFlowDataAt, now) : null;
 }
 
 /**
