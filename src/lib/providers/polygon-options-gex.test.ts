@@ -792,6 +792,113 @@ test("vanna/charm magnitudes shift with ETF dividend yield q", () => {
   assert.ok(Math.abs(vq) > Math.abs(v0), "typical ETF q raises |vanna| vs q=0 at ATM");
 });
 
+// CLQ-017 (BLACKOUT Claude<->Cursor cross-exam, 2026-09-05): GEX has a dedicated live
+// provider-vs-closed-form validator (gex-depth-validate.mjs); CHARM had neither that (Polygon's
+// snapshot greeks don't carry charm, so there is no provider ground truth to validate against over
+// the wire) nor even a cheaper, dependency-free numerical check — charmPerShare's own docstring
+// asserted a finite-difference match that no test ever checked. Adding one below is what surfaced
+// a real bug: the previously-shipped formula used the call-shaped expression for BOTH call and put
+// contracts ("type-independent... like gamma"), true only at q=0 — for a real dividend yield
+// (SPY/QQQ/IWM etc.) it understated call charm and used the outright wrong value for puts. Fixed in
+// the same change (see charmPerShare's docstring for the corrected derivation). Uses INDEPENDENT BS
+// delta implementations (not imported from production) so the comparison is two routes to one
+// number, not a tautology — the same principle gex-depth-validate.mjs was built on.
+function erf(x: number): number {
+  // Abramowitz & Stegun 7.1.26, |error| < 1.5e-7 — plenty for a 1e-4-tolerance derivative check.
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x);
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const t = 1 / (1 + p * ax);
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-ax * ax);
+  return sign * y;
+}
+function bsNormCdfIndependent(x: number): number {
+  return 0.5 * (1 + erf(x / Math.SQRT2));
+}
+function bsCallDeltaIndependent(spot: number, strike: number, t: number, sigma: number, q: number): number {
+  const d1 = (Math.log(spot / strike) + (-q + 0.5 * sigma * sigma) * t) / (sigma * Math.sqrt(t));
+  return Math.exp(-q * t) * bsNormCdfIndependent(d1);
+}
+function bsPutDeltaIndependent(spot: number, strike: number, t: number, sigma: number, q: number): number {
+  const d1 = (Math.log(spot / strike) + (-q + 0.5 * sigma * sigma) * t) / (sigma * Math.sqrt(t));
+  return Math.exp(-q * t) * (bsNormCdfIndependent(d1) - 1);
+}
+
+test("charmPerShare matches an independent finite-difference of BS delta w.r.t. time (q=0)", () => {
+  const spot = 450;
+  const strike = 455;
+  const sigma = 0.22;
+  const q = 0;
+  for (const t of [0.02, 0.08, 0.25, 0.6]) {
+    const h = t / 5000;
+    const deltaPlus = bsCallDeltaIndependent(spot, strike, t + h, sigma, q);
+    const deltaMinus = bsCallDeltaIndependent(spot, strike, t - h, sigma, q);
+    // charm = -dDelta/dT (delta DECAY as time passes, i.e. T shrinking) — see the production
+    // docstring's derivation. Central difference of Delta(T) w.r.t. increasing T, negated.
+    const charmFd = -(deltaPlus - deltaMinus) / (2 * h);
+    const charmClosedForm = __test_charmPerShare(spot, strike, t, sigma, q);
+    const tol = Math.max(1e-4, Math.abs(charmFd) * 0.01);
+    assert.ok(
+      Math.abs(charmClosedForm - charmFd) < tol,
+      `T=${t}: closed-form ${charmClosedForm} vs finite-difference ${charmFd} (tol ${tol})`
+    );
+  }
+});
+
+test("call charmPerShare matches an independent finite-difference of BS delta w.r.t. time (q>0, ETF dividend yield)", () => {
+  const spot = 450;
+  const strike = 445;
+  const t = 0.18;
+  const sigma = 0.28;
+  const q = 0.015;
+  const h = t / 5000;
+  const deltaPlus = bsCallDeltaIndependent(spot, strike, t + h, sigma, q);
+  const deltaMinus = bsCallDeltaIndependent(spot, strike, t - h, sigma, q);
+  const charmFd = -(deltaPlus - deltaMinus) / (2 * h);
+  const charmClosedForm = __test_charmPerShare(spot, strike, t, sigma, q, "call");
+  const tol = Math.max(1e-4, Math.abs(charmFd) * 0.01);
+  assert.ok(
+    Math.abs(charmClosedForm - charmFd) < tol,
+    `closed-form ${charmClosedForm} vs finite-difference ${charmFd} (tol ${tol})`
+  );
+});
+
+test("put charmPerShare matches an independent finite-difference of BS PUT delta w.r.t. time (q>0) — and DIFFERS from call charm", () => {
+  // The regression this guards: the formula this replaced used the call-shaped expression for puts
+  // too (documented as "type-independent... like gamma"), which is only true at q=0. At a real
+  // dividend yield, put charm must differ from call charm and must match its OWN delta's decay.
+  const spot = 450;
+  const strike = 445;
+  const t = 0.18;
+  const sigma = 0.28;
+  const q = 0.015;
+  const h = t / 5000;
+  const deltaPlus = bsPutDeltaIndependent(spot, strike, t + h, sigma, q);
+  const deltaMinus = bsPutDeltaIndependent(spot, strike, t - h, sigma, q);
+  const charmFd = -(deltaPlus - deltaMinus) / (2 * h);
+  const charmClosedFormPut = __test_charmPerShare(spot, strike, t, sigma, q, "put");
+  const charmClosedFormCall = __test_charmPerShare(spot, strike, t, sigma, q, "call");
+  const tol = Math.max(1e-4, Math.abs(charmFd) * 0.01);
+  assert.ok(
+    Math.abs(charmClosedFormPut - charmFd) < tol,
+    `put closed-form ${charmClosedFormPut} vs finite-difference ${charmFd} (tol ${tol})`
+  );
+  assert.notEqual(charmClosedFormPut, charmClosedFormCall, "put and call charm must diverge when q>0");
+});
+
+test("call and put charmPerShare are IDENTICAL at q=0 (backward-compatible with the pre-fix formula)", () => {
+  const spot = 450;
+  const strike = 455;
+  const t = 0.08;
+  const sigma = 0.22;
+  const callCharm = __test_charmPerShare(spot, strike, t, sigma, 0, "call");
+  const putCharm = __test_charmPerShare(spot, strike, t, sigma, 0, "put");
+  assert.equal(callCharm, putCharm);
+  // Locks in the exact pre-fix reference value (phi(d1)*d2/(2T) at r=q=0) so this fix cannot
+  // silently change behavior for the q=0 case the old formula was already correct for.
+  assert.ok(Math.abs(callCharm - -0.5147947317153562) < 1e-9, `unexpected drift: ${callCharm}`);
+});
+
 // The inner resolve must THROW (not return 0) when the yield is unavailable. That distinction is
 // the whole reason a transient Polygon blip cannot get pinned into the 1h TTL.REFERENCE cache:
 // server-cache's refreshCache writes the store only on a FULFILLED loader, so a rejection leaves
