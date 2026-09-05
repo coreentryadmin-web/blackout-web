@@ -20,6 +20,7 @@ import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } fro
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
+import { isEtExtendedWarmHours } from "../src/lib/et-market-hours.ts";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -357,10 +358,17 @@ try {
 // ── 2b. Desk cache warm (post-deploy cold-path guard) ───────────────────────
 console.log("\n2b. Cache warmers");
 const cronSecret = resolveCronSecret();
+// Off-hours/weekend `?force=1` bypasses the cache-warmer hours gate and fans out a ~30s UW/Polygon
+// rebuild per caller. Every autopilot `validate:deploy` run was one of those callers — measured
+// 2026-09-05 (Saturday): 77 desk-warm completions in 4h from 54 distinct agent IPs. Skip the warm
+// step outside the same extended-warm window the crons themselves use; deploy smoke still covers
+// HTTP health above, and caches warm naturally on the next member hit during trading hours.
 const warmPaths = IS_STAGING
   ? ["/api/cron/desk-warm?force=1", "/api/cron/heatmap-warm?force=1", "/api/cron/zerodte-warm?force=1"]
   : ["/api/cron/desk-warm?force=1"];
-if (cronSecret) {
+if (!isEtExtendedWarmHours()) {
+  warn("Off-hours/weekend — skipping post-deploy cache warm (?force=1 would bypass hours gate)");
+} else if (cronSecret) {
   for (const warmPath of warmPaths) {
     try {
       const t0 = Date.now();
@@ -383,7 +391,7 @@ if (cronSecret) {
       warn(`${warmPath} failed: ${e.message}`);
     }
   }
-} else {
+} else if (!cronSecret) {
   warn("CRON_SECRET unset — post-deploy cache warm skipped");
 }
 
