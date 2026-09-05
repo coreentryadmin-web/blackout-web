@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:56:03.467Z",
+  "updated_at": "2026-09-05T15:02:07.137Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -321,9 +321,9 @@
   "deploy": {
     "last_main_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T14:33:49Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33972172332",
-    "last_deploy_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b"
+    "last_deploy_at": "2026-09-05T15:00:15Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
+    "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
   "open_prs": [],
   "events": [
@@ -1572,6 +1572,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:02:07.135Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:02:07.137Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cceb8101-4ca1-4feb-b2be-0eeb18417241",
+      "summary": "Work loop cycle complete. #3978 CI GREEN + ready for Claude. Deploy 33972172332 still in_progress (85627d9c). State sync pushed to cursor/autopilot-state-sync-1456 (PR create blocked by token). ops:collect 0. lifecycle GREEN weekend-skip."
     }
   ],
   "pr_activity": {
