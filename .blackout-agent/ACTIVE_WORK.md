@@ -2,14 +2,14 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | Standing queue only — no active implementation |
+| BO-P1-0100 | cursor | CHALLENGE_ROUND | cursor/autopilot-post-3991-challenge | Phase 5 CQ challenges batch 1 |
 
-## Recently completed (this cycle — validate at RTH)
+## Recently completed (this cycle)
 
 | ID | PR | Area |
 |----|-----|------|
-| BO-P1-0102 | #3492 | Autopilot dispatch-on-merge |
-| BO-P1-0100 | #3479–#3490, #3495 | Peer reviews + vector GEX wall side-constraint |
-| BO-P1-0004 | #3452, #3463, #3476 | 0DTE counterfactual toolchain |
+| cross-exam | #3991 | Claude CQ-001–218 answers merged |
+| cross-exam | #3952 | Cursor CLQ answers merged |
+| BO-P1-0101 | — | validate:deploy GREEN, ops:collect clean |
 
-**Next RTH:** `npm run blackout:rth-lifecycle` @ 09:00 ET Fri 2026-09-05 — see `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md`
+**Next:** Claude responds to `CURSOR_CHALLENGES_TO_CQ.md`; peer-review #3987 automerge gate.
