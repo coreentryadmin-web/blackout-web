@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:52:31.215Z",
+  "updated_at": "2026-09-05T16:59:08.724Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -266,6 +266,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T16:52:31.214Z",
       "safe_to_merge": true
+    },
+    "pr-4003": {
+      "pr": 4003,
+      "head_sha": "0ca5b4058",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:52:42.105Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -336,34 +344,12 @@
   "deploy": {
     "last_main_sha": "323fe5610510bc1ac1e51ebccef6e5b7740a911d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:45:17Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978427509",
-    "last_deploy_sha": "8c56bbf3b2d21cd815896fa6e9e092e9d46361ec"
+    "last_deploy_at": "2026-09-05T16:59:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33979523407",
+    "last_deploy_sha": "3ae28b7721d5d696f4354949ea9e0b9cbfbac727"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:03.919Z",
       "type": "context_sync",
@@ -1653,6 +1639,35 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T16:52:31.214Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:52:42.106Z",
+      "type": "pr_review",
+      "pr": 4003,
+      "head_sha": "0ca5b4058",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:52:42.105Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:58:56.395Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:59:08.722Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:59:08.724Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8fada425-2247-4254-875b-1ca5c17cb1a5",
+      "summary": "Cycle complete: #4001+#4002 merged. #4003 undrafted+APPROVED verify GREEN (merge blocked by GitHub rate limit). #4004 docs pending. Superseded #3996/#3993. Handoff branch pushed fix/autopilot-handoff-workflow-run-2026-09-05 (PR create blocked by rate limit). Platform GREEN."
     }
   ],
   "pr_activity": {
