@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:49:42.513Z",
+  "updated_at": "2026-09-05T12:50:01.118Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -1493,6 +1493,19 @@
       "agent": "cursor",
       "run_id": "c722b541-e92d-4af2-ace2-89507f092c96",
       "summary": "Post-#3955 merge cycle: main@3000a90c4, 0 open PRs. All standing verify GREEN. Pattern scan clean. ECR deploy pending@5e67e18c."
+    },
+    {
+      "at": "2026-09-05T12:50:01.117Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:50:01.118Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3f4d1063-7033-4e10-884f-882fca172f97",
+      "summary": "Cycle complete post-#3955. main@3000a90c4. All standing verify GREEN (deploy, ops, api-auth, platform-integrity 14/14, SEO 22/22, RTH lifecycle weekend-skip). Pattern scan clean. 0 open PRs. State sync pushed to cursor/autopilot-state-sync-post-3955 — PR create blocked by GitHub API rate limit (user 284440397). ECR deploy pending@5e67e18c (serialized rollout, known infra)."
     }
   ],
   "pr_activity": {
