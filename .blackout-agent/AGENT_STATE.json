@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T11:08:19.772Z",
+  "updated_at": "2026-09-05T11:47:35.904Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T11:38:35.435Z",
+      "lease_until": "2026-09-05T13:15:10.430Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "0cb4b512-a39e-4b97-9638-a751f937f6a4",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -248,7 +248,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6ab35e6816e05fb1c523006c4d01a103ddae9640",
+    "last_main_sha": "4433d215c6e558531790b0f3c3f5edae6dd87d89",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T10:36:36Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
@@ -1325,6 +1325,68 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:42:58.603Z",
+      "type": "pr_webhook",
+      "pr": 3947,
+      "event": "sweep",
+      "head": "3e62fc402534446bcdc0bba04684276fc7bee892",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T11:43:00.324Z",
+      "type": "pr_webhook",
+      "pr": 3945,
+      "event": "sweep",
+      "head": "56cd87370c22860e29443b60247fba881019ebbf",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T11:45:10.429Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:45:10.721Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:45:11.042Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:47:35.904Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3947": {
+      "last_event": "sweep",
+      "last_head": "3e62fc402534446bcdc0bba04684276fc7bee892",
+      "last_feedback_at": "2026-09-05T11:42:58.602Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3945": {
+      "last_event": "sweep",
+      "last_head": "56cd87370c22860e29443b60247fba881019ebbf",
+      "last_feedback_at": "2026-09-05T11:43:00.324Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
