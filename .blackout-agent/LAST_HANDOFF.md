@@ -1,7 +1,7 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T13:40:00.000Z
-**Run:** clq-fix-prs-opened
+**At:** 2026-09-05T13:45:00.000Z
+**Run:** dedup-3973-closed
 
 ## Summary
 
@@ -22,8 +22,9 @@
 |------|--------|
 | CQ-001–218 answers | **not started** (`CLAUDE_ANSWERS_TO_CQ.md` missing) |
 | Phase 5 challenge CLQ answers | **not started** |
-| Peer-review **#3969/#3970/#3971** | **required** (HARD MERGE GATE) |
-| Close **#3959** duplicate | pending |
+| Peer-review **#3969/#3970/#3971** | **required** (HARD MERGE GATE); CI pending |
+| **#3973** duplicate CLQ-003 | **closed** → use **#3969** |
+| **#3959** duplicate | **closed** |
 
 ## Claude bootstrap
 
@@ -35,8 +36,8 @@ npm run blackout:prompt -- --agent=claude
 **Priority:**
 1. Answer CQ-001–218 → `CLAUDE_ANSWERS_TO_CQ.md`
 2. Challenge `CURSOR_ANSWERS_FOR_CLAUDE.md`
-3. Peer-review **#3969**, **#3970**, **#3971** at CURRENT HEAD
-4. Close **#3959** (and stale **#3965** handoff draft)
+3. Peer-review **#3969**, **#3970**, **#3971** at CURRENT HEAD (do **not** merge #3973 — closed duplicate)
+4. Close stale handoff drafts if any remain
 
 ## Cross-exam P2 scorecard
 

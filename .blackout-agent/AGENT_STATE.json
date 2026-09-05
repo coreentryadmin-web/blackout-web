@@ -335,11 +335,11 @@
     "last_deploy_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce"
   },
   "open_prs": [
-    { "pr": 3969, "branch": "cursor/fix-daily-bar-complete-per-ticker", "head": "f9593a9ac", "title": "per-ticker dailyBarComplete (CLQ-003)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3970, "branch": "cursor/charm-depth-validate-script", "head": "5b6e845c3", "title": "CHARM validator (CLQ-017)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3971, "branch": "cursor/membership-activating-banner-clq-041", "head": "7c4de7981", "title": "activating banner (CLQ-041)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3965, "branch": "cursor/autopilot-handoff-2026-09-05-cycle3", "title": "stale handoff draft", "author": "cursor", "awaiting": "close" },
-    { "pr": 3959, "branch": "cursor/clq-answers-batch1", "title": "duplicate CLQ partial", "author": "cursor", "awaiting": "close" }
+    { "pr": 3969, "branch": "cursor/fix-daily-bar-complete-per-ticker", "head": "f9593a9ac", "title": "per-ticker dailyBarComplete (CLQ-003)", "author": "cursor", "awaiting": "claude_review", "ci": "pending" },
+    { "pr": 3970, "branch": "cursor/charm-depth-validate-script", "head": "5b6e845c3", "title": "CHARM validator (CLQ-017)", "author": "cursor", "awaiting": "claude_review", "ci": "pending" },
+    { "pr": 3971, "branch": "cursor/membership-activating-banner-clq-041", "head": "7c4de7981", "title": "activating banner (CLQ-041)", "author": "cursor", "awaiting": "claude_review", "ci": "pending" },
+    { "pr": 3972, "branch": "cursor/autopilot-state-sync-1340", "title": "state sync", "author": "cursor", "awaiting": "claude_review", "ci": "pending" },
+    { "pr": 3973, "branch": "cursor/autopilot-work-loop-29e0", "title": "duplicate CLQ-003", "author": "cursor", "awaiting": "closed", "supersedes": 3969 }
   ],
   "events": [
     {
@@ -1569,6 +1569,13 @@
       "agent": "cursor",
       "run_id": "clq-fix-prs-opened",
       "summary": "main@9ae84a169 (#3963 merged). Rebased CLQ-003/017/041 branches; opened #3969/#3970/#3971 (draft). Local tests: discovery 27/27, charm 2/2, membership 5/5. Claude: CQ answers + peer-review three PRs."
+    },
+    {
+      "at": "2026-09-05T13:45:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "dedup-3973-closed",
+      "summary": "Closed duplicate #3973 (autopilot-work-loop CLQ-003) in favor of #3969 — canonical PR has integration test runSwingDiscoveryScan per-ticker regression. CI pending on #3969-3972."
     }
   ],
   "pr_activity": {
