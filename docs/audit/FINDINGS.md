@@ -4,6 +4,774 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-09-05 — [P2, data-correctness] `ThermalCompareStrip` raw `change_pct` not rebased on live push — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in PR (this branch) |
+|---|---|
+| **Severity** | P2 — compare-strip % change disagreed with main Thermal desk after session rebase |
+| **Root cause** | `ThermalCompareStrip.tsx` used `data?.change_pct` directly while sibling surfaces (`GexHeatmap`, `ThermalTripleDesk`) rebase via `rebaseChangePct` when live push spot diverges from matrix snapshot |
+| **Fix** | Wire `useLiveQuoteStream` + `rebaseChangePct` in `CompareCard`, mirroring `ThermalTripleDesk` column headers |
+| **Evidence** | `ThermalCompareStrip-header-change-pct.test.ts` (source-scan regression); cross-exam CLQ-018 |
+
+# 2026-09-05-swing-mark-asof-sse-tier-recheck.md
+
+## Swing Q40/Q41 — live mark freshness + SSE tier revocation
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Priority** | P1 |
+| **Area** | Night Hawk Swing desk + premium SSE streams |
+| **PR** | #3895 |
+
+### Root cause
+
+**Q41:** `/api/market/zerodte/marks/stream` and `/api/market/vector/stream` checked tier/tool access only at connection open. A member whose Whop subscription lapsed mid-session kept receiving live swing + 0DTE P&L until the tab closed, even though `publishTierChanged` had evicted their cached tier.
+
+**Q40:** `swing_positions.last_mark_at` and manage-snapshot `quote.asOf` were persisted but dropped in `livePlayFromSwingPosition` → `HorizonDeck` → `terminalPlayFromHorizon`, so swing rows depended on incidental 0DTE SSE coverage for staleness UI.
+
+### Fix
+
+- `recheckSseUserEntitlement()` on every user SSE tick (cron streams unchanged).
+- `HorizonPlay.markAsOf` wired from `last_mark_at` with `quote.asOf` fallback; passed through `containers.tsx`.
+
+### Evidence
+
+- `npx tsx --test src/lib/sse-stream-entitlement.test.ts`
+- `npx tsx --test src/lib/swing/live-plays.test.ts` (Q40 cases)
+
+### RTH validation
+
+- Open `/nighthawk` Swing lane with an OPEN position — detail terminal should show STALE chip when `last_mark_at` is old (without relying on 0DTE SSE).
+- Tier revocation: cancel test member mid-session → SSE stream should close within one tick; REST poll already 403s.
+
+# 2026-09-05-swing-evidence-only-terminal-guard.md
+
+## Swing Q36 — stale refresh mutates closed positions
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Priority** | P1 |
+| **Area** | swing-active-refresh evidence-only path |
+| **PR** | (this branch) |
+
+### Root cause
+
+`updateSwingLiveState` updated `last_mark`/peak/trough/MFE on `WHERE id = $1` only — status CASE froze terminal status but still overwrote mark columns. `applyEvidenceOnly` appended snapshots before latching, so a stale overlapping pass could write HOLD evidence onto an already-graded CLOSED/ROLLED row.
+
+### Fix
+
+- `updateSwingLiveState` returns rowcount and adds `AND status NOT IN ('CLOSED','ROLLED')` to WHERE.
+- `applyEvidenceOnly` latches live state first; skips snapshot append when rowcount is 0.
+
+### Evidence
+
+- `npx tsx --test src/lib/swing/manage-sync-q36.test.ts`
+- `npx tsx --test src/lib/db-swing-ledger.test.ts` (Q36 WHERE assertion)
+
+# 2026-09-05-swing-active-refresh-roll-close-race.md
+
+## Swing Q37 — overlapping active-refresh passes race ROLL vs CLOSE
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED (partial — singleton claim + execution revalidation) |
+| **Priority** | P1 |
+| **Area** | swing-active-refresh cron / manage-sync roll executor |
+| **PR** | (this branch) |
+
+### Root cause
+
+Two overlapping `swing-active-refresh` background passes could read the same OPEN row at different times, reach opposing verdicts (ROLL vs CLOSE), and whichever `gradeParent` committed first won — with no cross-invocation arbitration that CLOSE must beat ROLL when the structural stop has broken.
+
+### Fix
+
+1. **Singleton Redis claim** (`swing:active-refresh:running`) — second pass skips while the first is in flight.
+2. **`executionVerdictForGating`** — at roll execution time, re-check structural stop with the tick's underlying price; force CLOSE-not-ROLL if broken after async chain fetch.
+
+### Evidence
+
+- `npx tsx --test src/lib/swing/active-refresh-claim.test.ts src/lib/swing/manage-sync-q37.test.ts`
+- `npx tsx --test src/app/api/cron/swing-active-refresh/route.test.ts`
+
+### Remaining scope
+
+Per-position `SELECT FOR UPDATE` or advisory locks if overlapping passes are ever intentionally allowed (e.g. force recovery).
+
+## SPX desk GEX age clamped future asof → false fresh — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Area** | SPX desk / GEX freshness |
+| **Branch** | `fix/spx-desk-gex-age-future-skew` |
+
+### Root cause
+
+`gexDataAgeMs()` and the canonical desk GEX snapshot path computed `Math.max(0, Date.now() - asofMs)` before calling `gexStaleFromAge()`. A clock-skewed future `pos.asof` became `gex_age_ms: 0`, which `gexStaleFromAge(0)` treats as fresh — even though the helper already fail-closes on raw negative age beyond `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`.
+
+### Fix
+
+Remove the `Math.max(0, …)` clamp at both sites so future-skewed stamps reach `gexStaleFromAge` as negative age.
+
+### Evidence
+
+- Source-scan regression: `spx-desk-gex-age-freshness.test.ts`
+- Existing unit: `gexStaleFromAge(-60_000) → true` in `spx-desk-rounding-stale.test.ts`
+
+### Blast radius
+
+SPX desk GEX stale pill and `gex_age_ms` on canonical + sticky fallback paths only. Display may show negative age ms during skew (honest); stale pill fires correctly.
+
+## 2026-09-05 — [FINDING, P2 performance, cron] Two more unconditional `desk-warm?force=1` callers found and gated — the #4013/#4017 storm continued post-deploy at ~73% of its original rate through them — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **What prompted this** | Follow-up verification of #4017 (which gated `validate-deploy.mjs`'s `?force=1` desk-warm calls to the same weekday 4 AM–8 PM ET window production warmers use, in response to the #4013 finding — 182 bypass events / 4h from 54 distinct IPs on a Saturday). Confirmed via ECS (`describe_services`) that #4017's fix genuinely deployed and was fully live (task-def 1304, 8/8 tasks, ~18:05–18:32 UTC) — but `grep`ing CloudWatch Logs for the same `"force=1 bypassed the hours gate for 'desk-warm'"` line during that fully-live window still showed **15 bypass events in 27 minutes from 10 distinct IPs** — a real reduction from the ~0.76/min baseline to ~0.56/min (about 73% of the original rate), but nowhere near resolved. |
+| **Root cause — two more real, unconditional callers** | The original #4013 write-up named `site-latency-audit.mjs`, `latency-burst-audit.mjs`, and `compare-latency-envs.mjs` as candidates without individually verifying them (Cursor's review separately named three DIFFERENT scripts that turned out to be false leads — corrected in a PR comment on #4013). This pass actually checked all three real candidates: `site-latency-audit.mjs`'s only `desk-warm?force=1` call is inside `stagingForceWarmCrons()`, itself gated behind `IS_STAGING && STAGING_CRON_WARM==="1"` — dead against production since staging was decommissioned 2026-07-25, correctly ruled out. But `latency-burst-audit.mjs`'s `warm()` (called unconditionally from `main()`) and `compare-latency-envs.mjs`'s `warmCaches()` (called unconditionally from `runEnv()`) both hit `/api/cron/desk-warm?force=1` (+ `heatmap-warm`/`zerodte-warm`) with **zero hours/weekday gate** — confirmed by direct read, no staging conditional, no time check anywhere in either file. |
+| **Fix** | Reused the exact `isDeployCacheWarmAllowed()` gate #4017 introduced (`scripts/lib/cache-warm-deploy-gate.mjs`, already fully unit-tested — weekday check via `Intl.DateTimeFormat` in `America/New_York`, matches `isEtExtendedWarmHours`'s own weekday 4 AM–8 PM ET window). `latency-burst-audit.mjs`'s `warm()` now checks the gate before its force=1 loop (warns and skips if outside the window); `compare-latency-envs.mjs`'s `warmCaches()` does the same (logs and returns early). Zero new logic invented — same tested primitive, same pattern, same window. |
+| **Blast radius** | Two files, one function each. Neither script's non-force-warm behavior (the actual latency probing against `PATHS`) is touched — only the force=1 cache-warm pre-step is gated. Both scripts remain fully functional inside the legitimate weekday window; outside it they skip the warm step and proceed straight to probing (cold-cache numbers off-hours, which is arguably more honest for a latency audit run off-hours anyway). |
+| **Regression guard** | New `scripts/latency-scripts-desk-warm-gate.test.mjs`: source-scan pins (matching this repo's established convention for wiring checks, since `isDeployCacheWarmAllowed`'s own behavior is already fully covered by `cache-warm-deploy-gate.test.mjs`) confirming both scripts import the gate and call it before their respective force=1 dispatch. Confirmed RED pre-fix (`git stash` the two source files, keep the test: 2/2 fail) and GREEN post-fix (2/2 pass; 7/7 combined with the existing gate tests). |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2). `node --import tsx --test scripts/latency-scripts-desk-warm-gate.test.mjs scripts/lib/cache-warm-deploy-gate.test.mjs`: 7/7 pass. |
+| **Still open** | Whether these two scripts alone account for the remaining ~27% reduction gap, or whether other unidentified callers persist, is not yet re-measured post-this-fix — worth a follow-up CloudWatch check once this deploys, same method as the #4013/#4017 verification above. |
+
+## 2026-09-05 — [FINDING, P4 correctness, Largo] `isMemoryFresh` had no future-timestamp guard — dormant today, would have been live-exploitable once Phase 4b's cross-turn persistence ships — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Found by** | DISCOVERY lane, sweeping Largo/BIE for the same naive `Date.now() - t` freshness-check bug shape this session already fixed 20+ times across Helix/Thermal/Meridian/SPX Slayer/Vector/cron-freshness helpers (`isWsUpdatedAtFresh`, `src/lib/ws/timestamp-freshness.ts`). Grepped `Date.now() -\|getTime() -` across `src/lib/largo/` and `src/lib/bie/`; most hits were either duration logging (harmless) or already correctly guarded (`bie/full-platform-loader.ts`'s `isFresh`, `bie/vector-full-state.ts`'s `Math.max(0, …)` clamp, `bie/scenario-read.ts`'s `freshnessFromAgeMs` which already treats negative age as `"unknown"`) — `conversation-memory.ts`'s `isMemoryFresh` was the one genuine miss. |
+| **Root cause** | `isMemoryFresh(memory, maxAgeSeconds = 300)` computed `ageSeconds = (Date.now() - memory.lastUpdated.getTime()) / 1000` and returned `ageSeconds < maxAgeSeconds` with no guard against a future `lastUpdated`. A future timestamp produces a negative `ageSeconds`, which trivially satisfies `< maxAgeSeconds` — the exact bug shape `isWsUpdatedAtFresh` exists to close everywhere else in the repo. |
+| **Why this is P4, not higher — current reachability** | `largo-terminal.ts`'s own comment is explicit: *"Initialize conversation memory — tracks ticker/consensus/regime/levels within this turn. Multi-turn persistence deferred to Phase 4b (requires sessionMetadata schema extension)."* Every turn calls `initializeMemory()` fresh (confirmed: `isMemoryFresh`'s only call site outside its own tests is `suggestTickerFromQuestion`, `conversation-memory.ts:223`, always fed a same-request, same-process `lastUpdated` stamped moments earlier) — so `lastUpdated` cannot currently be stale, let alone future-dated, and this branch is effectively unreachable in production today. This is **not** a live bug; it is a latent defect in code that will become reachable the moment Phase 4b wires real cross-turn/cross-request persistence (at which point `lastUpdated` crosses a request boundary and, per this session's own repeated finding, becomes exactly the kind of cross-process timestamp that needs the guard). Fixing it now — cheap, self-contained, zero current behavior change — means Phase 4b doesn't quietly reintroduce a bug class this repo has already spent a full session hunting down and closing everywhere else. |
+| **Evidence** | New test `isMemoryFresh does not treat a clock-skewed future lastUpdated as infinitely fresh` (`conversation-memory.test.ts`): confirmed RED pre-fix (`memory.lastUpdated = new Date(Date.now() + 60_000)` → `isMemoryFresh(memory)` returned `true`, asserted `false`; 24 pass / 1 fail). Confirmed GREEN post-fix (25/25). |
+| **Fix** | Imported `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` from the existing shared constant (`src/lib/ws/timestamp-freshness.ts`, already reused by `bie/full-platform-loader.ts` for this exact purpose) rather than inventing a second tolerance value. `isMemoryFresh` now rejects any `lastUpdated` more than the tolerance ahead of `now` and clamps the age at zero before the `maxAgeSeconds` comparison — same pattern as every sibling fix this session. |
+| **Blast radius** | One function, one file (`src/lib/largo/conversation-memory.ts`). No behavior change to any current caller (Phase 4b isn't built yet), no schedule/threshold/API change. |
+| **Deliberately not done** | Did not build out Phase 4b's cross-turn persistence itself — out of scope for a DISCOVERY-lane fix, and a real feature the Largo lane owns. This fix only ensures the freshness *check* Phase 4b will rely on is already correct when that lands, rather than leaving a second future rediscovery of the same bug class. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2). `npx tsx --test src/lib/largo/conversation-memory.test.ts`: 25/25 pass. Full `npm test` run alongside PR. |
+
+## Desk enrichment UW fan-out missing background sweep tag — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Area** | SPX desk / UW rate limiter |
+| **Branch** | `fix/desk-enrichment-uw-sweep` |
+
+### Root cause
+
+`fetchDeskEnrichmentFields()` in `spx-desk.ts` fans out to five UW REST endpoints via `runUwPooled`, but was not tagged with `runWithBackgroundUwSweep`. Desk-touching crons (`spx-evaluate`, `spx-signal-observe`, `market-regime-detector`, `data-correctness`) call `loadMergedSpxDesk()` which can trigger `scheduleDeskEnrichmentRefresh()` on a stale sticky — consuming UW concurrency without reserving a background slot, unlike `desk-warm` which already wraps the same path.
+
+### Fix
+
+Wrap `fetchDeskEnrichmentFields` body in `runWithBackgroundUwSweep` at the single fan-out site so all callers inherit the tag.
+
+### Evidence
+
+- Source-scan regression: `spx-desk-enrichment-uw-sweep.test.ts` (2 tests, RED pre-fix / GREEN post-fix)
+- Pattern scan 2026-09-05 hourly wake
+
+### Blast radius
+
+All desk enrichment refresh paths (async sticky refresh + `prefetchSpxDeskEnrichment` from desk-warm). Nested inside desk-warm's existing sweep tag — AsyncLocalStorage is idempotent.
+
+## Cluster index spot change_pct served without open_source guard — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (#3837, merged) |
+|------------|-------------------|
+| **Severity** | P1 — wrong day-change% on GEX/Thermal when web replica reads Redis cluster snapshot |
+| **Area** | `readClusterIndexSpot` → `resolveSpotSnapshot` redis_cluster path |
+
+### Root cause
+
+`readClusterIndexSpot()` returned `change_pct` from `spx:pulse:snapshot` whenever finite, without checking `open_source`. Sibling paths (`liveWsIndexSpot`, SPX desk merge) already null change% when anchor is `ws-bar`. Web-tier GEX cache readers hitting the cluster fallback could show live price + session-open–anchored change%.
+
+### Fix
+
+`clusterIndexSpotChangePct()` — only returns change% when `open_source === "rest"`. Wired in `readClusterIndexSpot`.
+
+### Validate at RTH
+
+Thermal SPX matrix header change% vs SPX desk pulse on a cold web replica (or force cluster path) — both should agree or show honest absence, never diverge on anchor basis.
+
+## Thermal/GEX CHARM: shipped formula used the call-shaped expression for BOTH call and put contracts — wrong whenever the dividend yield is nonzero
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Severity** | P2 (a heatmap-metric magnitude/sign defect, not a member-facing outage) |
+
+### What was broken
+
+`charmPerShare` (`src/lib/providers/polygon-options-gex.ts`) computed net dealer dollar-CHARM for
+Thermal's GEX heatmap using a single closed-form expression applied identically to call and put
+contracts, documented as "type-independent... like gamma". That is only true when the dividend
+yield `q = 0`. The formula itself was also missing the dividend-yield-dependent term of the full
+Black-Scholes charm derivative (the `q·N(d1)` / `q·e^(−qT)` terms that arise from differentiating
+the `e^(−qT)` discount factor in `Delta(T) = e^(−qT)·N(d1(T))`), so even the call side was subtly
+wrong whenever `q > 0`.
+
+Real-world impact: this codebase already flags SPY/QQQ/IWM as carrying a material dividend yield
+for GEX purposes (`gex-depth-validate.mjs`'s docstring: raw BS-vs-provider gamma gaps of 9.5%
+(SPY), 15.8% (QQQ), 21.7% (IWM) — attributed to the dividend yield the `r=q=0` closed form doesn't
+model). CHARM uses the exact same `q` input (`dividendYieldQ`), so the same tickers were affected.
+
+### Why CLQ-017 (the question that surfaced this) matters as a process point
+
+CLQ-017 (BLACKOUT Claude↔Cursor cross-exam, 2026-09-05) asked whether CHARM had ever been
+validated against a ground truth the way GEX was (`gex-depth-validate.mjs`). Cursor's answer:
+**PROVEN gap** — locally-computed BS charm, no validator of any kind. Polygon's option-chain
+snapshot greeks do not carry charm, so there is no live provider number to check against (unlike
+GEX, where the provider's own gamma is the ground truth `gex-depth-validate.mjs` compares to).
+That ruled out a live-validator script as the fix. The cheaper, still-real alternative — an
+independent finite-difference check of the closed-form formula against numerical differentiation
+of its own Delta(T) — is what this PR adds as a permanent regression test, and running it against
+the *existing* formula (before writing any fix) is what surfaced the actual bug: a q=0.015, T=0.18y
+test case showed the shipped call formula reading 0.0631 against a finite-difference of 0.0711 (an
+~11% understatement), and the put case diverged further since the shipped code used the SAME value
+for puts that should differ once q≠0.
+
+### Evidence
+
+`src/lib/providers/polygon-options-gex.test.ts` — two new tests directly reproduce the bug via an
+INDEPENDENT (not imported from production) Black-Scholes delta implementation, finite-differenced
+w.r.t. time-to-expiry:
+- Against the OLD formula (verified by temporarily reverting the `.ts` fix while keeping the new
+  tests — RED): call-side test failed (0.0631 vs finite-difference 0.0711), put-side test failed
+  the same way. 66/68 pass, 2/68 fail.
+- Against the FIXED formula — GREEN, 68/68 pass, including a locked-in q=0 regression value
+  (`-0.5147947317153562` for spot=450/strike=455/T=0.08/σ=0.22) proving the fix reproduces the old
+  formula's output byte-for-byte at q=0, where the old formula was already correct.
+
+### Root cause
+
+For a call, `Delta(T) = e^(−qT)·N(d1(T))`. Charm is `−dDelta/dT`. Differentiating through BOTH the
+`e^(−qT)` discount factor and `d1(T)` gives:
+```
+charm_call = e^(−qT) · ( q·N(d1) − φ(d1)·d1' ),  d1' = (σ²/2 − q)/(σ√T) − d1/(2T)   [r=0]
+```
+For a put, `Delta_put(T) = e^(−qT)·(N(d1)−1) = Delta_call(T) − e^(−qT)`, so:
+```
+charm_put = charm_call − q·e^(−qT)
+```
+At `q=0` both collapse to the exact same value the shipped formula already computed correctly
+(hence the byte-identical regression value above) — the bug only manifests for `q > 0`.
+
+### Fix
+
+`charmPerShare` now takes a `type: "call" | "put" = "call"` parameter and implements the full
+dividend-yield-correct formula above (added a local `normCdf`, mirroring `gex-depth.ts`'s existing
+duplicated Zelen–Severo approximation rather than importing across modules). The single call site
+in `polygon-options-gex.ts`'s heatmap accumulation now passes the contract's own `type` through
+instead of relying on a shared "type-independent" value. Both formulas are numerically verified
+against independent finite-difference derivatives to ~1e-6 relative across S/K/T/σ/q test points.
+
+### Blast radius
+
+One function, one call site (`charmPerShare` is only invoked in the CHARM accumulation branch of
+the heatmap builder — confirmed via grep, no other caller). `vannaPerShare` (VEX) was checked for
+the same class of bug: VEX's magnitude is genuinely type-independent even at `q>0` (vanna is
+`∂²V/∂S∂σ`, which does not involve the `e^(−qT)` discount factor's time-derivative the way charm's
+does), so it was left unchanged — confirmed by the existing `vannaPerShare` docstring's derivation
+and by this PR NOT touching it.
+
+### Fix rationale — why not also revisit the "type-independent" comment pattern elsewhere
+
+Gamma genuinely IS type-independent regardless of `q` (gamma is `∂²V/∂S²`, and the dividend
+discount factor's effect on gamma is a spot-scaling, not a call/put asymmetry) — that comment
+pattern on `gammaPerShare`/the GEX accumulation path is correct as-is and was not touched.
+
+## 2026-09-05 — [P1, infra] Autopilot open-PR sync blind when GitHub PAT+GraphQL rate-limited — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 — agent state reported `open_prs: 0` while 4 drafts awaited peer review |
+| **Root cause** | `sync-context.mjs` used only authenticated `gh pr list` / `gh api`. When user PAT 284440397 exhausts its shared REST+GraphQL budget, both paths return null and agent state goes empty. |
+| **Fix** | PR #4026 extended: `fetchOpenPrsViaPublicApi()` unauthenticated `fetch()` to `api.github.com/repos/{repo}/pulls` after authenticated paths fail; `fetchOpenPrsAsync()` wired into `syncContext()`. Empty-but-successful GraphQL `[]` still short-circuits without burning public budget. |
+| **Evidence** | Live session: `gh api` 403 rate limit; unauthenticated curl returned 4 PRs; post-fix `sync-context.mjs` reports `open_prs: 4`. |
+| **Status** | FIXED — #4026 |
+
+## 2026-09-04 — [FINDING, P3 member-facing UI, Vector chart / SPX Slayer] Volume-profile POC/VAH/VAL labels are drawn flush against the price axis with no collision awareness — a native price-line axis label (Pin, Gamma flip, VWAP, spot, EMA…) painted on top makes the level label unreadable whenever the two price levels land close together
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED — PR #3591 merged (commit c946460d3) relocated labels from right-edge anchor (`rightX - 6`) to left-edge anchor (`gutterLeft + LABEL_INSET_PX = 4`), eliminating collision with price-line axis badges. |
+| **Found by** | Live-UI sweep (proxy-browser.cjs + pixel measurement), SPX Slayer desk, per the standing FULL-LIFECYCLE SCOPE EXPANSION mandate's live-UI coverage. This is the Vector-chart-embed follow-up the previous cycle flagged (Thermal/SPX Slayer/Largo had not yet had the CSS-overlap sweep Vector/Night Hawk/Helix/Meridian already got). |
+| **Evidence** | `proxy-browser.cjs` capture of `/dashboard` (SPX Slayer desk — embeds the shared Vector chart component) at 430x932, fresh temp Clerk premium session (deleted after). Cropped + 2x-zoomed the chart's right-edge price-axis region (`sharp` extract, no downsampling artifacts): the light-gray "POC" (Point of Control) volume-profile level label is almost entirely painted over by the orange "Pin 7,746" native price-line axis-label badge sitting directly on top of it — only a sliver of the gray label box and no legible "POC" text survives; the axis label itself reads correctly ("Pin 7,746" / "7745.54"). Screenshot evidence (not DOM `getBoundingClientRect` — this is `<canvas>` content, not the DOM, so pixel inspection is the correct evidence class here, unlike the CSS-flexbox false positives caught elsewhere this session on Thermal's kicker text, which WAS a DOM element and WAS correctly disproven by `getBoundingClientRect`). Reproducible whenever the EOD pin projection price and the session's volume-profile POC/VAH/VAL happen to land within roughly one label-height of each other in price-space — not a permanent state, but not rare either: both are independently-computed price levels with no coordination, so on any given session they can land arbitrarily close. |
+| **Root cause** | Two independent, uncoordinated label-rendering systems share the same real estate at the right edge of the price pane: (1) **native lightweight-charts price-line axis labels** — `applyPinProjection()` (`src/features/vector/components/VectorChart.tsx:845-877`) creates a `series.createPriceLine({ axisLabelVisible: true, lineVisible: false, title: "Pin ${price}" })`; the same pattern is used for gamma-flip, EMA bands, spot, VWAP, etc. elsewhere in the same file. Lightweight-charts renders these as opaque colored rounded-rect badges in its own top overlay layer, and the badge's colored box extends leftward from the axis edge into the pane (confirmed visually — "Gamma flip 7762" renders as a ~180px-wide badge, not a small axis tab). (2) **The custom `VolumeProfilePrimitive` canvas layer** (`src/features/vector/lib/vector-volume-profile-primitive.ts`) draws its own POC/VAH/VAL text labels via `ctx.fillText(lvl.label, rightX - 6, lvl.y)` where `rightX = paneWidthPx - rightPadPx` (`vector-volume-profile-layout.ts`'s `volumeProfileGutter()`, `rightPadPx` is 2px) — i.e. hugging the *very* right edge of the pane, directly under where axis-label badges sit. Because (1) is a separate, always-on-top rendering layer that lightweight-charts itself controls, and (2) is drawn with zero awareness of what price-line labels are currently active or where their badges land, any vertical proximity between an axis-label's price and a POC/VAH/VAL price is guaranteed to produce this exact collision — there is no existing mechanism (nudge, suppress, or reposition) to prevent it. This is a distinct root cause from the 2026-08-26 volume-profile fix already in the file's history (`VECTOR_VP_MAX_BAND_PX`, capping how far LEFT the bars extend) — that fix addressed the profile's horizontal footprint eating into the candle area; this defect is about the vertical collision of TEXT LABELS at the fixed right edge, which that fix did not touch and does not affect. |
+| **Blast radius** | `VolumeProfilePrimitive` is the SHARED Vector chart component (`VectorChart.tsx`), so this affects every surface that embeds it with volume-profile enabled — confirmed live on SPX Slayer (`/dashboard`); the standalone `/vector` desk and the Compare panes use the same primitive and are equally exposed whenever their own active price-lines (which differ per surface — Vector has its own set of GEX-wall/king-node price lines, not just Pin) land close to that surface's POC/VAH/VAL. Not scoped to one desk; it is a property of the shared charting primitive. |
+| **Fix rationale (why not built now)** | A correct fix needs a real design decision, not a mechanical patch: candidates include (a) querying the chart's active price lines' y-positions before drawing each volume-profile level label and nudging the label vertically or horizontally when it would collide, (b) suppressing the volume-profile label (but keeping the level LINE) when an axis badge currently occupies that y-band, or (c) moving the POC/VAH/VAL labels to a different anchor (e.g. left-aligned at the START of the profile bars, `gutterLeft` instead of `rightX`, since the profile bars themselves already reserve that horizontal band and axis labels don't reach that far left) — option (c) looks the most promising on a first read since it sidesteps the collision entirely rather than reacting to it, but changes the visual position of an existing, presumably deliberately-placed label and deserves a screenshot-reviewed follow-up rather than a blind swap. This is exactly the kind of "bigger/architecturally significant" change the standing issue-handling policy says to write up rather than build unilaterally. |
+| **Suggested next step** | A follow-up PR should prototype option (c) above (anchor POC/VAH/VAL labels at `gutterLeft` instead of `rightX - 6`) against a live capture where the collision is currently reproducing (this session's `/dashboard` capture at the time of writing has Pin≈7746 and POC in the same band), and confirm via a fresh `proxy-browser.cjs` capture that both labels are independently legible afterward, before landing it. |
+
+## 2026-09-04 — [P3, technical-SEO/conversion] Pricing's SEO description still said "six trading modules" after the catalog grew to seven — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 — acquisition-layer staleness, not a data-correctness bug. Users arriving from Google/Bing could see an outdated product count before ever reaching the (already-correct) rendered Pricing page; search/answer engines could ingest the six-product description as the canonical commercial summary. |
+| **Found by** | User report (operator) |
+| **Status** | FIXED |
+
+### Root cause
+
+`src/app/(marketing)/pricing/page.tsx` hardcoded the same stale sentence in two places:
+`publicPageMetadata()`'s `description` argument (line 11 — drives `<meta name="description">`,
+canonical-adjacent title/description, **and** OpenGraph/Twitter title+description+OG-image text,
+since `publicPageMetadata()` builds all of those from the same two strings) and `WebPageJsonLd`'s
+`description` prop (line 22 — the JSON-LD structured-data copy). Both read: *"Get BlackOut's SPX
+0DTE desk from \$49/mo, or all six trading modules plus Discord from \$199/mo."*
+
+The visible, rendered Pricing page content had already been updated to describe all 7 products
+(confirmed: `SoftwareApplicationJsonLd`'s `featureList` already derives from
+`manifestSchemaFeatureList()`, fully dynamic and already correct) — only these two hand-typed SEO
+strings were never updated when the catalog grew from six products to seven. This is the same
+"hand-duplicated copy with no link back to the manifest" pattern behind three other P3 findings
+shipped today (Vector/Thermal guide, Meridian manifest, Night Hawk nav/SEO) — `BANNED_PUBLIC_MARKETING_PHRASES`
+already banned "six modules" and "Six engines" from a prior pass, but not this exact phrase
+variant ("six trading modules"), and `pricing/page.tsx` was never added to the `PUBLIC_SURFACES`
+list that scan runs against.
+
+### Evidence
+
+`grep -rn "six trading module" src` (pre-fix) found exactly the two lines in `pricing/page.tsx`.
+RED (`git stash` on `pricing/page.tsx` + `product-manifest.ts`, tests kept applied): 1/12 tests in
+`product-manifest-consistency.test.ts` fail — the new test correctly flags the stale copy. GREEN
+after restoring: 12/12 pass. Re-ran `products.test.ts` (`manifestModulesHeadline()` still returns
+the exact pre-existing `"Seven products."` string — the refactor that introduced
+`manifestProductCountWord()` did not change its behavior), `upsell-features.test.ts`,
+`plan-matrix.test.ts`, `faq/content.test.ts`, `JsonLd.ssr.test.ts` — 35/35 pass total, no
+regression. `npx tsc --noEmit` clean. `eslint` clean on every touched file.
+
+### Fix
+
+Added `manifestProductCountWord()` to `product-manifest.ts` — a small exported helper returning
+the lowercase spelled-out word for the live product count ("seven"), falling back to the digit for
+counts without a spelled-out mapping (5/6/7/8) so a future launch can't silently print
+`"undefined"`. Refactored the pre-existing `manifestModulesHeadline()` to build its sentence from
+this same helper (verified byte-identical output via the existing `products.test.ts` assertion —
+no behavior change, pure DRY).
+
+Rewrote `pricing/page.tsx`'s description to interpolate `manifestProductCountWord()` instead of a
+hardcoded word — per the user's own recommendation, this can't go stale the same way again without
+the manifest itself changing. Both the `publicPageMetadata()` call and the `WebPageJsonLd` call now
+read from one shared `PRICING_DESCRIPTION` constant (previously two independently-typed copies of
+the same string) so they can't drift from each other either.
+
+Added `"six trading modules"` to `BANNED_PUBLIC_MARKETING_PHRASES` and `pricing/page.tsx` to the
+`product-manifest-consistency.test.ts` `PUBLIC_SURFACES` scan list, plus a dedicated test asserting
+the page's source references `manifestProductCountWord()` (not a literal count) and contains no
+stray "six".
+
+### Blast radius
+
+Two files: `product-manifest.ts` (one new helper, one banned phrase, one refactored function with
+verified-identical output) and `pricing/page.tsx` (one shared description constant replacing two
+duplicated hardcoded strings). Because `publicPageMetadata()` builds `<title>`, `<meta
+name="description">`, canonical URL, OpenGraph (title/description/url/image), and Twitter
+(title/description/image) all from the same two arguments, this single fix corrects every one of
+those surfaces at once — verified by reading `publicPageMetadata()`'s implementation directly
+(`src/lib/page-metadata.ts`), not assumed.
+
+### Fix rationale
+
+Derive from the manifest rather than hand-type "seven" — the user's own recommendation, and
+consistent with how every other product-count-dependent string in this codebase already works
+(`manifestPremiumIncludes().length`, `manifestModulesHeadline()`, `manifestSchemaFeatureList()`).
+A hardcoded "seven" would only move the staleness bug to the next product launch instead of fixing
+its root cause (no link back to what actually ships).
+
+### What was deliberately left unchanged
+
+**Did not request a Search Console/Bing Webmaster Tools recrawl** — that's a live, post-deploy
+operational action (the fix has to actually ship to production first), not something to do from a
+PR. Noting it here so whoever validates this fix at the next market-open pass remembers the
+verification step the user specifically asked for: confirm the *rendered* HTML (not just source)
+carries the corrected description, then request a recrawl and verify the refreshed SERP snippet
+once Google/Bing re-index. Did not audit every other marketing page for a similar hand-typed
+product count beyond what `BANNED_PUBLIC_MARKETING_PHRASES` already covers (`about/page.tsx` was
+already covered by an earlier fix today) — a broader page-by-page SEO metadata audit is a
+reasonable next sweep but out of scope for this specific P3.
+
+# 2026-09-04-platform-integrity-clerk-auth.md
+
+## Platform integrity probe false-WARNs on tier-gated desk routes
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Priority** | P2 |
+| **Area** | ops / RTH lifecycle |
+| **PR** | fix/platform-integrity-clerk-auth |
+
+### Symptom
+
+`npm run validate:platform-integrity` ran unauthenticated against prod. Tier-gated routes
+(`/api/market/gex-heatmap`, `/api/market/vector/walls`, etc.) returned 401 or empty bodies,
+producing WARN/FAIL noise in RTH lifecycle sweeps even when live desk data was healthy.
+
+### Root cause
+
+The probe documented itself as "no auth for public reads" but still asserted on premium desk
+endpoints without a Clerk session — same class of false negative as data-validator before
+Layer C auth was added.
+
+### Fix
+
+Mint a temp admin+premium Clerk session via `mintClerkPremiumSession()` (deleted in `finally`),
+pass `Cookie` on tier-gated fetches, and assert vector walls by `callWalls`/`putWalls` counts
+instead of a missing top-level `spot` field.
+
+### Evidence
+
+Live run post-fix: **14 pass, 0 warn, 0 fail** @ `https://blackouttrades.com` (2026-09-04 off-hours).
+
+## 2026-09-04 — [P3, IA/onboarding] Learn hub still described Night Hawk as evening-only after the 0DTE Command redesign — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 — stale onboarding/navigation copy, not a data-correctness bug. Real user-reported confusion risk: a prospective member reading `/learn` would conclude Night Hawk is an evening-only product, contradicting the homepage. |
+| **Found by** | User report (operator), independently confirmed against `src/lib/marketing/product-manifest.ts` |
+| **Status** | FIXED |
+
+### Root cause
+
+`src/lib/learn/nav.ts`'s `LEARN_NAV` array — the Learn hub's own product-navigation metadata,
+rendered as the chapter list in `LearnSidebar.tsx` and the Course JSON-LD schema — described the
+`night-hawk` chapter as:
+
+> "Evening playbook — tomorrow's setups, scored tonight."
+
+This predates the Night Hawk redesign that made **0DTE Command** (an always-on, multi-ticker
+intraday scanner running through RTH) the desk's primary workflow, with Evening Edition as the
+post-close secondary component. The live homepage already reflects this correctly —
+`PRODUCT_MANIFEST.hawk.positioning` in `src/lib/marketing/product-manifest.ts` (line 130) reads:
+
+> "0DTE Command runs during RTH as an always-on, multi-ticker intraday scanner with Cortex gates
+> on every commit. Evening Edition publishes post-close prep for the next session. One desk for
+> the full session arc — not a swing-only product."
+
+— and that file even carries an explicit standing comment (line 6): *"Never describe Night Hawk
+as swing-only."* An earlier fix already closed this exact gap in the marketing manifest (see the
+existing `product-manifest-consistency.test.ts` test `"Night Hawk manifest positions 0DTE Command
+first, not swing-only"`), but `LEARN_NAV` is a **separate, hand-authored array** — not derived
+from the manifest — so that earlier fix never reached it. The dedicated Night Hawk Academy guide
+(`src/lib/learn/guides/instruments/night-hawk.ts`) also still frames the whole chapter around
+"Evening Edition prep and pre-market confirmation" (its `description` field), consistent with the
+stale nav copy, though this fix scopes to the nav descriptor specifically as the most
+visible/first-touch surface (the one the user's report quoted verbatim).
+
+### Evidence
+
+Live comparison, same day:
+- Learn hub nav (`nav.ts:50`, before fix): "Evening playbook — tomorrow's setups, scored tonight."
+- Homepage (`product-manifest.ts:130`): "0DTE Command runs during RTH as an always-on,
+  multi-ticker intraday scanner... not a swing-only product."
+- Dedicated Night Hawk guide confirms 0DTE Command is the always-on intraday component and
+  Evening Edition is the post-close component (`night-hawk.ts` overview, `night-hawk-0dte-command-guide`
+  article in `articles.ts`).
+
+RED (`git stash` on `nav.ts` only, test kept applied): 1/12 tests in
+`product-manifest-consistency.test.ts` fail — the new nav-descriptor test correctly flags the
+stale "Evening playbook" framing. GREEN after restoring: 12/12 pass. `npx tsc --noEmit` clean.
+Also re-ran `CourseJsonLd.ssr.test.ts`, `learn-slug-404.test.ts`, `guide-faqs.test.ts` (all
+consumers of `LEARN_NAV`) — 6/6 pass, no regression.
+
+### Fix
+
+Changed `LEARN_NAV`'s `night-hawk` entry description to: "Always-on 0DTE scanner during RTH, plus
+next-session Evening Edition prep." — matching the manifest's own framing (0DTE Command first,
+Evening Edition as the secondary/next-session component).
+
+Added a regression test to `product-manifest-consistency.test.ts` (the file that already guards
+the manifest against this exact "swing-only"/evening-only regression) asserting `LEARN_NAV`'s
+night-hawk descriptor doesn't start with "Evening playbook" and mentions "0DTE" or "intraday" —
+so the manifest and the Learn nav can no longer drift apart on this claim again independently.
+
+### Blast radius
+
+Single line in `nav.ts` plus one new test. `LEARN_NAV` is read by `LearnSidebar.tsx` (chapter nav
+UI), `CourseJsonLd.ssr.test.ts`/the actual Course JSON-LD schema builder (chapter descriptions in
+structured data), and `curriculum.ts` (chapter numbering) — all inherit the corrected description
+automatically since none hardcode their own copy of it. No other product's `LEARN_NAV` entry was
+touched.
+
+### Fix rationale
+
+Match the exact framing already established and tested for the manifest ("0DTE Command runs
+during RTH... Evening Edition publishes post-close prep... not a swing-only product") rather than
+inventing new copy, so the nav descriptor and the homepage/manifest positioning stay in lockstep
+in substance, even though they remain two separate hand-authored strings (no shared source yet —
+see "what was deliberately left unchanged").
+
+### What was deliberately left unchanged
+
+Did not centralize `LEARN_NAV` descriptions into `PRODUCT_MANIFEST` itself (the user's broader
+recommendation — "centralize each product's name, tagline, capabilities and canonical guide URL
+in one product manifest consumed by Homepage, Pricing, Academy, About and SEO metadata"). That is
+a real architectural change (`LearnNavItem` and `ProductManifestEntry` have different shapes and
+different consumers — Academy chapters need `slug`/`tag` for routing that the manifest doesn't
+carry, and the manifest needs `capabilities`/`faqAnswer` the nav doesn't) worth scoping as its own
+follow-up rather than folding into a P3 copy fix; the regression test added here is the minimum
+guard against this specific class of drift recurring in the meantime. Did not touch the dedicated
+Night Hawk Academy guide's own `description` field (`guides/instruments/night-hawk.ts`) — that
+guide's body content already correctly explains both 0DTE Command and Evening Edition in detail;
+only its one-line chapter-list summary shares the same "Evening..." framing as the now-fixed nav
+descriptor, and is lower-visibility (surfaced inside the chapter page, not the top-level nav) — a
+candidate for a fast, low-risk follow-up but out of scope for this fix to keep the PR small.
+
+# 2026-09-04 — iso-age-future-guard-combined
+
+## Public GEX + Night Hawk mark age treated clock-skewed future timestamps as fresh
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | P3 |
+| **Surface** | `/api/public/gex-snapshot`, Night Hawk Legacy rail mark age, admin Night Hawk playbook health |
+| **Status** | FIXED |
+
+### Symptom
+
+Several ISO age helpers computed `Date.now() - new Date(iso)` without a future guard. `public-gex-snapshot` coerced negative age to **0 seconds** (reads as "just refreshed"). Night Hawk Legacy `legacyMarkAgeLabel` dropped only strictly-negative values. Admin Night Hawk playbook health used raw age math so future-skewed `updated_at` produced negative `ageMin`, bypassing stuck detection.
+
+### Fix
+
+- Shared `ageSecFromIso` / `ageMinFromIso` in `timestamp-freshness.ts` (reuses `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`)
+- `public-gex-snapshot.ts` + `legacy-board-detail-copy.ts` wired to `ageSecFromIso`
+- `nighthawkJobAgeMin()` in `admin-cron-health.ts` reuses `isoAgeSec` — clock-skewed timestamps return `stuckThresholdMin + 1` so stuck escalation fires
+
+### Evidence
+
+- `npx tsx --test src/lib/ws/timestamp-freshness.test.ts`
+- `npx tsx --test src/lib/admin-cron-health.test.ts`
+
+### Market-open validation
+
+- `/tools/gamma-snapshot` age field stays honest during RTH
+- Legacy Night Hawk row mark age does not show "0s ago" on skewed marks
+- `/admin` → Operations → Cron health: skewed Night Hawk `updated_at` shows stale/stuck, not healthy
+
+## 2026-09-04 — [FINDING, P2 data-correctness] HELIX flows SSE stream unrounded floats — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/api/market/flows/stream` SSE events could carry IEEE float tails on premiums/strikes while the REST `/flows` lane already rounded at the boundary. |
+| **Root cause** | `JSON.stringify` serialized raw flow payloads without `roundFloats`. |
+| **Fix** | Wrap the SSE payload in `roundFloats()` before `JSON.stringify`, matching `/flows`. |
+| **Regression guard** | `src/app/api/market/flows/stream/route.test.ts` — source scan asserts `roundFloats` on the stringify path. |
+| **Status** | FIXED |
+
+# 2026-09-04-flow-ingest-uw-sweep-candle-freshness
+
+## flow-ingest missing UW background-sweep tag + candle-store future-skew freshness
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Priority** | P1 (flow-ingest), P2 (candle freshness) |
+| **Area** | UW rate limiter, WS candle stores |
+
+### Root cause
+
+1. **`flow-ingest` cron** called `runFlowIngest()` bare. That function hits `fetchMarketFlowAlertRows` (UW REST) but was the one remaining UW-heavy cron not wrapped in `runWithBackgroundUwSweep`, unlike `uw-cache-refresh`, `desk-warm`, `vector-pick-sweep`, etc. During RTH this competes for the cluster-wide 2 RPS UW budget and can starve live member flow-alerts requests.
+
+2. **`getStockLiveCandle` / `getCurrentSpxCandle`** used raw `Date.now() - updatedAt` for freshness. A clock-skewed future `updatedAt` yields negative age → treated as infinitely fresh. `wsSpotPrice` on the same store already used `isWsUpdatedAtFresh()` but the candle read path did not.
+
+### Fix
+
+- Wrap `runFlowIngest()` in `runWithBackgroundUwSweep` in `src/app/api/cron/flow-ingest/route.ts`.
+- Route candle freshness through `isWsUpdatedAtFresh()` in `stock-candle-store.ts` and `spx-candle-store.ts`.
+
+### Evidence
+
+- Regression tests: `flow-ingest/route.test.ts`, `stock-candle-store.test.ts` (future-skew case).
+- Pre-fix: audit sweep 2026-09-04 identified flow-ingest as sole unwrapped UW REST cron.
+
+### RTH validation
+
+- CloudWatch: no `[uw] flow-alerts failed: rate-limiter queue budget exceeded` clustering at flow-ingest fire times.
+- Vector SSE / spot stream: no candles served with `updatedAt` >5s in the future during deploy rollouts.
+
+## 2026-09-04 — [P2, Largo/BIE] `getBieFullStateForLargo` treated clock-skewed future `asOf` as fresh — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 — stale Redis `bie:full-state` could be served as live when `asOf` is in the future |
+| **Found by** | Cursor Autopilot hourly bug-pattern scan |
+| **Status** | FIXED |
+
+### Root cause
+
+`isFresh()` in `full-platform-loader.ts` used `Date.now() - Date.parse(asOf) <= LIVE_MAX_AGE_MS` with no
+future guard. A clock-skewed future timestamp yields negative age, which always satisfies the 5-minute ceiling.
+
+### Fix
+
+Reject when `ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS`; compare `Math.max(0, ageMs)` against `LIVE_MAX_AGE_MS`
+(matching `admin-store-age.ts` / `FreshnessChip` pattern).
+
+### Blast radius
+
+`src/lib/bie/full-platform-loader.ts` only — Largo cross-product snapshot read path.
+
+# 2026-09-04 — admin-time-ago-future-guard
+
+## Admin panel `timeAgo()` showed "just now" for clock-skewed future ISO timestamps
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | P3 |
+| **Surface** | `/admin` Operations + X Marketing panels |
+| **Status** | FIXED |
+
+### Symptom
+
+`timeAgo(iso)` in `AdminOperationsDashboard.tsx` and `AdminXMarketingPanel.tsx` computed `Date.now() - new Date(iso).getTime()` without a future guard. Future timestamps beyond tolerance produced negative age and displayed **"just now"** — same failure class as #3627's `storeAge()`.
+
+### Fix
+
+Extracted shared `timeAgoFromIso()` in `admin-time-ago.ts`, reusing `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`. Beyond tolerance returns `"clock skew"`; otherwise clamps with `Math.max(0, ...)`.
+
+### Evidence
+
+- `npx tsx --test src/components/admin/admin-time-ago.test.ts` — 3 pass
+
+### Market-open validation
+
+- `/admin` → Operations incidents/audit timestamps show sensible ages during RTH, not "just now" on skewed rows.
+
+# 2026-09-04 — admin-store-age-future-guard
+
+## Admin ops tile age showed "just now" for clock-skewed future timestamps
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | P3 |
+| **Surface** | `/admin` Operations dashboard store freshness tiles |
+| **Status** | FIXED |
+
+### Symptom
+
+`storeAge()` in `AdminOperationsDashboard.tsx` computed `Date.now() - updatedAt` without a future guard. A timestamp more than a few seconds ahead of wall clock produced a negative age; `Math.floor(negative / 1000) < 10` evaluated true, so the tile read **"just now"** with a green ok state — the same failure class called out in the hourly autonomous wake checklist (`Date.now() - timestamp without future guard`).
+
+### Fix
+
+Extracted `storeAge()` to `src/components/admin/admin-store-age.ts`, reusing `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` from the shared WS freshness helper. Timestamps beyond tolerance return `{ label: "clock skew", ok: false }`; otherwise age is clamped with `Math.max(0, ...)`.
+
+### Evidence
+
+- `npx tsx --test src/components/admin/admin-store-age.test.ts` — 3 pass (future +60s → clock skew; +2s → just now; null → No data)
+
+### Market-open validation
+
+- Sign in to `/admin` → Operations → confirm UW/Polygon store tiles show sensible age labels during RTH (not "just now" on a stale/skewed store).
+
+# 2026-09-04 — admin-fmtrel-future-guard
+
+## Admin API feed + SPX terminal relative times lacked future-timestamp guard
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | P3 |
+| **Surface** | `/admin` API live feed + SPX terminal |
+| **Status** | FIXED |
+
+### Symptom
+
+`AdminApiLiveFeed.tsx` and `AdminSpxTerminal.tsx` each had local `fmtRel()` helpers computing `Date.now() - new Date(iso)` without a future guard. Clock-skewed timestamps produced negative age → false **"just now"** / **"now"** labels — same failure class fixed in #3627 (`storeAge`) and #3641 (`timeAgoFromIso`).
+
+### Fix
+
+Extended `admin-time-ago.ts` with shared `isoAgeSec()` plus `timeAgoCompactFromIso()` / `openDurationLabelFromIso()`. Replaced duplicate local helpers in both admin surfaces.
+
+### Evidence
+
+- `npx tsx --test src/components/admin/admin-time-ago.test.ts` — 6 pass
+
+### Market-open validation
+
+- `/admin` → API live feed timestamps show plausible ages during RTH, not "just now" on skewed events
+- SPX terminal feed + open-incident duration labels show "clock skew" when appropriate
+
 ## 2026-09-05 — [P2, data-correctness] Night Hawk play-bars missing roundFloats at API boundary — FIXED
 
 > **kind:** `FINDING`
@@ -2476,40 +3244,6 @@ theme to the three other Night Hawk staleness fixes shipped today (#3784, #3791)
 already mentions 0DTE Command (just leads with "Evening playbook" first) so it's a weaker instance
 of the same class — left untouched to keep this PR scoped to the Academy chapter gap; noted here
 for a future pass.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-09-04 — [BUG, P2 member-facing] Night Hawk merit tier drifted retroactively because the G-3 score floor was never pinned into entry_context, falsifying the code's own "can never disagree" invariant
 
