@@ -40,6 +40,7 @@ import "server-only";
  *    intermittently (whenever the WS channel goes stale) instead of always.
  */
 
+import { gexHeatmapCacheEntryWithinTtl } from "@/lib/providers/polygon-options-gex";
 import { fetchUwSpotExposuresByStrike } from "@/lib/providers/unusual-whales";
 import {
   crossValidateGexLevels,
@@ -81,8 +82,9 @@ async function getUwStrikeLadder(
 ): Promise<Map<number, number> | null> {
   const key = ticker.toUpperCase();
   const cacheKey = ladderCacheKey(ticker, nearTermExpiries);
+  const now = Date.now();
   const entry = cache.get(cacheKey);
-  if (entry && Date.now() - entry.cachedAt < CACHE_TTL_MS) {
+  if (entry && gexHeatmapCacheEntryWithinTtl(entry.cachedAt, now, CACHE_TTL_MS)) {
     return entry.strikeLadder;
   }
 
