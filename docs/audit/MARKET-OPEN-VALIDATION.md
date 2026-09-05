@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1c. Thermal triple-desk header change_pct not rebased on live push — fix/thermal-triple-desk-header-rebase (pending)
+
+**What was broken:** `ThermalTripleDesk` column headers used `pushChangePct ?? matrixChangePct` with no `rebaseChangePct` when a live push spot overlayed a matrix snapshot. Spot could update while day-change % stayed frozen at the matrix-era value — same class as the GexHeatmap header fix (2026-09-04).
+
+**Fix:** When push spot and matrix spot both exist, `rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct })` before falling back to push/matrix change.
+
+**Check at the open:** On `/heatmap` triple-desk view during RTH, each column's spot vs day-change % should stay coherent when the live quote stream moves away from the matrix snapshot spot.
+
 ### 0a-1b. Swing discovery WATCH spot refresh trusted stale last trades — fix/swing-discovery-underlying-spot-freshness (pending, #3893 sibling)
 
 **What was broken:** `swing-discovery` refreshed WATCH-name underlying spots via `fetchStockLastTrade` trusting any finite positive `.p` with no SIP timestamp check. A degraded-but-200-OK feed could overwrite plan-entry fallback with a stale price, skewing FORMING/TRIGGERED/EXTENDED setup-maturity flags on the member board.
