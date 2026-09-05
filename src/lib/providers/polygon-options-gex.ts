@@ -1738,9 +1738,10 @@ function pickStaleHeatmapForHandoff(
   let any: { at: number; data: GexHeatmap } | null = null;
   for (const entry of [mem, redisHit]) {
     if (!entry) continue;
-    const age = now - entry.at;
-    if (age < maxStaleMs && (!withinStale || entry.at > withinStale.at)) withinStale = entry;
-    if (!any || entry.at > any.at) any = entry;
+    if (gexHeatmapCacheEntryWithinTtl(entry.at, now, maxStaleMs) && (!withinStale || entry.at > withinStale.at)) {
+      withinStale = entry;
+    }
+    if (entry.at <= now + GEX_WS_FUTURE_TOLERANCE_MS && (!any || entry.at > any.at)) any = entry;
   }
   return (withinStale ?? any)?.data ?? null;
 }
@@ -3952,7 +3953,6 @@ export async function readGexHeatmapCacheOnly(underlying: string): Promise<GexHe
   if (!root) return null;
   const cacheKey = `${GEX_HEATMAP_CACHE_PREFIX}:${root}`;
   const now = Date.now();
-  const maxStaleMs = gexHeatmapMaxStaleMs();
 
   let entry = cachedHeatmaps.get(cacheKey) ?? null;
   if (!entry) {
@@ -3968,7 +3968,7 @@ export async function readGexHeatmapCacheOnly(underlying: string): Promise<GexHe
     }
   }
 
-  if (!entry || now - entry.at > maxStaleMs) return null;
+  if (!entry || gexHeatmapCacheEntryStale(entry.at, now)) return null;
   return finalizeHeatmapForServe(cacheKey, entry.data);
 }
 

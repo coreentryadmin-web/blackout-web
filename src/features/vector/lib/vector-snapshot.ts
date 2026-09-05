@@ -287,7 +287,7 @@ export function getVectorVexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   const s = state(t);
   refreshWallScope(t);
   const now = Date.now();
-  if (now - s.cachedVexWallsAt < VEX_WALLS_CACHE_MS) return s.cachedVexWalls;
+  if (isWsUpdatedAtFresh(s.cachedVexWallsAt, VEX_WALLS_CACHE_MS, now)) return s.cachedVexWalls;
   if (s.fallbackVexStrikeTotals && Object.keys(s.fallbackVexStrikeTotals).length > 0) {
     s.cachedVexWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackVexStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
@@ -443,7 +443,7 @@ export async function getVectorGammaFlip(ticker: string = VECTOR_DEFAULT_TICKER)
   const t = normalizeVectorTicker(ticker);
   const s = state(t);
   const now = Date.now();
-  if (now - s.cachedFlipAt < FLIP_CACHE_MS) return s.cachedFlip;
+  if (isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS, now)) return s.cachedFlip;
   try {
     const pos = await getGexPositioning(t);
     s.cachedFlip = pos?.flip ?? null;
@@ -609,8 +609,8 @@ export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<b
   const nowMs = Date.now();
   // RTH gate BEFORE freshness: an always-on oracle subscription keeps the cache fresh overnight.
   if (!wallRailRecordingOpen()) return false;
-  const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
-  const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
+  const gexRecordable = walls != null && isWsUpdatedAtFresh(s.cachedWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
+  const vexRecordable = vexWalls != null && isWsUpdatedAtFresh(s.cachedVexWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
   if (!gexRecordable && !vexRecordable) return false;
 
   const tickerBucketSec = await resolveWallTrailSampleSec(t);
@@ -674,7 +674,7 @@ export async function buildVectorStreamPayload(
   // exceeded the 1s hub tick budget, tripping the refreshInFlight guard in
   // vector-stream-hub and freezing the entire SSE frame — including spot price.
   const gammaFlip = s.cachedFlip;
-  if (Date.now() - s.cachedFlipAt >= FLIP_CACHE_MS && !s.flipRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS) && !s.flipRefreshInFlight) {
     s.flipRefreshInFlight = true;
     getGexPositioning(t)
       .then(pos => { s.cachedFlip = pos?.flip ?? null; })
@@ -683,7 +683,7 @@ export async function buildVectorStreamPayload(
   }
   const vexFlip = getVectorVexFlip(t);
   const darkPool = s.cachedDarkPool;
-  if (Date.now() - s.cachedDarkPoolAt >= DARK_POOL_LOCAL_CACHE_MS && !s.darkPoolRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedDarkPoolAt, DARK_POOL_LOCAL_CACHE_MS) && !s.darkPoolRefreshInFlight) {
     s.darkPoolRefreshInFlight = true;
     getCachedVectorDarkPoolWithAge(t)
       .then(dp => { s.cachedDarkPool = dp; })
@@ -707,8 +707,8 @@ export async function buildVectorStreamPayload(
   // refreshing, and re-recording the same stale walls under fresh bucket times
   // fabricates a flat trail that was never observed (and persists it).
   const nowMs = Date.now();
-  const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
-  const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
+  const gexRecordable = walls != null && isWsUpdatedAtFresh(s.cachedWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
+  const vexRecordable = vexWalls != null && isWsUpdatedAtFresh(s.cachedVexWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
 
   // RTH gate BEFORE freshness — see wallRailRecordingOpen. This is the writer that produced the
   // 00:00-09:30 ET segment of SPX's rail: the SPX desk stream is always-on, so every poll of it

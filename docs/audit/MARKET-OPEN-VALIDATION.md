@@ -2539,6 +2539,12 @@ than an end-of-session patch.
 - **What changed:** `HorizonPlay.markAsOf` from `last_mark_at` (quote.asOf fallback); `recheckSseUserEntitlement()` on every user SSE tick.
 - **RTH check:** Night Hawk Swing lane — OPEN position with stale `last_mark_at` should show STALE chip without 0DTE SSE carrying the OCC. Tier revocation mid-session should close SSE within ~1s.
 
+### 32. Vector snapshot VEX/flip/dark-pool + GEX cache reader — future-timestamp guards — fix/vector-snapshot-gex-cache-future-guards — 2026-09-05
+
+- **What was broken:** After gamma-wall memo was migrated to `isWsUpdatedAtFresh`, sibling Vector snapshot caches (VEX walls, gamma flip, dark-pool refresh triggers, wall-history recordability) still used raw `Date.now() - at` — a future stamp reads as infinitely fresh and can skip background refresh or record stale walls into durable rails. `readGexHeatmapCacheOnly` and `pickStaleHeatmapForHandoff` had the same shape for 0DTE thesis evidence reads.
+- **What changed:** Route VEX walls, flip, dark-pool, and recordability gates through `isWsUpdatedAtFresh`; cache-only reader uses `gexHeatmapCacheEntryStale`; handoff uses `gexHeatmapCacheEntryWithinTtl` and skips far-future entries from the `any` fallback.
+- **RTH check:** Vector stream (`/vector` or SPX desk embed) — VEX lens + gamma-flip line should refresh on cadence; no indefinitely-stale wall chips after deploy. Admin GEX health panel `age_sec` should not read negative.
+
 
 - **What was broken:** `buildVectorUniverseSnapshot` fired every universe ticker's `fetchGexHeatmap` at once via a raw `Promise.allSettled` (no concurrency bound). Live-confirmed: `GET /api/market/vector/universe` served fully-null rows (`spot`, `gammaFlip`, walls all null) for `DIA`, `AAOI`, `DRAM`, `ZS`, `NOK` while a solo `GET /api/market/gex-heatmap?ticker=<T>` for each of those same tickers, run ~20 minutes later with no contention, returned `available: true` with a real spot price — proving the batch fan-out (not real data absence) dropped them. Same root-cause shape as the already-fixed `vector-dark-pool-warm` unbounded fan-out (entry above this file's predecessor list, FINDINGS.md 2026-09-02).
 - **What changed:** Added `runPolygonPool` (`polygon-rate-limiter.ts`, mirrors `runUwPool`), bounded-concurrency default 8 (`POOL_MAX_CONCURRENCY`, env-overridable). `buildVectorUniverseSnapshot`'s ticker fan-out now routes through it instead of the raw `Promise.allSettled`.
