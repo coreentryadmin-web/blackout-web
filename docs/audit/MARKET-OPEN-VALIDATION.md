@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1e. Legacy Night Hawk push quotes used raw WS change_pct — fix/legacy-quotes-change-pct-rebase (pending)
+
+**What was broken:** `useLegacyStockQuotes` applied push `changePct` from `useLiveQuoteStream` without `rebaseChangePct`, while REST polls already served rebased `/api/market/quote` values. When push spot diverged from the last REST snapshot, `stockChangePct` on Legacy play cards could show a day-change anchored to a different moment than the displayed price — same class as Thermal CompareStrip (#3962).
+
+**Fix:** Store `restAnchor` from each REST poll; on push ticks use `rebaseChangePct(pushPrice, restAnchor) ?? pushChangePct`.
+
+**Check at the open:** Night Hawk → Legacy tab — select a play with a live underlying quote during RTH; spot and day-change % should move together (no rising price beside a stale/frozen day %).
+
 ### 0a-1d. BIE SPX desk brief mislabeled GEX king as generic "pin" — fix/bie-spx-brief-magnet-labels (pending)
 
 **What was broken:** `composeSpxDeskBrief` WHY / LEVELS / NEXT 5M lines used hardcoded `"pin"` even when the magnet was `desk.gex_king` (GEX king node) — same pin-vs-king confusion the SPX pin panel already disambiguated via `spx-metric-labels.ts`.
