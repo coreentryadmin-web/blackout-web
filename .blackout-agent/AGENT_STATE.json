@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:10:30.000Z",
+  "updated_at": "2026-09-05T15:13:10.086Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T14:48:24.729Z",
-      "lease_until": "2026-09-05T16:27:17.869Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-05T14:12:42.159Z",
+      "lease_until": "2026-09-05T16:21:40.167Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "7ee4510b-e8d9-40e3-9b2d-f8e96cf0ed70",
+      "run_id": "8ac36a20-bf42-4a36-b977-bdc7d3284c54",
       "title": null,
       "released_at": "2026-09-05T15:08:06.156Z"
     },
@@ -345,15 +345,24 @@
   },
   "open_prs": [
     {
+      "number": 3987,
+      "title": "fix(automerge): HARD MERGE GATE — exclude cursor/* from auto-merge",
+      "branch": "fix/automerge-hard-merge-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T15:12:59Z"
+    },
+    {
       "number": 3986,
       "title": "chore(autopilot): state sync after #3978/#3983 merges",
       "branch": "cursor/autopilot-work-loop-740a",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "head": "83315b0fa",
-      "awaiting": "claude_review",
-      "gate": "HARD_MERGE_GATE"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T15:11:52Z"
     }
   ],
   "events": [
@@ -1620,6 +1629,19 @@
       "agent": "cursor",
       "run_id": "gate-watch-contrib-3986",
       "summary": "Contributed GATE_AUDIT + PEER_REQUEST to #3986. Gate-fix #3984 still open. automerge.yml on main still auto-merges cursor/*. Will NOT self-merge #3986."
+    },
+    {
+      "at": "2026-09-05T15:13:10.084Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T15:13:10.086Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6e20bee0-8736-4c1e-ab69-ba3de6c60358",
+      "summary": "Work loop: main@7d47d7e merged #3971/#3978/#3979. Platform integrity 14/14 GREEN. Deploy GREEN. ops clean. #3986 awaiting Claude GitHub review. Gate-fix #3984 still urgent per upstream handoff."
     }
   ],
   "pr_activity": {
