@@ -58,9 +58,8 @@ test("the route actually passes that keyDp — the map is not decorative", () =>
   assert.match(src, /profitable_rate: 4, loss_rate: 4, open_rate: 4/);
 });
 
-test("the member /record route is deliberately untouched — it was already correct", () => {
-  // record/route.ts:15,79-84 rounds explicitly and every live value was <= 1dp. Double-rounding it
-  // would be churn, not a fix.
+test("the member /record route uses roundFloats at the API boundary (sibling route parity)", () => {
   const src = readFileSync("src/app/api/market/nighthawk/record/route.ts", "utf8");
-  assert.doesNotMatch(src, /roundFloats/);
+  assert.match(src, /import \{ roundFloats \} from "@\/lib\/round-floats"/);
+  assert.match(src, /NextResponse\.json\(\s*roundFloats\(/);
 });
