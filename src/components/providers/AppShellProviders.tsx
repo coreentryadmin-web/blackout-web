@@ -15,6 +15,7 @@ import {
 } from "@/lib/clerk-env";
 import { ClerkAuthBridge } from "@/lib/auth-client";
 import { Ga4ConversionTracker } from "@/components/analytics/Ga4ConversionTracker";
+import { MembershipActivatingBanner } from "@/components/MembershipActivatingBanner";
 
 function DeskShell({ children }: { children: React.ReactNode }) {
   return (
@@ -27,6 +28,7 @@ function DeskShell({ children }: { children: React.ReactNode }) {
       <IosKeyboardRoot />
       <OnboardingGuide />
       <Ga4ConversionTracker />
+      <MembershipActivatingBanner />
       {children}
     </MotionProvider>
   );
