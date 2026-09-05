@@ -11,6 +11,28 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-05 (07:15 UTC) — [DISCOVERY, GEO] `/llms.txt` + `/robots.txt` full-link sweep clean
+
+**Severity.** — (no defect found)
+
+Full-lifecycle scope expansion mandate names GEO (Generative Engine Optimization) as an audit
+target distinct from classic SEO — `llms.txt` presence/correctness, AI-crawler robots rules,
+content clarity for extraction. Not seen swept this session; checked live against production.
+
+`GET https://blackouttrades.com/llms.txt`: `200`, well-formed (Product / BlackOut Academy
+curriculum / Guides / Notes / Optional sections). Fetched every one of its 41 linked URLs live
+(9 Product links, 9 Curriculum links, 22 Guide links, sitemap.xml, feed.xml) — **41/41 return
+`200`**, no stale/broken links. `robots.txt` carries explicit per-bot `Allow`/`Disallow` blocks
+for GPTBot, ChatGPT-User, ClaudeBot, anthropic-ai, PerplexityBot, Google-Extended, CCBot,
+Bytespider, and cohere-ai (in addition to the default `User-Agent: *`), each correctly allowing
+the public marketing/learn surface while disallowing the authenticated desk paths
+(`/terminal`, `/vector`, `/nighthawk`, `/flows`, `/heatmap`, `/meridian`, `/grid`, `/account`,
+etc.) — matches `llms.txt`'s own "live trading desk ... not crawlable" note, so the two surfaces
+agree with each other rather than silently diverging.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-05 (06:16 UTC / Fri 2026-09-04 22:17 ET → Sat 02:17 ET) — [SEO] Lane heartbeat: overnight sweep clean
 
 **Severity.** — (no defect found)
