@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — fix/vector-freshness-clock-skew (pending)
+
+**What was broken:** `describeVectorFreshness()` clamped negative age to 0 and classified `freshnessFromAgeMs(0)` as **live**. A Vector snapshot stamped >5s ahead of the reader (cron writer vs API reader clock skew) read as falsely fresh — Largo/Cortex consumers could present stale tape as live.
+
+**Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` guard (same as `FreshnessChip`, `ageSecFromIso`) → `freshness: unknown`, `age_seconds: null`, disclosure note. Within tolerance, keep clamp-to-zero.
+
+**Check at the open:** Ask Largo a Vector question during RTH; if the underlying Redis snapshot is genuinely stale (>10m), the tool response should carry `freshness: recent/stale` with a note — never `live` on an unparseable or clock-skewed `observed_at`.
+
 ### 0a-1d. BIE SPX desk brief mislabeled GEX king as generic "pin" — fix/bie-spx-brief-magnet-labels (pending)
 
 **What was broken:** `composeSpxDeskBrief` WHY / LEVELS / NEXT 5M lines used hardcoded `"pin"` even when the magnet was `desk.gex_king` (GEX king node) — same pin-vs-king confusion the SPX pin panel already disambiguated via `spx-metric-labels.ts`.
