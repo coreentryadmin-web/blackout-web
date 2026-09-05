@@ -274,8 +274,8 @@ export function computeSwingCommitPlan(args: {
   book: CommitBookPosition[];
   budget?: PortfolioBudget;
   caps?: SwingCaps;
-  /** V2 commit gates (P3) — off unless caller passes enforceConfluence / enforceEarnings / enforceHalt. */
-  v2?: { enforceConfluence?: boolean; enforceEarnings?: boolean; enforceHalt?: boolean; haltFeedStale?: boolean };
+  /** V2 commit gates (P3) — off unless caller passes enforceConfluence / enforceEarnings / enforceHalt / enforceRegime. */
+  v2?: { enforceConfluence?: boolean; enforceEarnings?: boolean; enforceHalt?: boolean; enforceRegime?: boolean; haltFeedStale?: boolean };
 }): SwingCommitPlan {
   const budget = args.budget ?? DEFAULT_PORTFOLIO_BUDGET;
   const caps = args.caps ?? DEFAULT_SWING_CAPS;
@@ -346,6 +346,19 @@ export function computeSwingCommitPlan(args: {
           haltFeedStale: args.v2.haltFeedStale,
         },
         { enforceHalt: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.57 — V2 regime blind (G-S4), LIVE when Swing Engine V2 regime enforcement is on.
+    if (args.v2?.enforceRegime) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          regime01: cand.pillars?.REGIME ?? null,
+        },
+        { enforceRegime: true },
       );
       blockedBy.push(...blockedByFromSwingGates(gateFails));
     }

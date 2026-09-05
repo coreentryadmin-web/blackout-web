@@ -5,6 +5,7 @@ import {
   isSwingCortexEnforced,
   isSwingEarningsGateEnforced,
   isSwingHaltGateEnforced,
+  isSwingRegimeGateEnforced,
   isSwingEngineV2Enabled,
 } from "./config";
 
@@ -39,4 +40,10 @@ test("isSwingHaltGateEnforced: LIVE when V2 on; opt-out only", () => {
   assert.equal(isSwingHaltGateEnforced({}), true);
   assert.equal(isSwingHaltGateEnforced({ SWING_ENGINE_V2_ENFORCE_HALT: "0" }), false);
   assert.equal(isSwingHaltGateEnforced({ SWING_ENGINE_V2_DISABLED: "1" }), false);
+});
+
+test("isSwingRegimeGateEnforced: LIVE when V2 on; opt-out only", () => {
+  assert.equal(isSwingRegimeGateEnforced({}), true);
+  assert.equal(isSwingRegimeGateEnforced({ SWING_ENGINE_V2_ENFORCE_REGIME: "0" }), false);
+  assert.equal(isSwingRegimeGateEnforced({ SWING_ENGINE_V2_DISABLED: "1" }), false);
 });
