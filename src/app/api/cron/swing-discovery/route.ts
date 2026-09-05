@@ -30,6 +30,7 @@ import { ingestSwingReads } from "@/lib/swing/swing-ingest";
 import { persistSwingCapRejections } from "@/lib/swing/v2/rejections";
 import { positioningTickersFromVectorLeaders } from "@/lib/swing/v2/origins/positioning-screen";
 import { catalystTickersFromBenzingaBundle } from "@/lib/swing/v2/origins/catalyst-screen";
+import { bangerTickersFromGroupedDaily } from "@/lib/swing/v2/origins/banger-screen";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
@@ -161,6 +162,20 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
     },
     // V2 CATALYST origin — Benzinga earnings window (fail-soft; only consumed when SWING_ENGINE_V2=1).
     fetchCatalystTickers: async () => catalystTickersFromBenzingaBundle(sessionDay),
+    fetchBangerTickers: async () => {
+      const summary = await fetchDailyMarketSummary(to);
+      const rows = summary.results ?? [];
+      return bangerTickersFromGroupedDaily(
+        rows.map((r) => ({
+          T: r.T,
+          o: r.o,
+          h: r.h,
+          l: r.l,
+          c: r.c,
+          v: r.v,
+        })),
+      );
+    },
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
         {
