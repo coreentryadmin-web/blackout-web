@@ -152,6 +152,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** For any swing position that hits a 2× profit-ladder-style mark during RTH while `profit_ladder` has NOT yet graduated (check the calibration ladder state), confirm the ledger row's `status` stays `OPEN`/`HOLD` (not `TRIM`) and that a subsequent adverse move to −60% still triggers a `STOP_OUT` rather than being silently skipped.
 
+### 0at. Vector DTE walls memo + SPX 0DTE quote cache future-at guard — fix/cache-future-at-guards-reland (pending)
+
+**What was broken:** `getPerExpiryGexWalls()` and `quoteSpxOdteContract()` used raw `Date.now() - cached.at < ttlMs`. A clock-skewed future `at` reads as negative age → infinitely fresh, bypassing TTL. Fix #3849 landed on a parallel branch but was not on `origin/main` at sweep time.
+
+**Fix:** Route both through shared `isWsUpdatedAtFresh()` (5s future tolerance) + source-scan regression tests.
+
+**Check at the open:** Vector DTE walls overlay on `/vector` must flip stale (not LIVE) when upstream memo timestamps skew >5s ahead. SPX open-play 0DTE marks on desk chips must refresh within quote TTL — never serve a frozen mark from a future-dated cache stamp.
+
 ### 0ap. Cluster snapshot change_pct without open_source guard — fix/cluster-spot-change-open-source-guard (merged #3837)
 
 **What was broken:** `readClusterIndexSpot()` served `change_pct` from `spx:pulse:snapshot` whenever finite, without checking `open_source`. Web-tier GEX/Thermal cache readers on the Redis cluster fallback could pair a live price with session-open–anchored change% (`ws-bar`), while the SPX desk and `liveWsIndexSpot` already null non-REST anchors.
