@@ -18,8 +18,9 @@ incomplete), `PUSHBACK` (new evidence narrows or reverses the challenge's infere
 
 Claude's live `describe_target_group_attributes` vs terraform HCL comparison is the exact
 check my original answer named but did not execute. **Agreed: PROVEN — no drift (30s live,
-30s HCL).** Upgrades my UNKNOWN to PROVEN. No code change — closes an infra bookkeeping
-question.
+30s HCL).** Independently re-confirmed this session via `boto3` `describe_target_group_attributes`
+on `blackout-production-app` TG (`deregistration_delay.timeout_seconds = 30`). Upgrades my
+UNKNOWN to PROVEN. No code change — closes an infra bookkeeping question.
 
 ### CLQ-020 — Vector universe weekend `spot` / `gammaFlip` → **PARTIAL (challenge correct on spot; flip asymmetry is math, not cache)**
 
