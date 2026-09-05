@@ -4,6 +4,7 @@ import {
   crossValidateGexLevels,
   cumulativeGammaFlip,
   cumulativeGammaFlipDetail,
+  kingFromStrikeTotals,
   resolveNearTermExpiriesForCrossValidation,
   restFallbackAllowed,
   uwLevelsFromLadder,
@@ -159,6 +160,27 @@ test("wallsFromStrikeTotals picks max positive call and max negative put", () =>
   });
   assert.equal(callWall, 720);
   assert.equal(putWall, 700);
+});
+
+// ── kingFromStrikeTotals: deterministic tiebreak on an exact |GEX| tie ──
+test("kingFromStrikeTotals: clear winner, no tie", () => {
+  assert.equal(kingFromStrikeTotals({ "700": 1e9, "710": 3e9, "720": 2e9 }), 710);
+});
+
+test("kingFromStrikeTotals: exact |GEX| tie between two strikes always keeps the LOWER one", () => {
+  // Object key insertion order here is HIGHER strike first, on purpose — this is exactly the
+  // shape that used to flicker: without sorting by strike first, the tie-break just kept
+  // whichever strike Object.entries() happened to enumerate first, which for non-integer
+  // (decimal) strike keys follows insertion order, not numeric order.
+  const tiedHighFirst = { "720.5": 2e9, "700.5": -2e9, "710.5": 1e9 };
+  const tiedLowFirst = { "700.5": -2e9, "720.5": 2e9, "710.5": 1e9 };
+  assert.equal(kingFromStrikeTotals(tiedHighFirst), 700.5);
+  assert.equal(kingFromStrikeTotals(tiedLowFirst), 700.5);
+});
+
+test("kingFromStrikeTotals: integer strike keys also resolve a tie deterministically regardless of insertion order", () => {
+  assert.equal(kingFromStrikeTotals({ "720": -1e9, "700": 1e9 }), 700);
+  assert.equal(kingFromStrikeTotals({ "700": 1e9, "720": -1e9 }), 700);
 });
 
 test("uwLevelsFromLadder is sign-aware — call wall is not the largest |GEX| if negative", () => {
