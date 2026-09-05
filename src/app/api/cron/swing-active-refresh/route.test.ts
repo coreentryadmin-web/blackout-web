@@ -30,3 +30,9 @@ test("swing-active-refresh background dispatch is wrapped in runWithBackgroundUw
   );
   assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runSwingActiveRefreshCron\(started\)\)/);
 });
+
+test("swing-active-refresh acquires singleton claim before work (Q37)", () => {
+  assert.match(routeSrc, /SWING_ACTIVE_REFRESH_CLAIM_KEY/);
+  assert.match(routeSrc, /sharedCacheSetNx\(/);
+  assert.match(routeSrc, /another refresh pass is still running/);
+});
