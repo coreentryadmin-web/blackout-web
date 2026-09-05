@@ -1,37 +1,48 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T19:07:42.137Z",
+  "updated_at": "2026-09-05T20:11:57.822Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:04:19.720Z",
-      "lease_until": "2026-09-05T20:35:21.822Z",
+      "claimed_at": "2026-09-05T20:11:35.778Z",
+      "lease_until": "2026-09-05T21:41:35.778Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "07b06eab-e0bc-45c5-af9d-be542e63217e"
+      "run_id": null,
+      "title": null
     }
   },
-  "reviews": {},
+  "reviews": {
+    "pr-4037": {
+      "pr": 4037,
+      "head_sha": "a8ea9423cd89c296aa1c8351674c907f32be219f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T20:11:41.377Z",
+      "safe_to_merge": true
+    }
+  },
   "agents": {
     "claude": {
       "status": "unknown",
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T20:11:35.779Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "8b2e49df2bc37d8c44d875f175f617630a98a152",
+    "last_main_sha": "113396ee90a72de79eeb771bd84ac9ec1fe20d10",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:06:44Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33986112563",
-    "last_deploy_sha": "8b2e49df2bc37d8c44d875f175f617630a98a152"
+    "last_deploy_at": "2026-09-05T20:00:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33988809450",
+    "last_deploy_sha": "771089d8dbe73f1109b8a9f743e02ac289794741"
   },
   "events": [
     {
@@ -45,28 +56,100 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T20:11:35.779Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T20:11:41.378Z",
+      "type": "pr_review",
+      "pr": 4037,
+      "head_sha": "a8ea9423cd89c296aa1c8351674c907f32be219f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T20:11:41.377Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T20:11:44.503Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-05T20:11:49.972Z",
+      "type": "pr_webhook",
+      "pr": 4041,
+      "event": "sweep",
+      "head": "e7a8ca5fb2c69214987b34b7355f08e9168286ab",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-05T20:11:52.504Z",
+      "type": "pr_webhook",
+      "pr": 4040,
+      "event": "sweep",
+      "head": "9e1ab4c7233b11ed3da24bb5642929367a2d6173",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T20:11:55.376Z",
+      "type": "pr_webhook",
+      "pr": 4035,
+      "event": "sweep",
+      "head": "8e6392466167b312b38a56f87b775485c2ed5756",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T20:11:57.822Z",
+      "type": "pr_webhook",
+      "pr": 4027,
+      "event": "sweep",
+      "head": "98769fe718c773945937e53afc1be783dce86cd1",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     }
   ],
   "open_prs": [
     {
-      "number": 4030,
-      "title": "docs(gex): fix stale doc comment on fetchHeatmapBandUnfiltered post-#4028",
-      "branch": "fix/gex-heatmap-unfiltered-doc-comment",
+      "number": 4041,
+      "title": "docs(findings): fold 68 staged findings into FINDINGS.md, fix one stale status",
+      "branch": "fix/findings-fold-2026-09-05",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-09-05T19:06:25Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T20:11:18Z"
     },
     {
-      "number": 4029,
-      "title": "fix(scripts): gate desk-warm force=1 calls in two more latency audit scripts",
-      "branch": "fix/latency-scripts-desk-warm-hours-gate",
+      "number": 4040,
+      "title": "fix(autopilot): strip invalid GH_TOKEN so gh sync sees open PRs",
+      "branch": "cursor/autopilot-work-loop-bb65",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-09-05T19:05:20Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T20:11:12Z"
+    },
+    {
+      "number": 4035,
+      "title": "fix(nighthawk): swing desk grade, Largo center rail, detail header",
+      "branch": "cursor/swing-desk-layout-largo",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T20:11:18Z"
     },
     {
       "number": 4027,
@@ -75,28 +158,42 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:03:48Z"
-    },
-    {
-      "number": 4025,
-      "title": "fix(cq): batch 3 — Whop Redis fail-open ops alert",
-      "branch": "cursor/cq-fix-pass-batch3",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-09-05T19:07:17Z"
-    },
-    {
-      "number": 4024,
-      "title": "fix(cq): batch 2 — tier JWT downgrade, spot guard, flows as_of",
-      "branch": "cursor/cq-fix-pass-batch2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-09-05T19:06:57Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T20:11:24Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4041": {
+      "last_event": "sweep",
+      "last_head": "e7a8ca5fb2c69214987b34b7355f08e9168286ab",
+      "last_feedback_at": "2026-09-05T20:11:49.972Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-4040": {
+      "last_event": "sweep",
+      "last_head": "9e1ab4c7233b11ed3da24bb5642929367a2d6173",
+      "last_feedback_at": "2026-09-05T20:11:52.504Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-4035": {
+      "last_event": "sweep",
+      "last_head": "8e6392466167b312b38a56f87b775485c2ed5756",
+      "last_feedback_at": "2026-09-05T20:11:55.376Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-4027": {
+      "last_event": "sweep",
+      "last_head": "98769fe718c773945937e53afc1be783dce86cd1",
+      "last_feedback_at": "2026-09-05T20:11:57.822Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }

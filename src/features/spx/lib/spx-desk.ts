@@ -1997,6 +1997,29 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
         market_label: label,
       };
     }
+    // Cold replica after deploy: in-process lastPulse is empty — anchor to prior session close.
+    // priorDayForPulseLane() is "never block cold": on a TRUE cold cache (fetchedAt === 0, no
+    // lastPulseForSignals either) it fires the real fetch in the background and returns pdc:null
+    // immediately, so the very first off-hours request after a rollout still fell through to
+    // price:0 below. Off-hours has no fast-lane latency budget to protect, so awaiting the real
+    // fetch here (one Polygon daily-bar read) is safe and closes that window.
+    let prior = await priorDayForPulseLane();
+    if (!(prior.pdc != null && prior.pdc > 0)) {
+      prior = await fetchPriorDayCached().catch(() => prior);
+    }
+    if (prior.pdc != null && prior.pdc > 0) {
+      return {
+        ...empty,
+        available: true,
+        price: prior.pdc,
+        prior_close: prior.pdc,
+        pdh: prior.pdh,
+        pdl: prior.pdl,
+        market_open: false,
+        market_status: marketNow?.market ?? "closed",
+        market_label: label,
+      };
+    }
     const closedPulse: SpxDeskPulse = {
       ...empty,
       market_open: false,
@@ -2186,7 +2209,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     (async () => {
       const snapsRaw = await fetchPulseLaneSnapshots();
       const spxSnap = snapsRaw[SPX];
-      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? 0;
+      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? prior.pdc ?? 0;
       if (!(price > 0)) return empty;
       const structure = cachedPulseStructure;
       return {
