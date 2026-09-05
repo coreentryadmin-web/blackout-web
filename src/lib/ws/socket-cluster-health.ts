@@ -4,6 +4,7 @@ import { INDEX_FEED_STALL_MS } from "@/lib/ws/polygon-socket";
 import { UW_SOCKET_STALL_MS } from "@/lib/ws/uw-socket-stall";
 import { OPTION_MARK_FRESH_MS } from "@/lib/ws/options-socket";
 import type { OptionMark } from "@/lib/ws/options-socket";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const POLYGON_SNAPSHOT_KEY = "spx:pulse:snapshot";
 const UW_CLUSTER_LAST_MSG_KEY = "uw:ws:last_msg_at";
@@ -61,12 +62,19 @@ export function buildUwClusterHealth(input: {
 }): UwClusterHealth {
   const now = input.now ?? Date.now();
   const at = input.cluster_last_message_at;
-  const age = at != null ? Math.max(0, now - at) : null;
+  const rawAgeMs = at != null ? now - at : null;
+  const age =
+    rawAgeMs != null && rawAgeMs >= -CLUSTER_SPOT_FUTURE_TOLERANCE_MS
+      ? Math.max(0, rawAgeMs)
+      : null;
+  const cluster_live =
+    at != null &&
+    isWsUpdatedAtFresh(at, UW_CLUSTER_LIVE_MS, now, CLUSTER_SPOT_FUTURE_TOLERANCE_MS);
   return {
     is_leader: input.is_leader,
     cluster_last_message_at: at,
     cluster_last_message_age_ms: age,
-    cluster_live: age != null && age <= UW_CLUSTER_LIVE_MS,
+    cluster_live,
   };
 }
 
@@ -166,8 +174,14 @@ export async function readPolygonClusterHealth(
     }
   }
 
-  const age = updatedAt != null ? Math.max(0, now - updatedAt) : null;
-  const cluster_live = age != null && age <= POLYGON_CLUSTER_LIVE_MS;
+  const rawAgeMs = updatedAt != null ? now - updatedAt : null;
+  const age =
+    rawAgeMs != null && rawAgeMs >= -CLUSTER_SPOT_FUTURE_TOLERANCE_MS
+      ? Math.max(0, rawAgeMs)
+      : null;
+  const cluster_live =
+    updatedAt != null &&
+    isWsUpdatedAtFresh(updatedAt, POLYGON_CLUSTER_LIVE_MS, now, CLUSTER_SPOT_FUTURE_TOLERANCE_MS);
 
   return {
     is_leader,

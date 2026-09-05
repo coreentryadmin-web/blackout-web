@@ -1,3 +1,5 @@
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+
 let lastFlowDataAt: number | null = null;
 
 /** Mark UW flow data fresh (WS, REST ingest, or desk poll). */
@@ -31,7 +33,11 @@ export function newestFlowAgeMsFromBriefs(
     if (!Number.isFinite(t)) continue;
     if (newest == null || t > newest) newest = t;
   }
-  return newest != null ? Math.max(0, now - newest) : null;
+  if (newest == null) return null;
+  const rawAgeMs = now - newest;
+  // Fail-closed: a future-skewed alerted_at must not clamp to age 0 and bypass staleness gates.
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return null;
+  return Math.max(0, rawAgeMs);
 }
 
 export function flowDataAgeMs(now = Date.now()): number | null {
@@ -50,7 +56,16 @@ export function resolveFlowDataAgeMs(
   markFlowDataFromBriefs(flows);
   const fromTape = newestFlowAgeMsFromBriefs(flows, now);
   const fromMem = flowDataAgeMs(now);
-  if (fromTape == null) return fromMem;
+  if (fromTape == null) {
+    const hasFutureSkewedTape = flows.some((flow) => {
+      if (!flow.alerted_at) return false;
+      const t = Date.parse(flow.alerted_at);
+      if (!Number.isFinite(t)) return false;
+      return now - t < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS;
+    });
+    if (hasFutureSkewedTape) return null;
+    return fromMem;
+  }
   if (fromMem == null) return fromTape;
   return Math.min(fromTape, fromMem);
 }

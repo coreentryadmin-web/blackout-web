@@ -42,6 +42,17 @@ test("evaluateUwClusterOk: follower fails when cluster heartbeat is stale", () =
   assert.equal(result.ok, false);
 });
 
+test("buildUwClusterHealth: future-skewed heartbeat is not cluster_live", () => {
+  const now = Date.parse("2026-06-29T16:00:00.000Z");
+  const uw = buildUwClusterHealth({
+    is_leader: false,
+    cluster_last_message_at: now + 60_000,
+    now,
+  });
+  assert.equal(uw.cluster_live, false);
+  assert.equal(uw.cluster_last_message_age_ms, null);
+});
+
 test("evaluatePolygonClusterOk: off-hours always ok", () => {
   const result = evaluatePolygonClusterOk(
     {

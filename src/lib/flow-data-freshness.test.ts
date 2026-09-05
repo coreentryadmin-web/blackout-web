@@ -24,3 +24,18 @@ test("resolveFlowDataAgeMs prefers fresh tape over stale in-memory stamp", () =>
   const age = resolveFlowDataAgeMs([{ alerted_at: "2026-06-29T15:58:00.000Z" }], now);
   assert.equal(age, 2 * 60_000);
 });
+
+test("newestFlowAgeMsFromBriefs: future-skewed alerted_at returns null (fail-closed)", () => {
+  const now = Date.parse("2026-06-29T16:00:00.000Z");
+  const age = newestFlowAgeMsFromBriefs([{ alerted_at: "2026-06-29T16:10:00.000Z" }], now);
+  assert.equal(age, null);
+});
+
+test("resolveFlowDataAgeMs: future-skewed tape does not report age 0 and bypass staleness", () => {
+  const now = Date.now();
+  const age = resolveFlowDataAgeMs(
+    [{ alerted_at: new Date(now + 600_000).toISOString() }],
+    now
+  );
+  assert.equal(age, null);
+});
