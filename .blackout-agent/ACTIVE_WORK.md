@@ -2,7 +2,7 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | Standing queue only — no active implementation |
+| BO-P1-0100 | cursor | VERIFYING | — | Standing peer review — 0 open PRs; cross-exam both sides merged |
 
 ## Recently completed (this cycle — validate at RTH)
 
