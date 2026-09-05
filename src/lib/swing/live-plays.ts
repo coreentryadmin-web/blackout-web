@@ -229,6 +229,7 @@ export function livePlayFromSwingPosition(
 
   return {
     ticker: row.ticker.toUpperCase(),
+    positionId: row.id,
     direction,
     horizon: "SWING",
     score,

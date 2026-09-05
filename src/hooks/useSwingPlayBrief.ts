@@ -26,6 +26,8 @@ function briefUrl(play: TerminalPlay): string | null {
     playId: play.id,
     ticker: play.ticker,
   });
+  const posTail = play.id.match(/^SWING:[^:]+:(\d+)$/i);
+  if (posTail) params.set("positionId", posTail[1]!);
   if (play.status) params.set("status", play.status);
   const m = play.contract.match(/^(\d+(?:\.\d+)?)([CP])/);
   if (m) {

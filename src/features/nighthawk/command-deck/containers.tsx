@@ -266,6 +266,7 @@ export function HorizonDeck({
           troughPremium: p.troughPremium ?? null,
           markAsOf: p.markAsOf ?? null,
           manageAction: p.manageAction ?? null,
+          positionId: p.positionId ?? null,
           thesisBreak:
             p.thesisLevel != null
               ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }

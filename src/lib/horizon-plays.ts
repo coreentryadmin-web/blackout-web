@@ -123,6 +123,8 @@ export interface HorizonPlay {
   /** Thesis-health level for the desk — "unknown" when no setup read (never a fabricated intact). */
   thesisLevel?: "intact" | "warn" | "break" | "unknown";
   thesisNote?: string | null;
+  /** Open ledger row id when this play is live capital — disambiguates ticker collisions in briefs. */
+  positionId?: number;
   /** Live-position status when this play is an OPEN swing (OPEN/HOLD/TRIM) — drives live sections. */
   liveStatus?: "OPEN" | "HOLD" | "TRIM";
   /** Management action for a live position (manage.ts) — drives MANAGING/SCALING_OUT/EXITING. */

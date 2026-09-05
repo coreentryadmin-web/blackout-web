@@ -55,6 +55,26 @@ test("pickLanePlayForBrief: prefers live OPEN row over WATCH when status hint is
   assert.equal(picked?.liveStatus, "HOLD");
 });
 
+test("pickLanePlayForBrief: prefers live OPEN row over WATCH when status hint absent", () => {
+  const rows = [
+    laneRow({
+      ticker: "NRG",
+      score: 62,
+      contract: { ticker: "NRG", strike: 115, right: "C", expiry: "x", dte: 14, mid: 3, bid: null, ask: null, delta: 0.4, openInterest: 0 },
+    }),
+    laneRow({
+      ticker: "NRG",
+      score: 27,
+      liveStatus: "HOLD",
+      livePnlPct: 98,
+      contract: { ticker: "NRG", strike: 110, right: "C", expiry: "x", dte: 13, mid: 9, bid: null, ask: null, delta: 0.5, openInterest: 0 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "NRG", {});
+  assert.equal(picked?.contract.strike, 110);
+  assert.equal(picked?.liveStatus, "HOLD");
+});
+
 test("pickLanePlayForBrief: contract strike disambiguates same ticker", () => {
   const rows = [
     laneRow({
