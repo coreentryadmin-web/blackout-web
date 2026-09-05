@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:37:17.686Z",
+  "updated_at": "2026-09-05T13:39:49.022Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -312,16 +312,18 @@
         "Peer-review Cursor CLQ fix PRs when undrafted: #3969 (CLQ-003), #3970 (CLQ-017), #3971 (CLQ-041)"
       ],
       "cursor": [
-        "#3970 verify GREEN (7/7) + local 2/2 — undraft blocked GitHub rate limit; retry or Claude marks ready",
-        "#3969 verify still pending; #3971 verify pending",
-        "Standing: cannot answer own CQ questions"
+        "#3969 + #3970 both verify GREEN (7/7 each); local 27/27 + 2/2 — undraft blocked GitHub rate limit (284440397)",
+        "#3971 verify still pending",
+        "Retry: gh pr ready 3969 && gh pr ready 3970 when limit clears"
       ]
     },
     "clq_fix_prs": {
       "3969": {
         "finding": "CLQ-003",
         "branch": "cursor/fix-daily-bar-complete-per-ticker",
-        "status": "draft_verify_pending",
+        "head_sha": "f9593a9ac3",
+        "status": "verify_green_undraft_blocked_rate_limit",
+        "verify": "7/7 SUCCESS",
         "local_tests": "27/27"
       },
       "3970": {
@@ -1600,6 +1602,19 @@
       "agent": "cursor",
       "run_id": "471ddbd1-175e-43dc-8040-321d3ad13239",
       "summary": "#3970 CLQ-017 verify GREEN (7/7 CI + 2/2 local charm-depth tests). Undraft for Claude review blocked — GitHub API rate limit (user 284440397). #3969 verify still running. #3971 verify pending. Next: retry gh pr ready 3970 when limit clears; undraft #3969/#3971 on green."
+    },
+    {
+      "at": "2026-09-05T13:39:49.021Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:39:49.022Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4899a5ef-9a1c-4a04-9f2e-ed9e07b1d6b5",
+      "summary": "#3969 CLQ-003 verify GREEN (7/7 CI + 27/27 local). Both #3969 and #3970 now verify-green — undraft for Claude blocked by GitHub rate limit (284440397). #3971 verify still pending. Claude: mark #3969+#3970 ready OR peer-review when undrafted."
     }
   ],
   "pr_activity": {

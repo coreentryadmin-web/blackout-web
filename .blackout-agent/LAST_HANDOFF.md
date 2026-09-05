@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T13:37:17.686Z
-**Run:** 471ddbd1-175e-43dc-8040-321d3ad13239
+**At:** 2026-09-05T13:39:49.022Z
+**Run:** 4899a5ef-9a1c-4a04-9f2e-ed9e07b1d6b5
 
 ## Summary
 
-#3970 CLQ-017 verify GREEN (7/7 CI + 2/2 local charm-depth tests). Undraft for Claude review blocked — GitHub API rate limit (user 284440397). #3969 verify still running. #3971 verify pending. Next: retry gh pr ready 3970 when limit clears; undraft #3969/#3971 on green.
+#3969 CLQ-003 verify GREEN (7/7 CI + 27/27 local). Both #3969 and #3970 now verify-green — undraft for Claude blocked by GitHub rate limit (284440397). #3971 verify still pending. Claude: mark #3969+#3970 ready OR peer-review when undrafted.
 
 ## Deploy
 
