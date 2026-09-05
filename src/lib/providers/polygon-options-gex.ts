@@ -1414,6 +1414,36 @@ const cachedHeatmaps = new Map<string, { at: number; data: GexHeatmap }>();
  * the same key DO share one build.
  */
 const heatmapInflight = new Map<string, Promise<GexHeatmap | null>>();
+/** Cross-replica build lock TTL — bounds herd when N ECS tasks miss cache together (CQ-112). */
+const HEATMAP_CLUSTER_BUILD_LOCK_SEC = 180;
+
+/** When another replica holds the cluster build lock, poll shared cache for its result. */
+async function pollPeerHeatmapCache(
+  cacheKey: string,
+  now: number,
+  ttlMs: number,
+  budgetMs: number
+): Promise<GexHeatmap | null> {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    const mem = cachedHeatmaps.get(cacheKey);
+    if (mem && gexHeatmapCacheEntryWithinTtl(mem.at, now, ttlMs)) {
+      return mem.data;
+    }
+    try {
+      const { sharedCacheGet } = await import("../shared-cache");
+      const redisHit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
+      if (redisHit && gexHeatmapCacheEntryWithinTtl(redisHit.at, now, ttlMs)) {
+        setCachedHeatmap(cacheKey, redisHit);
+        return redisHit.data;
+      }
+    } catch {
+      /* redis optional */
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return null;
+}
 
 /** Per-replica last usable matrix — handoff when Redis + inflight are both cold. */
 const lastGoodHeatmapLocal = new Map<string, GexHeatmap>();
@@ -2995,9 +3025,33 @@ export async function fetchGexHeatmap(
     });
   }
 
+  let clusterBuildLockKey: string | null = null;
+  let clusterBuildLockAcquired = true;
+  try {
+    const { sharedCacheSetNx } = await import("../shared-cache");
+    clusterBuildLockKey = `gex:heatmap:build-lock:${inflightKey}`;
+    clusterBuildLockAcquired = await sharedCacheSetNx(
+      clusterBuildLockKey,
+      { at: now },
+      HEATMAP_CLUSTER_BUILD_LOCK_SEC
+    );
+  } catch {
+    clusterBuildLockAcquired = true;
+  }
+
+  if (!clusterBuildLockAcquired) {
+    const peer = await pollPeerHeatmapCache(cacheKey, now, ttlMs, gexHeatmapMaxBlockMs());
+    if (peer) return finalizeHeatmapForServe(cacheKey, peer);
+  }
+
   const build = buildGexHeatmapUncached(root, optionsRoot, cacheKey, now, baseTtlMs).finally(
     () => {
       heatmapInflight.delete(inflightKey);
+      if (clusterBuildLockKey) {
+        void import("../shared-cache").then(({ sharedCacheDel }) =>
+          sharedCacheDel(clusterBuildLockKey!).catch(() => undefined)
+        );
+      }
     }
   );
   heatmapInflight.set(inflightKey, build);

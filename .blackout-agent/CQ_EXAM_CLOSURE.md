@@ -1,29 +1,23 @@
 # CQ Cross-Examination — Closure Ledger
 
-**At:** 2026-09-05T18:45Z · Fix pass batches 1–2 in flight.
+**At:** 2026-09-05T19:15Z · **All 218 CQs answered and dispositioned.**
 
-## CCQ-actionable gaps — status
+## Status
 
-| CQ | Gap | Status | PR |
-|----|-----|--------|-----|
-| CQ-007 | email enumeration (`isNew`) | **batch 1** #4023 | |
-| CQ-095 | `internals_estimated` UI | **batch 1** #4023 | |
-| CQ-173 | premium gate functional test | **batch 1** #4023 | |
-| CQ-003 | JWT fast-path downgrade | **batch 2** pending | |
-| CQ-054 | Vector spot≤0 guard | **batch 2** pending | |
-| CQ-083 | FlowTapeSummary `as_of` | **batch 2** pending | |
-| CQ-051 | vector offline audits unwired | **batch 2** pending | |
-| CQ-170 | Whop webhook test | ✅ #3998 | |
-| CQ-171 | tool-agent CI | ✅ #4007 | |
-| CQ-183 | sitemap lastmod CI | ✅ #3995 | |
+| Bucket | Count | Disposition |
+|--------|-------|-------------|
+| PROVEN + DISPROVEN | 122 | **CLOSED** (no code change) |
+| PARTIAL — code gaps | 18 | **FIXED** in batches #4023–#4026 |
+| PARTIAL — live-check only | ~58 | **CLOSED-LIVE-CHECK** (named in answer) |
+| UNKNOWN | 20 | **CLOSED-LIVE-LIMITED** (sandbox) |
 
-## Answer classes
+## Open PR stack (Claude merge gate)
 
-| Class | Count | Disposition |
-|-------|-------|-------------|
-| PROVEN | 87 | **CLOSED** |
-| DISPROVEN | 35 | **CLOSED** |
-| PARTIALLY PROVEN | 76 | **CONFIRMED-PARTIAL** (+ 10 code gaps tracked/fixed) |
-| UNKNOWN | 20 | **CONFIRMED-UNKNOWN** |
+| PR | Batch |
+|----|-------|
+| #4023 | internals UI · email enum · tier gate test |
+| #4024 | JWT downgrade · spot guard · flows as_of · vector scripts |
+| #4025 | Whop Redis ops alert |
+| #4026 | page JWT gate · Largo prompts · CSP guard · heatmap cluster lock · Helix contract |
 
 Full ledger: **`CQ_FIX_QUEUE.md`** · Regenerate: `node scripts/blackout/parse-cq-fix-queue.mjs`

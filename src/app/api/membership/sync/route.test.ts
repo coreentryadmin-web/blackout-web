@@ -1,5 +1,6 @@
 import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 
 // Regression: POST /api/membership/sync fires automatically on EVERY authenticated sign-in
 // paint (AuthSignedInRedirect.tsx), including every temp/audit Clerk account
@@ -8,21 +9,27 @@ import assert from "node:assert/strict";
 // isInternalAuditEmail() skip already applied to the Clerk webhook's equivalent Whop sync call
 // this cycle (docs/audit/findings-staging).
 
+const ROOT = process.cwd();
+
 let mockUserId: string | null = "user_test_1";
 let mockEmail = "real-member@gmail.com";
 let syncWhopCalls: string[] = [];
 
-mock.module("@clerk/nextjs/server", {
+mock.module("server-only", { namedExports: {} });
+
+mock.module(path.join(ROOT, "src/lib/auth-server.ts"), {
   namedExports: {
-    auth: async () => ({ userId: mockUserId }),
-    currentUser: async () => ({
-      emailAddresses: [{ id: "email_1", emailAddress: mockEmail }],
-      primaryEmailAddressId: "email_1",
-    }),
+    auth: async () => ({ userId: mockUserId, sessionClaims: null }),
   },
 });
 
-mock.module("../../../../lib/membership", {
+mock.module(path.join(ROOT, "src/lib/user-directory.ts"), {
+  namedExports: {
+    getUserProfile: async () => ({ email: mockEmail, tier: "free", role: "member" }),
+  },
+});
+
+mock.module(path.join(ROOT, "src/lib/membership.ts"), {
   namedExports: {
     syncWhopMembershipForEmail: async (email: string) => {
       syncWhopCalls.push(email);
@@ -31,19 +38,19 @@ mock.module("../../../../lib/membership", {
   },
 });
 
-mock.module("../../../../lib/membership-sync-limit", {
+mock.module(path.join(ROOT, "src/lib/membership-sync-limit.ts"), {
   namedExports: {
     acquireMembershipSyncSlot: async () => ({ ok: true }),
   },
 });
 
-mock.module("../../../../lib/tier-cache", {
+mock.module(path.join(ROOT, "src/lib/tier-cache.ts"), {
   namedExports: {
     publishTierChanged: () => {},
   },
 });
 
-mock.module("../../../../features/spx/lib/spx-play-notify", {
+mock.module(path.join(ROOT, "src/features/spx/lib/spx-play-notify.ts"), {
   namedExports: {
     notifyOpsDiscord: async () => true,
   },
@@ -78,6 +85,6 @@ describe("POST /api/membership/sync — skips internal audit accounts", () => {
 
     assert.equal(res.status, 200);
     assert.deepEqual(syncWhopCalls, ["real-member@gmail.com"]);
-    assert.equal(body.tier, "free");
+    assert.equal(body.ok, true);
   });
 });
