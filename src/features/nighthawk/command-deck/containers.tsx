@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import clsx from "clsx";
 import dynamic from "next/dynamic";
 import { CommandDeck } from "./CommandDeck";
 
@@ -56,20 +55,38 @@ import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
-import { SWING_SERVING_SECTIONS } from "@/lib/swing/serving";
-import {
-  rowsForSwingSection,
-  swingSectionCounts,
-  emptySwingSectionHint,
-  SWING_SECTION_LABEL,
-  type SwingSectionFilter,
-} from "./swing-section-filter";
+import { rowsForSwingSection } from "./swing-section-filter";
+import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import { NIGHTHAWK_COMPACT_LANE_LABEL } from "@/features/nighthawk/lib/nighthawk-view";
 import { zeroDteEmptyHint } from "../lib/deck-empty-hint";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
+
+function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): TerminalPlay {
+  return terminalPlayFromHorizon({
+    ticker: src.ticker,
+    direction: src.direction,
+    horizon: src.horizon,
+    score: src.score,
+    status: src.status,
+    reason: src.reason,
+    contract: src.contract,
+    archetype: src.archetype ?? null,
+    subLane: src.subLane ?? null,
+    firstSeenAt: src.firstSeenAt ?? null,
+    committedAt: src.committedAt ?? null,
+    entryPremium: src.entryPremium ?? null,
+    peakPremium: src.peakPremium ?? null,
+    troughPremium: src.troughPremium ?? null,
+    occ: src.occ ?? null,
+    positionId: src.positionId,
+    exitAt: src.exitAt ?? null,
+    exitPnlPct: src.exitPnlPct ?? null,
+    closedReason: src.closedReason ?? null,
+  });
+}
 
 /** Board payload may carry session.heat — keep the type loose so a missing field never breaks the deck. */
 type BoardRespWithSession = BoardResp & {
@@ -208,36 +225,24 @@ export function HorizonDeck({
   const lane = data?.board?.lanes?.[horizon];
   const swingLane = horizon === "SWING" ? (lane as SwingServingLane | undefined) : undefined;
   const scanAsOf = swingLane?.scanAsOf ?? null;
-  const { data: swingRecord } = useSWR<{ summary?: { win_rate_pct?: number | null } }>(
+  const { data: swingRecord } = useSWR<{
+    summary?: { win_rate_pct?: number | null };
+    closedDeck?: SwingClosedDeckSource[];
+  }>(
     horizon === "SWING" ? "/api/market/swing/record?days=30" : null,
     json,
     { refreshInterval: 30_000 },
   );
   const swingWinRate = swingRecord?.summary?.win_rate_pct ?? null;
-  const [sectionFilter, setSectionFilter] = useState<SwingSectionFilter>("ALL");
-  // Prefer the seven serving sections when present (SWING) — flat committed/watch is back-compat only and
-  // collapses COMMIT_NOW + WAITING_FOR_ENTRY into one misleading "committed" rail.
-  // Seven sections, selectable (FINDINGS 2026-08-06 swing audit P2): these used to be concatenated
-  // into one flat list, so `serving.ts`'s whole reason to exist — telling a member what is
-  // ACTIONABLE vs merely forming — survived only as a small per-card badge. ALL keeps the previous
-  // behaviour as the default view, so nobody's board changes until they choose a section.
+  // Flatten all serving sections — member filter is OPEN/WATCH/CLOSED (same as 0DTE), not seven rails.
   const hasSections = horizon === "SWING" && lane?.sections != null;
-  const sectionCounts = useMemo(() => swingSectionCounts(lane?.sections), [lane?.sections]);
-  const sectionRows = hasSections ? rowsForSwingSection(lane!.sections, sectionFilter) : null;
-  const rows = sectionRows ?? [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
-  const researchCount = horizon === "SWING" ? (lane?.sections?.RESEARCH?.length ?? 0) : 0;
-  const watchCount = horizon === "SWING" ? (lane?.sections?.WATCH?.length ?? 0) : 0;
-  // A filtered-empty section is NOT an empty lane — saying "scanning the whole market" while 40
-  // names sit one tab over would be actively misleading.
-  const sectionEmptyHint = hasSections ? emptySwingSectionHint(sectionFilter, sectionCounts) : null;
+  const rows = hasSections
+    ? rowsForSwingSection(lane!.sections, "ALL")
+    : [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
   const emptyHint = degraded
     ? "Lane data unavailable right now — retrying. This is a data outage, not an empty board."
-    : sectionEmptyHint
-      ? sectionEmptyHint
-      : horizon === "SWING" && rows.length === 0
-      ? researchCount > 0 || watchCount > 0
-        ? "Swing scan active — names building persistence appear in Research once enriched."
-        : "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
+    : horizon === "SWING" && rows.length === 0
+      ? "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
       : `Scanning the whole market for ${horizon === "SWING" ? "Swing" : "LEAPS"} setups — this lane is coming online.`;
   const basePlays = useMemo<TerminalPlay[]>(
     () =>
@@ -270,9 +275,12 @@ export function HorizonDeck({
           archetype: p.archetype ?? null,
           subLane: p.subLane ?? null,
           servingSection: p.serving ?? null,
+          persistenceObserved: p.persistenceObserved ?? null,
+          persistenceGapReason: p.persistenceGapReason ?? null,
           firstSeenAt: p.firstSeenAt ?? null,
           committedAt: p.committedAt ?? null,
           signalKinds: p.signalKinds ?? null,
+          commitGateBlockedBy: p.commitGateBlockedBy ?? null,
           liveStatus: p.liveStatus ?? null,
           flagUnderlyingPx: p.flagUnderlyingPx ?? null,
           entryPremium: p.entryPremium ?? null,
@@ -301,38 +309,21 @@ export function HorizonDeck({
     horizon !== "SWING" && watchTickers.length > 0,
     5_000,
   );
-  const playsWithTrack = useMemo(
-    () => (horizon === "SWING" ? swingLivePlays : overlayHorizonWatchTrack(basePlays, stockQuotes)),
-    [horizon, swingLivePlays, basePlays, stockQuotes],
-  );
+  const playsWithTrack = useMemo(() => {
+    if (horizon !== "SWING") return overlayHorizonWatchTrack(basePlays, stockQuotes);
+    const closedPlays = (swingRecord?.closedDeck ?? []).map(terminalPlayFromClosedSwing);
+    const openIds = new Set(swingLivePlays.map((p) => p.id));
+    const closedOnly = closedPlays.filter((p) => !openIds.has(p.id));
+    return [...swingLivePlays, ...closedOnly];
+  }, [horizon, swingLivePlays, basePlays, stockQuotes, swingRecord?.closedDeck]);
   const sessionHeat = data?.session?.heat?.state ?? null;
   return (
     <>
       {horizon === "SWING" && (
         <>
           <SwingAnalyticsPanel />
-          <SwingCockpitStrip
-            plays={playsWithTrack}
-            sectionCounts={sectionCounts}
-            scanAsOf={scanAsOf}
-            winRatePct={swingWinRate}
-          />
+          <SwingCockpitStrip plays={playsWithTrack} scanAsOf={scanAsOf} winRatePct={swingWinRate} />
         </>
-      )}
-      {hasSections && (
-        <div className="nh-deck-filterbar nh-deck-filterbar--sections" role="group" aria-label="Filter swing plays by serving section">
-          {(["ALL", ...SWING_SERVING_SECTIONS] as SwingSectionFilter[]).map((sec) => (
-            <button
-              key={sec}
-              type="button"
-              className={clsx("nh-deck-filtbtn", sectionFilter === sec && "on")}
-              aria-pressed={sectionFilter === sec}
-              onClick={() => setSectionFilter(sec)}
-            >
-              {SWING_SECTION_LABEL[sec]} <span className="cnt">{sectionCounts[sec]}</span>
-            </button>
-          ))}
-        </div>
       )}
       <CommandDeck
       plays={playsWithTrack}

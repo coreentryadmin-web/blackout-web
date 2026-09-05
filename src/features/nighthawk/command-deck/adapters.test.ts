@@ -1027,6 +1027,95 @@ test("horizon adapter: pre-entry COMMIT maps to WATCH; live OPEN maps to OPEN", 
   assert.equal(open.trackPct, null);
 });
 
+test("horizon adapter: COMMIT_NOW pre-entry → WATCH + BUY recommendation + BUY action path", () => {
+  const buy = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 88,
+    status: "COMMIT",
+    servingSection: "COMMIT_NOW",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    contract: { strike: 180, right: "C", expiry: "2026-09-19", dte: 14, mid: 5.2 },
+  });
+  assert.equal(buy.status, "WATCH");
+  assert.equal(buy.recommendation, "BUY");
+  assert.equal(buy.gateBlocks, null);
+});
+
+test("horizon adapter: COMMIT_NOW + commit gate block → WATCH/WAIT with gate blocks, not BUY", () => {
+  const gated = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 88,
+    status: "COMMIT",
+    servingSection: "COMMIT_NOW",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    commitGateBlockedBy: ["gate:G-S6:confluence"],
+    contract: { strike: 180, right: "C", expiry: "2026-09-19", dte: 14, mid: 5.2 },
+  });
+  assert.equal(gated.status, "WATCH");
+  assert.equal(gated.recommendation, "HOLD");
+  assert.equal(gated.gateBlocks?.[0]?.code, "g_s6_confluence");
+});
+
+test("horizon adapter: WAITING_FOR_ENTRY → WATCH + HOLD (WAIT action)", () => {
+  const wait = terminalPlayFromHorizon({
+    ticker: "amd",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 75,
+    status: "COMMIT",
+    servingSection: "WAITING_FOR_ENTRY",
+    setupState: "TRIGGERED",
+    entryStatus: "PRE_TRIGGER",
+    contract: { strike: 160, right: "C", expiry: "2026-09-19", dte: 14, mid: 4.1 },
+  });
+  assert.equal(wait.status, "WATCH");
+  assert.equal(wait.recommendation, "HOLD");
+  assert.match(wait.recNote, /trigger/i);
+});
+
+test("horizon adapter: RESEARCH + INVALIDATED → SKIP with gate blocks", () => {
+  const skip = terminalPlayFromHorizon({
+    ticker: "tsla",
+    direction: "SHORT",
+    horizon: "SWING",
+    score: 70,
+    status: "COMMIT",
+    servingSection: "RESEARCH",
+    setupState: "INVALIDATED",
+    contract: { strike: 250, right: "P", expiry: "2026-09-19", dte: 14, mid: 6.0 },
+  });
+  assert.equal(skip.status, "SKIP");
+  assert.equal(skip.gateBlocks?.[0]?.code, "thesis_invalidated");
+});
+
+test("horizon adapter: graded CLOSED swing row wires exit fields + position-scoped id", () => {
+  const closed = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 80,
+    status: "CLOSED",
+    positionId: 42,
+    exitAt: "2026-08-10T16:00:00Z",
+    exitPnlPct: 28.5,
+    closedReason: "target",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 0, mid: 6.4 },
+    entryPremium: 5.0,
+    peakPremium: 7.0,
+  });
+  assert.equal(closed.id, "SWING:NVDA:42");
+  assert.equal(closed.status, "CLOSED");
+  assert.equal(closed.pnlPct, 28.5);
+  assert.equal(closed.exitPnlPct, 28.5);
+  assert.equal(closed.closedReason, "target");
+});
+
 test("horizon adapter: live OPEN row wires entry/mark/pnl from live book fields", () => {
   const open = terminalPlayFromHorizon({
     ticker: "nvda",

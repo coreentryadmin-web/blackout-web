@@ -44,6 +44,7 @@
 // the Next server runtime. Types are imported type-only (erased at runtime).
 
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { MarketBreadthBundle } from "@/lib/bie/market-breadth";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { NewsResult } from "@/lib/providers/polygon-news";
@@ -65,6 +66,16 @@ import type {
   CortexVexSlice,
   CortexWallTrendSlice,
 } from "./types";
+
+/** Commit-time Cortex scope — 0DTE Command vs multi-day Swing holds (design §9). */
+export type CortexCommitHorizon = "0dte" | "swing";
+
+/** Map commit horizon → Vector DTE scope for dealer-wall reads.
+ *  Swing holds target dteWindow [5,15]: weekly (≤7) under-covers the window; monthly (≤35) over-covers
+ *  but includes the full 5–15 DTE band — safer than weekly until a dedicated swing ceiling ships. */
+export function vectorHorizonForCortexCommit(horizon: CortexCommitHorizon = "0dte"): VectorDteHorizon {
+  return horizon === "swing" ? "monthly" : "0dte";
+}
 
 /** Per-read timeout. 8s: fetchVectorFullState feeds 3 sources (gex-walls,
  *  wall-trend, darkpool-confluence) and on a cold-cache miss triggers a 10+ read
@@ -128,7 +139,7 @@ export const POLYGON_INDEX_AGG_SYMBOL: Record<string, string> = {
  *  lazily); tests inject fakes so the assembler's fail-soft/timeout behavior is
  *  testable without module mocks or a live platform. */
 export type CortexFetchDeps = {
-  fetchVectorFullState: (ticker: string, horizon: "0dte") => Promise<VectorFullState | null>;
+  fetchVectorFullState: (ticker: string, horizon: VectorDteHorizon) => Promise<VectorFullState | null>;
   getGexPositioning: (ticker: string) => Promise<GexPositioning | null>;
   getFlowTapeSummary: (opts: { ticker: string; limit: number }) => Promise<FlowTapeSummary>;
   fetchTickerNews: (ticker: string, opts: { limit: number }) => Promise<NewsResult>;
@@ -383,12 +394,13 @@ export function mapOpeningSlice(args: {
 export async function fetchCortexInputs(
   ticker: string,
   direction: CortexDirection,
-  opts: { now?: Date; deps?: CortexFetchDeps; timeoutMs?: number } = {}
+  opts: { now?: Date; deps?: CortexFetchDeps; timeoutMs?: number; horizon?: CortexCommitHorizon } = {}
 ): Promise<CortexInputs> {
   const upper = ticker.toUpperCase().trim();
   const now = opts.now ?? new Date();
   const timeoutMs = opts.timeoutMs ?? CORTEX_SOURCE_TIMEOUT_MS;
   const deps = opts.deps ?? (await loadDefaultDeps());
+  const vectorHorizon = vectorHorizonForCortexCommit(opts.horizon ?? "0dte");
   const isIndex = CORTEX_INDEX_TICKERS.has(upper);
   const errors: Partial<Record<CortexSourceId, string>> = {};
 
@@ -400,7 +412,7 @@ export async function fetchCortexInputs(
 
   const [vectorRes, positioningRes, flowRes, newsRes, earningsRes, sectorRes, breadthRes, barsRes, prevDayRes, internalsRes] =
     await Promise.allSettled([
-      withSourceTimeout(deps.fetchVectorFullState(upper, "0dte"), timeoutMs),
+      withSourceTimeout(deps.fetchVectorFullState(upper, vectorHorizon), timeoutMs),
       withSourceTimeout(deps.getGexPositioning(upper), timeoutMs),
       withSourceTimeout(deps.getFlowTapeSummary({ ticker: upper, limit: CORTEX_FLOW_PRINT_LIMIT }), timeoutMs),
       withSourceTimeout(

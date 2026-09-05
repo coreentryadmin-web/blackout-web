@@ -16,6 +16,7 @@ import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-re
 import { thesisManagementOverlay, formatComputedEt } from "@/lib/zerodte/thesis-health";
 import { buildTerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { SWING_SCALE_OUT_POLICY } from "@/lib/swing/exit-policy";
+import { swingEntryVerdict } from "@/lib/swing/entry-verdict";
 import { computeSwingThesisHealth } from "@/lib/swing/thesis-health";
 import type { SwingManageAction } from "@/lib/swing/manage";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
@@ -671,12 +672,17 @@ export interface HorizonDeckSource {
   archetype?: string | null;
   subLane?: string | null;
   servingSection?: SwingServingSection | null;
+  /** True when seen but below cross-session persistence — routes to RESEARCH / SKIP. */
+  persistenceObserved?: boolean | null;
+  persistenceGapReason?: string | null;
   /** ISO instant the thesis was first observed. */
   firstSeenAt?: string | null;
   /** ISO instant capital was committed. */
   committedAt?: string | null;
   /** Discovery provenance kinds. */
   signalKinds?: string[] | null;
+  /** V2 commit gate blocks stamped at discovery — gates BUY when G-S6/G-S14 would refuse open. */
+  commitGateBlockedBy?: string[] | null;
   /** Live-position status when this play is an OPEN swing (OPEN/HOLD/TRIM). */
   liveStatus?: "OPEN" | "HOLD" | "TRIM" | null;
   /** Underlying price when the thesis was first flagged — WATCH track anchor. */
@@ -694,6 +700,11 @@ export interface HorizonDeckSource {
   markAsOf?: string | null;
   /** Management engine action for live rows (manage.ts). */
   manageAction?: SwingManageAction | null;
+  /** Ledger position id — disambiguates multiple closed rows on the same ticker. */
+  positionId?: number | null;
+  exitAt?: string | null;
+  exitPnlPct?: number | null;
+  closedReason?: string | null;
 }
 
 /**
@@ -756,7 +767,25 @@ export function greeksFromContract(contract: HorizonDeckSource["contract"]): Dec
 }
 
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
-  const status = horizonDeckStatus(src);
+  const baseStatus = horizonDeckStatus(src);
+  const swingPreEntry =
+    src.horizon === "SWING" &&
+    !src.liveStatus &&
+    (baseStatus === "WATCH" || baseStatus === "SKIP" || String(src.status ?? "").toUpperCase() === "COMMIT");
+  const entryVerdict = swingPreEntry
+    ? swingEntryVerdict({
+        servingSection: src.servingSection,
+        setupState: src.setupState,
+        entryStatus: src.entryStatus,
+        aboveFloor: String(src.status ?? "").toUpperCase() === "COMMIT",
+        persistenceObserved: src.persistenceObserved,
+        persistenceGapReason: src.persistenceGapReason,
+        commitGateBlockedBy: src.commitGateBlockedBy,
+        signalKinds: src.signalKinds,
+        archetype: src.archetype,
+      })
+    : null;
+  const status = entryVerdict?.deckStatus ?? baseStatus;
   const entry = fin(src.entryPremium);
   const bid = fin(src.contract.bid);
   const ask = fin(src.contract.ask);
@@ -810,6 +839,13 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     },
     src.reason || mgmt.recNote,
   );
+  const preEntrySwingMgmt =
+    entryVerdict != null
+      ? {
+          recommendation: entryVerdict.recommendation,
+          recNote: entryVerdict.recNote,
+        }
+      : null;
   const flagPx = fin(src.flagUnderlyingPx);
   const watchTrack = status === "WATCH" || status === "SKIP";
   const trackPct = watchTrack
@@ -824,7 +860,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
       ? Math.round(((src.troughPremium! / entry - 1) * 100) * 10) / 10
       : null;
   return {
-    id: `${src.horizon}:${src.ticker}`,
+    id: `${src.horizon}:${src.ticker.toUpperCase()}${src.positionId != null ? `:${src.positionId}` : ""}`,
     ticker: src.ticker.toUpperCase(),
     direction: src.direction,
     contract: `${src.contract.strike}${src.contract.right} · ${src.contract.dte}DTE`,
@@ -843,12 +879,19 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     regime: src.regime ?? null,
     thesisBreak: thesisBreakResolved,
     ...mgmtWithThesis,
+    ...(preEntrySwingMgmt ?? {}),
+    gateBlocks: entryVerdict?.gateBlocks ?? null,
     progress: mgmt.progress,
     entry,
     mark: markMid,
-    pnlPct: status === "WATCH" || status === "SKIP" ? null : livePnl ?? exec.pnl_pct,
-    execMark: status === "WATCH" || status === "SKIP" ? null : exec.fill,
-    execPnlPct: status === "WATCH" || status === "SKIP" ? null : exec.pnl_pct,
+    pnlPct:
+      status === "WATCH" || status === "SKIP"
+        ? null
+        : status === "CLOSED"
+          ? fin(src.exitPnlPct)
+          : livePnl ?? exec.pnl_pct,
+    execMark: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.fill,
+    execPnlPct: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.pnl_pct,
     occ: occPrefixed,
     markAsOf: src.markAsOf ?? null,
     markIsSync: src.markAsOf == null,
@@ -873,6 +916,9 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     committedAt: src.committedAt ?? null,
     discoveryOrigin:
       Array.isArray(src.signalKinds) && src.signalKinds.length > 0 ? src.signalKinds : null,
+    closedReason: src.closedReason ?? null,
+    exitAt: src.exitAt ?? null,
+    exitPnlPct: fin(src.exitPnlPct),
   };
 }
 

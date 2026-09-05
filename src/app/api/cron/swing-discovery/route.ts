@@ -27,6 +27,12 @@ import {
   type SwingDiscoveryDeps,
 } from "@/lib/swing/discovery";
 import { ingestSwingReads } from "@/lib/swing/swing-ingest";
+import { persistSwingCapRejections } from "@/lib/swing/v2/rejections";
+import { positioningTickersFromVectorLeaders } from "@/lib/swing/v2/origins/positioning-screen";
+import { catalystTickersFromBenzingaBundle } from "@/lib/swing/v2/origins/catalyst-screen";
+import { bangerTickersFromGroupedDaily } from "@/lib/swing/v2/origins/banger-screen";
+import { vectorTickersFromPickLeaders } from "@/lib/swing/v2/origins/vector-screen-fetch";
+import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
 import { swingThesisKey } from "@/lib/swing/accumulation-store";
@@ -149,6 +155,29 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
         }
       : {}),
     fetchSpyCloses: async () => closesFor("SPY"),
+    // V2 POSITIONING origin — GEX/walls screen on Vector leader tickers (fail-soft).
+    fetchPositioningTickers: async () => {
+      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
+      return positioningTickersFromVectorLeaders(tickers);
+    },
+    // V2 CATALYST origin — Benzinga earnings window (fail-soft).
+    fetchCatalystTickers: async () => catalystTickersFromBenzingaBundle(sessionDay),
+    fetchBangerTickers: async () => {
+      const summary = await fetchDailyMarketSummary(to);
+      const rows = summary.results ?? [];
+      return bangerTickersFromGroupedDaily(
+        rows.map((r) => ({
+          T: r.T,
+          o: r.o,
+          h: r.h,
+          l: r.l,
+          c: r.c,
+          v: r.v,
+        })),
+      );
+    },
+    fetchVectorTickers: async () => vectorTickersFromPickLeaders({ sessionDate: sessionDay, limit: 80 }),
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
         {
@@ -321,6 +350,18 @@ export async function GET(req: NextRequest) {
     // UW REST (IV rank / earnings history) is tagged as a background sweep so live traffic keeps
     // a reserved slot while the once-per-phase whole-market scan fans out.
     const result = await runWithBackgroundUwSweep(() => runSwingDiscoveryScan(deps));
+
+    if (result.engineV2 && result.recall.cappedOut.length > 0) {
+      await persistSwingCapRejections({
+        sessionDay,
+        scanPhase: decision.phase ?? null,
+        cappedOut: result.recall.cappedOut,
+        tier0PoolSize: result.mergedCount,
+        tier1Cap: result.tier1CapApplied,
+      }).catch((err) => {
+        console.warn("[swing-discovery] cap rejection persist failed:", err);
+      });
+    }
 
     // Persist the scored output so the member horizons route can serve it. If the write fails, RELEASE the
     // phase claim so the next EventBridge fire can retry — upgrading to DONE without a snapshot locks the

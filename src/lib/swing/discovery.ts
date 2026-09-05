@@ -57,6 +57,11 @@ import type { SwingArchetype } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
+import { resolveSwingTier1Cap } from "./v2/tier1-cap";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, swingCortexPreflightCap } from "./v2/config";
+import { evaluateSwingCortexForCommit } from "./v2/cortex-swing";
+import { persistSwingGateRejections } from "./v2/rejections";
+import { evaluateSwingConfluence } from "./v2/confluence";
 import {
   computeSwingCommitPlan,
   executeSwingCommits,
@@ -85,7 +90,7 @@ import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
 // observable instead of silent. `computeSwingDiscoveryRecall` is PURE/deterministic on fixed inputs.
 
 /** Which Tier-0 screen(s) surfaced a name — provenance carried through the merge for ranking + explain. */
-export type SwingDiscoveryPath = "FLOW" | "STRUCTURE";
+export type SwingDiscoveryPath = "FLOW" | "STRUCTURE" | "POSITIONING" | "CATALYST" | "BANGER" | "VECTOR";
 
 /** Discovery cadence phase. The plan ships POST_CLOSE first (cleanest full-session accumulation read); the
  *  other phases land in PR-13. Accreted into the accumulation memory's `phases_seen`. */
@@ -177,6 +182,7 @@ export const WATCH_ELIGIBLE_FETCH_LIMIT = 500;
 export function mergeTierZeroScreens(
   flowTickers: string[],
   structureTickers: string[],
+  extra?: { positioning?: string[]; catalyst?: string[]; banger?: string[]; vector?: string[] },
 ): TierZeroSeed[] {
   const paths = new Map<string, Set<SwingDiscoveryPath>>();
   const add = (raw: string, path: SwingDiscoveryPath) => {
@@ -188,12 +194,17 @@ export function mergeTierZeroScreens(
   };
   for (const t of flowTickers) add(t, "FLOW");
   for (const t of structureTickers) add(t, "STRUCTURE");
+  for (const t of extra?.positioning ?? []) add(t, "POSITIONING");
+  for (const t of extra?.catalyst ?? []) add(t, "CATALYST");
+  for (const t of extra?.banger ?? []) add(t, "BANGER");
+  for (const t of extra?.vector ?? []) add(t, "VECTOR");
+
+  const pathOrder: SwingDiscoveryPath[] = ["FLOW", "STRUCTURE", "POSITIONING", "CATALYST", "BANGER", "VECTOR"];
 
   return Array.from(paths.entries())
     .map(([ticker, set]) => ({
       ticker,
-      // Stable path order (FLOW before STRUCTURE) so provenance is deterministic.
-      paths: (["FLOW", "STRUCTURE"] as SwingDiscoveryPath[]).filter((p) => set.has(p)),
+      paths: pathOrder.filter((p) => set.has(p)),
     }))
     .sort((a, b) => a.ticker.localeCompare(b.ticker));
 }
@@ -416,6 +427,14 @@ export interface SwingDiscoveryDeps {
   fetchIntradayStructureBars?: () => Promise<
     Array<{ T?: string; o?: number; h?: number; l?: number; c?: number; v?: number }>
   >;
+  /** V2 — tickers from POSITIONING origin screen (GEX/walls). Optional; empty when unwired. */
+  fetchPositioningTickers?: () => Promise<string[]>;
+  /** V2 — tickers from CATALYST origin screen (earnings/news impulse). Optional. */
+  fetchCatalystTickers?: () => Promise<string[]>;
+  /** V2 — tickers from BANGER origin screen (whole-market breakout). Optional. */
+  fetchBangerTickers?: () => Promise<string[]>;
+  /** V2 — tickers from VECTOR origin (vector_pick_leaders). Optional. */
+  fetchVectorTickers?: () => Promise<string[]>;
   /** SPY ascending daily closes — fetched ONCE, passed into every Tier-1 enrich (relative-strength base). */
   fetchSpyCloses: () => Promise<number[]>;
   /** Tier-1 enrich: assemble the dossier input for a name (swing-ingest). Null → the name is dropped. */
@@ -500,6 +519,12 @@ export interface SwingDiscoveryResult {
   commit?: SwingCommitResult;
   /** Discovery-recall instrumentation (evidence-only; does NOT change what surfaces). See WHY-RECALL header. */
   recall: SwingDiscoveryRecall;
+  /** Tier-1 cap applied this scan (may differ from config when V2 dynamic cap is on). */
+  tier1CapApplied: number;
+  /** Whether Swing Engine V2 dynamic recall path was active. */
+  engineV2: boolean;
+  /** V2 telemetry: confluence near-miss count (at required-1 kinds; still blocked when gate enforced). */
+  confluenceNearMissCount?: number;
   /** Rows retired by fadeStaleAccum this scan (0 when none / fade skipped). */
   fadedStale?: number;
 }
@@ -514,6 +539,7 @@ export async function runSwingDiscoveryScan(
 ): Promise<SwingDiscoveryResult> {
   const cfg: SwingDiscoveryConfig = { ...DEFAULT_SWING_DISCOVERY_CONFIG, ...deps.config };
   const asOf = new Date(deps.nowMs).toISOString();
+  const engineV2 = isSwingEngineV2Enabled();
 
   // ── TIER-0 FLOW: multi-day accumulation over the flow window → directional names. ──
   const flows = await deps.fetchFlowWindow();
@@ -534,12 +560,36 @@ export async function runSwingDiscoveryScan(
   const moverByTicker = new Map<string, BreakoutMover>(movers.map((m) => [m.ticker.toUpperCase(), m]));
   const structureTickers = movers.map((m) => m.ticker);
 
+  const positioningTickers =
+    engineV2 && deps.fetchPositioningTickers
+      ? await deps.fetchPositioningTickers().catch(() => [] as string[])
+      : [];
+  const catalystTickers =
+    engineV2 && deps.fetchCatalystTickers
+      ? await deps.fetchCatalystTickers().catch(() => [] as string[])
+      : [];
+  const bangerTickers =
+    engineV2 && deps.fetchBangerTickers
+      ? await deps.fetchBangerTickers().catch(() => [] as string[])
+      : [];
+  const vectorTickers =
+    engineV2 && deps.fetchVectorTickers
+      ? await deps.fetchVectorTickers().catch(() => [] as string[])
+      : [];
+
   // ── MERGE + rank + cap to the Tier-1 budget. ──
-  const merged = mergeTierZeroScreens(flowTickers, structureTickers);
+  const merged = mergeTierZeroScreens(flowTickers, structureTickers, {
+    positioning: positioningTickers,
+    catalyst: catalystTickers,
+    banger: bangerTickers,
+    vector: vectorTickers,
+  });
   // Keep the FULL ranked order so the recall instrumentation can see WHO the top-N cap severed (not just
   // the survivors). The behavior is unchanged — only `ranked` (the capped slice) feeds Tier-1.
   const rankedFull = rankTierZeroSeeds(merged, accSignals, moverByTicker);
-  const ranked = rankedFull.slice(0, cfg.tier1Cap);
+  const capResolution = resolveSwingTier1Cap(merged.length, cfg.tier1Cap);
+  const tier1CapApplied = capResolution.cap;
+  const ranked = rankedFull.slice(0, tier1CapApplied);
 
   // ── TIER-1 enrich (one SPY fetch shared across every name; parallel workers under the cron budget). ──
   const spyCloses = await deps.fetchSpyCloses();
@@ -565,18 +615,38 @@ export async function runSwingDiscoveryScan(
     return lane != null && lane !== d.subLane ? { ...d, subLane: lane } : d;
   });
 
+  let confluenceNearMissCount = 0;
+  if (engineV2) {
+    for (const d of dossiers) {
+      const seed = candidateSeeds.find((s) => s.ticker === d.ticker);
+      const verdict = evaluateSwingConfluence(seed?.paths ?? [], d.archetype.archetype);
+      if (!verdict.pass && verdict.count >= verdict.required - 1) {
+        confluenceNearMissCount += 1;
+      }
+    }
+    if (confluenceNearMissCount > 0) {
+      console.info(`[swing-discovery] V2 confluence near-miss: ${confluenceNearMissCount} names at required-1 kinds`);
+    }
+  }
+
   // ── RECALL (pure, evidence-only): measure the funnel so a dropped-strong-candidate is VISIBLE. ──
   const recall = computeSwingDiscoveryRecall({
     tier0FlowCount: flowTickers.length,
     tier0StructureCount: structureTickers.length,
     merged,
     rankedFull,
-    tier1Cap: cfg.tier1Cap,
+    tier1Cap: tier1CapApplied,
     dossiers,
     accSignals,
     moverByTicker,
   });
   // One-line recall summary in the shell (the funnel + the load-bearing capped-out leak).
+  if (capResolution.dynamic) {
+    console.log(
+      `[swing-discovery] V2 dynamic tier1Cap=${tier1CapApplied} (pool=${merged.length}, ` +
+        `floor=${capResolution.floor}, ceiling=${capResolution.ceiling})`,
+    );
+  }
   const nearFloor = recall.cappedOut.filter((c) => c.reason.includes("NEAR ENRICHED FLOOR")).length;
   console.info(
     `[swing-discovery] recall: tier0 ${recall.tier0Count} (flow ${recall.tier0FlowCount}/struct ${recall.tier0StructureCount}) ` +
@@ -752,11 +822,85 @@ export async function runSwingDiscoveryScan(
         archetypeScores: classMeta?.scores ?? null,
         classificationMargin: classMeta?.margin ?? null,
         ivRank: d?.ivRank ?? null,
+        discoveryPaths: pathsByTicker.get(w.ticker.toUpperCase()) ?? [],
       };
     });
 
-    const plan = computeSwingCommitPlan({ candidates: commitCandidates, report, book, budget: deps.budget, caps: deps.caps });
+    if (engineV2 && isSwingCortexEnforced()) {
+      const cap = swingCortexPreflightCap();
+      const ranked = [...commitCandidates]
+        .filter((c) => c.direction)
+        .sort((a, b) => b.score - a.score || a.ticker.localeCompare(b.ticker))
+        .slice(0, cap);
+      const blocked = new Map<string, string[]>();
+      await Promise.all(
+        ranked.map(async (c) => {
+          const key = `${c.ticker.toUpperCase()}|${c.direction}`;
+          const pre = await evaluateSwingCortexForCommit(c.ticker, c.direction!, deps.nowMs).catch(() => null);
+          if (pre?.blocked) blocked.set(key, pre.blockedBy);
+        }),
+      );
+      for (const c of commitCandidates) {
+        if (!c.direction) continue;
+        const key = `${c.ticker.toUpperCase()}|${c.direction}`;
+        const extra = blocked.get(key);
+        if (extra?.length) c.preflightV2BlockedBy = extra;
+      }
+    }
+
+    const plan = computeSwingCommitPlan({
+      candidates: commitCandidates,
+      report,
+      book,
+      budget: deps.budget,
+      caps: deps.caps,
+      v2: engineV2 && isSwingConfluenceEnforced() ? { enforceConfluence: true } : undefined,
+    });
     commitEligibleCount = plan.commitEligibleCount;
+
+    // Stamp G-S6/G-S14 blocks onto produced plays so the desk BUY/WAIT verdict matches commit reality.
+    if (engineV2 && playSet.SWING.length > 0) {
+      const gateBlockedByKey = new Map<string, string[]>();
+      for (const d of plan.decisions) {
+        const gateBlocks = d.blockedBy.filter((b) => b.startsWith("gate:G-S"));
+        if (gateBlocks.length === 0) continue;
+        gateBlockedByKey.set(`${d.ticker.toUpperCase()}|${d.direction}`, gateBlocks);
+      }
+      playSet = {
+        ...playSet,
+        SWING: playSet.SWING.map((p) => {
+          const blocks = gateBlockedByKey.get(`${p.ticker.toUpperCase()}|${p.direction}`);
+          return blocks?.length ? { ...p, commitGateBlockedBy: blocks } : p;
+        }),
+      };
+    }
+
+    if (engineV2) {
+      const gateRows = plan.decisions.flatMap((d) => {
+        const origins = pathsByTicker.get(d.ticker.toUpperCase()) ?? null;
+        return d.blockedBy
+          .filter((b) => b.startsWith("gate:G-S"))
+          .map((b) => {
+            const gate = b.split(":")[1] ?? b;
+            return {
+              ticker: d.ticker,
+              gate,
+              reason: d.reason,
+              score: dossierByKey.get(`${d.ticker.toUpperCase()}|${d.direction}`)?.score.score ?? null,
+              origins: origins ? [...origins] : null,
+            };
+          });
+      });
+      if (gateRows.length > 0) {
+        await persistSwingGateRejections({
+          sessionDay: deps.sessionDay,
+          scanPhase: deps.phase,
+          rows: gateRows,
+        }).catch((err) => {
+          console.warn("[swing-discovery] gate rejection persist failed:", err);
+        });
+      }
+    }
 
     // Execute the cleared opens ONLY when the book read succeeded (fail-closed above) — graduation is
     // evidence-only and no longer required. Link each promotion through the accumulation store (best-effort).
@@ -799,6 +943,9 @@ export async function runSwingDiscoveryScan(
     commitEligibleCount,
     commit,
     recall,
+    tier1CapApplied,
+    engineV2,
+    confluenceNearMissCount: engineV2 ? confluenceNearMissCount : undefined,
     fadedStale,
   };
 }

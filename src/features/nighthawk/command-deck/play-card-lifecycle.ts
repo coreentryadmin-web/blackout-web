@@ -267,6 +267,40 @@ export function legacyActionDisplay(play: TerminalPlay): { label: string; tone: 
   return null;
 }
 
+/**
+ * ACTION vocabulary for SWING rows — BUY/WAIT on pre-entry candidates; HOLD/TRIM/EXIT on live book.
+ * SKIP deliberately returns null so the honest PASSED lifecycle pill shows (same discipline as 0DTE).
+ */
+export function swingActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
+  if (play.horizon !== "SWING") return null;
+  if (play.status === "WATCH") {
+    if (play.recommendation === "BUY") return { label: "BUY", tone: "watch" };
+    return { label: "WAIT", tone: "watch" };
+  }
+  if (play.status === "SKIP") return null;
+  if (play.status === "CLOSED") {
+    if (play.closedReason === "target") return { label: "TARGET", tone: "closed" };
+    if (play.closedReason === "stopped" || play.closedReason === "stop") {
+      return { label: "STOPPED", tone: "closed" };
+    }
+    if (play.closedReason === "flat") return { label: "SCRATCH", tone: "closed" };
+    return null;
+  }
+  if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") {
+    if (play.recommendation === "SELL") return { label: "EXIT", tone: "active" };
+    if (play.recommendation === "TRIM") {
+      const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
+      if (next) return { label: `TRIM ${Math.round(next.trigger_pct)}%`, tone: "active" };
+      return { label: "TRIM", tone: "active" };
+    }
+    const anyTrimFired = play.exitPolicy?.trim_levels?.some((t) => t.fired) ?? false;
+    if (anyTrimFired) return { label: "RUNNER", tone: "active" };
+    if (play.recommendation === "HOLD") return { label: "HOLD", tone: "active" };
+    return null;
+  }
+  return null;
+}
+
 export function zeroDteActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
   if (play.horizon !== "ZERO_DTE") return null;
   if (play.status === "CLOSED") {

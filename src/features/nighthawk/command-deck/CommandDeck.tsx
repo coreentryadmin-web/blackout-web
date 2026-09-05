@@ -39,7 +39,6 @@ import { isWatchTrackStatus } from "./play-card-lifecycle";
 import { legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
 import { DeckPlayTableHeader } from "./DeckPlayTableHeader";
-import { groupSwingSections } from "./swing-section-groups";
 import {
   buildDeckCommandCenterStats,
   convictionRankContext,
@@ -185,18 +184,6 @@ export function CommandDeck({
   // sort is unchanged; conviction is a second view over the SAME list (deck-sort.ts).
   const [sortMode, setSortMode] = useState<DeckSortMode>("status");
   const sorted = useMemo(() => sortPlaysForDeckBy(directed, sortMode), [directed, sortMode]);
-  // SWING only: split the flat sorted list into its seven serving.ts sections so the board renders them as
-  // visually distinct rails (FINDINGS 2026-08-06 P2) instead of one undifferentiated concatenated list —
-  // exactly the failure mode serving.ts's own header says it exists to prevent.
-  const swingGroups = useMemo(
-    () => (deckHorizon === "SWING" ? groupSwingSections(sorted) : null),
-    [deckHorizon, sorted],
-  );
-  const rankById = useMemo(() => {
-    const m = new Map<string, number>();
-    sorted.forEach((p, i) => m.set(p.id, i + 1));
-    return m;
-  }, [sorted]);
 
   // Cockpit figures — computed off the FULL board (not the display order), so they're identical under
   // either sort. Both auto-update on the SWR board refresh that replaces `plays`.
@@ -370,23 +357,9 @@ export function CommandDeck({
           {commandCenter && !loading && sorted.length > 0 && (
             <DeckPlayTableHeader sortMode={sortMode} setSortMode={setSortMode} />
           )}
-          {swingGroups ? (
-            swingGroups.map((g) => (
-              <div key={g.key} className="nh-deck-section-group" data-section={g.key}>
-                <div className="nh-deck-section-head" title={g.hint}>
-                  <span className="nh-deck-section-label">{g.label}</span>
-                  <span className="nh-deck-section-count">{g.plays.length}</span>
-                </div>
-                {g.plays.map((p) => (
-                  <PlayCard key={p.id} play={p} rank={rankById.get(p.id) ?? 1} selected={p.id === selId} onSelect={selectPlay} nowMs={nowMs} />
-                ))}
-              </div>
-            ))
-          ) : (
-            sorted.map((p, i) => (
-              <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={selectPlay} nowMs={nowMs} />
-            ))
-          )}
+          {sorted.map((p, i) => (
+            <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={selectPlay} nowMs={nowMs} />
+          ))}
         </div>
       </div>
       <PlayTerminal
