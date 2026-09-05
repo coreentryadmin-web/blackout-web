@@ -11,6 +11,8 @@ import {
   computeSwingCommitPlan,
   executeSwingCommits,
   isCommitGraduated,
+  isShadowEligibleBlockReason,
+  isShadowEligibleBlockedBy,
   modelRiskUsd,
   isEventArchetype,
   swingCommitKey,
@@ -421,19 +423,11 @@ test("computeSwingCommitPlan: V2 G-S6 confluence blocks when enforceConfluence o
   });
   assert.equal(plan.committableCount, 0);
   assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S6:confluence"));
+  assert.ok(plan.decisions[0]!.shadowInsert, "G-S6-only block gets shadow row for forward grading (Q30)");
+  assert.equal(plan.shadowEligibleCount, 1);
 });
 
-test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () => {
-  const plan = computeSwingCommitPlan({
-    candidates: [candidate({ discoveryPaths: ["FLOW"], archetype: "BREAKOUT" })],
-    report: graduatedReport(),
-    book: [],
-    budget: PRODUCTION_PORTFOLIO_BUDGET,
-  });
-  assert.equal(plan.committableCount, 1);
-});
-
-test("computeSwingCommitPlan: V2 Cortex preflight blocks with G-S14 token", () => {
+test("computeSwingCommitPlan: V2 G-S14-only block gets shadow row (Q30)", () => {
   const plan = computeSwingCommitPlan({
     candidates: [
       candidate({
@@ -445,7 +439,26 @@ test("computeSwingCommitPlan: V2 Cortex preflight blocks with G-S14 token", () =
     budget: PRODUCTION_PORTFOLIO_BUDGET,
   });
   assert.equal(plan.committableCount, 0);
-  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S14:cortex_veto:gex-walls"));
+  assert.ok(plan.decisions[0]!.shadowInsert);
+  assert.deepEqual(plan.decisions[0]!.shadowInsert!.blocked_by, ["gate:G-S14:cortex_veto:gex-walls"]);
+});
+
+test("isShadowEligibleBlockedBy: budget/cap and gate:G-S* qualify; open-ability blocks do not", () => {
+  assert.equal(isShadowEligibleBlockReason("budget:per_position_loss"), true);
+  assert.equal(isShadowEligibleBlockReason("gate:G-S6:confluence"), true);
+  assert.equal(isShadowEligibleBlockReason("already_open"), false);
+  assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence"]), true);
+  assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence", "already_open"]), false);
+});
+
+test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ discoveryPaths: ["FLOW"], archetype: "BREAKOUT" })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  assert.equal(plan.committableCount, 1);
 });
 
 // ─── small helpers ────────────────────────────────────────────────────────────
