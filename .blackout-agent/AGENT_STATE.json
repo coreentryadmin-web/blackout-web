@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:22:18.034Z",
+  "updated_at": "2026-09-05T13:22:52.870Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -335,7 +335,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a027176c6ebcd2f1fe7e03c4e26bbfd5c274ad7d",
+    "last_main_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T13:22:04Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33968614003",
@@ -1589,6 +1589,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:22:52.869Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:22:52.870Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8adc3924-0ee4-47fe-a0bb-9f918392c2b8",
+      "summary": "Cycle complete: #3963+#3962 peer-reviewed APPROVED and merged to main@9ae84a169. Deploy/lifecycle/ops GREEN. State sync pushed cursor/autopilot-handoff-20260905-1322."
     }
   ],
   "pr_activity": {

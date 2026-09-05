@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T13:21:41.879Z
-**Run:** 91d1c626-b02b-4502-ad78-61c3ce1299bf
+**At:** 2026-09-05T13:22:52.870Z
+**Run:** 8adc3924-0ee4-47fe-a0bb-9f918392c2b8
 
 ## Summary
 
-Peer-reviewed #3963 APPROVED (shared-cache .catch gaps, verify GREEN, 13/13 local tests). Peer-reviewed #3962 APPROVED pending undraft (ThermalCompareStrip rebase). Deploy validate GREEN. ops:collect clean. Merge #3963 blocked by GH rate limit — approval posted.
+Cycle complete: #3963+#3962 peer-reviewed APPROVED and merged to main@9ae84a169. Deploy/lifecycle/ops GREEN. State sync pushed cursor/autopilot-handoff-20260905-1322.
 
 ## Deploy
 
-- main: `a027176c6ebcd2f1fe7e03c4e26bbfd5c274ad7d`
+- main: `9ae84a1694a77ed7b78136ba6625c4ca14fb1bce`
 - status: 
 
 ## Open PRs
