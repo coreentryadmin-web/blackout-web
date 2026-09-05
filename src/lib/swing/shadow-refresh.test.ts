@@ -4,6 +4,7 @@ import type { SwingShadowPositionRow } from "@/lib/db";
 import {
   decideShadowClose,
   runSwingShadowRefresh,
+  shadowIntrinsicMarkAtExpiry,
   shadowPremiumStopHit,
   shadowRealizedPnlPct,
   shadowStructuralStopBroken,
@@ -68,6 +69,42 @@ test("decideShadowClose prioritizes expiry over premium stop", () => {
     nowMs: Date.now(),
   });
   assert.equal(decision.reason, "expiry");
+});
+
+test("shadowIntrinsicMarkAtExpiry uses OTM intrinsic zero for expired long call", () => {
+  assert.equal(
+    shadowIntrinsicMarkAtExpiry(shadowRow({ contract_type: "call", contract_strike: 200 }), 180),
+    0,
+  );
+  assert.equal(
+    shadowIntrinsicMarkAtExpiry(shadowRow({ contract_type: "call", contract_strike: 200 }), 210),
+    10,
+  );
+  assert.equal(
+    shadowIntrinsicMarkAtExpiry(shadowRow({ contract_type: "put", contract_strike: 200 }), 190),
+    10,
+  );
+});
+
+test("runSwingShadowRefresh closes expiry at intrinsic not stale last mark", async () => {
+  let gradedExit = 0;
+  const res = await runSwingShadowRefresh({
+    fetchOpen: async () => [shadowRow({ id: 9, entry_premium: 5, last_mark: 4.5 })],
+    loadReads: async () => ({
+      underlyingPrice: 180,
+      mark: 4.5,
+      dte: -1,
+      nowMs: Date.now(),
+    }),
+    updateMarks: async () => 1,
+    closeAndGrade: async (_id, g) => {
+      gradedExit = g.realized_pnl_pct;
+      assert.equal(g.close_reason, "expiry");
+      return 1;
+    },
+  });
+  assert.equal(res.closed, 1);
+  assert.equal(gradedExit, -100);
 });
 
 test("decideShadowClose closes on structural stop", () => {
