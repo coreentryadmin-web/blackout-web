@@ -568,6 +568,15 @@ export function computeSwingDiscoveryRecall(args: {
   };
 }
 
+/** True when grouped-daily carries a bar for this ticker (not merely "the feed returned any rows"). */
+export function tickerHasGroupedDailyBar(
+  grouped: ReadonlyArray<{ T?: string }>,
+  ticker: string,
+): boolean {
+  const sym = ticker.toUpperCase();
+  return grouped.some((b) => String(b.T ?? "").toUpperCase() === sym);
+}
+
 // ─── IO shell ─────────────────────────────────────────────────────────────────────
 
 /** Everything the shell needs, INJECTED so the orchestration is testable without live DB/providers. */
@@ -1021,8 +1030,8 @@ export async function runSwingDiscoveryScan(
         ),
         earningsInWindow: d?.earningsInWindow === true,
         halted: haltActive.has(w.ticker.toUpperCase()),
-        // Reference bar = grouped-daily feed posted for this scan (NOT "market is open").
-        dailyBarComplete: grouped.length > 0,
+        // Per-ticker grouped-daily row — IPO/day-1 names must not pass just because SPY posted.
+        dailyBarComplete: tickerHasGroupedDailyBar(grouped, w.ticker),
         quoteAgeMs: (() => {
           const c = contractByKey.get(key) ?? null;
           const at = c?.quoteUpdatedMs;
