@@ -141,7 +141,7 @@ export async function buildOptionTicket(
   const now = Date.now();
   if (
     ticketCache &&
-    now - ticketCache.at < 45_000 &&
+    isWsUpdatedAtFresh(ticketCache.at, 45_000, now) &&
     Math.abs(ticketCache.spot - spot) < 5 &&
     ticketCache.dir === direction &&
     ticketCache.grade === grade

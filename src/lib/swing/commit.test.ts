@@ -443,12 +443,22 @@ test("computeSwingCommitPlan: V2 G-S14-only block gets shadow row (Q30)", () => 
   assert.deepEqual(plan.decisions[0]!.shadowInsert!.blocked_by, ["gate:G-S14:cortex_veto:gex-walls"]);
 });
 
-test("isShadowEligibleBlockedBy: budget/cap and gate:G-S* qualify; open-ability blocks do not", () => {
-  assert.equal(isShadowEligibleBlockReason("budget:per_position_loss"), true);
-  assert.equal(isShadowEligibleBlockReason("gate:G-S6:confluence"), true);
-  assert.equal(isShadowEligibleBlockReason("already_open"), false);
-  assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence"]), true);
-  assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence", "already_open"]), false);
+test("computeSwingCommitPlan: V2 G-S3 earnings blocks when enforceEarnings on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        discoveryPaths: ["FLOW", "STRUCTURE", "CATALYST"],
+        archetype: "EVENT_DRIVEN",
+        earningsInWindow: true,
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceEarnings: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S3:earnings_in_window"));
 });
 
 test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () => {
@@ -459,6 +469,14 @@ test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () =>
     budget: PRODUCTION_PORTFOLIO_BUDGET,
   });
   assert.equal(plan.committableCount, 1);
+});
+
+test("isShadowEligibleBlockedBy: budget/cap and gate:G-S* qualify; open-ability blocks do not", () => {
+  assert.equal(isShadowEligibleBlockReason("budget:per_position_loss"), true);
+  assert.equal(isShadowEligibleBlockReason("gate:G-S6:confluence"), true);
+  assert.equal(isShadowEligibleBlockReason("already_open"), false);
+  assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence"]), true);
+  assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence", "already_open"]), false);
 });
 
 // ─── small helpers ────────────────────────────────────────────────────────────

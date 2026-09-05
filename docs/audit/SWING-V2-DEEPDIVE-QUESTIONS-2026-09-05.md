@@ -20,6 +20,8 @@ covered elsewhere** — cite where; **(c) real gap** — worth a scoped fix PR. 
 bucket (c) should get its own `fix/<slug>` branch per the standing issue-handling policy, not be
 fixed inline here.
 
+> **Cursor triage complete (2026-09-05):** see [`SWING-V2-DEEPDIVE-TRIAGE-RESPONSES-2026-09-05.md`](./SWING-V2-DEEPDIVE-TRIAGE-RESPONSES-2026-09-05.md) — 30/30 answered. **2 fixed** (#3842 Q18, #3845 Q4). **22 open (c) gaps**, **6 (a) trade-offs**. P1 fix queue: G-S3 earnings, halt/LULD, force=1 guard, per-candidate isolation, Cortex fail-closed, event CATALYST kind.
+
 ---
 
 ### State machine & concurrency

@@ -104,6 +104,12 @@ export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingE
           reason: "Independent signal confluence below commit threshold — desk will not open.",
         };
       }
+      if (b.startsWith("gate:G-S3:")) {
+        return {
+          code: "g_s3_earnings",
+          reason: "Earnings print inside holding window — desk will not open into binary-gap risk.",
+        };
+      }
       if (b.startsWith("gate:G-S14:")) {
         return {
           code: "g_s14_cortex",
