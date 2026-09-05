@@ -298,6 +298,14 @@ is instrumentation only.
 
 **Check at the open:** Poll `/api/market/dark-pool?limit=5` — premiums are clean decimals; Vector contract-pick live badge flips stale when quotes stop updating.
 
+### 0ae. Vector wall-cache recordability future skew + legacy-marks roundFloats — fix/vector-wall-cache-future-skew (pending)
+
+**What was broken:** `recordVectorWallSamplesFromWarm` / `buildVectorStreamPayload` used raw `nowMs - cachedWallsAt <= STALE_RECORD_MAX_MS` — future clock-skewed stamps read as recordable and stamped stale fallback walls into session rail. `GET /api/market/nighthawk/legacy-marks` returned unrounded option mark floats.
+
+**Fix:** `isWallCacheRecordable()` wraps `isWsUpdatedAtFresh`; legacy-marks response uses `roundFloats`.
+
+**Check at the open:** Vector SPX wall rail still accumulates during RTH with genuinely fresh cache; Legacy Night Hawk detail rail marks show 2dp without float tails.
+
 ### 0ac. UW stall + L1 cache + SPX GEX stale future guards — fix/uw-future-timestamp-guards (pending)
 
 **What was broken:** Two paths missed the #3745/#3760 future-timestamp sweep: `isUwSocketStalled()` (OPEN socket with future `freshestMessageAt` never reconnects), `gexStaleFromAge()` (future GEX `asof` clamped to age 0 → `gex_stale: false`). (`readUwCache` on separate branch `fix/uw-cache-index-overlay-future-timestamp`.)

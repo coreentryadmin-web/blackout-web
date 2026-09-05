@@ -14,6 +14,7 @@ import {
 } from "@/lib/providers/gex-wall-levels";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { loadSessionWallHistory } from "./vector-wall-persist";
 import { persistWallSampleDebounced, writeWallHistorySample } from "./vector-wall-write";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
@@ -551,6 +552,11 @@ export function getVectorWallHistory(ticker: string = VECTOR_DEFAULT_TICKER): Wa
 /** Max age of a wall cache read before we refuse to stamp it into history (live + warm paths). */
 const STALE_RECORD_MAX_MS = 120_000;
 
+/** True when a wall-cache timestamp is fresh enough to stamp into session rail history. */
+function isWallCacheRecordable(cachedAt: number, nowMs: number): boolean {
+  return isWsUpdatedAtFresh(cachedAt, STALE_RECORD_MAX_MS, nowMs);
+}
+
 /**
  * Session-rail writes are RTH-only — the freshness check above is NOT a substitute.
  *
@@ -608,8 +614,8 @@ export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<b
   const nowMs = Date.now();
   // RTH gate BEFORE freshness: an always-on oracle subscription keeps the cache fresh overnight.
   if (!wallRailRecordingOpen()) return false;
-  const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
-  const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
+  const gexRecordable = walls != null && isWallCacheRecordable(s.cachedWallsAt, nowMs);
+  const vexRecordable = vexWalls != null && isWallCacheRecordable(s.cachedVexWallsAt, nowMs);
   if (!gexRecordable && !vexRecordable) return false;
 
   const tickerBucketSec = await resolveWallTrailSampleSec(t);
@@ -706,8 +712,8 @@ export async function buildVectorStreamPayload(
   // refreshing, and re-recording the same stale walls under fresh bucket times
   // fabricates a flat trail that was never observed (and persists it).
   const nowMs = Date.now();
-  const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
-  const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
+  const gexRecordable = walls != null && isWallCacheRecordable(s.cachedWallsAt, nowMs);
+  const vexRecordable = vexWalls != null && isWallCacheRecordable(s.cachedVexWallsAt, nowMs);
 
   // RTH gate BEFORE freshness — see wallRailRecordingOpen. This is the writer that produced the
   // 00:00-09:30 ET segment of SPX's rail: the SPX desk stream is always-on, so every poll of it

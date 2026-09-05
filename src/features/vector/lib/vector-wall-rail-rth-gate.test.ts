@@ -79,10 +79,24 @@ test("the RTH gate is evaluated BEFORE the staleness check, not merged into it",
   // trap. Keeping the market-hours question first makes the two checks obviously independent.
   const src = read(SNAPSHOT);
   const gateIdx = src.indexOf("if (!wallRailRecordingOpen()) return false;");
-  const staleIdx = src.indexOf("nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS");
+  const staleIdx = src.indexOf("isWallCacheRecordable(s.cachedWallsAt, nowMs)");
   assert.ok(gateIdx > -1, "recordVectorWallSamplesFromWarm must gate on wallRailRecordingOpen()");
   assert.ok(staleIdx > -1, "the staleness check must still exist");
   assert.ok(gateIdx < staleIdx, "the RTH gate must come before the first staleness check");
+});
+
+test("wall cache recordability rejects clock-skewed future cachedWallsAt (source scan)", () => {
+  const src = read(SNAPSHOT);
+  assert.match(
+    src,
+    /function isWallCacheRecordable\([\s\S]*?isWsUpdatedAtFresh\(cachedAt, STALE_RECORD_MAX_MS, nowMs\)/,
+    "must use shared isWsUpdatedAtFresh — raw nowMs - cachedAt treats future stamps as infinitely fresh"
+  );
+  assert.doesNotMatch(
+    src,
+    /nowMs - s\.cachedWallsAt <= STALE_RECORD_MAX_MS/,
+    "must not use raw age math that passes on negative age"
+  );
 });
 
 test("the gate documents WHY freshness is not a substitute for market hours", () => {
