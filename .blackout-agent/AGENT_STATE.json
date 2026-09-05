@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T19:23:29.801Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,25 +67,25 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T19:05:11.733Z",
+      "lease_until": "2026-09-05T20:52:35.825Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "47b42c6c-2d79-4ca6-92ee-aac0794bb8a0",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:30:48.264Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
+      "claimed_at": "2026-09-05T19:23:29.799Z",
+      "lease_until": "2026-09-05T20:53:29.799Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0104": {
@@ -267,7 +267,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T16:30:48.265Z",
+      "last_seen": "2026-09-05T19:23:29.800Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -326,30 +326,14 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "16149d6d02f8744c44fc8ec0a74a3ff72008af81",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T19:19:05Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33986744578",
+    "last_deploy_sha": "1d64dc9ae143d6c03b976714341e7706eefe0182"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:03.105Z",
       "type": "context_sync",
@@ -1622,6 +1606,43 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T19:22:32.529Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:22:32.531Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ca3f1579-9b23-45ba-8cf1-d3aa9d2e5b1e",
+      "summary": "pull_request wake: main@16149d6d (#4028 GEX megacap escalation). pr-sweep 0 open PRs. validate:deploy GREEN, ops:collect 0, api-auth GREEN, platform-integrity 14/14. ECR run 33986002321 still in_progress (~17m). GitHub API rate-limited (user 284440397). Weekend — RTH skipped."
+    },
+    {
+      "at": "2026-09-05T19:22:35.823Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:22:36.522Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:22:37.270Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:23:29.801Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     }
   ],
   "pr_activity": {
