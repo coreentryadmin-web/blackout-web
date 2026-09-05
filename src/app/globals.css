@@ -22957,6 +22957,19 @@ html.product-shell .nav-mega {
 .nh-deck-largo__factors .pts.up{color:var(--dk-bull)}
 .nh-deck-largo__factors .pts.dn{color:var(--dk-bear)}
 .nh-deck-largo__note{margin:0;font-size:11px;line-height:1.45;color:var(--dk-text-secondary)}
+.nh-deck-largo--brief .nh-deck-largo__brief-body{flex:1;min-height:0;overflow:auto;padding:0 8px 8px}
+.nh-deck-largo__actions{display:flex;align-items:center;gap:8px}
+.nh-deck-largo__refresh{border:1px solid var(--dk-border);background:transparent;color:var(--dk-cyan);border-radius:4px;width:28px;height:28px;cursor:pointer;font-size:14px}
+.nh-deck-largo__loading{display:flex;flex-direction:column;gap:8px;padding:12px}
+.nh-deck-largo__skel{height:12px;border-radius:4px;background:linear-gradient(90deg,rgba(56,189,248,.08),rgba(56,189,248,.18),rgba(56,189,248,.08));animation:nhSkel 1.2s ease-in-out infinite}
+.nh-deck-largo__error{margin:12px;font-size:12px;color:var(--dk-bear)}
+.nh-deck-largo__foot{display:flex;justify-content:space-between;gap:8px;padding:8px 12px 10px;border-top:1px solid var(--dk-line);font-size:9px;color:var(--dk-text-secondary);letter-spacing:.06em;text-transform:uppercase}
+.nh-deck-largo__engine{color:#7DD3FC}
+.nh-deck-largo__bie{font-size:12px}
+.nh-deck-largo__bie .bie-answer-head{padding:8px 6px 4px}
+.nh-deck-largo__bie .bie-section-card{margin:6px 0}
+.nh-deck-largo__bie .bie-section-card__title{font-size:10px}
+.nh-deck-largo__bie .bie-section-card__body{font-size:12px;line-height:1.45;color:#E2E8F0}
 .nh-deck-trade-hero__tk-contract{font-size:22px;letter-spacing:.03em}
 
 /* Swing Command — readability: brighter secondary text + larger type on dense panels. */

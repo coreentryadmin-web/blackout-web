@@ -57,36 +57,13 @@ import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
 import { rowsForSwingSection } from "./swing-section-filter";
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
+import { terminalPlayFromClosedSwing } from "./adapters";
 import { NIGHTHAWK_COMPACT_LANE_LABEL } from "@/features/nighthawk/lib/nighthawk-view";
 import { zeroDteEmptyHint } from "../lib/deck-empty-hint";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
-
-function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): TerminalPlay {
-  return terminalPlayFromHorizon({
-    ticker: src.ticker,
-    direction: src.direction,
-    horizon: src.horizon,
-    score: src.score,
-    status: src.status,
-    reason: src.reason,
-    contract: src.contract,
-    archetype: src.archetype ?? null,
-    subLane: src.subLane ?? null,
-    firstSeenAt: src.firstSeenAt ?? null,
-    committedAt: src.committedAt ?? null,
-    entryPremium: src.entryPremium ?? null,
-    peakPremium: src.peakPremium ?? null,
-    troughPremium: src.troughPremium ?? null,
-    occ: src.occ ?? null,
-    positionId: src.positionId,
-    exitAt: src.exitAt ?? null,
-    exitPnlPct: src.exitPnlPct ?? null,
-    closedReason: src.closedReason ?? null,
-  });
-}
 
 /** Board payload may carry session.heat — keep the type loose so a missing field never breaks the deck. */
 type BoardRespWithSession = BoardResp & {
