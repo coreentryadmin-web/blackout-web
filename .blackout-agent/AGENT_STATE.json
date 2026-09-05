@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T00:20:00.000Z",
+  "updated_at": "2026-09-05T01:30:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -237,9 +237,9 @@
     },
     "pr-3808": {
       "pr": 3808,
-      "head_sha": "5449b9f66",
+      "head_sha": "274bea59f",
       "reviewer": "claude",
-      "verdict": "AWAITING — adversarial review @ 5449b9f66 (verify GREEN)",
+      "verdict": "AWAITING — adversarial review @ 274bea59f (BUY/SKIP + CLOSED tab)",
       "reviewed_at": null,
       "safe_to_merge": false,
       "operator_mandate": "LIVE member-facing only. No shadow rollout, no flag-gated hiding. We monitor open plays daily and tune gates/floors/caps in prod when needed — but members always see real WATCH/COMMIT behavior. Emergency rollback = SWING_ENGINE_V2_DISABLED=1 only.",
@@ -249,6 +249,8 @@
         "G-S6 confluence ≥3 kinds (≥2 event) enforced LIVE at commit — threshold sane for member-visible open rate?",
         "G-S14 Cortex preflight now uses horizon=swing → Vector weekly grid (not 0DTE interim) — weekly vs full 5–15 DTE window OK?",
         "VECTOR + BANGER origins overlapping STRUCTURE — intentional corroboration or dedupe needed?",
+        "BUY/WAIT/SKIP from serving sections — member-clear entry guidance?",
+        "CLOSED tab from record API closedDeck — sufficient contract/exit fidelity?",
         "NOT IN SCOPE: shadow deploy / separate enforce flags / logging-only paths — operator rejected those"
       ]
     }
@@ -260,7 +262,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T00:20:00.000Z",
+      "last_seen": "2026-09-05T01:30:00.000Z",
       "current_task": "BO-SWING-V2-P1P2"
     }
   },
@@ -279,9 +281,9 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "GREEN",
-      "head_sha": "5449b9f66",
-      "updated_at": "2026-09-05T01:16:00Z"
+      "verify": "PENDING",
+      "head_sha": "274bea59f",
+      "updated_at": "2026-09-05T01:30:00Z"
     },
     {
       "number": 3807,
