@@ -518,6 +518,14 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0aa. Desk enrichment UW fan-out missing background sweep — fix/desk-enrichment-uw-sweep (pending)
+
+**What was broken:** `fetchDeskEnrichmentFields()` in `spx-desk.ts` fans out to 5 UW REST endpoints via `runUwPooled` but was not tagged with `runWithBackgroundUwSweep`. Desk-touching crons (`spx-evaluate`, `spx-signal-observe`, `market-regime-detector`, `data-correctness`) that call `loadMergedSpxDesk()` could trigger enrichment refresh on a stale sticky without reserving a background UW slot.
+
+**Fix:** Wrap `fetchDeskEnrichmentFields` body in `runWithBackgroundUwSweep` at the single fan-out site.
+
+**Check at the open:** Admin Operations → UW rate limiter during RTH — no member-facing 429s when `spx-evaluate` fires on a cold enrichment sticky; SPX desk enrichment panels (greek exposure, flow by expiry, macro) still populate normally.
+
 ### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
 
 **What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.
