@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:41:53.476Z",
+  "updated_at": "2026-09-05T12:43:00.837Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T12:32:41.693Z",
-      "lease_until": "2026-09-05T14:02:41.693Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T12:32:16.419Z",
+      "lease_until": "2026-09-05T14:02:19.603Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "7400cba9-37d3-458e-a0b9-1c2ddcbba706",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -242,14 +242,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T11:41:58.397Z",
       "safe_to_merge": true
-    },
-    "pr-3955": {
-      "pr": 3955,
-      "head_sha": "f649e67b96ca",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T12:41:53.476Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -264,11 +256,39 @@
     }
   },
   "deploy": {
-    "last_main_sha": "5e67e18cd75e8198ac50c75a7145b8f1990ff603",
+    "last_main_sha": "3000a90c45f9abe0e31141b20da734d49f521358",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T12:33:14Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33966365895",
     "last_deploy_sha": "5e67e18cd75e8198ac50c75a7145b8f1990ff603"
+  },
+  "cross_examination": {
+    "phase": "QUESTIONS_PUBLISHED",
+    "started_at": "2026-09-05T12:00:00.000Z",
+    "updated_at": "2026-09-05T12:00:00.000Z",
+    "claude_questions_for_cursor": {
+      "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
+      "pr": 3948,
+      "branch": "docs/claude-questions-for-cursor-360-cross-exam",
+      "count": 54,
+      "id_range": "CLQ-001–CLQ-054",
+      "status": "published",
+      "answers_file": null
+    },
+    "cursor_questions_for_claude": {
+      "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
+      "pr": null,
+      "branch": "cursor/cross-exam-questions-batch1",
+      "count": 218,
+      "id_range": "CQ-001–CQ-218",
+      "status": "published",
+      "answers_file": null
+    },
+    "answer_exchange": {
+      "cursor_answers_clq": "pending",
+      "claude_answers_cq": "pending",
+      "challenge_round": 0
+    }
   },
   "open_prs": [],
   "events": [
@@ -1462,27 +1482,10 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T12:34:02.328Z",
+      "at": "2026-09-05T12:43:00.837Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T12:34:02.328Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "b40854d4-f851-4b54-87e1-5bd2b1b53071",
-      "summary": "pull_request wake: #3945 merged to main@5e67e18cd (swing BUY/STILL BUY). ECR deploy pending run 33966365895. validate:deploy GREEN, platform-integrity 14/14, api-auth GREEN, ops:collect 0. No Claude PRs for peer review — 6 open cursor PRs await Claude (#3952 CLQ answers verify pending, #3955 docs ECS finding). GitHub REST rate-limited (user 284440397)."
-    },
-    {
-      "at": "2026-09-05T12:41:53.476Z",
-      "type": "pr_review",
-      "pr": 3955,
-      "head_sha": "f649e67b96ca",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T12:41:53.476Z",
-      "safe_to_merge": true
     }
   ],
   "pr_activity": {
