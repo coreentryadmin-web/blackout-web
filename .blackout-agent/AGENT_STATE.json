@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:26:22.951Z",
+  "updated_at": "2026-09-05T15:28:53.880Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T15:13:48.619Z",
-      "lease_until": "2026-09-05T16:55:08.709Z",
-      "phase": "CLAIMED",
+      "claimed_at": "2026-09-05T15:11:09.775Z",
+      "lease_until": "2026-09-05T16:47:17.068Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "28f3a8c6-1820-4ef6-90dd-dbdf1149394f",
+      "run_id": "c9df70df-0bb4-43c2-b3a6-47f68bd65735",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -1640,6 +1640,12 @@
       "agent": "cursor",
       "run_id": "14d0c570-32c7-422b-b7ac-805ffcc98915",
       "summary": "Cycle complete: bootstrap+session, BO-P1-0100 peer review (#3987 RECUSE→Claude, 36/36 local tests), BO-P1-0101 deploy/lifecycle ALL GREEN (ops:collect 0, validate:deploy, platform-integrity, seo, rth-open off-hours skip). Pushed state to #3986 @ 7bf06e8c5. Blocked: GitHub API rate limit user 284440397; both open PRs draft awaiting Claude peer review. Next: Claude review #3987+#3986 when verify green."
+    },
+    {
+      "at": "2026-09-05T15:28:53.880Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
