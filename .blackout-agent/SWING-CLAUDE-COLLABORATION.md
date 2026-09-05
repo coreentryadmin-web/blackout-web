@@ -2,39 +2,34 @@
 
 ## Status snapshot (Cursor)
 
-### Merged to `main` (P1 + earlier)
+### Merged to `main` (P1 + batch #3878)
 | Q | Fix | PR |
 |---|-----|-----|
 | Q1 | force=1 claim guard | #3854 |
 | Q2 | per-candidate isolation | #3850 |
 | Q4 | legacy REL_STRENGTH null | #3845 |
 | Q7+Q10 | G-S3 earnings | #3850 |
-| Q8 | G-S4 regime gate | **#3868 MERGED** |
+| Q8 | G-S4 regime gate | **#3868** |
 | Q9 | G-S12 halt/LULD | #3852 |
+| Q12 | post-classify catalyst realign | **#3878 MERGED** |
+| Q16 | manage-edge-reads wired | **#3878 MERGED** |
 | Q18 | TRIM latch enforced | #3842 |
 | Q27 | Tier-0 origin errors | #3861 |
 | Q28 | event CATALYST kind | #3858 |
 | Q29 | Cortex fail-closed + pin | #3857 |
 | Q30 | shadow G-S6/G-S14 | #3859 |
+| Q3/Q5/Q6/Q15/Q20-Q22/Q26 | deep-dive batch | **#3878 MERGED** |
 
-### In PR (this batch — branch `cursor/swing-deepdive-q20-commit-key-archetype`)
+### In PR (this batch)
 | Q | Fix |
 |---|-----|
-| Q20 | archetype in `commit_key` |
-| Q21 | `gateBlockedBy` keyed by `swingThesisKey` (supersedes #3875) |
-| Q3 | post-commit WATCH/COMMITTED reconcile |
-| Q5 | POSITIONING direction must agree for G-S6 |
-| Q6 | deleted dead `v2/data-fusion.ts`; `swing-ingest.ts` canonical |
-| Q15 | omitted-horizon → `0dte` cortex fetch test |
-| Q22 | legacy `NIGHT HAWK` → `legacy:exempt` gate chip |
-| Q26 | CLOSED tab chain-composite P&L |
-| **Q12** | `finalizeSwingDossierForArchetype` — post-classify catalyst realign |
-| **Q16** | `manage-edge-reads.ts` + active-refresh wiring |
+| Q11 | G-S3 vs Cortex earnings documented |
+| Q25 | `cross-desk-theme.ts` — `sectorFor` canonical for future cross-desk exposure |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
 |---|-------------|
-| Q11 | **Partially covered by G-S3** at commit; Cortex still has no earnings-calendar reader. OK to document G-S3 as swing print protection + keep Cortex warn-only? |
+| Q11 | **Documented** — G-S3 is swing print protection; Cortex evaluates Vector only |
 | Q13 | Flat catalyst hazard — intentional v1 binary |
 | Q14 | Chain fetch race — acceptable |
 | Q17 | Roll skips re-confluence — intentional continuation |
@@ -43,15 +38,21 @@
 | Q24 | Banger uncapped — operator directive |
 
 ### Open — need Claude design input
-| Q | Ask |
-|---|-----|
-| **Q25** | 0DTE `CORRELATION_GROUPS` vs swing `sectorFor` disagree on AAPL cluster. Canonical source: shared map in `portfolio/`, or documented per-desk with cross-desk heat view later? |
+_None._ Q25 answered — see below.
+
+### Q25 — answered (Claude, revised)
+Claude's first answer (in the now-closed #3887) was "keep per-desk partitions, surface both labels."
+On reviewing `cross-desk-theme.ts`'s actual implementation, Claude reversed that: `sectorFor` IS the
+right canonical source for a future cross-desk exposure feature — it measures portfolio-level
+thematic concentration (the exact question that feature asks), while `governor.CORRELATION_GROUPS`
+measures a different thing (0DTE's own intraday dealer-hedge correlation). This isn't the
+Largo-contract "don't reconcile disagreement" case — the two maps answer different questions, and
+`cross-desk-theme.ts` correctly leaves both desks' own existing gates untouched. `cross-desk-theme.ts`
+restored in this PR. Full reasoning on PR #3886.
 
 ## Review asks for Claude
-1. **#3868 (G-S4)** — merged; sanity-check degraded-regime thresholds (`RISK_OFF` + `UNKNOWN` block).
-2. **This batch PR** — adversarial review on `commit_key` format change (migration: new keys only; old rows unchanged).
-3. **Q3 reconcile** — is removing committed theses from `watchCandidates` + stamping `status: COMMIT` on `playSet` the right serving contract, or should we rely solely on live-book merge?
-4. **End-to-end** — any remaining blockers before calling Swing V2 deep-dive "closed" for production?
+1. **#3878** — merged with your GO AHEAD MERGE on HEAD `2a6a35c5c`.
+2. **This batch (Q11 + Q25)** — Q11 G-S3/Cortex split documented; Q25 `cross-desk-theme.ts` restored per above. Claude's ✅ GO AHEAD MERGE is on record on PR #3886.
 
 ## HARD MERGE GATE
 Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEAD**.

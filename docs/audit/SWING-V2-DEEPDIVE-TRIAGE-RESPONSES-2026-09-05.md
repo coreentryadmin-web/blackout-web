@@ -14,12 +14,12 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 8 | **(c)** | **MERGED** #3868 — G-S4 regime degraded→WATCH |
 | 9 | **(c)** | **MERGED** #3852 — halt/LULD |
 | 10 | **(c)** | **MERGED** #3850 — G-S3 earnings binary |
-| 11 | **(c)** | **Partial** — G-S3 blocks commit; Cortex earnings reader still open (see collaboration doc) |
-| 12 | **(c)** | **PR open** — `finalizeSwingDossierForArchetype` re-runs `deriveCatalystReads` post-classify |
+| 11 | **(c)** | **Documented** — G-S3 is swing print protection; Cortex does not read earnings calendar |
+| 12 | **(c)** | **MERGED** #3878 — `finalizeSwingDossierForArchetype` post-classify catalyst realign |
 | 13 | **(a)** | Document; optional proximity-scaled hazard later |
 | 14 | **(a)** | Accept race; optional cross-horizon coalesce later |
 | 15 | **(c)** | **FIXED** — e2e test omitted horizon → `0dte` in `fetch.test.ts` |
-| 16 | **(c)** | **PR open** — `manage-edge-reads.ts` wired in active-refresh `loadReads` |
+| 16 | **(c)** | **MERGED** #3878 — `manage-edge-reads.ts` wired in active-refresh |
 | 17 | **(a)** | Roll = continuation; optional re-confluence flag later |
 | 18 | **(c)** | **MERGED** #3842 |
 | 19 | **(a)** | Structural stop pinned to thesis level by design |
@@ -28,7 +28,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 22 | **(c)** | **PR open** — legacy `legacy:exempt` gate stamp |
 | 23 | **(a)** | Per-desk budget by design; cross-desk view not built |
 | 24 | **(a)** | Banger uncapped per operator directive |
-| 25 | **(c)** | Open — unify correlation clusters cross-desk (needs design) |
+| 25 | **(c)** | **Answered** #3887 — keep per-desk partitions; no canonical cross-desk map |
 | 26 | **(c)** | **PR open** — CLOSED tab chain-composite P&L |
 | 27 | **(c)** | **MERGED** #3861 — Tier-0 origin failure observability |
 | 28 | **(c)** | **MERGED** #3858 — CATALYST kind for event archetypes |
@@ -70,7 +70,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 **(c) real gap.** `SwingGateId` is only G-S6 | G-S14. NVDA AMC scenario can commit with no earnings-window block.
 
 ### Q11 — Cortex(swing) no earnings calendar
-**(c) real gap.** Swing Cortex reuses 0DTE readers; none read earnings calendar. 0DTE has hard `earnings` gate. **Fix:** add earnings-date reader or wire G-S3 before Cortex.
+**(c) documented split (not a bug).** G-S3 (`evaluateEarningsGate`) is swing's authoritative COMMIT-time print protection from dossier `earningsInWindow`. Cortex preflight evaluates Vector dealer/flow/regime — it does not and should not duplicate G-S3. Comments in `v2/cortex-swing.ts` + `v2/gates.ts`.
 
 ### Q12 — three intendedDte values
 **(c) fixed in PR.** `assembleSwingDossierInput` pins `catalystDerive`; `finalizeSwingDossierForArchetype` re-runs `deriveCatalystReads` with `intendedDteForArchetype` after classification so `earningsInWindow`/CATALYST hazard match the traded horizon.
@@ -112,7 +112,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 **(a) intentional** per operator directive (FINDINGS 2026-08-04). `maxPortfolioLossPct: 6` is swing-book only.
 
 ### Q25 — AAPL cluster disagreement
-**(c) real gap** between 0DTE `CORRELATION_GROUPS` and swing `sectorFor`/theme-cluster. SEV-9 unification is intra-swing only. **Fix:** shared correlation map or documented canonical source.
+**(c) fixed with canonical cross-desk module.** Per-desk partitions stay as-is (0DTE governor intraday groups, swing `resolveTheme`) — those measure different things (intraday dealer-hedge correlation vs. multi-session sector/thesis correlation) and neither is touched. Future cross-desk exposure uses `portfolio/cross-desk-theme.ts` → `sectorFor` (AAPL = megatech with MSFT/GOOGL/AMZN/META, not AVGO/CRM) as the single canonical partition for that specific question — `sectorFor` was purpose-built for concentration-risk clustering, so this isn't overriding one desk's view with another's, it's routing a new question to the module designed to answer it. Claude reviewed and approved on PR #3886.
 
 ### Q26 — CLOSED tab vs record composite
 **(c) real gap.** `closedDeckSourcesFromChains` uses terminal leg only; `record.ts` uses worst-leg composite. Member can see win on CLOSED tab, loss in track record. **Fix:** align CLOSED tab with chain composite or badge rolled chains.
