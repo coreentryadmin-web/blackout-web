@@ -88,7 +88,7 @@ test("runSwingActiveRefresh: APPEND-ONLY snapshots, live-state latched, NEVER co
     fetchOpen: async () => [positionRow({ id: 1 }), positionRow({ id: 2, ticker: "AMD" })],
     loadReads: async (row) => ({ underlyingPrice: 152, dte: 21, underlyingMfe: 152, underlyingMae: 152, sessionsHeld: row.id }),
     insertSnapshot: async (s) => { snapshots.push(s); return snapshots.length; },
-    updateLiveState: async (id, s) => { liveStates.push({ id, status: s.status }); },
+    updateLiveState: async (id, s) => { liveStates.push({ id, status: s.status }); return 1; },
     snapshotKind: "eod",
   });
 
@@ -106,7 +106,7 @@ test("runSwingActiveRefresh: fail-soft — null reads skip, a snapshot error is 
     fetchOpen: async () => [positionRow({ id: 1 }), positionRow({ id: 2 }), positionRow({ id: 3 })],
     loadReads: async (row) => (row.id === 2 ? null : { underlyingPrice: 152, dte: 21 }),
     insertSnapshot: async () => { throw new Error("db down"); },
-    updateLiveState: async () => {},
+    updateLiveState: async () => 1,
     snapshotKind: "eod",
   });
   assert.equal(res.positions, 3);
@@ -120,7 +120,7 @@ test("runSwingActiveRefresh: whole-fetch failure degrades to an empty pass (neve
     fetchOpen: async () => { throw new Error("db unreachable"); },
     loadReads: async () => ({ underlyingPrice: 1 }),
     insertSnapshot: async () => 1,
-    updateLiveState: async () => {},
+    updateLiveState: async () => 1,
   });
   assert.deepEqual(res, { positions: 0, refreshed: 0, snapshotsAppended: 0, skipped: 0, errored: 0, outcomes: [] });
 });
@@ -309,7 +309,7 @@ test("runSwingActiveRefresh: an option mark from loadReads lands on the snapshot
     // Simulates the route's loadReads AFTER loadOptionMark resolved the held contract's live mark.
     loadReads: async () => ({ underlyingPrice: 156, dte: 20, mark: 6, underlyingMfe: 156, underlyingMae: 156 }),
     insertSnapshot: async (s) => { snapshots.push(s); return snapshots.length; },
-    updateLiveState: async () => {},
+    updateLiveState: async () => 1,
     snapshotKind: "eod",
   });
   assert.equal(snapshots[0]!.option_mark, 6, "the loaded contract mark lands on the snapshot");
