@@ -9,9 +9,10 @@ test("auth-server dedupes session reads with requestCache per request", () => {
   assert.match(src, /export const auth = requestCache/);
 });
 
-test("requireTier uses one getSession and JWT tier fast path before Clerk getUser", () => {
+test("requireTier uses one getSession and resolveUserTier for paid tier (CQ-113 — no JWT fast path)", () => {
   const src = readFileSync(join(process.cwd(), "src/lib/auth-access.ts"), "utf8");
-  assert.match(src, /tierFromSessionClaims/);
+  assert.doesNotMatch(src, /tierFromSessionClaims/);
+  assert.match(src, /resolveUserTier/);
   assert.doesNotMatch(src, /await requireAuth\(\)/);
   assert.match(src, /requireDeskTool/);
   const getSessionCalls = src.match(/getSession\(\)/g) ?? [];
