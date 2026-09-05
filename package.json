@@ -18,7 +18,7 @@
     "whop:remodel": "node scripts/whop-remodel.mjs",
     "clerk:purge-test-users": "node scripts/clerk-purge-test-users.mjs --dry-run",
     "test": "node scripts/run-tests.mjs",
-    "validate:deploy": "node scripts/validate-deploy.mjs",
+    "validate:deploy": "node --import tsx scripts/validate-deploy.mjs",
     "validate:homepage": "node scripts/audit/homepage-link-audit.mjs",
     "validate:homepage-e2e": "node scripts/audit/homepage-e2e-audit.mjs",
     "validate:homepage-perf": "node scripts/audit/homepage-perf-audit.mjs",

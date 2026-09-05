@@ -20,6 +20,7 @@ import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } fro
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
+import { isEtExtendedWarmHours } from "../src/lib/et-market-hours.ts";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -360,7 +361,12 @@ const cronSecret = resolveCronSecret();
 const warmPaths = IS_STAGING
   ? ["/api/cron/desk-warm?force=1", "/api/cron/heatmap-warm?force=1", "/api/cron/zerodte-warm?force=1"]
   : ["/api/cron/desk-warm?force=1"];
-if (cronSecret) {
+// Each Cloud Agent / CI session is a distinct egress IP; replaying ?force=1 off-hours
+// (weekends, overnight) hammers desk-warm (~29s median) and shows up in ALB p99/Max tail
+// latency — see docs/audit/findings-staging/2026-09-05-desk-warm-weekend-force-storm.md.
+if (!isEtExtendedWarmHours()) {
+  warn("cache warmers skipped — outside ET extended warm hours (4am–8pm ET weekdays)");
+} else if (cronSecret) {
   for (const warmPath of warmPaths) {
     try {
       const t0 = Date.now();
