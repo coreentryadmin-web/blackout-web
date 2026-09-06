@@ -3,6 +3,55 @@
 (Repo also has `AGENTS.md` — the general agent playbook. This file captures the
 standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md` updated.)
 
+## ASK LARGO × NIGHT HAWK SWINGS — STANDING OWNERSHIP MANDATE (confirmed 2026-09-06, ongoing/24-7)
+**The operator's own words (three messages, same session):** *"Can you help cursor with largo
+integration into Night Hawk swings.. understand its work .. what its trying to do and make it
+better .. give it ideas .. Add updates comments on prs with your ideas .. The largo feature has to
+be extremely powerful and helpful"* → *"Keep thinking .. do more research.. and generate ideas ..
+features .. from a trader perspective.. what do we need to show .. get better at .. improvements,
+enhancements, like everything.. keep going .. keep working on this .. collab with cursor"* →
+*"Also look into gaps, missing data, features and bugs in largo integration for swings and fix it
+.. raise with cursor and get all your points cleared, implemented .. Own this feature and it has
+to be extremely powerful and helpful .. and modern, dynamic, 100% correctness .. keep digging hard
+into every aspect .. What can we add more, what is missing .. how can we make it much powerful..
+like keep going .. dont stop .. drive this automatically and autonomously.. And setup aggressive
+wake up alarms .. add this to your hourly items .. Add the complete Night Hawk product like
+everything.. 0dte, Swings, Legacy into your hourly items."*
+
+This is a **standing, indefinite ownership mandate**, narrower in scope than the performance
+mandate above but higher in depth: "Ask Largo" (the deterministic swing play-brief intelligence
+panel, `src/lib/swing/play-brief*.ts`) — and by extension the whole Night Hawk product it serves
+(0DTE, Swings, Legacy) — is Claude's OWNED feature to keep making "extremely powerful and
+helpful," not just correct. Same discipline as the performance mandate: "I found one thing" never
+satisfies this, keep digging every cycle.
+
+**Mechanism (how this survives session death/compaction):** the "4-engine live monitor" hourly-
+offset trigger set (`trig_01NNvznmA6eMsH61cLe7yb6z` and 5 siblings, :01/:10/:20/:30/:40/:50, self-
+bound into the coordinator session) was expanded 2026-09-06 to a **5-engine live monitor +
+standing Ask Largo mandate** — added Night Hawk Swings as a 5th checked system (was previously
+SPX/Legacy/0DTE/Vector only) and added a non-skippable "keep digging" sub-mandate specifically on
+`GET /api/market/swing/play-brief` (envelope completeness vs `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s
+ten points, dead-wired data, narrative-vs-bullet-dump quality) that runs EVERY cycle regardless of
+whether the 5 health checks are clean — health-check silence is not license to skip the Largo
+deep-dive. If a future session reads this and the 5 triggers look like they've drifted or gone
+missing, recreate them from this description rather than treating their absence as "done."
+
+**Collaboration channel:** durable via PR comments on #4076 (comment ids 5556239866,
+5556321562 — trader-perspective research + prioritized ideas, offering to split work with Cursor
+to avoid file-overlap churn). Shipped so far: #4087 (portfolio/theme concentration awareness via
+`bookContextSection`, reusing the swing gate's own `checkPortfolioOverlap`; narrated "Dealer &
+dark-pool read" replacing three separate bullet-dump sections with one connected trade-manager-
+voice synthesis of dealer posture/king-strike/max-pain/dark-pool/wall-dynamics). Scoped but not
+yet built: historical archetype/sub-lane win-rate context (blocked on a cache layer — the cron-
+side `analyzeArchetypeRecord`/`analyzeSubLaneRecord` compute is cheap but nothing persists a
+reusable report for the brief's request path to read, same shape as the `APLUS_UNLOCKED = false`
+TODO already on record in `ZeroDteBoard.tsx` for the analogous 0DTE case); narrating the live
+"what changed" diff the same trade-manager way instead of numeric deltas; narrating cross-desk
+disagreement instead of listing it; steelmanning the counter-thesis. A fresh session should read
+the two PR comments above for the full, current state of ideas raised vs. shipped vs. blocked
+before assuming this list is exhaustive — it is a snapshot, and the mandate is to keep extending
+it, not to treat it as a fixed backlog.
+
 ## STANDING PERFORMANCE/LATENCY AUDIT MANDATE (confirmed 2026-09-02, ongoing/24-7)
 **The operator's own words:** *"Keep scanning the entire website and products and all values ..
 and fix everything.. like everything.. find work and improve latency, performance.. website should
