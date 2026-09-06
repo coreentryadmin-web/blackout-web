@@ -549,6 +549,15 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   if (ctx.ecosystem?.flow_feed_fresh === false) {
     warnings.push("HELIX feed quiet — flow read may lag");
   }
+  if (
+    ctx.scanSessionDay &&
+    ctx.sessionDate &&
+    ctx.scanSessionDay !== ctx.sessionDate
+  ) {
+    warnings.push(
+      `swing discovery from **${ctx.scanSessionDay}** — today's scan not yet run`,
+    );
+  }
 
   if (!warnings.length) return null;
   return `**Data caveat** — ${warnings.join(" · ")}. Treat levels as indicative until refresh.`;

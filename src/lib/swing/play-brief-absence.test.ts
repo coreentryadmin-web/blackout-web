@@ -248,3 +248,30 @@ test("collectBriefUnavailableSources: a live-synced mark (markIsSync false/undef
   const ctxUndefined = { play: {} } as SwingPlayBriefContext;
   assert.ok(!collectBriefUnavailableSources(ctxUndefined).some((s) => s.source === "option mark"));
 });
+
+test("collectBriefUnavailableSources: prior-session discovery scan surfaces in envelope", () => {
+  const ctx = {
+    sessionDate: "2026-09-06",
+    scanSessionDay: "2026-09-05",
+    scanAsOf: "2026-09-05T20:00:00.000Z",
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) =>
+        s.source === "swing discovery scan" &&
+        s.reason === "prior session (2026-09-05) — today's scan not yet run",
+    ),
+  );
+});
+
+test("collectBriefUnavailableSources: same-day scan does not surface stale discovery", () => {
+  const ctx = {
+    sessionDate: "2026-09-06",
+    scanSessionDay: "2026-09-06",
+    scanAsOf: "2026-09-06T14:30:00.000Z",
+  } as SwingPlayBriefContext;
+
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "swing discovery scan"));
+});

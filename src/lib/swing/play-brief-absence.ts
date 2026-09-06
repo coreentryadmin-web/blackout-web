@@ -123,6 +123,18 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const reason = peer.error ?? peer.note ?? "unavailable";
     out.push({ source: "Meridian peer cohort", reason });
   }
+  // Prior-session discovery scan: WATCH rows can still carry yesterday's lane snapshot while the
+  // brief stamps today's sessionDate — without this, scanAsOf prose looks current (C3 gap).
+  if (
+    ctx.scanSessionDay &&
+    ctx.sessionDate &&
+    ctx.scanSessionDay !== ctx.sessionDate
+  ) {
+    out.push({
+      source: "swing discovery scan",
+      reason: `prior session (${ctx.scanSessionDay}) — today's scan not yet run`,
+    });
+  }
 
   return out;
 }

@@ -586,7 +586,7 @@ export function vectorDeskSection(vec: VectorFullState | null): RichSection | nu
 
 /** Honest data freshness — mark age, scan age, vector staleness. */
 export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | null {
-  const { play, scanAsOf } = ctx;
+  const { play, scanAsOf, scanSessionDay, sessionDate } = ctx;
   const vec = vectorOf(ctx);
   const lines: string[] = [];
   if (play.markAsOf) {
@@ -594,7 +594,16 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   } else if (play.markIsSync) {
     lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
   }
-  if (scanAsOf) lines.push(`Swing scan: **${etStampFromIso(scanAsOf)}**`);
+  if (scanAsOf) {
+    const staleScan =
+      scanSessionDay && sessionDate && scanSessionDay !== sessionDate;
+    const stamp = etStampFromIso(scanAsOf);
+    lines.push(
+      staleScan
+        ? `Swing scan: **${stamp}** (**prior session ${scanSessionDay}** — today's discovery not yet run)`
+        : `Swing scan: **${stamp}**`,
+    );
+  }
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
   }
