@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:55:30.547Z",
+  "updated_at": "2026-09-06T15:36:05.840Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T15:26:02.202Z",
+      "lease_until": "2026-09-06T16:56:02.202Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -39,16 +40,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T15:26:02.203Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "b5d550475f349fb53dc2db9f44021e6efb736a7f",
+    "last_main_sha": "def4d529b7c1c44b5f4f2e30768e899d17eb06f3",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T15:35:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34042784647",
+    "last_deploy_sha": "def4d529b7c1c44b5f4f2e30768e899d17eb06f3"
   },
   "events": [
     {
@@ -655,9 +657,129 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T15:25:53.450Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T15:25:57.122Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T15:25:57.897Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T15:25:58.819Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T15:26:02.203Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T15:26:04.911Z",
+      "type": "pr_webhook",
+      "pr": 4309,
+      "event": "sweep",
+      "head": "8646ada8168a6b0e59aee0cdaa4d48c35b54cfd9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:26:06.899Z",
+      "type": "pr_webhook",
+      "pr": 4308,
+      "event": "sweep",
+      "head": "1e3175eb466a3918b89b71d343fa7831ed0d248b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:26:08.768Z",
+      "type": "pr_webhook",
+      "pr": 4307,
+      "event": "sweep",
+      "head": "026def4827b25ac13787a11d844fb3e881579992",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:26:10.641Z",
+      "type": "pr_webhook",
+      "pr": 4306,
+      "event": "sweep",
+      "head": "24a14d1301fab388573d133960d8d23234d76daf",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:36:03.182Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T15:36:03.183Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "659784e5-5b0d-4434-af41-c732a1056fce",
+      "summary": "Cycle: closed duplicate handoffs #4306/#4307/#4312/#4313. Marked #4309 ready (Largo C2 stale Vector Right now fix, verify GREEN, 13/13 tests). Locally verified #4310 (84/84) and #4311 (18/18) — awaiting Claude peer review. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T15:36:05.840Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4314,
+      "title": "fix(spx): unify King node level kind between initial build and live merge",
+      "branch": "fix/spx-desk-king-node-resistance-mismatch",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T15:36:05Z"
+    },
+    {
+      "number": 4311,
+      "title": "fix(swing): ground HELIX flow evidence with premium dollars (Largo C7)",
+      "branch": "fix/swing-brief-helix-flow-evidence-premiums",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:35:49Z"
+    },
+    {
+      "number": 4310,
+      "title": "fix(swing): prior-session scan freshness stale; skip mark absence on CLOSED",
+      "branch": "fix/swing-brief-closed-mark-and-stale-scan-freshness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:35:48Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -688,6 +810,38 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4309": {
+      "last_event": "sweep",
+      "last_head": "8646ada8168a6b0e59aee0cdaa4d48c35b54cfd9",
+      "last_feedback_at": "2026-09-06T15:26:04.911Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4308": {
+      "last_event": "sweep",
+      "last_head": "1e3175eb466a3918b89b71d343fa7831ed0d248b",
+      "last_feedback_at": "2026-09-06T15:26:06.899Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4307": {
+      "last_event": "sweep",
+      "last_head": "026def4827b25ac13787a11d844fb3e881579992",
+      "last_feedback_at": "2026-09-06T15:26:08.768Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4306": {
+      "last_event": "sweep",
+      "last_head": "24a14d1301fab388573d133960d8d23234d76daf",
+      "last_feedback_at": "2026-09-06T15:26:10.641Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
