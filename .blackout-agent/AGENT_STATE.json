@@ -1,18 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:55:30.547Z",
+  "updated_at": "2026-09-06T15:53:01.559Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T15:50:41.663Z",
+      "lease_until": "2026-09-06T17:21:48.554Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "0fd9a692-99b1-4675-a6e7-7e1fd9ab01fd"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T15:51:29.348Z",
+      "lease_until": "2026-09-06T17:21:48.554Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "0fd9a692-99b1-4675-a6e7-7e1fd9ab01fd"
     }
   },
   "reviews": {
@@ -44,11 +55,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b5d550475f349fb53dc2db9f44021e6efb736a7f",
+    "last_main_sha": "02add5a37fddb52e000ed4962ea384014833315d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T15:47:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34043383671",
+    "last_deploy_sha": "02add5a37fddb52e000ed4962ea384014833315d"
   },
   "events": [
     {
@@ -655,9 +666,26 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T15:53:01.559Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4311,
+      "title": "fix(swing): ground HELIX flow evidence with premium dollars (Largo C7)",
+      "branch": "fix/swing-brief-helix-flow-evidence-premiums",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:51:50Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
