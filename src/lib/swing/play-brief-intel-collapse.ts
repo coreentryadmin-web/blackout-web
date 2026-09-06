@@ -28,6 +28,7 @@ export function collapseRedundantIntelSections(
 ): RichSection[] {
   if (!opts.hasNarrative) return sections;
 
+  const bookSection = sections.find((s) => s.title === "Book context");
   const filtered = sections.filter((s) => !NARRATIVE_COVERED_TITLES.has(s.title));
 
   const dropped = sections.length - filtered.length;
@@ -36,14 +37,30 @@ export function collapseRedundantIntelSections(
   const narrativeIdx = filtered.findIndex((s) => s.title === "Trade manager read");
   if (narrativeIdx < 0) return filtered;
 
+  const narrative = filtered[narrativeIdx]!;
+  let body = narrative.body;
+
+  // Book overlap must survive collapse — #4116 removed duplicate coaching bullets from
+  // narrative, so dropping the dedicated section without folding would hide concentration.
+  if (bookSection?.body.trim()) {
+    const folded = bookSection.body
+      .split("\n\n")
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => (p.startsWith("• ") ? p : `• ${p}`))
+      .join("\n");
+    if (folded && !body.includes(folded.slice(0, 48))) {
+      body = body ? `${body}\n\n${folded}` : folded;
+    }
+  }
+
   const note =
     `_Desk detail for ${dropped} section${dropped === 1 ? "" : "s"} folded into Trade manager read above — expand via follow-up chips or Open Largo._`;
-  const narrative = filtered[narrativeIdx]!;
   filtered[narrativeIdx] = {
     ...narrative,
-    body: narrative.body.includes("folded into Trade manager read")
-      ? narrative.body
-      : `${narrative.body}\n\n${note}`,
+    body: body.includes("folded into Trade manager read")
+      ? body
+      : `${body}\n\n${note}`,
   };
 
   return filtered;
