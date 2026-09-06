@@ -1,14 +1,25 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:09:15.963Z",
+  "updated_at": "2026-09-06T12:16:37.201Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T12:05:57.332Z",
-      "lease_until": "2026-09-06T13:35:57.332Z",
+      "claimed_at": "2026-09-06T12:08:48.532Z",
+      "lease_until": "2026-09-06T13:42:02.470Z",
       "phase": "REVIEWING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "025fb8a6-c11f-4e7c-9f62-c9f61d7d6283"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T12:14:44.756Z",
+      "lease_until": "2026-09-06T13:44:44.756Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -625,9 +636,32 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T12:16:37.200Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T12:16:37.201Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "224483a4-e5f3-4e10-ab23-a85027924506",
+      "summary": "Post-#4236 merge: #4239 ex-div fail-safe APPROVED (20/20 tests, verify pending); validate:deploy GREEN; ops:collect 0"
     }
   ],
   "open_prs": [
+    {
+      "number": 4240,
+      "title": "chore(blackout-agent): cursor handoff — swing/Largo merge wave complete",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle5",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T12:09:33Z"
+    },
     {
       "number": 4239,
       "title": "fix(swing): ex-dividend read failure must fail SAFE, not fail-open, on Q39 structural stop",
@@ -636,7 +670,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T12:07:07Z"
+      "updated_at": "2026-09-06T12:16:22Z"
     }
   ],
   "pr_activity": {
