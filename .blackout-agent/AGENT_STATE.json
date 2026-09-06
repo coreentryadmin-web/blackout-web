@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T05:02:17.958Z",
+  "updated_at": "2026-09-06T05:38:29.171Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T05:17:20.173Z",
+      "lease_until": "2026-09-06T06:47:20.173Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1a98c378bc6799c17ecdece9faea4a81fbdf0a5b",
+    "last_main_sha": "e278a26f6c87db8281356e6f3241118232434569",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T05:27:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34014014168",
+    "last_deploy_sha": "e278a26f6c87db8281356e6f3241118232434569"
   },
   "events": [
     {
@@ -426,7 +426,51 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T05:38:29.171Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T05:38:29.171Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e798ba98-f257-4f83-92e5-fcb50bec4bc3",
+      "summary": "Cycle complete: merged #4135/#4138. #4142 awaits Claude. deploy GREEN main@e278a26f6. ops:collect 0."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4147,
+      "title": "chore(blackout-agent): cursor workflow_run handoff — #4138/#4135 merged",
+      "branch": "cursor/autopilot-handoff-2026-09-06-v6",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T05:38:01Z"
+    },
+    {
+      "number": 4146,
+      "title": "feat(swing): marks SSE brief_sig + Show detail expander",
+      "branch": "cursor/swing-brief-sse-expand",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T05:34:25Z"
+    },
+    {
+      "number": 4142,
+      "title": "fix(swing): stamp play-brief asOf with ET per Largo C1",
+      "branch": "cursor/blackout-autopilot-work-loop-d40d",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T05:38:00Z"
+    }
+  ]
 }
