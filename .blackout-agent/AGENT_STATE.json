@@ -1,25 +1,14 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:20:28.124Z",
+  "updated_at": "2026-09-06T01:20:47.618Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T01:13:05.728Z",
-      "lease_until": "2026-09-06T02:47:59.810Z",
+      "claimed_at": "2026-09-06T01:19:10.448Z",
+      "lease_until": "2026-09-06T02:49:10.448Z",
       "phase": "PEER_REVIEW",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "cd881393-893b-4a30-b15c-634ff48997ff"
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-06T00:19:21.067Z",
-      "lease_until": "2026-09-06T01:49:21.067Z",
-      "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -44,8 +33,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-06T00:51:52.938Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-06T01:19:10.449Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
@@ -225,86 +214,70 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T00:51:49.248Z",
+      "at": "2026-09-06T01:19:01.898Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T00:51:52.939Z",
+      "at": "2026-09-06T01:19:05.547Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T01:19:06.602Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T01:19:07.728Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T01:19:10.449Z",
       "type": "task_claimed",
-      "task_id": "BO-P1-0101",
+      "task_id": "BO-P1-0100",
       "owner": "cursor"
     },
     {
-      "at": "2026-09-06T00:51:53.689Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-06T01:19:17.549Z",
+      "type": "pr_webhook",
+      "pr": 4071,
+      "event": "sweep",
+      "head": "bb629f454f57f33e8eabae9a0b810ec4cbd0daf5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     },
     {
-      "at": "2026-09-06T00:51:54.505Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T00:51:55.227Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T00:52:56.338Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T00:52:56.338Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "61203432-236b-46b6-829d-3b24a77b6608",
-      "summary": "workflow_run cycle: synced main@38939b0bc. Lifecycle GREEN (ops:collect 0, validate:deploy/api-auth/platform-integrity 14/14/seo 22/22, rth-open off-hours skip). pr-sweep empty — 0 open PRs for peer review. ECR deploy run 34001859806 stuck pending (no jobs, GH queue); prod HTTP smoke GREEN. npm ci restored (missing pg). Weekend — RTH deferred to Mon 09:00 ET."
-    },
-    {
-      "at": "2026-09-06T01:00:57.216Z",
+      "at": "2026-09-06T01:20:34.991Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T01:00:57.217Z",
+      "at": "2026-09-06T01:20:34.991Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "df19b43c-5977-4d43-a72c-42c0a1b259c2",
-      "summary": "Merge-wave cycle @38939b0bc: peer-reviewed #4069 HELIX DarkPool bias fix (APPROVED, merged); #4068 swing Ask Largo v3 on main; lifecycle GREEN (deploy/api-auth/platform-integrity 14/14, seo 22/22); ops:collect 0; ECR 34001859806 pending (GH queue). Weekend — RTH skipped."
+      "run_id": "29c8e756-1a99-463c-9af0-e6fc1a565b29",
+      "summary": "PR-event cycle complete. Lifecycle GREEN (deploy, api-auth 225 routes, platform-integrity 14/14, seo 22/22, rth-open skipped weekend). ops:collect 0. main@2c2301275. PR #4071 verify GREEN (draft, awaiting Claude peer review). No Claude/fix PRs for peer review. Peer review sweep clear."
     },
     {
-      "at": "2026-09-06T01:20:06.190Z",
+      "at": "2026-09-06T01:20:47.617Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T01:20:06.191Z",
+      "at": "2026-09-06T01:20:47.618Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "4a9679f4-c5f8-4079-9331-6491b4ef24ee",
-      "summary": "PR-event cycle complete. Lifecycle GREEN (ops:collect 0, deploy/api-auth/platform-integrity 14/14/seo 22/22, rth-open weekend skip). #4071 verify GREEN @ bb629f454 — marked ready for Claude review. No claude/fix PRs to review. Peer BO-P1-0100 clear."
-    },
-    {
-      "at": "2026-09-06T01:20:28.123Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 1
-    },
-    {
-      "at": "2026-09-06T01:20:28.124Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "3f958075-16c5-4f29-90ff-d3c1ce4d3c21",
-      "summary": "workflow_run cycle complete. #4072 swing asOf footer MERGED main@2c2301275. Lifecycle GREEN. ops:collect 0. No Claude PRs to review."
+      "run_id": "a8090aa8-9f36-47de-b985-9d591df69b3c",
+      "summary": "PR-event cycle complete. Lifecycle GREEN (deploy, api-auth 225 routes, platform-integrity 14/14, seo 22/22, rth-open skipped weekend). ops:collect 0. main@2c2301275. PR #4071 verify GREEN (draft, awaiting Claude peer review). No Claude/fix PRs for peer review."
     }
   ],
   "open_prs": [
@@ -316,7 +289,17 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T01:20:16Z"
+      "updated_at": "2026-09-06T01:20:31Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4071": {
+      "last_event": "sweep",
+      "last_head": "bb629f454f57f33e8eabae9a0b810ec4cbd0daf5",
+      "last_feedback_at": "2026-09-06T01:19:17.549Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
