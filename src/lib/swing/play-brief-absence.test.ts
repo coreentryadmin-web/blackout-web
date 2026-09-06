@@ -263,6 +263,26 @@ test("collectBriefUnavailableSources: a live-synced mark (markIsSync false/undef
   assert.ok(!collectBriefUnavailableSources(ctxUndefined).some((s) => s.source === "option mark"));
 });
 
+test("collectBriefUnavailableSources: timestamped but stale option mark surfaces (C2/C3)", () => {
+  const staleAsOf = new Date(Date.now() - 60_000).toISOString();
+  const ctx = {
+    play: { markIsSync: false, markAsOf: staleAsOf, status: "OPEN" },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "option mark" && s.reason === "quote stale — P&L may lag live tape"),
+  );
+});
+
+test("collectBriefUnavailableSources: fresh timestamped mark does not surface option mark absence", () => {
+  const freshAsOf = new Date(Date.now() - 1_000).toISOString();
+  const ctx = {
+    play: { markIsSync: false, markAsOf: freshAsOf, status: "HOLD" },
+  } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "option mark"));
+});
+
 test("collectBriefUnavailableSources: prior-session discovery scan surfaces in envelope", () => {
   const ctx = {
     sessionDate: "2026-09-06",

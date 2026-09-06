@@ -3,6 +3,8 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent-sections";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
+import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
@@ -28,6 +30,19 @@ const VECTOR_STALE_MS = 120_000;
 /** Only committed working rows expect a live-synced option mark — WATCH uses static chain mid by design. */
 export function playExpectsLiveOptionMark(status: string | null | undefined): boolean {
   return status === "OPEN" || status === "HOLD" || status === "TRIM";
+}
+
+/** Same staleness window PlayTerminal uses — timestamped marks can still be stale (C2/C3). */
+export function optionMarkIsStale(
+  play: TerminalPlay | null | undefined,
+  readMs: number = Date.now(),
+): boolean {
+  if (!play?.markAsOf || play.markIsSync === true || !playExpectsLiveOptionMark(play.status)) {
+    return false;
+  }
+  const markMs = Date.parse(play.markAsOf);
+  if (!Number.isFinite(markMs)) return false;
+  return isZeroDteMarkStale(markMs, readMs, ZERODTE_MARK_STALE_MS);
 }
 
 /** HELIX recent_flow is only trustworthy when the feed is fresh — stale pipeline rows are absence, not signal. */
@@ -88,6 +103,8 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     playExpectsLiveOptionMark(ctx.play?.status)
   ) {
     out.push({ source: "option mark", reason: "sync quote without freshness timestamp" });
+  } else if (optionMarkIsStale(ctx.play)) {
+    out.push({ source: "option mark", reason: "quote stale — P&L may lag live tape" });
   }
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared
   // matrix had no positioning for this ticker.

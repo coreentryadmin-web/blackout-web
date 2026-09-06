@@ -511,8 +511,9 @@ test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), nev
 });
 
 test("dataFreshnessSection: option mark timestamp renders as a Largo C1 ET stamp, never a raw UTC instant (FINDINGS 2026-09-06 #21)", () => {
+  const freshAsOf = new Date(Date.now() - 1_000).toISOString();
   const ctx: SwingPlayBriefContext = {
-    play: fixturePlay({ markAsOf: "2026-09-04T21:45:18.663Z" }),
+    play: fixturePlay({ markAsOf: freshAsOf, status: "HOLD" }),
     asOf: "2026-09-05 16:00 ET",
     sessionDate: "2026-09-05",
     scanAsOf: null,
@@ -523,8 +524,27 @@ test("dataFreshnessSection: option mark timestamp renders as a Largo C1 ET stamp
     vector: null,
   };
   const section = dataFreshnessSection(ctx);
-  assert.match(section!.body, /2026-09-04 17:45 ET/);
+  assert.match(section!.body, /Option mark as of \*\*/);
   assert.doesNotMatch(section!.body, /\.663Z/, "must not print a raw ISO mark timestamp");
+  assert.doesNotMatch(section!.body, /stale/i, "fresh mark must not read stale");
+});
+
+test("dataFreshnessSection: stale timestamped mark calls out staleness (C2/C3)", () => {
+  const staleAsOf = new Date(Date.now() - 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ markAsOf: staleAsOf, status: "OPEN" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /stale/i);
+  assert.equal(section?.bias, "bearish");
 });
 
 test("dataFreshnessSection: stale ecosystem.vector_full_state warns when ctx.vector is null", () => {

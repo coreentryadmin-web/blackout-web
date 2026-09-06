@@ -353,8 +353,15 @@ test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf 
   const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "OPEN" }));
   assert.match(stale!, /mark not synced to live tape/i);
 
-  const fresh = dataHonestyCoaching(ctx(), play({ markIsSync: false, markAsOf: "2026-09-04T21:45:18.731Z" }));
+  const freshAsOf = new Date(Date.now() - 1_000).toISOString();
+  const fresh = dataHonestyCoaching(ctx(), play({ markIsSync: false, markAsOf: freshAsOf, status: "OPEN" }));
   assert.equal(fresh, null);
+});
+
+test("dataHonestyCoaching: timestamped but stale mark warns (C2/C3)", () => {
+  const staleAsOf = new Date(Date.now() - 60_000).toISOString();
+  const line = dataHonestyCoaching(ctx(), play({ markIsSync: false, markAsOf: staleAsOf, status: "HOLD" }));
+  assert.match(line!, /option mark stale/i);
 });
 
 test("dataHonestyCoaching: closed play with markIsSync does not warn mark staleness", () => {
