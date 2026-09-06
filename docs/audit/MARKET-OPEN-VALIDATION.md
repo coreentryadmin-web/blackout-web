@@ -120,6 +120,16 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1o. Ask Largo swing thesis-health dead-wired to identical reading for every live position — docs/swing-brief-thesis-health-dead-wired (pending, follows the deep audit PR #4178)
+
+**What was broken:** Every live/committed swing position's Ask Largo play-brief rendered the byte-identical `46% · Degraded` thesis-health score regardless of real P&L (confirmed on all 4 currently-open positions: +98.0%, 0.0%, +33.7%, +24.6% all identical). `livePlayFromSwingPosition` never populates `factors`/`regime`, and the fix that already exists for the main board (`serving-lane.ts`'s `attachThesisExplanation`) was never wired into the Ask Largo play-brief resolver.
+
+**Fix:** `loadOpenTerminalPlay` (`play-brief-resolve.ts`) now calls `discoverSwingFromPersisted()` + `attachThesisExplanation()` before building the `TerminalPlay`, mirroring the board's own restoration. Restores the **regime** pillar (15% weight) with real data; persistence/entry_geometry/flow_corroboration (70% weight) remain a tracked follow-up — see the finding's "Scope note" for why those three are NOT safely fixable the same way.
+
+**Check at the open:** `GET /api/market/swing/play-brief` for a live OPEN/HOLD/TRIM position whose ticker still has an active discovery dossier — the "Regime fit" pillar line should show a real regime/archetype read, not the generic "unread" default. Compare two different live positions' thesis-health panels — they should no longer be byte-identical if their dossiers differ.
+
+---
+
 ### 0a-1m. Swing Ask Largo — fabricated play-brief confidence — fix/swing-brief-omit-fabricated-confidence (merged #4174)
 
 **What was broken:** `composeSwingPlayBrief()` always stamped `envelope.confidence` as `high` or `moderate` from a coarse `hasRichData` boolean. Largo contract C6 requires omitting confidence when the lane cannot calibrate it — the fabricated score could corrupt cross-product ranking and mislead markdown/Largo exports.

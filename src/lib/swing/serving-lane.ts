@@ -85,7 +85,7 @@ export interface SwingServingLaneDeps {
 }
 
 /** Index the scored dossiers by ticker (uppercased) so each play can find the thesis it was produced from. */
-function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDossier> {
+export function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDossier> {
   const idx = new Map<string, SwingDossier>();
   for (const d of dossiers) idx.set(d.ticker.toUpperCase(), d);
   return idx;
