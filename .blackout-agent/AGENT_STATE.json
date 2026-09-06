@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:22:26.778Z",
+  "updated_at": "2026-09-06T03:32:17.740Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -336,6 +336,96 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T03:31:56.950Z",
+      "type": "pr_webhook",
+      "pr": 4112,
+      "event": "sweep",
+      "head": "7c5bd746efa4fdfe47e81a4a1cb80622e21c3535",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T03:31:59.376Z",
+      "type": "pr_webhook",
+      "pr": 4111,
+      "event": "sweep",
+      "head": "927df983c8d589ee71d3fdfd595dced45e9ab8e5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T03:32:01.848Z",
+      "type": "pr_webhook",
+      "pr": 4110,
+      "event": "sweep",
+      "head": "fad73ef04e1ac5e49f951995c3c8cc66a54e370e",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T03:32:04.230Z",
+      "type": "pr_webhook",
+      "pr": 4109,
+      "event": "sweep",
+      "head": "fcb63d809f1311dc7f9993c72b3a6febaa39b606",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T03:32:06.843Z",
+      "type": "pr_webhook",
+      "pr": 4108,
+      "event": "sweep",
+      "head": "bd842bb50ae1edd3bc19c95ca2af675b6ae371bc",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T03:32:09.998Z",
+      "type": "pr_webhook",
+      "pr": 4112,
+      "event": "sweep",
+      "head": "7c5bd746efa4fdfe47e81a4a1cb80622e21c3535",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T03:32:12.415Z",
+      "type": "pr_webhook",
+      "pr": 4111,
+      "event": "sweep",
+      "head": "927df983c8d589ee71d3fdfd595dced45e9ab8e5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T03:32:14.901Z",
+      "type": "pr_webhook",
+      "pr": 4110,
+      "event": "sweep",
+      "head": "54313bbb62ef80c86f661c9997155bad1ef027c9",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T03:32:17.740Z",
+      "type": "pr_webhook",
+      "pr": 4108,
+      "event": "sweep",
+      "head": "bd842bb50ae1edd3bc19c95ca2af675b6ae371bc",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
     }
   ],
   "open_prs": [
@@ -349,5 +439,47 @@
       "verify": "unknown",
       "updated_at": "2026-09-06T03:21:58Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4112": {
+      "last_event": "sweep",
+      "last_head": "7c5bd746efa4fdfe47e81a4a1cb80622e21c3535",
+      "last_feedback_at": "2026-09-06T03:32:09.998Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4111": {
+      "last_event": "sweep",
+      "last_head": "927df983c8d589ee71d3fdfd595dced45e9ab8e5",
+      "last_feedback_at": "2026-09-06T03:32:12.415Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4110": {
+      "last_event": "sweep",
+      "last_head": "54313bbb62ef80c86f661c9997155bad1ef027c9",
+      "last_feedback_at": "2026-09-06T03:32:14.901Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4109": {
+      "last_event": "sweep",
+      "last_head": "fcb63d809f1311dc7f9993c72b3a6febaa39b606",
+      "last_feedback_at": "2026-09-06T03:32:04.230Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "created"
+    },
+    "pr-4108": {
+      "last_event": "sweep",
+      "last_head": "bd842bb50ae1edd3bc19c95ca2af675b6ae371bc",
+      "last_feedback_at": "2026-09-06T03:32:17.740Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
