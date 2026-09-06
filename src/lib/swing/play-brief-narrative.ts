@@ -10,6 +10,7 @@ import { trustedHelixFlow } from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
+import { technicalsBias } from "./play-brief-technicals";
 
 const MAX_BULLETS = 14;
 
@@ -518,14 +519,12 @@ export function tradeManagerNarrativeSection(
 
   if (!bullets.length) return null;
 
+  // Bias reads the chart evidence (same majority vote as chartTechnicalsSection), not the play's
+  // LONG/SHORT direction — a SHORT into a bullish tape must not badge bearish (FINDINGS 2026-09-06).
   const bias =
-    play.direction === "SHORT"
-      ? "bearish"
-      : play.direction === "LONG"
-        ? play.thesisHealth?.health != null && play.thesisHealth.health < 45
-          ? "neutral"
-          : "bullish"
-        : "neutral";
+    vec?.technicals != null
+      ? technicalsBias(vec.technicals, spot)
+      : "neutral";
 
   return {
     title: "Trade manager read",
