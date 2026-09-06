@@ -3077,17 +3077,15 @@ than an end-of-session patch.
 - **What changed:** `collectBriefUnavailableSources()` emits a structured C3 entry when `scanSessionDay !== sessionDate`; `dataFreshnessSection()` and `dataHonestyCoaching()` narrate the same fact in prose.
 - **RTH check:** Pre-open Monday (or any session before `swing-discovery` cron runs), open Ask Largo on a WATCH swing row — confirm "Data freshness" and/or `UnavailableChip` shows prior-session discovery scan warning, not a silent yesterday timestamp.
 
-<<<<<<< HEAD
 ### 46. Swing entry gate — lone same-ticker row invisible to portfolio_overlap soft penalty — fix/swing-gate-portfolio-overlap-no-self-skip — 2026-09-06
 
 - **What was broken:** `checkPortfolioOverlap`'s first-match self-exclusion (correct for Ask Largo where the reviewed play is in `openBook`) also ran for uncommitted gate dossiers. A lone pre-existing NVDA LONG in the book was skipped as "self," so `portfolio_overlap` never fired when evaluating a new NVDA LONG candidate.
 - **What changed:** `checkPortfolioOverlap` accepts `{ excludeSelfMatch?: boolean }` (default `true`); `gates-pr5.ts` passes `false`.
 - **RTH check:** During discovery, inspect a dossier whose ticker+direction already exists in the open book — `evaluateSwingGates` soft penalties should include `portfolio_overlap` with concentration reason text, not silence.
-=======
-### 46. Ask Largo swing play-brief — HELIX pipeline staleness missing from Data freshness — fix/swing-brief-helix-freshness-section — 2026-09-06
+
+### 47. Ask Largo swing play-brief — HELIX pipeline staleness missing from Data freshness — fix/swing-brief-helix-freshness-section — 2026-09-06
 
 - **What was broken:** When `flow_feed_fresh === false`, structured `unavailableSources` and `dataHonestyCoaching()` warned, but `dataFreshnessSection()` stayed silent if mark/scan/Vector were all fine — no Data freshness section at all despite stale HELIX pipeline.
 - **What changed:** `dataFreshnessSection()` adds a HELIX pipeline stale line when `flow_feed_fresh === false`.
 - **RTH check:** During a HELIX pipeline stale window, open Ask Largo on a swing row with fresh mark/scan/Vector — confirm Data freshness section mentions HELIX pipeline stale (not only UnavailableChip/coaching).
->>>>>>> dbb709ffe (docs(audit): MARKET-OPEN-VALIDATION §46 HELIX freshness section fix)
 
