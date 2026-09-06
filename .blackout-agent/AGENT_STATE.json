@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T16:55:27.038Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T16:38:21.322Z",
+      "lease_until": "2026-09-06T18:08:21.322Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -32,12 +32,12 @@
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
     },
-    "pr-4319": {
-      "pr": 4319,
-      "head_sha": "354423ab963023e50fef88d8eedb42086db45f2c",
+    "pr-4335": {
+      "pr": 4335,
+      "head_sha": "b7fbf8491b54",
       "reviewer": "cursor",
       "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T16:36:20.625Z",
+      "reviewed_at": "2026-09-06T16:54:29.251Z",
       "safe_to_merge": true
     }
   },
@@ -52,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "d0e0efa0217a1768adaf2e4be00f5e6bac013621",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T16:52:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34046809970",
+    "last_deploy_sha": "d0e0efa0217a1768adaf2e4be00f5e6bac013621"
   },
   "events": [
     {
@@ -701,42 +701,119 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T16:15:50.714Z",
+      "at": "2026-09-06T16:20:57.759Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 2
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T16:36:20.626Z",
+      "at": "2026-09-06T16:20:58.391Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:20:58.698Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:54:29.252Z",
       "type": "pr_review",
-      "pr": 4319,
-      "head_sha": "354423ab963023e50fef88d8eedb42086db45f2c",
+      "pr": 4335,
+      "head_sha": "b7fbf8491b54",
       "reviewer": "cursor",
       "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T16:36:20.625Z",
+      "reviewed_at": "2026-09-06T16:54:29.251Z",
       "safe_to_merge": true
     },
     {
-      "at": "2026-09-06T16:36:24.481Z",
+      "at": "2026-09-06T16:55:27.037Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 7
     },
     {
-      "at": "2026-09-06T16:36:24.481Z",
+      "at": "2026-09-06T16:55:27.038Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "0ea154c4-0a2a-4c18-8a61-7908b0d12e4b",
-      "summary": "Extended cycle: merged #4314 (SPX King node), #4311 (HELIX flow evidence), #4319 (WATCH mark absence false positive). #4318 (cursor thesis-health uncalibrated) verify GREEN — awaiting Claude peer review (Cursor cannot self-approve). ops:collect 0; validate:deploy GREEN. ECR deploy in flight for latest main."
-    },
-    {
-      "at": "2026-09-06T16:36:42.266Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "run_id": "688e1c59-91ed-47a4-ae11-23eba935bc6f",
+      "summary": "Session handoff: #4335 peer-reviewed APPROVED, #4326 verified awaiting Claude, deploy GREEN ops 0"
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4335,
+      "title": "fix(swing): stop uncalibrated thesis-health % leaking back into Verdict/Management",
+      "branch": "fix/swing-thesis-health-uncalibrated-leak",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:55:26Z"
+    },
+    {
+      "number": 4334,
+      "title": "fix(spx): round floats at shared play/desk derivation for BIE/Largo parity",
+      "branch": "fix/spx-roundfloats-asymmetry",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:55:26Z"
+    },
+    {
+      "number": 4333,
+      "title": "fix(swing): measure short-interest evidence freshness for Largo C2",
+      "branch": "fix/swing-brief-si-freshness-c2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:55:26Z"
+    },
+    {
+      "number": 4332,
+      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
+      "branch": "cursor/handoff-20260906-1638",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:42:27Z"
+    },
+    {
+      "number": 4331,
+      "title": "fix(swing): withhold uncalibrated thesis % from Verdict and diff engine",
+      "branch": "fix/swing-brief-thesis-verdict-diff-withhold",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:54:31Z"
+    },
+    {
+      "number": 4328,
+      "title": "chore(blackout-agent): cursor handoff — #4322 merged, all checks GREEN",
+      "branch": "cursor/autopilot-handoff-20260906T1635",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T16:50:19Z"
+    },
+    {
+      "number": 4327,
+      "title": "chore(blackout-agent): cursor handoff — peer review cycle #4318-4322",
+      "branch": "cursor/handoff-pr-event-4322",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:48:22Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
