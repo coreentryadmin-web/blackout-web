@@ -11,7 +11,11 @@ import { fitVectorFullStateForModel } from "@/lib/bie/vector-full-state-fit";
 // ticker class below) so EVERY composer that reads fetchEcosystemContext (the ecosystem narrative,
 // the ticker verdict, …) can cite macro/earnings/fundamentals/peers/news, not just the #59 verdict.
 import { fetchNextEarningsDate, type NextEarnings } from "@/lib/providers/uw-earnings";
-import { fetchTickerFundamentalsBundle, type TickerFundamentalsBundle } from "@/lib/bie/ticker-fundamentals";
+import {
+  fetchTickerFundamentalsBundle,
+  normalizeShortVolumeRatio,
+  type TickerFundamentalsBundle,
+} from "@/lib/bie/ticker-fundamentals";
 import { fetchRelatedCompanies, type RelatedCompanies } from "@/lib/providers/polygon-related";
 import { fetchTickerNews, fetchMarketCatalysts, type NewsResult } from "@/lib/providers/polygon-news";
 import { fetchPolygonMacroBackdrop, type PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
@@ -262,7 +266,9 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
     ? reads.fundamentals && (reads.fundamentals.short_interest?.days_to_cover != null || reads.fundamentals.short_volume_ratio != null)
       ? {
           days_to_cover: reads.fundamentals.short_interest?.days_to_cover ?? null,
-          short_volume_ratio: reads.fundamentals.short_volume_ratio ?? null,
+          short_volume_ratio: reads.fundamentals.short_volume_ratio != null
+            ? normalizeShortVolumeRatio(reads.fundamentals.short_volume_ratio)
+            : null,
           // Benzinga PT is a structured object, not a clean scalar — left out of the numeric slice
           // for now (same call the verdict engine makes); the short-interest read still lands.
           price_target: null,

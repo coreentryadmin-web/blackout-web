@@ -140,7 +140,7 @@ export async function fetchTickerFundamentalsBundle(
 ): Promise<TickerFundamentalsBundle | null> {
   if (!polygonConfigured()) return null;
   const sym = ticker.toUpperCase();
-  return serverCache<TickerFundamentalsBundle>(`bie:ticker-fundamentals:v1:${sym}`, TTL.REFERENCE, async () => {
+  return serverCache<TickerFundamentalsBundle>(`bie:ticker-fundamentals:v2:${sym}`, TTL.REFERENCE, async () => {
     const [ratios, income, balance, cashFlow, priceTarget, shortInterestRaw, shortVolumeRows] =
       await Promise.all([
         fetchPolygonFinancialRatios(sym).catch(() => null),
