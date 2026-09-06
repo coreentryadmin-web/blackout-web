@@ -436,10 +436,11 @@ export function shortInterestCoaching(ctx: SwingPlayBriefContext, play: Terminal
 export function scorecardCoaching(play: TerminalPlay): string | null {
   const sc = play.scorecard;
   if (!sc || sc.n < 10) return null;
-  const wr = Math.round(sc.winRate * 100);
+  // winRate/ciLow/ciHigh are already 0–100 percent points (conviction bucket record), not 0–1 fractions.
+  const wr = Math.round(sc.winRate);
   const ci =
     sc.ciLow != null && sc.ciHigh != null
-      ? ` (CI **${Math.round(sc.ciLow * 100)}–${Math.round(sc.ciHigh * 100)}%**)`
+      ? ` (CI **${Math.round(sc.ciLow)}–${Math.round(sc.ciHigh)}%**)`
       : "";
   const tier = play.tierLabel ? ` **${play.tierLabel}**` : "";
   return (

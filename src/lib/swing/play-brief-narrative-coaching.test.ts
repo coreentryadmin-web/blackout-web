@@ -16,6 +16,7 @@ import {
   vexCoaching,
   watchGateCoaching,
   technicalsCoaching,
+  scorecardCoaching,
 } from "./play-brief-narrative-coaching";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -454,4 +455,16 @@ test("technicalsCoaching: aligned LONG + bullish tape notes alignment without ec
   const line = technicalsCoaching(vec, play({ direction: "LONG" }));
   assert.match(line!, /chart reads bullish/i);
   assert.match(line!, /aligns with swing direction/i);
+});
+
+test("scorecardCoaching: winRate is already percent points — must not double-scale to 6300%", () => {
+  const line = scorecardCoaching(
+    play({
+      tierLabel: "A",
+      scorecard: { winRate: 63, avg: 12, n: 214, ciLow: 55, ciHigh: 70 },
+    }),
+  );
+  assert.match(line!, /\*\*63%\*\* WR/);
+  assert.doesNotMatch(line!, /6300%/);
+  assert.match(line!, /CI \*\*55–70%\*\*/);
 });
