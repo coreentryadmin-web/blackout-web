@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T17:27:13.526Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T16:50:18.751Z",
+      "lease_until": "2026-09-06T18:35:57.685Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "bda72fef-d0d5-4ee2-b160-43a33cce09e8"
     }
   },
   "reviews": {
@@ -52,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "a976ec822935308952958085743c4679fbab4b13",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T17:22:36Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34048411265",
+    "last_deploy_sha": "a976ec822935308952958085743c4679fbab4b13"
   },
   "events": [
     {
@@ -734,9 +734,102 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:26:10.885Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T17:26:10.885Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d3b981db-2acf-4777-87e4-5d95cb7140be",
+      "summary": "Peer-reviewed and merged #4335 (thesis-health uncalibrated leak — GO AHEAD MERGE). Posted Claude-review request on #4334 (SPX roundFloats, CI green). #4330/#4333 also green — Cursor-authored, awaiting Claude. Main synced."
+    },
+    {
+      "at": "2026-09-06T17:26:11.804Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T17:26:17.399Z",
+      "type": "pr_webhook",
+      "pr": 4348,
+      "event": "sweep",
+      "head": "7868b19aa462c03247f3af4802e8a8de1b1b13dc",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:26:19.413Z",
+      "type": "pr_webhook",
+      "pr": 4347,
+      "event": "sweep",
+      "head": "bcb2c376da0b35776453cc66e743bd11d07d3f93",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T17:26:21.597Z",
+      "type": "pr_webhook",
+      "pr": 4346,
+      "event": "sweep",
+      "head": "c11b9ce9141c32b2d7437def2ca5b8da1a6a0b00",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T17:27:13.525Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T17:27:13.526Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4f3d1ea2-0a02-414a-b892-22b1c44c7928",
+      "summary": "Cycle complete: merged #4335 (peer-reviewed thesis-health leak). Fleet merged #4330-4342 while reviewing. validate:deploy GREEN; ops:collect 0. Open: 3 drafts (#4346 Largo correctness, #4347 docs, #4348 handoff). No Claude PRs awaiting Cursor review."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4348,
+      "title": "chore(blackout-agent): cursor handoff — #4342 ready, Claude review pending",
+      "branch": "cursor/handoff-20260906-1722-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:22:50Z"
+    },
+    {
+      "number": 4347,
+      "title": "docs(audit): write up continuous-redeploy tail-latency finding",
+      "branch": "docs/continuous-redeploy-tail-latency-writeup",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:24:32Z"
+    },
+    {
+      "number": 4346,
+      "title": "fix(swing): Largo play-brief playId fallback, peer earnings match, pillar float boundary",
+      "branch": "fix/largo-swing-brief-correctness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:27:12Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -766,6 +859,30 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4348": {
+      "last_event": "sweep",
+      "last_head": "7868b19aa462c03247f3af4802e8a8de1b1b13dc",
+      "last_feedback_at": "2026-09-06T17:26:17.399Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4347": {
+      "last_event": "sweep",
+      "last_head": "bcb2c376da0b35776453cc66e743bd11d07d3f93",
+      "last_feedback_at": "2026-09-06T17:26:19.413Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4346": {
+      "last_event": "sweep",
+      "last_head": "c11b9ce9141c32b2d7437def2ca5b8da1a6a0b00",
+      "last_feedback_at": "2026-09-06T17:26:21.597Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
