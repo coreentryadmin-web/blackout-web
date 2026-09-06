@@ -228,6 +228,23 @@ test("crossDeskCoaching: Vector bearish bias conflicts with LONG swing", () => {
   assert.match(line!, /Fade the rip/i);
 });
 
+test("crossDeskCoaching: stale Vector play.bias must not invent cross-desk friction", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        freshness: "stale",
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "stale Vector must not coach cross-desk Vector friction");
+});
+
 test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {
   const line = crossDeskCoaching(
     ctx({
@@ -318,6 +335,20 @@ test("closedCoaching: a round-trip past breakeven never renders a nonsensical ne
 });
 
 // ─── vectorPlayCoaching ─────────────────────────────────────────────────────
+
+test("vectorPlayCoaching: stale Vector must not claim aligned with swing lane", () => {
+  const vec = {
+    freshness: "stale",
+    play: {
+      bias: "long",
+      headline: "Ride momentum",
+      invalidation: "below 50",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  assert.doesNotMatch(line!, /aligned with swing lane/i);
+});
 
 test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {
   assert.equal(vectorPlayCoaching(null, play()), null);

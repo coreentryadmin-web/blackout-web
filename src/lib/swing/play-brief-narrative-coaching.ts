@@ -3,7 +3,7 @@
  * Pure + deterministic. Consumed by play-brief-narrative.ts.
  */
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { playExpectsLiveOptionMark, resolveGammaPosture } from "./play-brief-absence";
+import { playExpectsLiveOptionMark, resolveGammaPosture, vectorSnapshotStale } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
@@ -215,10 +215,13 @@ export function wallIntegrityCoaching(vec: VectorFullState | null, play: Termina
 export function vectorPlayCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
   const vp = vec?.play;
   if (!vp?.headline && !vp?.invalidation) return null;
+  // Same Largo C2 gate as counterThesisLine — stale Vector play.bias must not coach alignment/friction.
+  const vectorLive = !vectorSnapshotStale(vec, Date.now());
 
   const aligned =
-    (play.direction === "LONG" && vp.bias === "long") ||
-    (play.direction === "SHORT" && vp.bias === "short");
+    vectorLive &&
+    ((play.direction === "LONG" && vp.bias === "long") ||
+      (play.direction === "SHORT" && vp.bias === "short"));
 
   const parts: string[] = [];
   if (vp.headline) parts.push(`Vector desk: **${vp.headline}**`);
@@ -248,9 +251,11 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   const callHeavy = flow && flow.call_premium > flow.put_premium * 1.3;
   const putHeavy = flow && flow.put_premium > flow.call_premium * 1.3;
 
-  const vp = vectorOf(ctx)?.play;
-  const vLong = vp?.bias === "long";
-  const vShort = vp?.bias === "short";
+  const vec = vectorOf(ctx);
+  const vp = vec?.play;
+  const vectorLive = !vectorSnapshotStale(vec, Date.now());
+  const vLong = vectorLive && vp?.bias === "long";
+  const vShort = vectorLive && vp?.bias === "short";
 
   const conflicts: string[] = [];
   if (play.direction === "LONG" && nhShort) conflicts.push("Night Hawk bearish");

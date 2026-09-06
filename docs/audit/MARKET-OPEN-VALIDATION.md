@@ -120,6 +120,20 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1ah. Stale Vector play.bias in Largo cross-desk coaching — fix/largo-stale-vector-coaching-bias (pending)
+
+**What was broken:** `counterThesisLine()` gated stale Vector `play.bias`, but `crossDeskCoaching()` and
+`vectorPlayCoaching()` still cited Vector bearish/bullish alignment from snapshots >120s old — members
+saw **"Cross-desk friction — Vector bearish"** or **"aligned with swing lane"** off stale desk reads.
+
+**Fix:** Gate Vector bias usage in `play-brief-narrative-coaching.ts` with `vectorSnapshotStale()` (same
+pattern as `counterThesisLine`).
+
+**Check at the open:** Swings Ask Largo on a play where Vector snapshot is stale (`dataAgeMs` > 120 or
+`freshness: stale`) — Trade manager read must NOT cite Vector desk alignment/friction unless Vector is live.
+
+---
+
 ### 0a-1ag. Stale GEX-only walls/posture in Largo envelope levels + evidence — #4377 (pending)
 
 **What was broken:** `BieAnswerEnvelope.levels` / `.evidence` (Largo desk read key-levels table +
