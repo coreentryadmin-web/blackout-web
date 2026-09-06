@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T06:20:40.476Z",
+  "updated_at": "2026-09-06T10:02:48.952Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T09:45:25.510Z",
+      "lease_until": "2026-09-06T11:16:16.651Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "d6528d8f-f964-4d53-bf17-83eb12fc11b2"
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f40f4236378d61caa8b3a4a13ac169a28c42d971",
+    "last_main_sha": "dc358c707e6113004755e8363c50812f68b52f14",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T09:51:25Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025811176",
+    "last_deploy_sha": "dc358c707e6113004755e8363c50812f68b52f14"
   },
   "events": [
     {
@@ -444,7 +444,61 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T10:02:48.951Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T10:02:48.952Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "90406912-2d9b-4fa0-a995-f27e1ac548e9",
+      "summary": "hourly wake 2026-09-06T10:03Z: Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours skip). ops:collect 0. main@dc358c707 (#4189 merged). Peer reviews: #4189 ✅ GO AHEAD MERGE (merged during cycle); #4191 ✅ GO AHEAD MERGE (verify pending, tests 6/6 local). Open: #4190/#4188/#4187/#4192 handoff drafts (WAIT). Bug scan: no new high-severity patterns. Sunday off-hours — RTH deferred to Mon."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4195,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing merge wave peer reviews",
+      "branch": "cursor/autopilot-work-loop-69e8",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T10:01:41Z"
+    },
+    {
+      "number": 4194,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing merge wave + #4189 approved",
+      "branch": "cursor/autopilot-handoff-cycle-2026-09-06b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T09:52:59Z"
+    },
+    {
+      "number": 4193,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing peer reviews + rebase",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle10",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T10:01:25Z"
+    },
+    {
+      "number": 4191,
+      "title": "test(swing): add regression coverage for Ask Largo thesis-health wiring (post-#4182)",
+      "branch": "fix/swing-brief-thesis-health-live-wiring",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T10:02:41Z"
+    }
+  ]
 }
