@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T20:06:45.475Z",
+  "updated_at": "2026-09-06T20:23:42.673Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-06T21:11:49.722Z",
+      "lease_until": "2026-09-06T21:37:12.683Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "5a70773c-fa96-4933-a415-845f0c7561bb",
+      "run_id": "3d512a4b-eff2-41cb-8527-d6ff302c27a5",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-06T21:11:49.722Z",
+      "lease_until": "2026-09-06T21:37:12.683Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "5a70773c-fa96-4933-a415-845f0c7561bb"
+      "run_id": "3d512a4b-eff2-41cb-8527-d6ff302c27a5"
     }
   },
   "reviews": {
@@ -57,11 +57,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "bd694c524de669baa0ff60be31e1817cfd792e4e",
+    "last_main_sha": "af148408afcc5542efaf9cfe6e25db35ca667aa8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T20:06:02Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34056930302",
-    "last_deploy_sha": "bd694c524de669baa0ff60be31e1817cfd792e4e"
+    "last_deploy_at": "2026-09-06T20:20:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34057697678",
+    "last_deploy_sha": "af148408afcc5542efaf9cfe6e25db35ca667aa8"
   },
   "events": [
     {
@@ -252,6 +252,19 @@
       "agent": "cursor",
       "run_id": "b443bd39-7771-4480-8ea6-3583b97bc305",
       "summary": "Main@bd694c524. #4376+#4378 merged. validate:deploy pending."
+    },
+    {
+      "at": "2026-09-06T20:23:42.672Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T20:23:42.673Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "42a47562-f9a8-450b-948d-264b3108e16c",
+      "summary": "Main@af148408a. #4377-#4381+#4379 merged. #4382 cursor thermal pending Claude. validate:deploy next."
     }
   ],
   "open_prs": [
@@ -261,39 +274,9 @@
       "branch": "cursor/thermal-audit-followup",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T20:03:00Z"
-    },
-    {
-      "number": 4381,
-      "title": "fix(swing): magnet coaching must not assert long-gamma regime off measured posture",
-      "branch": "fix/largo-magnet-coaching-posture",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T20:04:58Z"
-    },
-    {
-      "number": 4379,
-      "title": "fix(swing): suppress stale GEX posture in gexPostureSection + evidence",
-      "branch": "fix/largo-gex-stale-posture-section-parity",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T20:04:58Z"
-    },
-    {
-      "number": 4377,
-      "title": "fix(swing): gate stale GEX-only levels in Largo envelope path",
-      "branch": "fix/largo-gex-stale-envelope-levels",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T20:04:58Z"
+      "updated_at": "2026-09-06T20:22:39Z"
     }
   ]
 }
