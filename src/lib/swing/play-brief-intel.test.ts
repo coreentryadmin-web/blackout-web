@@ -578,6 +578,22 @@ test("dataFreshnessSection: closed play with markIsSync does not warn mark age u
   assert.equal(section, null, "closed play with no live mark should not emit a freshness section");
 });
 
+test("dataFreshnessSection: WATCH play with markIsSync does not warn mark age unknown", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", markIsSync: true, markAsOf: null }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "WATCH static chain mid should not emit mark-age warning");
+});
+
 test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is false", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

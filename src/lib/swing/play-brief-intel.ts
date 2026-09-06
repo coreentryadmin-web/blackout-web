@@ -4,6 +4,7 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { playExpectsLiveOptionMark } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 import { laneRankSection } from "./play-brief-lane-rank";
@@ -612,7 +613,7 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   const lines: string[] = [];
   if (play.markAsOf) {
     lines.push(`Option mark as of **${etStampFromIso(play.markAsOf)}**`);
-  } else if (play.markIsSync && play.status !== "CLOSED") {
+  } else if (play.markIsSync && playExpectsLiveOptionMark(play.status)) {
     lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
   }
   if (scanAsOf) {
@@ -637,7 +638,7 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   return {
     title: "Data freshness",
     body: lines.join("\n"),
-    bias: play.markIsSync && play.status !== "CLOSED" ? "bearish" : "neutral",
+    bias: play.markIsSync && playExpectsLiveOptionMark(play.status) ? "bearish" : "neutral",
   };
 }
 

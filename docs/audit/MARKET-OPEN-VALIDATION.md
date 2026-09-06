@@ -134,6 +134,24 @@ starting with `Short interest:` matching Catalysts section numbers.
 
 ---
 
+### 0a-1af. WATCH rows falsely flagged option mark unavailable in Ask Largo — fix/swing-brief-watch-mark-absence-false-positive (pending)
+
+**What was broken:** WATCH candidates carry a static chain mid with no `markAsOf` (`markIsSync: true`
+by design). The play-brief absence collector, `dataHonestyCoaching`, and `dataFreshnessSection`
+treated this as a C3 failure (`option mark: sync quote without freshness timestamp`), surfacing an
+`UnavailableChip` on the most common Ask Largo surface even though the quote shape is expected
+pre-entry.
+
+**Fix:** Introduced `playExpectsLiveOptionMark()` — only OPEN/HOLD/TRIM rows expect live mark
+freshness. Applied consistently across absence, coaching, and intel sections.
+
+**Evidence:** 3 new tests (absence + coaching + intel). 73/73 in touched test files GREEN.
+
+**Check at the open:** Swings desk WATCH tab → select a candidate → Ask Largo panel must NOT show
+an `UnavailableChip` for "option mark" when the only signal is the expected static chain mid.
+
+---
+
 ### 0a-1aa. Hold plan still repeated the thesis-health advisory sentence after #4261's recNote fix — fix/swing-brief-holdplan-thesis-advisory-dup (pending)
 
 **What was broken:** #4261 fixed `holdPlanSection` repeating `recNote`/rails/manage-engine content
