@@ -274,6 +274,11 @@ export type ZeroDteConflictCalibration = {
   /** Which system(s) this setup opposes (empty when clear). */
   against: Array<"spx_slayer" | "nighthawk_edition">;
   would_block: boolean;
+  /** False for a CONDOR — delta-neutral, so it structurally cannot "oppose" a directional
+   *  take, mirroring the live gate's own `if (!isCondor)` G-6 scoping. `gateVerdictOf`
+   *  treats an inapplicable row as a non-observation (like G-4's `tier: "unknown"`), so
+   *  it never dilutes either bucket in `recommendGate("g6_conflict", ...)`. */
+  applicable: boolean;
   note: string;
 };
 
@@ -1532,33 +1537,53 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
     };
   }
 
-  // G-6 — cross-system conflict verdict.
-  const against: Array<"spx_slayer" | "nighthawk_edition"> = [];
-  if (
-    input.slayerLive != null &&
-    SPX_CORRELATED_TICKERS.has(ticker) &&
-    input.slayerLive.direction !== input.direction
-  ) {
-    against.push("spx_slayer");
+  // G-6 — cross-system conflict verdict. CONDOR-EXEMPT: mirrors the live gate's own
+  // `if (!isCondor)` scoping at G-6's enforcement site above — a delta-neutral condor has
+  // no directional side to "oppose" another desk's take with. Without this, a PIN-sourced
+  // condor that happens to correlate-and-oppose a live Slayer/Night Hawk take would get
+  // tagged conflict:true/would_block:true here even though the live gate never blocks it,
+  // silently mixing a structurally different (delta-neutral) population into the
+  // directional would-block/would-pass cohorts `recommendGate("g6_conflict", ...)` uses to
+  // decide whether G-6 should harden further.
+  const isCondor = input.play_type === "CONDOR";
+  let g6: ZeroDteConflictCalibration;
+  if (isCondor) {
+    g6 = {
+      conflict: false,
+      against: [],
+      would_block: false,
+      applicable: false,
+      note: "N/A — CONDOR is delta-neutral, G-6 exempt (mirrors the live gate).",
+    };
+  } else {
+    const against: Array<"spx_slayer" | "nighthawk_edition"> = [];
+    if (
+      input.slayerLive != null &&
+      SPX_CORRELATED_TICKERS.has(ticker) &&
+      input.slayerLive.direction !== input.direction
+    ) {
+      against.push("spx_slayer");
+    }
+    if (input.nighthawkTake != null && input.nighthawkTake.direction !== input.direction) {
+      against.push("nighthawk_edition");
+    }
+    const conflict = against.length > 0;
+    g6 = {
+      conflict,
+      against,
+      would_block: conflict && input.score < CONFLICT_SCORE_FLOOR,
+      applicable: true,
+      note: conflict
+        ? `CONFLICT: ${input.direction} opposes ${against
+            .map((a) =>
+              a === "spx_slayer"
+                ? `the live SPX Slayer ${input.slayerLive!.direction}`
+                : `Night Hawk's ${input.nighthawkTake!.direction} take (edition ${input.nighthawkTake!.edition_for})`
+            )
+            .join(" and ")} — hardened G-6 would require score ≥ ${CONFLICT_SCORE_FLOOR}.`
+        : "No cross-system conflict.",
+    };
   }
-  if (input.nighthawkTake != null && input.nighthawkTake.direction !== input.direction) {
-    against.push("nighthawk_edition");
-  }
-  const conflict = against.length > 0;
-  const g6: ZeroDteConflictCalibration = {
-    conflict,
-    against,
-    would_block: conflict && input.score < CONFLICT_SCORE_FLOOR,
-    note: conflict
-      ? `CONFLICT: ${input.direction} opposes ${against
-          .map((a) =>
-            a === "spx_slayer"
-              ? `the live SPX Slayer ${input.slayerLive!.direction}`
-              : `Night Hawk's ${input.nighthawkTake!.direction} take (edition ${input.nighthawkTake!.edition_for})`
-          )
-          .join(" and ")} — hardened G-6 would require score ≥ ${CONFLICT_SCORE_FLOOR}.`
-      : "No cross-system conflict.",
-  };
 
   return {
     score_at_commit: Math.round(input.score),

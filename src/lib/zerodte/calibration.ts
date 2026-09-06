@@ -429,9 +429,10 @@ export function analyzeTierRecord(rows: TierPlayRow[]): TierRecordAnalysis {
 
 /** Extract the pinned would-block verdict for one calibration gate off a row's
  *  gate_calibration_json. Null = no usable verdict (row predates the column, blob
- *  malformed, or G-4 recorded tier "unknown" because day-open VIX was unavailable —
- *  gates.ts logs that honestly as would_block:false, but for CALIBRATION it is a
- *  non-observation, not a pass vote, so it must not dilute the would-pass bucket). */
+ *  malformed, G-4 recorded tier "unknown" because day-open VIX was unavailable, or G-6
+ *  recorded applicable:false because the row is a delta-neutral CONDOR — gates.ts logs
+ *  each of these honestly as would_block:false, but for CALIBRATION they are
+ *  non-observations, not pass votes, so they must not dilute the would-pass bucket). */
 export function gateVerdictOf(row: CalibrationPlayRow, gate: CalibrationGateKey): boolean | null {
   const blob = row.gate_calibration_json;
   if (blob == null || typeof blob !== "object") return null;
@@ -439,6 +440,7 @@ export function gateVerdictOf(row: CalibrationPlayRow, gate: CalibrationGateKey)
   if (g == null || typeof g !== "object") return null;
   const rec = g as Record<string, unknown>;
   if (gate === "g4_vix" && rec.tier === "unknown") return null;
+  if (gate === "g6_conflict" && rec.applicable === false) return null;
   return typeof rec.would_block === "boolean" ? rec.would_block : null;
 }
 
