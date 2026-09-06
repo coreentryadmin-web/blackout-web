@@ -120,6 +120,20 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1ac. Short interest missing from envelope.evidence (Largo C7) — fix/largo-short-interest-evidence (pending)
+
+**What was broken:** Catalysts/coaching prose showed DTC and short vol ratio from
+`arsenal.fundamentals`, but `envelope.evidence[]` had no structured row — same failure mode #4311
+fixed for HELIX flow premiums. Largo evidence rail could not ground short-interest claims.
+
+**Fix:** `evidenceFromContext()` emits `Short interest: DTC … · short vol ratio …` with
+`provenance.asOf` from `fundamentals.as_of`.
+
+**Check at the open:** WATCH swing with fundamentals populated — play-brief API returns evidence row
+starting with `Short interest:` matching Catalysts section numbers.
+
+---
+
 ### 0a-1aa. Hold plan still repeated the thesis-health advisory sentence after #4261's recNote fix — fix/swing-brief-holdplan-thesis-advisory-dup (pending)
 
 **What was broken:** #4261 fixed `holdPlanSection` repeating `recNote`/rails/manage-engine content
