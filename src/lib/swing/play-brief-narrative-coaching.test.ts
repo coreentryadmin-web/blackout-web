@@ -173,6 +173,23 @@ test("closedCoaching: MFE capture lesson", () => {
   assert.match(line!, /thesis break/i);
 });
 
+test("closedCoaching: a round-trip past breakeven never renders a nonsensical negative MFE capture", () => {
+  // Reproduces a live production case: INTC:35 peak +25.7%, exited -40.8% used to render
+  // "only -158.9% MFE capture" (exitPnlPct / peak * 100), a percentage with no honest reading.
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 25.7,
+      exitPnlPct: -40.8,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /-158\.9%|MFE capture \*\*-/i);
+  assert.match(line!, /round-tripped past breakeven/i);
+});
+
 // ─── vectorPlayCoaching ─────────────────────────────────────────────────────
 
 test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {
