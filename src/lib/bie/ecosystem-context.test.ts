@@ -826,6 +826,32 @@ test("assembleEcosystemArsenal(single_name): earnings/fundamentals/peers/news po
   assert.deepEqual(ars.unavailable_sources, []);
 });
 
+test("assembleEcosystemArsenal: Benzinga headline HTML entities are decoded for display (live prod repro, NN 2026-09-06)", () => {
+  // Live reproduction: swing play-brief's Catalysts & news section rendered these Benzinga
+  // headlines literally, entity and all — the same class of bug meridian-feed-text.ts fixed for
+  // the Meridian desk on 2026-08-21, missed here because this call site feeds the swing brief.
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: {
+      items: [
+        { headline: "12 Information Technology Stocks Moving In Tuesday&#39;s Intraday Session" },
+        { headline: "Safran Electronics &amp; Defense agreement" },
+      ],
+      asOf: "2026-09-06T00:00:00Z",
+      newest: "2026-09-06T00:00:00Z",
+    } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, [
+    "12 Information Technology Stocks Moving In Tuesday's Intraday Session",
+    "Safran Electronics & Defense agreement",
+  ]);
+});
+
 test("assembleEcosystemArsenal(single_name): percent-scale short_volume_ratio normalizes to 0–1 fraction (audit #12)", () => {
   const ars = assembleEcosystemArsenal({
     scope: "single_name",

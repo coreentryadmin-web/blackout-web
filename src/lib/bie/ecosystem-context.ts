@@ -18,6 +18,7 @@ import {
 } from "@/lib/bie/ticker-fundamentals";
 import { fetchRelatedCompanies, type RelatedCompanies } from "@/lib/providers/polygon-related";
 import { fetchTickerNews, fetchMarketCatalysts, type NewsResult } from "@/lib/providers/polygon-news";
+import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { fetchPolygonMacroBackdrop, type PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import { fetchMarketBreadthBundle, type MarketBreadthBundle } from "@/lib/bie/market-breadth";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-payload";
@@ -307,7 +308,16 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
   const news: EcosystemArsenalNews | null = reads.news
     ? reads.news.unavailable
       ? (unavailable.push({ source: "news", reason: reads.news.unavailable }), null)
-      : { count: reads.news.items.length, newest: reads.news.newest, headlines: reads.news.items.slice(0, 4).map((i) => i.headline) }
+      : {
+          count: reads.news.items.length,
+          newest: reads.news.newest,
+          // Benzinga headlines arrive HTML-entity-encoded (e.g. "&amp;", "&#39;") — the provider
+          // layer keeps them raw by design ("HONESTY" note in polygon-news.ts), and this is a
+          // display consumer, so decode before it reaches a member's screen. Same root cause and
+          // fix as meridian-feed-text.ts's 2026-08-21 correction; this call site was missed then
+          // because it feeds the swing play-brief, not the Meridian desk.
+          headlines: reads.news.items.slice(0, 4).map((i) => sanitizeFeedText(i.headline)),
+        }
     : (unavailable.push({ source: "news", reason: "read failed" }), null);
 
   return { scope: reads.scope, earnings, fundamentals, related, news, macro, breadth, unavailable_sources: unavailable };
