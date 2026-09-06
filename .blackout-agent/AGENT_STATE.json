@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:30:58.687Z",
+  "updated_at": "2026-09-06T01:58:56.142Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T01:29:31.903Z",
+      "lease_until": "2026-09-06T02:59:31.903Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "764e7f97fb0721161afa7e862588c27516cb4c85",
+    "last_main_sha": "ca5f776b5960c342a0a5a1055811dac2850e9f68",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T01:58:41Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34005268553",
+    "last_deploy_sha": "4c4bf5a8ee732bc823165146f1e78641e4997284"
   },
   "events": [
     {
@@ -246,7 +246,95 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T01:48:29.186Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T01:58:35.029Z",
+      "type": "pr_webhook",
+      "pr": 4078,
+      "event": "sweep",
+      "head": "13339952f54a62271cc35b3bc024fe5bb52d1215",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T01:58:37.522Z",
+      "type": "pr_webhook",
+      "pr": 4076,
+      "event": "sweep",
+      "head": "fe4f9398f5c56f39a14a823a512f162db266d186",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T01:58:40.507Z",
+      "type": "pr_webhook",
+      "pr": 4078,
+      "event": "sweep",
+      "head": "13339952f54a62271cc35b3bc024fe5bb52d1215",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T01:58:42.986Z",
+      "type": "pr_webhook",
+      "pr": 4076,
+      "event": "sweep",
+      "head": "fe4f9398f5c56f39a14a823a512f162db266d186",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T01:58:56.142Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T01:58:56.142Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6279d827-3c34-4711-aff8-5da29e88e79a",
+      "summary": "PR-event cycle complete. main@ca5f776b5. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, ops:collect 0). Peer-reviewed APPROVED #4075 (vector undated fresh-row expiry) — merged. #4073 largo-stress + #4077 swing flow-diff + #4076 swing v4 also merged during cycle. Remaining: #4079 handoff draft only. Sunday off-hours — RTH skipped. Claude peer healthy."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4079,
+      "title": "chore(blackout-agent): cursor cycle handoff — #4075 merged @8df5d84fe",
+      "branch": "cursor/autopilot-handoff-8df5d84fe",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T01:58:44Z"
+    }
+  ],
+  "pr_activity": {
+    "pr-4078": {
+      "last_event": "sweep",
+      "last_head": "13339952f54a62271cc35b3bc024fe5bb52d1215",
+      "last_feedback_at": "2026-09-06T01:58:40.507Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4076": {
+      "last_event": "sweep",
+      "last_head": "fe4f9398f5c56f39a14a823a512f162db266d186",
+      "last_feedback_at": "2026-09-06T01:58:42.986Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "created"
+    }
+  }
 }
