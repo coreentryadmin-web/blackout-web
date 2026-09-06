@@ -82,3 +82,9 @@ test("platform_read with named desks does not require digits when caches are col
     "Cross-product snapshot: SPX Slayer desk is live, HELIX flow tape is scanning, Night Hawk edition is recap-only off-hours, 0DTE Command board is empty, Thermal matrix is warming.";
   assert.deepEqual(honestyIssues(platform, "platform_read"), []);
 });
+
+test("honest empty-state answers do not require grounded numbers", () => {
+  const empty =
+    "This turn came back empty — nothing was pulled and nothing was written up. That isn't a gap in the desk.";
+  assert.deepEqual(honestyIssues(empty, "platform_read"), []);
+});

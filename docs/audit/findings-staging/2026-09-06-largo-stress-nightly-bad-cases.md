@@ -20,6 +20,7 @@ Nightly `validate:largo-stress-live-all` exited 1 with `live_bad=4`, `router_mis
 
 - Export shared `isCompoundQuestion()` in `question-focus.ts` with `isNonsenseQuestion` guard; stress harness imports it and checks nonsense before compound.
 - Extend `honestyIssues()` intent-aware exceptions for `scenario`, `concept_read`, and `platform_read` structured desk reads.
+- Set `AUDIT_STALE_USER_MS=3600000` for live stress runs (45 min runtime vs 30 min sweep gate); honor env override in `prod-clerk-session.mjs` — prevents concurrent harness sweeps from deleting the in-flight stress temp user (`live_skipped_transport: 13` on run 34029670177).
 
 ### Verify
 

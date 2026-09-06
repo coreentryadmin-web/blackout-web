@@ -81,7 +81,11 @@ export function honestyIssues(answer: string, intent?: string | null): string[] 
   if (/Zero Claude cost/i.test(answer) && intent !== "platform_read" && intent !== "market_context") {
     issues.push("marketing-tag");
   }
-  if (/\b(unavailable|no data|not available|couldn't compose|rephrase|outside (my|our)|out of scope|can't help|cannot help|don't (book|translate)|only (assist|help|answer).{0,40}(market|trading|desk|platform)|not (a|able to) (book|translate))\b/i.test(answer)) {
+  if (
+    /\b(unavailable|no data|not available|couldn't compose|rephrase|outside (my|our)|out of scope|can't help|cannot help|don't (book|translate)|only (assist|help|answer).{0,40}(market|trading|desk|platform)|not (a|able to) (book|translate)|came back empty|nothing was pulled|nothing specific was asked|markets are closed|no probability assigned|mechanical re-read|structure, not a forecast)\b/i.test(
+      answer,
+    )
+  ) {
     return issues;
   }
   // Scenario / concept coaching can explain mechanics without re-stating live spot digits.
