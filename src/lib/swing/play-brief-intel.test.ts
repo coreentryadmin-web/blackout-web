@@ -334,6 +334,23 @@ test("dataFreshnessSection: stale ecosystem.vector_full_state warns when ctx.vec
   assert.match(section!.body, /Vector data \*\*180s\*\* old/);
 });
 
+test("dataFreshnessSection: prior-session scan warns when scanSessionDay lags sessionDate", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: "2026-09-05T20:00:00.000Z",
+    scanSessionDay: "2026-09-05",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /prior session 2026-09-05/);
+  assert.match(section!.body, /today's discovery not yet run/);
+});
+
 test("flowIntelSection: stale HELIX feed must not render recent prints or anomalies", () => {
   const eco = {
     ticker: "INTC",

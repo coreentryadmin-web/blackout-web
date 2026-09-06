@@ -293,6 +293,15 @@ test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf 
   assert.equal(fresh, null);
 });
 
+test("dataHonestyCoaching: prior-session discovery scan warns", () => {
+  const line = dataHonestyCoaching(
+    ctx({ sessionDate: "2026-09-06", scanSessionDay: "2026-09-05" }),
+    play(),
+  );
+  assert.match(line!, /swing discovery from \*\*2026-09-05\*\*/);
+  assert.match(line!, /today's scan not yet run/);
+});
+
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
   assert.match(line!, /slippage/i);
