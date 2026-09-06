@@ -145,6 +145,26 @@ test("crossDeskCoaching: friction when NH conflicts", () => {
   assert.match(line!, /Night Hawk bearish/i);
 });
 
+test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "INTC",
+        flow_feed_fresh: false,
+        recent_flow: {
+          window_hours: 24,
+          print_count: 12,
+          call_premium: 1_200_000,
+          put_premium: 400_000,
+          unknown_premium: 0,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "SHORT" }),
+  );
+  assert.equal(line, null, "stale HELIX must not coach cross-desk flow friction");
+});
+
 test("catalystCoaching: earnings within 14d", () => {
   const line = catalystCoaching(
     ctx({

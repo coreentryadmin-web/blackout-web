@@ -120,6 +120,16 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1p. Stale HELIX coached cross-desk friction + counter-thesis — fix/swing-stale-helix-crossdesk (pending)
+
+**What was broken:** When `flow_feed_fresh === false`, Ask Largo still cited stale `recent_flow` in `crossDeskCoaching` (`HELIX call-led` / `HELIX put-led`) and `counterThesisLine`, contradicting the C2/C3 absence contract already enforced in `flowNarrative` and `collectBriefUnavailableSources`.
+
+**Fix:** Route both paths through `trustedHelixFlow()` — stale pipeline rows become absence, not signal.
+
+**Check at the open:** For a ticker whose HELIX feed is quiet (`flow_feed_fresh: false` in ecosystem context), Ask Largo brief must show the `HELIX flow · pipeline stale` unavailable chip and must NOT include `HELIX call-led` / `HELIX put-led` in Trade manager read or counter-thesis bullets.
+
+---
+
 ### 0a-1o. Ask Largo swing thesis-health dead-wired to identical reading for every live position — docs/swing-brief-thesis-health-dead-wired (pending, follows the deep audit PR #4178)
 
 **What was broken:** Every live/committed swing position's Ask Largo play-brief rendered the byte-identical `46% · Degraded` thesis-health score regardless of real P&L (confirmed on all 4 currently-open positions: +98.0%, 0.0%, +33.7%, +24.6% all identical). `livePlayFromSwingPosition` never populates `factors`/`regime`, and the fix that already exists for the main board (`serving-lane.ts`'s `attachThesisExplanation`) was never wired into the Ask Largo play-brief resolver.
