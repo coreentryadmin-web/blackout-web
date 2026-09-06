@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:42:38.065Z",
+  "updated_at": "2026-09-06T12:09:40.421Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T11:34:45.027Z",
+      "lease_until": "2026-09-06T13:04:45.027Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a37960c92712ca5986df2042d0c32a44153cfd92",
+    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T12:08:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34032205869",
+    "last_deploy_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb"
   },
   "events": [
     {
@@ -583,38 +583,41 @@
       "agent": "cursor",
       "run_id": "87520518-9d11-43da-b194-302260aa2e54",
       "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T12:09:40.421Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T12:09:40.421Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c6c373b1-04b9-49bd-a29a-891903636981",
+      "summary": "PR-event cycle complete: peer-reviewed + merged #4224 #4227 #4231 #4232; validate:deploy GREEN; ops:collect 0; no open code PRs"
     }
   ],
   "open_prs": [
     {
-      "number": 4231,
-      "title": "fix(swing): freeze CLOSED-position DTE to exit date, not today's date",
-      "branch": "fix/swing-closed-dte-negative",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:42:37Z"
-    },
-    {
-      "number": 4230,
-      "title": "chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged",
-      "branch": "cursor/autopilot-handoff-2026-09-06-cycle3",
+      "number": 4240,
+      "title": "chore(blackout-agent): cursor handoff — swing/Largo merge wave complete",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle5",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:39:12Z"
+      "updated_at": "2026-09-06T12:09:33Z"
     },
     {
-      "number": 4227,
-      "title": "chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature",
-      "branch": "fix/dead-code-flow-strike-stacks-exports",
+      "number": 4239,
+      "title": "fix(swing): ex-dividend read failure must fail SAFE, not fail-open, on Q39 structural stop",
+      "branch": "fix/ex-dividend-fail-open-structural-stop",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:40:27Z"
+      "updated_at": "2026-09-06T12:09:38Z"
     }
   ],
   "pr_activity": {
