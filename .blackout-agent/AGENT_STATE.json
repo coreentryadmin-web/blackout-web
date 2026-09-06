@@ -1,14 +1,25 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:24:26.521Z",
+  "updated_at": "2026-09-06T11:30:32.321Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:37:21.095Z",
-      "lease_until": "2026-09-06T11:07:21.095Z",
+      "claimed_at": "2026-09-06T11:05:32.816Z",
+      "lease_until": "2026-09-06T12:36:32.432Z",
       "phase": "REVIEWING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "2a11cd1c-6401-4603-b31e-c6b477f3ae1c"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T11:16:32.559Z",
+      "lease_until": "2026-09-06T12:46:32.559Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -44,11 +55,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f76409a71728e3b6573c8e220de4f18689f607ee",
+    "last_main_sha": "8660f2ef78ec61b36dd59223b535cd7055070ca7",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T09:39:38Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
-    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
+    "last_deploy_at": "2026-09-06T11:30:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030442049",
+    "last_deploy_sha": "8660f2ef78ec61b36dd59223b535cd7055070ca7"
   },
   "events": [
     {
@@ -523,25 +534,51 @@
       "open_pr_count": 6
     },
     {
-      "at": "2026-09-06T11:24:25.639Z",
+      "at": "2026-09-06T11:30:32.320Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-06T11:24:26.215Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T11:24:26.521Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-06T11:30:32.321Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e781536c-4420-4027-9321-d21a21ef8ccb",
+      "summary": "PR-event cycle: reviewed+merged #4218 (portfolio overlap self-match), #4220 (safety bullets reserved), #4222 (trim 33% fabrication). validate:deploy GREEN; ops:collect 0. #4219/#4221 cursor handoff drafts superseded."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4224,
+      "title": "fix(helix): Hot Tickers rail arrow used the pre-#2691 raw call/put sign",
+      "branch": "fix/helix-hot-tickers-directional-arrow",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:29:19Z"
+    },
+    {
+      "number": 4223,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4216/#4218 peer reviews merged",
+      "branch": "cursor/autopilot-pr-event-handoff-4216-4218",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:22:32Z"
+    },
+    {
+      "number": 4221,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing merge wave + peer reviews",
+      "branch": "cursor/autopilot-handoff-2026-09-06-pr-event",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T11:17:43Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
