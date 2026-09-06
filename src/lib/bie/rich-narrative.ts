@@ -63,11 +63,8 @@ export function buildRichEnvelope(input: BuildRichEnvelopeInput): BieAnswerEnvel
     evidence: input.evidence ?? [],
     levels: input.levels,
     scenarios: input.scenarios,
-    confidence:
-      input.confidence ?? {
-        level: "high",
-        why: "Deterministic answer grounded in the platform's own code, data, and docs — no LLM.",
-      },
+    // Largo C6: omit confidence when the composer has no calibrated score — never fabricate.
+    ...(input.confidence ? { confidence: input.confidence } : {}),
     invalidation: input.invalidation ?? null,
     followups: input.followups,
     unavailableSources: input.unavailableSources,
