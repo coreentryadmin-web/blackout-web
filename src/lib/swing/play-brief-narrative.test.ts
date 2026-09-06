@@ -78,6 +78,26 @@ test("tradeManagerNarrativeSection: narrates dark pool + dealer posture", () => 
   assert.match(section!.body, /Break watch/i);
 });
 
+test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        dataAgeMs: 180_000,
+        freshness: "stale",
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /180s old/i);
+  assert.doesNotMatch(section!.body, /Right now/i);
+});
+
 test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
