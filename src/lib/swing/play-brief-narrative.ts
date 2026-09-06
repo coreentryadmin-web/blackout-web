@@ -138,9 +138,11 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
 function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | null {
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
-  const vecPosture = vec?.regime?.posture;
-  const posture = vecPosture ?? gex?.gamma_posture ?? null;
-  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
+  const readMs = Date.now();
+  const posture = resolveGammaPosture(ctx, vec);
+  const vecFlip = vec?.gammaFlip;
+  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexMatrixStale(gex, readMs);
+  const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
 
   if (!posture || posture === "unknown") {
     if (spot != null) return `Spot **${spot.toFixed(2)}** — dealer gamma posture not resolved on this read.`;
@@ -160,17 +162,10 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
       ? ` · γ-flip **${flip.toFixed(2)}**${aboveFlip != null ? (aboveFlip ? " (spot above)" : " (spot below)") : ""}`
       : "";
 
-  const readMs = Date.now();
   const vecAgeMs = vec?.dataAgeMs;
   const vectorStale = vectorSnapshotStale(vec, readMs);
-  const postureFromGex = !vecPosture && gex?.gamma_posture;
-  const gexStale = postureFromGex && gexMatrixStale(gex, readMs);
-  const snapshotStale = vectorStale || gexStale;
-  const snapshotAgeMs = vectorStale
-    ? vecAgeMs
-    : gexStale
-      ? gexMatrixAgeMs(gex, readMs)
-      : null;
+  const snapshotStale = vectorStale;
+  const snapshotAgeMs = vectorStale ? vecAgeMs : null;
   const lead = snapshotStale
     ? `**Last snapshot**${snapshotAgeMs != null ? ` (~${Math.round(snapshotAgeMs / 1000)}s old)` : ""}`
     : "**Right now**";

@@ -3225,3 +3225,9 @@ than an end-of-session patch.
 - **What was broken:** `gexFreshness()` in `play-brief.ts` derived envelope provenance freshness only from `gex.asof`, ignoring `matrix_age_sec` that every other GEX staleness gate on the swing path uses. When `asof` was recent but `matrix_age_sec` > 120s, narrative sections correctly treated the matrix as stale while BIE envelope evidence still labeled dealer posture as **live**.
 - **What changed:** `gexFreshness()` now routes through shared `gexMatrixAgeMs()` — same age source as `gexMatrixStale()` and `unavailableSources`.
 - **RTH check:** Pull `GET /api/market/swing/play-brief` for a position where `gex_positioning.matrix_age_sec` > 120 but `asof` is recent — confirm envelope dealer-posture evidence provenance is not `live` (should be `recent` or `stale` per age).
+
+### 57. Ask Largo swing brief — stale GEX-only flip qualified live dealer posture — fix/largo-gex-stale-dealer-posture-flip — 2026-09-06
+
+- **What was broken:** `dealerPostureLine()` took `flip = vec?.gammaFlip ?? gex?.flip` with no staleness gate. Live Vector `regime.posture` could render under **"Right now"** while a stale GEX-only `flip` still appeared in the `γ-flip` suffix — sixth instance of the Largo C2 stale-GEX class on this read path.
+- **What changed:** Per-value stale GEX gating on flip (mirrors break-watch/counter-thesis/focal-levels): suppress flip when from stale GEX-only fallback; live Vector `gammaFlip` still wins.
+- **RTH check:** Open Ask Largo on a swing with live Vector dealer posture but no Vector flip, GEX matrix >120s old — confirm "Trade manager read" dealer line shows posture without a `γ-flip` cite.
