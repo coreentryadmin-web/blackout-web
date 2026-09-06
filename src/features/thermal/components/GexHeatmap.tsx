@@ -62,7 +62,11 @@ import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { todayEt } from "@/lib/et-date";
-import { rebaseChangePct } from "@/lib/providers/change-pct";
+import { rebaseChangePct, referenceCloseFromSnapshot } from "@/lib/providers/change-pct";
+import {
+  pulseChangePctFromPriorClose,
+  restAnchoredIndexChangePct,
+} from "@/features/spx/lib/spx-change-anchor";
 import { forcedFlowBetween, wallMarkerRowIndex } from "@/lib/gex-depth";
 import {
   fmtHeatmapExpiry,
@@ -3463,7 +3467,18 @@ export function GexHeatmap({
   const pushedSpot =
     pulseField && quoteMatches ? (pulseSnap?.[pulseField]?.price ?? null) : null;
   const pushedLive = pushedSpot != null && pushedSpot > 0;
-  const pushedChangePct = pulseField ? pulseSnap?.[pulseField]?.change_pct : undefined;
+
+  const pulseAnchoredChangePct: number | null = (() => {
+    if (!pushedLive || !pulseField || !pulseSnap) return null;
+    const entry = pulseSnap[pulseField];
+    if (pulseField === "spx") {
+      const refClose =
+        referenceCloseFromSnapshot({ price: quote?.price, change_pct: quote?.change_pct })
+        ?? referenceCloseFromSnapshot({ price: spot, change_pct: matrixChangePct });
+      return pulseChangePctFromPriorClose(pushedSpot as number, refClose, null);
+    }
+    return restAnchoredIndexChangePct(entry, quote?.change_pct ?? matrixChangePct ?? null);
+  })();
 
   // STOCK/ETF sub-second overlay: the same ticker-scoped guard as the index pulse
   // above (only trust it for the currently-selected ticker), sitting one tier below
@@ -3481,7 +3496,7 @@ export function GexHeatmap({
   const headerChangePct: number | null = pushedLive
     ? (rebaseChangePct(pushedSpot as number, { price: spot, change_pct: matrixChangePct })
       ?? rebaseChangePct(pushedSpot as number, { price: quote?.price, change_pct: quote?.change_pct })
-      ?? (pushedChangePct != null && Number.isFinite(pushedChangePct) ? pushedChangePct : null)
+      ?? pulseAnchoredChangePct
       ?? (quoteLive && quote!.change_pct != null && Number.isFinite(quote!.change_pct)
         ? quote!.change_pct
         : matrixChangePct))

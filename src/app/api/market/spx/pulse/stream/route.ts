@@ -8,6 +8,7 @@ import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
+import { clusterIndexSpotChangePct } from "@/lib/ws/socket-cluster-health";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +76,25 @@ function stopRefresherIfIdle(): void {
 let activeStreams = 0;
 const MAX_STREAMS = Number(process.env.SSE_MAX_STREAMS ?? 2000);
 
+type IndexWireEntry = {
+  price?: number;
+  change_pct?: number | null;
+  open_source?: string;
+};
+
+/** Same REST-anchor gate as /spx/pulse and liveWsIndexSpot — ws-bar change% must not ship on the wire. */
+function sanitizeIndexWire(entry: unknown): IndexWireEntry | undefined {
+  if (!entry || typeof entry !== "object") return undefined;
+  const raw = entry as IndexWireEntry;
+  const price = Number(raw.price);
+  if (!Number.isFinite(price) || price <= 0) return undefined;
+  const change_pct = clusterIndexSpotChangePct(raw);
+  const out: IndexWireEntry = { price };
+  if (change_pct != null) out.change_pct = change_pct;
+  if (raw.open_source) out.open_source = raw.open_source;
+  return out;
+}
+
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
@@ -124,13 +144,13 @@ export async function GET(req: NextRequest) {
           // Same boundary rounding as /spx/pulse — SSE clients must not see IEEE tails on prices/premiums.
           const data = JSON.stringify(
             roundFloats({
-              spx: snapshot["I:SPX"],
-              vix: snapshot["I:VIX"],
-              vix9d: snapshot["I:VIX9D"],
-              vix3m: snapshot["I:VIX3M"],
-              tick: snapshot["I:TICK"],
-              trin: snapshot["I:TRIN"],
-              add: snapshot["I:ADD"],
+              spx: sanitizeIndexWire(snapshot["I:SPX"]),
+              vix: sanitizeIndexWire(snapshot["I:VIX"]),
+              vix9d: sanitizeIndexWire(snapshot["I:VIX9D"]),
+              vix3m: sanitizeIndexWire(snapshot["I:VIX3M"]),
+              tick: sanitizeIndexWire(snapshot["I:TICK"]),
+              trin: sanitizeIndexWire(snapshot["I:TRIN"]),
+              add: sanitizeIndexWire(snapshot["I:ADD"]),
               tide: tideFresh
                 ? {
                     call_premium: tideStore.call_premium,

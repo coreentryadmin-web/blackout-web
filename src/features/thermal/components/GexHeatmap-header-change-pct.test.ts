@@ -27,6 +27,12 @@ test("GexHeatmap: headerChangePct chain does not coerce missing change to 0", ()
   assert.doesNotMatch(block, /: changePct\)/, "removed dead changePct alias");
 });
 
+test("GexHeatmap: pulse SSE overlay does not trust raw transported change_pct", () => {
+  assert.match(src, /pulseChangePctFromPriorClose/, "SPX pulse overlay derives from prior close");
+  assert.match(src, /restAnchoredIndexChangePct/, "VIX pulse overlay gates on REST anchor");
+  assert.doesNotMatch(src, /pushedChangePct/, "must not fall back to raw pulse change_pct");
+});
+
 test("TickerSwitcher: sr-only label omits change wording when changePct is null", () => {
   const start = src.indexOf("function TickerSwitcher(");
   assert.ok(start > 0);
