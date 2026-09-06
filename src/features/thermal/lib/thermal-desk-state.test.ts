@@ -20,6 +20,9 @@ import {
   netFlowHeaderTooltip,
   thermalCompareStripLabel,
   thermalQuoteBadge,
+  spotSourceBadge,
+  shiftPanelEmptyDescription,
+  horizonWallsSummary,
 } from "./thermal-desk-state.ts";
 
 // PINNED, and deliberately NOT "matches the Indices preset" any more. Its real consumer is
@@ -339,4 +342,24 @@ test("thermalCompareStripLabel — reports the cadence it is actually given, not
   // The old label hardcoded "5s" beside a separately-declared interval; they could drift.
   assert.match(thermalCompareStripLabel({ marketOpen: true, pollSeconds: 20 }), /20s/);
   assert.match(thermalCompareStripLabel({ marketOpen: false, pollSeconds: 8 }), /8s/);
+});
+
+test("spotSourceBadge — maps provenance to member-facing labels", () => {
+  assert.equal(spotSourceBadge({ spotSource: "ws", marketOpen: true })?.label, "Live WS");
+  assert.equal(spotSourceBadge({ spotSource: "rest", marketOpen: false })?.label, "Last close");
+  assert.equal(spotSourceBadge({ spotSource: null, marketOpen: true }), null);
+});
+
+test("shiftPanelEmptyDescription — mentions session closed when market is closed", () => {
+  const closed = shiftPanelEmptyDescription({ hasShiftForLens: true, marketOpen: false, noun: "Gamma" });
+  assert.match(closed, /cash session is closed/i);
+});
+
+test("horizonWallsSummary — formats 0DTE/3DTE/7DTE walls", () => {
+  const line = horizonWallsSummary([
+    { label: "0DTE", callWall: 775, putWall: 761 },
+    { label: "3DTE", callWall: 780, putWall: 755 },
+  ]);
+  assert.match(line ?? "", /0DTE: C 775 · P 761/);
+  assert.match(line ?? "", /3DTE: C 780 · P 755/);
 });
