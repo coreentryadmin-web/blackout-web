@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:03:02.690Z",
+  "updated_at": "2026-09-06T15:04:01.932Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,6 +30,22 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
+      "safe_to_merge": true
+    },
+    "pr-4297": {
+      "pr": 4297,
+      "head_sha": "d6e05b68c2f0a03c126acc4989a9ad150f0c18fd",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:03:57.838Z",
+      "safe_to_merge": true
+    },
+    "pr-4298": {
+      "pr": 4298,
+      "head_sha": "9b04fa4f3bfb6488bbd757e498b7a1985f3b094b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:03:58.191Z",
       "safe_to_merge": true
     }
   },
@@ -639,54 +655,40 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T14:55:29.441Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-06T15:03:57.839Z",
+      "type": "pr_review",
+      "pr": 4297,
+      "head_sha": "d6e05b68c2f0a03c126acc4989a9ad150f0c18fd",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:03:57.838Z",
+      "safe_to_merge": true
     },
     {
-      "at": "2026-09-06T14:55:30.246Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-06T15:03:58.192Z",
+      "type": "pr_review",
+      "pr": 4298,
+      "head_sha": "9b04fa4f3bfb6488bbd757e498b7a1985f3b094b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:03:58.191Z",
+      "safe_to_merge": true
     },
     {
-      "at": "2026-09-06T14:55:30.547Z",
+      "at": "2026-09-06T15:04:01.932Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 4
     },
     {
-      "at": "2026-09-06T15:02:58.788Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-06T15:02:58.788Z",
+      "at": "2026-09-06T15:04:01.932Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "af7efff5-fd38-4041-b8dd-c819f997aa6c",
-      "summary": "Cycle: merged #4280 (darkpool provenance, peer-reviewed). Posted GO AHEAD MERGE on #4284 (HELIX freshness — verify GREEN, merge pending rate limit). Closed stale handoffs #4282/#4286/#4288/#4289. Pre-reviewed #4292 (dead code — now merged on main). #4290/#4292 landed on main during session. validate:deploy GREEN; ops:collect 0."
-    },
-    {
-      "at": "2026-09-06T15:03:02.690Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
+      "run_id": "ff959660-e4e7-43b0-8475-6c408074185c",
+      "summary": "Peer-reviewed #4297 (desk context unresolved) + #4298 (Meridian OpEx cohort) — both APPROVED, tests pass. Swing Largo wave #4280/#4284/#4290/#4292 merged. Closed stale handoffs. validate:deploy + platform-integrity GREEN; ops:collect 0. Handoff branch pushed; PR creation blocked by GraphQL rate limit briefly."
     }
   ],
   "open_prs": [
-    {
-      "number": 4299,
-      "title": "fix(swing): Desk context no longer renders \"closed open\" for unresolved swings",
-      "branch": "fix/swing-desk-context-unresolved-rebase",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:02:39Z"
-    },
     {
       "number": 4298,
       "title": "fix(meridian): scope OpEx divergence_headline's QQQ claim to its own cohort",
@@ -695,7 +697,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:02:48Z"
+      "updated_at": "2026-09-06T15:03:58Z"
     },
     {
       "number": 4297,
@@ -705,7 +707,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:02:49Z"
+      "updated_at": "2026-09-06T15:03:58Z"
     },
     {
       "number": 4296,
@@ -713,9 +715,9 @@
       "branch": "cursor/cursor-continuous-work-loop-a44d",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T15:02:56Z"
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:03:32Z"
     },
     {
       "number": 4293,
