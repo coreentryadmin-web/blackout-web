@@ -11,6 +11,21 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-06 (10:23 UTC) — [DISCOVERY] `banger-discovery` DST fix re-verification: GREEN, resolved
+
+**Severity.** — (no defect found; closes a previously-tracked open item)
+
+Re-checked the `banger-discovery` EventBridge schedule this file's own 2026-09-05 (23:28 UTC) entry
+flagged as "deployed schedule still not widened." Live `describe_rule` (boto3, in-session AWS creds)
+now reads `cron(15 20,21 ? * MON-FRI *)` — the documented dual-UTC-hour fix, not the old single-hour
+`15 20 * * 1-5`. Confirmed the code side matches: `src/app/api/cron/banger-discovery/route.ts` gates
+on `inBangerDiscoveryWindow()` (an ET-aware `inEtWindow` check, target 16:15 ET ± a 90-minute
+catch-up tail) checked BEFORE the idempotency claim, exactly the pattern the route's own header
+comment describes as the fix for the original bug (a pre-close EST fire committing off an unsettled
+grouped-daily tape). Someone else's lane landed this between my last check and now — not re-verified
+via a live EST-offset firing (that needs an actual winter session), but schedule + guard + claim
+ordering all now match the documented correct design. No code change here; this closes the
+previously-open re-verification loop from `cron-dst-audit.mjs`'s first-run finding.
 ## 2026-09-06 (06:16 UTC / Sat 2026-09-05 02:17 ET) — [SEO] Lane heartbeat: sweep clean, no new opportunity
 
 **Severity.** — (no defect found)
