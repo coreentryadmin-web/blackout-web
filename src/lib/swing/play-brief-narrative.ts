@@ -8,6 +8,9 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
+import { collectCoachingBullets } from "./play-brief-narrative-coaching";
+
+const MAX_BULLETS = 12;
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -203,6 +206,15 @@ function narrateMaxPain(level: FocalLevel, spot: number): string {
   );
 }
 
+function narrateMagnet(level: FocalLevel, posture: string | null): string {
+  const pin =
+    posture === "long"
+      ? "Pin gravity — dealers hedge into this strike; chop likely."
+      : "Pivot node — acceleration risk if magnet fails.";
+  const meta = level.meta ? ` ${level.meta}` : "";
+  return `**Gamma magnet ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} from spot) — ${pin}${meta}`;
+}
+
 function narrateFlip(level: FocalLevel, play: TerminalPlay): string {
   const longBreak =
     play.direction === "LONG"
@@ -245,10 +257,16 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
   const lines: string[] = [];
 
   if (bucket === "watch") {
+    const gateLine = play.gateBlocks?.length
+      ? play.gateBlocks
+          .slice(0, 2)
+          .map((g) => `${g.code}: ${g.reason}`)
+          .join(" · ")
+      : null;
     lines.push(
       `**Entry stance** — ${play.swingEntryAction?.toUpperCase() ?? rec}. ` +
-        (play.gateBlocks?.length
-          ? `Clear gates first: ${play.gateBlocks.map((g) => g.code).join(", ")}.`
+        (gateLine
+          ? `Clear gates: ${gateLine}.`
           : rec === "BUY"
             ? "No mechanical gates blocking — wait for trigger geometry."
             : "Wait for setup maturity before sizing."),
@@ -336,18 +354,35 @@ export function tradeManagerNarrativeSection(
   const spot = fin(vec?.spot) ?? fin(ctx.ecosystem?.gex_positioning?.spot);
 
   const bullets: string[] = [];
+  const seen = new Set<string>();
+  const add = (line: string) => {
+    const key = line.slice(0, 48);
+    if (seen.has(key) || bullets.length >= MAX_BULLETS) return;
+    seen.add(key);
+    bullets.push(line.startsWith("• ") ? line : `• ${line}`);
+  };
+
+  if (bucket === "closed") {
+    for (const line of collectCoachingBullets(ctx, bucket, spot)) add(line);
+    if (!bullets.length) return null;
+    return { title: "Trade manager read", body: bullets.join("\n"), bias: "neutral" };
+  }
 
   const action = actionNarrative(play, bucket);
-  if (action) bullets.push(`• ${action}`);
+  if (action) add(action);
+
+  for (const line of collectCoachingBullets(ctx, bucket, spot)) add(line);
 
   if (spot != null) {
     const posture = dealerPostureLine(ctx, spot);
-    if (posture) bullets.push(`• ${posture}`);
+    if (posture) add(posture);
   } else {
     const degraded = degradedReadLine(play, bucket);
-    if (degraded) bullets.push(`• ${degraded}`);
-    const rails = railsFallback(play);
-    if (rails) bullets.push(`• ${rails}`);
+    if (degraded) add(degraded);
+    if (!bullets.some((b) => /Manage plan/i.test(b))) {
+      const rails = railsFallback(play);
+      if (rails) add(rails);
+    }
   }
 
   if (spot != null) {
@@ -355,43 +390,47 @@ export function tradeManagerNarrativeSection(
     const used = new Set<LevelKind>();
 
     for (const level of focal) {
-      if (bullets.length >= 7) break;
+      if (bullets.length >= MAX_BULLETS) break;
       if (level.kind === "dark_pool" && !used.has("dark_pool")) {
-        bullets.push(`• ${narrateDarkPool(level, play, spot)}`);
+        add(narrateDarkPool(level, play, spot));
         used.add("dark_pool");
       } else if (level.kind === "put_wall" && !used.has("put_wall")) {
-        bullets.push(`• ${narrateWall(level, play, spot)}`);
+        add(narrateWall(level, play, spot));
         used.add("put_wall");
       } else if (level.kind === "call_wall" && !used.has("call_wall")) {
-        bullets.push(`• ${narrateWall(level, play, spot)}`);
+        add(narrateWall(level, play, spot));
         used.add("call_wall");
+      } else if (level.kind === "magnet" && !used.has("magnet") && !bullets.some((b) => /Gamma magnet/i.test(b))) {
+        const posture = vec?.regime?.posture ?? ctx.ecosystem?.gex_positioning?.gamma_posture ?? null;
+        add(narrateMagnet(level, posture));
+        used.add("magnet");
       } else if (level.kind === "king" && !used.has("king")) {
         const posture = vec?.regime?.posture ?? ctx.ecosystem?.gex_positioning?.gamma_posture ?? null;
-        bullets.push(`• ${narrateKing(level, posture)}`);
+        add(narrateKing(level, posture));
         used.add("king");
       } else if (level.kind === "max_pain" && !used.has("max_pain")) {
-        bullets.push(`• ${narrateMaxPain(level, spot)}`);
+        add(narrateMaxPain(level, spot));
         used.add("max_pain");
       } else if (level.kind === "gamma_flip" && !used.has("gamma_flip") && Math.abs(level.distancePct) < 3) {
-        bullets.push(`• ${narrateFlip(level, play)}`);
+        add(narrateFlip(level, play));
         used.add("gamma_flip");
       }
     }
 
     const prox = vec?.proximity;
-    if (prox?.callout && bullets.length < 8) {
-      bullets.push(`• **Nearest wall ${prox.strike.toFixed(2)}** (${prox.side}) — ${prox.callout}`);
+    if (prox?.callout && bullets.length < MAX_BULLETS) {
+      add(`**Nearest wall ${prox.strike.toFixed(2)}** (${prox.side}) — ${prox.callout}`);
     }
 
     const walls = vec?.wallEvents ?? [];
-    if (walls[0] && bullets.length < 8) {
+    if (walls[0] && bullets.length < MAX_BULLETS) {
       const w = walls[walls.length - 1]!;
-      bullets.push(`• **Wall just moved** — ${w.kind.replace(/_/g, " ")}: ${w.message}`);
+      add(`**Wall just moved** — ${w.kind.replace(/_/g, " ")}: ${w.message}`);
     }
   }
 
   const flow = flowNarrative(ctx, play);
-  if (flow) bullets.push(`• ${flow}`);
+  if (flow && !bullets.some((b) => /HELIX tape/i.test(b))) add(flow);
 
   const flip = fin(vec?.gammaFlip) ?? fin(ctx.ecosystem?.gex_positioning?.flip);
   const focal = spot != null ? collectFocalLevels(ctx, spot) : [];
@@ -401,7 +440,7 @@ export function tradeManagerNarrativeSection(
   } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.target_premium != null) {
     breakLine = `**Break watch** — reclaim **${fmtUsd(play.exitPolicy.target_premium)}** → cover shorts.`;
   }
-  if (breakLine) bullets.push(`• ${breakLine}`);
+  if (breakLine) add(breakLine);
 
   if (!bullets.length) return null;
 
