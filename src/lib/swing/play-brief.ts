@@ -14,7 +14,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { collectBriefUnavailableSources, gexMatrixAgeMs, trustedHelixFlow } from "./play-brief-absence";
+import { collectBriefUnavailableSources, gexMatrixAgeMs, gexMatrixStale, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
 import {
@@ -172,10 +172,17 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   const gex = ctx.ecosystem?.gex_positioning;
   const vecFresh = vectorFreshness(vec, readMs);
   const gexFresh = gexFreshness(gex, readMs);
-  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall;
-  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall;
-  const flip = vec?.gammaFlip ?? gex?.flip;
-  if (callWall != null) {
+  const gexStale = gexMatrixStale(gex, readMs);
+  const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecFlip = vec?.gammaFlip;
+  const callWall = vecCallWall ?? gex?.call_wall;
+  const putWall = vecPutWall ?? gex?.put_wall;
+  const flip = vecFlip ?? gex?.flip;
+  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
+  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
+  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
+  if (callWall != null && !callWallFromStaleGex) {
     levels.push({
       label: "call wall",
       price: callWall,
@@ -186,7 +193,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  if (putWall != null) {
+  if (putWall != null && !putWallFromStaleGex) {
     levels.push({
       label: "put wall",
       price: putWall,
@@ -197,7 +204,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  if (flip != null) {
+  if (flip != null && !flipFromStaleGex) {
     levels.push({
       label: "gamma flip",
       price: flip,
@@ -235,7 +242,8 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
     });
   }
   const king = gex?.gex_king_strike;
-  if (king != null) {
+  const kingFromStaleGex = king != null && gexStale;
+  if (king != null && !kingFromStaleGex) {
     levels.push({
       label: "GEX king",
       price: king,
@@ -279,25 +287,36 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   }
   const eco = ctx.ecosystem;
   const gex = eco?.gex_positioning;
-  if (gex?.gamma_posture) {
-    const parts: string[] = [`γ ${gex.gamma_posture}`];
-    if (Number.isFinite(gex.net_gex)) {
+  const vec = ctx.vector ?? eco?.vector_full_state ?? null;
+  const gexStale = gexMatrixStale(gex, readMs);
+  const postureFromVec = vec?.regime?.posture ?? null;
+  const postureFromGex = gex?.gamma_posture && !gexStale ? gex.gamma_posture : null;
+  const gammaPosture = postureFromVec ?? postureFromGex;
+  if (gammaPosture) {
+    const parts: string[] = [`γ ${gammaPosture}`];
+    if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
       const netM = gex.net_gex / 1e6;
       parts.push(`net GEX ${netM >= 0 ? "+" : ""}${netM.toFixed(1)}M`);
     }
-    const wall = gex.nearest_wall;
-    if (wall) {
-      parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
-    } else if (gex.flip != null) {
-      parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
+    if (gex && !gexStale) {
+      const wall = gex.nearest_wall;
+      if (wall) {
+        parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
+      } else if (gex.flip != null) {
+        parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
+      }
     }
     out.push({
       kind: "calc",
       text: `Dealer posture: ${parts.join(" · ")}`,
       provenance: {
-        source: "GEX",
-        asOf: gex.as_of_et ?? etStampFromIso(gex.asof) ?? ctx.asOf,
-        freshness: gexFreshness(gex, readMs),
+        source: postureFromVec ? "Vector" : "GEX",
+        asOf:
+          (postureFromVec ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
+          gex?.as_of_et ??
+          etStampFromIso(gex?.asof) ??
+          ctx.asOf,
+        freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
       },
     });
   }
