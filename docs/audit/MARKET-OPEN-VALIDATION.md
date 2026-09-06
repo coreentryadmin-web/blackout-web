@@ -3189,3 +3189,9 @@ than an end-of-session patch.
 - **What was broken:** When Vector desk state was absent and dealer posture came solely from `ecosystem.gex_positioning`, a matrix older than 120s still produced "**Right now**" in the Trade manager narrative. Vector staleness was gated; GEX `matrix_age_sec`/`asof` was ignored in narrative, Data freshness, and `unavailableSources`.
 - **What changed:** Shared `gexMatrixAgeMs`/`gexMatrixStale` helpers; narrative lead uses "Last snapshot" when GEX-sourced posture is stale; Data freshness warns; `unavailableSources` emits `{ source: "GEX matrix", reason: "stale — dealer posture may lag spot" }`.
 - **RTH check:** Night Hawk Swings → row with GEX positioning but no Vector regime → Ask Largo Trade manager read: when matrix is >120s old, confirm "Last snapshot (~Ns old)" not "Right now", and UnavailableChip/Data freshness mention stale GEX matrix.
+
+### 51. Ask Largo swing brief — Meridian peer earnings cohort dropped by narrative bullet cap — fix/largo-meridian-peer-section — 2026-09-06
+
+- **What was broken:** `fetchMeridianPeerForBrief()` loaded sector peer beat-rate cohort on earnings plays, but only `meridianPeerEarningsCoaching()` in `collectCoachingBullets()` consumed it. When Vector/GEX coaching filled `MAX_BULLETS` (14), peer earnings history could be silently dropped despite live cohort data on the read.
+- **What changed:** Added `meridianPeerSection()` wired into `buildIntelSections()` as **Earnings peer lens** — outside `NARRATIVE_COVERED_TITLES`, so collapse logic cannot remove it.
+- **RTH check:** Open Ask Largo on a single-name earnings swing (e.g. retail name within 14d print) with rich Vector/GEX context — confirm **Earnings peer lens** section appears with peer beat rates (`n=`) even when Trade manager read is long.
