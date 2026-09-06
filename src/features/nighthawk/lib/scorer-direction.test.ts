@@ -260,6 +260,42 @@ test("scoreFlowQuality: strong negative (bullish) skew flips a put-leaning flow 
   assert.equal(result.directionFlippedBySkew, true);
 });
 
+// ── scoreFlowQuality: streak bonus must agree with tonight's flow direction ──
+
+test("scoreFlowQuality: an opposite-direction streak does NOT get its bonus", () => {
+  // flowStreak comes from a DIFFERENT population than `flows` (a 10-day DB rollup of net daily
+  // premium, not tonight's live batch). Pre-fix, the +12×weight "sustained conviction" bonus was
+  // added unconditionally, regardless of which way the streak actually pointed — a 5-day
+  // PUT-dominated streak could still inflate a candidate whose LIVE flow tonight leans call.
+  const flows = [{ type: "call", total_premium: 2_000_000 }];
+  const withoutStreak = scoreFlowQuality(flows);
+  const withOpposingStreak = scoreFlowQuality(flows, { streak_days: 5, net_3d: 0, net_5d: 0, direction: "short" });
+  assert.equal(withOpposingStreak.direction, "long", "tonight's flow is call-dominated");
+  assert.equal(
+    withOpposingStreak.score,
+    withoutStreak.score,
+    "an opposite-direction streak must contribute nothing to the score"
+  );
+});
+
+test("scoreFlowQuality: a same-direction streak DOES get its bonus", () => {
+  const flows = [{ type: "call", total_premium: 2_000_000 }];
+  const withoutStreak = scoreFlowQuality(flows);
+  const withAgreeingStreak = scoreFlowQuality(flows, { streak_days: 5, net_3d: 0, net_5d: 0, direction: "long" });
+  assert.equal(withAgreeingStreak.direction, "long");
+  assert.ok(
+    withAgreeingStreak.score > withoutStreak.score,
+    "a same-direction streak must still add its bonus"
+  );
+});
+
+test("scoreFlowQuality: a 'mixed' streak direction never matches — no bonus either way", () => {
+  const flows = [{ type: "call", total_premium: 2_000_000 }];
+  const withoutStreak = scoreFlowQuality(flows);
+  const withMixedStreak = scoreFlowQuality(flows, { streak_days: 5, net_3d: 0, net_5d: 0, direction: "mixed" });
+  assert.equal(withMixedStreak.score, withoutStreak.score);
+});
+
 // ── scoreCandidate: tech tiebreaker when flow is ambiguous (PR-N27) ──────────
 
 test("scoreCandidate: bearish tech flips ambiguous call-leaning flow to SHORT (PR-N27)", () => {
