@@ -185,6 +185,30 @@ test("composeSwingPlayBrief: envelope.asOf uses Largo C1 ET stamp (not a bare UT
   assert.doesNotMatch(envelope.asOf!, /Z$/, "asOf must not be a UTC ISO instant");
 });
 
+test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant (FINDINGS 2026-09-06 #21)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", markAsOf: "2026-09-04T21:45:18.663Z" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const markEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Option mark as of"));
+  assert.ok(markEvidence, "expected an option-mark evidence entry");
+  assert.equal(markEvidence?.text, "Option mark as of 2026-09-04 17:45 ET.");
+  assert.equal(markEvidence?.provenance?.asOf, "2026-09-04 17:45 ET");
+  assert.doesNotMatch(markEvidence!.text, /Z\.$/, "mark evidence must not be a bare UTC instant");
+
+  const positionSection = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.match(positionSection!.body, /2026-09-04 17:45 ET/);
+  assert.doesNotMatch(positionSection!.body, /\.663Z/, "Position section must not print a raw ISO mark timestamp");
+});
+
 test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

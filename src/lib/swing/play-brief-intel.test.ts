@@ -1,9 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { bookContextSection, chartTechnicalsSection, deskConsensusSection, flowIntelSection, lessonsSection } from "./play-brief-intel";
+import {
+  bookContextSection,
+  chartTechnicalsSection,
+  dataFreshnessSection,
+  deskConsensusSection,
+  flowIntelSection,
+  lessonsSection,
+} from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
+import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -171,6 +179,23 @@ test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), nev
   });
   const section = chartTechnicalsSection(vec);
   assert.equal(section?.bias, "neutral");
+});
+
+test("dataFreshnessSection: option mark timestamp renders as a Largo C1 ET stamp, never a raw UTC instant (FINDINGS 2026-09-06 #21)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ markAsOf: "2026-09-04T21:45:18.663Z" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /2026-09-04 17:45 ET/);
+  assert.doesNotMatch(section!.body, /\.663Z/, "must not print a raw ISO mark timestamp");
 });
 
 test("flowIntelSection: stale HELIX feed must not render recent prints or anomalies", () => {
