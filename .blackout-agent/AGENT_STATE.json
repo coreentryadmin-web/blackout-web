@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T08:14:29.671Z",
+  "updated_at": "2026-09-06T08:26:34.351Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -505,20 +505,22 @@
       "agent": "cursor",
       "run_id": "3f093ff3-260e-41f2-8421-99c0118dafbf",
       "summary": "PR-event workflow_run cycle. Peer sweep: no Claude/fix PRs. validate:deploy GREEN, ops:collect 0. main@dac25ac03 deployed. #4171 draft verify pending — awaiting Claude peer review. npm ci installed (pg missing pre-install)."
-    }
-  ],
-  "open_prs": [
+    },
     {
-      "number": 4171,
-      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN, no open PRs",
-      "branch": "cursor/autopilot-state-handoff-20260906",
-      "author": "coreentryadmin-web",
+      "at": "2026-09-06T08:26:34.350Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T08:26:34.351Z",
+      "type": "handoff",
       "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T08:13:54Z"
+      "run_id": "acd7bafc-7289-4926-9005-8ce417696d2c",
+      "summary": "Cycle complete. Lifecycle GREEN: deploy, platform-integrity 14/14, seo 22/22, api-auth, ops:collect 0. Peer sweep: no Claude/fix PRs. #4171 verify GREEN @ eb6637ab5 — marked ready for Claude peer review. main@dac25ac03 deployed."
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4171": {
       "last_event": "sweep",
