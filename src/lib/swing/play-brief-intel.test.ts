@@ -9,6 +9,7 @@ import {
   deskConsensusSection,
   flowIntelSection,
   lessonsSection,
+  whyThisSetupSection,
 } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
@@ -66,6 +67,31 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
 test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is not reported as overlap", () => {
   const book: PortfolioPosition[] = [{ ticker: "NVDA", direction: "LONG" }];
   assert.equal(bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book), null);
+});
+
+// SWING-SYSTEM-CTO-AUDIT-style finding (found live 2026-09-06 on NRG SWING_NRG_34): `recNote` is
+// already rendered verbatim by managementSection (open bucket) or the Verdict section (watch
+// bucket) — see play-brief.ts lines 64 and 292. whyThisSetupSection pushed the SAME string again
+// for any non-CLOSED play, so every open/watch brief repeated one full sentence across two
+// sections — a narrative-quality defect ("bullet dump", not one connected trade-manager voice),
+// not just a cosmetic wart: it also crowds out the pillar/signal content this section exists for.
+test("whyThisSetupSection: does not repeat recNote — that's already surfaced by Management/Verdict", () => {
+  const play = fixturePlay({
+    status: "OPEN",
+    recNote: "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength.",
+  });
+  const section = whyThisSetupSection(play);
+  assert.ok(!section.body.includes(play.recNote as string));
+});
+
+test("whyThisSetupSection: still reports pillar/signal content when present", () => {
+  const play = fixturePlay({
+    status: "OPEN",
+    recNote: "some note",
+    factors: [{ label: "Momentum", points: 5 }],
+  });
+  const section = whyThisSetupSection(play);
+  assert.match(section.body, /Momentum/);
 });
 
 test("deskConsensusSection: null when only NH direction / 0DTE stance (covered by crossDeskCoaching)", () => {
