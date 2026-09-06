@@ -1,18 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T02:35:03.337Z",
+  "updated_at": "2026-09-06T02:42:14.148Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T02:02:15.352Z",
+      "lease_until": "2026-09-06T03:32:15.352Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T02:33:14.724Z",
+      "lease_until": "2026-09-06T04:03:14.724Z",
+      "phase": "IMPLEMENTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +47,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b78270d994ff53bb208f4e89ea2f078cf653fc77",
+    "last_main_sha": "491a61d9373fb79894f367776e5e86fa9b11820a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T02:41:44Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34007137156",
+    "last_deploy_sha": "491a61d9373fb79894f367776e5e86fa9b11820a"
   },
   "events": [
     {
@@ -300,7 +311,57 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T02:42:07.058Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T02:42:07.058Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bb6b5bbb-db35-405f-b11d-070449da9734",
+      "summary": "PR-event cycle: lane-rank jam cleared via #4084 merge; peer-reviewed APPROVED+merged Claude #4100 (Meridian beatRateN cohort fix). Lifecycle GREEN (deploy, platform-integrity 14/14, ops:collect 0). main@491a61d93. Open: #4098 handoff draft, #4099/#4107 swing feats draft. Sunday off-hours — RTH skipped."
+    },
+    {
+      "at": "2026-09-06T02:42:14.148Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4103,
+      "title": "fix(swing): always emit trade-manager narrative without Vector spot",
+      "branch": "cursor/swing-brief-narrative-fallback",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T02:39:05Z"
+    },
+    {
+      "number": 4102,
+      "title": "docs(claude): correct stale Ask Largo collaboration-state list in CLAUDE.md",
+      "branch": "docs/largo-mandate-collab-correction",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T02:38:59Z"
+    },
+    {
+      "number": 4101,
+      "title": "feat(swing): Ask Largo book-context concentration + unavailable_sources wiring (v2, clean rebase)",
+      "branch": "fix/swing-book-context-v2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T02:41:08Z"
+    }
+  ]
 }
