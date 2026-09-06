@@ -58,6 +58,26 @@ export function etStamp(tMs: unknown): string | null {
   return parts ? `${parts.date} ${parts.time} ET` : null;
 }
 
+const ET_STAMP_RE = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}) ET$/;
+
+/**
+ * Inverse of {@link etStamp}: parse a Largo C1 wall-clock stamp back to epoch-ms.
+ * Returns null when the string is not exactly "YYYY-MM-DD HH:mm ET" or does not round-trip.
+ */
+export function parseEtStamp(stamp: unknown): number | null {
+  if (typeof stamp !== "string") return null;
+  const trimmed = stamp.trim();
+  const m = ET_STAMP_RE.exec(trimmed);
+  if (!m) return null;
+  const [, ymd, hh, min] = m;
+  for (const offset of ["-04:00", "-05:00"]) {
+    const ms = Date.parse(`${ymd}T${hh}:${min}:00${offset}`);
+    if (!Number.isFinite(ms)) continue;
+    if (etStamp(ms) === trimmed) return ms;
+  }
+  return null;
+}
+
 /**
  * Pull the timespan out of a Polygon aggregates path
  * (`/v2/aggs/ticker/I:SPX/range/1/day/2026-08-13/2026-08-20`). Returns null for any path that is

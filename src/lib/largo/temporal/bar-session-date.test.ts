@@ -6,6 +6,7 @@ import {
   aggTimespanFromPath,
   etSessionDate,
   etStamp,
+  parseEtStamp,
   stampBars,
   stampPolygonAggregatePayload,
 } from "./bar-session-date";
@@ -29,7 +30,24 @@ test("a non-timestamp yields null rather than a plausible wrong date", () => {
   for (const bad of [undefined, null, "", "not-a-number", NaN, {}]) {
     assert.equal(etSessionDate(bad), null);
     assert.equal(etStamp(bad), null);
+    assert.equal(parseEtStamp(bad), null);
   }
+});
+
+test("parseEtStamp round-trips etStamp output (EDT and EST)", () => {
+  const edt = Date.parse("2026-09-05T20:00:00.000Z"); // 16:00 ET (EDT)
+  const est = Date.parse("2026-01-14T21:00:00.000Z"); // 16:00 ET (EST)
+  for (const ms of [edt, est]) {
+    const stamp = etStamp(ms);
+    assert.ok(stamp);
+    assert.equal(parseEtStamp(stamp), ms);
+  }
+});
+
+test("parseEtStamp rejects strings Date.parse cannot read", () => {
+  assert.equal(parseEtStamp("2026-09-05 16:00 ET"), Date.parse("2026-09-05T16:00:00-04:00"));
+  assert.equal(parseEtStamp("not a stamp"), null);
+  assert.equal(parseEtStamp("2026-09-05 16:00 UTC"), null);
 });
 
 test("stamped daily bars answer the question that was answered wrong", () => {
