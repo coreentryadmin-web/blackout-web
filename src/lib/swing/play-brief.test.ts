@@ -221,6 +221,43 @@ test("composeSwingPlayBrief: envelope.asOf uses Largo C1 ET stamp (not a bare UT
   assert.doesNotMatch(brief.envelope.asOf!, /Z$/, "asOf must not be a UTC ISO instant");
 });
 
+test("composeSwingPlayBrief: GEX evidence freshness honors matrix_age_sec over recent asof (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        spot: 25,
+        flip: 24,
+        gamma_posture: "long",
+        asof: new Date().toISOString(),
+        matrix_age_sec: 300,
+        freshness: "cached",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence");
+  assert.equal(
+    postureEvidence!.provenance?.freshness,
+    "recent",
+    "matrix_age_sec must drive envelope freshness even when asof is recent",
+  );
+  assert.notEqual(
+    postureEvidence!.provenance?.freshness,
+    "live",
+    "must not read live when matrix_age_sec is 300s",
+  );
+});
+
 test("composeSwingPlayBrief: GEX dealer posture grounds in envelope evidence (Largo C7)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
