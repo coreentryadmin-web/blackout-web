@@ -1,9 +1,11 @@
-// Cron: phase-anchored whole-market SWING discovery (PR-13, HOLD / evidence-only).
+// Cron: phase-anchored whole-market SWING discovery (live commits since 2026-07-24).
 //
 // WHY: the swing lane discovers multi-session theses on a phase-anchored cadence (scan-cadence.ts) rather than
 // a fixed heartbeat. EventBridge fires this route across a WIDE UTC band; the route resolves which discovery
 // PHASE the firing belongs to and runs ONE whole-market scan per (session day, phase). The scan advances the
-// cross-session accumulation memory (WATCH-only) — it COMMITS NOTHING (`commitEligibleCount` is a literal 0).
+// cross-session accumulation memory (WATCH rail) and, via the LIVE COMMIT seam wired in buildDiscoveryDeps(),
+// can open REAL leveraged option positions when a WATCH candidate clears the armed portfolio budget, book-percent
+// caps, and idempotency gates (commit.ts). `commitEligibleCount` is derived from the scan — not a hardcoded 0.
 //
 // IDEMPOTENT PER (date, phase): a redis marker is CLAIMED before scanning, so a re-fire inside the same phase
 // window on the same day is a no-op — it must not re-increment the accumulation memory. CRITICAL: on scan

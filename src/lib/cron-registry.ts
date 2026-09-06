@@ -210,7 +210,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description:
-      `Whole-market swing (${SWING_DTE_RANGE}) discovery: two-tier flow+structure screen → dossiers → advances the cross-session accumulation memory (WATCH-only, commits nothing). Idempotent per (session day, phase).`,
+      `Whole-market swing (${SWING_DTE_RANGE}) discovery: two-tier flow+structure screen → dossiers → WATCH accumulation + live commits (armed budget, book-percent caps, idempotency gated). Idempotent per (session day, phase).`,
   },
   {
     key: "swing-active-refresh",
