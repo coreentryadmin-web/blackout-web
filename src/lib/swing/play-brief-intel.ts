@@ -618,7 +618,8 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
       `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — dealer posture may lag spot.`,
     );
   }
-  if (gex.gamma_posture) {
+  // Suppress GEX-only posture when matrix is stale — same Largo C2 class as chartLevels/watchFor/king (#4372/#4375).
+  if (gex.gamma_posture && !stale) {
     const posture =
       gex.gamma_posture === "long"
         ? "dealers **long gamma** — dips tend to get bought, range/pin behavior"
