@@ -17,7 +17,7 @@ import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-t
 import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
-import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
@@ -262,6 +262,29 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     });
   }
   const eco = ctx.ecosystem;
+  const gex = eco?.gex_positioning;
+  if (gex?.gamma_posture) {
+    const parts: string[] = [`γ ${gex.gamma_posture}`];
+    if (Number.isFinite(gex.net_gex)) {
+      const netM = gex.net_gex / 1e6;
+      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${netM.toFixed(1)}M`);
+    }
+    const wall = gex.nearest_wall;
+    if (wall) {
+      parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
+    } else if (gex.flip != null) {
+      parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
+    }
+    out.push({
+      kind: "calc",
+      text: `Dealer posture: ${parts.join(" · ")}`,
+      provenance: {
+        source: "GEX",
+        asOf: gex.as_of_et ?? etStampFromIso(gex.asof) ?? ctx.asOf,
+        freshness: gexFreshness(gex, readMs),
+      },
+    });
+  }
   const flow = trustedHelixFlow(eco);
   if (flow) {
     const bias =
@@ -295,7 +318,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       text: `Short interest: ${parts.join(" · ")}`,
       provenance: {
         source: "Polygon / Benzinga",
-        asOf: fund.as_of ? etStampFromIso(fund.as_of) ?? fund.as_of : ctx.asOf,
+        asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
         freshness: "recent",
       },
     });
@@ -406,6 +429,7 @@ export function composeSwingPlayBrief(
     ticker: play.ticker,
     envelope,
     asOf: ctx.asOf,
+    sessionDate: ctx.sessionDate,
     engine: "swing_play_intelligence",
     flowSnapshot,
     briefContentKey: briefContentKey(snap),

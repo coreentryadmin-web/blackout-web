@@ -6,6 +6,7 @@ import {
   aggTimespanFromPath,
   etSessionDate,
   etStamp,
+  etStampFromDateOrIso,
   etStampFromIso,
   parseEtStamp,
   stampBars,
@@ -41,6 +42,14 @@ test("etStampFromIso is null-safe", () => {
   assert.equal(etStampFromIso(null), null);
   assert.equal(etStampFromIso(undefined), null);
   assert.equal(etStampFromIso(""), null);
+});
+
+test("etStampFromDateOrIso anchors date-only observation strings at session close ET (C1)", () => {
+  assert.equal(etStampFromDateOrIso("2026-09-05"), "2026-09-05 16:00 ET");
+  assert.equal(
+    etStampFromDateOrIso("2026-09-04T21:45:18.663Z"),
+    "2026-09-04 17:45 ET",
+  );
 });
 
 test("a non-timestamp yields null rather than a plausible wrong date", () => {
