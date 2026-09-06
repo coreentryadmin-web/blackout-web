@@ -128,6 +128,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open (Monday 2026-09-07, a market holiday — so also check Tuesday):** `GET /api/market/nighthawk/horizons?view=swings` should show a non-null `scanAsOf`/`scanSessionDay` even first thing Monday/Tuesday morning before the day's own scan has run; `GET /api/market/swing/play-brief` for any live committed position should show a "Thesis health" regime pillar that is NOT the generic `unread`/`46% · Degraded` default if a matching discovery dossier exists from the prior week.
 
+### 0a-1q. Stale HELIX coached cross-desk friction + counter-thesis — fix/swing-stale-helix-crossdesk (pending)
+
+**What was broken:** When `flow_feed_fresh === false`, Ask Largo still cited stale `recent_flow` in `crossDeskCoaching` (`HELIX call-led` / `HELIX put-led`) and `counterThesisLine`, contradicting the C2/C3 absence contract already enforced in `flowNarrative` and `collectBriefUnavailableSources`.
+
+**Fix:** Route both paths through `trustedHelixFlow()` — stale pipeline rows become absence, not signal.
+
+**Check at the open:** For a ticker whose HELIX feed is quiet (`flow_feed_fresh: false` in ecosystem context), Ask Largo brief must show the `HELIX flow · pipeline stale` unavailable chip and must NOT include `HELIX call-led` / `HELIX put-led` in Trade manager read or counter-thesis bullets.
+
 ---
 
 ### 0a-1o. Ask Largo swing thesis-health dead-wired to identical reading for every live position — docs/swing-brief-thesis-health-dead-wired (pending, follows the deep audit PR #4178)

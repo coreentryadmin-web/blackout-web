@@ -8,6 +8,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtPremium } from "@/lib/fmt-money";
 import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
+import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 
 function fin(n: unknown): number | null {
@@ -230,7 +231,7 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
 
   const nh = eco.nighthawk_recent;
   const z = eco.zerodte_today;
-  const flow = eco.recent_flow;
+  const flow = trustedHelixFlow(eco);
 
   const nhLong = nh?.direction?.toLowerCase() === "long";
   const nhShort = nh?.direction?.toLowerCase() === "short";

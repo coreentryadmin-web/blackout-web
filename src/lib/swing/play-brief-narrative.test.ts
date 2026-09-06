@@ -173,6 +173,32 @@ test("counterThesisLine: steelmans bear case for LONG when desks disagree", () =
   assert.match(line!, /bear EMA stack/i);
 });
 
+test("counterThesisLine: stale HELIX flow must not steelman call-led / put-led", () => {
+  const line = counterThesisLine(
+    ctx({
+      ecosystem: {
+        ticker: "INTC",
+        flow_feed_fresh: false,
+        recent_flow: {
+          window_hours: 24,
+          print_count: 10,
+          call_premium: 1_200_000,
+          put_premium: 400_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: null,
+        zerodte_today: null,
+        gex_positioning: null,
+        arsenal: null,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "SHORT" }),
+    100,
+  );
+  assert.equal(line, null, "stale HELIX must not appear in counter-thesis");
+});
+
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

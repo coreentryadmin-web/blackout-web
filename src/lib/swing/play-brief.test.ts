@@ -240,6 +240,10 @@ test("composeSwingPlayBrief: stale HELIX flow omitted from snapshot and unavaila
     brief.envelope.unavailableSources?.some((u) => u.source === "HELIX flow" && u.reason === "pipeline stale"),
   );
   assert.ok(!brief.envelope.sections.some((s) => /call-heavy/i.test(s.body)), "stale flow must not coach tape bias");
+  assert.ok(
+    !brief.envelope.sections.some((s) => /HELIX call-led|HELIX put-led/i.test(s.body)),
+    "stale flow must not coach cross-desk or counter-thesis HELIX friction",
+  );
 });
 
 test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => {
