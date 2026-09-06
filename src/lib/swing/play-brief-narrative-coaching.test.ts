@@ -494,6 +494,26 @@ test("technicalsCoaching: bias reads bearish from tape on LONG play (Largo C5)",
   assert.doesNotMatch(line!, /supports long swing/i);
 });
 
+test("technicalsCoaching: dissenting MACD must be visible even when it loses the bull/bear vote (2026-09-06 live NRG repro)", () => {
+  // technicalsBias() counts emaStack/macd/vwap/structure as 4 independent votes; here 3 bull vs
+  // 1 bear (macd) yields "bullish" — the narrative must still show the bear MACD vote, not just
+  // the winning votes, or a reader sees "chart reads bullish" with no visibility into the dissent.
+  const vec = {
+    spot: 118.95,
+    technicals: {
+      vwap: 117.08,
+      emaStack: "up",
+      rsi: 58,
+      macd: "bear",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "up", level: 118.22 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line = technicalsCoaching(vec, play({ direction: "LONG", ticker: "NRG" }));
+  assert.match(line!, /chart reads bullish/i);
+  assert.match(line!, /macd\s*\*\*bearish\*\*/i);
+});
+
 test("technicalsCoaching: aligned LONG + bullish tape notes alignment without echoing direction as bias", () => {
   const vec = {
     spot: 100,
