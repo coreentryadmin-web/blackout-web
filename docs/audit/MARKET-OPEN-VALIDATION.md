@@ -120,6 +120,16 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1m. Condor live status — directional stop latch on winning condor — fix/condor-live-status-inverted-peak-trough (pending)
+
+**What was broken:** `derivePlayStatus` applied directional peak/trough TRIM/stop logic to iron condors (credit received, mark = debit-to-close). A falling mark (winning) latched `CLOSED/stopped`, contaminating governor session-halt stop count and member STOPPED label.
+
+**Fix:** Condors skip directional TRIM/stop in `derivePlayStatus`; hold to time-stop; governor `ledgerRowStopped`/realized P&L branch condor-aware.
+
+**Check at the open:** If any condor is live on the 0DTE board, confirm mark decay does NOT flip status to STOPPED and governor stop count does not increment on a winning condor.
+
+---
+
 ### 0a-1l. Night Hawk deck etClock — duplicate parser missed Largo C1 asOf — fix/play-terminal-etclock-c1-parse (pending)
 
 **What was broken:** `PlayTerminal.tsx` exported a local `etClock` that only `Date.parse()`d ISO strings. After #4142/#4152 stamped play-brief `asOf` as `YYYY-MM-DD HH:mm ET`, any C1 stamp routed through the deck why-now ribbon or CommandDeck row chips would render blank time (`— ET`).
