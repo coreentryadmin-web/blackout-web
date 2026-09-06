@@ -120,6 +120,22 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1ai. Stale Vector chart/level fields still read as live in Ask Largo — fix/largo-stale-vector-chart-gating (pending)
+
+**What was broken:** After #4376–#4394 GEX-wall and Vector `play.bias` gates, chart technicals still
+badged bullish/bearish off >120s snapshots; `chartLevelsSection` still showed max pain / dark pool /
+confluence; `gexPostureSection` still printed net GEX / nearest wall while `unavailableSources` also
+flagged stale matrix.
+
+**Fix:** Gate with `vectorSnapshotStale()` / `gexMatrixStale()` in `chartTechnicalsSection`,
+`technicalsCoaching`, `chartLevelsSection`, `collectFocalLevels`, and `gexPostureSection`.
+
+**Check at the open:** Swings Ask Largo on a play with stale Vector (`dataAgeMs` > 120) — chart
+technicals badge neutral, no "chart reads bullish/bearish" coaching, GEX posture shows only staleness
+disclaimer (no net GEX numbers).
+
+---
+
 ### 0a-1ah. Stale Vector play.bias in Largo cross-desk coaching — fix/largo-stale-vector-coaching-bias (pending)
 
 **What was broken:** `counterThesisLine()` gated stale Vector `play.bias`, but `crossDeskCoaching()` and
