@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T18:35:35.003Z",
+  "updated_at": "2026-09-06T19:22:14.398Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-06T20:05:05.284Z",
+      "lease_until": "2026-09-06T20:42:20.863Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "b4c493b0-3f4b-4888-824a-5b26833a5051",
+      "run_id": "79ae710d-cb17-438a-9679-26581e4c5ad0",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-06T20:05:05.285Z",
+      "lease_until": "2026-09-06T20:42:20.863Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "b4c493b0-3f4b-4888-824a-5b26833a5051"
+      "run_id": "79ae710d-cb17-438a-9679-26581e4c5ad0"
     }
   },
   "reviews": {
@@ -49,11 +49,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "847e383f098ef83fa60b348b7c082d7862eab3fc",
+    "last_main_sha": "921e03fa878ca7029fc89bd95bc802ca93db35ea",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T18:33:26Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34052096978",
-    "last_deploy_sha": "847e383f098ef83fa60b348b7c082d7862eab3fc"
+    "last_deploy_at": "2026-09-06T19:12:28Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34054150883",
+    "last_deploy_sha": "921e03fa878ca7029fc89bd95bc802ca93db35ea"
   },
   "events": [
     {
@@ -134,18 +134,41 @@
       "agent": "cursor",
       "run_id": "aba40718-2c11-44b7-8e82-0f58e90a51c7",
       "summary": "Main@847e383f0 GREEN (CI notifications ack). WAIT #4362 admin double-count — stale base reverts #4359/#4360. validate:deploy GREEN, ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T19:22:14.398Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T19:22:14.398Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e1898c96-3bac-4fd7-ae13-06e1aa40f347",
+      "summary": "Main@921e03fa8 GREEN. Merged #4362-#4374 stale-GEX wave. #4372 chartLevels stale gating — 42/42 local, verify pending. #4371 cursor thermal — WAIT rebase (reverts #4362). validate:deploy GREEN, ops:collect 0."
     }
   ],
   "open_prs": [
     {
-      "number": 4362,
-      "title": "fix(admin): stop premium+community double-count in user directory stats/filters",
-      "branch": "fix/admin-user-community-premium-double-count",
+      "number": 4372,
+      "title": "fix(swing): gate stale GEX-only levels in chartLevelsSection",
+      "branch": "fix/largo-gex-stale-chart-levels",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": true,
+      "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T18:35:34Z"
+      "updated_at": "2026-09-06T19:19:55Z"
+    },
+    {
+      "number": 4371,
+      "title": "fix(thermal): audit hardening — spot provenance, SPX change%, horizon walls, UX",
+      "branch": "cursor/thermal-audit-fixes",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T19:17:17Z"
     }
   ]
 }
