@@ -44,9 +44,10 @@ function routeQuestion(q) {
   const ledger = new Set([
     "TSLA", "NVDA", "SPY", "AAPL", "META", "PLTR", "XLF", "GLD", "COIN", "AMD", "AMZN", "MSFT", "QQQ", "IWM",
   ]);
+  if (isOutOfScopeQuestion(q)) return { intent: null, ticker: null };
+  // Production router checks nonsense before compound — "???" is clarify_read, not compound_lookup.
   if (isNonsenseQuestion(q)) return { intent: "clarify_read", ticker: null };
   if (isCompoundQuestion(q)) return { intent: "compound_lookup", ticker: null };
-  if (isOutOfScopeQuestion(q)) return { intent: null, ticker: null };
   return classifyBieIntent(q, ledger) ?? classifyBieStagingFallback(q);
 }
 
@@ -151,6 +152,8 @@ if (routerBad.length > 40) console.log(`  … and ${routerBad.length - 40} more`
 
 let liveRows = [];
 if (process.env.LARGO_STRESS_LIVE === "1") {
+  // Largo stress runs ~30–45 min — must outlive the audit-user sweep age gate (see prod-clerk-session).
+  process.env.AUDIT_STALE_USER_MS = process.env.AUDIT_STALE_USER_MS ?? String(60 * 60_000);
   const { mintAppSession } = await import("./audit/lib/app-session.mjs");
   const BASE = liveBaseUrl();
   const session = await mintAppSession({ appUrl: BASE });
