@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
+import { meridianPeerEarningsCoaching, pickEarningsForSwingPeer } from "./play-brief-meridian-peer-core";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 
 function earningsItem(overrides: Partial<LargoTimelineItem> = {}): LargoTimelineItem {
@@ -88,4 +88,15 @@ test("meridianPeerEarningsCoaching: surfaces sector_label and interpretation", (
   );
   assert.match(line!, /sector \*\*Retail\*\*/i);
   assert.match(line!, /top quartile/i);
+});
+
+test("pickEarningsForSwingPeer: skips index tickers (market-wide catalyst slice)", () => {
+  const items = [earningsItem({ ticker: "AAPL", days_until: 3 })];
+  assert.equal(pickEarningsForSwingPeer(items, "SPY"), null);
+});
+
+test("pickEarningsForSwingPeer: requires earnings ticker to match swing under review", () => {
+  const items = [earningsItem({ ticker: "AAPL", days_until: 3 })];
+  assert.equal(pickEarningsForSwingPeer(items, "NVDA"), null);
+  assert.equal(pickEarningsForSwingPeer(items, "AAPL")?.ticker, "AAPL");
 });

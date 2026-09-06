@@ -233,7 +233,8 @@ export async function resolveSwingPlayForBrief(
   laneRows: HorizonPlay[];
 } | null> {
   const parsed = parseSwingPlayId(input.playId);
-  const ticker = (input.ticker ?? parsed.ticker).toUpperCase();
+  // Blank ticker from the route must not block playId-derived resolution (Largo tool omits ?ticker=).
+  const ticker = (input.ticker?.trim() || parsed.ticker).toUpperCase();
   if (!ticker) return null;
 
   const positionId =

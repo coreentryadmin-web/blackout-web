@@ -8,7 +8,7 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtPremium } from "@/lib/fmt-money";
-import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
+import { meridianPeerEarningsCoaching, pickEarningsForSwingPeer } from "./play-brief-meridian-peer-core";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -647,7 +647,7 @@ export function collectCoachingBullets(
 
   push(manageLifecycleCoaching(play, bucket));
   push(catalystCoaching(ctx));
-  const earningsItem = ctx.meridian?.items.find((i) => i.kind === "earnings" && i.days_until <= 14) ?? null;
+  const earningsItem = pickEarningsForSwingPeer(ctx.meridian?.items, play.ticker);
   push(meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem));
   push(crossDeskCoaching(ctx, play));
   push(laneRankCoaching(play, ctx.laneRows));

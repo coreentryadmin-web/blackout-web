@@ -4,6 +4,28 @@
 import type { LargoPeerCohortMember } from "@/lib/largo/meridian-peer-cohort-for-largo-core";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 
+/** Index/proxy names that use market-wide Meridian catalyst slices — no per-name earnings peer cohort. */
+export const SWING_MERIDIAN_INDEX_TICKERS = new Set(["SPX", "SPXW", "SPY", "QQQ", "IWM", "VIX", "NDX"]);
+
+/** Pick the earnings catalyst for peer coaching — ticker-matched; null for index swings or no match. */
+export function pickEarningsForSwingPeer(
+  items: LargoTimelineItem[] | null | undefined,
+  ticker: string,
+): LargoTimelineItem | null {
+  if (!items?.length) return null;
+  const sym = ticker.toUpperCase();
+  if (SWING_MERIDIAN_INDEX_TICKERS.has(sym)) return null;
+  return (
+    items.find(
+      (i) =>
+        i.kind === "earnings" &&
+        i.days_until >= 0 &&
+        i.days_until <= 14 &&
+        i.ticker?.toUpperCase() === sym,
+    ) ?? null
+  );
+}
+
 /** Peer cohort slice when fetch succeeded — shape matches loadMeridianPeerCohortForLargo success path. */
 export type SwingMeridianPeerAvailable = {
   available: true;

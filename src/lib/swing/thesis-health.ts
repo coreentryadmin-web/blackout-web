@@ -150,8 +150,11 @@ function toPillarPair(row: { commit: number; current: number; label: string }): 
 }
 
 function pillarStatus(commit: number, current: number): ThesisPillarState["status"] {
-  if (current >= commit - 0.05) return current > commit + 0.05 ? "strengthened" : "intact";
-  if (current >= commit - 0.2) return "faded";
+  // Compare in centi-points — IEEE float makes 0.35 >= 0.4-0.05 false at the default persistence scores.
+  const commitCp = Math.round(commit * 100);
+  const currentCp = Math.round(current * 100);
+  if (currentCp >= commitCp - 5) return currentCp > commitCp + 5 ? "strengthened" : "intact";
+  if (currentCp >= commitCp - 20) return "faded";
   return "lost";
 }
 
