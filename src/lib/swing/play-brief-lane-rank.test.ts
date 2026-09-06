@@ -45,6 +45,12 @@ test("laneRankSection: null for closed plays", () => {
   assert.equal(laneRankSection(play({ status: "CLOSED" }), [row("NRG", 50, "HOLD")]), null);
 });
 
+test("computeLaneRank: null when lane rows are absent", () => {
+  assert.equal(computeLaneRank(play(), null), null);
+  assert.equal(computeLaneRank(play(), undefined), null);
+  assert.equal(computeLaneRank(play(), []), null);
+});
+
 test("laneRankSection: renders rank line", () => {
   const sec = laneRankSection(play({ score: 70 }), [row("NRG", 70, "HOLD"), row("X", 40, "OPEN")]);
   assert.ok(sec);
