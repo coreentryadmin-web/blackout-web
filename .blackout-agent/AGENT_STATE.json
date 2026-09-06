@@ -1,30 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T04:31:05.905Z",
+  "updated_at": "2026-09-06T04:31:24.722Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T04:08:03.942Z",
-      "lease_until": "2026-09-06T06:00:20.079Z",
+      "claimed_at": "2026-09-06T04:12:50.842Z",
+      "lease_until": "2026-09-06T06:00:39.889Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "757a4dfb-c105-4aaf-9e25-3f84d55da168"
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-06T04:30:02.220Z",
-      "lease_until": "2026-09-06T06:00:20.079Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "757a4dfb-c105-4aaf-9e25-3f84d55da168",
-      "title": null
+      "run_id": "0c7001a2-9e12-4d67-a751-4cc3a5a4e2cd"
     }
   },
   "reviews": {
@@ -43,9 +31,8 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "active",
-      "last_seen": "2026-09-06T04:30:02.220Z",
-      "current_task": "BO-P1-0101"
+      "status": "unknown",
+      "last_seen": null
     }
   },
   "deploy": {
@@ -405,31 +392,35 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T04:30:02.220Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-06T04:30:20.078Z",
+      "at": "2026-09-06T04:30:39.889Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T04:30:20.871Z",
+      "at": "2026-09-06T04:30:40.976Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T04:30:21.694Z",
+      "at": "2026-09-06T04:30:41.981Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T04:30:23.456Z",
+      "at": "2026-09-06T04:31:22.178Z",
+      "type": "pr_webhook",
+      "pr": 4119,
+      "event": "sweep",
+      "head": "358f0be8557a6f7fafba4b58e9d920e0cc23ce29",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T04:31:24.722Z",
       "type": "pr_webhook",
       "pr": 4118,
       "event": "sweep",
@@ -437,25 +428,6 @@
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": true
-    },
-    {
-      "at": "2026-09-06T04:30:24.328Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-06T04:31:05.905Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-06T04:31:05.905Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "c85081fa-be33-4d39-af0a-51fb42f6ec27",
-      "summary": "PR-event cycle complete. Peer-reviewed+merged #4114 (MFE capture round-trip) and #4116 (duplicate bookContextCoaching). #4117 already merged (mirror-failure docs). Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours skip). ops:collect 0. main@a0ada327b. Drafts waiting: #4118 dead-code cleanup, #4119 swing brief v4 — no peer review until undrafted."
     }
   ],
   "open_prs": [
@@ -481,10 +453,18 @@
     }
   ],
   "pr_activity": {
+    "pr-4119": {
+      "last_event": "sweep",
+      "last_head": "358f0be8557a6f7fafba4b58e9d920e0cc23ce29",
+      "last_feedback_at": "2026-09-06T04:31:22.178Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
     "pr-4118": {
       "last_event": "sweep",
       "last_head": "b54bbb4a1917641ebaf92f513d0e63b7264522db",
-      "last_feedback_at": "2026-09-06T04:30:23.456Z",
+      "last_feedback_at": "2026-09-06T04:31:24.722Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
