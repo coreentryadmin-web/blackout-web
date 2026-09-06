@@ -407,9 +407,15 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   if (play.direction === "LONG" && ema === "down") reasons.push("bear EMA stack on chart");
   if (play.direction === "SHORT" && ema === "up") reasons.push("bull EMA stack on chart");
 
-  const posture = vec?.regime?.posture ?? eco?.gex_positioning?.gamma_posture ?? null;
-  if (play.direction === "LONG" && posture === "long") reasons.push("dealer long-gamma pins rallies");
-  if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
+  const gex = eco?.gex_positioning;
+  const vecPosture = vec?.regime?.posture;
+  const posture = vecPosture ?? gex?.gamma_posture ?? null;
+  const postureFromGex = !vecPosture && gex?.gamma_posture;
+  const skipGexPosture = postureFromGex && gexMatrixStale(gex, Date.now());
+  if (!skipGexPosture) {
+    if (play.direction === "LONG" && posture === "long") reasons.push("dealer long-gamma pins rallies");
+    if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
+  }
 
   const faded = play.thesisHealth?.pillars?.find((p) => p.status === "lost" || p.status === "faded");
   if (faded && (!play.thesisBreak?.level || play.thesisBreak.level === "intact")) {

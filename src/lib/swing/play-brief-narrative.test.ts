@@ -287,6 +287,26 @@ test("counterThesisLine: stale HELIX flow must not steelman call-led / put-led",
   assert.equal(line, null, "stale HELIX must not appear in counter-thesis");
 });
 
+test("counterThesisLine: stale GEX-only posture must not steelman dealer gamma", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          gamma_posture: "long",
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale GEX posture must not appear in counter-thesis");
+});
+
 test("counterThesisLine: Vector bearish bias steelmans bear case for LONG swing", () => {
   const line = counterThesisLine(
     ctx({
