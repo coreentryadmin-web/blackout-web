@@ -53,8 +53,11 @@ import { createAuditClerkUser, deleteAuditClerkUser } from "./clerk-audit-user.m
 /** Local part every per-run audit temp address starts with (`claude-audit-temp+<runTag>@…`). */
 export const AUDIT_TEMP_EMAIL_PREFIX = "claude-audit-temp+";
 
+/** Default age gate — must exceed the longest harness (~15 min). Long stress runs override via env. */
+export const DEFAULT_STALE_USER_MS = 30 * 60_000;
+
 /** A temp user younger than this may still belong to a LIVE run — never sweep it. */
-export const STALE_USER_MS = Number(process.env.AUDIT_STALE_USER_MS) || 30 * 60_000;
+export const STALE_USER_MS = Number(process.env.AUDIT_STALE_USER_MS) || DEFAULT_STALE_USER_MS;
 
 /**
  * Pick the leaked audit temp users that are safe to delete.
