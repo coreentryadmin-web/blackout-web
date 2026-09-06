@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "5507ed49-3473-4b65-bc53-2dd603824591",
-  "last_seen": "2026-09-06T08:37:04.013Z",
-  "last_productive_action": "handoff",
-  "current_task": "BO-P1-0100",
-  "current_phase": "PEER_REVIEW",
-  "branch": "cursor/autopilot-pr-event-20260906-cycle7",
-  "pr": 4173,
+  "run_id": "662e9d9b-4b78-4227-84ad-f1e11b025c66",
+  "last_seen": "2026-09-06T08:48:52.176Z",
+  "last_productive_action": "heartbeat",
+  "current_task": "BO-P1-0101",
+  "current_phase": "HANDOFF",
+  "branch": null,
+  "pr": null,
   "healthy": true
 }
