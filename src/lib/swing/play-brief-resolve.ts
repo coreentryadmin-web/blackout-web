@@ -7,10 +7,14 @@ import {
   fetchOpenSwingPositions,
   fetchLatestSwingSnapshotEvents,
   fetchSwingPositionsRange,
-  fetchSwingPositionChain,
   type SwingPositionRow,
 } from "@/lib/db";
-import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
+import {
+  attachThesisExplanation,
+  getSwingServingLane,
+  discoverSwingFromPersisted,
+  readSwingServingSnapshot,
+} from "@/lib/swing/serving-lane";
 import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
@@ -24,7 +28,7 @@ import {
   type HorizonDeckSource,
 } from "@/features/nighthawk/command-deck/adapters";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { closedDeckSourcesFromChains } from "@/lib/swing/closed-plays";
+import { closedDeckSourceFromRow } from "@/lib/swing/closed-plays";
 import { rowsForSwingSection } from "@/features/nighthawk/command-deck/swing-section-filter";
 import { livePlayFromSwingPosition } from "@/lib/swing/live-plays";
 import {
@@ -122,9 +126,9 @@ async function loadClosedPlay(ticker: string, positionId: number | null): Promis
       ? graded.find((r) => r.id === positionId || r.root_position_id === positionId)
       : graded.sort((a, b) => String(b.graded_at).localeCompare(String(a.graded_at)))[0];
   if (!target) return null;
-  const chain = await fetchSwingPositionChain(target.root_position_id ?? target.id).catch(() => []);
-  const closed = closedDeckSourcesFromChains([chain]);
-  const src = closed.find((c) => c.ticker.toUpperCase() === ticker);
+  // Per-leg brief: use this position's own exit P&L — closedDeckSourcesFromChains applies chain-composite
+  // override for the CLOSED deck list view (Q26), which would mis-attribute another leg's outcome here.
+  const src = closedDeckSourceFromRow(target);
   return src ? terminalPlayFromClosedSwing(src) : null;
 }
 
@@ -201,8 +205,14 @@ async function loadOpenTerminalPlay(
   const snap = await readSwingServingSnapshot().catch(() => null);
   const spot = snap?.spotsByTicker?.[ticker.toUpperCase()] ?? null;
   const manageEvents = await fetchLatestSwingSnapshotEvents([row.id]).catch(() => new Map());
-  const lanePlay = livePlayFromSwingPosition(row, spot, manageEvents.get(row.id) ?? null);
+  let lanePlay = livePlayFromSwingPosition(row, spot, manageEvents.get(row.id) ?? null);
   if (!lanePlay) return null;
+
+  const discovery = await discoverSwingFromPersisted().catch(() => null);
+  const dossiers = discovery?.dossiers ?? [];
+  const dossier = dossiers.find((d) => d.ticker.toUpperCase() === ticker.toUpperCase());
+  const reads = discovery?.readsByTicker?.get(ticker.toUpperCase());
+  lanePlay = attachThesisExplanation(lanePlay, dossier, reads);
 
   return terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay, row.id));
 }

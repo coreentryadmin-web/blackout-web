@@ -532,7 +532,8 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   const vec = vectorOf(ctx);
   const warnings: string[] = [];
 
-  if (play.markIsSync === false) warnings.push("mark not synced to live tape");
+  // markIsSync === true means no markAsOf timestamp (sync quote without freshness) — same polarity as dataFreshnessSection.
+  if (play.markIsSync === true) warnings.push("mark not synced to live tape");
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     warnings.push(`Vector **${Math.round(vec.dataAgeMs / 1000)}s** stale`);
   }

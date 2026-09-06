@@ -58,6 +58,13 @@ export type TickerFundamentalsBundle = {
 
 type ShortVolumeRow = { date: string; short_volume: number; total_volume: number; short_volume_ratio: number };
 
+/** Polygon short_volume_ratio is documented 0–1 but sometimes arrives as 0–100; normalize to fraction. */
+export function normalizeShortVolumeRatio(raw: number): number | null {
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const fraction = raw > 1 ? raw / 100 : raw;
+  return fraction > 1 ? null : fraction;
+}
+
 /** Pure: pick the most-recent short-volume row's ratio + date (freshest by ISO date, not trusting sort). */
 export function summarizeShortVolume(
   rows: ShortVolumeRow[]
@@ -68,7 +75,7 @@ export function summarizeShortVolume(
     if (!best || r.date > best.date) best = r;
   }
   if (!best) return { short_volume_ratio: null, short_volume_date: null };
-  const ratio = Number.isFinite(best.short_volume_ratio) && best.short_volume_ratio > 0 ? best.short_volume_ratio : null;
+  const ratio = normalizeShortVolumeRatio(best.short_volume_ratio);
   return { short_volume_ratio: ratio, short_volume_date: best.date || null };
 }
 

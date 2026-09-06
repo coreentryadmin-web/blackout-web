@@ -96,6 +96,12 @@ test("livePlayFromSwingPosition: OPEN → MANAGING observables; TRIM → TAKE_PA
   assert.equal(trim.manageAction, "TAKE_PARTIAL");
 });
 
+test("livePlayFromSwingPosition: TRIM + HOLD snapshot clears stale TAKE_PARTIAL fallback", () => {
+  const trim = livePlayFromSwingPosition(row({ status: "TRIM" }), 178, { action: "HOLD", rung: "hold" })!;
+  assert.equal(trim.liveStatus, "TRIM");
+  assert.equal(trim.manageAction, undefined);
+});
+
 test("livePlayFromSwingPosition: structural break stamps EXIT + thesis break", () => {
   const play = livePlayFromSwingPosition(row(), 160)!; // below 165 invalidation
   assert.equal(play.manageAction, "EXIT");

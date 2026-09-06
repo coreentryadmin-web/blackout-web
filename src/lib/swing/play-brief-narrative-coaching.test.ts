@@ -6,6 +6,7 @@ import {
   catalystCoaching,
   closedCoaching,
   crossDeskCoaching,
+  dataHonestyCoaching,
   execSlippageCoaching,
   manageLifecycleCoaching,
   thesisBreakCoaching,
@@ -228,6 +229,14 @@ test("vexCoaching: narrates vanna flip", () => {
   );
   assert.match(line!, /VEX lens/i);
   assert.match(line!, /diverge/i);
+});
+
+test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf does not", () => {
+  const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true }));
+  assert.match(stale!, /mark not synced to live tape/i);
+
+  const fresh = dataHonestyCoaching(ctx(), play({ markIsSync: false, markAsOf: "2026-09-04T21:45:18.731Z" }));
+  assert.equal(fresh, null);
 });
 
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {

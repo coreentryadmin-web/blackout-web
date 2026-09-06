@@ -172,6 +172,10 @@ export function manageObservablesFromEvent(
   const action = manageEvent.action;
   if (action === "EXIT" || action === "STOP_OUT" || action === "TAKE_PARTIAL" || action === "EXIT_RUNNER") {
     manageAction = action;
+  } else if (action === "HOLD") {
+    // A TRIM row seeds manageAction from status ("TAKE_PARTIAL") before this runs; an honest HOLD
+    // snapshot must clear that stale fallback instead of leaving a phantom partial recommendation.
+    manageAction = undefined;
   }
 
   const rung = manageEvent.rung as SwingManageRung | undefined;
