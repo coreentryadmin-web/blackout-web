@@ -11,6 +11,7 @@ import {
   IS_STAGING,
   MUTATION_METHODS,
   PUBLIC_TELEMETRY_PATHS,
+  hasBearerToken,
   withStagingNoEdgeCache,
   withNoEdgeCache,
 } from "@/middleware-shared";
@@ -152,12 +153,10 @@ export default clerkMiddleware(
       !isPublicTelemetryRoute(req) &&
       !isPublicMutationRoute(req)
     ) {
-      const bearer = req.headers.get("authorization") ?? "";
-      const hasBearerToken = bearer.startsWith("Bearer ") && bearer.length > 27;
       const hasClerkCookie =
         req.cookies.has("__session") || req.cookies.has("__client_uat");
 
-      if (!hasBearerToken && !hasClerkCookie) {
+      if (!hasBearerToken(req) && !hasClerkCookie) {
         return withStagingNoEdgeCache(
           NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         );

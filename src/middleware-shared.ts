@@ -13,8 +13,6 @@ export const PROTECTED_PREFIXES = [
   "/account",
 ];
 
-export const WEBHOOK_PREFIXES = ["/api/webhook/", "/api/webhooks/"];
-
 export const PUBLIC_TELEMETRY_PATHS = new Set([
   "/api/telemetry/client-error",
   "/api/telemetry/auth-failure",
@@ -41,14 +39,6 @@ export function withNoEdgeCache(res: NextResponse): NextResponse {
   return res;
 }
 
-export function isProtectedPath(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
-
-export function isWebhookPath(pathname: string): boolean {
-  return WEBHOOK_PREFIXES.some((p) => pathname.startsWith(p));
-}
-
 export function isAuthExemptPath(_pathname: string): boolean {
   // The Cognito OAuth callback/login/logout endpoints were the only auth-exempt paths; they were
   // removed when Cognito was decommissioned (production auth is Clerk-only). Kept as a stable
@@ -60,21 +50,3 @@ export function hasBearerToken(req: NextRequest): boolean {
   const bearer = req.headers.get("authorization") ?? "";
   return bearer.startsWith("Bearer ") && bearer.length > 27;
 }
-
-export const middlewareConfig = {
-  matcher: [
-    {
-      source:
-        "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-      missing: [{ type: "header", key: "upgrade", value: "websocket" }],
-    },
-    {
-      source: "/(api|trpc)(.*)",
-      missing: [{ type: "header", key: "upgrade", value: "websocket" }],
-    },
-    {
-      source: "/__clerk/(.*)",
-      missing: [{ type: "header", key: "upgrade", value: "websocket" }],
-    },
-  ],
-};
