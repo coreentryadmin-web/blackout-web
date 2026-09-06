@@ -226,7 +226,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
     });
   }
   const vecSpot = vectorStale ? undefined : vec?.spot;
-  const spot = vecSpot ?? gex?.spot;
+  const spot = vecSpot ?? (gexStale ? undefined : gex?.spot);
   if (spot != null) {
     levels.push({
       label: "spot",

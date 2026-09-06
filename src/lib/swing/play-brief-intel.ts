@@ -193,7 +193,11 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const gex = eco?.gex_positioning;
   const readMs = Date.now();
   const vectorStaleForLevels = vectorSnapshotStale(vec, readMs);
-  const spot = (vectorStaleForLevels ? undefined : vec?.spot) ?? gex?.spot ?? null;
+  const gexStaleForLevels = gexMatrixStale(gex, readMs);
+  const spot =
+    (vectorStaleForLevels ? undefined : vec?.spot) ??
+    (gexStaleForLevels ? undefined : gex?.spot) ??
+    null;
   const lines: string[] = [];
 
   const vecCallWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
@@ -202,7 +206,6 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const callWall = vecCallWall ?? gex?.call_wall ?? null;
   const putWall = vecPutWall ?? gex?.put_wall ?? null;
   const flip = vecFlip ?? gex?.flip ?? null;
-  const gexStaleForLevels = gexMatrixStale(gex, readMs);
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStaleForLevels;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStaleForLevels;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStaleForLevels;
@@ -366,8 +369,12 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   const vec = vectorOf(ctx);
   const readMs = Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs);
+  const gexForSpot = ctx.ecosystem?.gex_positioning;
+  const gexStaleForSpot = gexMatrixStale(gexForSpot, readMs);
   const spot =
-    (vectorStale ? undefined : vec?.spot) ?? ctx.ecosystem?.gex_positioning?.spot ?? null;
+    (vectorStale ? undefined : vec?.spot) ??
+    (gexStaleForSpot ? undefined : gexForSpot?.spot) ??
+    null;
   const lines: string[] = [];
 
   if (bucket === "watch") {

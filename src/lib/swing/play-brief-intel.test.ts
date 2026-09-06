@@ -850,6 +850,35 @@ test("watchForSection: stale Vector put wall omitted even when GEX matrix is liv
   assert.doesNotMatch(section.body, /put wall \*\*98\.00\*\*/);
 });
 
+test("watchForSection: stale Vector + stale GEX must not resolve spot from GEX fallback (Largo C2)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG" }),
+      asOf: "2026-09-06 10:00 ET",
+      sessionDate: "2026-09-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          flip: 99,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as EcosystemContext,
+      vector: {
+        dataAgeMs: 200_000,
+        freshness: "stale",
+        gammaFlip: 99,
+      } as unknown as VectorFullState,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Lose gamma flip/i);
+});
+
 test("watchForSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
   const section = watchForSection(
     {
@@ -931,6 +960,32 @@ test("chartLevelsSection: live Vector put wall still shown when GEX matrix is st
   assert.match(section!.body, /\*\*Put wall \(GEX\):\*\* 94\.00/);
   assert.doesNotMatch(section!.body, /Call wall/);
   assert.doesNotMatch(section!.body, /Gamma flip/);
+});
+
+test("chartLevelsSection: live Vector spot wins over stale GEX spot for wall distance (Largo C2)", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 102,
+      gexWalls: { putWalls: [{ strike: 94 }], callWalls: [] },
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /-7\.8%/);
+  assert.doesNotMatch(section!.body, /-6\.0%/);
 });
 
 test("chartLevelsSection: stale GEX king strike omitted even when Vector desk is present", () => {
