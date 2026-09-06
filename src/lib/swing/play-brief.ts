@@ -357,7 +357,9 @@ export function composeSwingPlayBrief(
   const headline = playContractHeadline(play);
   const grade = playGradeLabel(play);
   const quality = playQualityPct(play);
-  const strength = thesisStrengthPct(play);
+  const rawStrength = thesisStrengthPct(play);
+  const strength =
+    play.thesisHealth && thesisHealthUncalibrated(play.thesisHealth) ? null : rawStrength;
 
   const verdictLines: string[] = [];
   const action = swingActionDisplay(play);
