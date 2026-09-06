@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T09:40:35.245Z",
+  "updated_at": "2026-09-06T09:42:09.895Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -44,7 +44,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6a4ac9622df65eaae3571f87dd8f8e20e14fb711",
+    "last_main_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T09:39:38Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
@@ -475,9 +475,48 @@
       "agent": "cursor",
       "run_id": "e112e90f-a5e1-43b7-9095-2236b0466022",
       "summary": "PR-event cycle: peer-reviewed #4185 (WAIT/draft, tests 6/6 local), deduped #4182 thesis-health overlap (pushed b5bffa355), validate:deploy GREEN on main@6a4ac9622, ops:collect 0. Open: #4185 await undraft+verify, #4182 await Claude review, #4180 cursor docs PR, #4183/#4184 handoff drafts."
+    },
+    {
+      "at": "2026-09-06T09:42:01.509Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T09:42:09.895Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T09:42:09.895Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a5a04e2c-a7fb-47ac-a8b4-ef43009de096",
+      "summary": "Cycle complete. main@091c5eef6 (#4180+#4182 merged). #4185 peer-reviewed (WAIT→pending verify GREEN, head a34c6b52, mergeable). #4186→Claude review. Handoff PR #4190. ops:collect 0, validate:deploy GREEN."
     }
   ],
   "open_prs": [
+    {
+      "number": 4190,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing merge wave + #4185 review",
+      "branch": "cursor/blackout-handoff-pr-event-0906b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:42:01Z"
+    },
+    {
+      "number": 4189,
+      "title": "fix(swing): keep GEX/flow intel on closed Ask Largo briefs (CTO audit #2)",
+      "branch": "fix/swing-closed-brief-intel-collapse-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:40:40Z"
+    },
     {
       "number": 4188,
       "title": "chore(blackout-agent): cursor peer-review cycle handoff — swing PRs approved",
@@ -497,26 +536,6 @@
       "draft": true,
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-06T09:39:29Z"
-    },
-    {
-      "number": 4186,
-      "title": "fix(swing): keep GEX/wall intel on closed play-briefs (audit #2)",
-      "branch": "fix/swing-closed-intel-collapse-2026-09-06",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:39:55Z"
-    },
-    {
-      "number": 4185,
-      "title": "fix(swing): wire live-position thesis-health explanation into Ask Largo",
-      "branch": "fix/swing-brief-thesis-health-live-wiring",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:40:31Z"
     }
   ]
 }
