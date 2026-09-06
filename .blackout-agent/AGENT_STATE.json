@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:22:36.783Z",
+  "updated_at": "2026-09-06T01:22:49.606Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T01:19:10.448Z",
-      "lease_until": "2026-09-06T02:49:10.448Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-06T01:09:38.620Z",
+      "lease_until": "2026-09-06T02:46:54.493Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "12d2cb2a-3723-48c0-91df-5489acb95fce",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T01:19:31.248Z",
-      "lease_until": "2026-09-06T02:49:31.248Z",
+      "claimed_at": "2026-09-06T01:16:53.380Z",
+      "lease_until": "2026-09-06T02:46:54.493Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "12d2cb2a-3723-48c0-91df-5489acb95fce"
     }
   },
   "reviews": {
@@ -302,6 +302,19 @@
       "agent": "cursor",
       "run_id": "5f520482-f831-4a6e-8ae5-c4e8db69200f",
       "summary": "Post-#4072 merge cycle. validate:deploy GREEN, platform-integrity 14/14, seo 22/22, ops:collect 0. main@2c2301275 (Ask Largo footer clock fix). ECR 34003550757 pending (queued behind 34001859806 ECS roll). No Claude/fix PRs for peer review. #4071 verify GREEN — marking ready for Claude."
+    },
+    {
+      "at": "2026-09-06T01:22:49.606Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T01:22:49.606Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "aeb9bb25-4353-4be2-bc62-0a17863e7a24",
+      "summary": "PR-event cycle complete. #4072 merged main@2c2301275. Lifecycle GREEN. ops:collect 0. ECR deploy pending. #4071 awaiting Claude review."
     }
   ],
   "open_prs": [],
