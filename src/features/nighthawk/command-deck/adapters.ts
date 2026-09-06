@@ -22,7 +22,7 @@ import {
   type SwingEntryAction,
 } from "@/lib/swing/entry-enterability";
 import type { SwingSubLane } from "@/lib/swing/taxonomy";
-import { computeSwingThesisHealth } from "@/lib/swing/thesis-health";
+import { computeSwingThesisHealth, thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
 import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 import type { SwingManageAction } from "@/lib/swing/manage";
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
@@ -195,8 +195,13 @@ function swingManagementVerdict(
   const mgmtBase = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
   const working = play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
   const note = play.recNote ?? reasonFallback ?? mgmtBase.recNote;
+  // An uncalibrated swing health (setup/entry/signal inputs not wired for committed
+  // positions — same gap the Ask Largo brief withholds on) still carries a numeric
+  // `health` computed from generic pillar defaults. Folding that into the recNote here
+  // leaked the withheld % right back into Management/Verdict — skip the overlay entirely
+  // when uncalibrated so recNote/recommendation stay grounded in price/manage-action only.
   const withThesis =
-    play.thesisHealth != null
+    play.thesisHealth != null && !thesisHealthUncalibrated(play.thesisHealth)
       ? thesisManagementOverlay(mgmtBase.recommendation, note, play.thesisHealth, play.pnlPct ?? null)
       : { recommendation: mgmtBase.recommendation, recNote: note };
   const fromAction = working ? recommendationFromManageAction(play.manageAction) : null;
