@@ -1,18 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T01:47:18.285Z
-**Run:** db922c17-f357-41e3-b428-f99513a3028f
+**At:** 2026-09-06T01:58:50.638Z
+**Run:** e540cc5c-12f2-4398-a6fb-d902f11e1889
 
 ## Summary
 
-PR-event cycle complete. Lifecycle GREEN. ops:collect 0. main@eb3324055. Peer review: #4075 APPROVED (verify GREEN, 14/14 tests local). #4073 cursor-authored draft WAIT for Claude. #4071 closed. ECR deploy completed. GitHub PAT rate-limited for PR comments.
+PR-event cycle complete. Merged #4075 (vector undated expiry), #4076 (swing Ask Largo v4), #4077 (HELIX flow diff). validate:deploy GREEN. ops:collect 0. main@4c4bf5a8e. Open: #4078 handoff only — awaiting Claude review.
 
 ## Deploy
 
-- main: `8df5d84fecea2e2a3026308b97411cdd2d43f493`
+- main: `4c4bf5a8ee732bc823165146f1e78641e4997284`
 - status: 
 
 ## Open PRs
 
-- #4076 [cursor] feat(swing): Ask Largo v4 — Meridian catalysts, lane rank, action CTAs
-- #4074 [cursor] chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN @764e7f97f
+- #4079 [cursor] chore(blackout-agent): cursor cycle handoff — #4075 merged @8df5d84fe
