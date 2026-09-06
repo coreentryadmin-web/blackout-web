@@ -180,21 +180,30 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const gex = eco?.gex_positioning;
   const spot = vec?.spot ?? gex?.spot ?? null;
   const lines: string[] = [];
+  const readMs = Date.now();
 
-  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null;
-  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null;
-  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
+  const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecFlip = vec?.gammaFlip;
+  const callWall = vecCallWall ?? gex?.call_wall ?? null;
+  const putWall = vecPutWall ?? gex?.put_wall ?? null;
+  const flip = vecFlip ?? gex?.flip ?? null;
+  const gexStaleForLevels = gexMatrixStale(gex, readMs);
+  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStaleForLevels;
+  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStaleForLevels;
+  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStaleForLevels;
+  const kingFromStaleGex = gex?.gex_king_strike != null && gexStaleForLevels && vec == null;
 
-  if (callWall != null) {
+  if (callWall != null && !callWallFromStaleGex) {
     lines.push(`**Call wall (GEX):** ${callWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, callWall)}` : ""}`);
   }
-  if (putWall != null) {
+  if (putWall != null && !putWallFromStaleGex) {
     lines.push(`**Put wall (GEX):** ${putWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, putWall)}` : ""}`);
   }
-  if (flip != null) {
+  if (flip != null && !flipFromStaleGex) {
     lines.push(`**Gamma flip:** ${flip.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, flip)}` : ""}`);
   }
-  if (gex?.gex_king_strike != null) {
+  if (gex?.gex_king_strike != null && !kingFromStaleGex) {
     lines.push(`GEX king strike: **${gex.gex_king_strike.toFixed(2)}**`);
   }
   if (vec?.maxPain != null) {
