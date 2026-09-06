@@ -18,6 +18,7 @@ import { markStreamKind } from "./deck-session-ui";
 import { legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { useFlash, useSecondTick } from "./use-deck-live";
 import { isZeroDtePremiumTerminal, swingStatusLine } from "./terminal-display";
+import { etClock as formatEtClock } from "@/lib/et-clock";
 import type { ConvictionRankContext } from "./deck-command-center";
 import {
   ManagementActionCard,
@@ -56,8 +57,6 @@ function formatScorecardHint(s: { avg: number; n: number; scope?: "conviction_bu
   const bucket = s.scope === "conviction_bucket" ? " · tier bucket" : "";
   return `${signPct(s.avg)} avg · n=${n}${bucket}`;
 }
-
-import { etClock as formatEtClock } from "@/lib/et-clock";
 
 /** ET wall-clock (HH:MM) for the why-now ribbon and deck row chips. Delegates to `@/lib/et-clock`
  *  so Largo C1 stamps (`YYYY-MM-DD HH:mm ET`) and ISO instants share one parser (#4152). */
