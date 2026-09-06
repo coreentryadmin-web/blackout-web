@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T17:08:08.408Z",
+  "updated_at": "2026-09-06T17:09:42.371Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T16:57:40.370Z",
-      "lease_until": "2026-09-06T18:27:40.370Z",
+      "lease_until": "2026-09-06T18:38:44.305Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "2ee6e81f-4c17-48eb-af9e-6cd9996d4991"
     }
   },
   "reviews": {
@@ -60,7 +60,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8d943acade2fe28492d89aaafe185afe4fccf804",
+    "last_main_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T17:06:45Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34047570898",
@@ -765,48 +765,71 @@
       "agent": "cursor",
       "run_id": "b961377a-e6d9-41bd-a276-77c2c85840e8",
       "summary": "Peer-reviewed #4335 (uncalibrated thesis-health leak fix) — ✅ APPROVED, 141/141 tests pass locally. Posted merge approval; verify CI GREEN but gh merge blocked by PAT rate limit (retry pending). validate:deploy GREEN; ops:collect 0. Off-hours — RTH skipped."
+    },
+    {
+      "at": "2026-09-06T17:08:18.167Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:08:30.806Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:08:44.305Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:08:45.683Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:08:46.958Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:09:42.370Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T17:09:42.371Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0aaf7a08-2c8a-4ac7-830f-04a712c0d028",
+      "summary": "Autopilot cycle: peer-reviewed #4335 (thesis-health uncalibrated leak) — merged to main 3327088e7. validate:deploy GREEN; ops:collect 0; lifecycle/hourly GREEN (off-hours). No agent code PRs awaiting review. Handoff branch pushed cursor/handoff-20260906-1709 (PR pending — gh rate limit). Queue clear — standing monitors only."
     }
   ],
   "open_prs": [
     {
-      "number": 4338,
-      "title": "chore(blackout-agent): cursor handoff — peer review #4326-4335",
-      "branch": "cursor/handoff-peer-review-20260906T1703",
+      "number": 4340,
+      "title": "chore(blackout-agent): cursor handoff — merged #4335, deploy GREEN",
+      "branch": "cursor/handoff-20260906-1710",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:07:39Z"
+      "updated_at": "2026-09-06T17:09:27Z"
     },
     {
-      "number": 4337,
-      "title": "chore(blackout-agent): cursor handoff — #4326/#4329/#4330 merged, deploy GREEN",
-      "branch": "cursor/autopilot-work-loop-faa2",
+      "number": 4339,
+      "title": "chore(blackout-agent): cursor handoff — merged #4333-4335, closed #4331",
+      "branch": "cursor/handoff-20260906T1709",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:07:16Z"
-    },
-    {
-      "number": 4336,
-      "title": "chore(blackout-agent): cursor handoff — #4335 approved, deploy GREEN",
-      "branch": "cursor/handoff-20260906-1655",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T16:56:03Z"
-    },
-    {
-      "number": 4332,
-      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
-      "branch": "cursor/handoff-20260906-1638",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T16:42:27Z"
+      "updated_at": "2026-09-06T17:08:59Z"
     }
   ],
   "pr_activity": {
