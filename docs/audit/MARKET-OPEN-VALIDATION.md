@@ -143,6 +143,16 @@ manager read), not repeated under Hold plan.
 
 ---
 
+### 0a-1ab. Swing Ask Largo dark pool level provenance mislabeled HELIX — fix/swing-brief-darkpool-provenance (pending)
+
+**What was broken:** `levelsFromContext()` stamped Vector-sourced dark pool strikes (`ctx.vector.darkPoolLevels` from `getVectorDarkPoolLevels`) with `envelope.levels[].provenance.source: "HELIX"` while confluence/max-pain rows from the same Vector snapshot correctly read `"Vector"` — Largo C8 provenance violation that corrupts cross-product joins.
+
+**Fix:** Change dark pool level `provenance.source` from `"HELIX"` → `"Vector"`. Regression test in `play-brief.test.ts`.
+
+**Check at the open:** Swings desk → select a play with Vector dark pool levels → Ask Largo level table / SourceStamp for dark pool row must show **Vector**, not HELIX.
+
+---
+
 ### 0a-1z. A total ecosystem/Vector fetch failure was indistinguishable from legitimately-empty data — never reached the structured unavailableSources channel — fix/swing-ecosystem-vector-total-fetch-failure-absence (pending)
 
 **What was broken:** `fetchEcosystemContext`/`fetchVectorFullState` were wrapped in
