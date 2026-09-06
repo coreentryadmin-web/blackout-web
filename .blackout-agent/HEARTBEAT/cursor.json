@@ -1,10 +1,10 @@
 {
   "agent": "cursor",
-  "run_id": "a4d0d826-12fd-4f25-a858-605919a60ad3",
-  "last_seen": "2026-09-06T22:25:01.895Z",
-  "last_productive_action": "session_start",
-  "current_task": null,
-  "current_phase": "DISCOVERY",
+  "run_id": "4dc07b8c-e6bf-4eb5-b628-b3edf2131c12",
+  "last_seen": "2026-09-06T23:10:59.838Z",
+  "last_productive_action": "heartbeat",
+  "current_task": "BO-P1-0100: consolidate Largo C2 duplicate PRs",
+  "current_phase": "REVIEWING",
   "branch": null,
   "pr": null,
   "healthy": true
