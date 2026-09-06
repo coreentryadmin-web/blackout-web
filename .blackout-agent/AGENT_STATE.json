@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T05:02:17.958Z",
+  "updated_at": "2026-09-06T07:12:23.723Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T06:45:31.491Z",
+      "lease_until": "2026-09-06T08:15:31.491Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
+    },
+    "BO-P1-0105": {
+      "task_id": "BO-P1-0105",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T07:12:23.722Z",
+      "lease_until": "2026-09-06T08:42:23.722Z",
+      "phase": "EXECUTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +43,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T07:12:23.723Z",
+      "current_task": "BO-P1-0105"
     }
   },
   "deploy": {
-    "last_main_sha": "1a98c378bc6799c17ecdece9faea4a81fbdf0a5b",
+    "last_main_sha": "55504f2a40640f5c127a334566d82e4ae39ea29d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T07:02:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34018078317",
+    "last_deploy_sha": "55504f2a40640f5c127a334566d82e4ae39ea29d"
   },
   "events": [
     {
@@ -426,7 +439,42 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:57:42.870Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T07:12:15.468Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T07:12:18.955Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T07:12:23.723Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0105",
+      "owner": "cursor"
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4154,
+      "title": "fix(audit): align Ask Largo harness with swing deck brief dedupe (#4150)",
+      "branch": "fix/ask-largo-validate-deck-dedupe",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T07:10:15Z"
+    }
+  ]
 }
