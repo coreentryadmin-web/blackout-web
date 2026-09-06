@@ -21,7 +21,7 @@ Coaching now warns when `markIsSync === true` (no `markAsOf`), matching `dataFre
 
 ## Ask Largo live brief missing thesis factors (#8/#9)
 
-`play-brief-resolve.ts` now calls exported `attachThesisExplanation` (same as main board serving lane) after `livePlayFromSwingPosition`.
+**Deferred to PR #4185** (`fix/swing-brief-thesis-health-live-wiring`) — that PR carries the dedicated regression tests, `dossiersByTicker` wiring, and market-open validation entry. This batch keeps the four independent fixes only to avoid a cross-PR duplicate merge.
 
 ## Short volume ratio displayed as 2500%+ (#12)
 

@@ -145,7 +145,7 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
  * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) leaves the row
  * untouched and the honest placeholder stands — a committed play never gets an invented explanation.
  */
-export function attachThesisExplanation(
+function attachThesisExplanation(
   play: HorizonPlay,
   dossier: SwingDossier | undefined,
   reads?: SwingServingReads,

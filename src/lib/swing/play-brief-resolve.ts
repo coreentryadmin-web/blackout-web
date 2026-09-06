@@ -9,12 +9,7 @@ import {
   fetchSwingPositionsRange,
   type SwingPositionRow,
 } from "@/lib/db";
-import {
-  attachThesisExplanation,
-  getSwingServingLane,
-  discoverSwingFromPersisted,
-  readSwingServingSnapshot,
-} from "@/lib/swing/serving-lane";
+import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
@@ -205,14 +200,8 @@ async function loadOpenTerminalPlay(
   const snap = await readSwingServingSnapshot().catch(() => null);
   const spot = snap?.spotsByTicker?.[ticker.toUpperCase()] ?? null;
   const manageEvents = await fetchLatestSwingSnapshotEvents([row.id]).catch(() => new Map());
-  let lanePlay = livePlayFromSwingPosition(row, spot, manageEvents.get(row.id) ?? null);
+  const lanePlay = livePlayFromSwingPosition(row, spot, manageEvents.get(row.id) ?? null);
   if (!lanePlay) return null;
-
-  const discovery = await discoverSwingFromPersisted().catch(() => null);
-  const dossiers = discovery?.dossiers ?? [];
-  const dossier = dossiers.find((d) => d.ticker.toUpperCase() === ticker.toUpperCase());
-  const reads = discovery?.readsByTicker?.get(ticker.toUpperCase());
-  lanePlay = attachThesisExplanation(lanePlay, dossier, reads);
 
   return terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay, row.id));
 }
