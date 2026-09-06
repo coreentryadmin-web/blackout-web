@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T22:25:02.181Z",
+  "updated_at": "2026-09-06T23:05:32.804Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T22:34:59.497Z",
+      "lease_until": "2026-09-07T00:04:59.497Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -52,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "200dd971d505fbefcde15b9a5b5cd45d5fbd8b78",
+    "last_main_sha": "09c257075ab8e0efe815092374d35c31dab12294",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T22:54:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34065316530",
+    "last_deploy_sha": "1914d985aac2c112cb1e1615f63a57570ca9c185"
   },
   "events": [
     {
@@ -806,9 +806,43 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T23:05:26.691Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:05:26.691Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "50b37ca2-d1cb-4c11-9948-8b974f183cf6",
+      "summary": "Peer review cycle: #4403 merged (layout meridian boot-script). #4401 closed (superseded). #4402 verify GREEN + marked ready — awaiting Claude peer review (Cursor cannot self-approve). ops:collect 0; validate:deploy GREEN."
+    },
+    {
+      "at": "2026-09-06T23:05:32.804Z",
+      "type": "pr_webhook",
+      "pr": 4402,
+      "event": "sweep",
+      "head": "b5c343a18f8259df57e4ddb56444b68e7dda8314",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4402,
+      "title": "fix(largo): gate stale Vector walls/desk in swing play-brief (Largo C2)",
+      "branch": "cursor/autopilot-state-recovery-loop-d3e6",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T23:05:19Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -840,6 +874,14 @@
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4402": {
+      "last_event": "sweep",
+      "last_head": "b5c343a18f8259df57e4ddb56444b68e7dda8314",
+      "last_feedback_at": "2026-09-06T23:05:32.804Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
       "comment_action": "created"
     }
   }
