@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:20:58.698Z",
+  "updated_at": "2026-09-06T16:33:22.230Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T16:27:18.412Z",
+      "lease_until": "2026-09-06T17:57:18.412Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a590024676191b528bb23feff899bb29d73da393",
+    "last_main_sha": "8dbb6143d81d26e008845e25685757d721f18ba8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T16:29:55Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045564907",
+    "last_deploy_sha": "8dbb6143d81d26e008845e25685757d721f18ba8"
   },
   "events": [
     {
@@ -709,9 +709,53 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:30:14.995Z",
+      "type": "pr_webhook",
+      "pr": 4322,
+      "event": "sweep",
+      "head": "9c2fb58eec0475e0c8bcc463de6944a78254f0b3",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T16:33:22.229Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T16:33:22.230Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ef3c428e-3145-4f18-b9cb-03ce619e0843",
+      "summary": "Cycle post-merge 818a4948→8dbb6143: peer-reviewed+merged #4319 (WATCH mark absence C3), #4320 (GEX evidence C7 + C1 date stamp). #4318 (thesis health %) already merged. Deploy in_progress for 8dbb6143. #4322 (dead ENGAGE_LIMITS constants) verify pending — review next. ops:collect 0."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4323,
+      "title": "chore(blackout-agent): cursor handoff — peer reviews #4317/#4322",
+      "branch": "cursor/autopilot-work-loop-5e9c",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:32:17Z"
+    },
+    {
+      "number": 4322,
+      "title": "chore(cleanup): remove dead legacy X-engagement limit constants",
+      "branch": "fix/dead-code-x-engage-legacy-limits",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:32:31Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -742,6 +786,14 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4322": {
+      "last_event": "sweep",
+      "last_head": "9c2fb58eec0475e0c8bcc463de6944a78254f0b3",
+      "last_feedback_at": "2026-09-06T16:30:14.995Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
