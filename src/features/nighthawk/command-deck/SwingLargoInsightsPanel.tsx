@@ -8,6 +8,7 @@ import { etClock } from "@/lib/et-clock";
 import type { TerminalPlay } from "./types";
 import { playContractHeadline } from "./play-card-lifecycle";
 import { useSwingPlayBrief } from "@/hooks/useSwingPlayBrief";
+import { envelopeForSwingDeckBrief } from "@/lib/swing/play-brief-deck-view";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { renderEnvelopeMarkdown } from "@/lib/bie/answer-envelope";
 import { managementActionDisplay } from "./terminal-display";
@@ -86,6 +87,10 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
   );
 
   const hasNarrative = envelope?.sections?.some((s) => s.title === "Trade manager read") ?? false;
+  const deckEnvelope = useMemo(
+    () => (envelope ? envelopeForSwingDeckBrief(envelope) : null),
+    [envelope],
+  );
 
   if (!play) {
     return (
@@ -147,12 +152,14 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
           </div>
         ) : error && !envelope ? (
           <p className="nh-deck-largo__error" role="alert">Brief unavailable — retrying.</p>
-        ) : envelope ? (
+        ) : deckEnvelope ? (
           <BieAnswer
-            envelope={envelope}
+            envelope={deckEnvelope}
             className="nh-deck-largo__bie"
             bodyClassName="nh-deck-largo__bie-body"
-            showAsOf={Boolean(asOf)}
+            showAsOf={false}
+            showBias={false}
+            showConfidence={false}
             onFollowup={onFollowup}
           />
         ) : (
