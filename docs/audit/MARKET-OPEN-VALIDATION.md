@@ -120,7 +120,6 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
-<<<<<<< HEAD
 ### 0a-1aa. Hold plan still repeated the thesis-health advisory sentence after #4261's recNote fix — fix/swing-brief-holdplan-thesis-advisory-dup (pending)
 
 **What was broken:** #4261 fixed `holdPlanSection` repeating `recNote`/rails/manage-engine content
@@ -154,9 +153,7 @@ manager read), not repeated under Hold plan.
 
 ---
 
-### 0a-1z. A total ecosystem/Vector fetch failure was indistinguishable from legitimately-empty data — never reached the structured unavailableSources channel — fix/swing-ecosystem-vector-total-fetch-failure-absence (pending)
-=======
-### 0a-1aa. HELIX put-only flow build missed by "what changed" diff — fix/swing-brief-helix-put-flow-diff (pending)
+### 0a-1ac. HELIX put-only flow build missed by "what changed" diff — fix/swing-brief-helix-put-flow-diff (pending)
 
 **What was broken:** `diffBriefSnapshots()` only entered the HELIX flow-shift branch when call premium moved >$50k. Put-building was nested inside that branch, so flat call + surging puts emitted zero diff lines on refresh.
 
@@ -166,7 +163,7 @@ manager read), not repeated under Hold plan.
 
 ---
 
->>>>>>> b1fec6923 (fix(swing): detect put-only HELIX flow build in brief diff)
+### 0a-1z. A total ecosystem/Vector fetch failure was indistinguishable from legitimately-empty data — never reached the structured unavailableSources channel — fix/swing-ecosystem-vector-total-fetch-failure-absence (pending)
 
 **What was broken:** `fetchEcosystemContext`/`fetchVectorFullState` were wrapped in
 `.catch(() => null)` in `play-brief-context.ts` with no signal captured — a total fetch failure
