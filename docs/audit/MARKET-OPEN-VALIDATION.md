@@ -120,6 +120,16 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1p. Swing serving-snapshot TTL (26h) doesn't survive the weekend — silently zeroed thesis-health enrichment for every live position — fix/swing-serving-snapshot-weekend-ttl (PR #4202, pending)
+
+**What was broken:** `SWING_SERVING_TTL_SEC` was `26h`, sized for the ordinary weekday scan cadence but `swing-discovery` is `weekdays_only` — so the Friday POST_CLOSE write expires Saturday evening and the persisted snapshot stays empty through Monday morning (~35h+/week). Both `getSwingServingLane` (main board) and `play-brief-resolve.ts`'s `loadOpenTerminalPlay` (Ask Largo, #4182) key their `attachThesisExplanation` factors/regime enrichment off this one snapshot, so an expired key silently reverted **every live committed position's** Ask Largo thesis-health panel to the generic `46% · Degraded`/`unread` defaults — confirmed live 2026-09-06 (Sunday): all 4 open positions (NRG:34, NN:32, CG:25, CRWD:19) byte-identical to the pre-#4182 audit snapshot, `scanAsOf: null` on `/horizons?view=swings`.
+
+**Fix:** `SWING_SERVING_TTL_SEC` raised `26h → 120h` (5 days), sized past the measured worst ordinary gap (Friday POST_CLOSE → Monday PRE_OPEN, ~58h) plus headroom for a Monday holiday (~82h). New regression test derives the worst-case gap from `SWING_SCAN_PHASES` itself so it can't silently drift again.
+
+**Check at the open (Monday 2026-09-07, a market holiday — so also check Tuesday):** `GET /api/market/nighthawk/horizons?view=swings` should show a non-null `scanAsOf`/`scanSessionDay` even first thing Monday/Tuesday morning before the day's own scan has run; `GET /api/market/swing/play-brief` for any live committed position should show a "Thesis health" regime pillar that is NOT the generic `unread`/`46% · Degraded` default if a matching discovery dossier exists from the prior week.
+
+---
+
 ### 0a-1o. Ask Largo swing thesis-health dead-wired to identical reading for every live position — docs/swing-brief-thesis-health-dead-wired (pending, follows the deep audit PR #4178)
 
 **What was broken:** Every live/committed swing position's Ask Largo play-brief rendered the byte-identical `46% · Degraded` thesis-health score regardless of real P&L (confirmed on all 4 currently-open positions: +98.0%, 0.0%, +33.7%, +24.6% all identical). `livePlayFromSwingPosition` never populates `factors`/`regime`, and the fix that already exists for the main board (`serving-lane.ts`'s `attachThesisExplanation`) was never wired into the Ask Largo play-brief resolver.
