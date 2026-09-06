@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:34:59.404Z",
+  "updated_at": "2026-09-06T16:50:16.313Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -46,9 +46,9 @@
   "deploy": {
     "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T16:50:06Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34046705756",
+    "last_deploy_sha": "13073fee4785426e1e11a8d87adf08e9587e4235"
   },
   "events": [
     {
@@ -711,31 +711,120 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T16:34:53.467Z",
+      "at": "2026-09-06T16:39:43.906Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 5
     },
     {
-      "at": "2026-09-06T16:34:57.815Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-06T16:39:43.907Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "43eab5d1-c755-403e-92f3-b0ef4ceb29d3",
+      "summary": "Opened #4328 handoff + fix PR for Largo C5 technicalsCoaching bias. Merged #4322 earlier. All standing checks GREEN. Awaiting Claude review on fix PR."
     },
     {
-      "at": "2026-09-06T16:34:58.594Z",
+      "at": "2026-09-06T16:39:52.950Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 6
     },
     {
-      "at": "2026-09-06T16:34:59.404Z",
+      "at": "2026-09-06T16:50:16.313Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-06T16:50:16.313Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7a2b7688-de68-4d07-975a-d2b8d9bd8aba",
+      "summary": "Cycle complete: merged #4322; opened #4330 Largo C5 technicalsCoaching fix (CI pending, Claude review required); #4328 handoff draft. All standing checks GREEN."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4335,
+      "title": "fix(swing): stop uncalibrated thesis-health % leaking back into Verdict/Management",
+      "branch": "fix/swing-thesis-health-uncalibrated-leak",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:49:44Z"
+    },
+    {
+      "number": 4334,
+      "title": "fix(spx): round floats at shared play/desk derivation for BIE/Largo parity",
+      "branch": "fix/spx-roundfloats-asymmetry",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:50:06Z"
+    },
+    {
+      "number": 4333,
+      "title": "fix(swing): measure short-interest evidence freshness for Largo C2",
+      "branch": "fix/swing-brief-si-freshness-c2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:43:34Z"
+    },
+    {
+      "number": 4332,
+      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
+      "branch": "cursor/handoff-20260906-1638",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:42:27Z"
+    },
+    {
+      "number": 4331,
+      "title": "fix(swing): withhold uncalibrated thesis % from Verdict and diff engine",
+      "branch": "fix/swing-brief-thesis-verdict-diff-withhold",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:49:44Z"
+    },
+    {
+      "number": 4330,
+      "title": "fix(swing): ground technicalsCoaching chart bias in evidence, not play direction (Largo C5)",
+      "branch": "fix/largo-technicals-coaching-bias",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:47:15Z"
+    },
+    {
+      "number": 4328,
+      "title": "chore(blackout-agent): cursor handoff — #4322 merged, all checks GREEN",
+      "branch": "cursor/autopilot-handoff-20260906T1635",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:38:44Z"
+    },
+    {
+      "number": 4327,
+      "title": "chore(blackout-agent): cursor handoff — peer review cycle #4318-4322",
+      "branch": "cursor/handoff-pr-event-4322",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:48:22Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
