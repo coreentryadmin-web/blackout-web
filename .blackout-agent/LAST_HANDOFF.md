@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T04:04:06.984Z
-**Run:** 10507065-c2db-48eb-8fb7-d87a49511c2e
+**At:** 2026-09-06T04:05:27.413Z
+**Run:** dbbaf393-89f9-413b-b2e8-07e2b91dedfb
 
 ## Summary
 
-Post-merge cycle @ fea8a366c. Peer-reviewed #4114 (MFE capture round-trip fix) — APPROVED, awaiting verify. validate:deploy GREEN. ops:collect 0. ECR deploy pending for prior push. GitHub API rate-limited for gh run polling.
+PR-event cycle: peer-reviewed #4114 (swing MFE capture round-trip) APPROVED — awaiting verify. validate:deploy/platform-integrity/api-auth GREEN. ops:collect 0. main@fea8a366c. Open: #4114 (Claude fix, approved), #4115 (this handoff).
 
 ## Deploy
 
@@ -14,5 +14,5 @@ Post-merge cycle @ fea8a366c. Peer-reviewed #4114 (MFE capture round-trip fix) �
 
 ## Open PRs
 
+- #4115 [cursor] chore(blackout-agent): cursor handoff — post-fea8a366c merge cycle
 - #4114 [agent] fix(swing): MFE capture rendered a nonsensical negative % on a round-trip loss
-- #4113 [cursor] chore(blackout-agent): cursor PR-event handoff — post-#4110 merge @884983752

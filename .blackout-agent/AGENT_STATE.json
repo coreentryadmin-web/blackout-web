@@ -1,18 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T04:04:08.657Z",
+  "updated_at": "2026-09-06T04:05:27.414Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T04:03:01.733Z",
-      "lease_until": "2026-09-06T05:34:07.021Z",
+      "claimed_at": "2026-09-06T04:01:21.422Z",
+      "lease_until": "2026-09-06T05:31:21.422Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "e39bccc2-2a37-490a-bc33-93ede600e4c3"
+      "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T04:04:44.851Z",
+      "lease_until": "2026-09-06T05:34:44.851Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null
     }
   },
   "reviews": {
@@ -416,9 +427,32 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T04:05:27.413Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T04:05:27.414Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "dbbaf393-89f9-413b-b2e8-07e2b91dedfb",
+      "summary": "PR-event cycle: peer-reviewed #4114 (swing MFE capture round-trip) APPROVED — awaiting verify. validate:deploy/platform-integrity/api-auth GREEN. ops:collect 0. main@fea8a366c. Open: #4114 (Claude fix, approved), #4115 (this handoff)."
     }
   ],
   "open_prs": [
+    {
+      "number": 4115,
+      "title": "chore(blackout-agent): cursor handoff — post-fea8a366c merge cycle",
+      "branch": "cursor/autopilot-post-fea8a366c-handoff",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T04:05:02Z"
+    },
     {
       "number": 4114,
       "title": "fix(swing): MFE capture rendered a nonsensical negative % on a round-trip loss",
@@ -427,17 +461,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "unknown",
-      "updated_at": "2026-09-06T04:03:50Z"
-    },
-    {
-      "number": 4113,
-      "title": "chore(blackout-agent): cursor PR-event handoff — post-#4110 merge @884983752",
-      "branch": "cursor/autopilot-post-4110-handoff",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T04:00:39Z"
+      "updated_at": "2026-09-06T04:04:42Z"
     }
   ],
   "pr_activity": {
