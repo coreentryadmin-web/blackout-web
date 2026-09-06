@@ -1,10 +1,10 @@
 {
   "agent": "cursor",
-  "run_id": "9f7d790b-71d5-448d-b22e-e24f5da6d2f9",
-  "last_seen": "2026-09-06T12:27:56.050Z",
-  "last_productive_action": "session_start",
-  "current_task": null,
-  "current_phase": "DISCOVERY",
+  "run_id": "65b1c0e3-685b-4c81-b337-a15ed1ac7d79",
+  "last_seen": "2026-09-06T14:23:43.195Z",
+  "last_productive_action": "heartbeat",
+  "current_task": "fix/swing-brief-helix-put-flow-diff",
+  "current_phase": "PR_OPENED",
   "branch": null,
   "pr": null,
   "healthy": true
