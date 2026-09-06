@@ -143,6 +143,59 @@ test("tradeManagerNarrativeSection: stale GEX-only put wall must not drive Break
   assert.doesNotMatch(section!.body, /Break watch.*98\.00/i, "stale GEX put wall must not anchor break trigger");
 });
 
+test("tradeManagerNarrativeSection: stale GEX-only gamma flip must not appear in dealer posture line (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Right now/i, "live Vector posture must not be relabeled stale");
+  assert.match(section!.body, /long gamma/i);
+  assert.doesNotMatch(
+    section!.body,
+    /γ-flip/i,
+    "stale GEX-only flip must not qualify a live-posture dealer read",
+  );
+});
+
+test("tradeManagerNarrativeSection: live Vector gamma flip still shown when GEX matrix is stale", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 97,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /γ-flip \*\*97\.00\*\*/i, "live Vector flip must still render");
+});
+
 test("tradeManagerNarrativeSection: stale GEX-only gamma flip must not drive Break watch (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
