@@ -222,6 +222,24 @@ function narrateWall(level: FocalLevel, play: TerminalPlay, spot: number): strin
   );
 }
 
+/**
+ * Gamma posture for magnet/king narration — mirrors the stale-GEX gating already applied
+ * to gexPostureSection/counterThesisLine/watchForSection/chartLevelsSection (largo C2).
+ * Live Vector regime always wins; the GEX-only fallback is suppressed once the matrix is
+ * stale, since posture drives a directional narrative claim ("pin risk" vs "acceleration").
+ */
+function resolveGammaPosture(
+  ctx: SwingPlayBriefContext,
+  vec: (VectorFullState & Partial<VectorFreshnessBlock>) | null,
+): string | null {
+  const vecPosture = vec?.regime?.posture ?? null;
+  if (vecPosture != null) return vecPosture;
+  const gex = ctx.ecosystem?.gex_positioning;
+  if (gex?.gamma_posture == null) return null;
+  if (gexMatrixStale(gex, Date.now())) return null;
+  return gex.gamma_posture;
+}
+
 function narrateKing(level: FocalLevel, posture: string | null): string {
   const pin =
     posture === "long"
@@ -524,12 +542,10 @@ export function tradeManagerNarrativeSection(
         add(narrateWall(level, play, spot));
         used.add("call_wall");
       } else if (level.kind === "magnet" && !used.has("magnet") && !bullets.some((b) => /Gamma magnet/i.test(b))) {
-        const posture = vec?.regime?.posture ?? ctx.ecosystem?.gex_positioning?.gamma_posture ?? null;
-        add(narrateMagnet(level, posture));
+        add(narrateMagnet(level, resolveGammaPosture(ctx, vec)));
         used.add("magnet");
       } else if (level.kind === "king" && !used.has("king")) {
-        const posture = vec?.regime?.posture ?? ctx.ecosystem?.gex_positioning?.gamma_posture ?? null;
-        add(narrateKing(level, posture));
+        add(narrateKing(level, resolveGammaPosture(ctx, vec)));
         used.add("king");
       } else if (level.kind === "max_pain" && !used.has("max_pain")) {
         add(narrateMaxPain(level, spot));

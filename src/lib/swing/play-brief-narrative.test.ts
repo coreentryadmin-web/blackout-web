@@ -188,6 +188,61 @@ test("tradeManagerNarrativeSection: live Vector put wall still drives Break watc
   assert.match(section!.body, /Break watch.*97\.00/i, "live Vector wall must still anchor break trigger");
 });
 
+test("tradeManagerNarrativeSection: stale GEX-only gamma posture must not drive GEX king narration (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+      } as unknown as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          gamma_posture: "long",
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /GEX king 103\.00/i);
+  assert.doesNotMatch(
+    section!.body,
+    /Pin risk/i,
+    "stale GEX-only gamma posture must not drive the king strike's directional pin/acceleration call",
+  );
+  assert.match(section!.body, /Max-gamma node/i, "falls back to the posture-unknown narration");
+});
+
+test("tradeManagerNarrativeSection: live Vector gamma posture still drives GEX king narration despite stale GEX matrix", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+        regime: { posture: "long" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          gamma_posture: "short",
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Pin risk/i, "live Vector posture must still drive the directional call");
+});
+
 test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
