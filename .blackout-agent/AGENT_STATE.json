@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:25:14.131Z",
+  "updated_at": "2026-09-06T15:31:05.705Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -747,18 +747,57 @@
       "agent": "cursor",
       "run_id": "294db495-a435-476f-93b5-966feabd7922",
       "summary": "Cycle complete: peer-reviewed+merged #4297/#4298. #4296→#4301, #4300 merged. #4302 on main. validate:deploy GREEN; ops:collect 0. Only open: #4306 handoff (this PR)."
+    },
+    {
+      "at": "2026-09-06T15:25:29.972Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T15:31:05.705Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T15:31:05.705Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "897db066-ff6a-440a-8d2c-76885698db9e",
+      "summary": "Autopilot cycle: peer-reviewed+merged #4297 (desk context unresolved) + #4298 (Meridian OpEx cohort). Swing Largo wave #4290-#4302 on main. #4306 handoff undrafted, verify pending — Claude merge sign-off required. validate:deploy GREEN; ops:collect 0; ECR deploy pending #4302."
     }
   ],
   "open_prs": [
     {
-      "number": 4306,
-      "title": "chore(blackout-agent): cursor handoff — merged swing Largo wave #4290-#4301",
-      "branch": "cursor/handoff-20260906-1523",
+      "number": 4311,
+      "title": "fix(swing): ground HELIX flow evidence with premium dollars (Largo C7)",
+      "branch": "fix/swing-brief-helix-flow-evidence-premiums",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:25:04Z"
+      "updated_at": "2026-09-06T15:30:17Z"
+    },
+    {
+      "number": 4310,
+      "title": "fix(swing): prior-session scan freshness stale; skip mark absence on CLOSED",
+      "branch": "fix/swing-brief-closed-mark-and-stale-scan-freshness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:29:26Z"
+    },
+    {
+      "number": 4309,
+      "title": "fix(swing): stale Vector snapshot must not say Right now (Largo C2)",
+      "branch": "fix/swing-brief-stale-vector-right-now",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:28:55Z"
     }
   ],
   "pr_activity": {
