@@ -40,3 +40,14 @@ test("collapseRedundantIntelSections: keeps Book context when narrative leads", 
   assert.ok(out.some((s) => s.title === "Book context"), "Book context is the sole concentration source post-#4116");
   assert.ok(!out.some((s) => s.title === "GEX posture"));
 });
+
+test("collapseRedundantIntelSections: keeps Desk context when narrative leads (NH outcome history)", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("Desk context"),
+    section("Flow & positioning"),
+  ];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Desk context"), "NH outcome history is not in Trade manager read");
+  assert.ok(!out.some((s) => s.title === "Flow & positioning"));
+});

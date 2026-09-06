@@ -87,14 +87,11 @@ test("deskConsensusSection: narrates NH outcome history when present", () => {
   assert.match(section?.body ?? "", /weigh that track record/i);
 });
 
-test("deskConsensusSection: narrates flow anomaly in coaching voice", () => {
+test("deskConsensusSection: null when only flow anomaly (covered by flowNarrative + Flow & positioning)", () => {
   const eco: EcosystemContext = {
     recent_anomalies: [{ anomaly_type: "sweep_cluster", detail: "$4.2M call sweeps at 145" }],
   };
-  const section = deskConsensusSection(eco, fixturePlay());
-  assert.ok(section);
-  assert.match(section?.body ?? "", /sweep_cluster/i);
-  assert.match(section?.body ?? "", /Confirm it still supports/i);
+  assert.equal(deskConsensusSection(eco, fixturePlay()), null);
 });
 
 test("lessonsSection: a round-trip past breakeven never renders a nonsensical negative MFE capture", () => {

@@ -510,28 +510,22 @@ export function macroTapeSection(eco: EcosystemContext | null): RichSection | nu
 
 /**
  * Supplementary desk context not already narrated in Trade manager read.
- * NH/0DTE direction + friction live in `crossDeskCoaching` — avoid duplicating raw dumps here.
+ * NH/0DTE direction + friction live in `crossDeskCoaching`; flow anomalies live in
+ * `flowNarrative` (Trade manager read) and `flowIntelSection` — only NH outcome history
+ * belongs here so members never see the same sweep twice.
  */
 export function deskConsensusSection(eco: EcosystemContext | null, play: TerminalPlay): RichSection | null {
   if (!eco) return null;
-  const lines: string[] = [];
 
   const nh = eco.nighthawk_recent;
-  if (nh?.outcome && nh.edition_for) {
-    lines.push(
-      `Night Hawk's last swing on this name (**${nh.edition_for}**) closed **${nh.outcome}** — weigh that track record against today's **${play.direction}** setup before sizing.`,
-    );
-  }
+  if (!nh?.outcome || !nh.edition_for) return null;
 
-  const anomaly = eco.recent_anomalies?.[0];
-  if (anomaly) {
-    lines.push(
-      `Flow desk flagged **${anomaly.anomaly_type}** — ${anomaly.detail}. Confirm it still supports your thesis or treat it as a veto.`,
-    );
-  }
-
-  if (!lines.length) return null;
-  return { title: "Desk context", body: lines.join("\n\n") };
+  return {
+    title: "Desk context",
+    body:
+      `Night Hawk's last swing on this name (**${nh.edition_for}**) closed **${nh.outcome}** — ` +
+      `weigh that track record against today's **${play.direction}** setup before sizing.`,
+  };
 }
 
 /** GEX dealer posture — gamma/vanna context for the swing. */
