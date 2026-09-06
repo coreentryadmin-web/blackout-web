@@ -65,3 +65,9 @@ test("three independent same-ticker/same-direction positions: one self-match exc
   assert.equal(o.hasOverlap, true);
   assert.equal(o.sameThemeSameDirection.length, 2);
 });
+
+test("excludeSelfMatch=false counts a lone pre-existing same-ticker row (gate candidate)", () => {
+  const o = checkPortfolioOverlap(long("EWZ"), [long("EWZ")], { excludeSelfMatch: false });
+  assert.equal(o.hasOverlap, true);
+  assert.equal(o.sameThemeSameDirection.length, 1);
+});

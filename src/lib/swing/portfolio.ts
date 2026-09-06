@@ -57,10 +57,22 @@ export interface PortfolioOverlap {
  * `existing` (e.g. a not-yet-committed gate candidate) loses nothing it had before under this
  * change, and gains correct detection whenever a SECOND matching row exists.
  */
+export type PortfolioOverlapOptions = {
+  /**
+   * When true (default), skip the first existing row that matches the candidate's ticker+direction
+   * as "self" — correct for play-brief where the reviewed play is always in `openBook`.
+   * Gate callers evaluating an uncommitted dossier should pass false so a lone pre-existing
+   * same-ticker/same-direction row is counted as concentration.
+   */
+  excludeSelfMatch?: boolean;
+};
+
 export function checkPortfolioOverlap(
   candidate: PortfolioPosition,
   existing: PortfolioPosition[] = [],
+  options: PortfolioOverlapOptions = {},
 ): PortfolioOverlap {
+  const excludeSelfMatch = options.excludeSelfMatch ?? true;
   const theme = resolveTheme(candidate.ticker);
   const candTicker = candidate.ticker.trim().toUpperCase();
 
@@ -72,6 +84,7 @@ export function checkPortfolioOverlap(
   let selfExcluded = false;
   for (const pos of existing) {
     if (
+      excludeSelfMatch &&
       !selfExcluded &&
       pos.ticker.trim().toUpperCase() === candTicker &&
       pos.direction === candidate.direction

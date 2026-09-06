@@ -271,6 +271,7 @@ export function evaluateSwingGates(
     const overlap = checkPortfolioOverlap(
       { ticker: dossier.ticker, direction: dossier.direction },
       ctx.existingPositions ?? [],
+      { excludeSelfMatch: false },
     );
     if (overlap.hasOverlap) {
       softPenalties.push({
