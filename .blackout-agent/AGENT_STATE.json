@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:27:42.105Z",
+  "updated_at": "2026-09-06T14:48:28.572Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T14:36:26.250Z",
+      "lease_until": "2026-09-06T16:15:38.262Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "40edd25a-f6df-43f5-8681-e8d8462e8c35"
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "af4a791de0d07b7025e89db6fdd20aefb4a3092d",
+    "last_main_sha": "4616cc7bdefce6d28c6a6f63e6d6ca1c7b07d6e1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T14:44:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34040112851",
+    "last_deploy_sha": "4616cc7bdefce6d28c6a6f63e6d6ca1c7b07d6e1"
   },
   "events": [
     {
@@ -619,9 +619,59 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T14:46:59.738Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T14:48:28.572Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T14:48:28.572Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6d9c9fcd-205e-4693-b203-222a27f24454",
+      "summary": "CI green on #4284 (subscription confirmed) — merged wave: #4280 dark pool provenance, #4284 HELIX freshness section, #4292 dead Vector exports now on main (4616cc7). #4290 put-only HELIX diff still open, verify in progress — subscribed. validate:deploy GREEN; ops:collect 0."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4294,
+      "title": "chore(blackout-agent): cursor handoff — #4290 HELIX put diff open",
+      "branch": "cursor/autopilot-handoff-20260906-1438",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T14:39:07Z"
+    },
+    {
+      "number": 4293,
+      "title": "chore(blackout-agent): cursor handoff — #4287 merged, swing Largo PRs verified",
+      "branch": "cursor/handoff-20260906-1438",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T14:38:28Z"
+    },
+    {
+      "number": 4290,
+      "title": "fix(swing): detect put-only HELIX flow build in brief diff",
+      "branch": "fix/swing-brief-helix-put-flow-diff",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:48:09Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
