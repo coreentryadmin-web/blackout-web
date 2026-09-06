@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:06:14.904Z",
+  "updated_at": "2026-09-06T03:10:11.795Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T03:08:35.316Z",
+      "lease_until": "2026-09-06T04:38:35.316Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "3b96df0a63b848514ec30970e24d4a6b6603cada",
+    "last_main_sha": "41ee65f098c64a078a389038141b348b950e4b4d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T03:04:54Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34008089744",
+    "last_deploy_sha": "3b96df0a63b848514ec30970e24d4a6b6603cada"
   },
   "events": [
     {
@@ -318,7 +318,64 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T03:09:42.905Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T03:09:42.905Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ac7f94d4-7b30-41b9-802c-1c1d38d82ea5",
+      "summary": "PR-event cycle. main@41ee65f09 (#4101 book-context + unavailable_sources merged). validate:deploy GREEN. ops:collect 0. Closed duplicate #4105. Open: #4104 (swing coaching, verify pending, Claude review), #4106 (handoff draft). No Claude/fix PRs for peer review. GraphQL rate-limited; REST works."
+    },
+    {
+      "at": "2026-09-06T03:10:11.795Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T03:10:11.795Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a52b18cc-d6c3-4a61-9ffa-4d04398c571b",
+      "summary": "PR-event cycle complete. main@41ee65f09 (#4101 merged). validate:deploy GREEN. ops:collect 0. #4104 swing coaching tests pass locally (11+17); verify CI pending; awaiting Claude peer review. Duplicate #4105 should close (403 on token). GraphQL rate-limited."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4106,
+      "title": "chore(blackout-agent): cursor PR-event cycle handoff — post-#4101 merge wave",
+      "branch": "cursor/autopilot-handoff-4101-cycle",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:06:49Z"
+    },
+    {
+      "number": 4105,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4100/#4101 merged @3b96df0a6",
+      "branch": "cursor/autopilot-work-loop-7936",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:05:37Z"
+    },
+    {
+      "number": 4104,
+      "title": "feat(swing): deep trade-manager coaching — pillars, catalysts, cross-desk, confluence",
+      "branch": "cursor/swing-brief-coaching-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:09:10Z"
+    }
+  ]
 }
