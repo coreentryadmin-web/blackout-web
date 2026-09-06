@@ -237,7 +237,7 @@ test("composeSwingPlayBrief: GEX evidence freshness honors matrix_age_sec over r
         flip: 24,
         gamma_posture: "long",
         asof: new Date().toISOString(),
-        matrix_age_sec: 300,
+        matrix_age_sec: 60,
         freshness: "cached",
       },
     } as SwingPlayBriefContext["ecosystem"],
@@ -249,12 +249,12 @@ test("composeSwingPlayBrief: GEX evidence freshness honors matrix_age_sec over r
   assert.equal(
     postureEvidence!.provenance?.freshness,
     "recent",
-    "matrix_age_sec must drive envelope freshness even when asof is recent",
+    "matrix_age_sec must drive envelope freshness even when asof is recent (and matrix is not stale)",
   );
   assert.notEqual(
     postureEvidence!.provenance?.freshness,
     "live",
-    "must not read live when matrix_age_sec is 300s",
+    "must not read live when matrix_age_sec is 60s while asof is fresh",
   );
 });
 
@@ -312,6 +312,161 @@ test("composeSwingPlayBrief: GEX dealer posture grounds in envelope evidence (La
   assert.match(postureEvidence!.text, /nearest wall 26\.00/);
   assert.equal(postureEvidence?.provenance?.source, "GEX");
   assert.equal(postureEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+});
+
+test("composeSwingPlayBrief: stale GEX-only envelope levels must not cite walls/flip/king (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        asof: "2026-09-05T18:00:00Z",
+        as_of_et: "2026-09-05 14:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        gex_king_strike: 25,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        matrix_age_sec: 200,
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const labels = (brief.envelope.levels ?? []).map((l) => l.label);
+  assert.ok(labels.includes("spot"), "spot may still render from stale GEX with stale freshness");
+  assert.ok(!labels.includes("call wall"), "stale GEX-only call wall must be suppressed");
+  assert.ok(!labels.includes("put wall"), "stale GEX-only put wall must be suppressed");
+  assert.ok(!labels.includes("gamma flip"), "stale GEX-only gamma flip must be suppressed");
+  assert.ok(!labels.includes("GEX king"), "stale GEX king strike must be suppressed");
+});
+
+test("composeSwingPlayBrief: diff snapshot must not bypass stale-gated envelope levels (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        asof: "2026-09-05T18:00:00Z",
+        as_of_et: "2026-09-05 14:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        gex_king_strike: 25,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        matrix_age_sec: 200,
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const snap = JSON.parse(brief.briefContentKey!) as {
+    gammaFlip: number | null;
+    callWall: number | null;
+    putWall: number | null;
+  };
+  assert.equal(snap.gammaFlip, null, "diff snapshot must not carry stale GEX-only gamma flip");
+  assert.equal(snap.callWall, null, "diff snapshot must not carry stale GEX-only call wall");
+  assert.equal(snap.putWall, null, "diff snapshot must not carry stale GEX-only put wall");
+});
+
+test("composeSwingPlayBrief: stale GEX-only dealer posture must not ground envelope evidence (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        change_pct: 1.2,
+        asof: "2026-09-05T18:00:00Z",
+        as_of_et: "2026-09-05 14:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
+        matrix_age_sec: 200,
+      },
+      arsenal: null,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.equal(postureEvidence, undefined, "stale GEX-only posture must not reach Largo evidence");
+});
+
+test("composeSwingPlayBrief: live Vector regime still drives dealer posture when GEX matrix is stale", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        gamma_posture: "short",
+        matrix_age_sec: 200,
+        asof: "2026-09-05T18:00:00Z",
+        as_of_et: "2026-09-05 14:00 ET",
+        net_gex: 9_000_000,
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: "2026-09-05T20:00:00.000Z",
+      asOfEt: "2026-09-05 16:00 ET",
+      spot: 24.5,
+      regime: { posture: "long", label: "LONG" },
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+      gammaFlip: 24,
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "Vector regime should still ground dealer posture");
+  assert.match(postureEvidence!.text, /γ long/);
+  assert.doesNotMatch(postureEvidence!.text, /net GEX/, "stale GEX net_gex must not append when matrix is stale");
+  assert.equal(postureEvidence?.provenance?.source, "Vector");
 });
 
 test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant (FINDINGS 2026-09-06 #21)", () => {

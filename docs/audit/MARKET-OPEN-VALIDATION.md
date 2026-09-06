@@ -120,6 +120,21 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1ag. Stale GEX-only walls/posture in Largo envelope levels + evidence — #4377 (pending)
+
+**What was broken:** `BieAnswerEnvelope.levels` / `.evidence` (Largo desk read key-levels table +
+evidence panel) cited stale GEX-only call/put walls, gamma flip, GEX king, and dealer posture when
+Vector was absent — sixth Largo C2 surface after chartLevels/watchFor/king-magnet fixes.
+
+**Fix:** Per-side `gexMatrixStale` gating in `levelsFromContext` + `evidenceFromContext`
+(`play-brief.ts`). Vector `regime.posture` still drives dealer posture when GEX matrix is stale.
+
+**Check at the open:** Open swing play-brief with `matrix_age_sec` > 120 and no Vector snapshot —
+key levels must omit walls/flip/king; evidence must not show `Dealer posture: γ …` unless Vector
+regime is live.
+
+---
+
 ### 0a-1ac. Short interest missing from envelope.evidence (Largo C7) — fix/largo-short-interest-evidence (pending)
 
 **What was broken:** Catalysts/coaching prose showed DTC and short vol ratio from
