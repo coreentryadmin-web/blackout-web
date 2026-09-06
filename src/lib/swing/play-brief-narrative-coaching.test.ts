@@ -94,6 +94,69 @@ test("thesisPillarCoaching: names fading pillar", () => {
   assert.match(line!, /Persistence/i);
 });
 
+function uncalibratedThesisHealth() {
+  return {
+    health: 46,
+    entryIndex: 60,
+    currentIndex: 46,
+    delta: -14,
+    rung: "DEGRADED",
+    rungLabel: "Degraded",
+    pillars: [
+      {
+        id: "structure",
+        label: "Persistence",
+        weight: 0.28,
+        commitScore: 0.4,
+        currentScore: 0.35,
+        commitLabel: "unknown",
+        currentLabel: "unknown",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "momentum",
+        label: "Entry geometry",
+        weight: 0.22,
+        commitScore: 0.5,
+        currentScore: 0.45,
+        commitLabel: "n/a",
+        currentLabel: "n/a",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "flow",
+        label: "Signal stack",
+        weight: 0.2,
+        commitScore: 0.35,
+        currentScore: 0.35,
+        commitLabel: "no signals",
+        currentLabel: "no signals",
+        status: "intact",
+        contributionPts: 7,
+        deltaPts: 0,
+      },
+    ],
+    moves: ["Persistence: unknown → unknown"],
+    committedAtEt: null,
+    computedAtEt: "10:00 ET",
+    advisory: "Thesis fading — tighten risk or trim into strength.",
+    thesisBreakLevel: "warn",
+    thesisBreakNote: "pillars fading",
+  };
+}
+
+test("thesisBreakCoaching: silent when thesis health is uncalibrated (extends #4318)", () => {
+  assert.equal(thesisBreakCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
+});
+
+test("thesisPillarCoaching: silent when thesis health is uncalibrated (extends #4318)", () => {
+  assert.equal(thesisPillarCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
+});
+
 test("manageLifecycleCoaching: trim ladder + time stop", () => {
   const line = manageLifecycleCoaching(
     play({
