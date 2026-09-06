@@ -195,6 +195,16 @@ export function shiftPanelEmptyDescription(input: {
   return `The shift view fills in as snapshots accumulate (first read ~after the open). ${input.noun} migration — where dealer ${input.noun.toLowerCase()} is building vs melting and how the pivot drifts — appears once enough history is collected.`;
 }
 
+/** SPX shift caveat — shifts measure the raw Polygon book; levels may be UW-overlaid. */
+export function shiftBasisFootnote(input: {
+  ticker: string;
+  lens: "gex" | "vex" | "dex" | "charm";
+}): string | null {
+  const root = input.ticker.trim().toUpperCase();
+  if (input.lens !== "gex" || (root !== "SPX" && root !== "I:SPX")) return null;
+  return "Shift tracks raw market-structure migration; the levels row may reflect dealer-overlaid GEX on SPX.";
+}
+
 /** One-line horizon wall summary for the regime strip footnote (0DTE / 3DTE / 7DTE). */
 export function horizonWallsSummary(
   walls:

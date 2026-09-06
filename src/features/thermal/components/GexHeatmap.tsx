@@ -38,6 +38,7 @@ import {
   thermalQuoteBadge,
   spotSourceBadge,
   shiftPanelEmptyDescription,
+  shiftBasisFootnote,
   horizonWallsSummary,
   type ThermalComparePresetId,
   type ThermalLens,
@@ -1807,6 +1808,7 @@ function TickerSwitcher({
           )}
           {spotBadge ? (
             <span
+              data-spot-provenance
               className="rounded border border-white/10 px-1 py-px font-mono text-[8px] font-bold uppercase tracking-wider text-sky-300/75"
               title={spotBadge.title}
             >
@@ -3737,6 +3739,7 @@ export function GexHeatmap({
           {hasDarkPoolOverlay ? (
             <button
               type="button"
+              data-overlay-darkpool="toggle"
               onClick={() => setShowDarkPool((v) => !v)}
               aria-pressed={showDarkPool}
               className={clsx(
@@ -3751,6 +3754,7 @@ export function GexHeatmap({
             </button>
           ) : (
             <span
+              data-overlay-darkpool="unavailable"
               className="rounded-md border border-white/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-sky-300/60"
               title={
                 overlaysOfferedForTicker
@@ -3817,6 +3821,7 @@ export function GexHeatmap({
   // GexShift shape). The engine ships NO shift for DEX/CHARM → the panel degrades to a
   // "building history" empty state for those lenses (hasShiftForLens false) — never
   // fabricated. Curve+Shift stays a real pair under every lens; Shift self-explains.
+  const shiftBasisNote = shiftBasisFootnote({ ticker, lens });
   const shiftPanel = (
     <div className="min-w-0">
       <PanelLabel>Intraday Shift</PanelLabel>
@@ -3826,6 +3831,14 @@ export function GexHeatmap({
           <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/85">
             {`Δ ${vocab.unit} · built / melted`}
           </p>
+          {shiftBasisNote ? (
+            <p
+              className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/75"
+              data-shift-basis-footnote
+            >
+              {shiftBasisNote}
+            </p>
+          ) : null}
         </>
       ) : (
         <EmptyState

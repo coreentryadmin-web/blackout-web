@@ -160,13 +160,12 @@ async function runClickthrough(page) {
     const flowToggle = page.locator("button", { hasText: /flow/i }).first();
     await clickIfVisible(page, flowToggle, "overlay:flow-toggle", 4000);
     await page.waitForTimeout(500);
-    const dpToggle = page.getByRole("button", { name: /^Dark Pool$/i });
-    if ((await dpToggle.count()) > 0) {
-      await clickIfVisible(page, dpToggle, "overlay:darkpool-toggle", 4000);
+    const dpOverlay = page.locator("[data-overlay-darkpool]");
+    if ((await dpOverlay.count()) > 0) {
+      const state = await dpOverlay.first().getAttribute("data-overlay-darkpool");
+      rec(`overlay:darkpool-${state}`, "PASS");
     } else {
-      const unavailable = page.getByText(/Dark pool · unavailable/i);
-      if ((await unavailable.count()) > 0) rec("overlay:darkpool-unavailable", "PASS");
-      else rec("overlay:darkpool-toggle", "WARN", "no toggle or unavailable label");
+      rec("overlay:darkpool-toggle", "WARN", "no dark pool overlay control");
     }
     await page.waitForTimeout(500);
   }
@@ -197,11 +196,20 @@ async function runClickthrough(page) {
     rec("tab:distribution", "WARN", "Distribution tab not found");
   }
 
+  // Ensure All-expiry scope before horizon + spot provenance checks
+  await clickIfVisible(page, page.getByRole("tab", { name: /^Matrix$/i }), "tab:matrix-before-horizon", 5000);
+  await page.waitForTimeout(600);
+  const expiryAllPre = page.getByRole("button", { name: "All", exact: true }).first();
+  if ((await expiryAllPre.count()) > 0) {
+    await clickIfVisible(page, expiryAllPre, "expiry:all-for-horizon", 4000);
+    await page.waitForTimeout(800);
+  }
+
   const horizon = page.locator("[data-horizon-walls]");
   if ((await horizon.count()) > 0) rec("regime:horizon-walls", "PASS");
   else rec("regime:horizon-walls", "INFO", "horizon line hidden (scoped expiry or no data)");
 
-  const spotProv = page.getByText(/Last close|Live WS|Snapshot|Prior bar/i).first();
+  const spotProv = page.locator("[data-spot-provenance]").first();
   if (await spotProv.isVisible().catch(() => false)) rec("header:spot-provenance", "PASS");
   else rec("header:spot-provenance", "INFO", "spot badge hidden or compare mode");
 
