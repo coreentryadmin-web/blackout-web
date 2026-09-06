@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:22:26.778Z",
+  "updated_at": "2026-09-06T03:54:39.704Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -36,7 +36,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d61dd9139cb02e9cea430b1bc41b1889930d7557",
+    "last_main_sha": "c6a8766a61bc1b4fd2c4bd80f25580d16718bdb9",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T19:34:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
@@ -336,18 +336,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T03:54:38.529Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T03:54:39.376Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T03:54:39.704Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
   "open_prs": [
     {
-      "number": 4108,
-      "title": "feat(swing): counter-thesis coaching + trade-manager diff narration",
-      "branch": "fix/swing-counter-thesis-coaching",
+      "number": 4110,
+      "title": "feat(swing): coaching v3 — VEX, flow prints, macro, book context, trim diff",
+      "branch": "cursor/swing-brief-coaching-v3",
       "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
+      "agent": "cursor",
+      "draft": false,
       "verify": "unknown",
-      "updated_at": "2026-09-06T03:21:58Z"
+      "updated_at": "2026-09-06T03:51:33Z"
     }
   ]
 }
