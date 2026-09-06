@@ -268,6 +268,7 @@ export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBrie
         level: hasRichData ? "high" : "moderate",
         why: "Deterministic synthesis from swing lane, ledger, Vector chart, HELIX flow, GEX nodes, earnings & news — no LLM.",
       },
+      unavailableSources: ctx.ecosystem?.arsenal?.unavailable_sources,
     }),
     asOf: ctx.asOf,
   };

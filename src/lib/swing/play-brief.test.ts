@@ -110,6 +110,46 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   assert.deepEqual(brief.flowSnapshot, { callPremium: 1_200_000, putPremium: 400_000 });
 });
 
+test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavailableSources (BIE absence contract)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      recent_flow: null,
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      spx_desk_convergence: null,
+      flow_feed_fresh: true,
+      gex_positioning: null,
+      vector_full_state: null,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [{ source: "short-interest", reason: "provider timeout" }],
+      },
+    },
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.deepEqual(brief.envelope.unavailableSources, [{ source: "short-interest", reason: "provider timeout" }]);
+});
+
 test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
