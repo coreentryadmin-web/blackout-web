@@ -134,6 +134,54 @@ test("structural_stop: ex-div LONG adjustment prevents false breach on mechanica
   assert.notEqual(held.rung, "structural_stop", "adjusted 94+2=96 holds above stop 95");
 });
 
+test("structural_stop: ex-div data-unavailable fails SAFE — a LONG breach is skipped, not enforced (Q39 fail-open regression)", () => {
+  // Without exDividendDataUnavailable, this input breaches (same shape as the "fires at ANY
+  // premium P&L" test above) — proves this test's baseline actually would have EXIT'd.
+  const noFlag = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 94,
+    structuralStopLevel: 95,
+  });
+  assert.equal(noFlag.rung, "structural_stop");
+  assert.equal(noFlag.action, "EXIT");
+
+  // Same inputs, but this cycle's ex-dividend read failed (Polygon error/timeout) — we cannot
+  // tell whether the drop to 94 is a real thesis break or an unadjusted ex-div mechanical gap.
+  // Fail SAFE: do not enforce the stop this cycle rather than fail-open trusting exDividendSession
+  // defaulting to false.
+  const unavailable = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 94,
+    structuralStopLevel: 95,
+    exDividendDataUnavailable: true,
+  });
+  assert.notEqual(unavailable.rung, "structural_stop", "unknown ex-div data must not enforce a stop it can't verify");
+  assert.notEqual(unavailable.action, "EXIT", "fail-safe: skip enforcement this cycle, don't fail-open EXIT");
+});
+
+test("structural_stop: ex-div data-unavailable does NOT mask a genuine SHORT breach (adjustment is LONG-only)", () => {
+  // The ex-div adjustment only ever applies to LONG (underlyingPriceForStructuralStop is a no-op
+  // for SHORT), so a data-unavailable flag must not suppress a real SHORT structural-stop breach —
+  // there is no ex-div gap risk on that side to guard against.
+  const v = evaluateSwingManagement({
+    dossier: SHORT_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.6,
+    underlyingPrice: 106,
+    structuralStopLevel: 105,
+    exDividendDataUnavailable: true,
+  });
+  assert.equal(v.action, "EXIT");
+  assert.equal(v.rung, "structural_stop", "SHORT breach must still enforce even when ex-div data is unavailable");
+});
+
 test("structural_stop is direction-aware: SHORT breaks when the underlying rises through the stop", () => {
   const v = evaluateSwingManagement({
     dossier: SHORT_STD,
