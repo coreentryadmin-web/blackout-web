@@ -352,6 +352,46 @@ test("composeSwingPlayBrief: stale GEX-only envelope levels must not cite walls/
   assert.ok(!labels.includes("GEX king"), "stale GEX king strike must be suppressed");
 });
 
+test("composeSwingPlayBrief: diff snapshot must not bypass stale-gated envelope levels (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        asof: "2026-09-05T18:00:00Z",
+        as_of_et: "2026-09-05 14:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        gex_king_strike: 25,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        matrix_age_sec: 200,
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const snap = JSON.parse(brief.briefContentKey!) as {
+    gammaFlip: number | null;
+    callWall: number | null;
+    putWall: number | null;
+  };
+  assert.equal(snap.gammaFlip, null, "diff snapshot must not carry stale GEX-only gamma flip");
+  assert.equal(snap.callWall, null, "diff snapshot must not carry stale GEX-only call wall");
+  assert.equal(snap.putWall, null, "diff snapshot must not carry stale GEX-only put wall");
+});
+
 test("composeSwingPlayBrief: stale GEX-only dealer posture must not ground envelope evidence (Largo C2)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
