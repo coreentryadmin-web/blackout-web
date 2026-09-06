@@ -13,6 +13,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 import { mfeCaptureOutcome } from "./mfe-capture";
+import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -669,5 +670,8 @@ export function buildIntelSections(
     if (lessons) out.push(lessons);
   }
 
-  return out;
+  return collapseRedundantIntelSections(out, {
+    hasNarrative: Boolean(narrative),
+    bucket,
+  });
 }

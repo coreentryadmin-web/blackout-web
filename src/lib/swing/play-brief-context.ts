@@ -10,6 +10,7 @@ import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-brief-resolve";
 import { fetchMeridianForTicker } from "./play-brief-meridian";
+import { fetchMeridianPeerForBrief } from "./play-brief-meridian-peer";
 import type { PortfolioPosition } from "./portfolio";
 
 /**
@@ -38,10 +39,12 @@ export async function loadSwingPlayBriefContext(
   if (!resolved) return null;
 
   const ticker = resolved.play.ticker.toUpperCase();
-  const [ecosystem, vector, meridian, openBook] = await Promise.all([
+  const meridian = await fetchMeridianForTicker(ticker).catch(() => null);
+  const meridianPeer = await fetchMeridianPeerForBrief(meridian, ticker).catch(() => null);
+
+  const [ecosystem, vector, openBook] = await Promise.all([
     fetchEcosystemContext(ticker).catch(() => null),
     fetchVectorFullState(ticker, normalizeDteHorizon("all")).catch(() => null),
-    fetchMeridianForTicker(ticker).catch(() => null),
     loadOpenBook(),
   ]);
 
@@ -57,6 +60,7 @@ export async function loadSwingPlayBriefContext(
     vector,
     laneRows: resolved.laneRows,
     meridian,
+    meridianPeer,
     openBook,
   };
 }

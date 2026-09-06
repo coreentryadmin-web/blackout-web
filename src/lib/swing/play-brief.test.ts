@@ -101,11 +101,12 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   assert.ok(titles.includes("Verdict"));
   assert.ok(titles.includes("Entry"));
   assert.ok(titles.includes("Why this setup"));
-  assert.ok(titles.includes("Flow & positioning"));
+  assert.ok(titles.includes("Trade manager read"));
   assert.ok(titles.includes("Catalysts & news"));
   assert.ok(titles.includes("Watch levels"));
   assert.ok(brief.envelope.sections.some((s) => s.body.includes("FLOW")));
   assert.ok(brief.envelope.sections.some((s) => s.body.includes("Earnings")));
+  assert.ok(!titles.includes("Flow & positioning"), "flow intel folded into Trade manager read");
   assert.equal(brief.envelope.intent, "swing_play_brief");
   assert.deepEqual(brief.flowSnapshot, { callPremium: 1_200_000, putPremium: 400_000 });
 });
@@ -229,8 +230,10 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   assert.ok(titles.includes("Management"));
   assert.ok(titles.includes("Thesis health"));
   assert.ok(titles.includes("Position"));
-  assert.ok(titles.includes("Hold plan"));
+  assert.ok(titles.includes("Trade manager read"));
   assert.ok(titles.includes("Why this setup"));
+  assert.ok(titles.includes("What to watch"));
+  assert.ok(!titles.includes("Hold plan"), "hold plan folded into Trade manager read");
   assert.ok(brief.envelope.sections.some((s) => s.body.includes("54%")));
 });
 
