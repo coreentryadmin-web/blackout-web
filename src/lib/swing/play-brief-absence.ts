@@ -8,8 +8,14 @@ export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
   return eco.recent_flow;
 }
 
+const VECTOR_STALE_MS = 120_000;
+
+function vectorOf(ctx: SwingPlayBriefContext) {
+  return ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+}
+
 function hasVectorDeskState(ctx: SwingPlayBriefContext): boolean {
-  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+  const vec = vectorOf(ctx);
   return vec != null && Number.isFinite(vec.spot);
 }
 
@@ -36,6 +42,12 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.
   if (!ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
     out.push({ source: "Vector desk state", reason: "snapshot unavailable" });
+  }
+  // Present-but-stale Vector is distinct from missing — narrative already warns in
+  // dataFreshnessSection / dataHonestyCoaching, but C3 consumers need the structured row too.
+  const vec = vectorOf(ctx);
+  if (vec != null && vec.dataAgeMs != null && vec.dataAgeMs > VECTOR_STALE_MS) {
+    out.push({ source: "Vector snapshot", reason: "stale desk state" });
   }
   if (ctx.openBook === null) {
     out.push({ source: "open book", reason: "ledger read failed" });

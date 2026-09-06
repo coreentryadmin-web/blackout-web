@@ -192,3 +192,22 @@ test("collectBriefUnavailableSources: a live-synced mark (markIsSync false/undef
   const ctxUndefined = { play: {} } as SwingPlayBriefContext;
   assert.ok(!collectBriefUnavailableSources(ctxUndefined).some((s) => s.source === "option mark"));
 });
+
+test("collectBriefUnavailableSources: stale Vector snapshot surfaces in envelope (Largo C2/C3)", () => {
+  const ctx = {
+    vector: { spot: 100, dataAgeMs: 180_000 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Vector snapshot" && s.reason === "stale desk state"),
+  );
+});
+
+test("collectBriefUnavailableSources: fresh Vector snapshot does not surface stale absence", () => {
+  const ctx = {
+    vector: { spot: 100, dataAgeMs: 30_000 },
+  } as SwingPlayBriefContext;
+
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "Vector snapshot"));
+});

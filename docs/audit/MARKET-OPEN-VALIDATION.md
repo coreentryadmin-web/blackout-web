@@ -294,6 +294,20 @@ setup" — that section should show only signals/archetype/pillar content.
 
 ---
 
+### 0a-1x. Stale Vector snapshot warned in prose but missing from `unavailableSources` — fix/swing-brief-vector-stale-absence (pending)
+
+**What was broken:** When Vector desk state was present but `dataAgeMs > 120s`, `dataFreshnessSection`
+and `dataHonestyCoaching` already warned in narrative prose, but `collectBriefUnavailableSources`
+had no structured row — Largo C3 consumers reading `envelope.unavailableSources` alone saw nothing
+wrong.
+
+**Fix:** Push `{ source: "Vector snapshot", reason: "stale desk state" }` when stale threshold exceeded.
+
+**Check at the open:** On a swing brief where Vector data is visibly stale (>2 min), confirm
+`UnavailableChip` / structured absence lists Vector snapshot stale, not just the prose warning.
+
+---
+
 ### 0a-1v. Chart technicals bias badge echoed the play's LONG/SHORT direction instead of the technicals it labels — fix/swing-chart-technicals-bias-direction-echo (merged #4232)
 
 **What was broken:** `chartTechnicalsSection`'s `bias` field (`play-brief-intel.ts`) was set from
