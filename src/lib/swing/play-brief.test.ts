@@ -214,10 +214,38 @@ test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", ()
       darkPoolLevels: [{ strike: 99, premium: 5_000_000, pct: 35 }],
       regime: { posture: "long", label: "LONG" },
       gexWalls: { callWalls: [{ strike: 105, pct: 8 }], putWalls: [{ strike: 97, pct: 7 }] },
+      wallEvents: [{ kind: "call_wall_build", strike: 105, message: "Call wall building" }],
     } as SwingPlayBriefContext["vector"],
   });
   assert.ok(brief.envelope.sections.some((s) => s.title === "Trade manager read"));
   assert.ok(brief.envelope.sections.some((s) => s.title === "Trade manager read" && /dark pool|long gamma/i.test(s.body)));
+  const titles = brief.envelope.sections.map((s) => s.title);
+  assert.ok(!titles.includes("GEX posture"), "gamma posture should not duplicate trade manager read");
+  assert.ok(!titles.includes("Wall dynamics"), "wall bead list should not duplicate trade manager read");
+});
+
+test("composeSwingPlayBrief: GEX posture supplements degraded trade manager read when spot missing", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({ status: "WATCH" }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        gamma_posture: "short",
+        net_gex: -2_500_000,
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  });
+  const titles = brief.envelope.sections.map((s) => s.title);
+  assert.ok(titles.includes("Trade manager read"));
+  assert.ok(titles.includes("GEX posture"));
 });
 
 test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {

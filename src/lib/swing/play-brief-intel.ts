@@ -596,11 +596,21 @@ export function buildIntelSections(
   const levels = chartLevelsSection(ctx);
   if (levels) out.push(levels);
 
-  const gex = gexPostureSection(ctx);
-  if (gex) out.push(gex);
+  const spot =
+    typeof vec?.spot === "number" && Number.isFinite(vec.spot)
+      ? vec.spot
+      : typeof ctx.ecosystem?.gex_positioning?.spot === "number" && Number.isFinite(ctx.ecosystem.gex_positioning.spot)
+        ? ctx.ecosystem.gex_positioning.spot
+        : null;
+  // Rich trade-manager narration already covers gamma posture + wall beads when spot is known.
+  // Without spot it falls back to entry/manage copy only — keep the legacy GEX sections then.
+  if (spot == null) {
+    const gex = gexPostureSection(ctx);
+    if (gex) out.push(gex);
 
-  const walls = wallDynamicsSection(vec);
-  if (walls) out.push(walls);
+    const walls = wallDynamicsSection(vec);
+    if (walls) out.push(walls);
+  }
 
   const vdesk = vectorDeskSection(vec);
   if (vdesk) out.push(vdesk);
