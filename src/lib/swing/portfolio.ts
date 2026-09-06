@@ -20,6 +20,8 @@ import { resolveTheme, sameThesis } from "./theme-cluster";
 export interface PortfolioPosition {
   ticker: string;
   direction: PlayDirection;
+  /** Ledger row id when known — lets play-brief exclude the reviewed position by identity. */
+  positionId?: number;
 }
 
 export interface PortfolioOverlap {
@@ -59,10 +61,16 @@ export interface PortfolioOverlap {
  */
 export type PortfolioOverlapOptions = {
   /**
+   * When set, skip the existing row with this ledger id — the play-brief's precise self-exclusion
+   * when multiple independent positions share ticker+direction (different archetypes). Preferred
+   * over ticker+direction first-match when `openBook` rows carry `positionId`.
+   */
+  excludePositionId?: number;
+  /**
    * When true (default), skip the first existing row that matches the candidate's ticker+direction
-   * as "self" — correct for play-brief where the reviewed play is always in `openBook`.
-   * Gate callers evaluating an uncommitted dossier should pass false so a lone pre-existing
-   * same-ticker/same-direction row is counted as concentration.
+   * as "self" — fallback when no `excludePositionId` is available. Gate callers evaluating an
+   * uncommitted dossier should pass false so a lone pre-existing same-ticker/same-direction row
+   * is counted as concentration.
    */
   excludeSelfMatch?: boolean;
 };
@@ -73,6 +81,7 @@ export function checkPortfolioOverlap(
   options: PortfolioOverlapOptions = {},
 ): PortfolioOverlap {
   const excludeSelfMatch = options.excludeSelfMatch ?? true;
+  const excludePositionId = options.excludePositionId;
   const theme = resolveTheme(candidate.ticker);
   const candTicker = candidate.ticker.trim().toUpperCase();
 
@@ -80,10 +89,14 @@ export function checkPortfolioOverlap(
   const opposedDir: PortfolioPosition[] = [];
 
   // Skip only the FIRST row that looks like "the candidate's own identical position" (same
-  // ticker + same direction) — not every such row. See the correctness note above.
+  // ticker + same direction) — not every such row. See the correctness note above. When the
+  // reviewed play's ledger id is known, exclude THAT row by id instead — otherwise a second
+  // independent EWZ LONG in the book gets mis-counted as overlap against itself.
   let selfExcluded = false;
   for (const pos of existing) {
+    if (excludePositionId != null && pos.positionId === excludePositionId) continue;
     if (
+      excludePositionId == null &&
       excludeSelfMatch &&
       !selfExcluded &&
       pos.ticker.trim().toUpperCase() === candTicker &&
