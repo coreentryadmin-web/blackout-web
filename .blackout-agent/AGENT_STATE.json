@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T17:07:16.088Z",
+  "updated_at": "2026-09-06T17:11:46.206Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -784,48 +784,41 @@
       "agent": "cursor",
       "run_id": "a0d5333d-73cc-4c61-89bd-bcc0a234b868",
       "summary": "Cycle complete: merged #4334 (SPX roundFloats) + #4335 (thesis-health uncalibrated leak — Cursor peer-reviewed ✅). validate:deploy GREEN; ops:collect 0. Open PRs: cursor handoff drafts only — consolidating duplicates."
+    },
+    {
+      "at": "2026-09-06T17:11:46.203Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T17:11:46.206Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cc988889-df9d-440f-96bb-982b17d4606d",
+      "summary": "Work loop: #4334+#4335 merged. Cursor peer-reviewed #4335 ✅. validate:deploy GREEN; ops:collect 0. ECR deploy pending. No agent fix PRs in queue."
     }
   ],
   "open_prs": [
     {
-      "number": 4338,
-      "title": "chore(blackout-agent): cursor handoff — peer review #4326-4335",
-      "branch": "cursor/handoff-peer-review-20260906T1703",
+      "number": 4342,
+      "title": "fix(swing): block fabricated thesis strength on uncalibrated warn fallback",
+      "branch": "fix/swing-thesis-strength-warn-fallback-leak",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T17:11:43Z"
+    },
+    {
+      "number": 4341,
+      "title": "chore(blackout-agent): cursor handoff — peer lane clear, deploy GREEN",
+      "branch": "cursor/bc-4c08bba6-d2ba-4560-ad1d-f3309f78104a-b61c",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:04:37Z"
-    },
-    {
-      "number": 4337,
-      "title": "chore(blackout-agent): cursor handoff — #4326/#4329/#4330 merged, deploy GREEN",
-      "branch": "cursor/autopilot-work-loop-faa2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T17:07:12Z"
-    },
-    {
-      "number": 4336,
-      "title": "chore(blackout-agent): cursor handoff — #4335 approved, deploy GREEN",
-      "branch": "cursor/handoff-20260906-1655",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T16:56:03Z"
-    },
-    {
-      "number": 4332,
-      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
-      "branch": "cursor/handoff-20260906-1638",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T16:42:27Z"
+      "updated_at": "2026-09-06T17:11:14Z"
     }
   ],
   "pr_activity": {
