@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T23:41:42.891Z",
+  "updated_at": "2026-09-06T23:41:51.845Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -73,7 +73,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "092b9bd65638d0b790d1a23b52da2b6feeec3fbe",
+    "last_main_sha": "15f13e51cf17d0aa6e752cc2125e4fcd9829b0c6",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T23:41:28Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34067591230",
@@ -459,6 +459,19 @@
       "agent": "cursor",
       "run_id": "05306bbe-ed7a-4fa4-a19e-d030efc56de9",
       "summary": "Main@092b9bd65. #4415+#4416 merged. #4414 chart technicals stale gate — verify pending, 48/48 local approved pending CI."
+    },
+    {
+      "at": "2026-09-06T23:41:51.844Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:41:51.845Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c5cc84a5-6a3f-43f7-8bd6-47c3fb0dd21b",
+      "summary": "Main@15f13e51c GREEN. #4414+#4415+#4416 merged. Largo C2 sweep complete for tonight. Open PRs: 0."
     }
   ],
   "open_prs": [
@@ -469,8 +482,8 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T23:41:10Z"
+      "verify": "unknown",
+      "updated_at": "2026-09-06T23:41:47Z"
     }
   ]
 }
