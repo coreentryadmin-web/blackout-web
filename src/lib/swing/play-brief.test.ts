@@ -171,6 +171,37 @@ test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavai
   ]);
 });
 
+test("composeSwingPlayBrief: stale GEX matrix surfaces in unavailableSources (Largo C3)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06T10:00:00.000Z",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        spot: 25,
+        flip: 24,
+        gamma_posture: "long",
+        matrix_age_sec: 300,
+        freshness: "cached",
+      },
+      vector_full_state: { spot: 25 } as SwingPlayBriefContext["ecosystem"] extends { vector_full_state: infer V } ? V : never,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.ok(
+    brief.envelope.unavailableSources?.some(
+      (u) => u.source === "GEX matrix" && u.reason.includes("dealer posture"),
+    ),
+    "expected stale GEX matrix in unavailableSources",
+  );
+});
+
 test("composeSwingPlayBrief: envelope.asOf uses Largo C1 ET stamp (not a bare UTC instant)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

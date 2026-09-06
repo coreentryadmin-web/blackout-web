@@ -6,7 +6,7 @@
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { trustedHelixFlow } from "./play-brief-absence";
+import { trustedHelixFlow, gexMatrixAgeMs, gexMatrixStale } from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
@@ -126,8 +126,10 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
 
 function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | null {
   const vec = vectorOf(ctx);
-  const posture = vec?.regime?.posture ?? ctx.ecosystem?.gex_positioning?.gamma_posture ?? null;
-  const flip = vec?.gammaFlip ?? ctx.ecosystem?.gex_positioning?.flip ?? null;
+  const gex = ctx.ecosystem?.gex_positioning;
+  const vecPosture = vec?.regime?.posture;
+  const posture = vecPosture ?? gex?.gamma_posture ?? null;
+  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
 
   if (!posture || posture === "unknown") {
     if (spot != null) return `Spot **${spot.toFixed(2)}** — dealer gamma posture not resolved on this read.`;
@@ -147,12 +149,21 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
       ? ` · γ-flip **${flip.toFixed(2)}**${aboveFlip != null ? (aboveFlip ? " (spot above)" : " (spot below)") : ""}`
       : "";
 
-  const ageMs = vec?.dataAgeMs;
+  const readMs = Date.now();
+  const vecAgeMs = vec?.dataAgeMs;
   const vectorStale =
-    (typeof ageMs === "number" && Number.isFinite(ageMs) && ageMs > 120_000) ||
+    (typeof vecAgeMs === "number" && Number.isFinite(vecAgeMs) && vecAgeMs > 120_000) ||
     vec?.freshness === "stale";
-  const lead = vectorStale
-    ? `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""}`
+  const postureFromGex = !vecPosture && gex?.gamma_posture;
+  const gexStale = postureFromGex && gexMatrixStale(gex, readMs);
+  const snapshotStale = vectorStale || gexStale;
+  const snapshotAgeMs = vectorStale
+    ? vecAgeMs
+    : gexStale
+      ? gexMatrixAgeMs(gex, readMs)
+      : null;
+  const lead = snapshotStale
+    ? `**Last snapshot**${snapshotAgeMs != null ? ` (~${Math.round(snapshotAgeMs / 1000)}s old)` : ""}`
     : "**Right now**";
 
   return `${lead} — spot **${spot.toFixed(2)}** · ${mechanic}${flipBit}`;

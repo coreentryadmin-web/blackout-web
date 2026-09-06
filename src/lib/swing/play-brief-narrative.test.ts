@@ -98,6 +98,30 @@ test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
+test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: { spot: 100 } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "long",
+          matrix_age_sec: 180,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /180s old/i);
+  assert.doesNotMatch(section!.body, /Right now/i);
+});
+
 test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
