@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:20:47.618Z",
+  "updated_at": "2026-09-06T01:22:36.783Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -14,6 +14,17 @@
       "reviewer": null,
       "run_id": null,
       "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T01:19:31.248Z",
+      "lease_until": "2026-09-06T02:49:31.248Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null
     }
   },
   "reviews": {
@@ -278,20 +289,22 @@
       "agent": "cursor",
       "run_id": "a8090aa8-9f36-47de-b985-9d591df69b3c",
       "summary": "PR-event cycle complete. Lifecycle GREEN (deploy, api-auth 225 routes, platform-integrity 14/14, seo 22/22, rth-open skipped weekend). ops:collect 0. main@2c2301275. PR #4071 verify GREEN (draft, awaiting Claude peer review). No Claude/fix PRs for peer review."
-    }
-  ],
-  "open_prs": [
+    },
     {
-      "number": 4071,
-      "title": "chore(blackout-agent): cursor workflow_run handoff — lifecycle GREEN",
-      "branch": "cursor/autopilot-handoff-2026-09-06",
-      "author": "coreentryadmin-web",
+      "at": "2026-09-06T01:22:36.782Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T01:22:36.783Z",
+      "type": "handoff",
       "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T01:20:31Z"
+      "run_id": "5f520482-f831-4a6e-8ae5-c4e8db69200f",
+      "summary": "Post-#4072 merge cycle. validate:deploy GREEN, platform-integrity 14/14, seo 22/22, ops:collect 0. main@2c2301275 (Ask Largo footer clock fix). ECR 34003550757 pending (queued behind 34001859806 ECS roll). No Claude/fix PRs for peer review. #4071 verify GREEN — marking ready for Claude."
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4071": {
       "last_event": "sweep",
