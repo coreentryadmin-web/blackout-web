@@ -199,6 +199,14 @@ mock.module("./ticker-fundamentals", {
       fundamentalsCalls.push(ticker);
       return mockFundamentals;
     },
+    // assembleEcosystemArsenal imports this alongside fetchTickerFundamentalsBundle;
+    // the mock must re-export it or every assembleEcosystemArsenal test throws
+    // "normalizeShortVolumeRatio is not a function" (Cursor peer-review #4248).
+    normalizeShortVolumeRatio: (raw: number) => {
+      if (!Number.isFinite(raw) || raw <= 0) return null;
+      const fraction = raw > 1 ? raw / 100 : raw;
+      return fraction > 1 ? null : fraction;
+    },
   },
 });
 mock.module("../providers/polygon-related", {
