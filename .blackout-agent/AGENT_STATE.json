@@ -1,29 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T08:04:02.424Z",
+  "updated_at": "2026-09-06T08:13:49.935Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T07:53:09.797Z",
-      "lease_until": "2026-09-06T09:33:03.235Z",
+      "claimed_at": "2026-09-06T08:04:18.860Z",
+      "lease_until": "2026-09-06T09:35:03.849Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "617c744b-3468-48f2-be42-0b5d080b2be9"
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-06T07:53:17.132Z",
-      "lease_until": "2026-09-06T09:33:03.235Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "617c744b-3468-48f2-be42-0b5d080b2be9"
+      "run_id": "704ee8bb-af31-4ceb-8328-299466b71d93"
     }
   },
   "reviews": {
@@ -49,7 +38,7 @@
   "deploy": {
     "last_main_sha": "dac25ac031e42ee07d549d1095b50012476c9544",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T07:43:21Z",
+    "last_deploy_at": "2026-09-06T08:11:06Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34019905319",
     "last_deploy_sha": "dac25ac031e42ee07d549d1095b50012476c9544"
   },
@@ -457,54 +446,30 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T08:02:57.437Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T08:02:57.438Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "8983d07e-918a-4c94-a381-0bca2c89bef2",
-      "summary": "Lifecycle GREEN (deploy, api-auth 225, platform-integrity 14/14, seo 22/22, rth-open off-hours skip). ops:collect 0. main@dac25ac03. #4169 verify GREEN — marked ready for Claude peer review. ECR deploy dac25ac pending. No Claude/fix PRs to review."
-    },
-    {
-      "at": "2026-09-06T08:03:00.129Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T08:03:03.235Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T08:03:03.979Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T08:03:04.712Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T08:04:02.423Z",
+      "at": "2026-09-06T08:13:40.516Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T08:04:02.424Z",
+      "at": "2026-09-06T08:13:40.516Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "1eb96987-49d5-41e5-a1ad-c192f02e9502",
-      "summary": "PR-event cycle complete. Lifecycle GREEN (deploy, api-auth 225, platform-integrity 14/14, seo 22/22, rth-open off-hours). ops:collect 0. main@dac25ac03. #4169 closed; #4171 handoff PR open. No Claude/fix PRs for peer review. ECR deploy dac25ac pending."
+      "run_id": "207c8155-015a-42f4-9f6b-17d8d61bcc7e",
+      "summary": "PR-event cycle: lifecycle GREEN (deploy 14/14 platform-integrity, seo 22/22, ops:collect 0). Peer sweep: no Claude/fix PRs. Ask Largo swing v4 prod pass. #4171 draft verify pending — awaits Claude peer review. Weekend — RTH skipped."
+    },
+    {
+      "at": "2026-09-06T08:13:49.934Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T08:13:49.935Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "13ecdfbc-b0b9-42f9-a453-3b07521b1ccd",
+      "summary": "PR-event cycle: lifecycle GREEN (deploy, platform-integrity 14/14, seo 22/22, ops:collect 0). Peer sweep: no Claude/fix PRs. Ask Largo swing v4 prod pass. Weekend RTH skipped. Awaits Claude peer review."
     }
   ],
   "open_prs": [
@@ -516,7 +481,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T08:03:06Z"
+      "updated_at": "2026-09-06T08:04:11Z"
     }
   ]
 }
