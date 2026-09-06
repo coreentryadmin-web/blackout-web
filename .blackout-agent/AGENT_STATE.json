@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T22:48:21.016Z",
+  "updated_at": "2026-09-06T22:57:01.479Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-07T00:16:06.337Z",
+      "lease_until": "2026-09-07T00:18:40.188Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "dbc6957d-89f5-4463-82cc-6d32702f0fc6",
+      "run_id": "ad707c71-34c2-4414-a10a-8086f507400f",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-07T00:16:06.337Z",
+      "lease_until": "2026-09-07T00:18:40.188Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "dbc6957d-89f5-4463-82cc-6d32702f0fc6"
+      "run_id": "ad707c71-34c2-4414-a10a-8086f507400f"
     }
   },
   "reviews": {
@@ -57,11 +57,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "09c257075ab8e0efe815092374d35c31dab12294",
+    "last_main_sha": "1914d985aac2c112cb1e1615f63a57570ca9c185",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T22:40:31Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34064705466",
-    "last_deploy_sha": "09c257075ab8e0efe815092374d35c31dab12294"
+    "last_deploy_at": "2026-09-06T22:54:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34065316530",
+    "last_deploy_sha": "1914d985aac2c112cb1e1615f63a57570ca9c185"
   },
   "events": [
     {
@@ -360,6 +360,31 @@
       "agent": "cursor",
       "run_id": "ff17a957-8b86-47af-b759-28eb6744eab1",
       "summary": "Main@09c257075. #4401 closed (superseded by #4402). #4402: 78/78 local, verify pending, Claude review."
+    },
+    {
+      "at": "2026-09-06T22:48:40.187Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T22:48:40.948Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T22:57:01.479Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T22:57:01.479Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "fb3da1f6-48c2-4a88-b213-e36346ac6d9a",
+      "summary": "Main@1914d985a (#4401 envelope merged). #4402 needs rebase — intel-only delta. validate:deploy GREEN."
     }
   ],
   "open_prs": [
@@ -371,7 +396,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T22:47:46Z"
+      "updated_at": "2026-09-06T22:57:00Z"
     }
   ]
 }
