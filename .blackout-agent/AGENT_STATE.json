@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T02:35:03.337Z",
+  "updated_at": "2026-09-06T03:06:08.048Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -13,6 +13,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T03:06:08.047Z",
+      "lease_until": "2026-09-06T04:36:08.047Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,8 +43,9 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T03:06:08.048Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
@@ -300,6 +313,12 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T03:06:08.048Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     }
   ],
   "open_prs": []
