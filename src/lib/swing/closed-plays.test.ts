@@ -63,6 +63,36 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(closedDeckSourceFromRow(row({ status: "OPEN" })), null);
     assert.equal(closedDeckSourceFromRow(row({ graded_at: null })), null);
   });
+
+  it("freezes dte to the trade's own exit date, never recomputed against today (FINDINGS 2026-09-06)", () => {
+    // Fixture's expiry (2026-08-15) and closed_at (2026-08-10) are both far in this test's
+    // past relative to whenever the suite actually runs — a live `calendarDte(today, expiry)`
+    // read would go negative (contract already expired) the moment "today" outran the expiry,
+    // and would silently change on every re-run before that. The honest DTE-at-exit value is
+    // fixed by the row's own timestamps and must never move: 2026-08-10 -> 2026-08-15 = 5.
+    const src = closedDeckSourceFromRow(row());
+    assert.equal(src?.contract.dte, 5, "dte must be frozen at exit (closed_at), not live against now()");
+  });
+
+  it("still reports a sane frozen dte for an already-expired contract (EWZ/GLW shape)", () => {
+    // Reproduces the exact live production shape from the audit: expiry == closed_at date (the
+    // contract expired the same session the position was closed/graded). A live `now()` read
+    // taken any day after would print negative; the frozen exit-date read must stay 0, forever.
+    const src = closedDeckSourceFromRow(
+      row({
+        contract_expiry: "2026-09-04",
+        closed_at: "2026-09-04T20:05:00Z",
+        graded_at: "2026-09-04T20:10:00Z",
+      }),
+    );
+    assert.equal(src?.contract.dte, 0);
+  });
+
+  it("falls back to graded_at when closed_at is absent", () => {
+    const src = closedDeckSourceFromRow(row({ closed_at: null, graded_at: "2026-08-12T16:05:00Z" }));
+    assert.equal(src?.contract.dte, 3, "2026-08-12 -> 2026-08-15 expiry = 3 dte at grading time");
+    assert.equal(src?.exitAt, "2026-08-12T16:05:00Z");
+  });
 });
 
 describe("closedDeckSourcesFromChains", () => {

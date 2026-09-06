@@ -120,6 +120,42 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1u. CLOSED swing positions served a live-recomputed (negative/nonsensical) DTE instead of the frozen exit-date DTE — fix/swing-closed-dte-negative (pending)
+
+**What was broken:** `closedDeckSourceFromRow` (`closed-plays.ts`) computed a CLOSED position's
+`contract.dte` as `calendarDte(etYmd(), expiry)` — days between **today** (the moment the record is
+being *viewed*) and the contract's expiry — for a trade that already finished, possibly weeks ago.
+The swing ledger carries no dedicated dte-at-entry/dte-at-exit column, so this live-recomputed
+number was the only DTE ever served for a closed trade, and it silently changed (and eventually
+went negative once the contract itself expired) every time the record was re-viewed. Live
+production evidence: EWZ and GLW (expiry 2026-09-04, viewed 2026-09-06) both showed `dte: -2`; a
+graded AAPL row (true DTE at entry 6 / at exit 5) showed `dte: 3` — neither true value, just "days
+from right now." The number flows straight into the member-facing `contract` string
+(`${strike}${right} · ${dte}DTE`, `adapters.ts` `terminalPlayFromHorizon`/`terminalPlayFromClosedSwing`)
+rendered on both `/api/market/swing/record`'s closedDeck array and the Ask Largo play-brief headline
+for a closed position (`/api/market/swing/play-brief` resolves a CLOSED play via
+`play-brief-resolve.ts`'s `loadClosedPlay` → the same `closedDeckSourceFromRow`).
+
+**Fix:** `dte` for a CLOSED row is now frozen to the trade's own exit timestamp
+(`row.closed_at ?? row.graded_at`, both fields the ledger already carries) instead of `etYmd()`
+(today) — `calendarDte(exitAt, expiry)`, "days to expiry as of the day this trade actually closed."
+This value never moves on re-view and stays 0 (not negative) for a contract that expired the same
+session it closed, instead of drifting further negative every day the record is read afterward.
+Left untouched on purpose: live OPEN/HOLD/TRIM positions (`live-plays.ts`'s `contractFromRow`),
+where "DTE as of right now" IS the meaningful, correctly-live number for a still-open position.
+
+**Check at the open:** Open `/nighthawk` → Swings → CLOSED tab (or fetch
+`GET /api/market/swing/record`) and inspect any graded CLOSED row whose contract has since expired
+(expiry date at or before today) — `contract.dte` must read `0` or a small non-negative number tied
+to how many days before/at expiry the trade actually closed, never negative. Cross-check the same
+position's Ask Largo brief (`GET /api/market/swing/play-brief?playId=SWING:<TICKER>&positionId=<id>`)
+renders the identical frozen DTE in its headline/contract string, not a different (live-recomputed)
+one. If every currently-graded CLOSED row happens to still be pre-expiry, note "no post-expiry CLOSED
+row observed at open" rather than treating silence as a pass, and instead confirm the DTE shown for
+any CLOSED row matches `calendarDte(closed_at date, expiry date)` by hand for at least one row.
+
+---
+
 ### 0a-1t. SWING Management Action card fabricated a "TRIM 33%" size once the single trim tranche had already fired — fix/swing-trim-size-fabricated-33pct (pending)
 
 **What was broken:** `managementActionDisplay` (`terminal-display.ts`) sized every TRIM action

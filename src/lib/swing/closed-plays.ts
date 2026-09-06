@@ -63,7 +63,18 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
   const strike = row.contract_strike;
   if (!expiry || strike == null || !Number.isFinite(strike)) return null;
   const right = row.contract_type === "put" ? "P" : "C";
-  const dte = calendarDte(etYmd(), expiry.slice(0, 10));
+  // FINDINGS 2026-09-06 (swing-closed-dte-negative): a CLOSED position's DTE must be frozen to its
+  // own trade lifecycle, never recomputed against "now". The ledger carries no dedicated
+  // dte-at-entry/dte-at-exit column, but it DOES carry the exit timestamp (closed_at, falling back to
+  // graded_at for legacy rows graded without a distinct close stamp) — so "days to expiry as of the
+  // day this trade actually closed" is available for free and is the only DTE reading that stays
+  // stable no matter when the record is viewed later. Using etYmd() (today) here previously produced
+  // a negative DTE for any contract that has since expired (e.g. EWZ/GLW: expiry 2026-09-04, dte -2
+  // when read on 2026-09-06) and a wrong-but-plausible-looking number for anything still short of
+  // expiry (AAPL: true DTE at exit was 5, but the live-recomputed value read 3 and silently kept
+  // shrinking on every subsequent view).
+  const exitAt = row.closed_at ?? row.graded_at;
+  const dte = calendarDte((exitAt ?? etYmd()).slice(0, 10), expiry.slice(0, 10));
   const score =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
       ? (row.feature_vector.evidence_score as number)
@@ -97,7 +108,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     peakPremium: row.peak_premium,
     troughPremium: row.trough_premium,
     occ: row.contract_occ,
-    exitAt: row.closed_at ?? row.graded_at,
+    exitAt,
     exitPnlPct: exitPnl,
     closedReason: closedReasonFromRow(row),
   };
