@@ -163,6 +163,16 @@ manager read), not repeated under Hold plan.
 
 ---
 
+### 0a-1ad. Desk context rendered "closed **open**" for an unresolved last swing — fix/swing-brief-desk-context-unresolved-outcome (pending)
+
+**What was broken:** `deskConsensusSection` hardcoded "closed **{outcome}**" but `outcome` can be `"open"`/`"pending"` (unresolved), producing a live contradiction — confirmed on `SWING:AAPL` positionId 36's CLOSED brief.
+
+**Fix:** Render "is still **unresolved**" for `outcome === "open" | "pending"`; terminal outcomes (`target`/`stop`/`ambiguous`/`unfilled`) keep the existing "closed **{outcome}**" phrasing.
+
+**Check at the open:** Pull a CLOSED swing brief (`?status=CLOSED&expandIntel=1`) for any ticker whose last Night Hawk swing is still open/pending — "Desk context" should read "is still unresolved", never "closed open"/"closed pending".
+
+---
+
 ### 0a-1z. A total ecosystem/Vector fetch failure was indistinguishable from legitimately-empty data — never reached the structured unavailableSources channel — fix/swing-ecosystem-vector-total-fetch-failure-absence (pending)
 
 **What was broken:** `fetchEcosystemContext`/`fetchVectorFullState` were wrapped in
