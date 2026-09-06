@@ -307,15 +307,18 @@ function staticInvariantChecks() {
     rec("static: member route.ts's derivation chain", "FAIL", "route.ts's play-state derivation no longer matches the expected loadMergedSpxDesk->buildPlayTechnicals->readSpxPlaySnapshot chain at all — re-trace this endpoint");
   }
 
-  // 6. (WARN, not FAIL) roundFloats asymmetry — route.ts rounds, getSpxPlayState() doesn't.
+  // 6. (WARN, not FAIL) roundFloats asymmetry — route.ts rounds, shared derivation doesn't.
   const routeRounds = /roundFloats\(\s*play\s*\)/.test(routeSrc);
-  const getSpxPlayStateBlock = findBalancedBlock(spxServiceSrc, /export async function getSpxPlayState\(\)\s*\{/);
-  const serviceRounds = !!getSpxPlayStateBlock && /roundFloats/.test(getSpxPlayStateBlock);
+  const evalBlock = findBalancedBlock(spxServiceSrc, /async function evaluateSpxPlayState\(\)\s*\{/);
+  const deskSummaryBlock = findBalancedBlock(spxServiceSrc, /export async function getSpxDeskSummary\(\)\s*\{/);
+  const serviceRounds =
+    (!!evalBlock && /roundFloats/.test(evalBlock)) ||
+    (!!deskSummaryBlock && /roundFloats/.test(deskSummaryBlock));
   if (routeRounds && !serviceRounds) {
     rec(
       "static: roundFloats asymmetry between member route and getSpxPlayState()",
       "WARN",
-      `member route.ts applies roundFloats(play) before responding; getSpxPlayState() (BIE's spx_full_state, Largo's get_spx_play) does not — numeric fields can differ by up to ${ROUND_TOLERANCE} (half a ${ROUND_DP}dp rounding step). Documented, tolerated in Layer B's diff below — never silently hidden. See docs/audit/FINDINGS.md.`
+      `member route.ts applies roundFloats(play) before responding; evaluateSpxPlayState()/getSpxDeskSummary() (BIE's spx_full_state, Largo's get_spx_play/get_spx_structure) do not — numeric fields can differ by up to ${ROUND_TOLERANCE} (half a ${ROUND_DP}dp rounding step). Documented, tolerated in Layer B's diff below — never silently hidden. See docs/audit/FINDINGS.md.`
     );
   } else if (routeRounds && serviceRounds) {
     rec("static: roundFloats asymmetry between member route and getSpxPlayState()", "PASS", "both sides now round — asymmetry resolved, ROUND_TOLERANCE is no longer expected to be exercised");
