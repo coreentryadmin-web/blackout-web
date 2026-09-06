@@ -215,13 +215,12 @@ export function wallIntegrityCoaching(vec: VectorFullState | null, play: Termina
 export function vectorPlayCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
   const vp = vec?.play;
   if (!vp?.headline && !vp?.invalidation) return null;
-  // Same Largo C2 gate as counterThesisLine — stale Vector play.bias must not coach alignment/friction.
-  const vectorLive = !vectorSnapshotStale(vec, Date.now());
+  // Largo C2 — stale Vector desk must not coach thesis/invalidation (same gate as technicalsCoaching #4400).
+  if (vectorSnapshotStale(vec, Date.now())) return null;
 
   const aligned =
-    vectorLive &&
-    ((play.direction === "LONG" && vp.bias === "long") ||
-      (play.direction === "SHORT" && vp.bias === "short"));
+    (play.direction === "LONG" && vp.bias === "long") ||
+    (play.direction === "SHORT" && vp.bias === "short");
 
   const parts: string[] = [];
   if (vp.headline) parts.push(`Vector desk: **${vp.headline}**`);
