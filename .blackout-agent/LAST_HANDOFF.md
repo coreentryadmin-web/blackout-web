@@ -1,18 +1,18 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T21:09:04.195Z
-**Run:** 881f35ac-f60c-4c31-a37c-1fc61b435912
+**At:** 2026-09-06T03:06:42.495Z
+**Run:** 206d8a41-c0cd-47ef-89cb-99f9576f7503
 
 ## Summary
 
-PR-event cycle complete. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open). ops:collect 0. main@8f1b953ba. Closed duplicate #4046. Updated #4045 handoff@81cc0761 (verify pending). Discovered #4047 swing play-brief draft (WAIT). No Claude/fix PRs for peer review. GitHub GraphQL rate-limited for comments; REST push works.
+Cycle complete. #4101 MERGED (bookContext + unavailableSources). #4102/#4103 merged earlier. Peer reviews posted. Platform integrity 14/14 GREEN. validate:api-auth GREEN. validate:deploy GREEN. ops:collect 0. main@3b96df0a6. Agent state handoff on cursor/autopilot-handoff-4101-cycle.
 
 ## Deploy
 
-- main: `8f1b953ba05ef5cdb818c04fa32f18e7151f9605`
+- main: `3b96df0a63b848514ec30970e24d4a6b6603cada`
 - status: 
 
 ## Open PRs
 
-- #4047 [cursor] feat(swing): Ask Largo — deterministic play intelligence engine
-- #4045 [cursor] chore(blackout-agent): cursor cycle handoff — post-#4035 merge wave
+- #4105 [cursor] chore(blackout-agent): cursor PR-event handoff — #4100/#4101 merged @3b96df0a6
+- #4104 [cursor] feat(swing): deep trade-manager coaching — pillars, catalysts, cross-desk, confluence
