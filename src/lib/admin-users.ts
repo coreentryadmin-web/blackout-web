@@ -73,13 +73,16 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
   } else if (access === "premium") {
     clauses.push(`tier = 'premium' AND COALESCE(role, '') <> 'admin'`);
   } else if (access === "community") {
-    clauses.push(`membership_kind = 'community'`);
+    // Matches classifyAdminUserAccess's priority order: a premium-tier user with
+    // membership_kind='community' is classified "premium" there (tier wins), so this
+    // filter must exclude tier='premium' too, or it disagrees with the row's own badge.
+    clauses.push(`membership_kind = 'community' AND COALESCE(tier, 'free') <> 'premium'`);
   } else if (access === "free") {
     clauses.push(
       `tier = 'free' AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium') AND COALESCE(role, '') <> 'admin'`
     );
   } else if (tier === "community") {
-    clauses.push(`membership_kind = 'community'`);
+    clauses.push(`membership_kind = 'community' AND COALESCE(tier, 'free') <> 'premium'`);
   } else if (tier === "premium") {
     clauses.push(`tier = 'premium'`);
   } else if (tier === "free") {
@@ -164,7 +167,9 @@ export async function getAdminUserListStats(): Promise<AdminUserListStats | null
       COUNT(*)::text AS total,
       COUNT(*) FILTER (WHERE tier = 'premium' AND NOT ${adminFilter})::text AS premium,
       COUNT(*) FILTER (WHERE ${adminFilter})::text AS admins,
-      COUNT(*) FILTER (WHERE membership_kind = 'community' AND NOT ${adminFilter})::text AS community,
+      COUNT(*) FILTER (
+        WHERE membership_kind = 'community' AND COALESCE(tier, 'free') <> 'premium' AND NOT ${adminFilter}
+      )::text AS community,
       COUNT(*) FILTER (
         WHERE tier = 'free'
           AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium')
