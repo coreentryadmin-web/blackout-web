@@ -95,3 +95,29 @@ test("tradeManagerNarrativeSection: watch bucket entry stance", () => {
   assert.ok(section);
   assert.match(section!.body, /Entry stance/i);
 });
+
+test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 2.45,
+        pnlPct: 98,
+        peak: 120,
+        thesisHealth: { health: 46, rungLabel: "Degraded", pillars: [] },
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 1.96,
+          target_premium: 9.8,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Hold the line/i);
+  assert.match(section!.body, /Live read/i);
+  assert.match(section!.body, /Manage rails/i);
+  assert.match(section!.body, /Break watch/i);
+});
