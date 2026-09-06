@@ -194,6 +194,32 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   assert.ok(brief.envelope.sections.some((s) => s.body.includes("54%")));
 });
 
+test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD", direction: "LONG" }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: { window_hours: 24, print_count: 5, call_premium: 500_000, put_premium: 200_000, unknown_premium: 0 },
+      gex_positioning: { spot: 100, flip: 98, gamma_posture: "long", gex_king_strike: 100 },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      spot: 100,
+      gammaFlip: 98,
+      darkPoolLevels: [{ strike: 99, premium: 5_000_000, pct: 35 }],
+      regime: { posture: "long", label: "LONG" },
+      gexWalls: { callWalls: [{ strike: 105, pct: 8 }], putWalls: [{ strike: 97, pct: 7 }] },
+    } as SwingPlayBriefContext["vector"],
+  });
+  assert.ok(brief.envelope.sections.some((s) => s.title === "Trade manager read"));
+  assert.ok(brief.envelope.sections.some((s) => s.title === "Trade manager read" && /dark pool|long gamma/i.test(s.body)));
+});
+
 test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({

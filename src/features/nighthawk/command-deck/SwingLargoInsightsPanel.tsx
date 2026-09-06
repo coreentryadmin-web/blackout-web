@@ -72,7 +72,7 @@ function SwingBriefActionStrip({ play }: { play: TerminalPlay }) {
 /** Center-rail Largo play intelligence — deterministic Ask Largo brief per selected play. */
 export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null }) {
   const router = useRouter();
-  const { envelope, asOf, loading, error, refresh, changeCount } = useSwingPlayBrief(play);
+  const { envelope, asOf, loading, error, refresh, changeCount, isLiveRefreshing } = useSwingPlayBrief(play);
 
   const onFollowup = useCallback(
     (q: string) => {
@@ -100,7 +100,10 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
     <aside className="nh-deck-largo nh-deck-largo--brief" aria-label={`Ask Largo — ${headline}`}>
       <header className="nh-deck-largo__head">
         <div>
-          <span className="nh-deck-largo__kicker">Ask Largo · live intelligence</span>
+          <span className="nh-deck-largo__kicker">
+            Ask Largo · live intelligence
+            {isLiveRefreshing ? <span className="nh-deck-largo__live-dot" aria-label="Refreshing live data" /> : null}
+          </span>
           <h2 className="nh-deck-largo__title">{headline}</h2>
           {changeCount > 0 ? (
             <span className="nh-deck-largo__delta" aria-live="polite">
