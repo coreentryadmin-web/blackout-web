@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
  * Validate swing brief v4 on live UI — collapsed intel, narrative pulse, API contract.
+ *
+ * Uses createTunneledContext (CONNECT tunnel) — Chromium has no direct network in this sandbox.
+ * Run from repo root: NODE_USE_ENV_PROXY=1 node scripts/audit/ask-largo-swing-brief-v4-validate.mjs
  */
 import { mkdir, writeFile } from "node:fs/promises";
-import { chromium } from "playwright";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
-import { resolveChromiumPath } from "./lib/playwright-chromium-path.mjs";
+import { createPlaywrightAuditContext } from "./lib/playwright-audit-context.mjs";
 
 const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const OUT = process.env.SCREENSHOT_OUT || "/opt/cursor/artifacts/ask-largo-v4-live-validate";
@@ -22,26 +24,6 @@ const COLLAPSED_WHEN_NARRATIVE = new Set([
   "Hold plan",
   "Vector desk",
 ]);
-
-function cookiesFromHeader(header, domain) {
-  return header
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((p) => {
-      const [n, ...r] = p.split("=");
-      const name = n.trim();
-      return {
-        name,
-        value: r.join("=").trim(),
-        domain,
-        path: "/",
-        httpOnly: name === "__session",
-        secure: domain !== "localhost",
-        sameSite: "Lax",
-      };
-    });
-}
 
 function validateV4Open(apiJson, panelSections) {
   const issues = [];
@@ -113,14 +95,13 @@ async function main() {
     process.exit(2);
   }
 
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: resolveChromiumPath(),
-    args: ["--no-sandbox"],
+  const { browser, ctx, counts, mode } = await createPlaywrightAuditContext({
+    url: BASE,
+    cookie: session.cookieHeader,
+    viewport: "1680x1050",
+    desktop: true,
+    requestTimeoutMs: 60_000,
   });
-  const host = new URL(BASE).hostname;
-  const ctx = await browser.newContext({ viewport: { width: 1680, height: 1050 }, deviceScaleFactor: 1.5 });
-  await ctx.addCookies(cookiesFromHeader(session.cookieHeader, host));
   const page = await ctx.newPage();
 
   let lastBriefApi = null;
@@ -191,7 +172,9 @@ async function main() {
     v4,
     pulse: { hasSinceLastRead: hasPulse, narrativeSnippet: narrativeBody.slice(0, 500) },
     shots: [cropPath, pulsePath],
-    pass: v4.issues.length === 0,
+    pass: counts.fail === 0 && v4.issues.length === 0,
+    routed: counts,
+    mode,
   };
 
   await writeFile(`${OUT}/v4-validation-report.json`, JSON.stringify(report, null, 2));
