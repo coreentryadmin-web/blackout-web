@@ -225,3 +225,98 @@ test("tradeManagerNarrativeSection: includes counter-thesis when opposing signal
   assert.ok(section);
   assert.match(section!.body, /Counter-thesis/i);
 });
+
+test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BULLETS on rich Vector data", () => {
+  const richVector = {
+    spot: 100,
+    gammaFlip: 98.5,
+    maxPain: 99,
+    vexFlip: 99.2,
+    vexWalls: { callWalls: [{ strike: 104, gex: 1 }], putWalls: [{ strike: 96, gex: 1 }] },
+    darkPoolLevels: [{ strike: 99.5, premium: 12_000_000, pct: 42 }],
+    regime: { posture: "long", label: "LONG GAMMA" },
+    gexWalls: { callWalls: [{ strike: 105, gex: 1 }], putWalls: [{ strike: 97, gex: 1 }] },
+    proximity: { strike: 105, side: "call", callout: "within 2% of call wall" },
+    wallEvents: [{ kind: "call_wall_shift", message: "call wall lifted to 105" }],
+    magnet: { strike: 100, distancePct: 0.3, pull: "at" },
+    confluenceZones: [{ center: 101, score: 8, kinds: ["gex", "dark_pool"] }],
+    expectedMove: { pct: 4.2, upper: 104.2, lower: 95.8 },
+    technicals: { emaStack: "up", macd: "bull", vwapSide: "above", structure: "BOS up" },
+  } as SwingPlayBriefContext["vector"];
+
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        score: 52,
+        pnlPct: 18,
+        peak: 32,
+        manageAction: "HOLD",
+        thesisHealth: {
+          health: 48,
+          rungLabel: "Degraded",
+          advisory: "Tighten risk",
+          pillars: [
+            {
+              id: "market",
+              label: "Regime fit",
+              status: "faded",
+              commitLabel: "aligned",
+              currentLabel: "neutral",
+              deltaPts: -12,
+            },
+          ],
+          moves: ["flow cooled vs open"],
+        },
+        exitPolicy: {
+          trim_levels: [
+            { trigger_pct: 25, fired: true },
+            { trigger_pct: 50, fired: false },
+          ],
+          stop_premium: 1.85,
+          target_premium: 4.2,
+          time_stop_et: "15:45",
+          runner_fraction: 0.25,
+        },
+      }),
+      vector: richVector,
+      laneRows: [
+        { ticker: "NRG", direction: "LONG", horizon: "SWING", score: 52, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "momentum" },
+        { ticker: "INTC", direction: "LONG", horizon: "SWING", score: 61, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "flow" },
+        { ticker: "MU", direction: "LONG", horizon: "SWING", score: 44, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "breakout" },
+      ],
+      meridian: {
+        items: [{ kind: "earnings", days_until: 5, ticker: "NRG", importance: 4 }],
+      } as SwingPlayBriefContext["meridian"],
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 22,
+          call_premium: 350_000,
+          put_premium: 1_100_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: { direction: "short", conviction: "high", outcome: "bearish" },
+        zerodte_today: { direction: "long", conviction: "medium" },
+        gex_positioning: {
+          spot: 100,
+          flip: 98.5,
+          gamma_posture: "long",
+          gex_king_strike: 100,
+        },
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  const bulletCount = section!.body.split("\n").filter((l) => l.startsWith("• ")).length;
+  assert.ok(bulletCount > 14, `expected >14 coaching bullets to stress the cap, got ${bulletCount}`);
+  assert.match(section!.body, /Break watch/i, "safety-critical break coaching must not starve");
+  assert.match(section!.body, /Counter-thesis/i, "counter-thesis must not starve behind MAX_BULLETS");
+});
