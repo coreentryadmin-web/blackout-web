@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T20:27:57.989Z",
+  "updated_at": "2026-09-06T22:03:00.300Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T22:01:33.860Z",
+      "lease_until": "2026-09-06T23:31:33.860Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -47,16 +48,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T22:01:33.861Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "edb1c8a3e2e5265d61b562f6b81ba1ee86e69d28",
+    "last_main_sha": "200dd971d505fbefcde15b9a5b5cd45d5fbd8b78",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T21:56:57Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34062560370",
+    "last_deploy_sha": "200dd971d505fbefcde15b9a5b5cd45d5fbd8b78"
   },
   "events": [
     {
@@ -785,6 +787,61 @@
     },
     {
       "at": "2026-09-06T20:27:57.989Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T22:01:25.541Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T22:01:29.213Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T22:01:29.934Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T22:01:30.665Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T22:01:33.861Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T22:02:27.174Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T22:02:56.870Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T22:02:56.871Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2fdf846d-17a2-41dd-bb4e-5dad5b31b7c0",
+      "summary": "PR-event wake (#4398 closed without merge): recovered state, no open PRs. validate:deploy GREEN, validate:platform-integrity 14/14, validate:api-auth GREEN, ops:collect 0 items. Deploy main"
+    },
+    {
+      "at": "2026-09-06T22:03:00.300Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
