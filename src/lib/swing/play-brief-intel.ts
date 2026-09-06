@@ -507,31 +507,30 @@ export function macroTapeSection(eco: EcosystemContext | null): RichSection | nu
   return { title: "Macro tape", body: lines.join("\n\n") };
 }
 
-/** Cross-desk reads — Night Hawk edition + 0DTE stance on this ticker. */
+/**
+ * Supplementary desk context not already narrated in Trade manager read.
+ * NH/0DTE direction + friction live in `crossDeskCoaching` — avoid duplicating raw dumps here.
+ */
 export function deskConsensusSection(eco: EcosystemContext | null, play: TerminalPlay): RichSection | null {
   if (!eco) return null;
   const lines: string[] = [];
-  if (eco.nighthawk_recent) {
-    const nh = eco.nighthawk_recent;
+
+  const nh = eco.nighthawk_recent;
+  if (nh?.outcome && nh.edition_for) {
     lines.push(
-      `Night Hawk **${nh.edition_for}**: ${nh.direction} · ${nh.conviction} conviction · outcome **${nh.outcome}**`,
+      `Night Hawk's last swing on this name (**${nh.edition_for}**) closed **${nh.outcome}** — weigh that track record against today's **${play.direction}** setup before sizing.`,
     );
   }
-  if (eco.zerodte_today) {
-    const z = eco.zerodte_today;
-    const aligned =
-      (play.direction === "LONG" && z.direction === "long") ||
-      (play.direction === "SHORT" && z.direction === "short");
+
+  const anomaly = eco.recent_anomalies?.[0];
+  if (anomaly) {
     lines.push(
-      `0DTE desk: **${z.direction}** · score ${z.score}${aligned ? " · aligned with swing" : " · cross-check vs swing direction"}`,
+      `Flow desk flagged **${anomaly.anomaly_type}** — ${anomaly.detail}. Confirm it still supports your thesis or treat it as a veto.`,
     );
   }
-  if (eco.recent_anomalies?.length) {
-    const top = eco.recent_anomalies[0];
-    if (top) lines.push(`Latest flow anomaly: **${top.anomaly_type}** — ${top.detail}`);
-  }
+
   if (!lines.length) return null;
-  return { title: "Desk consensus", body: lines.join("\n\n") };
+  return { title: "Desk context", body: lines.join("\n\n") };
 }
 
 /** GEX dealer posture — gamma/vanna context for the swing. */

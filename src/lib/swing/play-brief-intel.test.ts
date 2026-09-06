@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { bookContextSection } from "./play-brief-intel";
+import { bookContextSection, deskConsensusSection } from "./play-brief-intel";
+import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -55,4 +56,43 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
 test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is not reported as overlap", () => {
   const book: PortfolioPosition[] = [{ ticker: "NVDA", direction: "LONG" }];
   assert.equal(bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book), null);
+});
+
+test("deskConsensusSection: null when only NH direction / 0DTE stance (covered by crossDeskCoaching)", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-05",
+      direction: "long",
+      conviction: "high",
+      outcome: "",
+    },
+    zerodte_today: { direction: "long", score: 82 },
+  };
+  assert.equal(deskConsensusSection(eco, fixturePlay()), null);
+});
+
+test("deskConsensusSection: narrates NH outcome history when present", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-04",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }));
+  assert.ok(section);
+  assert.equal(section?.title, "Desk context");
+  assert.match(section?.body ?? "", /closed \*\*WIN\*\*/i);
+  assert.match(section?.body ?? "", /weigh that track record/i);
+});
+
+test("deskConsensusSection: narrates flow anomaly in coaching voice", () => {
+  const eco: EcosystemContext = {
+    recent_anomalies: [{ anomaly_type: "sweep_cluster", detail: "$4.2M call sweeps at 145" }],
+  };
+  const section = deskConsensusSection(eco, fixturePlay());
+  assert.ok(section);
+  assert.match(section?.body ?? "", /sweep_cluster/i);
+  assert.match(section?.body ?? "", /Confirm it still supports/i);
 });
