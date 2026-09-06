@@ -78,12 +78,13 @@ export function vectorSnapshotStale(
 export function resolveGammaPosture(
   ctx: SwingPlayBriefContext,
   vec: VectorWithReadContext | null | undefined,
+  readMs: number = Date.now(),
 ): string | null {
   const vecPosture = vec?.regime?.posture ?? null;
-  if (vecPosture != null) return vecPosture;
+  if (vecPosture != null && !vectorSnapshotStale(vec, readMs)) return vecPosture;
   const gex = ctx.ecosystem?.gex_positioning;
   if (gex?.gamma_posture == null) return null;
-  if (gexMatrixStale(gex, Date.now())) return null;
+  if (gexMatrixStale(gex, readMs)) return null;
   return gex.gamma_posture;
 }
 
