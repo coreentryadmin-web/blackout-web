@@ -447,8 +447,8 @@ export function composeSwingPlayBrief(
     : null;
 
   const trimsFired = play.exitPolicy?.trim_levels?.filter((t) => t.fired).length ?? null;
-  // Diff snapshots must read spot/walls/flip from envelope.levels (already stale-gated in
-  // levelsFromContext) — not a parallel vec/gex fallback that bypasses freshness gates.
+  // Diff snapshot levels must match envelope.levels (single source of truth) — never re-derive
+  // from raw vec/gex here or stale-GEX gating in levelsFromContext can be bypassed (#4377 class).
   const snap = snapshotFromBrief(
     envelope,
     play,

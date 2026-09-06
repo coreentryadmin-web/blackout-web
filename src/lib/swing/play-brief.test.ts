@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { composeSwingPlayBrief } from "./play-brief";
+import { extrasFromBriefResponse } from "./play-brief-diff";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -946,6 +947,52 @@ test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, 
   assert.equal(spot?.provenance?.freshness, "stale", "20m-old Vector snapshot must not read as live");
   const callWall = brief.envelope.levels?.find((l) => l.label === "call wall");
   assert.equal(callWall?.provenance?.freshness, "stale");
+});
+
+test("composeSwingPlayBrief: diff snapshot levels derive from envelope.levels (single source of truth)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        asof: new Date().toISOString(),
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date_et: "2026-09-05",
+        market_phase: "closed",
+        gex_king_strike: 25,
+        net_gex: null,
+        nearest_wall: null,
+        gamma_posture: "long",
+        vanna_posture: null,
+        delta_posture: null,
+        charm_posture: null,
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const levelPrice = (label: string) =>
+    brief.envelope.levels?.find((l) => l.label === label)?.price ?? null;
+  const extras = extrasFromBriefResponse({
+    envelope: brief.envelope,
+    flowSnapshot: brief.flowSnapshot,
+    trimsFired: brief.trimsFired,
+  });
+  assert.equal(extras.spot, levelPrice("spot"));
+  assert.equal(extras.gammaFlip, levelPrice("gamma flip"));
+  assert.equal(extras.callWall, levelPrice("call wall"));
+  assert.equal(extras.putWall, levelPrice("put wall"));
 });
 
 test("composeSwingPlayBrief: dark pool envelope levels attribute Vector provenance, not HELIX (C8)", () => {
