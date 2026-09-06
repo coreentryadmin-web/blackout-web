@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:41:27.894Z",
+  "updated_at": "2026-09-06T01:47:17.596Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T01:21:06.430Z",
-      "lease_until": "2026-09-06T03:10:29.527Z",
+      "claimed_at": "2026-09-06T01:39:52.814Z",
+      "lease_until": "2026-09-06T03:09:52.814Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "bfad23d8-1bc5-4b47-b528-1fc268877121"
+      "run_id": null
     }
   },
   "reviews": {
@@ -38,9 +38,9 @@
   "deploy": {
     "last_main_sha": "944c8c96ecd1b6b984948a6d5629b7957b0575ba",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T01:39:18Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34004450655",
-    "last_deploy_sha": "944c8c96ecd1b6b984948a6d5629b7957b0575ba"
+    "last_deploy_at": "2026-09-06T01:46:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34004774898",
+    "last_deploy_sha": "8df5d84fecea2e2a3026308b97411cdd2d43f493"
   },
   "events": [
     {
@@ -259,6 +259,25 @@
       "agent": "cursor",
       "run_id": "47e244a1-15e0-44ec-951b-19970fe521a0",
       "summary": "CI-green wake: #4073 largo-stress MERGED @944c8c96e. #4075 fix/vector peer-reviewed locally (14/14 pass) — draft, verify pending. #4076/#4074 cursor drafts awaiting Claude. validate:deploy GREEN. ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T01:47:16.568Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T01:47:17.595Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T01:47:17.596Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6396b0de-253a-486e-bf76-712c75552b54",
+      "summary": "Cycle: #4075 vector undated-row fix peer-reviewed APPROVED + MERGED. #4076 swing v4 tsc fix pushed (fe4f939). Deploy GREEN, ops:collect 0. #4076 verify pending (await Claude review). Weekend off-hours."
     }
   ],
   "open_prs": [
@@ -269,28 +288,18 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T01:39:23Z"
-    },
-    {
-      "number": 4075,
-      "title": "fix(vector): undated-row expiry only worked when the ticker stopped appearing in fresh",
-      "branch": "fix/vector-universe-undated-fresh-row-reset",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T01:35:54Z"
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T01:46:55Z"
     },
     {
       "number": 4074,
-      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN @2c2301275",
+      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN @764e7f97f",
       "branch": "cursor/autopilot-work-loop-7a7e",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T01:41:17Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T01:44:38Z"
     }
   ]
 }
