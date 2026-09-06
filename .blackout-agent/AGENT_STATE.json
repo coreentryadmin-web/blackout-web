@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T17:44:56.223Z",
+  "updated_at": "2026-09-06T17:49:44.661Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T17:40:04.881Z",
-      "lease_until": "2026-09-06T19:10:04.881Z",
+      "lease_until": "2026-09-06T19:18:41.603Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "a7fe70ed-a7da-4d86-a951-acc86f4f127f",
+      "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T17:45:31.361Z",
+      "lease_until": "2026-09-06T19:18:41.603Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "a7fe70ed-a7da-4d86-a951-acc86f4f127f",
       "title": null
     }
   },
@@ -49,8 +61,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-06T17:40:04.882Z",
-      "current_task": "BO-P1-0100"
+      "last_seen": "2026-09-06T17:45:31.362Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
@@ -793,9 +805,62 @@
       "agent": "cursor",
       "run_id": "7dcc7374-0e64-4809-a73f-73ebb9173618",
       "summary": "Autopilot wake (workflow_run): closed duplicate #4351; platform-integrity 14/14 GREEN; validate:deploy GREEN; ops:collect 0. Four Largo/swing PRs in flight (#4353-#4356) — locally verified #4355 (69/69) + #4356 (5/5); awaiting Claude peer review. ECR deploy in progress for 0afadca."
+    },
+    {
+      "at": "2026-09-06T17:45:26.521Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-06T17:45:31.362Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T17:48:41.603Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T17:48:42.586Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T17:48:43.467Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T17:49:44.660Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T17:49:44.661Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c84dd951-6584-420e-b01b-97b7262fed9a",
+      "summary": "Cycle complete: platform 14/14, deploy/lifecycle GREEN, ops 0. Verified locally #4355/#4356/#4357. Five Largo PRs (#4353-#4357) + handoff #4358 await Claude review. ECR deploy polling."
     }
   ],
   "open_prs": [
+    {
+      "number": 4358,
+      "title": "chore(blackout-agent): cursor handoff — Largo PRs verified, platform 14/14 GREEN",
+      "branch": "cursor/handoff-20260906T1745",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:45:26Z"
+    },
     {
       "number": 4357,
       "title": "fix(swing): label Vector regime as dealer gamma posture, not bare long/short",
@@ -804,7 +869,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:44:30Z"
+      "updated_at": "2026-09-06T17:48:52Z"
     },
     {
       "number": 4356,
@@ -814,7 +879,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:43:35Z"
+      "updated_at": "2026-09-06T17:48:58Z"
     },
     {
       "number": 4355,
@@ -824,7 +889,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:43:04Z"
+      "updated_at": "2026-09-06T17:48:58Z"
     },
     {
       "number": 4354,
@@ -834,7 +899,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:41:55Z"
+      "updated_at": "2026-09-06T17:47:27Z"
     },
     {
       "number": 4353,
@@ -844,7 +909,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:43:37Z"
+      "updated_at": "2026-09-06T17:46:02Z"
     }
   ],
   "pr_activity": {
