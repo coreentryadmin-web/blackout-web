@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T09:27:47.944Z",
+  "updated_at": "2026-09-06T09:33:34.591Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:26:24.584Z",
-      "lease_until": "2026-09-06T10:57:45.540Z",
+      "claimed_at": "2026-09-06T09:26:53.852Z",
+      "lease_until": "2026-09-06T10:56:53.852Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ed31fdd4-2dee-4758-8d9a-a27c2c1c2c10"
+      "run_id": null
     }
   },
   "reviews": {
@@ -22,14 +22,6 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
-      "safe_to_merge": true
-    },
-    "pr-4182": {
-      "pr": 4182,
-      "head_sha": "99eb1f88e26d2666e45cf6dd59038418595b231b",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T09:27:17.869Z",
       "safe_to_merge": true
     }
   },
@@ -454,41 +446,40 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T09:27:17.870Z",
-      "type": "pr_review",
-      "pr": 4182,
-      "head_sha": "99eb1f88e26d2666e45cf6dd59038418595b231b",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T09:27:17.869Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T09:27:40.748Z",
+      "at": "2026-09-06T09:33:34.590Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 4
+      "open_pr_count": 5
     },
     {
-      "at": "2026-09-06T09:27:45.539Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-06T09:27:46.965Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-06T09:27:47.944Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
+      "at": "2026-09-06T09:33:34.591Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "100beb15-f3ed-491c-b752-98199d575122",
+      "summary": "PR-event cycle: peer-reviewed #4182 APPROVED, #4185 WAIT (dup #4182), #4186 APPROVED. #4179/#4181 merged. deploy GREEN, ops:collect 0. Awaiting verify on #4182/#4180/#4186."
     }
   ],
   "open_prs": [
+    {
+      "number": 4186,
+      "title": "fix(swing): keep GEX/wall intel on closed play-briefs (audit #2)",
+      "branch": "fix/swing-closed-intel-collapse-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:33:29Z"
+    },
+    {
+      "number": 4185,
+      "title": "fix(swing): wire live-position thesis-health explanation into Ask Largo",
+      "branch": "fix/swing-brief-thesis-health-live-wiring",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:33:29Z"
+    },
     {
       "number": 4184,
       "title": "chore(blackout-agent): cursor PR-event cycle handoff — peer review #4178, deploy GREEN",
@@ -497,17 +488,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:26:52Z"
-    },
-    {
-      "number": 4183,
-      "title": "chore(blackout-agent): cursor workflow_run handoff — #4174/#4175 merged, #4179/#4181 reviewed",
-      "branch": "cursor/autopilot-workflow-run-0906",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:22:40Z"
+      "updated_at": "2026-09-06T09:28:38Z"
     },
     {
       "number": 4182,
@@ -517,7 +498,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:27:24Z"
+      "updated_at": "2026-09-06T09:30:37Z"
     },
     {
       "number": 4180,
@@ -526,8 +507,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-06T09:27:41Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:29:55Z"
     }
   ]
 }
