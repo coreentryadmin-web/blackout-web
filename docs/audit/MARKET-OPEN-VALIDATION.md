@@ -118,6 +118,18 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
+
+### 0a-1k. Swing Ask Largo brief — duplicate GEX posture + wall dynamics sections — fix/swing-brief-dedup-gex-sections (pending)
+
+**What was broken:** When Vector spot + GEX data were present, Ask Largo swing briefs rendered **Trade manager read** plus separate **GEX posture** and **Wall dynamics** list sections repeating the same dealer gamma posture and wall bead data — the original "three lists of the same numbers" complaint.
+
+**Fix:** `buildIntelSections()` skips legacy `gexPostureSection` + `wallDynamicsSection` when `tradeManagerNarrativeSection` renders; keeps them as fallback when narrative cannot build.
+
+**Check at the open:** Swings desk → select OPEN/HOLD row with Vector + GEX → Ask Largo → confirm dealer posture appears once under **Trade manager read** only; no **GEX posture** / **Wall dynamics** section headers when narrative is present.
+
+---
+
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
 ### 0a-1j. Swing Ask Largo OPEN brief — ticker collision picked WATCH lane row — fix/swing-play-brief-ticker-collision (pending)
