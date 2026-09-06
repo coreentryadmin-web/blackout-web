@@ -1471,6 +1471,48 @@ test("G-6 calibration: a CONDOR correlated-and-opposed at a low score is NOT fla
   assert.deepEqual(v.calibration.g6_conflict.against, []);
 });
 
+// ── G-4 CONDOR calibration: same isCondor mismatch as G-6, in the same function ───────────
+test("G-4 calibration: a CONDOR at elevated VIX (18) with a low score is NOT flagged would_block — mirrors the live gate's best-regime exemption", () => {
+  const v = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", score: 40, bias: null, vixDayOpen: 18 }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  // The live gate's condor G-4 branch only blocks at EXTREME VIX — elevated (17-20) is the
+  // condor's best regime (fatter premium while the range holds), so it never blocks here
+  // regardless of score/alignment (unlike the directional branch, which does gate on score).
+  assert.ok(!v.blocks.some((b) => b.code === "condor_vix_regime"));
+  assert.equal(v.calibration.g4_vix.tier, "elevated");
+  // Before the fix, this read `would_block: true` (score 40 < the directional 65/75 floors),
+  // even though the live gate never even evaluates that floor for a condor — a directional
+  // verdict silently computed for a row the live gate handles under different rules entirely.
+  assert.equal(v.calibration.g4_vix.would_block, false);
+});
+
+test("G-4 calibration: a CONDOR at extreme VIX (20) IS flagged would_block for every ticker, no index/ETF half-size carve-out", () => {
+  const single = evaluateZeroDteGates({
+    ...input({ ticker: "NVDA", score: 90, vixDayOpen: 20 }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  const indexEtf = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", score: 90, vixDayOpen: 20 }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  for (const v of [single, indexEtf]) {
+    assert.ok(v.blocks.some((b) => b.code === "condor_vix_regime"));
+    assert.equal(v.calibration.g4_vix.tier, "extreme");
+    assert.equal(v.calibration.g4_vix.would_block, true);
+    // Unlike the directional branch's index/ETF half-size carve-out, a condor has none —
+    // extreme VIX blocks it outright regardless of ticker.
+    assert.equal(v.calibration.g4_vix.would_halve_size, false);
+  }
+});
+
 // ── gateRejectionFor over a CONDOR verdict: primary code is the condor block ───────────
 // ── Condor G-4: VIX regime threshold is EXTREME (≥20), not elevated (≥17) ─────────
 test("condor G-4: VIX 18 (elevated) does NOT block a condor — condors sell premium into the range", () => {
