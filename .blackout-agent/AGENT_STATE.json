@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T08:37:04.013Z",
+  "updated_at": "2026-09-06T08:37:58.280Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T08:29:12.601Z",
-      "lease_until": "2026-09-06T09:59:12.601Z",
+      "claimed_at": "2026-09-06T08:27:47.034Z",
+      "lease_until": "2026-09-06T09:58:36.578Z",
       "phase": "PEER_REVIEW",
-      "branch": "cursor/autopilot-pr-event-20260906-cycle7",
-      "pr": 4173,
+      "branch": null,
+      "pr": null,
       "reviewer": null,
-      "run_id": "5507ed49-3473-4b65-bc53-2dd603824591",
+      "run_id": "4d279486-8186-406e-8dbb-34d21f11a72a",
       "title": null
     }
   },
@@ -74,7 +74,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) \u2014 peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
+      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
     },
     {
       "at": "2026-09-05T19:35:03.828Z",
@@ -103,7 +103,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) \u2014 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
+      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
       "at": "2026-09-05T20:41:08.341Z",
@@ -483,7 +483,7 @@
       "pr": 4173,
       "event": "sweep",
       "head": "1d713bba4233debec7738532fb0b4178dd47794d",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
     },
@@ -493,7 +493,7 @@
       "pr": 4172,
       "event": "sweep",
       "head": "9ec0293c38f646a22fde23fd78f608d05ba4d61f",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
     },
@@ -509,18 +509,31 @@
       "agent": "cursor",
       "run_id": "68f0dacd-db88-4f5e-a6ee-280035fd216f",
       "summary": "PR-event cycle: lifecycle GREEN (deploy, api-auth 225 routes, platform-integrity 14/14, seo 22/22, rth-open off-hours skip). ops:collect 0. Ask Largo swing brief v4 PASS. Closed duplicate #4172. No Claude/fix PRs for peer review. main@dac25ac03. #4173 verify GREEN awaiting Claude peer review."
+    },
+    {
+      "at": "2026-09-06T08:37:58.280Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T08:37:58.280Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9cdb7a6e-fbeb-4ab1-8395-db9d8143f0dd",
+      "summary": "PR-event cycle (cf4b6bcd): lifecycle GREEN — deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours skip. ops:collect 0. Ask Largo swing brief v4 PASS (NRG fixture). Peer sweep: no Claude/fix PRs. #4172 closed; #4173 active handoff. main@dac25ac03. Awaiting Claude peer review on #4173."
     }
   ],
   "open_prs": [
     {
       "number": 4173,
-      "title": "chore(blackout-agent): cursor PR-event handoff \u2014 lifecycle GREEN, deploy rolling",
+      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN, deploy rolling",
       "branch": "cursor/autopilot-pr-event-20260906-cycle7",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T08:28:11Z"
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T08:37:20Z"
     }
   ],
   "pr_activity": {
@@ -528,7 +541,7 @@
       "last_event": "sweep",
       "last_head": "1d713bba4233debec7738532fb0b4178dd47794d",
       "last_feedback_at": "2026-09-06T08:29:15.601Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -536,7 +549,7 @@
       "last_event": "sweep",
       "last_head": "9ec0293c38f646a22fde23fd78f608d05ba4d61f",
       "last_feedback_at": "2026-09-06T08:29:18.432Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     }
