@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  isCompoundQuestion,
   isNonsenseQuestion,
   wantsBrevity,
   wantsHelixPrintList,
@@ -12,7 +13,13 @@ describe("question-focus", () => {
   it("flags gibberish", () => {
     assert.equal(isNonsenseQuestion("asdfghjkl"), true);
     assert.equal(isNonsenseQuestion("1"), true);
+    assert.equal(isNonsenseQuestion("???"), true);
     assert.equal(isNonsenseQuestion("What's SPX gamma flip"), false);
+  });
+  it("compound detection excludes nonsense punctuation", () => {
+    assert.equal(isCompoundQuestion("???"), false);
+    assert.equal(isCompoundQuestion("GEX? VEX? max pain?"), true);
+    assert.equal(isCompoundQuestion("What's SPX gamma flip and also AMD max pain"), true);
   });
   it("detects narrow asks", () => {
     assert.equal(wantsPutWallOnly("just the SPX put wall"), true);

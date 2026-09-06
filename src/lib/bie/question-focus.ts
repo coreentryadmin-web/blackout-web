@@ -149,6 +149,28 @@ export function wantsHonestUnknown(question: string): boolean {
 const KNOWN_TOKEN =
   /\b(spx|s&p|spy|qqq|vix|gex|vex|dex|charm|gamma|flip|wall|helix|thermal|matrix|flow|play|lotto|engine|nighthawk|nvda|amd|0dte|grid|scanner|vwap|dealer|king|node|market|tape|verdict|compare|earnings|cortex|playbook|nh|dark pool|max pain)\b/i;
 
+/**
+ * Multi-part terse-barrage shape the stress bank routes as compound_lookup.
+ * Pure punctuation ("???") is nonsense, not compound — multiple `?` alone must not qualify.
+ */
+export function isCompoundQuestion(question: string): boolean {
+  const q = (question ?? "").trim();
+  if (!q || isNonsenseQuestion(q)) return false;
+  if (/^[.?!\s]+$/.test(q)) return false;
+  if ((q.match(/\?/g) ?? []).length >= 2) return true;
+  if (/\band also\b/i.test(q)) {
+    const parts = q.split(/\band also\b/i).map((s) => s.trim()).filter((s) => s.length >= 8);
+    if (parts.length >= 2) return true;
+  }
+  const markerRe = /(?:\(\d{1,2}\)|\b\d{1,2}\)|\b\d{1,2}\.)\s+/g;
+  if ([...q.matchAll(markerRe)].length >= 2) return true;
+  if (q.length >= 100) {
+    const parts = q.split(/;|,|\band\b/i).map((s) => s.trim()).filter((s) => s.length >= 16);
+    if (parts.length >= 3) return true;
+  }
+  return false;
+}
+
 /** Gibberish / too vague — don't dump market context. */
 export function isNonsenseQuestion(question: string): boolean {
   const q = question.trim();
