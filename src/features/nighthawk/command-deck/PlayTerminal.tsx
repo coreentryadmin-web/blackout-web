@@ -57,21 +57,12 @@ function formatScorecardHint(s: { avg: number; n: number; scope?: "conviction_bu
   return `${signPct(s.avg)} avg · n=${n}${bucket}`;
 }
 
-/** ET wall-clock (HH:MM) of an ISO instant, for the why-now ribbon (and the deck row's entry-time
- *  chip — CommandDeck.tsx imports this rather than duplicating the tz-safe parse). Formats in
- *  America/New_York regardless of the instant's stored offset (a DB row may be UTC).
- *  Null/unparseable → null. */
+import { etClock as formatEtClock } from "@/lib/et-clock";
+
+/** ET wall-clock (HH:MM) for the why-now ribbon and deck row chips. Delegates to `@/lib/et-clock`
+ *  so Largo C1 stamps (`YYYY-MM-DD HH:mm ET`) and ISO instants share one parser (#4152). */
 export function etClock(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return null;
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false,
-    }).format(ms);
-  } catch {
-    return null;
-  }
+  return formatEtClock(iso, { hour12: false, pad: true });
 }
 
 /** One-tap OCC copy control on the contract label — copies the exact OCC symbol to the clipboard.
