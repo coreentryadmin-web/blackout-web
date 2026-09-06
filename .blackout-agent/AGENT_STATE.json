@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:29:40.036Z",
+  "updated_at": "2026-09-06T16:00:03.497Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T15:25:28.715Z",
+      "lease_until": "2026-09-06T17:29:31.167Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "68024248-e3f9-4316-a539-840c12bceaeb"
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7418ff9e746c44e6b6206dd35acc0bc0ec6340be",
+    "last_main_sha": "d45b41666a2ea4efc4d900a4a3f956b395edc2d5",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T15:59:18Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34044003046",
+    "last_deploy_sha": "d45b41666a2ea4efc4d900a4a3f956b395edc2d5"
   },
   "events": [
     {
@@ -691,6 +691,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T15:59:59.030Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:00:03.496Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:00:03.497Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "87e02cce-846b-4d3d-a0c0-29af8fbdda44",
+      "summary": "Swing Largo wave complete: merged #4309/#4310/#4311 (peer-reviewed). main"
     }
   ],
   "open_prs": [],
