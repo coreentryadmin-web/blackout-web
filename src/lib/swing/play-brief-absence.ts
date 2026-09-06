@@ -34,8 +34,14 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   if (ctx.ecosystemFetchFailed === true) {
     out.push({ source: "ecosystem context", reason: "fetch failed" });
   }
-  if (ctx.vectorFetchFailed === true) {
+  // Standalone Vector fetch can fail while ecosystem.vector_full_state still succeeded in parallel.
+  if (ctx.vectorFetchFailed === true && !ctx.vector && !ctx.ecosystem?.vector_full_state) {
     out.push({ source: "Vector state", reason: "fetch failed" });
+  }
+  if (ctx.meridianPeer?.available === false) {
+    const peer = ctx.meridianPeer;
+    const reason = peer.error ?? peer.note ?? "unavailable";
+    out.push({ source: "Meridian peer cohort", reason });
   }
 
   return out;

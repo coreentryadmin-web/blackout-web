@@ -19,7 +19,13 @@ export type SwingMeridianPeerAvailable = {
   timeline_window_days?: number;
 };
 
-export type SwingMeridianPeerSlice = SwingMeridianPeerAvailable | { available: false };
+export type SwingMeridianPeerUnavailable = {
+  available: false;
+  error?: string;
+  note?: string;
+};
+
+export type SwingMeridianPeerSlice = SwingMeridianPeerAvailable | SwingMeridianPeerUnavailable;
 
 /** Pure coaching line from peer cohort + catalyst item. */
 export function meridianPeerEarningsCoaching(

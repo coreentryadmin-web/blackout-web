@@ -116,7 +116,7 @@ function closedSection(play: TerminalPlay): RichSection {
     `Exit P&L: **${fmtPct(play.exitPnlPct)}**`,
     play.closedReason ? `Reason: **${play.closedReason}**` : null,
     play.mfeCapturePct != null ? `MFE capture: **${fmtPct(play.mfeCapturePct)}**` : null,
-    play.exitAt ? `Closed: **${play.exitAt}**` : null,
+    play.exitAt ? `Closed: **${etStampFromIso(play.exitAt)}**` : null,
   ].filter(Boolean);
   return { title: "Outcome", body: lines.join("\n") };
 }

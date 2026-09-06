@@ -426,6 +426,7 @@ test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
       exitPnlPct: 42,
       closedReason: "scale_out_complete",
       mfeCapturePct: 68,
+      exitAt: "2026-08-12T16:05:00.000Z",
     }),
     asOf: "2026-09-05T20:00:00.000Z",
     sessionDate: "2026-09-05",
@@ -437,7 +438,10 @@ test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
     vector: null,
   };
   const brief = composeSwingPlayBrief(ctx);
-  assert.ok(brief.envelope.sections.some((s) => s.title === "Outcome" && s.body.includes("42")));
+  const outcome = brief.envelope.sections.find((s) => s.title === "Outcome");
+  assert.ok(outcome?.body.includes("42"));
+  assert.match(outcome!.body, /2026-08-12 12:05 ET/);
+  assert.doesNotMatch(outcome!.body, /16:05:00\.000Z/, "Outcome must not print a raw ISO exit timestamp");
 });
 
 test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, not hardcoded live", () => {
