@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T01:59:31.621Z
-**Run:** 6e743719-c387-4aca-a054-7a607bd17bae
+**At:** 2026-09-06T01:59:44.336Z
+**Run:** 3c7e7e30-ae2e-49b0-a17f-e566df39a6b9
 
 ## Summary
 
-Workflow_run cycle complete @4c4bf5a8e. Peer-reviewed+merged #4075 (vector undated fresh-row expiry). #4076 swing v4 + #4077 HELIX diff merged by fleet. validate:deploy GREEN. ops:collect 0. No Claude/fix PRs pending review.
+Session end: workflow_run cycle. Merged #4075 (Cursor peer review APPROVED). Fleet merged #4076/#4077. validate:deploy GREEN, ops:collect 0. Open: #4079 handoff draft (Claude review). main@4c4bf5a8e.
 
 ## Deploy
 
