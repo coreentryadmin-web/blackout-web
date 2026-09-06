@@ -1194,6 +1194,39 @@ test("lifecycle: the hard exit closes rows with NO entry premium too (data quali
   assert.equal(intraday.status, "HOLD");
 });
 
+// P1 regression (2026-09-06): condor entry_premium is net CREDIT and mark is debit-to-close.
+// A falling mark is the WINNING direction — directional trough≤stop must not latch CLOSED.
+test("lifecycle: condor with falling mark (winning) does NOT stop out on trough latch", () => {
+  const credit = 0.6;
+  const mark = 0.25;
+  const trough = 0.25;
+  const s = derivePlayStatus({
+    entryPremium: credit,
+    mark,
+    peak: credit,
+    trough,
+    nowEtMinutes: 13 * 60,
+    isCondor: true,
+  });
+  assert.notEqual(s.status, "CLOSED", "a winning condor must not be latched stopped");
+  assert.notEqual(s.closed_reason, "stopped");
+  assert.ok(s.live_pnl_pct! > 0, `expected positive condor P&L, got ${s.live_pnl_pct}`);
+  assert.equal(s.live_pnl_pct, 58.33);
+});
+
+test("lifecycle: condor still time-stops at the hard exit", () => {
+  const s = derivePlayStatus({
+    entryPremium: 0.6,
+    mark: 0.25,
+    peak: 0.6,
+    trough: 0.25,
+    nowEtMinutes: 15 * 60 + 51,
+    isCondor: true,
+  });
+  assert.equal(s.status, "CLOSED");
+  assert.equal(s.closed_reason, "time_stop");
+});
+
 // ── conviction gates (money-printing filter) ─────────────────────────────────────
 
 test("gates: SOLD premium (bid-side prints) does not create a directional setup", () => {
