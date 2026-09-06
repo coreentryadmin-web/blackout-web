@@ -170,3 +170,16 @@ export function analyzeGreeksDistribution(
     exposureSpread,
   };
 }
+
+/**
+ * Top-N buckets by absolute gamma, for the panel's "Top 5 Strikes" rail. Copies before
+ * sorting — `buckets` is the caller's memoized, documented strike-ascending array (see
+ * `analyzeGreeksDistribution` above); sorting it in place would silently reorder it to
+ * gamma-descending for every later read of the same object.
+ */
+export function topGammaBuckets(
+  buckets: GreeksDistributionBucket[],
+  n = 5
+): GreeksDistributionBucket[] {
+  return [...buckets].sort((a, b) => b.absGamma - a.absGamma).slice(0, n);
+}

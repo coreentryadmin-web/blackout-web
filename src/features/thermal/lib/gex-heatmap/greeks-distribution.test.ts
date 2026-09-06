@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeGreeksDistribution } from "./greeks-distribution";
+import { analyzeGreeksDistribution, topGammaBuckets } from "./greeks-distribution";
 import type { GexCells } from "./per-expiry-levels";
 
 describe("greeks-distribution", () => {
@@ -224,5 +224,30 @@ describe("greeks-distribution", () => {
     const pcts = result.buckets.map((b) => b.pctOfTotal);
     const sum = pcts.reduce((a, b) => a + b, 0);
     assert.ok(Math.abs(sum - 100) < 0.01, "Percentages should sum to ~100");
+  });
+
+  it("topGammaBuckets must not mutate the caller's strike-ascending buckets array (GreeksDistributionPanel reads analysis.buckets again on every re-render)", () => {
+    const cells: GexCells = {
+      "5540": { "2026-09-19": 1000 },
+      "5545": { "2026-09-19": 2000 },
+      "5550": { "2026-09-19": 5000 },
+      "5555": { "2026-09-19": 1500 },
+      "5560": { "2026-09-19": 500 },
+    };
+    const result = analyzeGreeksDistribution(cells, 5550, 0.03);
+    const strikeAscending = [5540, 5545, 5550, 5555, 5560];
+    assert.deepEqual(
+      result.buckets.map((b) => b.strike),
+      strikeAscending,
+      "documented contract: buckets is strike-ascending"
+    );
+
+    const top5 = topGammaBuckets(result.buckets);
+    assert.equal(top5[0].strike, 5550, "top5 is gamma-ranked, unrelated to buckets' own order");
+    assert.deepEqual(
+      result.buckets.map((b) => b.strike),
+      strikeAscending,
+      "selecting a gamma-ranked view must not reorder the original strike-ascending buckets"
+    );
   });
 });
