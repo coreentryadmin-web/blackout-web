@@ -172,6 +172,10 @@ function validateTab(tab, panel, api, rowCount, apiCalls = []) {
   if (!panel.hasRefresh) issues.push("missing refresh button");
   if (!panel.hasOpenLink) issues.push("missing Open link");
   if (!/Deterministic/i.test(panel.engine)) issues.push(`footer missing deterministic tag: ${panel.engine}`);
+  // C1 contract: footer must show a real ET wall-clock, not the em-dash fallback (#4152).
+  if (rowCount > 0 && /Updated\s+—\s+ET/i.test(panel.asof)) {
+    issues.push(`asOf footer shows em-dash fallback: ${panel.asof}`);
+  }
 
   for (const exp of expectedPanelSections(tab)) {
     if (!panel.sections.some((s) => s.toLowerCase().includes(exp.toLowerCase()))) {
@@ -201,6 +205,11 @@ function validateTab(tab, panel, api, rowCount, apiCalls = []) {
     if (api.status !== 200) issues.push(`api HTTP ${api.status}`);
     if (api.available === false) issues.push(`api unavailable: ${api.error ?? "unknown"}`);
     if (api.engine && api.engine !== "swing_play_intelligence") issues.push(`api engine ${api.engine}`);
+  }
+
+  const lastApiAsOf = apiCalls.at(-1)?.asOf;
+  if (rowCount > 0 && lastApiAsOf && !/\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+ET/.test(lastApiAsOf)) {
+    warnings.push(`api asOf not Largo C1 stamp: ${lastApiAsOf}`);
   }
 
   issues.push(...validateTabV4(tab, panel, apiCalls));
@@ -238,6 +247,7 @@ async function main() {
       status: res.status(),
       playId: json?.playId ?? null,
       headline: json?.envelope?.headline ?? null,
+      asOf: json?.envelope?.asOf ?? json?.asOf ?? null,
       sections: json?.envelope?.sections?.map((s) => s.title) ?? [],
       briefContentKey: json?.briefContentKey ?? null,
     });
