@@ -9,6 +9,7 @@ import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtPremium } from "@/lib/fmt-money";
 import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
 import { mfeCaptureOutcome } from "./mfe-capture";
+import { bookOverlapNarrativeLines } from "./play-brief-book-overlap";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -573,6 +574,13 @@ export function closedCoaching(play: TerminalPlay): string | null {
   return lines.join(" ");
 }
 
+/** Book theme overlap — same copy as Book context section; folded when narrative leads. */
+export function bookContextCoaching(ctx: SwingPlayBriefContext): string | null {
+  const lines = bookOverlapNarrativeLines(ctx.play, ctx.openBook);
+  if (!lines.length) return null;
+  return lines.join(" ");
+}
+
 /** Collect prioritized coaching bullets for narrative assembly. */
 export function collectCoachingBullets(
   ctx: SwingPlayBriefContext,
@@ -593,6 +601,7 @@ export function collectCoachingBullets(
 
   push(thesisBreakCoaching(play));
   push(thesisPillarCoaching(play));
+  push(bookContextCoaching(ctx));
 
   if (bucket === "watch") {
     push(morningConfirmCoaching(play));

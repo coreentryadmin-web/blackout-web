@@ -11,7 +11,8 @@ import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
-import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
+import type { PortfolioPosition } from "./portfolio";
+import { bookOverlapNarrativeLines } from "./play-brief-book-overlap";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 
@@ -70,6 +71,9 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   return { title: "Why this setup", body: lines.join("\n\n") };
 }
 
+/** Shared overlap copy for Book context section + Trade manager coaching (single source — #4110). */
+export { bookOverlapNarrativeLines } from "./play-brief-book-overlap";
+
 /**
  * Book context — does this candidate stack or fight a theme the member already holds elsewhere?
  * Reuses the same theme resolver the swing entry gate itself uses (`portfolio.ts`/`theme-cluster.ts`,
@@ -77,27 +81,8 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
  * of "similar." Only rendered when the book actually overlaps; a clean book says nothing new.
  */
 export function bookContextSection(play: TerminalPlay, openBook: PortfolioPosition[] | undefined): RichSection | null {
-  if (!openBook?.length) return null;
-  const overlap = checkPortfolioOverlap({ ticker: play.ticker, direction: play.direction }, openBook);
-  if (!overlap.hasOverlap) return null;
-
-  const lines: string[] = [];
-  if (overlap.sameThemeSameDirection.length) {
-    const names = overlap.sameThemeSameDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
-    lines.push(
-      `**Concentration** — already holding ${overlap.sameThemeSameDirection.length} same-direction ` +
-        `position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in theme "${overlap.theme}": ${names}. ` +
-        `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`,
-    );
-  }
-  if (overlap.sameThemeOpposedDirection.length) {
-    const names = overlap.sameThemeOpposedDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
-    lines.push(
-      `**Internal conflict** — theme "${overlap.theme}" already has an OPPOSED position: ${names}. ` +
-        `One leg is structurally betting against the other; this is not a hedge unless intentional.`,
-    );
-  }
-
+  const lines = bookOverlapNarrativeLines(play, openBook);
+  if (!lines.length) return null;
   return { title: "Book context", body: lines.join("\n\n"), bias: "neutral" };
 }
 
