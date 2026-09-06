@@ -120,7 +120,7 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
-### 0a-1k. Swing Ask Largo — Desk context duplicated HELIX anomalies — fix/swing-brief-desk-context-dedup (pending)
+### 0a-1k. Swing Ask Largo — Desk context duplicated HELIX anomalies — fix/swing-brief-desk-context-dedup (merged #4128)
 
 **What was broken:** `deskConsensusSection` repeated `recent_anomalies[0]` even though Trade manager read (`flowNarrative`) and Flow & positioning already surface the same sweep — members saw the anomaly up to three times. Stale collapse title `Desk consensus` never matched section title `Desk context`.
 
@@ -2686,7 +2686,7 @@ than an end-of-session patch.
 
 ### 40. Ask Largo swing collapse — Desk context hardening + stale title cleanup (P2) — fix/swing-collapse-desk-context-hardening — 2026-09-06
 
-- **What was broken:** #4123 fixed Book context being collapsed, but `main` still carried the stale `"Desk consensus"` entry (renamed to `"Desk context"` in #4111). Accidentally safe today because the string no longer matches — but a future rename back would silently delete NH outcome-history / flow-anomaly content that `crossDeskCoaching` does not cover.
-- **What changed:** Removed stale `"Desk consensus"` from the collapse set; added Desk-context regression test; documented why Book context and Desk context must stay excluded.
-- **RTH check:** For an OPEN/HOLD swing with NH trade history or a recent flow anomaly on the name, confirm "Desk context" still appears even when "Trade manager read" leads.
+- **What was broken:** #4123 fixed Book context being collapsed; #4128 removed the stale `"Desk consensus"` entry and deduped flow anomalies from `deskConsensusSection`. This PR adds inline docs + NEVER-drop regression tests so a future title rename cannot silently delete Book/Desk context again.
+- **What changed:** Documented why Book context and Desk context must stay excluded from `NARRATIVE_COVERED_TITLES`; hardened regression tests.
+- **RTH check:** For an OPEN/HOLD swing with NH trade history on the name, confirm "Desk context" still appears even when "Trade manager read" leads; flow anomalies appear once in Trade manager read, not again in Desk context.
 

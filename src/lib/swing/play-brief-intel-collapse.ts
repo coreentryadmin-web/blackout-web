@@ -14,13 +14,10 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
  * "fold into".
  *
  * "Desk consensus" (the old title) was ALSO stale here and matched nothing — #4111 renamed that
- * section to "Desk context" and moved ONLY its NH-direction/0DTE-stance content into
- * `crossDeskCoaching` inside the narrative, deliberately RETAINING NH outcome-history and
- * flow-anomaly coaching as supplementary, non-duplicate content (`deskConsensusSection`,
- * play-brief-intel.ts). So "Desk context" is excluded here too, not remapped to the new title —
- * `crossDeskCoaching` does not cover what's left in it, and adding it back under its new name
- * would repeat the exact silent-deletion bug this comment is warning about, for a different
- * section.
+ * section to "Desk context" and moved NH-direction/0DTE-stance into `crossDeskCoaching`.
+ * Post-#4128, `deskConsensusSection` renders ONLY NH outcome history (flow anomalies live in
+ * `flowNarrative` + `flowIntelSection`). "Desk context" stays excluded — `crossDeskCoaching`
+ * does not cover outcome history, and remapping the stale title would silently delete it.
  */
 const NARRATIVE_COVERED_TITLES = new Set([
   "Lane rank",

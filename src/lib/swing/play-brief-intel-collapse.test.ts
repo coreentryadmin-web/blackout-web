@@ -36,7 +36,7 @@ test("collapseRedundantIntelSections: NEVER drops 'Book context' — no narrativ
   assert.ok(out.some((s) => s.title === "Book context"), "Book context must survive the collapse");
 });
 
-test("collapseRedundantIntelSections: NEVER drops 'Desk context' — crossDeskCoaching only covers conflict, not NH history/flow anomaly", () => {
+test("collapseRedundantIntelSections: NEVER drops 'Desk context' — crossDeskCoaching does not cover NH outcome history", () => {
   const sections = [section("Trade manager read"), section("Desk context"), section("Why this setup")];
   const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
   assert.ok(out.some((s) => s.title === "Desk context"), "Desk context must survive the collapse");
