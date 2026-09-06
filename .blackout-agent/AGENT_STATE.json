@@ -1,14 +1,24 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
+<<<<<<< Updated upstream
   "updated_at": "2026-09-06T17:02:50.414Z",
+=======
+  "updated_at": "2026-09-06T17:07:22.060Z",
+>>>>>>> Stashed changes
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
+<<<<<<< Updated upstream
       "claimed_at": "2026-09-06T16:39:51.616Z",
       "lease_until": "2026-09-06T18:09:51.616Z",
       "phase": "CLAIMED",
+=======
+      "claimed_at": "2026-09-06T16:59:07.542Z",
+      "lease_until": "2026-09-06T18:29:07.542Z",
+      "phase": "REVIEWING",
+>>>>>>> Stashed changes
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -40,6 +50,7 @@
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
     },
+<<<<<<< Updated upstream
     "pr-4326": {
       "pr": 4326,
       "head_sha": "d27667dd",
@@ -62,6 +73,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:54:50.195Z",
+=======
+    "pr-4335": {
+      "pr": 4335,
+      "head_sha": "9f369e58795e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:04:20.727Z",
+>>>>>>> Stashed changes
       "safe_to_merge": true
     }
   },
@@ -76,11 +95,19 @@
     }
   },
   "deploy": {
+<<<<<<< Updated upstream
     "last_main_sha": "d0e0efa0217a1768adaf2e4be00f5e6bac013621",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T16:55:56Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34047003786",
     "last_deploy_sha": "8d943acade2fe28492d89aaafe185afe4fccf804"
+=======
+    "last_main_sha": "8d943acade2fe28492d89aaafe185afe4fccf804",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-06T17:06:45Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34047570898",
+    "last_deploy_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa"
+>>>>>>> Stashed changes
   },
   "events": [
     {
@@ -760,6 +787,7 @@
       "open_pr_count": 0
     },
     {
+<<<<<<< Updated upstream
       "at": "2026-09-06T16:54:49.368Z",
       "type": "pr_review",
       "pr": 4326,
@@ -801,10 +829,79 @@
       "agent": "cursor",
       "run_id": "087fc9eb-6362-4be9-aa5f-61910d75ef8d",
       "summary": "Peer review cycle: merged #4326/#4329/#4330/#4334 (roll-plan fail-closed, uncalibrated thesis coaching+diff, Largo C5 technicalsCoaching, SPX roundFloats). Approved #4335 (thesis leak Verdict/Management) + #4333 (SI freshness C2) — awaiting verify. Flagged #4331 superseded by #4335. ops:collect clean."
+=======
+      "at": "2026-09-06T17:04:20.728Z",
+      "type": "pr_review",
+      "pr": 4335,
+      "head_sha": "9f369e58795e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:04:20.727Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T17:07:07.612Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:07:14.190Z",
+      "type": "pr_webhook",
+      "pr": 4338,
+      "event": "sweep",
+      "head": "fdf8a81155d9d5919be71c3d5a460dbe88b249f4",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:07:16.701Z",
+      "type": "pr_webhook",
+      "pr": 4337,
+      "event": "sweep",
+      "head": "2b4bf8c33fbdcbf0b35808f06e3ea5c954dda3c1",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:07:19.490Z",
+      "type": "pr_webhook",
+      "pr": 4336,
+      "event": "sweep",
+      "head": "7ca3c6dc599d0ec74b07706eddfafa2cbe3f5ec9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:07:22.060Z",
+      "type": "pr_webhook",
+      "pr": 4332,
+      "event": "sweep",
+      "head": "a45f873a8bc15791ddd21e5a33b3939f0fc5e14e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+>>>>>>> Stashed changes
     }
   ],
   "open_prs": [
     {
+<<<<<<< Updated upstream
+=======
+      "number": 4338,
+      "title": "chore(blackout-agent): cursor handoff — peer review #4326-4335",
+      "branch": "cursor/handoff-peer-review-20260906T1703",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:04:37Z"
+    },
+    {
+>>>>>>> Stashed changes
       "number": 4337,
       "title": "chore(blackout-agent): cursor handoff — #4326/#4329/#4330 merged, deploy GREEN",
       "branch": "cursor/autopilot-work-loop-faa2",
@@ -821,6 +918,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
+<<<<<<< Updated upstream
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-06T16:56:03Z"
     },
@@ -835,6 +933,12 @@
       "updated_at": "2026-09-06T17:01:41Z"
     },
     {
+=======
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:56:03Z"
+    },
+    {
+>>>>>>> Stashed changes
       "number": 4332,
       "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
       "branch": "cursor/handoff-20260906-1638",
@@ -843,6 +947,7 @@
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
       "updated_at": "2026-09-06T16:42:27Z"
+<<<<<<< Updated upstream
     },
     {
       "number": 4328,
@@ -863,6 +968,8 @@
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
       "updated_at": "2026-09-06T16:58:04Z"
+=======
+>>>>>>> Stashed changes
     }
   ],
   "pr_activity": {
@@ -894,6 +1001,38 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4338": {
+      "last_event": "sweep",
+      "last_head": "fdf8a81155d9d5919be71c3d5a460dbe88b249f4",
+      "last_feedback_at": "2026-09-06T17:07:14.190Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4337": {
+      "last_event": "sweep",
+      "last_head": "2b4bf8c33fbdcbf0b35808f06e3ea5c954dda3c1",
+      "last_feedback_at": "2026-09-06T17:07:16.701Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4336": {
+      "last_event": "sweep",
+      "last_head": "7ca3c6dc599d0ec74b07706eddfafa2cbe3f5ec9",
+      "last_feedback_at": "2026-09-06T17:07:19.490Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4332": {
+      "last_event": "sweep",
+      "last_head": "a45f873a8bc15791ddd21e5a33b3939f0fc5e14e",
+      "last_feedback_at": "2026-09-06T17:07:22.060Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
