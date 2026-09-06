@@ -1,19 +1,18 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T11:42:38.065Z
-**Run:** 87520518-9d11-43da-b194-302260aa2e54
+**At:** 2026-09-06T14:13:28.413Z
+**Run:** 6091123c-d325-4c9e-b809-7c9ecac96491
 
 ## Summary
 
-Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0.
+Cycle complete: #4260+#4269 MERGED to main. #4266 (stale discovery scan) peer-reviewed APPROVED, rebased post-#4260, verify CI pending. validate:deploy GREEN post-merge. ops:collect 0.
 
 ## Deploy
 
-- main: `a37960c92712ca5986df2042d0c32a44153cfd92`
+- main: `e503648743e944d3fd765ff3e09a064704222cc6`
 - status: 
 
 ## Open PRs
 
-- #4231 [agent] fix(swing): freeze CLOSED-position DTE to exit date, not today's date
-- #4230 [cursor] chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged
-- #4227 [agent] chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature
+- #4275 [agent] fix(swing): stop Hold plan from repeating the thesis-health advisory sentence
+- #4274 [cursor] chore(blackout-agent): cursor handoff — swing Largo peer reviews merged
