@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T20:06:37.000Z",
+  "updated_at": "2026-09-06T20:06:45.475Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -57,7 +57,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "75af22851a442ad26835ca7e4228448236bc0e0a",
+    "last_main_sha": "bd694c524de669baa0ff60be31e1817cfd792e4e",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T20:06:02Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34056930302",
@@ -239,6 +239,19 @@
       "agent": "cursor",
       "run_id": "f7a91b1c-a748-4801-be73-586bf034764e",
       "summary": "Main@75af22851 GREEN. #4376 dealerPostureLine stale flip APPROVED+auto-merge. Swing stale-GEX sweep continues."
+    },
+    {
+      "at": "2026-09-06T20:06:45.474Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T20:06:45.475Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b443bd39-7771-4480-8ea6-3583b97bc305",
+      "summary": "Main@bd694c524. #4376+#4378 merged. validate:deploy pending."
     }
   ],
   "open_prs": [
