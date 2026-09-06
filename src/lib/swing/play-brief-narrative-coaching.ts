@@ -520,6 +520,8 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
 
 /** Chart technicals one-liner — RSI / VWAP / structure. */
 export function technicalsCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
+  // Largo C2 — stale Vector chart read must not coach directional alignment (#4387 class).
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const t = vec?.technicals;
   if (!t) return null;
   const parts: string[] = [];

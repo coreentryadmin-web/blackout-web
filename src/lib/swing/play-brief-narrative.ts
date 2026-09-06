@@ -54,7 +54,11 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
   const gex = ctx.ecosystem?.gex_positioning;
   const out: FocalLevel[] = [];
 
+  const readMs = Date.now();
+  const vectorStale = vectorSnapshotStale(vec, readMs);
+
   for (const dp of (vec?.darkPoolLevels ?? []).slice(0, 3)) {
+    if (vectorStale) break;
     out.push({
       price: dp.strike,
       kind: "dark_pool",
@@ -64,7 +68,6 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
     });
   }
 
-  const readMs = Date.now();
   const gexStale = gexMatrixStale(gex, readMs);
   const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
   const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
@@ -114,7 +117,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, king),
     });
   }
-  if (maxPain != null) {
+  if (maxPain != null && !vectorStale) {
     out.push({
       price: maxPain,
       kind: "max_pain",
@@ -122,7 +125,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, maxPain),
     });
   }
-  if (magnet != null) {
+  if (magnet != null && !vectorStale) {
     out.push({
       price: magnet,
       kind: "magnet",
@@ -571,8 +574,9 @@ export function tradeManagerNarrativeSection(
 
   // Bias reads the chart evidence (same majority vote as chartTechnicalsSection), not the play's
   // LONG/SHORT direction — a SHORT into a bullish tape must not badge bearish (FINDINGS 2026-09-06).
+  const vectorLive = !vectorSnapshotStale(vec, Date.now());
   const bias =
-    vec?.technicals != null
+    vectorLive && vec?.technicals != null
       ? technicalsBias(vec.technicals, spot)
       : "neutral";
 

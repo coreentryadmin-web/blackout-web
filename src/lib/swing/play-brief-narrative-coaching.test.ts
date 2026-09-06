@@ -530,3 +530,19 @@ test("technicalsCoaching: aligned LONG + bullish tape notes alignment without ec
   assert.match(line!, /chart reads bullish/i);
   assert.match(line!, /aligns with swing direction/i);
 });
+
+test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => {
+  const vec = {
+    spot: 95,
+    dataAgeMs: 200_000,
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" })), null);
+});

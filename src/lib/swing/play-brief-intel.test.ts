@@ -747,7 +747,47 @@ test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma p
   assert.match(section!.body, /Last snapshot/i);
   assert.match(section!.body, /200s old/i);
   assert.doesNotMatch(section!.body, /long gamma/i, "stale GEX-only posture must not render as live");
-  assert.match(section!.body, /Net GEX/i, "non-posture fields may still render with stale warning");
+  assert.doesNotMatch(section!.body, /Net GEX/i, "stale matrix numeric fields must not render as live");
+});
+
+test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and prefixes Last snapshot (Largo C2)", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    dataAgeMs: 200_000,
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.equal(section?.bias, "neutral");
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /200s old/i);
+});
+
+test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (Largo C2)", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      spot: 100,
+      dataAgeMs: 200_000,
+      maxPain: 98,
+      darkPoolLevels: [{ strike: 99, pct: 40, premium: 5_000_000 }],
+      confluenceZones: [{ center: 101, kinds: ["gex"], score: 80 }],
+    }),
+  });
+  assert.equal(section, null, "stale Vector-only levels must not render a section");
 });
 
 test("watchForSection: stale GEX-only flip and put wall omitted from watch levels (Largo C2)", () => {

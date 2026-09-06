@@ -132,8 +132,16 @@ export function bookContextSection(
 /** Vector chart technicals — EMA stack, VWAP, RSI, MACD, structure. */
 export function chartTechnicalsSection(vec: VectorFullState | null): RichSection | null {
   if (!vec?.technicals && vec?.spot == null) return null;
+  const readMs = Date.now();
+  const vectorStale = vectorSnapshotStale(vec, readMs);
   const t = vec.technicals;
   const lines: string[] = [];
+  if (vectorStale) {
+    const ageMs = vec?.dataAgeMs;
+    lines.push(
+      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — chart read may lag spot.`,
+    );
+  }
   if (vec.spot != null) lines.push(`Spot: **${vec.spot.toFixed(2)}**`);
   if (t?.emaStack) lines.push(`EMA 9/21/50 stack: **${t.emaStack}**`);
   if (t?.vwap != null) {
@@ -161,10 +169,13 @@ export function chartTechnicalsSection(vec: VectorFullState | null): RichSection
   }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
   if (!lines.length) return null;
+  // Largo C2 — stale Vector technicals must not badge bullish/bearish (same gate as vectorDeskSection #4387).
+  const bias =
+    !vectorStale && t ? technicalsBias(t, vec.spot ?? null) : "neutral";
   return {
     title: "Chart technicals",
     body: lines.join("\n"),
-    bias: t ? technicalsBias(t, vec.spot ?? null) : "neutral",
+    bias,
   };
 }
 
@@ -208,28 +219,29 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   if (gex?.gex_king_strike != null && !kingFromStaleGex) {
     lines.push(`GEX king strike: **${gex.gex_king_strike.toFixed(2)}**`);
   }
-  if (vec?.maxPain != null) {
+  const vectorStaleForLevels = vectorSnapshotStale(vec, readMs);
+  if (vec?.maxPain != null && !vectorStaleForLevels) {
     lines.push(`Max pain: **${vec.maxPain.toFixed(2)}**`);
   }
-  if (vec?.expectedMove?.bands?.length) {
+  if (vec?.expectedMove?.bands?.length && !vectorStaleForLevels) {
     const bandStr = vec.expectedMove.bands
       .slice(0, 2)
       .map((b) => `${b.sigma}σ ${b.low.toFixed(2)}–${b.high.toFixed(2)}`)
       .join(" · ");
     lines.push(`Expected move: **${bandStr}**`);
   }
-  if (vec?.proximity?.strike != null) {
+  if (vec?.proximity?.strike != null && !vectorStaleForLevels) {
     lines.push(
       `Nearest wall: **${vec.proximity.strike.toFixed(2)}** (${vec.proximity.side}, ${vec.proximity.distancePct.toFixed(1)}% away) — ${vec.proximity.callout}`,
     );
   }
   const zones = vec?.confluenceZones ?? [];
-  if (zones.length) {
+  if (zones.length && !vectorStaleForLevels) {
     const top = [...zones].sort((a, b) => b.score - a.score).slice(0, 4);
     lines.push("**Confluence nodes:**\n" + top.map((z) => formatConfluenceZone(z, spot)).join("\n"));
   }
   const dp = vec?.darkPoolLevels ?? [];
-  if (dp.length) {
+  if (dp.length && !vectorStaleForLevels) {
     lines.push(
       "**Dark pool levels:** " +
         dp
@@ -627,14 +639,14 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
         : "dealers **short gamma** — moves can accelerate, respect walls";
     lines.push(`Gamma posture: ${posture}`);
   }
-  if (gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
-  if (gex.nearest_wall != null && gex.spot != null) {
+  if (!stale && gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
+  if (!stale && gex.nearest_wall != null && gex.spot != null) {
     const { strike, kind, distance_pts } = gex.nearest_wall;
     lines.push(
       `Nearest wall: **${strike.toFixed(2)}** (${kind}, ${distance_pts.toFixed(1)} pts from spot **${gex.spot.toFixed(2)}**)`,
     );
   }
-  if (gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
+  if (!stale && gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
   if (!lines.length) return null;
   return { title: "GEX posture", body: lines.join("\n") };
 }
