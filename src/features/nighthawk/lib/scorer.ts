@@ -455,14 +455,25 @@ export function scoreFlowQuality(
     else if (dom >= 0.7) score += 1;
   }
 
-  if (flowStreak?.streak_days) {
+  // Raw flow-implied direction, computed BEFORE the streak bonus below (not after, as it used to
+  // be) — the streak bonus must be checked against it. `flowStreak.direction` comes from a
+  // DIFFERENT population than `flows` (a 10-day DB rollup of net daily premium, not tonight's
+  // live UW batch) and used to be added to `score` unconditionally, regardless of which way it
+  // pointed relative to tonight's flow. A 5-day PUT-dominated streak could still hand its full
+  // +12×weight "sustained conviction" bonus to a candidate whose LIVE flow tonight leans call —
+  // rewarding a LONG candidate with historical SHORT evidence as if it corroborated the play.
+  // `directionFlippedBySkew` below can still move `direction` a second time (a distinct, later
+  // evidence source, options-implied skew) — the streak check intentionally compares against the
+  // raw premium-based direction, since `flowStreak.direction` is also premium-based.
+  let direction: "long" | "short" =
+    callWeightedPrem >= putWeightedPrem ? "long" : "short";
+
+  if (flowStreak?.streak_days && flowStreak.direction === direction) {
     const streakWeight = opts?.streakWeight ?? 1;
     score += streakBonusPoints(flowStreak.streak_days, streakWeight);
   }
 
   score = Math.min(38, score);
-  let direction: "long" | "short" =
-    callWeightedPrem >= putWeightedPrem ? "long" : "short";
   let directionFlippedBySkew = false;
 
   const weightedTotal = callWeightedPrem + putWeightedPrem;
