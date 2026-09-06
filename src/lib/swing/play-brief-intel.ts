@@ -628,7 +628,7 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   } else if (play.markIsSync) {
     lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
   }
-  if (scanAsOf) lines.push(`Swing scan: **${scanAsOf}**`);
+  if (scanAsOf) lines.push(`Swing scan: **${etStampFromIso(scanAsOf)}**`);
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
   }

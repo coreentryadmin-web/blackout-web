@@ -209,6 +209,31 @@ test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET
   assert.doesNotMatch(positionSection!.body, /\.663Z/, "Position section must not print a raw ISO mark timestamp");
 });
 
+test("composeSwingPlayBrief: swing-scan evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: "2026-09-05T19:30:00.000Z",
+    scanSessionDay: "2026-09-05",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const scanEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Swing discovery scan as of"));
+  assert.ok(scanEvidence, "expected a swing-scan evidence entry");
+  assert.equal(scanEvidence?.text, "Swing discovery scan as of 2026-09-05 15:30 ET.");
+  assert.equal(scanEvidence?.provenance?.asOf, "2026-09-05 15:30 ET");
+  assert.doesNotMatch(scanEvidence!.text, /Z\.$/, "scan evidence must not be a bare UTC instant");
+
+  const freshness = brief.envelope.sections.find((s) => s.title === "Data freshness");
+  assert.ok(freshness, "expected Data freshness section when scanAsOf is set");
+  assert.match(freshness!.body, /2026-09-05 15:30 ET/);
+  assert.doesNotMatch(freshness!.body, /19:30:00\.000Z/, "Data freshness must not print a raw ISO scan timestamp");
+});
+
 test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

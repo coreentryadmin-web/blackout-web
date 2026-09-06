@@ -210,10 +210,11 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
 function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvidence[] {
   const out: BieEvidence[] = [];
   if (ctx.scanAsOf) {
+    const scanEt = etStampFromIso(ctx.scanAsOf);
     out.push({
       kind: "fact",
-      text: `Swing discovery scan as of ${ctx.scanAsOf}.`,
-      provenance: { source: "Swing lane", asOf: ctx.scanAsOf, freshness: "recent" },
+      text: `Swing discovery scan as of ${scanEt}.`,
+      provenance: { source: "Swing lane", asOf: scanEt, freshness: "recent" },
     });
   }
   if (ctx.play.markAsOf) {
