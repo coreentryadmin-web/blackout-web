@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:55:30.547Z",
+  "updated_at": "2026-09-06T15:09:07.247Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -13,6 +13,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+    },
+    "BO-P1-LARGO-HELIX-STALE": {
+      "task_id": "BO-P1-LARGO-HELIX-STALE",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T15:09:07.245Z",
+      "lease_until": "2026-09-06T16:39:07.245Z",
+      "phase": "IMPLEMENTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -39,8 +51,9 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T15:09:07.246Z",
+      "current_task": "BO-P1-LARGO-HELIX-STALE"
     }
   },
   "deploy": {
@@ -655,6 +668,12 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T15:09:07.246Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-LARGO-HELIX-STALE",
+      "owner": "cursor"
     }
   ],
   "open_prs": [],
