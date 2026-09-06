@@ -5,15 +5,19 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   catalystCoaching,
   closedCoaching,
+  collectCoachingBullets,
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
+  flowPrintsCoaching,
   ivRankCoaching,
+  magnetCoaching,
   manageLifecycleCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
   vectorPlayCoaching,
   vexCoaching,
+  wallDynamicsCoaching,
   watchGateCoaching,
   technicalsCoaching,
 } from "./play-brief-narrative-coaching";
@@ -346,6 +350,71 @@ test("vectorPlayCoaching: stale Vector returns null (Largo C2)", () => {
     },
   } as unknown as Parameters<typeof vectorPlayCoaching>[0];
   assert.equal(vectorPlayCoaching(vec, play({ direction: "LONG" })), null);
+});
+
+test("vexCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    freshness: "stale",
+    vexFlip: 100,
+    vexWalls: { callWalls: [{ strike: 105, pct: 5 }], putWalls: [] },
+  } as unknown as Parameters<typeof vexCoaching>[0];
+  assert.equal(vexCoaching(vec, 102), null);
+});
+
+test("magnetCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    freshness: "stale",
+    magnet: { strike: 100, distancePct: 0.5, pull: "at" },
+    regime: { posture: "long", label: "LONG" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  assert.equal(magnetCoaching(ctx(), vec, 100), null);
+});
+
+test("flowPrintsCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    freshness: "stale",
+    flowMarkers: {
+      available: true,
+      prints: [{ side: "call", strike: 100, premium: 2_000_000 }],
+      meta: { largeFound: 1 },
+    },
+  } as unknown as Parameters<typeof flowPrintsCoaching>[0];
+  assert.equal(flowPrintsCoaching(vec, play({ direction: "LONG" })), null);
+});
+
+test("wallDynamicsCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    freshness: "stale",
+    wallEvents: [
+      { kind: "call_wall_build", message: "wall building", strike: 100 },
+      { kind: "put_wall_fade", message: "put fading", strike: 95 },
+    ],
+  } as unknown as Parameters<typeof wallDynamicsCoaching>[0];
+  assert.equal(wallDynamicsCoaching(vec), null);
+});
+
+test("collectCoachingBullets: stale Vector suppresses VEX/magnet/flow coaching lines", () => {
+  const bullets = collectCoachingBullets(
+    ctx({
+      vector: {
+        freshness: "stale",
+        dataAgeMs: 200_000,
+        spot: 100,
+        vexFlip: 98,
+        magnet: { strike: 100, distancePct: 0.2, pull: "at" },
+        flowMarkers: {
+          available: true,
+          prints: [{ side: "call", strike: 100, premium: 1_500_000 }],
+          meta: { largeFound: 1 },
+        },
+        play: { bias: "long", headline: "Breakout", invalidation: "95" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+    100,
+  );
+  const joined = bullets.join("\n");
+  assert.doesNotMatch(joined, /VEX lens|Gamma magnet|Large print|Vector desk:/i);
 });
 
 test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {

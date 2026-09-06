@@ -93,10 +93,31 @@ test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now
   );
 
   assert.ok(section);
-  // Stale Vector regime is suppressed — must not narrate "Right now" or stale long-gamma posture.
-  assert.match(section!.body, /not resolved on this read/i);
+  // Stale Vector spot is suppressed — without GEX fallback the brief degrades honestly.
+  assert.match(section!.body, /Vector spot not wired on this tick/i);
   assert.doesNotMatch(section!.body, /Right now/i);
   assert.doesNotMatch(section!.body, /long gamma/i);
+  assert.doesNotMatch(section!.body, /Break watch.*98\.00/i);
+});
+
+test("tradeManagerNarrativeSection: stale Vector suppresses proximity + wall event bullets (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        dataAgeMs: 180_000,
+        freshness: "stale",
+        proximity: { strike: 102, side: "call", callout: "reject here" },
+        wallEvents: [{ kind: "call_wall_build", message: "wall building", strike: 102 }],
+        gexWalls: { callWalls: [{ strike: 102, pct: 5 }], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Nearest wall/i);
+  assert.doesNotMatch(section!.body, /Wall just moved/i);
 });
 
 test("tradeManagerNarrativeSection: stale Vector with live GEX fallback uses Last snapshot lead (Largo C2)", () => {
