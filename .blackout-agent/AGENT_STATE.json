@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T09:49:48.117Z",
+  "updated_at": "2026-09-06T10:50:33.069Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:37:21.095Z",
-      "lease_until": "2026-09-06T11:07:21.095Z",
+      "claimed_at": "2026-09-06T10:21:10.456Z",
+      "lease_until": "2026-09-06T11:51:10.456Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -31,6 +31,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4197": {
+      "pr": 4197,
+      "head_sha": "b82254b33bd6bcd692b59555688c91c08c76a8f9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T10:21:29.662Z",
+      "safe_to_merge": true
+    },
+    "pr-4202": {
+      "pr": 4202,
+      "head_sha": "c427dd49703da97b7c1f5bb65b4c8c887d6c95ef",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T10:29:01.814Z",
+      "safe_to_merge": true
+    },
+    "pr-4208": {
+      "pr": 4208,
+      "head_sha": "{",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T10:50:21.102Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +68,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e",
+    "last_main_sha": "2eb1ca98b9986db42105f89e4ccd34e9b9453ae1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T09:39:38Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
-    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
+    "last_deploy_at": "2026-09-06T10:49:33Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34028486139",
+    "last_deploy_sha": "2eb1ca98b9986db42105f89e4ccd34e9b9453ae1"
   },
   "events": [
     {
@@ -521,70 +545,127 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T10:21:29.663Z",
+      "type": "pr_review",
+      "pr": 4197,
+      "head_sha": "b82254b33bd6bcd692b59555688c91c08c76a8f9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T10:21:29.662Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T10:25:16.707Z",
+      "type": "pr_webhook",
+      "pr": 4202,
+      "event": "sweep",
+      "head": "c427dd49703da97b7c1f5bb65b4c8c887d6c95ef",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T10:25:18.634Z",
+      "type": "pr_webhook",
+      "pr": 4201,
+      "event": "sweep",
+      "head": "c3c394a295d95cc4aa90800ad5b2de24c036a7d6",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T10:25:20.560Z",
+      "type": "pr_webhook",
+      "pr": 4200,
+      "event": "sweep",
+      "head": "5cc44f67cabfd4c3d530421518cf43d97d8090c5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T10:29:01.815Z",
+      "type": "pr_review",
+      "pr": 4202,
+      "head_sha": "c427dd49703da97b7c1f5bb65b4c8c887d6c95ef",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T10:29:01.814Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T10:39:45.847Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T10:39:45.848Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "83fe56dd-d3d2-44c4-b8f8-f56e1e513626",
+      "summary": "Merge wave: #4197+#4200+#4201+#4202 peer-reviewed and merged (swing lane-rank, HELIX absence, dead code, weekend TTL). Rebased #4202 for MARKET-OPEN-VALIDATION conflict. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T10:39:46.775Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T10:50:21.102Z",
+      "type": "pr_review",
+      "pr": 4208,
+      "head_sha": "{",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T10:50:21.102Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T10:50:23.674Z",
+      "type": "pr_webhook",
+      "pr": 4211,
+      "event": "sweep",
+      "head": "278cd9f991777345272192e1cc1fbccd54c6b1bb",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T10:50:26.142Z",
+      "type": "pr_webhook",
+      "pr": 4211,
+      "event": "sweep",
+      "head": "278cd9f991777345272192e1cc1fbccd54c6b1bb",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T10:50:31.997Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T10:50:33.069Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T10:50:33.069Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b244acd6-9ce9-4404-871c-2ffc1ee72960",
+      "summary": "PR-event cycle complete: peer-reviewed+merged #4197 (lane rank COMMIT), #4200 (HELIX stale crossdesk), #4201 (dead code), #4202 (weekend TTL 120h, rebased), #4208 (Meridian absence + Vector crossdesk). validate:deploy GREEN; ops:collect 0. Only #4211 handoff draft open."
     }
   ],
-  "open_prs": [
-    {
-      "number": 4192,
-      "title": "chore(blackout-agent): cursor PR-event handoff — swing audit merges + peer reviews",
-      "branch": "cursor/autopilot-pr-event-20260906-cycle10",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T09:49:14Z"
-    },
-    {
-      "number": 4191,
-      "title": "test(swing): add regression coverage for Ask Largo thesis-health wiring (post-#4182)",
-      "branch": "fix/swing-brief-thesis-health-live-wiring",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:49:46Z"
-    },
-    {
-      "number": 4190,
-      "title": "chore(blackout-agent): cursor PR-event handoff — swing merge wave + #4185 review",
-      "branch": "cursor/blackout-handoff-pr-event-0906b",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:42:15Z"
-    },
-    {
-      "number": 4189,
-      "title": "fix(swing): keep GEX/flow intel on closed Ask Largo briefs (CTO audit #2)",
-      "branch": "fix/swing-closed-brief-intel-collapse-2026-09-06",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:49:43Z"
-    },
-    {
-      "number": 4188,
-      "title": "chore(blackout-agent): cursor peer-review cycle handoff — swing PRs approved",
-      "branch": "cursor/autopilot-handoff-peer-review-2026-09-06",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:40:26Z"
-    },
-    {
-      "number": 4187,
-      "title": "chore(blackout-agent): cursor PR-event handoff — #4174/#4175 merged, swing reviews",
-      "branch": "cursor/autopilot-pr-event-20260906-cycle9",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:39:29Z"
-    }
-  ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -614,6 +695,38 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4202": {
+      "last_event": "sweep",
+      "last_head": "c427dd49703da97b7c1f5bb65b4c8c887d6c95ef",
+      "last_feedback_at": "2026-09-06T10:25:16.706Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4201": {
+      "last_event": "sweep",
+      "last_head": "c3c394a295d95cc4aa90800ad5b2de24c036a7d6",
+      "last_feedback_at": "2026-09-06T10:25:18.634Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4200": {
+      "last_event": "sweep",
+      "last_head": "5cc44f67cabfd4c3d530421518cf43d97d8090c5",
+      "last_feedback_at": "2026-09-06T10:25:20.560Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4211": {
+      "last_event": "sweep",
+      "last_head": "278cd9f991777345272192e1cc1fbccd54c6b1bb",
+      "last_feedback_at": "2026-09-06T10:50:26.142Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
