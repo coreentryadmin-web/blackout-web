@@ -21,9 +21,16 @@ import type { PortfolioPosition } from "./portfolio";
  * position with the SAME ticker AND SAME direction as the candidate (a rolled/duplicate row on
  * the same bet is not a second, separate overlap to report), so passing the raw book is correct.
  */
-async function loadOpenBook(): Promise<PortfolioPosition[]> {
-  const rows = await fetchOpenSwingPositions().catch(() => []);
-  return rows.map((r) => ({ ticker: r.ticker, direction: r.direction === "short" ? ("SHORT" as const) : ("LONG" as const) }));
+async function loadOpenBook(): Promise<PortfolioPosition[] | null> {
+  try {
+    const rows = await fetchOpenSwingPositions();
+    return rows.map((r) => ({
+      ticker: r.ticker,
+      direction: r.direction === "short" ? ("SHORT" as const) : ("LONG" as const),
+    }));
+  } catch {
+    return null;
+  }
 }
 
 export type LoadSwingPlayBriefInput = SwingBriefResolveHints;

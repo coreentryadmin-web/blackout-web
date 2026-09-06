@@ -12,6 +12,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
+import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 
@@ -76,8 +77,11 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
  * SEV-9), so this reports the SAME partition the gate would flag — not a second, diverging notion
  * of "similar." Only rendered when the book actually overlaps; a clean book says nothing new.
  */
-export function bookContextSection(play: TerminalPlay, openBook: PortfolioPosition[] | undefined): RichSection | null {
-  if (!openBook?.length) return null;
+export function bookContextSection(
+  play: TerminalPlay,
+  openBook: PortfolioPosition[] | null | undefined,
+): RichSection | null {
+  if (openBook == null || !openBook.length) return null;
   const overlap = checkPortfolioOverlap({ ticker: play.ticker, direction: play.direction }, openBook);
   if (!overlap.hasOverlap) return null;
 
@@ -201,8 +205,9 @@ export function flowIntelSection(eco: EcosystemContext | null, play: TerminalPla
   if (!eco) return null;
   const lines: string[] = [];
 
-  if (eco.recent_flow) {
-    const f = eco.recent_flow;
+  const flow = trustedHelixFlow(eco);
+  if (flow) {
+    const f = flow;
     const bias =
       f.call_premium > f.put_premium * 1.3
         ? "call-heavy"

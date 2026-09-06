@@ -78,6 +78,27 @@ test("tradeManagerNarrativeSection: narrates dark pool + dealer posture", () => 
   assert.match(section!.body, /Break watch/i);
 });
 
+test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "SHORT",
+        status: "HOLD",
+        recommendation: "HOLD",
+        exitPolicy: {
+          trim_levels: [],
+          stop_premium: 3.5,
+          target_premium: 1.2,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*reclaim \*\*\$4\*\*/i);
+  assert.doesNotMatch(section!.body, /reclaim \*\*\$1/);
+});
+
 test("describeDarkPoolLevel: support language for long below spot", () => {
   const line = describeDarkPoolLevel({ strike: 95, premium: 5_000_000, pct: 30 }, 100, "LONG");
   assert.match(line, /Watch 95\.00/);

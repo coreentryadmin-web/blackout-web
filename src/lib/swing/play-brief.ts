@@ -10,6 +10,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
+import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
 
@@ -176,11 +177,12 @@ function evidenceFromContext(ctx: SwingPlayBriefContext): BieEvidence[] {
     });
   }
   const eco = ctx.ecosystem;
-  if (eco?.recent_flow) {
+  const flow = trustedHelixFlow(eco);
+  if (flow) {
     out.push({
       kind: "fact",
-      text: `HELIX flow ${eco.recent_flow.print_count} prints in ${eco.recent_flow.window_hours}h.`,
-      provenance: { source: "HELIX", freshness: eco.flow_feed_fresh ? "live" : "recent" },
+      text: `HELIX flow ${flow.print_count} prints in ${flow.window_hours}h.`,
+      provenance: { source: "HELIX", freshness: "live" },
     });
   }
   if (eco?.arsenal?.earnings?.earnings_date) {
@@ -267,12 +269,12 @@ export function composeSwingPlayBrief(
       levels: levelsFromContext(ctx),
       invalidation,
       followups: followupsFor(play),
-      unavailableSources: ctx.ecosystem?.arsenal?.unavailable_sources,
+      unavailableSources: collectBriefUnavailableSources(ctx),
     }),
     asOf: ctx.asOf,
   };
 
-  const flow = ctx.ecosystem?.recent_flow;
+  const flow = trustedHelixFlow(ctx.ecosystem);
   const flowSnapshot = flow
     ? { callPremium: flow.call_premium, putPremium: flow.put_premium }
     : null;

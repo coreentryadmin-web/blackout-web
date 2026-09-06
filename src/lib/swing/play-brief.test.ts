@@ -201,6 +201,47 @@ test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow 
   assert.equal(brief.flowSnapshot, null);
 });
 
+test("composeSwingPlayBrief: stale HELIX flow omitted from snapshot and unavailableSources (C2/C3)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      recent_flow: {
+        window_hours: 24,
+        print_count: 12,
+        call_premium: 1_200_000,
+        put_premium: 400_000,
+        unknown_premium: 0,
+      },
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      spx_desk_convergence: null,
+      flow_feed_fresh: false,
+      gex_positioning: null,
+      vector_full_state: null,
+      arsenal: null,
+    },
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.flowSnapshot, null);
+  assert.ok(
+    brief.envelope.unavailableSources?.some((u) => u.source === "HELIX flow" && u.reason === "pipeline stale"),
+  );
+  assert.ok(!brief.envelope.sections.some((s) => /call-heavy/i.test(s.body)), "stale flow must not coach tape bias");
+});
+
 test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
