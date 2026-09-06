@@ -19,6 +19,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
+import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
@@ -99,7 +100,12 @@ export function bookContextSection(
   openBook: PortfolioPosition[] | null | undefined,
 ): RichSection | null {
   if (openBook == null || !openBook.length) return null;
-  const overlap = checkPortfolioOverlap({ ticker: play.ticker, direction: play.direction }, openBook);
+  const { positionId } = parseSwingPlayId(play.id);
+  const overlap = checkPortfolioOverlap(
+    { ticker: play.ticker, direction: play.direction },
+    openBook,
+    positionId != null ? { excludePositionId: positionId } : undefined,
+  );
   if (!overlap.hasOverlap) return null;
 
   const lines: string[] = [];
@@ -355,8 +361,12 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     );
   }
 
-  const flip = vec?.gammaFlip ?? ctx.ecosystem?.gex_positioning?.flip;
-  if (flip != null && spot != null) {
+  const gexForLevels = ctx.ecosystem?.gex_positioning;
+  const readMs = Date.now();
+  const vecFlip = vec?.gammaFlip;
+  const flip = vecFlip ?? gexForLevels?.flip;
+  const flipFromStaleGex = vecFlip == null && gexForLevels?.flip != null && gexMatrixStale(gexForLevels, readMs);
+  if (flip != null && spot != null && !flipFromStaleGex) {
     const watch =
       play.direction === "LONG"
         ? `Lose gamma flip **${flip.toFixed(2)}** — dealer posture turns against longs`
@@ -364,12 +374,17 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(watch);
   }
 
-  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? ctx.ecosystem?.gex_positioning?.put_wall;
-  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? ctx.ecosystem?.gex_positioning?.call_wall;
-  if (play.direction === "LONG" && putWall != null) {
+  const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
+  const putWall = vecPutWall ?? gexForLevels?.put_wall;
+  const callWall = vecCallWall ?? gexForLevels?.call_wall;
+  const gexStaleForLevels = gexMatrixStale(gexForLevels, readMs);
+  const putWallFromStaleGex = vecPutWall == null && gexForLevels?.put_wall != null && gexStaleForLevels;
+  const callWallFromStaleGex = vecCallWall == null && gexForLevels?.call_wall != null && gexStaleForLevels;
+  if (play.direction === "LONG" && putWall != null && !putWallFromStaleGex) {
     lines.push(`Structural support node: put wall **${putWall.toFixed(2)}**`);
   }
-  if (play.direction === "SHORT" && callWall != null) {
+  if (play.direction === "SHORT" && callWall != null && !callWallFromStaleGex) {
     lines.push(`Structural resistance node: call wall **${callWall.toFixed(2)}**`);
   }
 

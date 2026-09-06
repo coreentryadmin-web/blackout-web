@@ -71,3 +71,31 @@ test("excludeSelfMatch=false counts a lone pre-existing same-ticker row (gate ca
   assert.equal(o.hasOverlap, true);
   assert.equal(o.sameThemeSameDirection.length, 1);
 });
+
+test("excludePositionId skips the reviewed row even when it is not first in the book", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "EWZ", direction: "LONG", positionId: 29 },
+    { ticker: "EWZ", direction: "LONG", positionId: 26 },
+  ];
+  const o = checkPortfolioOverlap(long("EWZ"), book, { excludePositionId: 26 });
+  assert.equal(o.hasOverlap, true);
+  assert.equal(o.sameThemeSameDirection.length, 1);
+  assert.equal(o.sameThemeSameDirection[0]?.positionId, 29);
+});
+
+test("excludePositionId: reviewing the first of two same-ticker rows excludes only that id", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "EWZ", direction: "LONG", positionId: 29 },
+    { ticker: "EWZ", direction: "LONG", positionId: 26 },
+  ];
+  const o = checkPortfolioOverlap(long("EWZ"), book, { excludePositionId: 29 });
+  assert.equal(o.hasOverlap, true);
+  assert.equal(o.sameThemeSameDirection.length, 1);
+  assert.equal(o.sameThemeSameDirection[0]?.positionId, 26);
+});
+
+test("excludePositionId: lone self row produces no overlap", () => {
+  const book: PortfolioPosition[] = [{ ticker: "NVDA", direction: "LONG", positionId: 12 }];
+  const o = checkPortfolioOverlap(long("NVDA"), book, { excludePositionId: 12 });
+  assert.equal(o.hasOverlap, false);
+});

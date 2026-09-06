@@ -17,9 +17,9 @@ import type { PortfolioPosition } from "./portfolio";
  * The member's full open book as `PortfolioPosition[]` for the "Book context" theme-overlap
  * section. `direction` on the ledger row is lowercase ("long"/"short"); the overlap checker
  * (and the swing entry gate it shares code with) works in uppercase `PlayDirection`. The play
- * under review is NOT filtered out here — `checkPortfolioOverlap` already skips any existing
- * position with the SAME ticker AND SAME direction as the candidate (a rolled/duplicate row on
- * the same bet is not a second, separate overlap to report), so passing the raw book is correct.
+ * under review is NOT filtered out here — `bookContextSection` passes the reviewed play's ledger
+ * id into `checkPortfolioOverlap` so the correct row is excluded even when multiple independent
+ * positions share ticker+direction.
  */
 async function loadOpenBook(): Promise<PortfolioPosition[] | null> {
   try {
@@ -27,6 +27,7 @@ async function loadOpenBook(): Promise<PortfolioPosition[] | null> {
     return rows.map((r) => ({
       ticker: r.ticker,
       direction: r.direction === "short" ? ("SHORT" as const) : ("LONG" as const),
+      positionId: r.id,
     }));
   } catch {
     return null;

@@ -6,7 +6,7 @@
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { trustedHelixFlow, gexMatrixAgeMs, gexMatrixStale } from "./play-brief-absence";
+import { trustedHelixFlow, gexMatrixAgeMs, gexMatrixStale, vectorSnapshotStale } from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
@@ -162,9 +162,7 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
 
   const readMs = Date.now();
   const vecAgeMs = vec?.dataAgeMs;
-  const vectorStale =
-    (typeof vecAgeMs === "number" && Number.isFinite(vecAgeMs) && vecAgeMs > 120_000) ||
-    vec?.freshness === "stale";
+  const vectorStale = vectorSnapshotStale(vec, readMs);
   const postureFromGex = !vecPosture && gex?.gamma_posture;
   const gexStale = postureFromGex && gexMatrixStale(gex, readMs);
   const snapshotStale = vectorStale || gexStale;
@@ -395,10 +393,14 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   }
 
   const vp = vec?.play;
-  if (play.direction === "LONG" && vp?.bias === "short") {
-    reasons.push(`Vector bearish (${vp.headline ?? vp.grade ?? "desk read"})`);
-  } else if (play.direction === "SHORT" && vp?.bias === "long") {
-    reasons.push(`Vector bullish (${vp.headline ?? vp.grade ?? "desk read"})`);
+  // Same Largo C2 gap as stale GEX walls/posture (#4355/#4364): steelmanning Vector desk bias
+  // off a stale snapshot reads like a live opposing read.
+  if (!vectorSnapshotStale(vec, Date.now())) {
+    if (play.direction === "LONG" && vp?.bias === "short") {
+      reasons.push(`Vector bearish (${vp.headline ?? vp.grade ?? "desk read"})`);
+    } else if (play.direction === "SHORT" && vp?.bias === "long") {
+      reasons.push(`Vector bullish (${vp.headline ?? vp.grade ?? "desk read"})`);
+    }
   }
 
   if (spot != null) {

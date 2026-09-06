@@ -13,6 +13,7 @@ import {
   lessonsSection,
   meridianCatalystSection,
   meridianPeerSection,
+  watchForSection,
   whyThisSetupSection,
 } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
@@ -73,6 +74,22 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
 test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is not reported as overlap", () => {
   const book: PortfolioPosition[] = [{ ticker: "NVDA", direction: "LONG" }];
   assert.equal(bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book), null);
+});
+
+test("bookContextSection: reviewing the second of two independent same-ticker rows does not flag self", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "EWZ", direction: "LONG", positionId: 29 },
+    { ticker: "EWZ", direction: "LONG", positionId: 26 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:EWZ:26", ticker: "EWZ", direction: "LONG" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section?.body ?? "", /Concentration/i);
+  assert.match(section?.body ?? "", /EWZ LONG/);
+  assert.doesNotMatch(section?.body ?? "", /26.*26/);
+  assert.equal((section?.body ?? "").split("EWZ LONG").length - 1, 1);
 });
 
 // SWING-SYSTEM-CTO-AUDIT-style finding (found live 2026-09-06 on NRG SWING_NRG_34): `recNote` is
@@ -688,6 +705,61 @@ test("gexPostureSection: stale matrix prefixes Last snapshot, not live dealer re
   assert.match(section!.body, /Last snapshot/i);
   assert.match(section!.body, /200s old/i);
   assert.match(section!.body, /long gamma/i);
+});
+
+test("watchForSection: stale GEX-only flip and put wall omitted from watch levels (Largo C2)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG" }),
+      asOf: "2026-09-06 10:00 ET",
+      sessionDate: "2026-09-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          flip: 99,
+          put_wall: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Lose gamma flip/i);
+  assert.doesNotMatch(section.body, /put wall \*\*/i);
+});
+
+test("watchForSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG" }),
+      asOf: "2026-09-06 10:00 ET",
+      sessionDate: "2026-09-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          put_wall: 97,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as EcosystemContext,
+      vector: {
+        spot: 100,
+        gexWalls: { putWalls: [{ strike: 98 }], callWalls: [] },
+      } as unknown as VectorFullState,
+    },
+    "open",
+  );
+  assert.match(section.body, /put wall \*\*98\.00\*\*/);
 });
 
 test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {
