@@ -392,6 +392,23 @@ test("dataFreshnessSection: prior-session scan warns when scanSessionDay lags se
   assert.match(section!.body, /today's discovery not yet run/);
 });
 
+test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is false", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: "2026-09-06T14:30:00.000Z",
+    scanSessionDay: "2026-09-06",
+    laneRows: [],
+    meridian: null,
+    ecosystem: { flow_feed_fresh: false } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /HELIX flow: \*\*pipeline stale\*\*/);
+  assert.match(section!.body, /tape read may lag/);
+});
+
 test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {
   const section = meridianCatalystSection({
     play: fixturePlay(),

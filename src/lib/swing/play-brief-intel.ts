@@ -617,6 +617,11 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
   }
+  if (ctx.ecosystem?.flow_feed_fresh === false) {
+    lines.push(
+      "HELIX flow: **pipeline stale** — tape read may lag; not evidence of quiet flow",
+    );
+  }
   if (!lines.length) return null;
   return { title: "Data freshness", body: lines.join("\n"), bias: play.markIsSync ? "bearish" : "neutral" };
 }
