@@ -13,6 +13,21 @@ test("collapseRedundantIntelSections: no-op without narrative", () => {
   assert.equal(out.length, 3);
 });
 
+test("collapseRedundantIntelSections: closed bucket keeps GEX/wall sections — post-mortem does not cover them", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Wall dynamics"),
+    section("Outcome"),
+  ];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "closed" });
+  assert.equal(out.length, 4);
+  assert.ok(out.some((s) => s.title === "GEX posture"));
+  assert.ok(out.some((s) => s.title === "Wall dynamics"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.doesNotMatch(narrative!.body, /folded into Trade manager read/i);
+});
+
 test("collapseRedundantIntelSections: drops covered titles when narrative leads", () => {
   const sections = [
     section("Trade manager read"),

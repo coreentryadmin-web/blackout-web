@@ -39,6 +39,8 @@ export function collapseRedundantIntelSections(
   opts: { hasNarrative: boolean; bucket: "watch" | "open" | "closed" },
 ): RichSection[] {
   if (!opts.hasNarrative) return sections;
+  // Closed briefs only narrate a short post-mortem — GEX/wall/macro/flow sections are not folded in.
+  if (opts.bucket === "closed") return sections;
 
   const filtered = sections.filter((s) => !NARRATIVE_COVERED_TITLES.has(s.title));
 
