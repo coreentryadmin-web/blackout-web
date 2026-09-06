@@ -171,6 +171,16 @@ test("SOFT: portfolio overlap surfaces as an evidence-only penalty", () => {
   assert.equal(r.verdict, "COMMIT"); // evidence-only, does not block
 });
 
+test("SOFT: lone pre-existing same-ticker/same-direction row flags overlap for uncommitted candidate", () => {
+  const r = evaluateSwingGates(makeDossier(), liquidContract, baseCtx({
+    existingPositions: [{ ticker: "NVDA", direction: "LONG" }],
+  }));
+  assert.ok(
+    r.softPenalties.some((p) => p.code === "portfolio_overlap"),
+    "gate must not treat the only matching row as self when candidate is uncommitted",
+  );
+});
+
 test("entryPlan invariants surface through the gate (actualFill null, deadline != expiry)", () => {
   const r = evaluateSwingGates(makeDossier(), liquidContract, baseCtx());
   assert.equal(r.entryPlan.actualFill, null);

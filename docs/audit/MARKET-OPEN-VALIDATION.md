@@ -3073,3 +3073,9 @@ than an end-of-session patch.
 - **What changed:** `collectBriefUnavailableSources()` emits a structured C3 entry when `scanSessionDay !== sessionDate`; `dataFreshnessSection()` and `dataHonestyCoaching()` narrate the same fact in prose.
 - **RTH check:** Pre-open Monday (or any session before `swing-discovery` cron runs), open Ask Largo on a WATCH swing row — confirm "Data freshness" and/or `UnavailableChip` shows prior-session discovery scan warning, not a silent yesterday timestamp.
 
+### 46. Swing entry gate — lone same-ticker row invisible to portfolio_overlap soft penalty — fix/swing-gate-portfolio-overlap-no-self-skip — 2026-09-06
+
+- **What was broken:** `checkPortfolioOverlap`'s first-match self-exclusion (correct for Ask Largo where the reviewed play is in `openBook`) also ran for uncommitted gate dossiers. A lone pre-existing NVDA LONG in the book was skipped as "self," so `portfolio_overlap` never fired when evaluating a new NVDA LONG candidate.
+- **What changed:** `checkPortfolioOverlap` accepts `{ excludeSelfMatch?: boolean }` (default `true`); `gates-pr5.ts` passes `false`.
+- **RTH check:** During discovery, inspect a dossier whose ticker+direction already exists in the open book — `evaluateSwingGates` soft penalties should include `portfolio_overlap` with concentration reason text, not silence.
+
