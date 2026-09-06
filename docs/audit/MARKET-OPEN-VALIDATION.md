@@ -161,6 +161,14 @@ manager read), not repeated under Hold plan.
 
 **Check at the open:** On Night Hawk Swings OPEN tab, refresh a SHORT play where put premium is building but call is flat — Trade manager read pulse should include put flow building line.
 
+### 0a-1ad. Earnings evidence missing provenance.asOf in play-brief — fix/swing-brief-earnings-evidence-asof (pending)
+
+**What was broken:** `evidenceFromContext()` stamped `asOf` on HELIX flow, swing scan, and option mark evidence, but the earnings-calendar row only had `source` + `freshness` — Largo C1/C8 joins could not anchor when the datum was read.
+
+**Fix:** Add `asOf: ctx.asOf` to earnings evidence provenance (same brief ET clock as HELIX flow).
+
+**Check at the open:** Swings desk → play with upcoming earnings → `GET /api/market/swing/play-brief` evidence row for earnings must include `provenance.asOf` matching the brief clock.
+
 ---
 
 ### 0a-1ad. Desk context rendered "closed **open**" for an unresolved last swing — fix/swing-brief-desk-context-unresolved-outcome (pending)
