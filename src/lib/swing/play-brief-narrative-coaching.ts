@@ -185,14 +185,14 @@ export function wallIntegrityCoaching(vec: VectorFullState | null, play: Termina
   if (!call && !put) return null;
 
   if (play.direction === "LONG" && call === "thin") {
-    return `**Call wall integrity ${call}** — upside cap may break easier; don't assume rejection at the wall.`;
+    return `**Call wall integrity thin** — upside cap may break easier; don't assume rejection at the wall.`;
   }
   if (play.direction === "SHORT" && put === "thin") {
-    return `**Put wall integrity ${put}** — support may fail fast; cover if floor gives way.`;
+    return `**Put wall integrity thin** — support may fail fast; cover if floor gives way.`;
   }
   if (call === "firm" || put === "firm") {
     const side = call === "firm" ? "call" : "put";
-    return `**${side} wall firm** — expect rejection; respect the node on extensions.`;
+    return `**${side} wall firm** — expect solid rejection; respect the node on extensions.`;
   }
   return null;
 }
@@ -268,8 +268,9 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
   const meridian = ctx.meridian?.items?.[0];
 
   if (earnings?.days_until != null && earnings.days_until <= 14) {
+    const timing = earnings.report_time ? ` (${earnings.report_time})` : "";
     return (
-      `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date}) — ` +
+      `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date}${timing}) — ` +
       `size down or exit before report unless thesis is earnings-driven.`
     );
   }
@@ -322,8 +323,13 @@ export function technicalsCoaching(vec: VectorFullState | null, play: TerminalPl
     const word = t.emaStack === "up" ? "bull stack" : t.emaStack === "down" ? "bear stack" : "mixed EMAs";
     parts.push(word);
   }
+<<<<<<< HEAD
   if (t.structure) {
     parts.push(`structure **${t.structure.type} ${t.structure.direction} @ ${t.structure.level.toFixed(2)}**`);
+=======
+  if (t.structure?.type) {
+    parts.push(`structure **${t.structure.type.replace(/_/g, " ")}** @ **${t.structure.level.toFixed(2)}**`);
+>>>>>>> 6ff615ad6 (fix(swing): typecheck wall integrity tiers and technicals structure)
   }
   if (!parts.length) return null;
 
