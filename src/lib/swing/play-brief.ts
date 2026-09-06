@@ -278,6 +278,23 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: { source: "Earnings calendar", asOf: ctx.asOf, freshness: "recent" },
     });
   }
+  const fund = eco?.arsenal?.fundamentals;
+  if (fund && (fund.days_to_cover != null || fund.short_volume_ratio != null)) {
+    const parts: string[] = [];
+    if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
+    if (fund.short_volume_ratio != null) {
+      parts.push(`short vol ratio ${(fund.short_volume_ratio * 100).toFixed(0)}%`);
+    }
+    out.push({
+      kind: "fact",
+      text: `Short interest: ${parts.join(" · ")}`,
+      provenance: {
+        source: "Polygon / Benzinga",
+        asOf: fund.as_of ? etStampFromIso(fund.as_of) ?? fund.as_of : ctx.asOf,
+        freshness: "recent",
+      },
+    });
+  }
   return out;
 }
 
