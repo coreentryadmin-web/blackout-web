@@ -4,9 +4,22 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 
-/** Section titles omitted when a narrative block is present (coaching already spoke). */
+/**
+ * Section titles omitted when a narrative block is present (coaching already spoke).
+ *
+ * "Book context" is deliberately NOT in this set: `bookContextSection` (play-brief-intel.ts) is
+ * the ONLY place that renders book-concentration/conflict warnings since #4116 removed the
+ * duplicate `bookContextCoaching` narrative bullet. Collapsing it here would silently delete the
+ * warning for any member with a theme-overlapping book — there is no narrative bullet left to
+ * "fold into".
+ *
+ * "Desk consensus" (the old title) was ALSO stale here and matched nothing — #4111 renamed that
+ * section to "Desk context" and moved NH-direction/0DTE-stance into `crossDeskCoaching`.
+ * Post-#4128, `deskConsensusSection` renders ONLY NH outcome history (flow anomalies live in
+ * `flowNarrative` + `flowIntelSection`). "Desk context" stays excluded — `crossDeskCoaching`
+ * does not cover outcome history, and remapping the stale title would silently delete it.
+ */
 const NARRATIVE_COVERED_TITLES = new Set([
-  // Book context stays visible — post-#4116 it is the ONLY concentration source (no narrative bullet).
   "Lane rank",
   "Levels on chart",
   "GEX posture",

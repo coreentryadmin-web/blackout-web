@@ -120,7 +120,7 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
-### 0a-1k. Swing Ask Largo — Desk context duplicated HELIX anomalies — fix/swing-brief-desk-context-dedup (pending)
+### 0a-1k. Swing Ask Largo — Desk context duplicated HELIX anomalies — fix/swing-brief-desk-context-dedup (merged #4128)
 
 **What was broken:** `deskConsensusSection` repeated `recent_anomalies[0]` even though Trade manager read (`flowNarrative`) and Flow & positioning already surface the same sweep — members saw the anomaly up to three times. Stale collapse title `Desk consensus` never matched section title `Desk context`.
 
@@ -2683,4 +2683,10 @@ than an end-of-session patch.
 - **What was broken:** PR #4110 added `bookContextCoaching()` calling the same `checkPortfolioOverlap()` as the existing `bookContextSection()` (#4101), rendering the identical concentration warning twice on one brief for any play whose ticker overlaps the member's open book by theme. Flagged with a full repro before merge (⏳ WAIT verdict) but merged anyway by `cursor[bot]` itself.
 - **What changed:** Removed the duplicate `bookContextCoaching()` and its call site; `bookContextSection()` remains the single source for this check.
 - **RTH check:** Open Ask Largo for a swing play whose ticker shares a theme with an existing open position (e.g. a semis name while holding AMD/SMH/NVDA) — the concentration/conflict warning should appear ONCE, in the "Book context" section, not also repeated inside "Trade manager read."
+
+### 40. Ask Largo swing collapse — Desk context hardening + stale title cleanup (P2) — fix/swing-collapse-desk-context-hardening — 2026-09-06
+
+- **What was broken:** #4123 fixed Book context being collapsed; #4128 removed the stale `"Desk consensus"` entry and deduped flow anomalies from `deskConsensusSection`. This PR adds inline docs + NEVER-drop regression tests so a future title rename cannot silently delete Book/Desk context again.
+- **What changed:** Documented why Book context and Desk context must stay excluded from `NARRATIVE_COVERED_TITLES`; hardened regression tests.
+- **RTH check:** For an OPEN/HOLD swing with NH trade history on the name, confirm "Desk context" still appears even when "Trade manager read" leads; flow anomalies appear once in Trade manager read, not again in Desk context.
 
