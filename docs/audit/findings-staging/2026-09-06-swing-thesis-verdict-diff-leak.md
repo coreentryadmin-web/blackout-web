@@ -12,28 +12,19 @@
 ## Symptom
 
 #4318 withheld the aggregate thesis-health % from Thesis health, hold plan, and trade-manager
-sections when pillar inputs are unwired — but **Verdict** still printed `Thesis strength 46%`, and
-the "What changed" diff engine could narrate `Thesis health shifted 48% → 51%` from the same
-fabricated composite.
+sections when pillar inputs are unwired — but **Verdict** still printed `Thesis strength 46%` via
+`thesisStrengthPct()` without checking `thesisHealthUncalibrated()`.
 
-## Root cause
-
-`thesisStrengthPct()` was called without the `thesisHealthUncalibrated()` guard, and
-`snapshotFromBrief()` always snapshotted raw `thesisHealth.health` for diffing.
+(The diff-engine + coaching leaks are handled separately in #4329.)
 
 ## Fix
 
-- Gate Verdict thesis strength with `thesisHealthUncalibrated()`.
-- Null `thesisHealth` in brief snapshots when uncalibrated so `diffBriefSnapshots` skips
-  `narrateThesisShift`.
+Gate Verdict thesis strength with `thesisHealthUncalibrated()` (Largo C6).
 
 ## Validation
 
-- `npx tsx --test src/lib/swing/play-brief.test.ts`
-- `npx tsx --test src/lib/swing/play-brief-diff.test.ts`
+- `npx tsx --test src/lib/swing/play-brief.test.ts` — Verdict assertion on uncalibrated row GREEN
 
 ## RTH check
 
-OPEN/HOLD swing row with unwired setup/entry/signal pillars: Ask Largo Verdict must NOT show
-`Thesis strength N%`; refresh must NOT emit thesis-health shift lines when only the default
-composite drifts.
+OPEN/HOLD swing row with unwired pillars: Ask Largo Verdict must NOT show `Thesis strength N%`.

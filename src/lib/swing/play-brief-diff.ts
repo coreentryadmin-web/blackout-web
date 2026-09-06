@@ -4,7 +4,6 @@
  */
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { thesisHealthUncalibrated } from "./thesis-health";
 
 export type BriefSnapshot = {
   headline: string;
@@ -96,10 +95,7 @@ export function snapshotFromBrief(
   return {
     headline: envelope.headline,
     recommendation: play?.recommendation ?? null,
-    thesisHealth:
-      play?.thesisHealth && thesisHealthUncalibrated(play.thesisHealth)
-        ? null
-        : fin(play?.thesisHealth?.health),
+    thesisHealth: fin(play?.thesisHealth?.health),
     pnlPct: fin(play?.pnlPct),
     mark: fin(play?.mark),
     spot: fin(extras?.spot),
