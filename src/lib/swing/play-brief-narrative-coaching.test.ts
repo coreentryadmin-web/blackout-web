@@ -16,6 +16,8 @@ import {
   vexCoaching,
   watchGateCoaching,
   technicalsCoaching,
+  wallDynamicsCoaching,
+  wallIntegrityCoaching,
 } from "./play-brief-narrative-coaching";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -545,4 +547,23 @@ test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => 
     },
   } as import("@/lib/bie/vector-full-state").VectorFullState;
   assert.equal(technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" })), null);
+});
+
+test("wallIntegrityCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    wallIntegrity: { call: { tier: "thin" }, put: { tier: "firm" } },
+  } as unknown as Parameters<typeof wallIntegrityCoaching>[0];
+  assert.equal(wallIntegrityCoaching(vec, play({ direction: "LONG" })), null);
+});
+
+test("wallDynamicsCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    wallEvents: [
+      { kind: "call_wall_build", message: "building", strike: 105 },
+      { kind: "put_wall_fade", message: "fading", strike: 95 },
+    ],
+  } as unknown as Parameters<typeof wallDynamicsCoaching>[0];
+  assert.equal(wallDynamicsCoaching(vec), null);
 });

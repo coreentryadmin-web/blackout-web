@@ -192,6 +192,7 @@ export function confluenceCoaching(vec: VectorFullState | null, play: TerminalPl
 
 /** Wall integrity — thin walls break easier. */
 export function wallIntegrityCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const wi = vec?.wallIntegrity;
   if (!wi) return null;
   const call = wi.call?.tier;
@@ -473,6 +474,7 @@ export function ivRankCoaching(play: TerminalPlay): string | null {
 
 /** Recent wall dynamics — last 2 bead events for live structure shifts. */
 export function wallDynamicsCoaching(vec: VectorFullState | null): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const events = vec?.wallEvents ?? [];
   if (events.length < 2) return null;
   const recent = events.slice(-2);
