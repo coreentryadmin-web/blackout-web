@@ -8,6 +8,7 @@ import {
   dataFreshnessSection,
   deskConsensusSection,
   flowIntelSection,
+  holdPlanSection,
   lessonsSection,
   whyThisSetupSection,
 } from "./play-brief-intel";
@@ -92,6 +93,66 @@ test("whyThisSetupSection: still reports pillar/signal content when present", ()
   });
   const section = whyThisSetupSection(play);
   assert.match(section.body, /Momentum/);
+});
+
+test("holdPlanSection: does not repeat recNote or Management-owned rails — unique time/theta coaching only", () => {
+  const recNote = "live hold — thesis fading — tighten risk";
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      recNote,
+      contract: "14DTE 110C",
+      manageAction: "TRIM_PARTIAL",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -50,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 50, fraction: 0.33, premium: 7, fired: false }],
+        runner_fraction: 0.34,
+        stop_premium: 2,
+        target_premium: 10,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.ok(!section!.body.includes(recNote));
+  assert.ok(!section!.body.includes("Desk stance"));
+  assert.ok(!section!.body.includes("Trim ladder"));
+  assert.ok(!section!.body.includes("Rails:"));
+  assert.ok(!section!.body.includes("Manage engine"));
+  assert.match(section!.body, /14 DTE/);
+  assert.match(section!.body, /15:50/);
+});
+
+test("holdPlanSection: null when no unique hold-plan content beyond Management", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      recNote: "only note",
+      contract: "90C",
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  assert.equal(holdPlanSection(ctx), null);
 });
 
 test("deskConsensusSection: null when only NH direction / 0DTE stance (covered by crossDeskCoaching)", () => {
