@@ -10,7 +10,13 @@ import {
   fetchSwingPositionChain,
   type SwingPositionRow,
 } from "@/lib/db";
-import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
+import {
+  getSwingServingLane,
+  discoverSwingFromPersisted,
+  readSwingServingSnapshot,
+  attachThesisExplanation,
+  dossiersByTicker,
+} from "@/lib/swing/serving-lane";
 import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
@@ -167,7 +173,7 @@ async function loadLaneRows(ticker: string): Promise<{
   };
 }
 
-async function loadOpenTerminalPlay(
+export async function loadOpenTerminalPlay(
   ticker: string,
   hints: { positionId?: number | null; strike?: number | null; right?: "C" | "P" | null; status?: string | null },
 ): Promise<TerminalPlay | null> {
@@ -204,7 +210,18 @@ async function loadOpenTerminalPlay(
   const lanePlay = livePlayFromSwingPosition(row, spot, manageEvents.get(row.id) ?? null);
   if (!lanePlay) return null;
 
-  return terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay, row.id));
+  // A committed row's own factors/regime are evicted the moment it commits (live capital wins the
+  // section over its pre-entry twin — see serving-lane.ts's `getSwingServingLane`), which is exactly
+  // why the main board restores them via `attachThesisExplanation`. Ask Largo's play-brief resolver
+  // bypassed that restoration entirely, so `computeSwingThesisHealth`'s regime pillar (thesis-health.ts)
+  // always fell back to its generic "unread" default for every live swing position. Mirror the board's
+  // own fix here.
+  const discovered = await discoverSwingFromPersisted().catch(() => null);
+  const dossier = discovered ? dossiersByTicker(discovered.dossiers).get(ticker.toUpperCase()) : undefined;
+  const reads = discovered?.readsByTicker?.get(ticker.toUpperCase());
+  const enrichedPlay = attachThesisExplanation(lanePlay, dossier, reads);
+
+  return terminalPlayFromHorizon(horizonRowToDeckSource(enrichedPlay, row.id));
 }
 
 /**

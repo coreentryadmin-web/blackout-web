@@ -85,7 +85,7 @@ export interface SwingServingLaneDeps {
 }
 
 /** Index the scored dossiers by ticker (uppercased) so each play can find the thesis it was produced from. */
-function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDossier> {
+export function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDossier> {
   const idx = new Map<string, SwingDossier>();
   for (const d of dossiers) idx.set(d.ticker.toUpperCase(), d);
   return idx;
@@ -145,7 +145,7 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
  * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) leaves the row
  * untouched and the honest placeholder stands — a committed play never gets an invented explanation.
  */
-function attachThesisExplanation(
+export function attachThesisExplanation(
   play: HorizonPlay,
   dossier: SwingDossier | undefined,
   reads?: SwingServingReads,
