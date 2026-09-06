@@ -105,6 +105,21 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   assert.ok(brief.envelope.sections.some((s) => s.body.includes("FLOW")));
   assert.ok(brief.envelope.sections.some((s) => s.body.includes("Earnings")));
   assert.equal(brief.envelope.intent, "swing_play_brief");
+  assert.deepEqual(brief.flowSnapshot, { callPremium: 1_200_000, putPremium: 400_000 });
+});
+
+test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.flowSnapshot, null);
 });
 
 test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => {
