@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:31:06.424Z",
+  "updated_at": "2026-09-06T11:54:26.259Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:37:21.095Z",
-      "lease_until": "2026-09-06T11:07:21.095Z",
+      "claimed_at": "2026-09-06T11:34:45.027Z",
+      "lease_until": "2026-09-06T13:04:45.027Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88914ce012cddb8265605ba923ff8aa3899db711",
+    "last_main_sha": "131596890123fc1b13b79c0a8177c96a0ff2fa70",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T09:39:38Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
-    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
+    "last_deploy_at": "2026-09-06T11:53:05Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34031358175",
+    "last_deploy_sha": "131596890123fc1b13b79c0a8177c96a0ff2fa70"
   },
   "events": [
     {
@@ -557,9 +557,43 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T11:54:26.259Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T11:54:26.259Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "18a22db6-9f69-459d-aa7a-c56cde607019",
+      "summary": "PR-event cycle: merged #4224+#4227+#4231 (peer-reviewed); #4232 local 13/13 pass, CI pending; validate:deploy GREEN; ops:collect 0"
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4235,
+      "title": "fix(largo): round floats at query API boundary",
+      "branch": "fix/largo-query-round-floats-api-boundary",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:54:08Z"
+    },
+    {
+      "number": 4232,
+      "title": "fix(swing): derive chart-technicals bias from the technicals, not play direction",
+      "branch": "fix/swing-chart-technicals-bias-direction-echo",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:53:31Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
