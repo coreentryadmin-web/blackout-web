@@ -20,6 +20,7 @@ Harness `expectedSections()` conflated **API envelope** (full brief) with **deck
 
 - Split expectations: `expectedApiSections()` vs `expectedPanelSections()`.
 - Assert `DECK_OMIT_PANEL_SECTIONS` absent from panel + empty BieAnswer headline.
+- Fail when asOf footer shows em-dash fallback (C1 contract, #4152).
 - Add `waitFor` on filter bar before click (fixes flaky first-run timeout).
 
 ## Verify
