@@ -217,7 +217,7 @@ export function vectorPlayCoaching(vec: VectorFullState | null, play: TerminalPl
   } else if (aligned) {
     line += " — **aligned** with swing lane.";
   }
-  return line.startsWith("Vector") ? `**${line}` : line;
+  return line;
 }
 
 /** Night Hawk + 0DTE + HELIX friction detection. */

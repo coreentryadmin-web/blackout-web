@@ -9,6 +9,7 @@ import {
   manageLifecycleCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
+  vectorPlayCoaching,
   watchGateCoaching,
 } from "./play-brief-narrative-coaching";
 
@@ -167,4 +168,33 @@ test("closedCoaching: MFE capture lesson", () => {
   );
   assert.match(line!, /Gave back the move/i);
   assert.match(line!, /thesis break/i);
+});
+
+// ─── vectorPlayCoaching ─────────────────────────────────────────────────────
+
+test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {
+  assert.equal(vectorPlayCoaching(null, play()), null);
+  assert.equal(
+    vectorPlayCoaching({ play: {} } as unknown as Parameters<typeof vectorPlayCoaching>[0], play()),
+    null,
+  );
+});
+
+test("vectorPlayCoaching: returned line has an EVEN count of ** bold markers (no unpaired marker corrupting markdown)", () => {
+  const vec = {
+    play: {
+      headline: "Bull flag breakout",
+      invalidation: "95.00",
+      thesis: "long continuation",
+      starred: ["102.50"],
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  const boldMarkerCount = (line!.match(/\*\*/g) ?? []).length;
+  assert.equal(boldMarkerCount % 2, 0, `expected an even (paired) count of **, got ${boldMarkerCount} in: ${line}`);
+  // The headline and invalidation level must themselves render bold, not swallowed by a stray marker.
+  assert.match(line!, /\*\*Bull flag breakout\*\*/);
+  assert.match(line!, /\*\*95\.00\*\*/);
+  assert.doesNotMatch(line!, /^\*\*Vector desk: \*\*/);
 });
