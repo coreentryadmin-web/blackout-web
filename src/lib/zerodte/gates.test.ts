@@ -1451,6 +1451,26 @@ test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflic
   }
 });
 
+// ── G-6 CONDOR exemption: calibration must mirror the live gate's own `!isCondor` scoping ──
+test("G-6 calibration: a CONDOR correlated-and-opposed at a low score is NOT flagged conflict — mirrors the live gate's exemption", () => {
+  const slayerLive = { direction: "long" as const };
+  const v = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", direction: "short", score: 50, slayerLive }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  // The live gate never evaluates G-6 for a condor (delta-neutral, no side to oppose with).
+  assert.ok(!v.blocks.some((b) => b.code === "cross_system_conflict"));
+  // Calibration must say the SAME thing, not silently flag conflict:true/would_block:true —
+  // that would mix a structurally different (delta-neutral) row into the directional
+  // would-block/would-pass cohorts recommendGate("g6_conflict", ...) measures.
+  assert.equal(v.calibration.g6_conflict.conflict, false);
+  assert.equal(v.calibration.g6_conflict.would_block, false);
+  assert.equal(v.calibration.g6_conflict.applicable, false);
+  assert.deepEqual(v.calibration.g6_conflict.against, []);
+});
+
 // ── gateRejectionFor over a CONDOR verdict: primary code is the condor block ───────────
 // ── Condor G-4: VIX regime threshold is EXTREME (≥20), not elevated (≥17) ─────────
 test("condor G-4: VIX 18 (elevated) does NOT block a condor — condors sell premium into the range", () => {
