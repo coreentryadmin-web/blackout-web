@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T06:20:40.476Z",
+  "updated_at": "2026-09-06T09:55:14.149Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -23,6 +23,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
       "safe_to_merge": true
+    },
+    "pr-4189": {
+      "pr": 4189,
+      "head_sha": "97db344dcd3ac2a83568690dae5cd293acbf5f48",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T09:55:09.905Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -36,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f40f4236378d61caa8b3a4a13ac169a28c42d971",
+    "last_main_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T09:51:25Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025811176",
+    "last_deploy_sha": "dc358c707e6113004755e8363c50812f68b52f14"
   },
   "events": [
     {
@@ -444,7 +452,67 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T09:43:34.348Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T09:55:09.906Z",
+      "type": "pr_review",
+      "pr": 4189,
+      "head_sha": "97db344dcd3ac2a83568690dae5cd293acbf5f48",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T09:55:09.905Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T09:55:14.149Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T09:55:14.149Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8935c23e-244e-4a9f-a16c-157084d4723c",
+      "summary": "PR-event cycle: swing CTO audit merge wave complete. Reviewed+merged #4179 (vector/GEX freshness), #4189 (closed brief intel collapse). #4178/#4181/#4182/#4180 already merged by peer/automerge. Rebased #4182 and #4180 onto main. validate:deploy GREEN. ops:collect 0. Open: chore handoff drafts only (#4187-4190). Next: monitor ECS deploy for swing fixes; RTH validate Ask Largo closed/open briefs."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4194,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing merge wave + #4189 approved",
+      "branch": "cursor/autopilot-handoff-cycle-2026-09-06b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:52:59Z"
+    },
+    {
+      "number": 4193,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing peer reviews + rebase",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle10",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:51:54Z"
+    },
+    {
+      "number": 4191,
+      "title": "test(swing): add regression coverage for Ask Largo thesis-health wiring (post-#4182)",
+      "branch": "fix/swing-brief-thesis-health-live-wiring",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:54:04Z"
+    }
+  ]
 }
