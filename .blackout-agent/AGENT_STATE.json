@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:42:38.065Z",
+  "updated_at": "2026-09-06T13:08:21.225Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T12:59:41.260Z",
+      "lease_until": "2026-09-06T14:37:19.843Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "bbd6163a-4eb0-4c9e-8de2-3d357a56eb0b"
     }
   },
   "reviews": {
@@ -31,6 +31,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4253": {
+      "pr": 4253,
+      "head_sha": "efa3ce24b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:08:14.990Z",
+      "safe_to_merge": true
+    },
+    "pr-4252": {
+      "pr": 4252,
+      "head_sha": "b5a396713",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:08:15.092Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +60,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a37960c92712ca5986df2042d0c32a44153cfd92",
+    "last_main_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T13:00:57Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34034630833",
+    "last_deploy_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028"
   },
   "events": [
     {
@@ -583,38 +599,89 @@
       "agent": "cursor",
       "run_id": "87520518-9d11-43da-b194-302260aa2e54",
       "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T12:27:55.473Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T12:27:56.049Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T12:27:56.381Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T13:08:14.991Z",
+      "type": "pr_review",
+      "pr": 4253,
+      "head_sha": "efa3ce24b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:08:14.990Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T13:08:15.093Z",
+      "type": "pr_review",
+      "pr": 4252,
+      "head_sha": "b5a396713",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:08:15.092Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T13:08:21.224Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T13:08:21.225Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4fe912bb-8823-4327-8b22-29d4f8aab47e",
+      "summary": "Cycle: bootstrapped, ops:collect 0, validate:deploy GREEN, lifecycle sweep GREEN. Peer-reviewed #4252 (26/26 tests, APPROVED — merge before #4253) and #4253 (27/27 tests, APPROVED — rebase after #4252). #4251 cursor handoff draft, verify pending. No Claude PRs beyond #4252/#4253. main@679d9beeb deployed."
     }
   ],
   "open_prs": [
     {
-      "number": 4231,
-      "title": "fix(swing): freeze CLOSED-position DTE to exit date, not today's date",
-      "branch": "fix/swing-closed-dte-negative",
+      "number": 4253,
+      "title": "fix(swing): surface cold GEX and missing Vector in play-brief unavailableSources",
+      "branch": "fix/swing-brief-gex-vector-absence",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:42:37Z"
+      "updated_at": "2026-09-06T13:08:12Z"
     },
     {
-      "number": 4230,
-      "title": "chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged",
-      "branch": "cursor/autopilot-handoff-2026-09-06-cycle3",
+      "number": 4252,
+      "title": "fix(swing): play-brief C1 exitAt ET stamp + C3 absence gaps",
+      "branch": "fix/swing-play-brief-c1-c3-gaps",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:07:39Z"
+    },
+    {
+      "number": 4251,
+      "title": "chore(blackout-agent): cursor handoff — #4248/#4249 merged, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-06-1259",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:39:12Z"
-    },
-    {
-      "number": 4227,
-      "title": "chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature",
-      "branch": "fix/dead-code-flow-strike-stacks-exports",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:40:27Z"
+      "updated_at": "2026-09-06T13:01:23Z"
     }
   ],
   "pr_activity": {
