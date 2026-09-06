@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T04:05:27.414Z",
+  "updated_at": "2026-09-06T04:08:52.811Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T04:01:21.422Z",
-      "lease_until": "2026-09-06T05:31:21.422Z",
+      "claimed_at": "2026-09-06T04:06:15.813Z",
+      "lease_until": "2026-09-06T05:37:52.576Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "fd1ca138-725f-45a7-ba41-4da2727dac58"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -57,7 +57,7 @@
   "deploy": {
     "last_main_sha": "fea8a366cd4f92eb4f8fd50ec8c8e1fc3b353a02",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T03:56:38Z",
+    "last_deploy_at": "2026-09-06T04:08:51Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34010246053",
     "last_deploy_sha": "884983752f98ca0b482a1193f4bfe586e07cf622"
   },
@@ -440,6 +440,12 @@
       "agent": "cursor",
       "run_id": "dbbaf393-89f9-413b-b2e8-07e2b91dedfb",
       "summary": "PR-event cycle: peer-reviewed #4114 (swing MFE capture round-trip) APPROVED — awaiting verify. validate:deploy/platform-integrity/api-auth GREEN. ops:collect 0. main@fea8a366c. Open: #4114 (Claude fix, approved), #4115 (this handoff)."
+    },
+    {
+      "at": "2026-09-06T04:08:52.811Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "open_prs": [
@@ -451,7 +457,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T04:05:02Z"
+      "updated_at": "2026-09-06T04:05:32Z"
     },
     {
       "number": 4114,
@@ -460,8 +466,8 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T04:04:42Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T04:07:19Z"
     }
   ],
   "pr_activity": {
