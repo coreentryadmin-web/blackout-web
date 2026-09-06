@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T19:22:14.398Z",
+  "updated_at": "2026-09-06T19:35:01.059Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-06T20:42:20.863Z",
+      "lease_until": "2026-09-06T20:55:53.323Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "79ae710d-cb17-438a-9679-26581e4c5ad0",
+      "run_id": "7e72e4b2-fac3-4d93-9e9f-fe2233f1cc5f",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-06T20:42:20.863Z",
+      "lease_until": "2026-09-06T20:55:53.323Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "79ae710d-cb17-438a-9679-26581e4c5ad0"
+      "run_id": "7e72e4b2-fac3-4d93-9e9f-fe2233f1cc5f"
     }
   },
   "reviews": {
@@ -35,6 +35,14 @@
       "verdict": "WAIT",
       "reviewed_at": "2026-09-06T18:35:34.107Z",
       "safe_to_merge": false
+    },
+    "pr-4372": {
+      "pr": 4372,
+      "head_sha": "d44cfc9a3f3042be30527bd914a3abe0a0ad1e55",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T19:34:54.972Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -51,9 +59,9 @@
   "deploy": {
     "last_main_sha": "921e03fa878ca7029fc89bd95bc802ca93db35ea",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T19:12:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34054150883",
-    "last_deploy_sha": "921e03fa878ca7029fc89bd95bc802ca93db35ea"
+    "last_deploy_at": "2026-09-06T19:34:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34055339325",
+    "last_deploy_sha": "ff5a4f0881ade0c773458a97501a42bb4bd5e92a"
   },
   "events": [
     {
@@ -147,18 +155,71 @@
       "agent": "cursor",
       "run_id": "e1898c96-3bac-4fd7-ae13-06e1aa40f347",
       "summary": "Main@921e03fa8 GREEN. Merged #4362-#4374 stale-GEX wave. #4372 chartLevels stale gating — 42/42 local, verify pending. #4371 cursor thermal — WAIT rebase (reverts #4362). validate:deploy GREEN, ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T19:22:35.499Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T19:22:36.468Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T19:25:53.323Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T19:25:54.124Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T19:34:05.298Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T19:34:54.973Z",
+      "type": "pr_review",
+      "pr": 4372,
+      "head_sha": "d44cfc9a3f3042be30527bd914a3abe0a0ad1e55",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T19:34:54.972Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T19:35:01.059Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T19:35:01.059Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9f652362-84f0-404e-9e8c-5c4c9525794f",
+      "summary": "Main@921e03fa8. #4372 chartLevels stale GEX gating — peer APPROVED, verify GREEN, auto-merge armed. #4371 thermal rebased (11 files, thermal-only) — verify pending, awaits Claude peer review (cursor PR). ops:collect 0."
     }
   ],
   "open_prs": [
     {
-      "number": 4372,
-      "title": "fix(swing): gate stale GEX-only levels in chartLevelsSection",
-      "branch": "fix/largo-gex-stale-chart-levels",
+      "number": 4375,
+      "title": "fix(swing): gate stale GEX-only gamma posture in king/magnet narration",
+      "branch": "fix/largo-gex-stale-posture-magnet-king",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T19:19:55Z"
+      "updated_at": "2026-09-06T19:28:30Z"
     },
     {
       "number": 4371,
@@ -168,7 +229,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T19:17:17Z"
+      "updated_at": "2026-09-06T19:31:30Z"
     }
   ]
 }
