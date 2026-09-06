@@ -160,8 +160,19 @@ export function managementActionDisplay(
   let verb = recommendation;
   let sizePct: number | null = null;
   if (recommendation === "TRIM" && play.exitPolicy?.trim_levels) {
+    // Only size the action off a REAL, still-pending trim tranche. SWING's exit policy
+    // (SWING_SCALE_OUT_POLICY, src/lib/swing/exit-policy.ts) is a single-tranche ladder — one
+    // level banking 50% at 2x, then a runner. Once that one level fires (true for essentially
+    // every SWING play whose recommendation reaches TRIM), `find` returns undefined and there
+    // is no scripted "next" size — only the runner remains. This USED to fall back to a
+    // hardcoded `33`, a magic constant that only matches 0DTE's unrelated 3-tranche (⅓ each)
+    // trim_scale ladder — fabricating a "TRIM 33%" that contradicts the same panel's own
+    // narrative text ("all trims banked — runner only"). Render a bare "TRIM" (sizePct null)
+    // instead, matching play-card-lifecycle.ts's swingActionDisplay, which already handles
+    // this exact all-fired case honestly. Both render call sites (ManagementActionCard,
+    // SwingBriefActionStrip) already null-guard sizePct before appending "%".
     const next = play.exitPolicy.trim_levels.find((t) => !t.fired);
-    sizePct = next ? Math.round(next.fraction * 100) : 33;
+    sizePct = next ? Math.round(next.fraction * 100) : null;
     verb = "TRIM";
   } else if (recommendation === "SELL") {
     sizePct = 100;

@@ -120,6 +120,35 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1t. SWING Management Action card fabricated a "TRIM 33%" size once the single trim tranche had already fired — fix/swing-trim-size-fabricated-33pct (pending)
+
+**What was broken:** `managementActionDisplay` (`terminal-display.ts`) sized every TRIM action
+off `play.exitPolicy.trim_levels.find(t => !t.fired)`, falling back to a hardcoded `33` when no
+unfired level remained. SWING's exit policy (`SWING_SCALE_OUT_POLICY`) is a single-tranche ladder
+(one level banks 50% at 2x, then a runner) — once that level fires, which is true for essentially
+every SWING play whose recommendation reaches TRIM, the `33` fallback fired, rendering "TRIM 33%"
+in both the Ask Largo action strip (`SwingLargoInsightsPanel.tsx`) and the main terminal's
+Management tab (`TerminalPremiumPanels.tsx`), directly contradicting the SAME panel's own
+narrative text ("all trims banked — runner only"). The `33` is a 0DTE-only constant (0DTE's real
+trim ladder is 3 tranches of ⅓ each) with no relationship to SWING's policy at all.
+
+**Fix:** Removed the hardcoded fallback; `sizePct` is now `null` (bare "TRIM" verb, no percentage)
+when no unfired trim level remains — matching `play-card-lifecycle.ts`'s `swingActionDisplay`,
+which already handles this exact case honestly. Both render call sites were already null-safe.
+
+**Check at the open:** For any live SWING position whose `liveStatus`/recommendation is TRIM and
+whose single trim tranche has already fired (peak premium ≥ entry × 2), the Management tab
+(`/nighthawk` → open a live SWING position → Management tab) and the Ask Largo action strip
+should show a bare **"TRIM"** pill with NO percentage — not "TRIM 33%". Cross-check against the
+same position's Ask Largo narrative text, which should independently say something like "all
+trims banked — runner only" for the same position; the two should now agree instead of
+contradicting each other. If no live SWING position is in this exact state at open, note "no
+qualifying all-fired TRIM position observed" rather than treating silence as a pass — also spot
+check a SWING position whose trim tranche has NOT yet fired still shows the real percentage
+(e.g. "TRIM 50%"), confirming the fix didn't overcorrect to always-null.
+
+---
+
 ### 0a-1p. Swing serving-snapshot TTL (26h) doesn't survive the weekend — silently zeroed thesis-health enrichment for every live position — fix/swing-serving-snapshot-weekend-ttl (PR #4202, pending)
 
 **What was broken:** `SWING_SERVING_TTL_SEC` was `26h`, sized for the ordinary weekday scan cadence but `swing-discovery` is `weekdays_only` — so the Friday POST_CLOSE write expires Saturday evening and the persisted snapshot stays empty through Monday morning (~35h+/week). Both `getSwingServingLane` (main board) and `play-brief-resolve.ts`'s `loadOpenTerminalPlay` (Ask Largo, #4182) key their `attachThesisExplanation` factors/regime enrichment off this one snapshot, so an expired key silently reverted **every live committed position's** Ask Largo thesis-health panel to the generic `46% · Degraded`/`unread` defaults — confirmed live 2026-09-06 (Sunday): all 4 open positions (NRG:34, NN:32, CG:25, CRWD:19) byte-identical to the pre-#4182 audit snapshot, `scanAsOf: null` on `/horizons?view=swings`.
