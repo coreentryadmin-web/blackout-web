@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T02:35:03.337Z",
+  "updated_at": "2026-09-06T03:05:26.993Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T02:28:39.406Z",
+      "lease_until": "2026-09-06T03:58:39.406Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b78270d994ff53bb208f4e89ea2f078cf653fc77",
+    "last_main_sha": "3b96df0a63b848514ec30970e24d4a6b6603cada",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T03:04:54Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34008089744",
+    "last_deploy_sha": "3b96df0a63b848514ec30970e24d4a6b6603cada"
   },
   "events": [
     {
@@ -300,7 +300,67 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T03:05:18.499Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T03:05:18.500Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9fb7369a-978b-4943-b868-4970fc96c054",
+      "summary": "Cycle complete. Merged during session: #4096 (Claude mandate), #4100 (Meridian beatRateN), #4101 (swing book-context + unavailable_sources). Closed stale #4098 handoff + duplicate #4097. main@3b96df0a6. Deploy GREEN, ops:collect 0. Peer reviews posted on #4100/#4101."
+    },
+    {
+      "at": "2026-09-06T03:05:20.171Z",
+      "type": "pr_webhook",
+      "pr": 4104,
+      "event": "sweep",
+      "head": "c43ef74c83d187a73cbee4cd820b8339aaf1251e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T03:05:23.342Z",
+      "type": "pr_webhook",
+      "pr": 4104,
+      "event": "sweep",
+      "head": "c43ef74c83d187a73cbee4cd820b8339aaf1251e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T03:05:26.993Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4104,
+      "title": "feat(swing): deep trade-manager coaching — pillars, catalysts, cross-desk, confluence",
+      "branch": "cursor/swing-brief-coaching-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:03:06Z"
+    }
+  ],
+  "pr_activity": {
+    "pr-4104": {
+      "last_event": "sweep",
+      "last_head": "c43ef74c83d187a73cbee4cd820b8339aaf1251e",
+      "last_feedback_at": "2026-09-06T03:05:23.342Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
