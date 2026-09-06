@@ -176,10 +176,34 @@ async function runClickthrough(page) {
     if (await clickIfVisible(page, depthTab, "tab:depth")) {
       await page.waitForTimeout(2000);
       await shot(page, "06-depth-ladder");
+      const calib = page.getByText(/γ calibration/i);
+      if ((await calib.count()) > 0) rec("depth:calibration-hint", "PASS");
+      else rec("depth:calibration-hint", "INFO", "no calibration factor on this snapshot");
     }
   } else {
     rec("tab:depth", "INFO", "Depth tab hidden (non-GEX lens or loading)");
   }
+
+  const distTab = page.getByRole("tab", { name: /Distribution/i });
+  if ((await distTab.count()) > 0) {
+    if (await clickIfVisible(page, distTab, "tab:distribution")) {
+      await page.waitForTimeout(2000);
+      await shot(page, "06b-greeks-distribution");
+      const clusters = page.getByText(/^Clusters$/i);
+      if ((await clusters.count()) > 0) rec("distribution:clusters-metric", "PASS");
+      else rec("distribution:clusters-metric", "WARN", "clusters section missing");
+    }
+  } else {
+    rec("tab:distribution", "WARN", "Distribution tab not found");
+  }
+
+  const horizon = page.locator("[data-horizon-walls]");
+  if ((await horizon.count()) > 0) rec("regime:horizon-walls", "PASS");
+  else rec("regime:horizon-walls", "INFO", "horizon line hidden (scoped expiry or no data)");
+
+  const spotProv = page.getByText(/Last close|Live WS|Snapshot|Prior bar/i).first();
+  if (await spotProv.isVisible().catch(() => false)) rec("header:spot-provenance", "PASS");
+  else rec("header:spot-provenance", "INFO", "spot badge hidden or compare mode");
 
   // Back to matrix for lens + expiry chips
   await clickIfVisible(page, page.getByRole("tab", { name: /^Matrix$/i }), "tab:matrix-return");

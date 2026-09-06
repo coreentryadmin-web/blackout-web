@@ -27,6 +27,7 @@ import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
+import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { matrixShiftForLens } from "@/lib/gex-shift-leaders";
 import { rebaseChangePct } from "@/lib/providers/change-pct";
 import ThermalCompactMatrix, {
@@ -245,6 +246,19 @@ function TripleColumn({
             {shortcut}
           </span>
           <span className="thermal-triple-ticker">{ticker}</span>
+          {isHeatmapOverlayAllowed(ticker) ? (
+            <span
+              className="thermal-triple-overlay-dot"
+              title="HELIX flow overlays available for this ticker"
+              aria-label="Overlays available"
+            />
+          ) : (
+            <span
+              className="thermal-triple-overlay-dot is-off"
+              title="Matrix only — flow overlays not offered for this ticker"
+              aria-label="Overlays not offered"
+            />
+          )}
         </button>
         <div className="thermal-triple-col-head-meta">
           {columnExpiry ? (

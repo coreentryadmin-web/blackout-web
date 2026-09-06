@@ -132,7 +132,91 @@ function statusFromAge(
 const CROSS_CHECK_TITLE =
   "A second, independent options-data source is confirming the strike ladder these walls are drawn from.";
 const CROSS_CHECK_OFF_TITLE =
-  "The second data source is unavailable right now (common outside market hours), so the walls come from a single source. They are still real — just unconfirmed.";
+  "The second data source is unavailable right now (common outside market hours) — walls come from a single source. They are still real, just unconfirmed. Cross-check resumes when the live strike ladder is back at the open.";
+
+export type ThermalSpotSource = "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic";
+
+/** Compact header badge for matrix spot provenance — `spot_source` ships on every heatmap payload. */
+export function spotSourceBadge(input: {
+  spotSource?: ThermalSpotSource | null;
+  marketOpen: boolean | null;
+}): { label: string; title: string } | null {
+  const src = input.spotSource;
+  if (!src) return null;
+  switch (src) {
+    case "ws":
+      return {
+        label: input.marketOpen === true ? "Live WS" : "WS close",
+        title:
+          input.marketOpen === true
+            ? "Spot from the live WebSocket feed."
+            : "Spot from WebSocket — session closed, price may be last tick.",
+      };
+    case "redis_cluster":
+      return {
+        label: "Live",
+        title: "Spot from the cluster index store (sub-second replication).",
+      };
+    case "rest":
+      return {
+        label: input.marketOpen === true ? "Snapshot" : "Last close",
+        title:
+          input.marketOpen === true
+            ? "Spot from the provider snapshot."
+            : "Market closed — price is the last session close from the snapshot.",
+      };
+    case "prev_bar":
+      return {
+        label: "Prior bar",
+        title: "Spot from the prior-session aggregate bar.",
+      };
+    case "synthetic":
+      return {
+        label: "Fallback",
+        title: "Spot from a secondary fallback source when primary feeds were unavailable.",
+      };
+    default:
+      return null;
+  }
+}
+
+/** Intraday shift empty-state copy — distinguishes collecting vs session closed. */
+export function shiftPanelEmptyDescription(input: {
+  hasShiftForLens: boolean;
+  marketOpen: boolean | null;
+  noun: string;
+}): string {
+  if (!input.hasShiftForLens) {
+    return "Intraday migration is tracked for GEX, VEX, DEX, and CHARM — switch lens to see build/melt drift.";
+  }
+  if (input.marketOpen === false) {
+    return `Shift tracking pauses when the cash session is closed. ${input.noun} migration — where dealer ${input.noun.toLowerCase()} is building vs melting — resumes after the open once snapshots accumulate.`;
+  }
+  return `The shift view fills in as snapshots accumulate (first read ~after the open). ${input.noun} migration — where dealer ${input.noun.toLowerCase()} is building vs melting and how the pivot drifts — appears once enough history is collected.`;
+}
+
+/** One-line horizon wall summary for the regime strip footnote (0DTE / 3DTE / 7DTE). */
+export function horizonWallsSummary(
+  walls:
+    | ReadonlyArray<{
+        label: string;
+        callWall: number | null;
+        putWall: number | null;
+      }>
+    | null
+    | undefined,
+): string | null {
+  if (!walls?.length) return null;
+  const parts = walls
+    .map((h) => {
+      const c = h.callWall != null ? `C ${h.callWall}` : null;
+      const p = h.putWall != null ? `P ${h.putWall}` : null;
+      const levels = [c, p].filter(Boolean).join(" · ");
+      return levels ? `${h.label}: ${levels}` : null;
+    })
+    .filter(Boolean);
+  return parts.length ? `Horizon walls — ${parts.join(" | ")}` : null;
+}
 
 /**
  * Per-layer freshness from matrix/overlay/cross-val timestamps.

@@ -9,6 +9,8 @@ export type RegimeStripSegment = {
   icon?: string;
   label: string;
   value: string;
+  /** Numeric strike for scroll-to-matrix — omitted for non-strike chips (VOL, Net GEX). */
+  strike?: number | null;
   tone?: "bull" | "bear" | "flip" | "wall" | "sky" | "neutral";
   /** Intraday / vs-prior delta chip — never fabricated. */
   delta?: string | null;
@@ -23,6 +25,8 @@ export type RegimeStripBadge = {
 export type ThermalRegimeStripModel = {
   kicker: string;
   footnote?: string | null;
+  /** Optional 0DTE / 3DTE / 7DTE wall summary line. */
+  horizonLine?: string | null;
   badge: RegimeStripBadge | null;
   segments: RegimeStripSegment[];
   interpretation: string | null;
@@ -50,6 +54,8 @@ export type BuildThermalRegimeStripInput = {
   serverRead?: string | null;
   /** Intraday GEX migration proxy on DEX/CHARM lenses — omitted when unavailable. */
   gexShiftNet?: number | null;
+  /** DTE-scoped wall summary (0DTE / 3DTE / 7DTE) — rendered below interpretation when set. */
+  horizonLine?: string | null;
 };
 
 function fmtStrike(n: number): string {
@@ -137,7 +143,7 @@ function segment(
   key: string,
   label: string,
   value: string,
-  opts?: Partial<Pick<RegimeStripSegment, "icon" | "tone" | "delta">>
+  opts?: Partial<Pick<RegimeStripSegment, "icon" | "tone" | "delta" | "strike">>
 ): RegimeStripSegment {
   return { key, label, value, ...opts };
 }
@@ -162,6 +168,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
     netDeltaTone,
     serverRead,
     gexShiftNet,
+    horizonLine,
   } = input;
 
   const netDeltaChip =
@@ -183,26 +190,38 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
     ];
     if (magnetStrike != null) {
       segments.push(
-        segment("anchor", GEX_KING_NODE_LABEL, fmtStrike(magnetStrike), { icon: "🧲", tone: "wall" })
+        segment("anchor", GEX_KING_NODE_LABEL, fmtStrike(magnetStrike), {
+          icon: "🧲",
+          tone: "wall",
+          strike: magnetStrike,
+        })
       );
     }
     if (flip != null) {
-      segments.push(segment("flip", "Flip", fmtStrike(flip), { icon: "⚡", tone: "flip" }));
+      segments.push(segment("flip", "Flip", fmtStrike(flip), { icon: "⚡", tone: "flip", strike: flip }));
     }
     if (callWall != null) {
       segments.push(
-        segment("callWall", "Call Wall", fmtStrike(callWall), { icon: "🧱", tone: "bull" })
+        segment("callWall", "Call Wall", fmtStrike(callWall), {
+          icon: "🧱",
+          tone: "bull",
+          strike: callWall,
+        })
       );
     }
     if (putWall != null) {
       segments.push(
-        segment("putWall", "Put Wall", fmtStrike(putWall), { icon: "🛡", tone: "bear" })
+        segment("putWall", "Put Wall", fmtStrike(putWall), {
+          icon: "🛡",
+          tone: "bear",
+          strike: putWall,
+        })
       );
     }
     // Max pain is OI-gravity for the scoped front/nearest expiry — same tile the old Key Levels
     // row showed on GEX. Omitted in the first strip pass to shorten the line; members still ask for it.
     if (maxPain != null) {
-      segments.push(segment("maxPain", "Max Pain", fmtStrike(maxPain), { tone: "sky" }));
+      segments.push(segment("maxPain", "Max Pain", fmtStrike(maxPain), { tone: "sky", strike: maxPain }));
     }
     const vol = volLabelForGamma(gammaPosture);
     if (vol) segments.push(segment("vol", "VOL", vol, { tone: "sky" }));
@@ -217,7 +236,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       serverRead ??
       null;
 
-    return { kicker, footnote, badge, segments, interpretation };
+    return { kicker, footnote, horizonLine, badge, segments, interpretation };
   }
 
   if (lens === "vex") {
@@ -229,21 +248,37 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       }),
     ];
     if (callWall != null) {
-      segments.push(segment("posWall", "+Vanna Wall", fmtStrike(callWall), { icon: "🧱", tone: "sky" }));
+      segments.push(
+        segment("posWall", "+Vanna Wall", fmtStrike(callWall), {
+          icon: "🧱",
+          tone: "sky",
+          strike: callWall,
+        })
+      );
     }
     if (putWall != null) {
-      segments.push(segment("negWall", "−Vanna Wall", fmtStrike(putWall), { icon: "🛡", tone: "wall" }));
+      segments.push(
+        segment("negWall", "−Vanna Wall", fmtStrike(putWall), {
+          icon: "🛡",
+          tone: "wall",
+          strike: putWall,
+        })
+      );
     }
     if (flip != null) {
-      segments.push(segment("flip", "Vanna Flip", fmtStrike(flip), { icon: "⚡", tone: "flip" }));
+      segments.push(
+        segment("flip", "Vanna Flip", fmtStrike(flip), { icon: "⚡", tone: "flip", strike: flip })
+      );
     }
     if (maxPain != null) {
-      segments.push(segment("maxPain", "Max Pain", fmtStrike(maxPain), { tone: "sky" }));
+      segments.push(
+        segment("maxPain", "Max Pain", fmtStrike(maxPain), { tone: "sky", strike: maxPain })
+      );
     }
     const vol = volLabelForVanna(vannaPosture);
     if (vol) segments.push(segment("vol", "VOL", vol, { tone: "sky" }));
 
-    return { kicker, footnote, badge, segments, interpretation: serverRead ?? null };
+    return { kicker, footnote, horizonLine, badge, segments, interpretation: serverRead ?? null };
   }
 
   if (lens === "dex") {
@@ -255,7 +290,9 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       }),
     ];
     if (flip != null) {
-      segments.push(segment("zero", "Delta-Zero", fmtStrike(flip), { icon: "⚡", tone: "flip" }));
+      segments.push(
+        segment("zero", "Delta-Zero", fmtStrike(flip), { icon: "⚡", tone: "flip", strike: flip })
+      );
     }
     if (gexShiftNet != null) {
       segments.push(
@@ -264,7 +301,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
         })
       );
     }
-    return { kicker, footnote, badge, segments, interpretation: serverRead ?? null };
+    return { kicker, footnote, horizonLine, badge, segments, interpretation: serverRead ?? null };
   }
 
   const badge = charmBadge(charmPosture);
@@ -275,7 +312,9 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
     }),
   ];
   if (flip != null) {
-    segments.push(segment("zero", "Charm-Zero", fmtStrike(flip), { icon: "⚡", tone: "wall" }));
+    segments.push(
+      segment("zero", "Charm-Zero", fmtStrike(flip), { icon: "⚡", tone: "wall", strike: flip })
+    );
   }
   if (gexShiftNet != null) {
     segments.push(
@@ -284,5 +323,5 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       })
     );
   }
-  return { kicker, footnote, badge, segments, interpretation: serverRead ?? null };
+  return { kicker, footnote, horizonLine, badge, segments, interpretation: serverRead ?? null };
 }
