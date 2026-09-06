@@ -17,6 +17,7 @@ export type BriefSnapshot = {
   putWall: number | null;
   flowCallPremium: number | null;
   flowPutPremium: number | null;
+  trimsFired: number | null;
   sectionTitles: string[];
 };
 
@@ -61,6 +62,7 @@ function narrateSpotShift(prev: number, next: number): string {
 export function extrasFromBriefResponse(response: {
   envelope?: BieAnswerEnvelope;
   flowSnapshot?: { callPremium: number | null; putPremium: number | null } | null;
+  trimsFired?: number | null;
 }) {
   const levels = response.envelope?.levels ?? [];
   const price = (substr: string) =>
@@ -72,6 +74,7 @@ export function extrasFromBriefResponse(response: {
     putWall: price("put wall"),
     flowCallPremium: response.flowSnapshot?.callPremium ?? null,
     flowPutPremium: response.flowSnapshot?.putPremium ?? null,
+    trimsFired: response.trimsFired ?? null,
   };
 }
 
@@ -86,6 +89,7 @@ export function snapshotFromBrief(
     putWall?: number | null;
     flowCallPremium?: number | null;
     flowPutPremium?: number | null;
+    trimsFired?: number | null;
   },
 ): BriefSnapshot {
   return {
@@ -100,6 +104,7 @@ export function snapshotFromBrief(
     putWall: fin(extras?.putWall),
     flowCallPremium: fin(extras?.flowCallPremium),
     flowPutPremium: fin(extras?.flowPutPremium),
+    trimsFired: fin(extras?.trimsFired),
     sectionTitles: envelope.sections.map((s) => s.title),
   };
 }
@@ -151,6 +156,13 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
           : "flow shifted";
     lines.push(`HELIX tape: ${bias}`);
   }
+  if (
+    prev.trimsFired != null &&
+    next.trimsFired != null &&
+    next.trimsFired > prev.trimsFired
+  ) {
+    lines.push(`Trim rail **banked** (${prev.trimsFired} → ${next.trimsFired} fired)`);
+  }
   if (prev.headline !== next.headline) {
     lines.push(`Verdict headline updated`);
   }
@@ -175,6 +187,7 @@ export function briefContentKey(snap: BriefSnapshot): string {
     gammaFlip: snap.gammaFlip,
     callWall: snap.callWall,
     putWall: snap.putWall,
+    trimsFired: snap.trimsFired,
     sectionTitles: snap.sectionTitles,
   });
 }

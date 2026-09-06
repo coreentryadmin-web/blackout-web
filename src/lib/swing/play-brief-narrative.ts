@@ -10,7 +10,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
 
-const MAX_BULLETS = 12;
+const MAX_BULLETS = 14;
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;

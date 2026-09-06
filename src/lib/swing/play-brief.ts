@@ -11,6 +11,7 @@ import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
 import { buildIntelSections } from "./play-brief-intel";
+import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -278,6 +279,19 @@ export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBrie
     ? { callPremium: flow.call_premium, putPremium: flow.put_premium }
     : null;
 
+  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+  const gex = ctx.ecosystem?.gex_positioning;
+  const trimsFired = play.exitPolicy?.trim_levels?.filter((t) => t.fired).length ?? null;
+  const snap = snapshotFromBrief(envelope, play, {
+    spot: vec?.spot ?? gex?.spot ?? null,
+    gammaFlip: vec?.gammaFlip ?? gex?.flip ?? null,
+    callWall: vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null,
+    putWall: vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null,
+    flowCallPremium: flow?.call_premium ?? null,
+    flowPutPremium: flow?.put_premium ?? null,
+    trimsFired,
+  });
+
   return {
     playId: play.id,
     ticker: play.ticker,
@@ -285,5 +299,7 @@ export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBrie
     asOf: ctx.asOf,
     engine: "swing_play_intelligence",
     flowSnapshot,
+    briefContentKey: briefContentKey(snap),
+    trimsFired,
   };
 }
