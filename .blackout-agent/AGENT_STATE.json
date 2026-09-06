@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T23:41:51.845Z",
+  "updated_at": "2026-09-06T23:53:41.677Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-07T01:03:57.791Z",
+      "lease_until": "2026-09-07T01:12:34.617Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "b59e4ae4-38d6-424d-ae42-4c291cebc261",
+      "run_id": "ed0b8e25-d1fd-432f-9ac9-d1fd72c291f8",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-07T01:03:57.791Z",
+      "lease_until": "2026-09-07T01:12:34.618Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "b59e4ae4-38d6-424d-ae42-4c291cebc261"
+      "run_id": "ed0b8e25-d1fd-432f-9ac9-d1fd72c291f8"
     }
   },
   "reviews": {
@@ -73,11 +73,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "15f13e51cf17d0aa6e752cc2125e4fcd9829b0c6",
+    "last_main_sha": "a097bf1501dde882b47f26351c025d2939369458",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T23:41:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34067591230",
-    "last_deploy_sha": "15f13e51cf17d0aa6e752cc2125e4fcd9829b0c6"
+    "last_deploy_at": "2026-09-06T23:52:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34068111246",
+    "last_deploy_sha": "a097bf1501dde882b47f26351c025d2939369458"
   },
   "events": [
     {
@@ -472,18 +472,38 @@
       "agent": "cursor",
       "run_id": "c5cc84a5-6a3f-43f7-8bd6-47c3fb0dd21b",
       "summary": "Main@15f13e51c GREEN. #4414+#4415+#4416 merged. Largo C2 sweep complete for tonight. Open PRs: 0."
+    },
+    {
+      "at": "2026-09-06T23:42:34.617Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:42:35.415Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:42:38.919Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:53:41.676Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T23:53:41.677Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f6ce64e1-3503-4c61-ac1e-36f625d7f4bb",
+      "summary": "Main@a097bf150 (#4419 merged). Largo C2 stale-GEX spot sweep complete. Open PRs: 0. validate:deploy GREEN, ops:collect 0 items."
     }
   ],
-  "open_prs": [
-    {
-      "number": 4419,
-      "title": "fix(largo): gate stale GEX spot in levels sections + envelope (Largo C2)",
-      "branch": "fix/largo-gex-stale-spot-levels",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T23:41:47Z"
-    }
-  ]
+  "open_prs": []
 }
