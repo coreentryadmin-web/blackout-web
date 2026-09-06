@@ -1,30 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T08:27:38.414Z",
+  "updated_at": "2026-09-06T08:37:04.013Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T08:15:58.735Z",
-      "lease_until": "2026-09-06T09:45:58.735Z",
-      "phase": "REVIEWING",
-      "branch": null,
-      "pr": null,
+      "claimed_at": "2026-09-06T08:29:12.601Z",
+      "lease_until": "2026-09-06T09:59:12.601Z",
+      "phase": "PEER_REVIEW",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle7",
+      "pr": 4173,
       "reviewer": null,
-      "run_id": null,
-      "title": null
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-06T08:25:57.322Z",
-      "lease_until": "2026-09-06T09:55:57.322Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": null,
+      "run_id": "5507ed49-3473-4b65-bc53-2dd603824591",
       "title": null
     }
   },
@@ -45,8 +33,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-06T08:25:57.322Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-06T08:37:04.013Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
@@ -86,7 +74,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
+      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) \u2014 peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
     },
     {
       "at": "2026-09-05T19:35:03.828Z",
@@ -115,7 +103,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
+      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) \u2014 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
       "at": "2026-09-05T20:41:08.341Z",
@@ -460,65 +448,97 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T08:15:50.895Z",
+      "at": "2026-09-06T08:29:01.599Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T08:15:54.480Z",
+      "at": "2026-09-06T08:29:02.767Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T08:15:55.209Z",
+      "at": "2026-09-06T08:29:03.776Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T08:15:58.735Z",
+      "at": "2026-09-06T08:29:08.576Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T08:29:12.602Z",
       "type": "task_claimed",
       "task_id": "BO-P1-0100",
       "owner": "cursor"
     },
     {
-      "at": "2026-09-06T08:22:54.041Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-06T08:29:15.601Z",
+      "type": "pr_webhook",
+      "pr": 4173,
+      "event": "sweep",
+      "head": "1d713bba4233debec7738532fb0b4178dd47794d",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "directive": "WAIT",
+      "dispatch": false
     },
     {
-      "at": "2026-09-06T08:25:57.322Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
+      "at": "2026-09-06T08:29:18.432Z",
+      "type": "pr_webhook",
+      "pr": 4172,
+      "event": "sweep",
+      "head": "9ec0293c38f646a22fde23fd78f608d05ba4d61f",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "directive": "WAIT",
+      "dispatch": false
     },
     {
-      "at": "2026-09-06T08:27:38.414Z",
+      "at": "2026-09-06T08:37:04.012Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T08:27:38.414Z",
+      "at": "2026-09-06T08:37:04.013Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "7b97adc9-2be3-460e-868b-33cda6891901",
-      "summary": "PR-event cycle: 0 open PRs, pr-sweep empty. Deploy #4166 condor fix rolling (run 34019905319 in_progress, validate:deploy GREEN). Lifecycle: api-auth GREEN, platform-integrity 14/14, ops:collect 0. Largo swing brief validate PASS (OPEN/WATCH/CLOSED). Off-hours Sunday — RTH skipped. main@dac25ac."
+      "run_id": "68f0dacd-db88-4f5e-a6ee-280035fd216f",
+      "summary": "PR-event cycle: lifecycle GREEN (deploy, api-auth 225 routes, platform-integrity 14/14, seo 22/22, rth-open off-hours skip). ops:collect 0. Ask Largo swing brief v4 PASS. Closed duplicate #4172. No Claude/fix PRs for peer review. main@dac25ac03. #4173 verify GREEN awaiting Claude peer review."
     }
   ],
   "open_prs": [
     {
-      "number": 4172,
-      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN, no open PRs",
-      "branch": "cursor/autopilot-work-loop-dee1",
+      "number": 4173,
+      "title": "chore(blackout-agent): cursor PR-event handoff \u2014 lifecycle GREEN, deploy rolling",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle7",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T08:27:03Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T08:28:11Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4173": {
+      "last_event": "sweep",
+      "last_head": "1d713bba4233debec7738532fb0b4178dd47794d",
+      "last_feedback_at": "2026-09-06T08:29:15.601Z",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4172": {
+      "last_event": "sweep",
+      "last_head": "9ec0293c38f646a22fde23fd78f608d05ba4d61f",
+      "last_feedback_at": "2026-09-06T08:29:18.432Z",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }

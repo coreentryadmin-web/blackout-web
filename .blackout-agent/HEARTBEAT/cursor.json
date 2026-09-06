@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "22e0e1d2-bd20-4c74-b17c-bf77c94af23b",
-  "last_seen": "2026-09-06T08:16:05.705Z",
-  "last_productive_action": "heartbeat",
+  "run_id": "5507ed49-3473-4b65-bc53-2dd603824591",
+  "last_seen": "2026-09-06T08:37:04.013Z",
+  "last_productive_action": "handoff",
   "current_task": "BO-P1-0100",
-  "current_phase": "REVIEWING",
-  "branch": null,
-  "pr": null,
+  "current_phase": "PEER_REVIEW",
+  "branch": "cursor/autopilot-pr-event-20260906-cycle7",
+  "pr": 4173,
   "healthy": true
 }
