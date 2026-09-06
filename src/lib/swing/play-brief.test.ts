@@ -71,7 +71,7 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
         flip: 24,
         gex_king_strike: 25,
         net_gex: null,
-        nearest_wall: 26,
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
         gamma_posture: "long",
         vanna_posture: null,
         delta_posture: null,
