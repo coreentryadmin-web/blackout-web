@@ -1473,6 +1473,11 @@ function etLabel(etMinutes: number): string {
  */
 export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCalibration {
   const ticker = input.ticker.toUpperCase();
+  // Phase 4: mirrors evaluateZeroDteGates's own `isCondor` flag (line ~531) — a delta-neutral
+  // condor is scored under entirely different VIX (G-4) and conflict (G-6) rules than a
+  // directional play, so both calibration verdicts below must branch on it the same way the
+  // live gate does, or a condor row gets a directional verdict the live gate never computed.
+  const isCondor = input.play_type === "CONDOR";
   // Flat tape = no directional opposition (same treatment as aligned in G-4). Single names are
   // scoped OUT of the SPY-tape comparison here, mirroring the live gate's own G-1 scoping
   // (INDEX_ETF_TICKERS-only) — a single name's bias-vs-direction comparison says nothing about
@@ -1500,33 +1505,60 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
       note: "Day-open VIX unavailable — no G-4 verdict recorded (never guessed).",
     };
   } else if (vix >= VIX_EXTREME_THRESHOLD) {
-    const isIndexEtf = INDEX_ETF_TICKERS.has(ticker);
-    g4 = {
-      day_open_vix: vix,
-      tier: "extreme",
-      would_block: !isIndexEtf,
-      would_halve_size: isIndexEtf,
-      note: isIndexEtf
-        ? `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: index/ETF product survives at HALF plan size under hardened G-4.`
-        : `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: single names blocked under hardened G-4 (index/ETF only).`,
-    };
+    if (isCondor) {
+      // Mirrors the live condor G-4 branch above (~line 800): extreme VIX blocks EVERY condor
+      // unconditionally — there is no index/ETF half-size carve-out for a delta-neutral sale,
+      // unlike the directional branch below.
+      g4 = {
+        day_open_vix: vix,
+        tier: "extreme",
+        would_block: true,
+        would_halve_size: false,
+        note: `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: extreme vol regime threatens range integrity — condor sale blocked (condor G-4).`,
+      };
+    } else {
+      const isIndexEtf = INDEX_ETF_TICKERS.has(ticker);
+      g4 = {
+        day_open_vix: vix,
+        tier: "extreme",
+        would_block: !isIndexEtf,
+        would_halve_size: isIndexEtf,
+        note: isIndexEtf
+          ? `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: index/ETF product survives at HALF plan size under hardened G-4.`
+          : `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: single names blocked under hardened G-4 (index/ETF only).`,
+      };
+    }
   } else if (vix >= VIX_ELEVATED_THRESHOLD) {
-    const elevatedFloor =
-      aligned === true ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
-    const clears = aligned === true ? input.score >= ZERODTE_SCORE_FLOOR : input.score >= VIX_ELEVATED_SCORE_FLOOR;
-    g4 = {
-      day_open_vix: vix,
-      tier: "elevated",
-      would_block: !clears,
-      would_halve_size: false,
-      note: clears
-        ? aligned === true
-          ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned with score ≥ ${ZERODTE_SCORE_FLOOR} — clears hardened G-4.`
-          : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: score ≥ ${VIX_ELEVATED_SCORE_FLOOR} — clears hardened G-4.`
-        : aligned === true
-          ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned setups need score ≥ ${ZERODTE_SCORE_FLOOR} under hardened G-4.`
-          : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: hardened G-4 needs tape alignment AND score ≥ ${VIX_ELEVATED_SCORE_FLOOR} (17-20 regime ran 25% WR vs 69% at 15-17).`,
-    };
+    if (isCondor) {
+      // Mirrors the live condor G-4 branch above: 17-20 VIX is the condor's BEST regime (fatter
+      // premium collected while the range holds — condor-wr.mjs measured 98.7% WR on shipped
+      // geometry including 17-20 sessions), so unlike the directional score-floor logic below,
+      // a condor is never blocked here. Score/alignment play no role in the condor's own G-4.
+      g4 = {
+        day_open_vix: vix,
+        tier: "elevated",
+        would_block: false,
+        would_halve_size: false,
+        note: `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD} (< ${VIX_EXTREME_THRESHOLD} extreme): a condor's best regime — fatter premium while the range holds; condor G-4 only blocks at extreme.`,
+      };
+    } else {
+      const elevatedFloor =
+        aligned === true ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
+      const clears = aligned === true ? input.score >= ZERODTE_SCORE_FLOOR : input.score >= VIX_ELEVATED_SCORE_FLOOR;
+      g4 = {
+        day_open_vix: vix,
+        tier: "elevated",
+        would_block: !clears,
+        would_halve_size: false,
+        note: clears
+          ? aligned === true
+            ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned with score ≥ ${ZERODTE_SCORE_FLOOR} — clears hardened G-4.`
+            : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: score ≥ ${VIX_ELEVATED_SCORE_FLOOR} — clears hardened G-4.`
+          : aligned === true
+            ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned setups need score ≥ ${ZERODTE_SCORE_FLOOR} under hardened G-4.`
+            : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: hardened G-4 needs tape alignment AND score ≥ ${VIX_ELEVATED_SCORE_FLOOR} (17-20 regime ran 25% WR vs 69% at 15-17).`,
+      };
+    }
   } else {
     g4 = {
       day_open_vix: vix,
@@ -1545,7 +1577,6 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
   // silently mixing a structurally different (delta-neutral) population into the
   // directional would-block/would-pass cohorts `recommendGate("g6_conflict", ...)` uses to
   // decide whether G-6 should harden further.
-  const isCondor = input.play_type === "CONDOR";
   let g6: ZeroDteConflictCalibration;
   if (isCondor) {
     g6 = {
