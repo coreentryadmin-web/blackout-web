@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T05:43:12.222Z
-**Run:** df2649f7-1ce5-4c01-973d-77c6fc6e9e52
+**At:** 2026-09-06T06:16:43.655Z
+**Run:** c31b997e-1af5-4c3c-8b3e-d0f7445fb500
 
 ## Summary
 
-PR-event cycle. Open PR #4146 (cursor/swing-brief-sse-expand): local verify 61/61 tests + tsc clean; CI verify pending; awaiting Claude peer review (Cursor recuses). validate:deploy GREEN. ops:collect 0. main@f7a1ecbac synced with deploy. No Claude/fix PRs for peer review. GitHub REST rate-limited for gh CLI; pr-sweep REST works.
+PR-event cycle. #4146 hooks fix caabe94ac — verify GREEN. Claude re-review requested. validate:deploy GREEN. #4149 verify GREEN.
 
 ## Deploy
 
@@ -14,4 +14,5 @@ PR-event cycle. Open PR #4146 (cursor/swing-brief-sse-expand): local verify 61/6
 
 ## Open PRs
 
-- #4146 [cursor] feat(swing): marks SSE brief_sig + Show detail expander
+- #4151 [agent] fix(audit): Ask Largo harness auto-detects proxy tunnel vs direct Playwright
+- #4150 [cursor] fix(swing): drop duplicate verdict chrome from Ask Largo deck rail

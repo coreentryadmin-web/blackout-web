@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T05:43:21.325Z",
+  "updated_at": "2026-09-06T06:16:43.656Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T05:41:56.240Z",
-      "lease_until": "2026-09-06T07:11:56.240Z",
+      "claimed_at": "2026-09-06T05:51:49.907Z",
+      "lease_until": "2026-09-06T07:26:31.105Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "f6338aa7-e14b-4060-98c8-2ae7b892993c"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -51,9 +51,9 @@
   "deploy": {
     "last_main_sha": "f7a1ecbac2eacca92fe6768485e5ff036eb4473a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T05:39:43Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34014537283",
-    "last_deploy_sha": "f7a1ecbac2eacca92fe6768485e5ff036eb4473a"
+    "last_deploy_at": "2026-09-06T06:03:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34015511376",
+    "last_deploy_sha": "f40f4236378d61caa8b3a4a13ac169a28c42d971"
   },
   "events": [
     {
@@ -500,18 +500,41 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T06:16:43.655Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T06:16:43.656Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c31b997e-1af5-4c3c-8b3e-d0f7445fb500",
+      "summary": "PR-event cycle. #4146 hooks fix caabe94ac — verify GREEN. Claude re-review requested. validate:deploy GREEN. #4149 verify GREEN."
     }
   ],
   "open_prs": [
     {
-      "number": 4146,
-      "title": "feat(swing): marks SSE brief_sig + Show detail expander",
-      "branch": "cursor/swing-brief-sse-expand",
+      "number": 4151,
+      "title": "fix(audit): Ask Largo harness auto-detects proxy tunnel vs direct Playwright",
+      "branch": "fix/ask-largo-audit-tunnel",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T06:13:43Z"
+    },
+    {
+      "number": 4150,
+      "title": "fix(swing): drop duplicate verdict chrome from Ask Largo deck rail",
+      "branch": "cursor/swing-deck-brief-dedupe",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T05:41:34Z"
+      "updated_at": "2026-09-06T06:12:32Z"
     }
   ],
   "pr_activity": {
