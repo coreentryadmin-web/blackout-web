@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:30:41.144Z",
+  "updated_at": "2026-09-06T03:32:03.632Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T03:18:26.193Z",
-      "lease_until": "2026-09-06T04:48:26.193Z",
+      "lease_until": "2026-09-06T05:01:19.155Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "092f1226-11ea-4e5a-a52c-659261f89bfc"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T03:30:02.934Z",
-      "lease_until": "2026-09-06T05:00:02.934Z",
+      "lease_until": "2026-09-06T05:01:19.155Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "092f1226-11ea-4e5a-a52c-659261f89bfc",
       "title": null
     }
   },
@@ -350,28 +350,69 @@
       "agent": "cursor",
       "run_id": "ce1442b7-a65a-4345-83f1-99fa40810674",
       "summary": "PR-event cycle complete. Peer-reviewed #4108 APPROVED (counter-thesis + diff narration, 12/12 tests). #4104 verify GREEN — awaiting Claude peer review. Ordering: merge #4104 first, then #4108 rebase. validate:deploy GREEN. Open: #4104/#4107/#4108."
+    },
+    {
+      "at": "2026-09-06T03:31:19.155Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T03:31:20.192Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T03:31:21.223Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T03:32:03.632Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T03:32:03.632Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "96102092-d26a-4e47-b9dc-e1c8f9270698",
+      "summary": "Cycle complete. Lifecycle GREEN (deploy/api-auth/platform-integrity/seo/rth-off-hours). ops:collect 0. Peer-reviewed #4108 APPROVED (verify pending). #4104 verify SUCCESS — awaiting Claude. Merge order: #4104 → #4108 rebase. Handoff pushed to #4107@e4d52e530."
     }
   ],
   "open_prs": [
+    {
+      "number": 4112,
+      "title": "fix(nighthawk): flow-streak bonus applied regardless of streak direction",
+      "branch": "fix/nighthawk-streak-bonus-direction-mismatch",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:31:35Z"
+    },
+    {
+      "number": 4111,
+      "title": "fix(swing): dedupe desk consensus — narrative-only supplementary context",
+      "branch": "fix/swing-desk-consensus-narrative",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:31:20Z"
+    },
     {
       "number": 4110,
       "title": "feat(swing): coaching v3 — VEX, flow prints, macro, book context, trim diff",
       "branch": "cursor/swing-brief-coaching-v3",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T03:24:49Z"
-    },
-    {
-      "number": 4109,
-      "title": "fix(swing): vectorPlayCoaching prepends stray unpaired ** corrupting markdown",
-      "branch": "fix/vector-play-coaching-markdown",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T03:30:12Z"
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-06T03:31:54Z"
     },
     {
       "number": 4108,
