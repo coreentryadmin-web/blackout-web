@@ -32,21 +32,27 @@ function row(ticker: string, score: number, status: HorizonPlay["status"]): Hori
   };
 }
 
-test("computeLaneRank: ranks OPEN play among peers", () => {
-  const lanes = [row("NRG", 45, "HOLD"), row("CRWD", 70, "OPEN"), row("AAPL", 30, "TRIM")];
-  const snap = computeLaneRank(play({ score: 45 }), lanes);
+test("computeLaneRank: ranks OPEN play among COMMIT peers (real HorizonPlay shape)", () => {
+  const lanes = [row("NRG", 45, "COMMIT"), row("CRWD", 70, "COMMIT"), row("AAPL", 30, "COMMIT")];
+  const snap = computeLaneRank(play({ ticker: "NRG", score: 45 }), lanes);
   assert.ok(snap);
   assert.equal(snap!.rank, 2);
   assert.equal(snap!.total, 3);
   assert.equal(snap!.medianScore, 45);
 });
 
-test("laneRankSection: null for closed plays", () => {
-  assert.equal(laneRankSection(play({ status: "CLOSED" }), [row("NRG", 50, "HOLD")]), null);
+test("computeLaneRank: null when lane rows use DeckStatus literals (pre-fix bug shape)", () => {
+  const lanes = [row("NRG", 45, "HOLD"), row("CRWD", 70, "OPEN")];
+  const snap = computeLaneRank(play({ score: 45 }), lanes);
+  assert.equal(snap, null, "HOLD/OPEN on HorizonPlay are not real — peers filter must use COMMIT");
 });
 
-test("laneRankSection: renders rank line", () => {
-  const sec = laneRankSection(play({ score: 70 }), [row("NRG", 70, "HOLD"), row("X", 40, "OPEN")]);
+test("laneRankSection: null for closed plays", () => {
+  assert.equal(laneRankSection(play({ status: "CLOSED" }), [row("NRG", 50, "COMMIT")]), null);
+});
+
+test("laneRankSection: renders rank line for committed peers", () => {
+  const sec = laneRankSection(play({ ticker: "NRG", score: 70 }), [row("NRG", 70, "COMMIT"), row("X", 40, "COMMIT")]);
   assert.ok(sec);
   assert.match(sec!.body, /#1 of 2/);
 });
