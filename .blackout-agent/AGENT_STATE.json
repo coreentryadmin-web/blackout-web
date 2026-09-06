@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T10:13:05.364Z",
+  "updated_at": "2026-09-06T10:13:22.073Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -547,9 +547,51 @@
       "agent": "cursor",
       "run_id": "3548273d-7929-4b74-b7a5-5295056ef2ca",
       "summary": "PR-event cycle complete. Peer-reviewed #4191 (thesis-health wiring) ✅ merged as #3a4fdddb7. Peer-reviewed #4197 (lane rank COMMIT status) ✅ GO AHEAD MERGE — tests 4/4. validate:deploy GREEN. ops:collect 0. main@f5e3c83be. Deploy current."
+    },
+    {
+      "at": "2026-09-06T10:13:13.442Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T10:13:15.795Z",
+      "type": "pr_webhook",
+      "pr": 4199,
+      "event": "sweep",
+      "head": "b3687f981906662e46409d61ce3c8801efa1e21f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T10:13:17.725Z",
+      "type": "pr_webhook",
+      "pr": 4197,
+      "event": "sweep",
+      "head": "b82254b33bd6bcd692b59555688c91c08c76a8f9",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T10:13:22.073Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "open_prs": [
+    {
+      "number": 4199,
+      "title": "chore(blackout-agent): hourly wake handoff — #4189/#4191 merged",
+      "branch": "cursor/hourly-wake-handoff-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T10:13:14Z"
+    },
     {
       "number": 4197,
       "title": "fix(swing): lane rank peers use COMMIT status on HorizonPlay rows",
@@ -591,6 +633,22 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4199": {
+      "last_event": "sweep",
+      "last_head": "b3687f981906662e46409d61ce3c8801efa1e21f",
+      "last_feedback_at": "2026-09-06T10:13:15.795Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4197": {
+      "last_event": "sweep",
+      "last_head": "b82254b33bd6bcd692b59555688c91c08c76a8f9",
+      "last_feedback_at": "2026-09-06T10:13:17.725Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
