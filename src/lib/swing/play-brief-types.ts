@@ -31,6 +31,14 @@ export type SwingPlayBriefContext = {
    * this field (treated as "unknown", not "none").
    */
   openBook?: PortfolioPosition[] | null;
+  /**
+   * True when the `fetchEcosystemContext`/`fetchVectorFullState` call itself threw (network,
+   * timeout, provider error) rather than legitimately returning nothing. `ecosystem`/`vector`
+   * being `null` is otherwise ambiguous between "fetch failed" and "no data to report" — the same
+   * distinction `openBook: null` already carries. FINDINGS 2026-09-06 (#11).
+   */
+  ecosystemFetchFailed?: boolean;
+  vectorFetchFailed?: boolean;
 };
 
 export type SwingPlayBriefResult = {
