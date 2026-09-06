@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:38:55.789Z",
+  "updated_at": "2026-09-06T11:42:38.065Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -570,18 +570,41 @@
       "agent": "cursor",
       "run_id": "5f822654-abf9-4543-9ed7-d50dfb62ec1b",
       "summary": "Cycle complete: peer-reviewed+merged #4222 (SWING TRIM 33% fix) + #4224 (HELIX Hot Tickers direction). #4220 merged pre-session. validate:deploy GREEN; ops:collect 0. Open: #4227 draft (dead code cleanup), handoff drafts consolidating."
+    },
+    {
+      "at": "2026-09-06T11:42:38.065Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T11:42:38.065Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "87520518-9d11-43da-b194-302260aa2e54",
+      "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
     }
   ],
   "open_prs": [
     {
-      "number": 4228,
-      "title": "chore(blackout-agent): cursor PR-event handoff — #4218/#4220/#4222 merged",
-      "branch": "cursor/autopilot-handoff-2026-09-06-cycle2",
+      "number": 4231,
+      "title": "fix(swing): freeze CLOSED-position DTE to exit date, not today's date",
+      "branch": "fix/swing-closed-dte-negative",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:35:49Z"
+      "updated_at": "2026-09-06T11:42:37Z"
+    },
+    {
+      "number": 4230,
+      "title": "chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle3",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:39:12Z"
     },
     {
       "number": 4227,
@@ -591,7 +614,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:38:22Z"
+      "updated_at": "2026-09-06T11:40:27Z"
     }
   ],
   "pr_activity": {
