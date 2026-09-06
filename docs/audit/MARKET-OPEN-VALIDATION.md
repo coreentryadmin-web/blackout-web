@@ -144,6 +144,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** On a ticker where Vector `play.bias` opposes the swing direction, Trade manager read should include `Vector bearish`/`Vector bullish` in the cross-desk friction line. If Meridian timeline is unavailable (simulate or catch a real failure), `unavailableSources` should list `Meridian catalysts · timeline read failed`.
 
+### 0a-1s. HELIX pipeline-down (`recent_flow: null`) missing from unavailableSources — fix/swing-helix-absence-no-flow-rows (pending)
+
+**What was broken:** `collectBriefUnavailableSources` only pushed `HELIX flow · pipeline stale` when `recent_flow` was truthy AND `flow_feed_fresh === false`. The `emptyContext()` failure path returns `recent_flow: null` with `flow_feed_fresh: false` — the primary pipeline-down case — so `UnavailableChip` stayed silent while prose could still caveat via data honesty.
+
+**Fix:** Surface HELIX stale whenever `flow_feed_fresh === false`, regardless of whether cached rows exist.
+
+**Check at the open:** If HELIX pipeline is down for a ticker (no fresh flow frames), Ask Largo brief `unavailableSources` must include `HELIX flow · pipeline stale` even when no cached `recent_flow` row exists.
+
 ---
 
 ### 0a-1o. Ask Largo swing thesis-health dead-wired to identical reading for every live position — docs/swing-brief-thesis-health-dead-wired (pending, follows the deep audit PR #4178)
