@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:24:26.521Z",
+  "updated_at": "2026-09-06T11:30:54.017Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -539,6 +539,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T11:30:50.177Z",
+      "type": "pr_webhook",
+      "pr": 4224,
+      "event": "sweep",
+      "head": "5e3521e1e225e6751d949571e0c579154c93d424",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T11:30:52.055Z",
+      "type": "pr_webhook",
+      "pr": 4223,
+      "event": "sweep",
+      "head": "af41196ce0e2a1a1240bba63ffe5a609006375f7",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T11:30:54.017Z",
+      "type": "pr_webhook",
+      "pr": 4221,
+      "event": "sweep",
+      "head": "11be5b9b7cb6ba19e2859d051e19e650fcfded38",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     }
   ],
   "open_prs": [],
@@ -571,6 +601,30 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4224": {
+      "last_event": "sweep",
+      "last_head": "5e3521e1e225e6751d949571e0c579154c93d424",
+      "last_feedback_at": "2026-09-06T11:30:50.177Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4223": {
+      "last_event": "sweep",
+      "last_head": "af41196ce0e2a1a1240bba63ffe5a609006375f7",
+      "last_feedback_at": "2026-09-06T11:30:52.055Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4221": {
+      "last_event": "sweep",
+      "last_head": "11be5b9b7cb6ba19e2859d051e19e650fcfded38",
+      "last_feedback_at": "2026-09-06T11:30:54.017Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
