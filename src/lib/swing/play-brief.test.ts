@@ -213,6 +213,38 @@ test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET
   assert.doesNotMatch(positionSection!.body, /\.663Z/, "Position section must not print a raw ISO mark timestamp");
 });
 
+test("composeSwingPlayBrief: earnings evidence carries brief asOf for Largo C1 joins", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: { earnings_date: "2026-09-12", days_until: 7, report_time: "AMC", is_confirmed: true },
+        fundamentals: null,
+        related: [],
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const earningsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Next earnings"));
+  assert.ok(earningsEvidence, "expected earnings evidence");
+  assert.equal(earningsEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+});
+
 test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1 joins", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
@@ -239,6 +271,7 @@ test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1
   const flowEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("HELIX flow"));
   assert.ok(flowEvidence, "expected HELIX flow evidence");
   assert.equal(flowEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+  assert.equal(flowEvidence?.provenance?.freshness, "recent", "HELIX flow is a cached window aggregate, not tick-live");
 });
 
 test("composeSwingPlayBrief: swing-scan evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant", () => {

@@ -547,7 +547,9 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
     warnings.push(`Vector **${Math.round(vec.dataAgeMs / 1000)}s** stale`);
   }
   if (ctx.ecosystem?.flow_feed_fresh === false) {
-    warnings.push("HELIX feed quiet — flow read may lag");
+    warnings.push(
+      "HELIX pipeline stale — flow read unavailable, not evidence of quiet tape",
+    );
   }
   if (
     ctx.scanSessionDay &&
