@@ -386,6 +386,21 @@ test("counterThesisLine: Vector bearish bias steelmans bear case for LONG swing"
   assert.match(line!, /Fade the rip/i);
 });
 
+test("counterThesisLine: stale Vector play bias must not steelman desk read (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        play: { bias: "short", headline: "Fade the rip", grade: "B" },
+        freshness: "stale",
+        dataAgeMs: 180_000,
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale Vector play bias must not appear in counter-thesis");
+});
+
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

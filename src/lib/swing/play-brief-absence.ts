@@ -52,6 +52,22 @@ export function gexMatrixStale(
   return ageMs != null && ageMs > GEX_MATRIX_STALE_MS;
 }
 
+/** Vector desk snapshot stale — same 120s bound as GEX matrix (Largo C2). */
+export function vectorSnapshotStale(
+  vec: VectorWithReadContext | null | undefined,
+  readMs: number = Date.now(),
+): boolean {
+  if (!vec) return false;
+  const ageMs = vec.dataAgeMs;
+  if (typeof ageMs === "number" && Number.isFinite(ageMs) && ageMs > VECTOR_STALE_MS) return true;
+  if (vec.freshness === "stale") return true;
+  if (vec.asOf) {
+    const observedMs = Date.parse(vec.asOf);
+    if (Number.isFinite(observedMs) && readMs - observedMs > VECTOR_STALE_MS) return true;
+  }
+  return false;
+}
+
 /** Only committed working rows expect a live-synced option mark — WATCH uses static chain mid by design. */
 export function playExpectsLiveOptionMark(status: string | null | undefined): boolean {
   return status === "OPEN" || status === "HOLD" || status === "TRIM";
@@ -90,12 +106,8 @@ function collectVectorSectionAbsences(vec: VectorWithReadContext): BieUnavailabl
 }
 
 function collectVectorStalenessAbsence(vec: VectorWithReadContext): BieUnavailableSource | null {
-  const ageMs = vec.dataAgeMs;
-  const staleByAge = typeof ageMs === "number" && Number.isFinite(ageMs) && ageMs > VECTOR_STALE_MS;
-  if (staleByAge || vec.freshness === "stale") {
-    return { source: "Vector snapshot", reason: "stale — levels may lag spot" };
-  }
-  return null;
+  if (!vectorSnapshotStale(vec)) return null;
+  return { source: "Vector snapshot", reason: "stale — levels may lag spot" };
 }
 
 function collectGexStalenessAbsence(
