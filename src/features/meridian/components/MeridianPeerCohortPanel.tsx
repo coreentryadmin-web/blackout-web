@@ -137,13 +137,22 @@ export function MeridianPeerCohortPanel({
               <span className="mpeer-val">{m.value == null ? "—" : `${m.value}%`}</span>
               {/* Second lens: how this peer's OWN prints have historically landed — fills in
                   exactly the rows the implied-move column above shows as "—". Omitted (not "0%")
-                  when the peer has no settled reactions on file; n is always shown alongside the
-                  rate, per this file's "a rate without its cohort is not a fact" rule. */}
-              {reaction && reaction.n > 0 && (
+                  when the peer has no usable prints on file at all.
+                  BUG FIX (2026-09-06): avg reaction and beat rate are TWO INDEPENDENT cohorts —
+                  a print's reaction can be still-forming/assumed-session (excluded from `n`)
+                  while its EPS surprise is already known and graded (included in `beatRateN`), or
+                  vice versa. Gating the whole lens on `n > 0` alone silently hid a valid, gradable
+                  beat rate whenever a peer had zero settled reactions; showing one shared `(n=X)`
+                  next to both stats misstated whichever one it didn't actually belong to. Each
+                  stat now shows its own count, per this file's "a rate without its cohort is not
+                  a fact" rule. */}
+              {reaction && (reaction.n > 0 || reaction.beatRateN > 0) && (
                 <span className="mpeer-reaction">
-                  avg {reaction.avgReactionPct == null ? "—" : `${reaction.avgReactionPct >= 0 ? "+" : ""}${reaction.avgReactionPct}%`}
-                  {reaction.beatRate != null && ` · ${Math.round(reaction.beatRate * 100)}% beat`}
-                  <span className="mpeer-reaction-n"> (n={reaction.n})</span>
+                  {reaction.n > 0 &&
+                    `avg ${reaction.avgReactionPct == null ? "—" : `${reaction.avgReactionPct >= 0 ? "+" : ""}${reaction.avgReactionPct}%`} (n=${reaction.n})`}
+                  {reaction.n > 0 && reaction.beatRateN > 0 && " · "}
+                  {reaction.beatRateN > 0 && reaction.beatRate != null &&
+                    `${Math.round(reaction.beatRate * 100)}% beat (n=${reaction.beatRateN})`}
                 </span>
               )}
             </>

@@ -349,9 +349,21 @@ export type PeerReactionSummary = {
   avgReactionPct: number | null;
   /** 0..1. Null when no print has a graded EPS surprise. */
   beatRate: number | null;
-  /** How many prints the averages above were computed FROM — always shown with the number, per
-   *  this file's own rule that a rate without its cohort is not a fact. */
+  /**
+   * How many prints `avgReactionPct` was computed FROM (the settled-reaction cohort) — always
+   * shown alongside that number, per this file's own rule that a rate without its cohort is not
+   * a fact.
+   *
+   * NOT the cohort behind `beatRate` — see `beatRateN`. A print's reaction can be still-forming
+   * or assumed-session (excluded here) while its EPS surprise is already known and graded
+   * (included in `beatRateN`), or vice versa; these are two independent conditions on the same
+   * row. A caller that shows `beatRate` next to this `n` is reporting the wrong sample size for
+   * it — the historical bug this comment now documents (fixed 2026-09-06).
+   */
   n: number;
+  /** How many prints `beatRate` was computed FROM (the EPS-graded cohort, independent of
+   *  reaction-settlement status) — its own count, distinct from `n`. */
+  beatRateN: number;
 };
 
 /**
@@ -377,5 +389,5 @@ export function summarizePeerReaction(
   const { beats, graded } = beatTally(beatSeries(rows));
   const beatRate = graded > 0 ? round(beats / graded, 4) : null;
 
-  return { ticker, avgReactionPct, beatRate, n: moves.length };
+  return { ticker, avgReactionPct, beatRate, n: moves.length, beatRateN: graded };
 }
