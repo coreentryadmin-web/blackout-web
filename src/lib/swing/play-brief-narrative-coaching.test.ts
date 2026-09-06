@@ -10,6 +10,7 @@ import {
   dataHonestyCoaching,
   execSlippageCoaching,
   expectedMoveCoaching,
+  flowPrintsCoaching,
   ivRankCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
@@ -17,6 +18,7 @@ import {
   thesisPillarCoaching,
   vectorPlayCoaching,
   vexCoaching,
+  wallDynamicsCoaching,
   wallIntegrityCoaching,
   watchGateCoaching,
   technicalsCoaching,
@@ -396,6 +398,39 @@ test("wallIntegrityCoaching: stale Vector returns null (Largo C2)", () => {
     wallIntegrity: { call: { tier: "thin" }, put: { tier: "firm" } },
   } as unknown as Parameters<typeof wallIntegrityCoaching>[0];
   assert.equal(wallIntegrityCoaching(vec, play({ direction: "LONG" })), null);
+});
+
+test("wallDynamicsCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    wallEvents: [
+      { kind: "call_wall_shift", message: "moved to 105" },
+      { kind: "put_wall_shift", message: "moved to 95" },
+    ],
+  } as unknown as Parameters<typeof wallDynamicsCoaching>[0];
+  assert.equal(wallDynamicsCoaching(vec), null);
+});
+
+test("vexCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    vexFlip: 99,
+    gammaFlip: 98,
+    vexWalls: { callWalls: [{ strike: 103 }], putWalls: [{ strike: 97 }] },
+  } as unknown as Parameters<typeof vexCoaching>[0];
+  assert.equal(vexCoaching(vec, 100), null);
+});
+
+test("flowPrintsCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    flowMarkers: {
+      available: true,
+      prints: [{ side: "call", strike: 105, premium: 2_000_000 }],
+      meta: { largeFound: 1 },
+    },
+  } as unknown as Parameters<typeof flowPrintsCoaching>[0];
+  assert.equal(flowPrintsCoaching(vec, play({ direction: "LONG" })), null);
 });
 
 test("vectorPlayCoaching: uses play.bias not thesis substring (long-gamma thesis vs short bias)", () => {
