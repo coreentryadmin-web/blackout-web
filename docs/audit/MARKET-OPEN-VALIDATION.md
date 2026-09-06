@@ -120,13 +120,23 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
-### 0a-1m. Swing Ask Largo — fabricated play-brief confidence — fix/swing-brief-omit-fabricated-confidence (pending)
+### 0a-1m. Swing Ask Largo — fabricated play-brief confidence — fix/swing-brief-omit-fabricated-confidence (merged #4174)
 
 **What was broken:** `composeSwingPlayBrief()` always stamped `envelope.confidence` as `high` or `moderate` from a coarse `hasRichData` boolean. Largo contract C6 requires omitting confidence when the lane cannot calibrate it — the fabricated score could corrupt cross-product ranking and mislead markdown/Largo exports.
 
 **Fix:** Remove the swing play-brief confidence block; stop `buildRichEnvelope()` from defaulting missing confidence to `high` (concept answers still pass explicit confidence).
 
 **Check at the open:** `GET /api/market/swing/play-brief` for any swing row — `envelope.confidence` should be absent/undefined; Ask Largo panel should not show a confidence badge on the full brief export.
+
+---
+
+### 0a-1n. Thermal `/heatmap` pulse SSE header change_pct session-open anchor — fix/thermal-pulse-change-pct-anchor (pending)
+
+**What was broken:** When the pulse SSE overlay won on SPX/VIX index tickers, `GexHeatmap` fell back to raw `pulseSnap.change_pct` from `indexStore` — measured from session open (ws-bar anchor), not prior close. Same failure class as the 2026-08-07 SPX desk P0; `usePulseStream` was fixed but Thermal called `createPulseEventSource` directly.
+
+**Fix:** (1) V-channel ticks only recompute `change_pct` when `open_source === "rest"`; (2) pulse SSE route sanitizes index wire via `clusterIndexSpotChangePct`; (3) GexHeatmap derives SPX from prior close and gates VIX on REST anchor.
+
+**Check at the open:** `/heatmap` with SPX selected during a gapped session — header day-change% must match SPX desk pulse tile (not invert sign vs true prior-close move). Toggle VIX index header the same way.
 
 ---
 
