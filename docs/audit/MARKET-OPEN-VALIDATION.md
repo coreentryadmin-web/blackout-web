@@ -2726,3 +2726,9 @@ than an end-of-session patch.
 - **What changed:** `play-brief-context.ts` now sets `asOf` from `etStamp(nowMs)` (ISO fallback only if stamping fails).
 - **RTH check:** `GET /api/market/swing/play-brief` for any swing row — response `asOf` and `envelope.asOf` should read like `2026-09-06 09:32 ET`, not a `…Z` UTC instant.
 
+### 42. Ask Largo swing play-brief — envelope levels hardcoded `live` freshness — fix/swing-brief-vector-freshness — 2026-09-06
+
+- **What was broken:** `levelsFromContext()` stamped Vector spot and related levels as `provenance.freshness: "live"` regardless of `vector.asOf` age; GEX walls were always `"recent"`. Off-hours cached Vector state could be 10–15 minutes old while the structured levels table still read live.
+- **What changed:** Level provenance now uses `describeVectorFreshness(vec.asOf, readMs)` and `freshnessFromAgeMs` on `gex_positioning.asof`; option-mark evidence uses measured age when parseable.
+- **RTH check:** Night Hawk Swings → OPEN/HOLD row → Largo brief levels table: when Vector cache is aged (>60s), spot/wall provenance should show `recent` or `stale`, aligned with the "Data freshness" section.
+
