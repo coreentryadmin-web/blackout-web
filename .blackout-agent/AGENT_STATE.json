@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T18:27:49.500Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T18:01:51.377Z",
+      "lease_until": "2026-09-06T19:52:48.683Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "db897541-d698-4c6d-8e5c-e6b25da6ba6d",
+      "title": null
     }
   },
   "reviews": {
@@ -39,6 +40,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4357": {
+      "pr": 4357,
+      "head_sha": "79715f84532402f48dcd8546b50ca4ae498315fb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:07:30.369Z",
+      "safe_to_merge": true
+    },
+    "pr-4353": {
+      "pr": 4353,
+      "head_sha": "459158ab32fb5f02e6db1236ca8f443e8bcb0581",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:07:30.977Z",
+      "safe_to_merge": true
+    },
+    "pr-4359": {
+      "pr": 4359,
+      "head_sha": "2717eb3c80867a042bf0d434c8a28f1a15dabd95",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:22:38.887Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -47,16 +72,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T18:01:51.378Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "3414ed795c2c41ed643eab641f41b48a3a280c0b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T18:22:39Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34051513623",
+    "last_deploy_sha": "3414ed795c2c41ed643eab641f41b48a3a280c0b"
   },
   "events": [
     {
@@ -734,9 +760,166 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T18:01:41.124Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T18:01:42.256Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T18:01:43.292Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T18:01:47.573Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T18:01:51.378Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T18:07:30.369Z",
+      "type": "pr_review",
+      "pr": 4357,
+      "head_sha": "79715f84532402f48dcd8546b50ca4ae498315fb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:07:30.369Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T18:07:30.978Z",
+      "type": "pr_review",
+      "pr": 4353,
+      "head_sha": "459158ab32fb5f02e6db1236ca8f443e8bcb0581",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:07:30.977Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T18:13:07.608Z",
+      "type": "pr_webhook",
+      "pr": 4359,
+      "event": "sweep",
+      "head": "2717eb3c80867a042bf0d434c8a28f1a15dabd95",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T18:16:17.100Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T18:16:17.101Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e2c3b0bc-d46a-43e6-a254-439fe4f32e4c",
+      "summary": "Peer review cycle: #4353 merged (Meridian peer section). #4357 rebased post-#4353, conflict resolved in MARKET-OPEN-VALIDATION.md (§51+§52), force-pushed, CI green, merging. ops:collect clean. New PR #4359 discovered (HTML entity decode)."
+    },
+    {
+      "at": "2026-09-06T18:16:21.696Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T18:22:38.888Z",
+      "type": "pr_review",
+      "pr": 4359,
+      "head_sha": "2717eb3c80867a042bf0d434c8a28f1a15dabd95",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:22:38.887Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T18:22:47.651Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:22:48.682Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:22:49.753Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:24:47.117Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T18:24:50.001Z",
+      "type": "pr_webhook",
+      "pr": 4361,
+      "event": "sweep",
+      "head": "4cd80263b123bdeaf26ac8ea6ae5d1e1a98b27ca",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T18:24:52.763Z",
+      "type": "pr_webhook",
+      "pr": 4360,
+      "event": "sweep",
+      "head": "d523aff9aaaf5eebc19ac272e913ed5cc9c84993",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T18:27:49.500Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:27:49.500Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8ed7c4f2-099f-42af-9c11-300019a71ed1",
+      "summary": "Cycle complete: peer-reviewed+merged #4353 (Meridian peer section), #4357 (dealer gamma label, rebased), #4359 (HTML entity decode). validate:deploy GREEN. ops:collect 0 items. Open: draft #4360 only (stale GEX parity — wait for undraft). main"
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4360,
+      "title": "fix(swing): extend stale GEX gating to gexPostureSection and counter-thesis",
+      "branch": "fix/largo-gex-stale-parity",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T18:25:28Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -766,6 +949,30 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4359": {
+      "last_event": "sweep",
+      "last_head": "2717eb3c80867a042bf0d434c8a28f1a15dabd95",
+      "last_feedback_at": "2026-09-06T18:13:07.608Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4361": {
+      "last_event": "sweep",
+      "last_head": "4cd80263b123bdeaf26ac8ea6ae5d1e1a98b27ca",
+      "last_feedback_at": "2026-09-06T18:24:50.001Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4360": {
+      "last_event": "sweep",
+      "last_head": "d523aff9aaaf5eebc19ac272e913ed5cc9c84993",
+      "last_feedback_at": "2026-09-06T18:24:52.763Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
