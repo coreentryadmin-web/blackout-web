@@ -1,18 +1,19 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T16:07:29.523Z
-**Run:** 2c191ace-c3dd-4c05-9bd2-e86ddf5c27df
+**At:** 2026-09-06T11:42:38.065Z
+**Run:** 87520518-9d11-43da-b194-302260aa2e54
 
 ## Summary
 
-Post-#4311: shipped thesis-health uncalibrated withhold fix (#4318 draft). validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. GitHub PAT rate-limited for gh CLI; PR created via MCP. Awaiting Claude peer review on #4318.
+Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0.
 
 ## Deploy
 
-- main: `d45b41666a2ea4efc4d900a4a3f956b395edc2d5`
+- main: `a37960c92712ca5986df2042d0c32a44153cfd92`
 - status: 
 
 ## Open PRs
 
-- #4318 [cursor] fix(swing): withhold uncalibrated thesis health % from Largo brief
-- #4317 [agent] fix(swing): ground short interest in Largo envelope evidence (C7)
+- #4231 [agent] fix(swing): freeze CLOSED-position DTE to exit date, not today's date
+- #4230 [cursor] chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged
+- #4227 [agent] chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature
