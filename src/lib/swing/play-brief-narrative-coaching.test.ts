@@ -3,13 +3,16 @@ import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
+  bookContextCoaching,
   catalystCoaching,
   closedCoaching,
   crossDeskCoaching,
+  execSlippageCoaching,
   manageLifecycleCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
   vectorPlayCoaching,
+  vexCoaching,
   watchGateCoaching,
 } from "./play-brief-narrative-coaching";
 
@@ -193,8 +196,34 @@ test("vectorPlayCoaching: returned line has an EVEN count of ** bold markers (no
   assert.ok(line);
   const boldMarkerCount = (line!.match(/\*\*/g) ?? []).length;
   assert.equal(boldMarkerCount % 2, 0, `expected an even (paired) count of **, got ${boldMarkerCount} in: ${line}`);
-  // The headline and invalidation level must themselves render bold, not swallowed by a stray marker.
   assert.match(line!, /\*\*Bull flag breakout\*\*/);
   assert.match(line!, /\*\*95\.00\*\*/);
   assert.doesNotMatch(line!, /^\*\*Vector desk: \*\*/);
 });
+
+test("vexCoaching: narrates vanna flip", () => {
+  const line = vexCoaching(
+    {
+      vexFlip: 100,
+      gammaFlip: 98,
+      vexWalls: { callWalls: [{ strike: 105 }], putWalls: [] },
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    101,
+  );
+  assert.match(line!, /VEX lens/i);
+  assert.match(line!, /diverge/i);
+});
+
+test("execSlippageCoaching: flags wide mid vs fill gap", () => {
+  const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
+  assert.match(line!, /slippage/i);
+});
+
+test("bookContextCoaching: concentration or conflict when themes overlap", () => {
+  const line = bookContextCoaching(
+    play({ ticker: "NVDA", direction: "LONG" }),
+    [{ ticker: "AMD", direction: "LONG" }],
+  );
+  if (line) assert.match(line, /concentration|conflict/i);
+});
+

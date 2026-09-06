@@ -43,4 +43,8 @@ export type SwingPlayBriefResult = {
    * is the wrong shape for a dollar premium total. null when HELIX has no recent-flow read.
    */
   flowSnapshot: { callPremium: number | null; putPremium: number | null } | null;
+  /** Stable dedupe key for client refresh — excludes time-only fields. */
+  briefContentKey: string;
+  /** Count of fired trim rails at compose time. */
+  trimsFired: number | null;
 };

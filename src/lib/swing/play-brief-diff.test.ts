@@ -77,6 +77,7 @@ test("extrasFromBriefResponse: reads levels by label AND the explicit flowSnapsh
     putWall: 95,
     flowCallPremium: 1_500_000,
     flowPutPremium: 300_000,
+    trimsFired: null,
   });
 });
 
@@ -88,7 +89,15 @@ test("extrasFromBriefResponse: no flowSnapshot on the response is null, not a cr
     putWall: null,
     flowCallPremium: null,
     flowPutPremium: null,
+    trimsFired: null,
   });
+});
+
+test("diffBriefSnapshots: detects trim rail fires", () => {
+  const prev = snapshotFromBrief(env(), play(), { trimsFired: 0 });
+  const next = snapshotFromBrief(env(), play(), { trimsFired: 1 });
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Trim rail")));
 });
 
 test("end-to-end: a HELIX call-flow build now actually reaches the diff engine (was previously always null)", () => {

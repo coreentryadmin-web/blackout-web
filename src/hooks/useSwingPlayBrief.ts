@@ -20,6 +20,8 @@ export type SwingPlayBriefResponse = {
   asOf?: string;
   engine?: "swing_play_intelligence";
   flowSnapshot?: { callPremium: number | null; putPremium: number | null } | null;
+  briefContentKey?: string;
+  trimsFired?: number | null;
   degraded?: boolean;
   error?: string;
 };
@@ -69,15 +71,24 @@ function briefRefreshMs(): number {
   return 20_000;
 }
 
+function trimSig(play: TerminalPlay | null): string {
+  if (!play?.exitPolicy?.trim_levels?.length) return "";
+  return play.exitPolicy.trim_levels.map((t) => `${t.trigger_pct}:${t.fired ? 1 : 0}`).join(",");
+}
+
 function playLiveSig(play: TerminalPlay | null): string {
   if (!play) return "";
   return [
     play.mark,
     play.pnlPct,
+    play.execPnlPct,
     play.recommendation,
     play.thesisHealth?.health,
     play.peak,
     play.status,
+    play.manageAction,
+    play.progress,
+    trimSig(play),
   ].join("|");
 }
 

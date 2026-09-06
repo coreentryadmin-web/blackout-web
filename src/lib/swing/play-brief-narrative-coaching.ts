@@ -6,6 +6,8 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
+import { checkPortfolioOverlap } from "./portfolio";
+import { fmtPremium } from "@/lib/fmt-money";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -285,7 +287,196 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
   return null;
 }
 
-/** Lane rank vs peers — attention allocation coaching. */
+/** VEX / vanna lens — second-order dealer hedging when it diverges from gamma. */
+export function vexCoaching(vec: VectorFullState | null, spot: number | null): string | null {
+  if (!vec) return null;
+  const vFlip = fin(vec.vexFlip);
+  const gFlip = fin(vec.gammaFlip);
+  const vCall = vec.vexWalls?.callWalls?.[0]?.strike;
+  const vPut = vec.vexWalls?.putWalls?.[0]?.strike;
+  if (vFlip == null && vCall == null && vPut == null) return null;
+
+  const parts: string[] = [];
+  if (vFlip != null) {
+    const above = spot != null ? (spot >= vFlip ? "above" : "below") : null;
+    parts.push(`vanna flip **${vFlip.toFixed(2)}**${above ? ` (spot ${above})` : ""}`);
+  }
+  if (vCall != null) parts.push(`vanna+ wall **${vCall.toFixed(2)}**`);
+  if (vPut != null) parts.push(`vanna− wall **${vPut.toFixed(2)}**`);
+
+  let diverge = "";
+  if (gFlip != null && vFlip != null && Math.abs(gFlip - vFlip) > 0.5) {
+    diverge = " **γ vs vanna diverge** — vanna can accelerate moves gamma alone wouldn't predict.";
+  }
+
+  return `**VEX lens** — ${parts.join(" · ")}.${diverge} Watch vanna walls on vol-expansion days.`;
+}
+
+/** Large front-expiry flow prints from Vector — institutional tape at strike. */
+export function flowPrintsCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
+  const f = vec?.flowMarkers;
+  if (!f?.available || !f.prints?.length) return null;
+  const top = f.prints[0]!;
+  const aligned =
+    (play.direction === "LONG" && top.side?.toLowerCase() === "call") ||
+    (play.direction === "SHORT" && top.side?.toLowerCase() === "put");
+  const conflict =
+    (play.direction === "LONG" && top.side?.toLowerCase() === "put") ||
+    (play.direction === "SHORT" && top.side?.toLowerCase() === "call");
+  let tail = "";
+  if (aligned) tail = " **Aligns** with swing direction.";
+  else if (conflict) tail = " **Conflicts** with swing — size down until tape agrees.";
+  const more = f.meta.largeFound > f.prints.length ? ` (+${f.meta.largeFound - f.prints.length} more)` : "";
+  return (
+    `**Large print** — ${top.side} **${top.strike.toFixed(2)}** ${fmtPremium(top.premium)}` +
+    `${f.expiry ? ` (${f.expiry})` : ""}${more}.${tail}`
+  );
+}
+
+/** Macro rates + breadth tone — index-correlated swing context. */
+export function macroTapeCoaching(ctx: SwingPlayBriefContext): string | null {
+  const arsenal = ctx.ecosystem?.arsenal;
+  if (!arsenal) return null;
+  const parts: string[] = [];
+  if (arsenal.macro) {
+    const m = arsenal.macro;
+    if (m.yield_10_year != null) parts.push(`10Y **${m.yield_10_year.toFixed(2)}%**`);
+    if (m.curve_10y_1y_spread != null) parts.push(`curve **${m.curve_10y_1y_spread.toFixed(2)}**`);
+  }
+  if (arsenal.breadth?.tone) {
+    parts.push(`breadth **${arsenal.breadth.tone}**`);
+  }
+  if (!parts.length) return null;
+  const riskOff = arsenal.breadth?.tone?.toLowerCase().includes("risk-off");
+  const riskOn = arsenal.breadth?.tone?.toLowerCase().includes("risk-on");
+  const hint =
+    ctx.play.direction === "LONG" && riskOff
+      ? "Risk-off tape — long swings need tighter stops."
+      : ctx.play.direction === "SHORT" && riskOn
+        ? "Risk-on tape — shorts face headwind; respect call walls."
+        : "Macro context for sizing — not a swing entry trigger alone.";
+  return `**Macro tape** — ${parts.join(" · ")}. ${hint}`;
+}
+
+/** Ratchet progress along stop→target track. */
+export function progressRatchetCoaching(play: TerminalPlay): string | null {
+  const p = fin(play.progress);
+  if (p == null || play.exitModel !== "RATCHET") return null;
+  const pct = Math.round(p * 100);
+  const ep = play.exitPolicy;
+  let rails = "";
+  if (ep?.stop_premium != null && ep?.target_premium != null) {
+    rails = ` · rails **${fmtUsd(ep.stop_premium)}** → **${fmtUsd(ep.target_premium)}**`;
+  }
+  const zone = pct >= 75 ? "near target — trim into strength" : pct <= 25 ? "early in track — let it work" : "mid-track — honor ladder";
+  return `**Ratchet progress** — **${pct}%** along stop→target${rails}. ${zone}.`;
+}
+
+/** Executable vs mid P&L honesty — slippage on the tape. */
+export function execSlippageCoaching(play: TerminalPlay): string | null {
+  const mid = fin(play.pnlPct);
+  const exec = fin(play.execPnlPct);
+  if (mid == null || exec == null) return null;
+  const gap = mid - exec;
+  if (Math.abs(gap) < 5) return null;
+  return (
+    `**Executable P&L** — mid **${fmtPct(mid)}** vs fill **${fmtPct(exec)}** ` +
+    `(**${gap > 0 ? "-" : "+"}${Math.abs(gap).toFixed(0)}%** slippage). Size exits on the bid, not the mark.`
+  );
+}
+
+/** Underlying excursion vs option giveback. */
+export function underlyingExcursionCoaching(play: TerminalPlay): string | null {
+  const stock = fin(play.stockMovePct);
+  const peak = fin(play.stockPeakPct);
+  const trough = fin(play.stockTroughPct);
+  if (stock == null && peak == null && trough == null) return null;
+  const parts: string[] = [];
+  if (stock != null) parts.push(`stock **${fmtPct(stock)}** since flag`);
+  if (peak != null) parts.push(`peak **${fmtPct(peak)}**`);
+  if (trough != null) parts.push(`trough **${fmtPct(trough)}**`);
+  const optGive =
+    play.peak != null && play.pnlPct != null && play.peak - play.pnlPct > 15
+      ? ` · option gave back **${(play.peak - play.pnlPct).toFixed(0)}%** from peak`
+      : "";
+  return `**Underlying tape** — ${parts.join(" · ")}${optGive}. Trade the stock levels, not just premium.`;
+}
+
+/** Short interest / days-to-cover — squeeze fuel context. */
+export function shortInterestCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
+  const fund = ctx.ecosystem?.arsenal?.fundamentals;
+  if (!fund?.days_to_cover) return null;
+  const dtc = fund.days_to_cover;
+  if (dtc < 3) return null;
+  if (play.direction === "LONG" && dtc >= 5) {
+    return `**Short interest** — **${dtc.toFixed(1)} DTC** · elevated cover risk can fuel squeezes; respect call walls on extensions.`;
+  }
+  if (play.direction === "SHORT" && dtc >= 8) {
+    return `**Crowded short** — **${dtc.toFixed(1)} DTC** · squeeze risk elevated; tighten stops and avoid chasing breakdowns.`;
+  }
+  return null;
+}
+
+/** Calibration scorecard — tier WR when wired. */
+export function scorecardCoaching(play: TerminalPlay): string | null {
+  const sc = play.scorecard;
+  if (!sc || sc.n < 10) return null;
+  const wr = Math.round(sc.winRate * 100);
+  const ci =
+    sc.ciLow != null && sc.ciHigh != null
+      ? ` (CI **${Math.round(sc.ciLow * 100)}–${Math.round(sc.ciHigh * 100)}%**)`
+      : "";
+  const tier = play.tierLabel ? ` **${play.tierLabel}**` : "";
+  return (
+    `**Playbook stats**${tier} — **${wr}%** WR over **${sc.n}** trades${ci}. ` +
+    `Size per calibration; this row is one sample, not the population.`
+  );
+}
+
+/** IV rank — vol expansion / contraction context. */
+export function ivRankCoaching(play: TerminalPlay): string | null {
+  const iv = fin(play.ivRank);
+  if (iv == null) return null;
+  if (iv >= 70) {
+    return `**IV rank ${Math.round(iv)}** — vol elevated; trims into strength matter — theta + crush risk on hold.`;
+  }
+  if (iv <= 25) {
+    return `**IV rank ${Math.round(iv)}** — vol cheap; upside needs underlying move, not vol expansion alone.`;
+  }
+  return null;
+}
+
+/** Book concentration / internal conflict — theme overlap with open positions. */
+export function bookContextCoaching(play: TerminalPlay, openBook: SwingPlayBriefContext["openBook"]): string | null {
+  if (!openBook?.length) return null;
+  const overlap = checkPortfolioOverlap({ ticker: play.ticker, direction: play.direction }, openBook);
+  if (!overlap.hasOverlap) return null;
+  if (overlap.sameThemeSameDirection.length) {
+    const names = overlap.sameThemeSameDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
+    return (
+      `**Book concentration** — theme **${overlap.theme}** already has **${names}**. ` +
+      `Adding ${play.ticker} stacks the same wager — size down unless intentional.`
+    );
+  }
+  if (overlap.sameThemeOpposedDirection.length) {
+    const names = overlap.sameThemeOpposedDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
+    return (
+      `**Internal conflict** — theme **${overlap.theme}** has opposed **${names}**. ` +
+      `One leg fights the other — not a hedge unless deliberate.`
+    );
+  }
+  return null;
+}
+
+/** Recent wall dynamics — last 2 bead events for live structure shifts. */
+export function wallDynamicsCoaching(vec: VectorFullState | null): string | null {
+  const events = vec?.wallEvents ?? [];
+  if (events.length < 2) return null;
+  const recent = events.slice(-2);
+  const lines = recent.map((w) => `${w.kind.replace(/_/g, " ")}: ${w.message}`).join(" · ");
+  return `**Wall dynamics** — ${lines}. Structure shifting — re-check break levels.`;
+}
+
 export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefContext["laneRows"]): string | null {
   const snap = computeLaneRank(play, laneRows);
   if (!snap || snap.total < 2) return null;
@@ -419,16 +610,30 @@ export function collectCoachingBullets(
   }
 
   push(manageLifecycleCoaching(play, bucket));
+  push(bookContextCoaching(play, ctx.openBook));
   push(catalystCoaching(ctx));
   push(crossDeskCoaching(ctx, play));
   push(laneRankCoaching(play, ctx.laneRows));
+  push(macroTapeCoaching(ctx));
+  push(scorecardCoaching(play));
+  push(progressRatchetCoaching(play));
+  push(execSlippageCoaching(play));
+  push(underlyingExcursionCoaching(play));
+  push(shortInterestCoaching(ctx, play));
+  push(ivRankCoaching(play));
 
   if (spot != null) {
+    push(vexCoaching(vec, spot));
+    push(flowPrintsCoaching(vec, play));
     push(magnetCoaching(vec, spot));
     push(confluenceCoaching(vec, play, spot));
     push(expectedMoveCoaching(vec, spot));
     push(wallIntegrityCoaching(vec, play));
+    push(wallDynamicsCoaching(vec));
     push(technicalsCoaching(vec, play));
+  } else {
+    push(vexCoaching(vec, null));
+    push(flowPrintsCoaching(vec, play));
   }
 
   push(vectorPlayCoaching(vec, play));
