@@ -75,6 +75,22 @@ test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is
   assert.equal(bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book), null);
 });
 
+test("bookContextSection: reviewing the second of two independent same-ticker rows does not flag self", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "EWZ", direction: "LONG", positionId: 29 },
+    { ticker: "EWZ", direction: "LONG", positionId: 26 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:EWZ:26", ticker: "EWZ", direction: "LONG" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section?.body ?? "", /Concentration/i);
+  assert.match(section?.body ?? "", /EWZ LONG/);
+  assert.doesNotMatch(section?.body ?? "", /26.*26/);
+  assert.equal((section?.body ?? "").split("EWZ LONG").length - 1, 1);
+});
+
 // SWING-SYSTEM-CTO-AUDIT-style finding (found live 2026-09-06 on NRG SWING_NRG_34): `recNote` is
 // already rendered verbatim by managementSection (open bucket) or the Verdict section (watch
 // bucket) — see play-brief.ts lines 64 and 292. whyThisSetupSection pushed the SAME string again

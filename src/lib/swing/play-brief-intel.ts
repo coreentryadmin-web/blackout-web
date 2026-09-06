@@ -19,6 +19,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
+import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
@@ -99,7 +100,12 @@ export function bookContextSection(
   openBook: PortfolioPosition[] | null | undefined,
 ): RichSection | null {
   if (openBook == null || !openBook.length) return null;
-  const overlap = checkPortfolioOverlap({ ticker: play.ticker, direction: play.direction }, openBook);
+  const { positionId } = parseSwingPlayId(play.id);
+  const overlap = checkPortfolioOverlap(
+    { ticker: play.ticker, direction: play.direction },
+    openBook,
+    positionId != null ? { excludePositionId: positionId } : undefined,
+  );
   if (!overlap.hasOverlap) return null;
 
   const lines: string[] = [];
