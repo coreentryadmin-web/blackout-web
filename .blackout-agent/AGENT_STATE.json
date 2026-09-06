@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T18:22:21.048Z",
+  "updated_at": "2026-09-06T18:47:14.056Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T18:28:55.281Z",
+      "lease_until": "2026-09-06T20:16:32.209Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "f4cb7456-f028-4de7-aef1-e616ec8f2d40"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T18:46:31.566Z",
+      "lease_until": "2026-09-06T20:16:32.209Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "f4cb7456-f028-4de7-aef1-e616ec8f2d40",
+      "title": null
     }
   },
   "reviews": {
@@ -39,6 +51,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4364": {
+      "pr": 4364,
+      "head_sha": "128a9edf01e3233f9b5c73cb08d70c0fee151d8a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:46:24.529Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -47,16 +67,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T18:46:31.566Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "12d062a75dff718568cafd37075bf39c4bc11215",
+    "last_main_sha": "9855e16d7d69901cad18c5470ce082a686155cc9",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T18:46:26Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34052778204",
+    "last_deploy_sha": "9855e16d7d69901cad18c5470ce082a686155cc9"
   },
   "events": [
     {
@@ -752,28 +773,71 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T18:46:24.530Z",
+      "type": "pr_review",
+      "pr": 4364,
+      "head_sha": "128a9edf01e3233f9b5c73cb08d70c0fee151d8a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:46:24.529Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T18:46:28.145Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T18:46:31.566Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T18:46:32.208Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T18:46:32.871Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T18:46:33.476Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T18:47:14.056Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:47:14.056Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "37b6c178-f225-4f50-a21e-87fac409dc24",
+      "summary": "Cycle complete: reviewed+merged #4362 (admin double-count), #4360+#4364 (Largo GEX stale parity+wall steelman). No open PRs. ops:collect 0, validate:deploy GREEN, RTH lifecycle GREEN (off-hours skip). ECR deploy in flight for #4364."
     }
   ],
   "open_prs": [
     {
-      "number": 4360,
-      "title": "fix(swing): extend stale GEX gating to gexPostureSection and counter-thesis",
-      "branch": "fix/largo-gex-stale-parity",
+      "number": 4365,
+      "title": "chore(autopilot): hourly wake 18:41Z — platform GREEN, #4364 reviewed",
+      "branch": "cursor/blackout-hourly-wake-8d8d",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-06T18:18:37Z"
-    },
-    {
-      "number": 4359,
-      "title": "fix(swing): decode HTML entities in Benzinga headlines for swing brief",
-      "branch": "fix/swing-arsenal-news-headline-html-entities",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T18:22:06Z"
+      "updated_at": "2026-09-06T18:47:04Z"
     }
   ],
   "pr_activity": {
