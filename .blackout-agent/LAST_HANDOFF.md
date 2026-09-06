@@ -1,18 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T21:09:04.195Z
-**Run:** 881f35ac-f60c-4c31-a37c-1fc61b435912
+**At:** 2026-09-06T06:43:54.467Z
+**Run:** 921f5365-3c9c-4326-82b3-baad3da3841a
 
 ## Summary
 
-PR-event cycle complete. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open). ops:collect 0. main@8f1b953ba. Closed duplicate #4046. Updated #4045 handoff@81cc0761 (verify pending). Discovered #4047 swing play-brief draft (WAIT). No Claude/fix PRs for peer review. GitHub GraphQL rate-limited for comments; REST push works.
+PR-event cycle: bootstrapped session, peer-review sweep (0 open PRs), ops:collect clean (0 items), validate:deploy/api-auth/platform-integrity all GREEN (14/14). main@0c0ac76eb. Largo nightly stress root cause already fixed on main (#4073 — off-topic scoring + concurrency 2→429). Deploy run 34017018266 pending at cycle start; prod health probes GREEN. Sunday off-hours — RTH lifecycle skipped. No Claude/fix PRs awaiting review.
 
 ## Deploy
 
-- main: `8f1b953ba05ef5cdb818c04fa32f18e7151f9605`
+- main: `0c0ac76eb0d4176d88f1c21d4b6d9b77f11d6101`
 - status: 
 
 ## Open PRs
 
-- #4047 [cursor] feat(swing): Ask Largo — deterministic play intelligence engine
-- #4045 [cursor] chore(blackout-agent): cursor cycle handoff — post-#4035 merge wave
+_none_

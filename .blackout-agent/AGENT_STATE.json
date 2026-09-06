@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T05:02:17.958Z",
+  "updated_at": "2026-09-06T06:43:59.960Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T06:38:46.575Z",
+      "lease_until": "2026-09-06T08:08:46.575Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +32,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T06:38:46.576Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "1a98c378bc6799c17ecdece9faea4a81fbdf0a5b",
+    "last_main_sha": "0c0ac76eb0d4176d88f1c21d4b6d9b77f11d6101",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T06:38:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34017018266",
+    "last_deploy_sha": "0c0ac76eb0d4176d88f1c21d4b6d9b77f11d6101"
   },
   "events": [
     {
@@ -423,6 +425,61 @@
     },
     {
       "at": "2026-09-06T05:02:17.958Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:38:34.509Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:38:39.627Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:38:40.544Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:38:43.599Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:38:46.576Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T06:40:23.767Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:43:54.466Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:43:54.467Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "921f5365-3c9c-4326-82b3-baad3da3841a",
+      "summary": "PR-event cycle: bootstrapped session, peer-review sweep (0 open PRs), ops:collect clean (0 items), validate:deploy/api-auth/platform-integrity all GREEN (14/14). main@0c0ac76eb. Largo nightly stress root cause already fixed on main (#4073 — off-topic scoring + concurrency 2→429). Deploy run 34017018266 pending at cycle start; prod health probes GREEN. Sunday off-hours — RTH lifecycle skipped. No Claude/fix PRs awaiting review."
+    },
+    {
+      "at": "2026-09-06T06:43:59.960Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
