@@ -35,7 +35,7 @@ export async function fetchMeridianForTicker(ticker: string): Promise<SwingMerid
     );
   } catch {
     return {
-      as_of: etStamp(Date.now()),
+      as_of: etStamp(Date.now()) ?? new Date().toISOString(),
       items: [],
       total_matched: 0,
       unavailable: true,
