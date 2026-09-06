@@ -85,6 +85,8 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
     [play, router],
   );
 
+  const hasNarrative = envelope?.sections?.some((s) => s.title === "Trade manager read") ?? false;
+
   if (!play) {
     return (
       <aside className="nh-deck-largo nh-deck-largo-empty" aria-label="Largo play insights">
@@ -98,10 +100,6 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
 
   const headline = playContractHeadline(play);
   const largoHref = largoTerminalHref(play);
-  const hasNarrative = useMemo(
-    () => envelope?.sections?.some((s) => s.title === "Trade manager read") ?? false,
-    [envelope],
-  );
 
   return (
     <aside className="nh-deck-largo nh-deck-largo--brief" aria-label={`Ask Largo — ${headline}`}>
