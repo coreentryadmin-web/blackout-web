@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:55:30.547Z",
+  "updated_at": "2026-09-06T15:51:51.386Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T15:36:05.815Z",
+      "lease_until": "2026-09-06T17:06:05.815Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -31,6 +31,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4314": {
+      "pr": 4314,
+      "head_sha": "b98b37eb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:51:47.590Z",
+      "safe_to_merge": true
+    },
+    "pr-4310": {
+      "pr": 4310,
+      "head_sha": "d9f7265f",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T15:51:47.944Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -44,11 +60,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b5d550475f349fb53dc2db9f44021e6efb736a7f",
+    "last_main_sha": "def4d529b7c1c44b5f4f2e30768e899d17eb06f3",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T15:47:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34043383671",
+    "last_deploy_sha": "02add5a37fddb52e000ed4962ea384014833315d"
   },
   "events": [
     {
@@ -655,9 +671,83 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T15:46:48.415Z",
+      "type": "pr_webhook",
+      "pr": 4316,
+      "event": "sweep",
+      "head": "f473fd485358d35f2cc2a33124d8e473c4ab4a59",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:46:50.739Z",
+      "type": "pr_webhook",
+      "pr": 4314,
+      "event": "sweep",
+      "head": "8a292cf0b55a59ced6e744e3b1de0e4a90a6a734",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:46:52.926Z",
+      "type": "pr_webhook",
+      "pr": 4311,
+      "event": "sweep",
+      "head": "636e4687fea8fce32c3e177656183873a2ff92e4",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:51:47.591Z",
+      "type": "pr_review",
+      "pr": 4314,
+      "head_sha": "b98b37eb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:51:47.590Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T15:51:47.944Z",
+      "type": "pr_review",
+      "pr": 4310,
+      "head_sha": "d9f7265f",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T15:51:47.944Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T15:51:51.386Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:51:51.386Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "46739558-6d30-402f-97d7-1f546b1d2fb6",
+      "summary": "Merge landed def4d529 (#4309 Largo C2 Vector). validate:deploy GREEN; ops:collect 0. Peer-reviewed #4314 APPROVED (SPX King node drift fix, 4/4 tests). Pre-reviewed #4310 verify GREEN + #4311 verify pending — both Cursor swing Largo fixes awaiting Claude sign-off. Open: #4310 #4311 #4314(draft)."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4311,
+      "title": "fix(swing): ground HELIX flow evidence with premium dollars (Largo C7)",
+      "branch": "fix/swing-brief-helix-flow-evidence-premiums",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:51:50Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -688,6 +778,30 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4316": {
+      "last_event": "sweep",
+      "last_head": "f473fd485358d35f2cc2a33124d8e473c4ab4a59",
+      "last_feedback_at": "2026-09-06T15:46:48.415Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4314": {
+      "last_event": "sweep",
+      "last_head": "8a292cf0b55a59ced6e744e3b1de0e4a90a6a734",
+      "last_feedback_at": "2026-09-06T15:46:50.739Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "created"
+    },
+    "pr-4311": {
+      "last_event": "sweep",
+      "last_head": "636e4687fea8fce32c3e177656183873a2ff92e4",
+      "last_feedback_at": "2026-09-06T15:46:52.926Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
