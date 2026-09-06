@@ -266,9 +266,19 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     });
   }
   if (eco?.arsenal?.earnings?.earnings_date) {
+    const e = eco.arsenal.earnings;
+    const when =
+      e.days_until != null && e.days_until <= 0
+        ? "today"
+        : e.days_until === 1
+          ? "tomorrow"
+          : e.days_until != null
+            ? `in ${e.days_until}d`
+            : "";
+    const timing = e.report_time ? ` (${e.report_time})` : "";
     out.push({
       kind: "fact",
-      text: `Next earnings ${eco.arsenal.earnings.earnings_date}.`,
+      text: `Next earnings ${e.earnings_date}${when ? ` ${when}` : ""}${timing}.`,
       provenance: { source: "Earnings calendar", asOf: ctx.asOf, freshness: "recent" },
     });
   }

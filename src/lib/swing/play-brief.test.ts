@@ -242,6 +242,8 @@ test("composeSwingPlayBrief: earnings evidence carries brief asOf for Largo C1 j
   const brief = composeSwingPlayBrief(ctx);
   const earningsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Next earnings"));
   assert.ok(earningsEvidence, "expected earnings evidence");
+  assert.match(earningsEvidence!.text, /in 7d/);
+  assert.match(earningsEvidence!.text, /\(AMC\)/);
   assert.equal(earningsEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
 });
 
