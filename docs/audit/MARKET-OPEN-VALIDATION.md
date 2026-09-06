@@ -136,6 +136,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** For a ticker whose HELIX feed is quiet (`flow_feed_fresh: false` in ecosystem context), Ask Largo brief must show the `HELIX flow · pipeline stale` unavailable chip and must NOT include `HELIX call-led` / `HELIX put-led` in Trade manager read or counter-thesis bullets.
 
+### 0a-1r. Meridian absence + Vector cross-desk friction missing from Ask Largo envelope/narration — fix/swing-largo-meridian-absence-vector-crossdesk (pending)
+
+**What was broken:** (1) Meridian timeline fetch failures set `meridian.unavailable: true` and honest prose in the catalyst section, but `collectBriefUnavailableSources` never forwarded it to `envelope.unavailableSources` — Largo C3 violation; `UnavailableChip` stayed silent. (2) `crossDeskCoaching` named NH/0DTE/HELIX friction but never Vector `play.bias`, and `vectorPlayCoaching` falsely aligned on thesis substring (`"long"` inside `"Long gamma"`).
+
+**Fix:** Forward Meridian unavailable into envelope sources; add Vector bias to cross-desk friction; align `vectorPlayCoaching` on `vp.bias`.
+
+**Check at the open:** On a ticker where Vector `play.bias` opposes the swing direction, Trade manager read should include `Vector bearish`/`Vector bullish` in the cross-desk friction line. If Meridian timeline is unavailable (simulate or catch a real failure), `unavailableSources` should list `Meridian catalysts · timeline read failed`.
+
 ---
 
 ### 0a-1o. Ask Largo swing thesis-health dead-wired to identical reading for every live position — docs/swing-brief-thesis-health-dead-wired (pending, follows the deep audit PR #4178)
