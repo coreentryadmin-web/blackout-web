@@ -1,14 +1,25 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:58:52.741Z",
+  "updated_at": "2026-09-06T01:59:31.621Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T01:41:04.677Z",
-      "lease_until": "2026-09-06T03:11:04.677Z",
+      "claimed_at": "2026-09-06T01:46:05.868Z",
+      "lease_until": "2026-09-06T03:16:05.868Z",
       "phase": "REVIEWING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T01:47:05.642Z",
+      "lease_until": "2026-09-06T03:17:05.642Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -36,7 +47,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8df5d84fecea2e2a3026308b97411cdd2d43f493",
+    "last_main_sha": "4c4bf5a8ee732bc823165146f1e78641e4997284",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T01:58:41Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34005268553",
@@ -275,18 +286,31 @@
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
+    },
+    {
+      "at": "2026-09-06T01:59:31.621Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T01:59:31.621Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6e743719-c387-4aca-a054-7a607bd17bae",
+      "summary": "Workflow_run cycle complete @4c4bf5a8e. Peer-reviewed+merged #4075 (vector undated fresh-row expiry). #4076 swing v4 + #4077 HELIX diff merged by fleet. validate:deploy GREEN. ops:collect 0. No Claude/fix PRs pending review."
     }
   ],
   "open_prs": [
     {
-      "number": 4079,
-      "title": "chore(blackout-agent): cursor cycle handoff — #4075 merged @8df5d84fe",
-      "branch": "cursor/autopilot-handoff-8df5d84fe",
+      "number": 4080,
+      "title": "chore(blackout-agent): cursor PR-event handoff — cycle complete @ca5f776b5",
+      "branch": "cursor/autopilot-handoff-ca5f776b5",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-06T01:58:44Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T01:59:14Z"
     }
   ],
   "pr_activity": {
