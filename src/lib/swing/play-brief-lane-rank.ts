@@ -32,9 +32,13 @@ function rowInBucket(row: HorizonPlay, bucket: "open" | "watch" | "closed"): boo
 }
 
 /** Pure rank math — testable without DB. */
-export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[]): LaneRankSnapshot | null {
+export function computeLaneRank(
+  play: TerminalPlay,
+  laneRows: HorizonPlay[] | null | undefined,
+): LaneRankSnapshot | null {
   const bucket = bucketFor(play);
   if (bucket === "closed") return null;
+  if (!laneRows?.length) return null;
 
   const peers = laneRows.filter((r) => rowInBucket(r, bucket));
   if (peers.length < 2) return null;
@@ -60,7 +64,10 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[]): La
   };
 }
 
-export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): RichSection | null {
+export function laneRankSection(
+  play: TerminalPlay,
+  laneRows: HorizonPlay[] | null | undefined,
+): RichSection | null {
   const snap = computeLaneRank(play, laneRows);
   if (!snap) return null;
 
