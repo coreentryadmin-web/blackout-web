@@ -6,7 +6,6 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { checkPortfolioOverlap } from "./portfolio";
 import { fmtPremium } from "@/lib/fmt-money";
 import { mfeCaptureOutcome } from "./mfe-capture";
 
@@ -447,28 +446,6 @@ export function ivRankCoaching(play: TerminalPlay): string | null {
   return null;
 }
 
-/** Book concentration / internal conflict — theme overlap with open positions. */
-export function bookContextCoaching(play: TerminalPlay, openBook: SwingPlayBriefContext["openBook"]): string | null {
-  if (!openBook?.length) return null;
-  const overlap = checkPortfolioOverlap({ ticker: play.ticker, direction: play.direction }, openBook);
-  if (!overlap.hasOverlap) return null;
-  if (overlap.sameThemeSameDirection.length) {
-    const names = overlap.sameThemeSameDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
-    return (
-      `**Book concentration** — theme **${overlap.theme}** already has **${names}**. ` +
-      `Adding ${play.ticker} stacks the same wager — size down unless intentional.`
-    );
-  }
-  if (overlap.sameThemeOpposedDirection.length) {
-    const names = overlap.sameThemeOpposedDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
-    return (
-      `**Internal conflict** — theme **${overlap.theme}** has opposed **${names}**. ` +
-      `One leg fights the other — not a hedge unless deliberate.`
-    );
-  }
-  return null;
-}
-
 /** Recent wall dynamics — last 2 bead events for live structure shifts. */
 export function wallDynamicsCoaching(vec: VectorFullState | null): string | null {
   const events = vec?.wallEvents ?? [];
@@ -609,7 +586,6 @@ export function collectCoachingBullets(
   }
 
   push(manageLifecycleCoaching(play, bucket));
-  push(bookContextCoaching(play, ctx.openBook));
   push(catalystCoaching(ctx));
   push(crossDeskCoaching(ctx, play));
   push(laneRankCoaching(play, ctx.laneRows));

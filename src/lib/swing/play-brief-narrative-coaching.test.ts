@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
-  bookContextCoaching,
   catalystCoaching,
   closedCoaching,
   crossDeskCoaching,
@@ -236,11 +235,4 @@ test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   assert.match(line!, /slippage/i);
 });
 
-test("bookContextCoaching: concentration or conflict when themes overlap", () => {
-  const line = bookContextCoaching(
-    play({ ticker: "NVDA", direction: "LONG" }),
-    [{ ticker: "AMD", direction: "LONG" }],
-  );
-  if (line) assert.match(line, /concentration|conflict/i);
-});
 

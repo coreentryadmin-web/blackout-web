@@ -280,3 +280,32 @@ test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
   const brief = composeSwingPlayBrief(ctx);
   assert.ok(brief.envelope.sections.some((s) => s.title === "Outcome" && s.body.includes("42")));
 });
+
+test("composeSwingPlayBrief: book concentration is reported ONCE, not duplicated across 'Trade manager read' and 'Book context'", () => {
+  // Reproduces a live bug from PR #4110: bookContextCoaching (in the "Trade manager read" bullets)
+  // and bookContextSection (the dedicated "Book context" section, #4101) both call
+  // checkPortfolioOverlap on the same ctx.openBook and render near-identical concentration
+  // language, so a member with an overlapping book saw the same warning twice on one brief.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    openBook: [
+      { ticker: "AMD", direction: "LONG" },
+      { ticker: "SMH", direction: "LONG" },
+    ],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const concentrationSections = brief.envelope.sections.filter((s) => /concentration/i.test(s.body));
+  assert.equal(
+    concentrationSections.length,
+    1,
+    `expected book concentration to be reported in exactly one section, found it in: ${concentrationSections.map((s) => s.title).join(", ")}`,
+  );
+});
