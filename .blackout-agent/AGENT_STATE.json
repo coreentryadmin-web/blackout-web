@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T05:02:17.958Z",
+  "updated_at": "2026-09-06T05:22:18.957Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T05:09:16.854Z",
+      "lease_until": "2026-09-06T06:46:03.707Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "cc05cfc6-1421-4cf4-8fa3-f9f384c7ad61"
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1a98c378bc6799c17ecdece9faea4a81fbdf0a5b",
+    "last_main_sha": "b7f61468d8c46cd3ce25e4cbd143a649f7223b11",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T05:16:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34013456688",
+    "last_deploy_sha": "b7f61468d8c46cd3ce25e4cbd143a649f7223b11"
   },
   "events": [
     {
@@ -426,7 +426,143 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T05:21:00.758Z",
+      "type": "pr_webhook",
+      "pr": 4142,
+      "event": "sweep",
+      "head": "9d9e09e29a9b1a285b097227122d8498b6a2bd79",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T05:21:02.783Z",
+      "type": "pr_webhook",
+      "pr": 4141,
+      "event": "sweep",
+      "head": "3762bc964d2e32ec1838ad9e85efd8182fb53e58",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T05:21:04.929Z",
+      "type": "pr_webhook",
+      "pr": 4140,
+      "event": "sweep",
+      "head": "6e9caa2d7007842ce7ba06788f5a7c60262a3ec8",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T05:21:07.142Z",
+      "type": "pr_webhook",
+      "pr": 4138,
+      "event": "sweep",
+      "head": "94a9469202ebb88eb51a828448a022db8da11234",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T05:21:09.302Z",
+      "type": "pr_webhook",
+      "pr": 4135,
+      "event": "sweep",
+      "head": "6d85f1fc053073ffb7d82c0caec5e12836c9eb28",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T05:22:18.957Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T05:22:18.957Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2a3e6095-9271-4637-a670-e60f74950191",
+      "summary": "PR-event cycle: #4128 merged (desk context anomaly dedup). #4130 closed (superseded). #4136 closed (Book-context fold superseded by main exclusion post-#4123). #4135 draft — collapse hardening docs/tests validated locally (5/5), verify pending, awaiting Claude peer review. validate:deploy GREEN. ops:collect 0. main@b7f61468d."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4142,
+      "title": "fix(swing): stamp play-brief asOf with ET per Largo C1",
+      "branch": "cursor/blackout-autopilot-work-loop-d40d",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T05:20:56Z"
+    },
+    {
+      "number": 4138,
+      "title": "fix(zerodte): G-6 calibration verdict ignores the CONDOR exemption the live gate enforces",
+      "branch": "fix/g6-condor-calibration-exemption",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T05:20:56Z"
+    },
+    {
+      "number": 4135,
+      "title": "fix(swing): document collapse exclusions for Book/Desk context post-#4128",
+      "branch": "fix/swing-collapse-desk-context-hardening",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T05:19:48Z"
+    }
+  ],
+  "pr_activity": {
+    "pr-4142": {
+      "last_event": "sweep",
+      "last_head": "9d9e09e29a9b1a285b097227122d8498b6a2bd79",
+      "last_feedback_at": "2026-09-06T05:21:00.758Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4141": {
+      "last_event": "sweep",
+      "last_head": "3762bc964d2e32ec1838ad9e85efd8182fb53e58",
+      "last_feedback_at": "2026-09-06T05:21:02.783Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4140": {
+      "last_event": "sweep",
+      "last_head": "6e9caa2d7007842ce7ba06788f5a7c60262a3ec8",
+      "last_feedback_at": "2026-09-06T05:21:04.929Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4138": {
+      "last_event": "sweep",
+      "last_head": "94a9469202ebb88eb51a828448a022db8da11234",
+      "last_feedback_at": "2026-09-06T05:21:07.142Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4135": {
+      "last_event": "sweep",
+      "last_head": "6d85f1fc053073ffb7d82c0caec5e12836c9eb28",
+      "last_feedback_at": "2026-09-06T05:21:09.302Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
