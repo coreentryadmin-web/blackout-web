@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:42:38.065Z",
+  "updated_at": "2026-09-06T12:21:54.784Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T12:00:51.176Z",
+      "lease_until": "2026-09-06T13:51:53.692Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "ac086974-02b0-4531-bf7c-ca86836f735f"
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a37960c92712ca5986df2042d0c32a44153cfd92",
+    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T12:08:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34032205869",
+    "last_deploy_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb"
   },
   "events": [
     {
@@ -583,38 +583,66 @@
       "agent": "cursor",
       "run_id": "87520518-9d11-43da-b194-302260aa2e54",
       "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T12:21:52.378Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:21:53.691Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:21:54.784Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
     {
-      "number": 4231,
-      "title": "fix(swing): freeze CLOSED-position DTE to exit date, not today's date",
-      "branch": "fix/swing-closed-dte-negative",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:42:37Z"
-    },
-    {
-      "number": 4230,
-      "title": "chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged",
-      "branch": "cursor/autopilot-handoff-2026-09-06-cycle3",
+      "number": 4242,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4232/#4235/#4236 merged, #4239 WAIT verify",
+      "branch": "cursor/autopilot-work-loop-7088",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:39:12Z"
+      "updated_at": "2026-09-06T12:18:17Z"
     },
     {
-      "number": 4227,
-      "title": "chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature",
-      "branch": "fix/dead-code-flow-strike-stacks-exports",
+      "number": 4241,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4232 merged, #4239 peer review in flight",
+      "branch": "cursor/autopilot-pr-event-handoff-4232-4239",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T12:16:39Z"
+    },
+    {
+      "number": 4240,
+      "title": "chore(blackout-agent): cursor handoff — swing/Largo merge wave complete",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle5",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T12:16:43Z"
+    },
+    {
+      "number": 4239,
+      "title": "fix(swing): ex-dividend read failure must fail SAFE, not fail-open, on Q39 structural stop",
+      "branch": "fix/ex-dividend-fail-open-structural-stop",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:40:27Z"
+      "updated_at": "2026-09-06T12:21:37Z"
     }
   ],
   "pr_activity": {
