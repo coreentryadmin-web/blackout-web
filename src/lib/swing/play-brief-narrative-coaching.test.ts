@@ -402,6 +402,19 @@ test("vexCoaching: narrates vanna flip", () => {
   assert.match(line!, /diverge/i);
 });
 
+test("vexCoaching: returns null when Vector snapshot is stale", () => {
+  const line = vexCoaching(
+    {
+      vexFlip: 100,
+      gammaFlip: 98,
+      dataAgeMs: 121_000,
+      vexWalls: { callWalls: [{ strike: 105 }], putWalls: [] },
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    101,
+  );
+  assert.equal(line, null);
+});
+
 test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf does not", () => {
   const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "OPEN" }));
   assert.match(stale!, /mark not synced to live tape/i);

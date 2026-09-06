@@ -313,6 +313,8 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
 
 /** VEX / vanna lens — second-order dealer hedging when it diverges from gamma. */
 export function vexCoaching(vec: VectorFullState | null, spot: number | null): string | null {
+  // Largo C2 — stale Vector VEX read must not coach from a lagging snapshot (#4402 class).
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   if (!vec) return null;
   const vFlip = fin(vec.vexFlip);
   const gFlip = fin(vec.gammaFlip);
