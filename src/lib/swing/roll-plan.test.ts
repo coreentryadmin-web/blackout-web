@@ -112,6 +112,11 @@ test("DEFER: the only child contract is NOT further out than the parent (never r
   assert.equal(near, null);
 });
 
+test("DEFER: missing parent DTE fails closed — never accept a child without verifying it buys time", async () => {
+  const plan = await buildSwingRollPlan(parentRow(), verdict(), reads({ dte: null }), deps());
+  assert.equal(plan, null);
+});
+
 // ─── the child clears the SAME risk rails as a commit ──────────────────────────────
 
 test("DEFER: the child budget gate blocks a lot richer than the 2% per-trade cap", async () => {
