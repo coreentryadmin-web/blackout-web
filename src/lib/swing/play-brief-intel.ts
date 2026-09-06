@@ -162,9 +162,9 @@ export function chartTechnicalsSection(vec: VectorFullState | null): RichSection
   // labeling it bare "long"/"short" next to directional signals (EMA stack, MACD, structure
   // direction) in this same section risks reading as a trade direction that can contradict the
   // very next "Vector desk" section's own directional POSITION call for the same ticker.
-  if (vec.regime?.posture && vec.regime.posture !== "unknown" && vec.regime.posture !== "transition") {
+  if (vec.regime?.posture && vec.regime.posture !== "unknown" && vec.regime.posture !== "transition" && !vectorStale) {
     lines.push(`Dealer gamma regime: **${vec.regime.posture} gamma**`);
-  } else if (vec.regime?.posture === "transition") {
+  } else if (vec.regime?.posture === "transition" && !vectorStale) {
     lines.push(`Dealer gamma regime: **transition** (near flip)`);
   }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
@@ -193,10 +193,11 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const spot = vec?.spot ?? gex?.spot ?? null;
   const lines: string[] = [];
   const readMs = Date.now();
+  const vectorStaleForLevels = vectorSnapshotStale(vec, readMs);
 
-  const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
-  const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecFlip = vec?.gammaFlip;
+  const vecCallWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecFlip = vectorStaleForLevels ? undefined : vec?.gammaFlip;
   const callWall = vecCallWall ?? gex?.call_wall ?? null;
   const putWall = vecPutWall ?? gex?.put_wall ?? null;
   const flip = vecFlip ?? gex?.flip ?? null;
@@ -219,7 +220,6 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   if (gex?.gex_king_strike != null && !kingFromStaleGex) {
     lines.push(`GEX king strike: **${gex.gex_king_strike.toFixed(2)}**`);
   }
-  const vectorStaleForLevels = vectorSnapshotStale(vec, readMs);
   if (vec?.maxPain != null && !vectorStaleForLevels) {
     lines.push(`Max pain: **${vec.maxPain.toFixed(2)}**`);
   }
@@ -386,7 +386,8 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
 
   const gexForLevels = ctx.ecosystem?.gex_positioning;
   const readMs = Date.now();
-  const vecFlip = vec?.gammaFlip;
+  const vectorStaleForWalls = vectorSnapshotStale(vec, readMs);
+  const vecFlip = vectorStaleForWalls ? undefined : vec?.gammaFlip;
   const flip = vecFlip ?? gexForLevels?.flip;
   const flipFromStaleGex = vecFlip == null && gexForLevels?.flip != null && gexMatrixStale(gexForLevels, readMs);
   if (flip != null && spot != null && !flipFromStaleGex) {
@@ -397,8 +398,8 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(watch);
   }
 
-  const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecCallWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
   const putWall = vecPutWall ?? gexForLevels?.put_wall;
   const callWall = vecCallWall ?? gexForLevels?.call_wall;
   const gexStaleForLevels = gexMatrixStale(gexForLevels, readMs);
@@ -669,7 +670,18 @@ export function wallDynamicsSection(vec: VectorFullState | null): RichSection | 
 export function vectorDeskSection(vec: VectorFullState | null): RichSection | null {
   const p = vec?.play;
   if (!p) return null;
+  const readMs = Date.now();
+  const vectorStale = vectorSnapshotStale(vec, readMs);
   const lines: string[] = [];
+  if (vectorStale) {
+    const ageMs = vec?.dataAgeMs;
+    lines.push(
+      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — Vector desk read may lag spot.`,
+    );
+    if (p.grade) lines.push(`Vector desk grade: **${p.grade}** (from prior snapshot)`);
+    if (!lines.length) return null;
+    return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
+  }
   lines.push(`**${p.headline}** · grade **${p.grade}** · conviction **${p.conviction}**`);
   if (p.thesis) lines.push(p.thesis);
   if (p.entryZone) lines.push(`Entry zone: **${p.entryZone}**`);
@@ -678,14 +690,9 @@ export function vectorDeskSection(vec: VectorFullState | null): RichSection | nu
   if (p.starred.length) {
     lines.push("**Watch now:**\n" + p.starred.slice(0, 4).map((s) => `• ${s}`).join("\n"));
   }
-  // Largo C2 — stale Vector play.bias must not badge bullish/bearish (same gate as coaching #4387).
-  const vectorLive = !vectorSnapshotStale(vec, Date.now());
+  // Largo C2 — stale Vector play.bias must not badge bullish/bearish (early return above handles stale body).
   const bias =
-    vectorLive && p.bias === "short"
-      ? "bearish"
-      : vectorLive && p.bias === "long"
-        ? "bullish"
-        : "neutral";
+    p.bias === "short" ? "bearish" : p.bias === "long" ? "bullish" : "neutral";
   return { title: "Vector desk", body: lines.join("\n\n"), bias };
 }
 

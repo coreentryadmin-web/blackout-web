@@ -336,7 +336,7 @@ test("closedCoaching: a round-trip past breakeven never renders a nonsensical ne
 
 // ─── vectorPlayCoaching ─────────────────────────────────────────────────────
 
-test("vectorPlayCoaching: stale Vector must not claim aligned with swing lane", () => {
+test("vectorPlayCoaching: stale Vector returns null (Largo C2)", () => {
   const vec = {
     freshness: "stale",
     play: {
@@ -345,9 +345,7 @@ test("vectorPlayCoaching: stale Vector must not claim aligned with swing lane", 
       invalidation: "below 50",
     },
   } as unknown as Parameters<typeof vectorPlayCoaching>[0];
-  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
-  assert.ok(line);
-  assert.doesNotMatch(line!, /aligned with swing lane/i);
+  assert.equal(vectorPlayCoaching(vec, play({ direction: "LONG" })), null);
 });
 
 test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {

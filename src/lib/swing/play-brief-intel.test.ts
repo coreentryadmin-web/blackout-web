@@ -559,6 +559,9 @@ test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (
   const section = vectorDeskSection(vec);
   assert.ok(section);
   assert.equal(section!.bias, "neutral", "stale Vector must not badge directional bias");
+  assert.match(section!.body, /Last snapshot/i);
+  assert.doesNotMatch(section!.body, /Breakout continuation/i, "stale Vector must not render thesis");
+  assert.doesNotMatch(section!.body, /Entry zone/i);
 });
 
 test("vectorDeskSection: live Vector play.bias badges bullish/bearish", () => {
@@ -815,6 +818,30 @@ test("watchForSection: stale GEX-only flip and put wall omitted from watch level
   );
   assert.doesNotMatch(section.body, /Lose gamma flip/i);
   assert.doesNotMatch(section.body, /put wall \*\*/i);
+});
+
+test("watchForSection: stale Vector put wall omitted even when GEX matrix is live (Largo C2)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG" }),
+      asOf: "2026-09-06 10:00 ET",
+      sessionDate: "2026-09-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 100, freshness: "live" },
+      } as EcosystemContext,
+      vector: {
+        spot: 100,
+        dataAgeMs: 200_000,
+        gexWalls: { putWalls: [{ strike: 98 }], callWalls: [] },
+      } as unknown as VectorFullState,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /put wall \*\*98\.00\*\*/);
 });
 
 test("watchForSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {

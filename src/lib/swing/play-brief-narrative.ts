@@ -69,16 +69,16 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
   }
 
   const gexStale = gexMatrixStale(gex, readMs);
-  const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
-  const vecFlip = vec?.gammaFlip;
+  const vecPutWall = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecCallWall = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
   const putWall = vecPutWall ?? gex?.put_wall ?? null;
   const callWall = vecCallWall ?? gex?.call_wall ?? null;
   const flip = vecFlip ?? gex?.flip ?? null;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
-  const vecKing = vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
+  const vecKing = vectorStale ? undefined : vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
   const kingFromGex = gex?.gex_king_strike;
   const king = vecKing ?? kingFromGex ?? null;
   const kingFromStaleGex = vecKing == null && kingFromGex != null && gexStale;
@@ -403,8 +403,9 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
 
   if (spot != null) {
     const gexForWalls = eco?.gex_positioning;
-    const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
-    const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
+    const vectorStaleForWalls = vectorSnapshotStale(vec, Date.now());
+    const vecCallWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+    const vecPutWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
     const callWall = vecCallWall ?? gexForWalls?.call_wall ?? null;
     const putWall = vecPutWall ?? gexForWalls?.put_wall ?? null;
     // Same Largo C2 gap #4355/#4360 fixed for dealer posture: a wall level cited from the GEX-only
