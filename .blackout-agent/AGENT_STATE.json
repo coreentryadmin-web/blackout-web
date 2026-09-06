@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T09:49:48.117Z",
+  "updated_at": "2026-09-06T10:08:52.629Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:37:21.095Z",
-      "lease_until": "2026-09-06T11:07:21.095Z",
+      "claimed_at": "2026-09-06T09:42:54.132Z",
+      "lease_until": "2026-09-06T11:12:54.132Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T10:08:29.513Z",
+      "lease_until": "2026-09-06T11:38:29.513Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -39,16 +51,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T10:08:29.513Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e",
+    "last_main_sha": "f5e3c83bee5021391649b48d8c329a23626154d0",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T09:39:38Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
-    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
+    "last_deploy_at": "2026-09-06T10:07:37Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34026339244",
+    "last_deploy_sha": "3a4fdddb73f74af9c4d7a7f98f4c09b3f9f00519"
   },
   "events": [
     {
@@ -521,70 +534,34 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T10:08:26.325Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T10:08:29.513Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T10:08:52.629Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T10:08:52.629Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a7659e33-ff33-4b24-87cb-2afb87ad8ea2",
+      "summary": "Cycle complete: #4189+#4191 merged to main@f5e3c83be. Peer reviews recorded. Stale handoff PRs closed. validate:deploy GREEN. ops:collect 0. pr-sweep empty."
     }
   ],
-  "open_prs": [
-    {
-      "number": 4192,
-      "title": "chore(blackout-agent): cursor PR-event handoff — swing audit merges + peer reviews",
-      "branch": "cursor/autopilot-pr-event-20260906-cycle10",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T09:49:14Z"
-    },
-    {
-      "number": 4191,
-      "title": "test(swing): add regression coverage for Ask Largo thesis-health wiring (post-#4182)",
-      "branch": "fix/swing-brief-thesis-health-live-wiring",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:49:46Z"
-    },
-    {
-      "number": 4190,
-      "title": "chore(blackout-agent): cursor PR-event handoff — swing merge wave + #4185 review",
-      "branch": "cursor/blackout-handoff-pr-event-0906b",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:42:15Z"
-    },
-    {
-      "number": 4189,
-      "title": "fix(swing): keep GEX/flow intel on closed Ask Largo briefs (CTO audit #2)",
-      "branch": "fix/swing-closed-brief-intel-collapse-2026-09-06",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:49:43Z"
-    },
-    {
-      "number": 4188,
-      "title": "chore(blackout-agent): cursor peer-review cycle handoff — swing PRs approved",
-      "branch": "cursor/autopilot-handoff-peer-review-2026-09-06",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:40:26Z"
-    },
-    {
-      "number": 4187,
-      "title": "chore(blackout-agent): cursor PR-event handoff — #4174/#4175 merged, swing reviews",
-      "branch": "cursor/autopilot-pr-event-20260906-cycle9",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:39:29Z"
-    }
-  ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
