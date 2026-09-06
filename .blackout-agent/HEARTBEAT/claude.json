@@ -1,5 +1,9 @@
 {
   "agent": "claude",
+<<<<<<< Updated upstream
   "last_seen": "2026-09-06T12:27:54.886Z",
+=======
+  "last_seen": "2026-09-06T14:44:38.054Z",
+>>>>>>> Stashed changes
   "healthy": true
 }

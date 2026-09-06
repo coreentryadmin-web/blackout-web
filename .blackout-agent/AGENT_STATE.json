@@ -1,18 +1,22 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
+<<<<<<< Updated upstream
   "updated_at": "2026-09-06T12:27:56.381Z",
+=======
+  "updated_at": "2026-09-06T14:51:45.803Z",
+>>>>>>> Stashed changes
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T14:19:10.879Z",
+      "lease_until": "2026-09-06T16:14:39.861Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "93c0e345-11fa-47c6-8f17-2974cbb8e84e"
     }
   },
   "reviews": {
@@ -31,6 +35,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4290": {
+      "pr": 4290,
+      "head_sha": "7dfa3decf2691b1839ecc58db2e4780ec36e311f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:51:45.425Z",
+      "safe_to_merge": true
+    },
+    "pr-4292": {
+      "pr": 4292,
+      "head_sha": "7b91aa47ee15505acb131dfc992e06f390390562",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:51:45.802Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -46,9 +66,9 @@
   "deploy": {
     "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T14:44:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34040112851",
+    "last_deploy_sha": "4616cc7bdefce6d28c6a6f63e6d6ca1c7b07d6e1"
   },
   "events": [
     {
@@ -601,9 +621,99 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+<<<<<<< Updated upstream
+=======
+    },
+    {
+      "at": "2026-09-06T14:27:41.054Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T14:27:41.785Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T14:27:42.105Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T14:44:38.938Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T14:44:39.860Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T14:44:40.670Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T14:51:45.426Z",
+      "type": "pr_review",
+      "pr": 4290,
+      "head_sha": "7dfa3decf2691b1839ecc58db2e4780ec36e311f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:51:45.425Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:51:45.803Z",
+      "type": "pr_review",
+      "pr": 4292,
+      "head_sha": "7b91aa47ee15505acb131dfc992e06f390390562",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:51:45.802Z",
+      "safe_to_merge": true
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4294,
+      "title": "chore(blackout-agent): cursor handoff — #4290 HELIX put diff open",
+      "branch": "cursor/autopilot-handoff-20260906-1438",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T14:39:07Z"
+    },
+    {
+      "number": 4293,
+      "title": "chore(blackout-agent): cursor handoff — #4287 merged, swing Largo PRs verified",
+      "branch": "cursor/handoff-20260906-1438",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:38:28Z"
+    },
+    {
+      "number": 4290,
+      "title": "fix(swing): detect put-only HELIX flow build in brief diff",
+      "branch": "fix/swing-brief-helix-put-flow-diff",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:43:30Z"
+>>>>>>> Stashed changes
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
