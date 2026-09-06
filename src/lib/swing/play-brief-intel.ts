@@ -105,33 +105,16 @@ function formatConfluenceZone(z: ConfluenceZone, spot: number | null): string {
   return `• **${z.center.toFixed(2)}** (${kinds}, score ${z.score.toFixed(0)})${dist}`;
 }
 
-/** GEX walls, flip, max pain, expected move, confluence nodes. */
+/**
+ * Expected move + confluence nodes — chart markers NOT covered by the narrated
+ * "Dealer & dark-pool read" below (walls/flip/king-strike/max-pain/dark-pool prints all moved
+ * there so the same number isn't stated twice in two different voices on one brief).
+ */
 export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | null {
   const vec = vectorOf(ctx);
-  const eco = ctx.ecosystem;
-  const gex = eco?.gex_positioning;
-  const spot = vec?.spot ?? gex?.spot ?? null;
+  const spot = vec?.spot ?? ctx.ecosystem?.gex_positioning?.spot ?? null;
   const lines: string[] = [];
 
-  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null;
-  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null;
-  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
-
-  if (callWall != null) {
-    lines.push(`**Call wall (GEX):** ${callWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, callWall)}` : ""}`);
-  }
-  if (putWall != null) {
-    lines.push(`**Put wall (GEX):** ${putWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, putWall)}` : ""}`);
-  }
-  if (flip != null) {
-    lines.push(`**Gamma flip:** ${flip.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, flip)}` : ""}`);
-  }
-  if (gex?.gex_king_strike != null) {
-    lines.push(`GEX king strike: **${gex.gex_king_strike.toFixed(2)}**`);
-  }
-  if (vec?.maxPain != null) {
-    lines.push(`Max pain: **${vec.maxPain.toFixed(2)}**`);
-  }
   if (vec?.expectedMove?.bands?.length) {
     const bandStr = vec.expectedMove.bands
       .slice(0, 2)
@@ -148,16 +131,6 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   if (zones.length) {
     const top = [...zones].sort((a, b) => b.score - a.score).slice(0, 4);
     lines.push("**Confluence nodes:**\n" + top.map((z) => formatConfluenceZone(z, spot)).join("\n"));
-  }
-  const dp = vec?.darkPoolLevels ?? [];
-  if (dp.length) {
-    lines.push(
-      "**Dark pool levels:** " +
-        dp
-          .slice(0, 3)
-          .map((l) => `${l.strike.toFixed(2)} (${l.premium != null ? fmtUsd(l.premium) : "—"})`)
-          .join(" · "),
-    );
   }
   if (!lines.length) return null;
   return { title: "Levels on chart", body: lines.join("\n\n") };
@@ -503,42 +476,123 @@ export function deskConsensusSection(eco: EcosystemContext | null, play: Termina
   return { title: "Desk consensus", body: lines.join("\n\n") };
 }
 
-/** GEX dealer posture — gamma/vanna context for the swing. */
-export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | null {
-  const gex = ctx.ecosystem?.gex_positioning;
-  if (!gex) return null;
-  const lines: string[] = [];
-  if (gex.gamma_posture) {
-    const posture =
-      gex.gamma_posture === "long"
-        ? "dealers **long gamma** — dips tend to get bought, range/pin behavior"
-        : "dealers **short gamma** — moves can accelerate, respect walls";
-    lines.push(`Gamma posture: ${posture}`);
-  }
-  if (gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
-  if (gex.nearest_wall != null && gex.spot != null) {
-    const { strike, kind, distance_pts } = gex.nearest_wall;
-    lines.push(
-      `Nearest wall: **${strike.toFixed(2)}** (${kind}, ${distance_pts.toFixed(1)} pts from spot **${gex.spot.toFixed(2)}**)`,
-    );
-  }
-  if (gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
-  if (!lines.length) return null;
-  return { title: "GEX posture", body: lines.join("\n") };
+function fmtM(n: number): string {
+  const sign = n >= 0 ? "" : "-";
+  const abs = Math.abs(n);
+  return abs >= 1_000_000 ? `${sign}$${(abs / 1_000_000).toFixed(1)}M` : `${sign}$${(abs / 1_000).toFixed(0)}K`;
 }
 
-/** Wall bead dynamics — building/fading nodes from Vector wall history. */
-export function wallDynamicsSection(vec: VectorFullState | null): RichSection | null {
-  const events = vec?.wallEvents ?? [];
-  if (!events.length) return null;
-  const lines = events
-    .slice(0, 5)
-    .map((e) => {
-      const at = e.strike != null ? ` @ ${e.strike.toFixed(2)}` : e.flip != null ? ` @ flip ${e.flip.toFixed(2)}` : "";
-      return `• **${e.kind.replace(/_/g, " ")}**${at} — ${e.message}`;
-    })
-    .join("\n");
-  return { title: "Wall dynamics", body: lines };
+/**
+ * Dealer & dark-pool read — NARRATED, not tabulated (trader feedback, 2026-09-06: a stack of
+ * bullets like "call wall 452.30" / "GEX king strike 450.00" / "dark pool 451.00 ($1.2M)" makes
+ * the reader do the synthesis themselves — connect the dealer-positioning "why" to the
+ * institutional-flow "who else is here" to the "what actually breaks this" question a trade
+ * manager would actually answer out loud). This section does that synthesis. It replaces the
+ * former "GEX posture" + "Wall dynamics" bullet sections — same underlying numbers
+ * (gamma_posture, gex_king_strike, max pain, GEX walls, dark-pool prints, wall-strength events),
+ * one connected read instead of three separate lists repeating overlapping strikes.
+ * Every clause is independently null-gated so a partial data read still narrates whatever IS
+ * known — it never pads with a fabricated sentence to complete the story.
+ */
+export function dealerTapeSection(ctx: SwingPlayBriefContext): RichSection | null {
+  const { play } = ctx;
+  const vec = vectorOf(ctx);
+  const gex = ctx.ecosystem?.gex_positioning;
+  const spot = vec?.spot ?? gex?.spot ?? null;
+  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null;
+  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null;
+  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
+  const kingStrike = gex?.gex_king_strike ?? null;
+  const maxPain = vec?.maxPain ?? null;
+  const darkPool = vec?.darkPoolLevels ?? [];
+  const wallEvents = vec?.wallEvents ?? [];
+
+  if (spot == null && callWall == null && putWall == null && kingStrike == null && maxPain == null && !darkPool.length) {
+    return null;
+  }
+
+  const long = play.direction === "LONG";
+  const paragraphs: string[] = [];
+
+  if (gex?.gamma_posture) {
+    paragraphs.push(
+      gex.gamma_posture === "long"
+        ? "Dealers are sitting **long gamma** here — that usually means dips get bought and this name tends to stay contained in a range rather than trend hard."
+        : "Dealers are sitting **short gamma** here — moves can accelerate once a wall gives, so this one can travel faster than the chart alone suggests.",
+    );
+  }
+
+  const magnetBits: string[] = [];
+  if (kingStrike != null) {
+    magnetBits.push(`the GEX king strike sits at **${kingStrike.toFixed(2)}** — that's where dealer positioning is heaviest`);
+  }
+  if (maxPain != null) {
+    const confluent = kingStrike != null && Math.abs(maxPain - kingStrike) / maxPain < 0.005;
+    magnetBits.push(
+      confluent
+        ? `max pain lines up right there too, at **${maxPain.toFixed(2)}** — two independent reads pointing at the same magnet`
+        : `max pain sits at **${maxPain.toFixed(2)}**`,
+    );
+  }
+  if (magnetBits.length) paragraphs.push(`${magnetBits.join(", and ")}.`);
+
+  if (spot != null) {
+    const supportWall = long ? putWall : callWall;
+    const resistWall = long ? callWall : putWall;
+    if (supportWall != null) {
+      paragraphs.push(
+        `The level actually worth watching for this ${long ? "long" : "short"} is the ${long ? "put" : "call"} wall ` +
+          `at **${supportWall.toFixed(2)}** (${fmtDist(spot, supportWall)}) — while spot holds ${long ? "above" : "below"} it, ` +
+          `dealer flow tends to defend the level.`,
+      );
+    }
+    if (resistWall != null) {
+      paragraphs.push(
+        `On the other side, the ${long ? "call" : "put"} wall at **${resistWall.toFixed(2)}** (${fmtDist(spot, resistWall)}) ` +
+          `is the level dealers are more likely to defend against a fast move ${long ? "higher" : "lower"}.`,
+      );
+    }
+  }
+
+  if (darkPool.length) {
+    const top = darkPool[0];
+    const nearWall = [callWall, putWall, kingStrike].find(
+      (w): w is number => w != null && Math.abs(w - top.strike) / top.strike < 0.01,
+    );
+    paragraphs.push(
+      `There's real institutional size parked at **${top.strike.toFixed(2)}** (a dark-pool print worth ${fmtM(top.premium)})` +
+        (nearWall != null
+          ? ` — that lines up with the **${nearWall.toFixed(2)}** level above, so it isn't just options flow saying this level matters, a real block trade agrees with it.`
+          : ` — worth keeping on the radar even though it doesn't line up with a GEX wall.`),
+    );
+  }
+
+  const latestEvent = wallEvents[0];
+  if (latestEvent) {
+    const building = /building/.test(latestEvent.kind);
+    const fading = /fading/.test(latestEvent.kind);
+    if (building) {
+      paragraphs.push(`And the tape backs it up: ${latestEvent.message.toLowerCase()} — this level is building conviction, not losing it.`);
+    } else if (fading) {
+      paragraphs.push(`One flag: ${latestEvent.message.toLowerCase()} — don't lean on that level as hard as the raw strike suggests.`);
+    }
+  }
+
+  const invalidation = long ? putWall ?? flip : callWall ?? flip;
+  if (invalidation != null) {
+    paragraphs.push(
+      `**Bottom line:** as long as spot holds ${long ? "above" : "below"} **${invalidation.toFixed(2)}**, the setup is intact. ` +
+        `A clean break and CLOSE ${long ? "below" : "above"} it on real volume — not just a wick through it — is the actual ` +
+        `invalidation here, not a headline number moving.`,
+    );
+  }
+
+  if (!paragraphs.length) return null;
+  return {
+    title: "Dealer & dark-pool read",
+    body: paragraphs.join("\n\n"),
+    bias: play.direction === "SHORT" ? "bearish" : play.direction === "LONG" ? "bullish" : "neutral",
+  };
 }
 
 /** Vector desk play read — entry zone, targets, invalidation from play engine. */
@@ -631,11 +685,8 @@ export function buildIntelSections(
   const levels = chartLevelsSection(ctx);
   if (levels) out.push(levels);
 
-  const gex = gexPostureSection(ctx);
-  if (gex) out.push(gex);
-
-  const walls = wallDynamicsSection(vec);
-  if (walls) out.push(walls);
+  const tape = dealerTapeSection(ctx);
+  if (tape) out.push(tape);
 
   const vdesk = vectorDeskSection(vec);
   if (vdesk) out.push(vdesk);
