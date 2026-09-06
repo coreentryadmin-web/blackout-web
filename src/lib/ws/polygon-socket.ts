@@ -493,11 +493,14 @@ async function connectIndices() {
               (breadthIndex ? true : val > 0)
             ) {
               const prev = indexStore[sym];
+              // Only recompute day-change on V ticks when the anchor is REST-seeded. ws-bar anchors
+              // measure from a mid-session bar open — same failure class as liveWsIndexSpot's guard.
+              const changeAuthoritative = prev.open_source === "rest";
               indexStore[sym] = {
                 ...prev,
                 price: val,
                 change_pct:
-                  prev.session_open > 0
+                  changeAuthoritative && prev.session_open > 0
                     ? computeSessionChangePct(val, prev.session_open)
                     : prev.change_pct,
                 updatedAt: Date.now(),

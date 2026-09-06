@@ -26,3 +26,9 @@ test("spx pulse stream: local index freshness uses isWsUpdatedAtFresh (source sc
     "raw Date.now()-fresh must not gate SPX pulse local freshness"
   );
 });
+
+test("/spx/pulse/stream sanitizes index change_pct on REST anchor only", () => {
+  assert.match(src, /clusterIndexSpotChangePct/, "SSE wire must gate change_pct like /spx/pulse");
+  assert.match(src, /sanitizeIndexWire\(snapshot\["I:SPX"\]\)/);
+  assert.match(src, /sanitizeIndexWire\(snapshot\["I:VIX"\]\)/);
+});

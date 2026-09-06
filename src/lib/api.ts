@@ -870,8 +870,8 @@ export async function draftLargoXPost(input: {
 // ── Live flow stream
 
 export type PulseStreamSnapshot = {
-  spx?: { price: number; change_pct?: number };
-  vix?: { price: number; change_pct?: number };
+  spx?: { price: number; change_pct?: number; open_source?: string };
+  vix?: { price: number; change_pct?: number; open_source?: string };
   vix9d?: { price: number };
   vix3m?: { price: number };
   tick?: { price: number };
