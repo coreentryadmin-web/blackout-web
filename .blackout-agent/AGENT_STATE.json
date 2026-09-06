@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T08:13:49.935Z",
+  "updated_at": "2026-09-06T08:14:29.671Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T08:04:18.860Z",
-      "lease_until": "2026-09-06T09:35:03.849Z",
+      "claimed_at": "2026-09-06T08:11:44.867Z",
+      "lease_until": "2026-09-06T09:41:44.867Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "704ee8bb-af31-4ceb-8328-299466b71d93"
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,8 +32,9 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T08:11:44.868Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
@@ -446,30 +448,63 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T08:13:40.516Z",
+      "at": "2026-09-06T08:11:36.689Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T08:13:40.516Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "207c8155-015a-42f4-9f6b-17d8d61bcc7e",
-      "summary": "PR-event cycle: lifecycle GREEN (deploy 14/14 platform-integrity, seo 22/22, ops:collect 0). Peer sweep: no Claude/fix PRs. Ask Largo swing v4 prod pass. #4171 draft verify pending — awaits Claude peer review. Weekend — RTH skipped."
-    },
-    {
-      "at": "2026-09-06T08:13:49.934Z",
+      "at": "2026-09-06T08:11:37.541Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T08:13:49.935Z",
+      "at": "2026-09-06T08:11:38.372Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T08:11:41.777Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T08:11:44.868Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T08:11:47.591Z",
+      "type": "pr_webhook",
+      "pr": 4171,
+      "event": "sweep",
+      "head": "f7af28b220e6b3e8dedf5b067d1ba60e536c8d9c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T08:14:24.743Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T08:14:29.670Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T08:14:29.671Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "13ecdfbc-b0b9-42f9-a453-3b07521b1ccd",
-      "summary": "PR-event cycle: lifecycle GREEN (deploy, platform-integrity 14/14, seo 22/22, ops:collect 0). Peer sweep: no Claude/fix PRs. Ask Largo swing v4 prod pass. Weekend RTH skipped. Awaits Claude peer review."
+      "run_id": "3f093ff3-260e-41f2-8421-99c0118dafbf",
+      "summary": "PR-event workflow_run cycle. Peer sweep: no Claude/fix PRs. validate:deploy GREEN, ops:collect 0. main@dac25ac03 deployed. #4171 draft verify pending — awaiting Claude peer review. npm ci installed (pg missing pre-install)."
     }
   ],
   "open_prs": [
@@ -481,7 +516,17 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T08:04:11Z"
+      "updated_at": "2026-09-06T08:13:54Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4171": {
+      "last_event": "sweep",
+      "last_head": "f7af28b220e6b3e8dedf5b067d1ba60e536c8d9c",
+      "last_feedback_at": "2026-09-06T08:11:47.591Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
