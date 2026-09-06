@@ -339,7 +339,7 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   const eco = ctx.ecosystem;
   const reasons: string[] = [];
 
-  const flow = eco?.recent_flow;
+  const flow = trustedHelixFlow(eco);
   if (flow) {
     if (play.direction === "LONG" && flow.put_premium > flow.call_premium * 1.2) {
       reasons.push(`HELIX put-led (${fmtUsd(flow.put_premium)} vs ${fmtUsd(flow.call_premium)} calls)`);
