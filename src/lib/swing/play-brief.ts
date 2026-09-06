@@ -210,7 +210,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
     levels.push({
       label: "dark pool",
       price: dp.strike,
-      provenance: { source: "HELIX", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
     });
   }
   const king = gex?.gex_king_strike;
