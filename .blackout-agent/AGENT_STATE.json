@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:27:56.381Z",
+  "updated_at": "2026-09-06T13:14:15.070Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T13:14:02Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34035466627",
+    "last_deploy_sha": "b17816699124deef3fc99de64e4617948c07c18f"
   },
   "events": [
     {
@@ -601,9 +601,43 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T13:14:15.069Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T13:14:15.070Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3fd4f2ed-ea0b-4be9-a703-c99c985e8b67",
+      "summary": "Cycle: #4247-#4249 merged; peer-reviewed #4248+#4249. #4252 verify GREEN (C1 exitAt + C3 vector/meridian fixes) — merge before #4253. validate:deploy GREEN; ops:collect 0; swing brief PASS."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4253,
+      "title": "fix(swing): surface cold GEX and missing Vector in play-brief unavailableSources",
+      "branch": "fix/swing-brief-gex-vector-absence",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:08:12Z"
+    },
+    {
+      "number": 4251,
+      "title": "chore(blackout-agent): cursor handoff — #4248/#4249 merged, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-06-1259",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:09:49Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
