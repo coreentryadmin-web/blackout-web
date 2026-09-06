@@ -17,6 +17,7 @@ import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-t
 import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
+import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -83,7 +84,7 @@ function managementSection(play: TerminalPlay): RichSection {
 function pnlSection(play: TerminalPlay): RichSection {
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
-    `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${play.markAsOf})` : ""}`,
+    `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
     `P&L: **${fmtPct(play.pnlPct)}**`,
     `Peak: **${fmtPct(play.peak)}**`,
   ];
@@ -217,12 +218,13 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   }
   if (ctx.play.markAsOf) {
     const markMs = Date.parse(ctx.play.markAsOf);
+    const markEt = etStampFromIso(ctx.play.markAsOf);
     out.push({
       kind: "fact",
-      text: `Option mark as of ${ctx.play.markAsOf}.`,
+      text: `Option mark as of ${markEt}.`,
       provenance: {
         source: "Swing ledger",
-        asOf: ctx.play.markAsOf,
+        asOf: markEt,
         freshness: Number.isFinite(markMs) ? freshnessFromAgeMs(readMs - markMs) : "unknown",
       },
     });
