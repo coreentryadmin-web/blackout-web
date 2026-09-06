@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:09:39.370Z",
+  "updated_at": "2026-09-06T14:26:33.539Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -31,22 +31,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
-    },
-    "pr-4263": {
-      "pr": 4263,
-      "head_sha": "5da3362143d31e3260aaa4f3a893b671a1d4328e",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T13:53:35.412Z",
-      "safe_to_merge": true
-    },
-    "pr-4260": {
-      "pr": 4260,
-      "head_sha": "f2c4c6d05",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T14:08:02.681Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -60,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a97062e1621a2a8c3538c1b30839fbca4239059b",
+    "last_main_sha": "7d3cf33dbc26aafae92a1a4587522e299b2e4165",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T14:09:13Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34038191327",
-    "last_deploy_sha": "e503648743e944d3fd765ff3e09a064704222cc6"
+    "last_deploy_at": "2026-09-06T14:24:32Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34039066409",
+    "last_deploy_sha": "7d3cf33dbc26aafae92a1a4587522e299b2e4165"
   },
   "events": [
     {
@@ -619,79 +603,152 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T13:53:35.413Z",
-      "type": "pr_review",
-      "pr": 4263,
-      "head_sha": "5da3362143d31e3260aaa4f3a893b671a1d4328e",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T13:53:35.412Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T14:08:02.682Z",
-      "type": "pr_review",
-      "pr": 4260,
-      "head_sha": "f2c4c6d05",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T14:08:02.681Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T14:09:39.369Z",
+      "at": "2026-09-06T14:26:23.400Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 4
+      "open_pr_count": 12
     },
     {
-      "at": "2026-09-06T14:09:39.370Z",
+      "at": "2026-09-06T14:26:23.401Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "363e8494-a11d-46a9-b8c8-a305b33be6a4",
-      "summary": "Cycle: merged #4262/#4263/#4260 (swing Largo C1/C3/C5 fixes). Reviewed+approved #4266 (stale discovery scan) — CI pending. Rebased PR branches onto main. validate:deploy GREEN; ops:collect 0."
+      "run_id": "579b9b4f-af3e-4617-97a9-e4d72687cbf8",
+      "summary": "Cycle: merged #4262/#4263/#4260/#4266/#4275. validate:deploy GREEN; ops:collect 0. No open agent PRs at cycle end."
+    },
+    {
+      "at": "2026-09-06T14:26:33.538Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-06T14:26:33.539Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2b8a35d1-1936-4e21-8bf8-bbca70a89b17",
+      "summary": "Cycle: merged #4262/#4263/#4260/#4266/#4275. validate:deploy GREEN; ops:collect 0. No open agent PRs at cycle end."
     }
   ],
   "open_prs": [
     {
-      "number": 4272,
-      "title": "chore(blackout-agent): cursor handoff — #4260 merged, #4266/#4269 peer-reviewed",
-      "branch": "cursor/autopilot-handoff-20260906-1406",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:06:30Z"
-    },
-    {
-      "number": 4271,
-      "title": "chore(blackout-agent): cursor handoff — swing Largo peer reviews, #4253/#4257 merged",
-      "branch": "cursor/autopilot-handoff-20260906-1400",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:00:45Z"
-    },
-    {
-      "number": 4270,
-      "title": "chore(blackout-agent): cursor handoff — platform GREEN, Largo fixes in flight",
-      "branch": "cursor/autopilot-handoff-2026-09-06-1355",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:02:47Z"
-    },
-    {
-      "number": 4266,
-      "title": "fix(swing): flag prior-session discovery scan in play-brief C3 channel",
-      "branch": "fix/swing-brief-stale-discovery-scan",
+      "number": 4290,
+      "title": "fix(swing): detect put-only HELIX flow build in brief diff",
+      "branch": "fix/swing-brief-helix-put-flow-diff",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:09:30Z"
+      "updated_at": "2026-09-06T14:25:45Z"
+    },
+    {
+      "number": 4289,
+      "title": "chore(blackout-agent): cursor handoff — #4266 merged, swing fixes in flight",
+      "branch": "cursor/autopilot-handoff-20260906-1420",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T14:23:10Z"
+    },
+    {
+      "number": 4288,
+      "title": "chore(blackout-agent): cursor handoff — #4266 merged, Largo swing C3 fixes landed",
+      "branch": "cursor/autopilot-handoff-20260906-1425",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:22:39Z"
+    },
+    {
+      "number": 4287,
+      "title": "fix(swing): attach thesis explanation on WATCH lane play-brief path",
+      "branch": "fix/swing-brief-watch-thesis-explanation",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:25:45Z"
+    },
+    {
+      "number": 4286,
+      "title": "chore(blackout-agent): cursor handoff — peer-reviewed #4266/#4269, deploy GREEN",
+      "branch": "cursor/autopilot-work-loop-f969",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:21:38Z"
+    },
+    {
+      "number": 4285,
+      "title": "fix(swing): stamp HELIX flow evidence with brief asOf (Largo C1)",
+      "branch": "fix/swing-brief-helix-evidence-asof",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:25:45Z"
+    },
+    {
+      "number": 4284,
+      "title": "fix(swing): surface HELIX pipeline staleness in play-brief Data freshness",
+      "branch": "fix/swing-brief-helix-freshness-section",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:22:44Z"
+    },
+    {
+      "number": 4283,
+      "title": "fix(swing): disambiguate lane rank by contract when ticker collides",
+      "branch": "fix/swing-lane-rank-contract-match",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:22:44Z"
+    },
+    {
+      "number": 4282,
+      "title": "chore(blackout-agent): cursor handoff — Largo PR pre-reviews, platform GREEN",
+      "branch": "cursor/autopilot-work-loop-e2fe",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:18:32Z"
+    },
+    {
+      "number": 4281,
+      "title": "fix(swing): gate portfolio_overlap must not skip lone same-ticker row",
+      "branch": "fix/swing-gate-portfolio-overlap-no-self-skip",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:22:38Z"
+    },
+    {
+      "number": 4280,
+      "title": "fix(swing): attribute dark pool level provenance to Vector, not HELIX",
+      "branch": "fix/swing-brief-darkpool-provenance",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:22:38Z"
+    },
+    {
+      "number": 4279,
+      "title": "fix(swing): honest empty Meridian calendar + peer cohort coaching",
+      "branch": "fix/swing-brief-meridian-empty-peer",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:22:38Z"
     }
   ],
   "pr_activity": {
