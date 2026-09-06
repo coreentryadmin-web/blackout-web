@@ -404,7 +404,10 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
   const lines: string[] = [];
   const action = play.recommendation ?? "HOLD";
   lines.push(`**Desk stance:** ${action}`);
-  if (play.recNote) lines.push(play.recNote);
+  // recNote is NOT repeated here — managementSection (play-brief.ts) already renders it verbatim
+  // for the open bucket. This section is normally collapsed into "Trade manager read" when a
+  // narrative exists (collapseRedundantIntelSections), but ?expandIntel=1 bypasses that collapse
+  // and rendered both verbatim (FINDINGS 2026-09-06, live NRG SWING_NRG_34 w/ expandIntel=1).
 
   const dteMatch = play.contract.match(/(\d+)DTE/);
   if (dteMatch) {
@@ -436,7 +439,12 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
 
   if (play.thesisHealth) {
     const h = play.thesisHealth;
-    lines.push(`Thesis health **${h.health}%** (${h.rungLabel}) — ${h.advisory ?? "manage per ladder"}`);
+    // The advisory sentence itself is NOT repeated here — it's the same text Trade manager read's
+    // pillar-fade narration already carries (tradeManagerNarrativeSection), and this section is
+    // only ever seen alongside it (either collapsed normally, or via ?expandIntel=1 where both
+    // render — same duplication class as recNote above). Health%/rung is a compact number, not a
+    // repeated sentence, so it stays.
+    lines.push(`Thesis health **${h.health}%** (${h.rungLabel})`);
     if (h.health < 45) lines.push("**Tighten risk** — thesis fading; don't add size");
     else if (play.peak != null && play.pnlPct != null && play.peak - play.pnlPct > 25) {
       lines.push(`Gave back **${(play.peak - play.pnlPct).toFixed(0)}%** from peak — consider trim into strength`);

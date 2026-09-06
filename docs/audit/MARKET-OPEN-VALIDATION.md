@@ -120,6 +120,41 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1aa. Hold plan (Ask Largo `?expandIntel=1`) repeated recNote AND the thesis-health advisory sentence — fix/swing-brief-holdplan-recnote-thesis-dup (pending)
+
+**What was broken:** found by Cursor's peer review on #4257 ("Note: `holdPlanSection` still repeats
+`recNote` for open bucket") and confirmed live. `holdPlanSection` (`play-brief-intel.ts`) pushed
+`play.recNote` verbatim — the same string `managementSection` already renders — AND rendered
+`play.thesisHealth.advisory` verbatim, the same sentence `tradeManagerNarrativeSection`'s pillar-fade
+narration already carries in "Trade manager read". Normally invisible: `collapseRedundantIntelSections`
+drops "Hold plan" whenever a narrative is present. But `GET /api/market/swing/play-brief?...&expandIntel=1`
+bypasses that collapse entirely — confirmed live on `SWING_NRG_34`:
+
+```
+Management: "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength."
+Hold plan:  "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength."
+            ...
+            "Thesis health 46% (Degraded) — Thesis fading — tighten risk or trim into strength."
+```
+
+Two separate verbatim repeats in one section, both crowding out the section's own job (trim ladder,
+time stop, rails, earnings risk).
+
+**Fix:** Removed the `recNote` push entirely; kept `Thesis health **{health}%** ({rungLabel})` as a
+compact number (not duplicated elsewhere) but dropped the `— {advisory}` sentence suffix.
+
+**Evidence:** 3 new tests in `play-brief-intel.test.ts` (RED pre-fix: 2/21 fail in that file; GREEN
+post-fix: all pass). `play-brief-intel.test.ts` + `play-brief.test.ts`: 35/35. Full
+`src/lib/swing/*.test.ts`: 667/667. `npx tsc --noEmit`: clean.
+
+**Blast radius:** `holdPlanSection` only. Management/Trade-manager-read/Thesis-health rendering unchanged.
+
+**Check at the open:** `GET /api/market/swing/play-brief?playId=...&expandIntel=1` on any live OPEN
+position with a `recNote` and a degraded thesis health — confirm "Hold plan" no longer repeats either
+sentence, while still showing desk stance, time-in-trade, trim ladder, and rails.
+
+---
+
 ### 0a-1z. A total ecosystem/Vector fetch failure was indistinguishable from legitimately-empty data — never reached the structured unavailableSources channel — fix/swing-ecosystem-vector-total-fetch-failure-absence (pending)
 
 **What was broken:** `fetchEcosystemContext`/`fetchVectorFullState` were wrapped in

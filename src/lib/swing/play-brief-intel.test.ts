@@ -8,6 +8,7 @@ import {
   dataFreshnessSection,
   deskConsensusSection,
   flowIntelSection,
+  holdPlanSection,
   lessonsSection,
   whyThisSetupSection,
 } from "./play-brief-intel";
@@ -92,6 +93,71 @@ test("whyThisSetupSection: still reports pillar/signal content when present", ()
   });
   const section = whyThisSetupSection(play);
   assert.match(section.body, /Momentum/);
+});
+
+// Same root cause as the whyThisSetupSection finding above, found by Cursor's #4257 review:
+// holdPlanSection ALSO duplicates content Management/Thesis health already render — reachable
+// live via `?expandIntel=1` (composeSwingPlayBrief's collapseIntel guard only hides "Hold plan"
+// when a Trade manager read narrative is present; expandIntel bypasses that collapse entirely).
+// Confirmed live 2026-09-06 on SWING_NRG_34 with expandIntel=1: Management showed the recNote
+// verbatim, and Hold plan repeated the SAME sentence, plus repeated the thesis-health advisory
+// text ("Thesis fading — tighten risk or trim into strength.") a second time.
+test("holdPlanSection: does not repeat recNote — already surfaced by Management", () => {
+  const play = fixturePlay({
+    status: "OPEN",
+    contract: "110C · 12DTE",
+    recNote: "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength.",
+  });
+  const ctx = { play, ecosystem: null } as SwingPlayBriefContext;
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.ok(!section!.body.includes(play.recNote as string));
+});
+
+test("holdPlanSection: does not repeat the thesis-health advisory — already surfaced by Trade manager read / Thesis health", () => {
+  const play = fixturePlay({
+    status: "OPEN",
+    contract: "110C · 12DTE",
+    thesisHealth: {
+      health: 46,
+      entryIndex: 60,
+      currentIndex: 46,
+      delta: -14,
+      rung: "degraded",
+      rungLabel: "Degraded",
+      pillars: [],
+      moves: [],
+      committedAtEt: null,
+      computedAtEt: "10:00 ET",
+      advisory: "Thesis fading — tighten risk or trim into strength.",
+      thesisBreakLevel: "warn",
+    },
+  });
+  const ctx = { play, ecosystem: null } as SwingPlayBriefContext;
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Thesis fading — tighten risk or trim into strength\./);
+});
+
+test("holdPlanSection: still reports desk stance, time-in-trade, and rails", () => {
+  const play = fixturePlay({
+    status: "OPEN",
+    contract: "110C · 12DTE",
+    recommendation: "HOLD",
+    exitPolicy: {
+      trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+      stop_premium: 1.96,
+      target_premium: 9.8,
+      time_stop_et: "16:00",
+      runner_fraction: 0.5,
+    },
+  });
+  const ctx = { play, ecosystem: null } as SwingPlayBriefContext;
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.match(section!.body, /Desk stance:\*\* HOLD/);
+  assert.match(section!.body, /12 DTE/);
+  assert.match(section!.body, /Rails: stop \*\*\$1\.96\*\* · target \*\*\$9\.80\*\*/);
 });
 
 test("deskConsensusSection: null when only NH direction / 0DTE stance (covered by crossDeskCoaching)", () => {
