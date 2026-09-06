@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T06:20:40.476Z",
+  "updated_at": "2026-09-06T09:46:33.072Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T09:29:30.021Z",
+      "lease_until": "2026-09-06T10:59:30.021Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f40f4236378d61caa8b3a4a13ac169a28c42d971",
+    "last_main_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T09:39:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
+    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
   },
   "events": [
     {
@@ -444,7 +444,77 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T09:46:29.168Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T09:46:29.169Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "48cf1ce3-937b-40d0-b554-420c96c00b73",
+      "summary": "PR-event cycle: peer-reviewed swing audit batch. #4182 APPROVED+merged (5 CTO fixes). #4180 merged (doc accuracy). #4185 rebased post-#4182 — incremental dossiersByTicker export, loadOpenTerminalPlay tests, verify CI pending. #4189 draft discovered (closed brief intel collapse). Deploy GREEN, ops:collect 0. main@091c5eef6."
+    },
+    {
+      "at": "2026-09-06T09:46:33.072Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4191,
+      "title": "test(swing): add regression coverage for Ask Largo thesis-health wiring (post-#4182)",
+      "branch": "fix/swing-brief-thesis-health-live-wiring",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T09:46:31Z"
+    },
+    {
+      "number": 4190,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing merge wave + #4185 review",
+      "branch": "cursor/blackout-handoff-pr-event-0906b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:42:15Z"
+    },
+    {
+      "number": 4189,
+      "title": "fix(swing): keep GEX/flow intel on closed Ask Largo briefs (CTO audit #2)",
+      "branch": "fix/swing-closed-brief-intel-collapse-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:45:31Z"
+    },
+    {
+      "number": 4188,
+      "title": "chore(blackout-agent): cursor peer-review cycle handoff — swing PRs approved",
+      "branch": "cursor/autopilot-handoff-peer-review-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:40:26Z"
+    },
+    {
+      "number": 4187,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4174/#4175 merged, swing reviews",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle9",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:39:29Z"
+    }
+  ]
 }
