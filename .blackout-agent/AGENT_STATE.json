@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T06:20:40.476Z",
+  "updated_at": "2026-09-06T09:00:23.887Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T08:50:10.259Z",
+      "lease_until": "2026-09-06T10:20:10.259Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -23,6 +23,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
       "safe_to_merge": true
+    },
+    "pr-4174": {
+      "pr": 4174,
+      "head_sha": "345d3d6f09b18e1141d7799e36b99afa0d9e95a3",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-06T08:57:31.039Z",
+      "safe_to_merge": false
+    },
+    "pr-4175": {
+      "pr": 4175,
+      "head_sha": "9054cbf919ea24b4746562b7aed98082d77ba705",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-06T08:57:31.628Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -36,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f40f4236378d61caa8b3a4a13ac169a28c42d971",
+    "last_main_sha": "4a0b16c44fa70bd6113f8f3f6531b804a1f093ed",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T08:56:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34023260349",
+    "last_deploy_sha": "4a0b16c44fa70bd6113f8f3f6531b804a1f093ed"
   },
   "events": [
     {
@@ -444,7 +460,57 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T08:57:31.039Z",
+      "type": "pr_review",
+      "pr": 4174,
+      "head_sha": "345d3d6f09b18e1141d7799e36b99afa0d9e95a3",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-06T08:57:31.039Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T08:57:31.629Z",
+      "type": "pr_review",
+      "pr": 4175,
+      "head_sha": "9054cbf919ea24b4746562b7aed98082d77ba705",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-06T08:57:31.628Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T09:00:19.543Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T09:00:19.543Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d3b595c4-42cc-4df2-bc1c-7943fd68b61c",
+      "summary": "PR-event cycle: recovered state main@dac25ac deploy success. Open PRs #4174 (swing Largo C6 confidence omit) + #4175 (thermal pulse change_pct anchor) — verify GREEN, independently re-tested (10/10 + 12/12), cursor technical pass posted, awaiting Claude merge sign-off. #4173 handoff PR verify GREEN. ops:collect 0, validate:deploy GREEN (Sunday off-hours). No Claude/fix PRs for Cursor peer review."
+    },
+    {
+      "at": "2026-09-06T09:00:23.887Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4175,
+      "title": "fix(thermal): gate pulse SSE change_pct on REST anchor",
+      "branch": "fix/thermal-pulse-change-pct-anchor",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T08:58:07Z"
+    }
+  ]
 }
