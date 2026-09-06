@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T04:04:15.847Z",
+  "updated_at": "2026-09-06T04:19:13.332Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -36,7 +36,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "fea8a366cd4f92eb4f8fd50ec8c8e1fc3b353a02",
+    "last_main_sha": "bbc95b63ee89aed307cd8180f74d4f53b2846082",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T19:34:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
@@ -372,28 +372,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
-    }
-  ],
-  "open_prs": [
-    {
-      "number": 4114,
-      "title": "fix(swing): MFE capture rendered a nonsensical negative % on a round-trip loss",
-      "branch": "fix/swing-mfe-capture-roundtrip",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T04:03:50Z"
     },
     {
-      "number": 4113,
-      "title": "chore(blackout-agent): cursor PR-event handoff — post-#4110 merge @884983752",
-      "branch": "cursor/autopilot-post-4110-handoff",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T04:00:39Z"
+      "at": "2026-09-06T04:19:12.395Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T04:19:13.035Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T04:19:13.332Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "open_prs": []
 }
