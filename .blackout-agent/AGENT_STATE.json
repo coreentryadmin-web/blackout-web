@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:55:30.547Z",
+  "updated_at": "2026-09-06T15:49:51.017Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T15:26:37.037Z",
+      "lease_until": "2026-09-06T17:05:22.401Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "11db668b-ce13-4654-bf62-999dc0c8c425",
+      "title": null
     }
   },
   "reviews": {
@@ -31,6 +32,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4310": {
+      "pr": 4310,
+      "head_sha": "d9f7265ff385cfeddbdbbf5187ea5eadde925770",
+      "reviewer": "cursor",
+      "verdict": "AWAITING_CLAUDE",
+      "reviewed_at": "2026-09-06T15:38:01.883Z",
+      "safe_to_merge": false
+    },
+    "pr-4314": {
+      "pr": 4314,
+      "head_sha": "d9f7265ff385cfeddbdbbf5187ea5eadde925770",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:49:46.101Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -39,16 +56,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T15:26:37.037Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "b5d550475f349fb53dc2db9f44021e6efb736a7f",
+    "last_main_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T15:47:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34043383671",
+    "last_deploy_sha": "02add5a37fddb52e000ed4962ea384014833315d"
   },
   "events": [
     {
@@ -655,9 +673,144 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T15:26:24.748Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T15:26:29.446Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T15:26:30.223Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T15:26:33.943Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T15:26:37.037Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T15:35:22.401Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T15:35:23.209Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T15:35:23.997Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T15:35:25.837Z",
+      "type": "pr_webhook",
+      "pr": 4312,
+      "event": "sweep",
+      "head": "c383094446f53b864307245a88ec07683253cfb2",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:35:27.722Z",
+      "type": "pr_webhook",
+      "pr": 4311,
+      "event": "sweep",
+      "head": "87f0cab3ca720230f01416a4d1dbb42cca3857e1",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:35:29.781Z",
+      "type": "pr_webhook",
+      "pr": 4310,
+      "event": "sweep",
+      "head": "d9f7265ff385cfeddbdbbf5187ea5eadde925770",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:38:01.884Z",
+      "type": "pr_review",
+      "pr": 4310,
+      "head_sha": "d9f7265ff385cfeddbdbbf5187ea5eadde925770",
+      "reviewer": "cursor",
+      "verdict": "AWAITING_CLAUDE",
+      "reviewed_at": "2026-09-06T15:38:01.883Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T15:38:05.893Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T15:38:05.894Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6fd62f43-16af-4271-8923-1f317ad5bba1",
+      "summary": "Peer-review cycle: #4309 (stale Vector Right now) + #4310 (prior-session scan + CLOSED mark absence) — both CI GREEN, 13/13 and 89/89 tests pass locally, posted AWAITING_CLAUDE reviews. #4307 cursor handoff CI GREEN — cannot self-review. validate:deploy GREEN; ops:collect 0; rth-lifecycle off-hours skip."
+    },
+    {
+      "at": "2026-09-06T15:49:46.102Z",
+      "type": "pr_review",
+      "pr": 4314,
+      "head_sha": "d9f7265ff385cfeddbdbbf5187ea5eadde925770",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:49:46.101Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T15:49:51.016Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:49:51.017Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4f1f39eb-90ee-4658-8afc-ff3923e1a456",
+      "summary": "Autopilot cycle: merged #4309+#4310 during session. Reviewed #4314 (SPX King node dedup) — APPROVED+merge attempted. #4311 HELIX evidence premiums — AWAITING_CLAUDE. validate:deploy GREEN; ops:collect 0."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4311,
+      "title": "fix(swing): ground HELIX flow evidence with premium dollars (Largo C7)",
+      "branch": "fix/swing-brief-helix-flow-evidence-premiums",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T15:49:48Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -688,6 +841,30 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4312": {
+      "last_event": "sweep",
+      "last_head": "c383094446f53b864307245a88ec07683253cfb2",
+      "last_feedback_at": "2026-09-06T15:35:25.837Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4311": {
+      "last_event": "sweep",
+      "last_head": "87f0cab3ca720230f01416a4d1dbb42cca3857e1",
+      "last_feedback_at": "2026-09-06T15:35:27.722Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4310": {
+      "last_event": "sweep",
+      "last_head": "d9f7265ff385cfeddbdbbf5187ea5eadde925770",
+      "last_feedback_at": "2026-09-06T15:35:29.781Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
