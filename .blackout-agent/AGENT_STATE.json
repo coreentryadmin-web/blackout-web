@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:29:40.036Z",
+  "updated_at": "2026-09-06T15:50:15.353Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T15:41:22.287Z",
+      "lease_until": "2026-09-06T17:11:22.287Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7418ff9e746c44e6b6206dd35acc0bc0ec6340be",
+    "last_main_sha": "02add5a37fddb52e000ed4962ea384014833315d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T15:47:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34043383671",
+    "last_deploy_sha": "02add5a37fddb52e000ed4962ea384014833315d"
   },
   "events": [
     {
@@ -691,9 +691,43 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T15:50:07.109Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:50:07.109Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "dbeddafc-23ee-40e1-a58d-7f83b81d3934",
+      "summary": "Merged #4314 (SPX King node drift fix, peer-reviewed). Rebased #4311 onto main (19/19 tests pass) — awaits Claude peer review. Closed duplicate #4315. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T15:50:15.353Z",
+      "type": "pr_webhook",
+      "pr": 4311,
+      "event": "sweep",
+      "head": "1a6516ba33a39aadaa9c4123471ae390e3163330",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4311,
+      "title": "fix(swing): ground HELIX flow evidence with premium dollars (Largo C7)",
+      "branch": "fix/swing-brief-helix-flow-evidence-premiums",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:49:48Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -724,6 +758,14 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4311": {
+      "last_event": "sweep",
+      "last_head": "1a6516ba33a39aadaa9c4123471ae390e3163330",
+      "last_feedback_at": "2026-09-06T15:50:15.353Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
