@@ -9,6 +9,7 @@ import {
   gexMatrixAgeMs,
   gexMatrixStale,
   GEX_MATRIX_STALE_MS,
+  vectorSnapshotStale,
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
@@ -665,7 +666,15 @@ export function vectorDeskSection(vec: VectorFullState | null): RichSection | nu
   if (p.starred.length) {
     lines.push("**Watch now:**\n" + p.starred.slice(0, 4).map((s) => `• ${s}`).join("\n"));
   }
-  return { title: "Vector desk", body: lines.join("\n\n"), bias: p.bias === "short" ? "bearish" : p.bias === "long" ? "bullish" : "neutral" };
+  // Largo C2 — stale Vector play.bias must not badge bullish/bearish (same gate as coaching #4387).
+  const vectorLive = !vectorSnapshotStale(vec, Date.now());
+  const bias =
+    vectorLive && p.bias === "short"
+      ? "bearish"
+      : vectorLive && p.bias === "long"
+        ? "bullish"
+        : "neutral";
+  return { title: "Vector desk", body: lines.join("\n\n"), bias };
 }
 
 /** Honest data freshness — mark age, scan age, vector staleness. */
