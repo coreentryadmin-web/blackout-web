@@ -52,3 +52,20 @@ test("collapseRedundantIntelSections: keeps Desk context when narrative leads (N
   assert.ok(out.some((s) => s.title === "Desk context"), "NH outcome history is not in Trade manager read");
   assert.ok(!out.some((s) => s.title === "Flow & positioning"));
 });
+
+test("collapseRedundantIntelSections: closed bucket keeps GEX/flow sections — post-mortem does not cover them", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Wall dynamics"),
+    section("Flow & positioning"),
+    section("Lessons"),
+  ];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "closed" });
+  assert.equal(out.length, 5);
+  assert.ok(out.some((s) => s.title === "GEX posture"));
+  assert.ok(out.some((s) => s.title === "Wall dynamics"));
+  assert.ok(out.some((s) => s.title === "Flow & positioning"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.ok(!narrative!.body.includes("folded into Trade manager read"));
+});

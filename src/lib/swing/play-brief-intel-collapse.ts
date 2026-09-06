@@ -40,6 +40,11 @@ export function collapseRedundantIntelSections(
 ): RichSection[] {
   if (!opts.hasNarrative) return sections;
 
+  // Closed post-mortem narrative only runs closedCoaching — it does NOT narrate GEX/walls/macro/flow.
+  // Collapsing those intel sections would delete real frozen-at-close context with a false
+  // "folded into Trade manager read" note (SWING-SYSTEM-CTO-AUDIT finding #2).
+  if (opts.bucket === "closed") return sections;
+
   const filtered = sections.filter((s) => !NARRATIVE_COVERED_TITLES.has(s.title));
 
   const dropped = sections.length - filtered.length;
