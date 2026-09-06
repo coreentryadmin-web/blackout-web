@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T09:00:23.887Z",
+  "updated_at": "2026-09-06T09:00:47.077Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -499,9 +499,32 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T09:00:47.075Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T09:00:47.077Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f23af952-9f7a-4961-aeb0-e77f1209c9c2",
+      "summary": "Cycle complete. #4174/#4175 verify GREEN — awaiting Claude merge. #4176 handoff PR opened (draft). validate:deploy/api-auth/platform-integrity GREEN. ops:collect 0. Sunday off-hours."
     }
   ],
   "open_prs": [
+    {
+      "number": 4176,
+      "title": "chore(blackout-agent): cursor PR-event handoff — cycle8 peer review complete",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle8",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T09:00:42Z"
+    },
     {
       "number": 4175,
       "title": "fix(thermal): gate pulse SSE change_pct on REST anchor",
