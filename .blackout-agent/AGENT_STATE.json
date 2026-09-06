@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T02:35:03.337Z",
+  "updated_at": "2026-09-06T03:06:35.515Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T02:37:04.499Z",
+      "lease_until": "2026-09-06T04:35:13.621Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "14e26a68-86d1-47ec-aec2-1fe7c250e299"
     }
   },
   "reviews": {
@@ -22,6 +22,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
+      "safe_to_merge": true
+    },
+    "pr-4101": {
+      "pr": 4101,
+      "head_sha": "b48f057f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T03:04:47.019Z",
       "safe_to_merge": true
     }
   },
@@ -36,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b78270d994ff53bb208f4e89ea2f078cf653fc77",
+    "last_main_sha": "3b96df0a63b848514ec30970e24d4a6b6603cada",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T03:04:54Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34008089744",
+    "last_deploy_sha": "3b96df0a63b848514ec30970e24d4a6b6603cada"
   },
   "events": [
     {
@@ -300,7 +308,88 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T02:53:24.898Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T02:53:24.899Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "76d361b9-157c-4f06-95aa-8f2049042514",
+      "summary": "PR-event cycle: merged #4096 (docs mandate). Reviewed+approved #4100 (meridian beatRateN cohort fix, merged by peer). Approved #4101 (swing book-context + unavailable_sources, verify pending). validate:deploy GREEN. ops:collect 0. main@b48f057f5."
+    },
+    {
+      "at": "2026-09-06T03:04:47.020Z",
+      "type": "pr_review",
+      "pr": 4101,
+      "head_sha": "b48f057f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T03:04:47.019Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T03:04:54.846Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T03:05:13.621Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T03:05:14.559Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T03:05:15.536Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T03:06:35.515Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T03:06:35.515Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0f049e0e-1b60-4625-9c88-4615c27a737e",
+      "summary": "Cycle complete @3b96df0a. Merged #4096,#4100,#4101. Reviewed #4104 locally (29/29 tests, tsc clean) — approved pending CI. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0. No open PRs except #4104 draft."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4105,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4100/#4101 merged @3b96df0a6",
+      "branch": "cursor/autopilot-work-loop-7936",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:05:37Z"
+    },
+    {
+      "number": 4104,
+      "title": "feat(swing): deep trade-manager coaching — pillars, catalysts, cross-desk, confluence",
+      "branch": "cursor/swing-brief-coaching-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:06:34Z"
+    }
+  ]
 }
