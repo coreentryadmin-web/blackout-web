@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:50:57.499Z",
+  "updated_at": "2026-09-06T15:55:55.531Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -54,7 +54,7 @@
   "deploy": {
     "last_main_sha": "02add5a37fddb52e000ed4962ea384014833315d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T15:47:00Z",
+    "last_deploy_at": "2026-09-06T15:55:31Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34043383671",
     "last_deploy_sha": "02add5a37fddb52e000ed4962ea384014833315d"
   },
@@ -722,6 +722,45 @@
       "agent": "cursor",
       "run_id": "276c9c7a-df97-4394-a027-a2697b6c103e",
       "summary": "Peer-reviewed swing Largo wave: #4309+#4310 merged; #4311 APPROVED (HELIX C7 premiums) awaiting CI/merge. ops:collect clean."
+    },
+    {
+      "at": "2026-09-06T15:52:37.933Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:52:40.078Z",
+      "type": "pr_webhook",
+      "pr": 4311,
+      "event": "sweep",
+      "head": "1a6516ba33a39aadaa9c4123471ae390e3163330",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:55:50.718Z",
+      "type": "pr_webhook",
+      "pr": 4311,
+      "event": "sweep",
+      "head": "1a6516ba33a39aadaa9c4123471ae390e3163330",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:55:55.531Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:55:55.531Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1db6aef9-e081-4614-964a-ad7362398dc1",
+      "summary": "Cycle complete: peer-reviewed swing Largo #4309-4310 merged, #4311 APPROVED awaiting merge. Handoff branch pushed cursor/handoff-20260906-1551. validate:deploy GREEN; ops:collect 0. GitHub API rate-limited — handoff PR + #4311 merge deferred."
     }
   ],
   "open_prs": [
@@ -733,7 +772,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:50:46Z"
+      "updated_at": "2026-09-06T15:54:02Z"
     }
   ],
   "pr_activity": {
@@ -766,6 +805,14 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4311": {
+      "last_event": "sweep",
+      "last_head": "1a6516ba33a39aadaa9c4123471ae390e3163330",
+      "last_feedback_at": "2026-09-06T15:55:50.718Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
