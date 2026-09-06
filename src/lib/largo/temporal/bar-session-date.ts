@@ -72,6 +72,21 @@ export function etStampFromIso(raw: string | null | undefined): string | null {
   return etStamp(ms) ?? raw;
 }
 
+const DATE_ONLY_RE = /^(\d{4}-\d{2}-\d{2})$/;
+
+/**
+ * Largo C1 stamp for observation dates that arrive without a clock (fundamentals `as_of`,
+ * FINRA settlement dates). `Date.parse("YYYY-MM-DD")` is UTC midnight → prior ET evening,
+ * which inverts cross-product session joins — anchor at session close instead.
+ */
+export function etStampFromDateOrIso(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const dateOnly = DATE_ONLY_RE.exec(trimmed);
+  if (dateOnly) return `${dateOnly[1]} 16:00 ET`;
+  return etStampFromIso(trimmed);
+}
+
 const ET_STAMP_RE = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}) ET$/;
 
 /**

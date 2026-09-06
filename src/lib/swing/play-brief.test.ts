@@ -183,10 +183,67 @@ test("composeSwingPlayBrief: envelope.asOf uses Largo C1 ET stamp (not a bare UT
     ecosystem: null,
     vector: null,
   };
-  const { envelope, asOf } = composeSwingPlayBrief(ctx);
-  assert.equal(envelope.asOf, "2026-09-05 16:00 ET");
-  assert.equal(asOf, "2026-09-05 16:00 ET");
-  assert.doesNotMatch(envelope.asOf!, /Z$/, "asOf must not be a UTC ISO instant");
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.asOf, "2026-09-05 16:00 ET");
+  assert.equal(brief.asOf, "2026-09-05 16:00 ET");
+  assert.equal(brief.sessionDate, "2026-09-05");
+  assert.doesNotMatch(brief.envelope.asOf!, /Z$/, "asOf must not be a UTC ISO instant");
+});
+
+test("composeSwingPlayBrief: GEX dealer posture grounds in envelope evidence (Largo C7)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        change_pct: 1.2,
+        asof: "2026-09-05T20:00:00Z",
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        max_pain: null,
+        gex_king_strike: 25,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        gamma_regime_read: "long gamma",
+        net_vex: 0,
+        vanna_posture: null,
+        vanna_regime_read: "",
+        net_dex: null,
+        dex_posture: null,
+        dex_regime_read: null,
+        net_charm: null,
+        charm_posture: null,
+        charm_regime_read: null,
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
+        freshness: "cached",
+        matrix_age_sec: 30,
+      },
+      arsenal: null,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence");
+  assert.match(postureEvidence!.text, /γ long/);
+  assert.match(postureEvidence!.text, /net GEX \+12\.3M/);
+  assert.match(postureEvidence!.text, /nearest wall 26\.00/);
+  assert.equal(postureEvidence?.provenance?.source, "GEX");
+  assert.equal(postureEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
 });
 
 test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant (FINDINGS 2026-09-06 #21)", () => {
@@ -278,7 +335,7 @@ test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims fo
   assert.match(siEvidence!.text, /short vol ratio 35%/);
   assert.equal(siEvidence?.provenance?.source, "Polygon / Benzinga");
   assert.equal(siEvidence?.provenance?.freshness, "recent");
-  assert.ok(siEvidence?.provenance?.asOf, "fundamentals observation must carry asOf for C1 joins");
+  assert.equal(siEvidence?.provenance?.asOf, "2026-09-05 16:00 ET", "date-only as_of must anchor at session close ET, not prior evening");
 });
 
 test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1 joins", () => {
