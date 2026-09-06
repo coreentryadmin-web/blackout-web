@@ -383,7 +383,7 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
   const dteMatch = play.contract.match(/(\d+)DTE/);
   if (dteMatch) {
     const dte = Number(dteMatch[1]);
-    lines.push(`Time in trade: **${dte} DTE** on contract — theta accelerates inside ~7 DTE`);
+    lines.push(`Contract runway: **${dte} DTE** — theta accelerates inside ~7 DTE`);
   }
 
   const earnings = ecosystem?.arsenal?.earnings;

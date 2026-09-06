@@ -267,10 +267,10 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
 
   const aligned: string[] = [];
   if (nh && ((play.direction === "LONG" && nhLong) || (play.direction === "SHORT" && nhShort))) {
-    aligned.push(`NH ${nh.conviction}`);
+    if (nh.conviction) aligned.push(`NH ${nh.conviction}`);
   }
   if (z && ((play.direction === "LONG" && zLong) || (play.direction === "SHORT" && zShort))) {
-    aligned.push(`0DTE score ${z.score}`);
+    if (z.score != null && Number.isFinite(z.score)) aligned.push(`0DTE score ${z.score}`);
   }
   if (aligned.length >= 2) {
     return `**Desk alignment** — ${aligned.join(" + ")} **support** the ${play.direction} swing.`;
