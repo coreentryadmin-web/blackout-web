@@ -686,6 +686,26 @@ test("counterThesisLine: stale Vector regime posture must not steelman dealer ga
   assert.equal(line, null, "stale Vector regime must not appear in counter-thesis");
 });
 
+test("tradeManagerNarrativeSection: stale Vector proximity and wall events omitted (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        dataAgeMs: 200_000,
+        freshness: "stale",
+        proximity: { strike: 102, side: "call", callout: "thin wall overhead" },
+        wallEvents: [{ kind: "call_wall_build", message: "building", strike: 102 }],
+        gexWalls: { callWalls: [{ strike: 102 }], putWalls: [] },
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Nearest wall/i);
+  assert.doesNotMatch(section!.body, /Wall just moved/i);
+});
+
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

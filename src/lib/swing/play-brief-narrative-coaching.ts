@@ -132,6 +132,7 @@ export function magnetCoaching(
   vec: VectorFullState | null,
   spot: number,
 ): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const m = vec?.magnet;
   if (!m?.strike) return null;
   const lead = m.pull === "at" ? "pinned at" : `pull **${m.pull}** toward`;
@@ -147,6 +148,7 @@ export function magnetCoaching(
 
 /** Options-implied move envelope — don't chase outside bands. */
 export function expectedMoveCoaching(vec: VectorFullState | null, spot: number): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const em = vec?.expectedMove;
   const b1 = em?.bands?.find((b) => b.sigma === 1);
   if (!b1) return null;
@@ -170,6 +172,7 @@ function playDirectionHint(spot: number, level: number): "above" | "below" | "at
 
 /** Highest-score multi-signal confluence node. */
 export function confluenceCoaching(vec: VectorFullState | null, play: TerminalPlay, spot: number): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const zones = vec?.confluenceZones ?? [];
   if (!zones.length) return null;
   const top = [...zones].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
@@ -192,6 +195,7 @@ export function confluenceCoaching(vec: VectorFullState | null, play: TerminalPl
 
 /** Wall integrity — thin walls break easier. */
 export function wallIntegrityCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const wi = vec?.wallIntegrity;
   if (!wi) return null;
   const call = wi.call?.tier;
@@ -313,7 +317,7 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
 
 /** VEX / vanna lens — second-order dealer hedging when it diverges from gamma. */
 export function vexCoaching(vec: VectorFullState | null, spot: number | null): string | null {
-  if (!vec) return null;
+  if (!vec || vectorSnapshotStale(vec, Date.now())) return null;
   const vFlip = fin(vec.vexFlip);
   const gFlip = fin(vec.gammaFlip);
   const vCall = vec.vexWalls?.callWalls?.[0]?.strike;
@@ -338,6 +342,7 @@ export function vexCoaching(vec: VectorFullState | null, spot: number | null): s
 
 /** Large front-expiry flow prints from Vector — institutional tape at strike. */
 export function flowPrintsCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const f = vec?.flowMarkers;
   if (!f?.available || !f.prints?.length) return null;
   const top = f.prints[0]!;
@@ -472,6 +477,7 @@ export function ivRankCoaching(play: TerminalPlay): string | null {
 
 /** Recent wall dynamics — last 2 bead events for live structure shifts. */
 export function wallDynamicsCoaching(vec: VectorFullState | null): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const events = vec?.wallEvents ?? [];
   if (events.length < 2) return null;
   const recent = events.slice(-2);

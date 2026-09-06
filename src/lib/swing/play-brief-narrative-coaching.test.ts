@@ -16,6 +16,12 @@ import {
   vexCoaching,
   watchGateCoaching,
   technicalsCoaching,
+  magnetCoaching,
+  expectedMoveCoaching,
+  confluenceCoaching,
+  wallIntegrityCoaching,
+  wallDynamicsCoaching,
+  flowPrintsCoaching,
 } from "./play-brief-narrative-coaching";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -543,4 +549,68 @@ test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => 
     },
   } as import("@/lib/bie/vector-full-state").VectorFullState;
   assert.equal(technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" })), null);
+});
+
+test("magnetCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    magnet: { strike: 100, pull: "up", distancePct: 1.2 },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  assert.equal(magnetCoaching({} as SwingPlayBriefContext, vec, 99), null);
+});
+
+test("expectedMoveCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    expectedMove: { bands: [{ sigma: 1, low: 95, high: 105, movePts: 5 }] },
+  } as unknown as Parameters<typeof expectedMoveCoaching>[0];
+  assert.equal(expectedMoveCoaching(vec, 100), null);
+});
+
+test("confluenceCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    confluenceZones: [{ center: 100, score: 80, kinds: ["gex"] }],
+  } as unknown as Parameters<typeof confluenceCoaching>[0];
+  assert.equal(confluenceCoaching(vec, play({ direction: "LONG" }), 99), null);
+});
+
+test("wallIntegrityCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    wallIntegrity: { call: { tier: "thin" }, put: { tier: "firm" } },
+  } as unknown as Parameters<typeof wallIntegrityCoaching>[0];
+  assert.equal(wallIntegrityCoaching(vec, play({ direction: "LONG" })), null);
+});
+
+test("wallDynamicsCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    wallEvents: [
+      { kind: "call_wall_build", message: "building", strike: 105 },
+      { kind: "put_wall_fade", message: "fading", strike: 95 },
+    ],
+  } as unknown as Parameters<typeof wallDynamicsCoaching>[0];
+  assert.equal(wallDynamicsCoaching(vec), null);
+});
+
+test("vexCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    vexFlip: 100,
+    gammaFlip: 99,
+  } as unknown as Parameters<typeof vexCoaching>[0];
+  assert.equal(vexCoaching(vec, 100), null);
+});
+
+test("flowPrintsCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    dataAgeMs: 200_000,
+    flowMarkers: {
+      available: true,
+      prints: [{ side: "call", strike: 100, premium: 1_000_000 }],
+      meta: { largeFound: 1 },
+    },
+  } as unknown as Parameters<typeof flowPrintsCoaching>[0];
+  assert.equal(flowPrintsCoaching(vec, play({ direction: "LONG" })), null);
 });
