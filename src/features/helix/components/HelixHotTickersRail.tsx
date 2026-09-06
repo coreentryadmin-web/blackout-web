@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import type { FlowAlert } from "@/lib/api";
 import { fmtPremium } from "@/lib/api";
 import { computeHelixHotTickers } from "@/features/helix/lib/helix-hot-tickers";
+import { directionTone } from "@/features/helix/lib/helix-direction-read";
 
 export function HelixHotTickersRail({
   flows,
@@ -25,7 +26,10 @@ export function HelixHotTickersRail({
       <div className="helix-hot-tickers-rail">
         {hot.map((row) => {
           const active = activeTicker === row.ticker;
-          const net = row.callPremium - row.putPremium;
+          // Aggression-aware read, matching NetPremiumLeaderboard/ExpiryConcentration — NOT the
+          // raw callPremium - putPremium sign, which reads a sold call as bullish. A neutral
+          // (unreadable-majority) verdict renders no arrow at all rather than a guessed one.
+          const tone = directionTone(row.direction);
           return (
             <button
               key={row.ticker}
@@ -36,15 +40,17 @@ export function HelixHotTickersRail({
             >
               <span className="helix-hot-ticker-symbol">{row.ticker}</span>
               <span className="helix-hot-ticker-prem font-mono">{fmtPremium(row.totalPremium)}</span>
-              <span
-                className={clsx(
-                  "helix-hot-ticker-bias font-mono",
-                  net > 0 && "text-bull",
-                  net < 0 && "text-bear"
-                )}
-              >
-                {net >= 0 ? "▲" : "▼"}
-              </span>
+              {tone != null && (
+                <span
+                  className={clsx(
+                    "helix-hot-ticker-bias font-mono",
+                    tone === "bull" && "text-bull",
+                    tone === "bear" && "text-bear"
+                  )}
+                >
+                  {tone === "bull" ? "▲" : "▼"}
+                </span>
+              )}
             </button>
           );
         })}
