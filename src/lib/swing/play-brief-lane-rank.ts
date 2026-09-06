@@ -17,7 +17,6 @@ export type LaneRankSnapshot = {
 };
 
 const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
-const WATCH_STATUSES = new Set(["WATCH", "SKIP"]);
 
 function bucketFor(play: TerminalPlay): "open" | "watch" | "closed" {
   if (play.status === "CLOSED") return "closed";
@@ -27,8 +26,10 @@ function bucketFor(play: TerminalPlay): "open" | "watch" | "closed" {
 
 function rowInBucket(row: HorizonPlay, bucket: "open" | "watch" | "closed"): boolean {
   if (bucket === "closed") return false;
-  if (bucket === "open") return OPEN_STATUSES.has(row.status);
-  return WATCH_STATUSES.has(row.status);
+  // HorizonPlay.status is PlayStatus ("COMMIT" | "WATCH") — DeckStatus OPEN/HOLD/TRIM
+  // only exist on the adapted TerminalPlay. Live committed rows are always "COMMIT".
+  if (bucket === "open") return row.status === "COMMIT";
+  return row.status === "WATCH";
 }
 
 /** Pure rank math — testable without DB. */
