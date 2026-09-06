@@ -190,10 +190,10 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const vec = vectorOf(ctx);
   const eco = ctx.ecosystem;
   const gex = eco?.gex_positioning;
-  const spot = vec?.spot ?? gex?.spot ?? null;
-  const lines: string[] = [];
   const readMs = Date.now();
   const vectorStaleForLevels = vectorSnapshotStale(vec, readMs);
+  const spot = (vectorStaleForLevels ? undefined : vec?.spot) ?? gex?.spot ?? null;
+  const lines: string[] = [];
 
   const vecCallWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
   const vecPutWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
@@ -363,7 +363,10 @@ export function catalystsSection(eco: EcosystemContext | null): RichSection | nu
 export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "open" | "closed"): RichSection {
   const { play } = ctx;
   const vec = vectorOf(ctx);
-  const spot = vec?.spot ?? ctx.ecosystem?.gex_positioning?.spot ?? null;
+  const readMs = Date.now();
+  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const spot =
+    (vectorStale ? undefined : vec?.spot) ?? ctx.ecosystem?.gex_positioning?.spot ?? null;
   const lines: string[] = [];
 
   if (bucket === "watch") {
@@ -385,8 +388,7 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   }
 
   const gexForLevels = ctx.ecosystem?.gex_positioning;
-  const readMs = Date.now();
-  const vectorStaleForWalls = vectorSnapshotStale(vec, readMs);
+  const vectorStaleForWalls = vectorStale;
   const vecFlip = vectorStaleForWalls ? undefined : vec?.gammaFlip;
   const flip = vecFlip ?? gexForLevels?.flip;
   const flipFromStaleGex = vecFlip == null && gexForLevels?.flip != null && gexMatrixStale(gexForLevels, readMs);
@@ -654,6 +656,7 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
 
 /** Wall bead dynamics — building/fading nodes from Vector wall history. */
 export function wallDynamicsSection(vec: VectorFullState | null): RichSection | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const events = vec?.wallEvents ?? [];
   if (!events.length) return null;
   const lines = events

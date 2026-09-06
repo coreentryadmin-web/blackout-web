@@ -143,7 +143,8 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
   const gex = ctx.ecosystem?.gex_positioning;
   const readMs = Date.now();
   const posture = resolveGammaPosture(ctx, vec);
-  const vecFlip = vec?.gammaFlip;
+  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexMatrixStale(gex, readMs);
   const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
 
@@ -166,7 +167,6 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
       : "";
 
   const vecAgeMs = vec?.dataAgeMs;
-  const vectorStale = vectorSnapshotStale(vec, readMs);
   const snapshotStale = vectorStale;
   const snapshotAgeMs = vectorStale ? vecAgeMs : null;
   const lead = snapshotStale
@@ -471,7 +471,10 @@ export function tradeManagerNarrativeSection(
 ): RichSection | null {
   const { play } = ctx;
   const vec = vectorOf(ctx);
-  const spot = fin(vec?.spot) ?? fin(ctx.ecosystem?.gex_positioning?.spot);
+  const readMs = Date.now();
+  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const spot =
+    fin(vectorStale ? undefined : vec?.spot) ?? fin(ctx.ecosystem?.gex_positioning?.spot);
 
   const bullets: string[] = [];
   const seen = new Set<string>();
@@ -538,13 +541,14 @@ export function tradeManagerNarrativeSection(
       }
     }
 
+    const vectorLive = !vectorStale;
     const prox = vec?.proximity;
-    if (prox?.callout && bullets.length < MAX_BULLETS) {
+    if (vectorLive && prox?.callout && bullets.length < MAX_BULLETS) {
       add(`**Nearest wall ${prox.strike.toFixed(2)}** (${prox.side}) — ${prox.callout}`);
     }
 
     const walls = vec?.wallEvents ?? [];
-    if (walls[0] && bullets.length < MAX_BULLETS) {
+    if (vectorLive && walls[0] && bullets.length < MAX_BULLETS) {
       const w = walls[walls.length - 1]!;
       add(`**Wall just moved** — ${w.kind.replace(/_/g, " ")}: ${w.message}`);
     }
@@ -554,13 +558,13 @@ export function tradeManagerNarrativeSection(
   if (flow && !bullets.some((b) => /HELIX tape/i.test(b))) add(flow);
 
   const gexForFlip = ctx.ecosystem?.gex_positioning;
-  const vecFlip = vec?.gammaFlip;
-  const flipRaw = fin(vecFlip) ?? fin(gexForFlip?.flip);
+  const vecFlipRaw = vectorStale ? undefined : vec?.gammaFlip;
+  const flipRaw = fin(vecFlipRaw) ?? fin(gexForFlip?.flip);
   const flipFromStaleGex =
-    vecFlip == null && gexForFlip?.flip != null && gexMatrixStale(gexForFlip, Date.now());
+    vecFlipRaw == null && gexForFlip?.flip != null && gexMatrixStale(gexForFlip, readMs);
   const flip = flipFromStaleGex ? null : flipRaw;
   const focal = spot != null ? collectFocalLevels(ctx, spot) : [];
-  let breakLine = breakTrigger(play, focal, flip);
+  let breakLine = spot != null ? breakTrigger(play, focal, flip) : null;
   if (!breakLine && play.direction === "LONG" && play.exitPolicy?.stop_premium != null) {
     breakLine = `**Break watch** — lose premium stop **${fmtUsd(play.exitPolicy.stop_premium)}** → cut size or exit.`;
   } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.stop_premium != null) {
@@ -575,7 +579,7 @@ export function tradeManagerNarrativeSection(
 
   // Bias reads the chart evidence (same majority vote as chartTechnicalsSection), not the play's
   // LONG/SHORT direction — a SHORT into a bullish tape must not badge bearish (FINDINGS 2026-09-06).
-  const vectorLive = !vectorSnapshotStale(vec, Date.now());
+  const vectorLive = !vectorStale;
   const bias =
     vectorLive && vec?.technicals != null
       ? technicalsBias(vec.technicals, spot)

@@ -225,15 +225,16 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  const spot = vec?.spot ?? gex?.spot;
+  const vecSpot = vectorStale ? undefined : vec?.spot;
+  const spot = vecSpot ?? gex?.spot;
   if (spot != null) {
     levels.push({
       label: "spot",
       price: spot,
       provenance: {
-        source: vec?.spot != null ? "Vector" : "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, vec?.spot != null ? "vector" : "gex"),
-        freshness: vec?.spot != null ? vecFresh : gexFresh,
+        source: vecSpot != null ? "Vector" : "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, vecSpot != null ? "vector" : "gex"),
+        freshness: vecSpot != null ? vecFresh : gexFresh,
       },
     });
   }
