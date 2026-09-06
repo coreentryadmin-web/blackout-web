@@ -614,6 +614,46 @@ test("counterThesisLine: stale Vector play bias must not steelman desk read (Lar
   assert.equal(line, null, "stale Vector play bias must not appear in counter-thesis");
 });
 
+test("counterThesisLine: stale Vector EMA stack must not steelman chart read (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        technicals: { emaStack: "down", macd: "bear", vwapSide: "below", structure: "LH" },
+        freshness: "stale",
+        dataAgeMs: 180_000,
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale Vector EMA stack must not appear in counter-thesis");
+});
+
+test("counterThesisLine: stale Vector regime posture must not steelman dealer gamma (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        regime: { posture: "long", label: "LONG GAMMA" },
+        freshness: "stale",
+        dataAgeMs: 180_000,
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "AAPL",
+        recent_flow: null,
+        nighthawk_recent: null,
+        zerodte_today: null,
+        gex_positioning: null,
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale Vector regime must not appear in counter-thesis");
+});
+
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
