@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T17:34:57.893Z",
+  "updated_at": "2026-09-06T17:36:57.282Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T17:12:53.291Z",
-      "lease_until": "2026-09-06T19:04:56.496Z",
+      "claimed_at": "2026-09-06T17:10:50.768Z",
+      "lease_until": "2026-09-06T18:47:01.970Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "079a7927-58f2-440a-bd26-e801efdcafac"
+      "run_id": "251c9557-d790-4529-a3a7-c235d72ef440"
     }
   },
   "reviews": {
@@ -868,9 +868,33 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:36:57.281Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T17:36:57.282Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "899edb97-9a98-4961-ace2-2378c37c0528",
+      "summary": "Cycle complete: Cursor peer-reviewed + merged #4342 (thesis strength warn fallback) and #4346 (Largo play-brief playId/peer/pillar fixes). validate:deploy GREEN, ops:collect 0, RTH lifecycle GREEN (off-hours Sunday). Peer lane clear — only handoff #4351 open."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4351,
+      "title": "chore(blackout-agent): cursor handoff — #4342+#4346 merged, lane clear",
+      "branch": "cursor/handoff-20260906-1736",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:36:01Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
