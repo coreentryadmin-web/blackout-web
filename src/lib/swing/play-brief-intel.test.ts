@@ -135,6 +135,46 @@ test("holdPlanSection: does not repeat recNote or Management-owned rails — uni
   assert.match(section!.body, /15:50/);
 });
 
+// #4261 fixed holdPlanSection's recNote/rails duplication but left a second, same-class duplicate:
+// the thesis-health `advisory` sentence is the exact text tradeManagerNarrativeSection's
+// pillar-fade narration already carries in "Trade manager read" (both sections render for any
+// live play). Found during the 2026-09-06 Ask Largo deep-dive on live NRG SWING_NRG_34.
+test("holdPlanSection: does not repeat the thesis-health advisory sentence — already narrated by Trade manager read", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Thesis fading — tighten risk or trim into strength\./);
+  assert.match(section!.body, /Thesis health \*\*46%\*\* \(Degraded\)/);
+});
+
 test("holdPlanSection: null when no unique hold-plan content beyond Management", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({

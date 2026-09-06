@@ -120,6 +120,29 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1aa. Hold plan still repeated the thesis-health advisory sentence after #4261's recNote fix — fix/swing-brief-holdplan-thesis-advisory-dup (pending)
+
+**What was broken:** #4261 fixed `holdPlanSection` repeating `recNote`/rails/manage-engine content
+already owned by Management, but left a second, same-class duplicate: the
+`play.thesisHealth.advisory` sentence rendered verbatim — the exact text
+`tradeManagerNarrativeSection`'s pillar-fade narration already carries in "Trade manager read"
+(both sections render together for any live play). Confirmed still present on `main` post-#4261.
+
+**Fix:** Dropped the `— {advisory}` suffix from Hold plan's thesis-health line; kept
+`Thesis health **{health}%** ({rungLabel})` as a compact number, not a repeated sentence.
+
+**Evidence:** 1 new test in `play-brief-intel.test.ts` (RED pre-fix: 1/21 fail in that file; GREEN
+post-fix). `play-brief-intel.test.ts` + `play-brief.test.ts`: 36/36. Full `src/lib/swing/*.test.ts`:
+678/678. `npx tsc --noEmit`: clean.
+
+**Blast radius:** `holdPlanSection` only.
+
+**Check at the open:** `GET /api/market/swing/play-brief?playId=...&expandIntel=1` on a live OPEN
+position with a degraded thesis health — confirm the advisory sentence appears once (in Trade
+manager read), not repeated under Hold plan.
+
+---
+
 ### 0a-1z. A total ecosystem/Vector fetch failure was indistinguishable from legitimately-empty data — never reached the structured unavailableSources channel — fix/swing-ecosystem-vector-total-fetch-failure-absence (pending)
 
 **What was broken:** `fetchEcosystemContext`/`fetchVectorFullState` were wrapped in

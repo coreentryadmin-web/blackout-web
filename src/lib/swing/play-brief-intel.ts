@@ -400,7 +400,10 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
 
   if (play.thesisHealth) {
     const h = play.thesisHealth;
-    lines.push(`Thesis health **${h.health}%** (${h.rungLabel}) — ${h.advisory ?? "manage per ladder"}`);
+    // advisory is NOT repeated here — it's the exact sentence tradeManagerNarrativeSection's
+    // pillar-fade narration already carries in "Trade manager read" (both render for any live
+    // play). Health%/rung is a compact number, not a repeated sentence, so it stays.
+    lines.push(`Thesis health **${h.health}%** (${h.rungLabel})`);
     if (h.health < 45) lines.push("**Tighten risk** — thesis fading; don't add size");
     else if (play.peak != null && play.pnlPct != null && play.peak - play.pnlPct > 25) {
       lines.push(`Gave back **${(play.peak - play.pnlPct).toFixed(0)}%** from peak — consider trim into strength`);
