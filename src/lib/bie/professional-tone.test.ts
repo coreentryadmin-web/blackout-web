@@ -73,3 +73,18 @@ test("honest empty-state answers do not require grounded numbers", () => {
     "This turn came back empty — nothing was pulled and nothing was written up. That isn't a gap in the desk.";
   assert.deepEqual(honestyIssues(empty, "platform_read"), []);
 });
+
+test("scenario and concept coaching may be qualitative without live digits", () => {
+  const scenario =
+    "If NVDA ripped 3% intraday, dealer gamma would lean long-vol on the move — watch whether call walls above spot accelerate or fade the extension.";
+  assert.deepEqual(honestyIssues(scenario, "scenario"), []);
+  const concept =
+    "A calendar spread on SPY sells the front-week option and buys a later expiry — you are trading theta decay versus the cost of carrying longer-dated exposure.";
+  assert.deepEqual(honestyIssues(concept, "concept_read"), []);
+});
+
+test("platform_read with named desks does not require digits when caches are cold", () => {
+  const platform =
+    "Cross-product snapshot: SPX Slayer desk is live, HELIX flow tape is scanning, Night Hawk edition is recap-only off-hours, 0DTE Command board is empty, Thermal matrix is warming.";
+  assert.deepEqual(honestyIssues(platform, "platform_read"), []);
+});
