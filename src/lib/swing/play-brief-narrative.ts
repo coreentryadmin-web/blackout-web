@@ -423,9 +423,12 @@ export function tradeManagerNarrativeSection(
 
   const bullets: string[] = [];
   const seen = new Set<string>();
-  const add = (line: string) => {
+  // Break watch + counter-thesis bypass MAX_BULLETS — safety-critical coaching must not
+  // starve when collectCoachingBullets + focal levels fill the cap (CTO audit #14).
+  const add = (line: string, opts?: { reserved?: boolean }) => {
     const key = line.slice(0, 48);
-    if (seen.has(key) || bullets.length >= MAX_BULLETS) return;
+    if (seen.has(key)) return;
+    if (!opts?.reserved && bullets.length >= MAX_BULLETS) return;
     seen.add(key);
     bullets.push(line.startsWith("• ") ? line : `• ${line}`);
   };
@@ -508,10 +511,10 @@ export function tradeManagerNarrativeSection(
   } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.stop_premium != null) {
     breakLine = `**Break watch** — reclaim **${fmtUsd(play.exitPolicy.stop_premium)}** → cover shorts.`;
   }
-  if (breakLine) add(breakLine);
+  if (breakLine) add(breakLine, { reserved: true });
 
   const counter = counterThesisLine(ctx, play, spot);
-  if (counter && bullets.length < 8) bullets.push(`• ${counter}`);
+  if (counter) add(counter, { reserved: true });
 
   if (!bullets.length) return null;
 
