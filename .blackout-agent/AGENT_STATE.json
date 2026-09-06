@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:29:36.875Z",
+  "updated_at": "2026-09-06T01:38:09.240Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T01:19:10.448Z",
-      "lease_until": "2026-09-06T02:49:10.448Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-06T01:21:27.482Z",
+      "lease_until": "2026-09-06T03:07:09.633Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "ac5ec1a7-c8f4-45de-b49c-7c3ee42a5094",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T01:16:53.380Z",
-      "lease_until": "2026-09-06T02:46:54.493Z",
+      "claimed_at": "2026-09-06T01:35:06.493Z",
+      "lease_until": "2026-09-06T03:07:09.634Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "12d2cb2a-3723-48c0-91df-5489acb95fce"
+      "run_id": "ac5ec1a7-c8f4-45de-b49c-7c3ee42a5094"
     }
   },
   "reviews": {
@@ -49,7 +49,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "2c2301275da86bfcd6f64dba43529602f5c0f4c9",
+    "last_main_sha": "38939b0bc597eb4cea1a8191c15b56e09b09bfec",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T01:18:29Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34003550757",
@@ -328,9 +328,42 @@
       "agent": "cursor",
       "run_id": "c67c7c9c-0774-4005-8fc7-1ac390db883c",
       "summary": "PR-event cycle COMPLETE. Lifecycle GREEN: deploy, api-auth (225), platform-integrity (14/14), seo (22/22), rth-open skipped (weekend), ops:collect 0. main@2c2301275. #4071 verify GREEN, ready for Claude peer review. No Claude/fix PRs."
+    },
+    {
+      "at": "2026-09-06T01:38:09.239Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T01:38:09.240Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "36552623-e7e1-442a-b3c3-64e86d18e396",
+      "summary": "PR-event cycle complete. Lifecycle GREEN (deploy, api-auth 225 routes, platform-integrity 14/14, seo 22/22, rth-open skipped weekend). ops:collect 0. main@38939b0bc. #4071 verify GREEN — awaiting Claude peer review. No claude/fix PRs for peer review. ECR deploy rolling. GitHub PAT rate-limited."
     }
   ],
   "open_prs": [
+    {
+      "number": 4075,
+      "title": "fix(vector): undated-row expiry only worked when the ticker stopped appearing in fresh",
+      "branch": "fix/vector-universe-undated-fresh-row-reset",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T01:35:54Z"
+    },
+    {
+      "number": 4074,
+      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN @2c2301275",
+      "branch": "cursor/autopilot-work-loop-7a7e",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T01:29:53Z"
+    },
     {
       "number": 4073,
       "title": "fix(largo): nightly stress off-topic scoring + lower 429 concurrency",
@@ -339,7 +372,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T01:28:41Z"
+      "updated_at": "2026-09-06T01:37:24Z"
     }
   ],
   "pr_activity": {
