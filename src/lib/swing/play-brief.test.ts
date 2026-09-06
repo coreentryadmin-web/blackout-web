@@ -245,6 +245,42 @@ test("composeSwingPlayBrief: earnings evidence carries brief asOf for Largo C1 j
   assert.equal(earningsEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
 });
 
+test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims for Largo C7", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: { days_to_cover: 2.1, short_volume_ratio: 0.35, price_target: null, as_of: "2026-09-05" },
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const siEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Short interest:"));
+  assert.ok(siEvidence, "expected short interest evidence");
+  assert.match(siEvidence!.text, /DTC 2\.1d/);
+  assert.match(siEvidence!.text, /short vol ratio 35%/);
+  assert.equal(siEvidence?.provenance?.source, "Polygon / Benzinga");
+  assert.equal(siEvidence?.provenance?.freshness, "recent");
+  assert.ok(siEvidence?.provenance?.asOf, "fundamentals observation must carry asOf for C1 joins");
+});
+
 test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1 joins", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
