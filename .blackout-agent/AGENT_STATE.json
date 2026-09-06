@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:27:56.381Z",
+  "updated_at": "2026-09-06T14:13:14.308Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T13:57:28.360Z",
+      "lease_until": "2026-09-06T15:43:13.320Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "21b0a988-95ce-4a0d-a5dd-ce721b0bfeb2"
     }
   },
   "reviews": {
@@ -31,6 +31,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4260": {
+      "pr": 4260,
+      "head_sha": "f2c4c6d05",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T14:09:53.897Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -44,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "b17816699124deef3fc99de64e4617948c07c18f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T14:10:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34038334663",
+    "last_deploy_sha": "af4a791de0d07b7025e89db6fdd20aefb4a3092d"
   },
   "events": [
     {
@@ -601,9 +609,246 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T14:01:49.688Z",
+      "type": "pr_webhook",
+      "pr": 4271,
+      "event": "sweep",
+      "head": "b1aae9f3cf145bb48f20bd2b6aabc8c6750ea351",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:01:52.153Z",
+      "type": "pr_webhook",
+      "pr": 4270,
+      "event": "sweep",
+      "head": "b658a2eb1cfb684ed17536d27c4297a8ce2898cd",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:01:54.612Z",
+      "type": "pr_webhook",
+      "pr": 4269,
+      "event": "sweep",
+      "head": "122b31b109ae5ce14435715407aac29ae416210f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:01:57.243Z",
+      "type": "pr_webhook",
+      "pr": 4266,
+      "event": "sweep",
+      "head": "e561cb00d1c381d224204887b0a23f48d1c7df1f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:01:59.759Z",
+      "type": "pr_webhook",
+      "pr": 4260,
+      "event": "sweep",
+      "head": "f2c4c6d05750ff50fb05838ba9d80f65419e4e01",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:07.078Z",
+      "type": "pr_webhook",
+      "pr": 4271,
+      "event": "sweep",
+      "head": "b1aae9f3cf145bb48f20bd2b6aabc8c6750ea351",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:09.509Z",
+      "type": "pr_webhook",
+      "pr": 4270,
+      "event": "sweep",
+      "head": "b658a2eb1cfb684ed17536d27c4297a8ce2898cd",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:11.944Z",
+      "type": "pr_webhook",
+      "pr": 4269,
+      "event": "sweep",
+      "head": "122b31b109ae5ce14435715407aac29ae416210f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:14.481Z",
+      "type": "pr_webhook",
+      "pr": 4266,
+      "event": "sweep",
+      "head": "e561cb00d1c381d224204887b0a23f48d1c7df1f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:17.110Z",
+      "type": "pr_webhook",
+      "pr": 4260,
+      "event": "sweep",
+      "head": "f2c4c6d05750ff50fb05838ba9d80f65419e4e01",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:22.740Z",
+      "type": "pr_webhook",
+      "pr": 4271,
+      "event": "sweep",
+      "head": "b1aae9f3cf145bb48f20bd2b6aabc8c6750ea351",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:25.101Z",
+      "type": "pr_webhook",
+      "pr": 4270,
+      "event": "sweep",
+      "head": "b658a2eb1cfb684ed17536d27c4297a8ce2898cd",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:27.571Z",
+      "type": "pr_webhook",
+      "pr": 4269,
+      "event": "sweep",
+      "head": "122b31b109ae5ce14435715407aac29ae416210f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:29.902Z",
+      "type": "pr_webhook",
+      "pr": 4266,
+      "event": "sweep",
+      "head": "e561cb00d1c381d224204887b0a23f48d1c7df1f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:02:32.429Z",
+      "type": "pr_webhook",
+      "pr": 4260,
+      "event": "sweep",
+      "head": "f2c4c6d05750ff50fb05838ba9d80f65419e4e01",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:05:36.230Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:05:37.455Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:05:38.675Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:08:47.511Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:09:05.254Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:09:06.334Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:09:07.286Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:09:53.898Z",
+      "type": "pr_review",
+      "pr": 4260,
+      "head_sha": "f2c4c6d05",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T14:09:53.897Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T14:13:03.422Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T14:13:12.209Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T14:13:13.320Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T14:13:14.308Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4274,
+      "title": "chore(blackout-agent): cursor handoff — swing Largo peer reviews merged",
+      "branch": "cursor/autopilot-handoff-2026-09-06-1412",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:11:46Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -633,6 +878,46 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4271": {
+      "last_event": "sweep",
+      "last_head": "b1aae9f3cf145bb48f20bd2b6aabc8c6750ea351",
+      "last_feedback_at": "2026-09-06T14:02:22.740Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4270": {
+      "last_event": "sweep",
+      "last_head": "b658a2eb1cfb684ed17536d27c4297a8ce2898cd",
+      "last_feedback_at": "2026-09-06T14:02:25.101Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4269": {
+      "last_event": "sweep",
+      "last_head": "122b31b109ae5ce14435715407aac29ae416210f",
+      "last_feedback_at": "2026-09-06T14:02:27.571Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4266": {
+      "last_event": "sweep",
+      "last_head": "e561cb00d1c381d224204887b0a23f48d1c7df1f",
+      "last_feedback_at": "2026-09-06T14:02:29.902Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4260": {
+      "last_event": "sweep",
+      "last_head": "f2c4c6d05750ff50fb05838ba9d80f65419e4e01",
+      "last_feedback_at": "2026-09-06T14:02:32.429Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
