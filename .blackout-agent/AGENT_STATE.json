@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T13:01:02.262Z",
+  "updated_at": "2026-09-06T13:09:40.375Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T12:38:39.355Z",
-      "lease_until": "2026-09-06T14:25:09.725Z",
+      "claimed_at": "2026-09-06T13:01:46.642Z",
+      "lease_until": "2026-09-06T14:36:05.546Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "bb374515-9ae6-4f16-b40f-9db660357090"
+      "run_id": "390ea561-43ec-4845-b7e1-cf2f1425d7d6"
     },
     "BO-TEST-0004": {
       "task_id": "BO-TEST-0004",
@@ -72,8 +72,10 @@
   },
   "deploy": {
     "last_main_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028",
-    "last_deploy_status": "GREEN",
-    "last_deploy_at": "2026-09-06T13:00:40Z"
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-06T13:00:57Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34034630833",
+    "last_deploy_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028"
   },
   "events": [
     {
@@ -105,7 +107,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) \u2014 peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
+      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
     },
     {
       "at": "2026-09-05T19:35:03.828Z",
@@ -134,7 +136,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) \u2014 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
+      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
       "at": "2026-09-05T20:41:08.341Z",
@@ -494,7 +496,7 @@
       "pr": 4190,
       "event": "sweep",
       "head": "fcde84548d0e91171e164389bf1311c8dfec64c8",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
     },
@@ -504,7 +506,7 @@
       "pr": 4189,
       "event": "sweep",
       "head": "97db344dcd3ac2a83568690dae5cd293acbf5f48",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": true
     },
@@ -514,7 +516,7 @@
       "pr": 4188,
       "event": "sweep",
       "head": "656b59005d206131a85ea51a1f2a2765d767a1ef",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
     },
@@ -524,7 +526,7 @@
       "pr": 4187,
       "event": "sweep",
       "head": "86aff8fc854866dd11db13747eaa55594afc99ff",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
     },
@@ -607,7 +609,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "87520518-9d11-43da-b194-302260aa2e54",
-      "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) \u2014 both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
+      "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
     },
     {
       "at": "2026-09-06T12:27:55.473Z",
@@ -689,18 +691,51 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T13:09:40.375Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T13:09:40.375Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d8ac3afa-66e5-4a37-b6eb-10eb4c8c8940",
+      "summary": "workflow_run cycle: deploy GREEN (main@679d9beeb). Peer-reviewed #4253 (GEX/Vector absence, 27/27 tests) + #4252 (C1 exitAt + C3 gaps, 26/26 tests) — both APPROVED, merge #4253 first then rebase #4252. Platform sweeps GREEN: validate:deploy, ops:collect 0, api-auth, platform-integrity, rth-lifecycle (off-hours skip). Handoff #4251 verify still pending."
     }
   ],
   "open_prs": [
     {
+      "number": 4253,
+      "title": "fix(swing): surface cold GEX and missing Vector in play-brief unavailableSources",
+      "branch": "fix/swing-brief-gex-vector-absence",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:08:12Z"
+    },
+    {
+      "number": 4252,
+      "title": "fix(swing): play-brief C1 exitAt ET stamp + C3 absence gaps",
+      "branch": "fix/swing-play-brief-c1-c3-gaps",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:07:39Z"
+    },
+    {
       "number": 4251,
-      "title": "chore(blackout-agent): cursor handoff \u2014 #4248/#4249 merged, deploy GREEN",
+      "title": "chore(blackout-agent): cursor handoff — #4248/#4249 merged, deploy GREEN",
       "branch": "cursor/autopilot-handoff-2026-09-06-1259",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T12:59:18Z"
+      "updated_at": "2026-09-06T13:01:23Z"
     }
   ],
   "pr_activity": {
@@ -708,7 +743,7 @@
       "last_event": "sweep",
       "last_head": "fcde84548d0e91171e164389bf1311c8dfec64c8",
       "last_feedback_at": "2026-09-06T09:43:03.489Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -716,7 +751,7 @@
       "last_event": "sweep",
       "last_head": "97db344dcd3ac2a83568690dae5cd293acbf5f48",
       "last_feedback_at": "2026-09-06T09:43:06.278Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -724,7 +759,7 @@
       "last_event": "sweep",
       "last_head": "656b59005d206131a85ea51a1f2a2765d767a1ef",
       "last_feedback_at": "2026-09-06T09:43:08.803Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -732,7 +767,7 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     }
