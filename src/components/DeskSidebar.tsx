@@ -5,29 +5,19 @@
 // (hidden below 1024px via .desk-sidebar's CSS, see globals.css) so it never
 // touches the mobile chrome, which already has its own navigation (Nav's hamburger
 // menu + IosAppTabBar) — this is additive for wide viewports only, not a
-// replacement for either. Reuses Nav's FEATURE_LINKS accent/href/label data so the
-// two navs can never drift into listing different systems.
+// replacement for either. Reads Nav's DESK_NAV_LINKS data (via the dependency-free
+// desk-nav-links.ts module, not Nav.tsx itself) so the two navs can never drift
+// into listing different systems.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import { ProductMark, NAV_TO_MARK, type MarkProduct } from "@/components/marks/ProductMark";
 import { toolKeyForHref, type ToolKey } from "@/lib/tool-access";
+import { DESK_NAV_LINKS } from "@/lib/desk-nav-links";
 
-type Accent = "green" | "purple" | "orange" | "blue" | "red" | "teal";
-type RailLink = { href: string; label: string; accent: Accent };
-
-// Kept in sync with Nav.tsx's FEATURE_LINKS by hand (same 7 systems) — importing
-// from Nav.tsx directly would pull in its full client-side auth/mobile-menu state
-// tree into this much smaller component for no benefit.
-const RAIL_LINKS: RailLink[] = [
-  { href: "/dashboard", label: "SPX Slayer", accent: "green" },
-  { href: "/flows", label: "HELIX", accent: "purple" },
-  { href: "/heatmap", label: "BlackOut Thermal", accent: "orange" },
-  { href: "/terminal", label: "Largo", accent: "blue" },
-  { href: "/nighthawk", label: "Night Hawk", accent: "red" },
-  { href: "/vector", label: "Vector", accent: "teal" },
-  { href: "/meridian", label: "Meridian", accent: "blue" },
-];
+// desk-nav-links.ts's DeskNavLink carries `sub`/`adminOnly` (Nav.tsx's mega-menu needs them);
+// the rail only ever shows href/label/accent, and does not currently apply adminOnly filtering.
+const RAIL_LINKS = DESK_NAV_LINKS.map(({ href, label, accent }) => ({ href, label, accent }));
 
 export function DeskSidebar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
   const path = usePathname();
