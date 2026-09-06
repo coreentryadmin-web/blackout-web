@@ -1,19 +1,18 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T11:42:38.065Z
-**Run:** 87520518-9d11-43da-b194-302260aa2e54
+**At:** 2026-09-06T15:22:47.017Z
+**Run:** 21a6c0ad-e0c5-4516-9a76-30b24ceac28d
 
 ## Summary
 
-Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0.
+Merged wave: #4280 (prior), #4290 put-only HELIX diff, #4292 Vector dead-code, #4300 HELIX freshness, #4301 earnings asOf. Blocked #4296 (stale rebase — superseded by #4301). validate:deploy GREEN; ops:collect 0. main @ 9ab8d62fd.
 
 ## Deploy
 
-- main: `a37960c92712ca5986df2042d0c32a44153cfd92`
+- main: `9ab8d62fd36d7af7449ea253ddee4bab4e5f3db4`
 - status: 
 
 ## Open PRs
 
-- #4231 [agent] fix(swing): freeze CLOSED-position DTE to exit date, not today's date
-- #4230 [cursor] chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged
-- #4227 [agent] chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature
+- #4303 [cursor] chore(blackout-agent): cursor handoff — #4297/#4298 cycle
+- #4302 [agent] fix(swing): align stale HELIX coaching copy with pipeline-stale absence (C3)
