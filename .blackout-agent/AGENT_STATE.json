@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:27:56.381Z",
+  "updated_at": "2026-09-06T13:55:06.941Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T13:38:27.701Z",
+      "lease_until": "2026-09-06T15:08:27.701Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "1f05ed157dc4ce4e56677b19fd5882927ab05705",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T13:53:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34037468470",
+    "last_deploy_sha": "a97062e1621a2a8c3538c1b30839fbca4239059b"
   },
   "events": [
     {
@@ -601,9 +601,59 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T13:55:02.550Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T13:55:02.550Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "311420a1-3910-4138-b2f2-98a315e1c9fd",
+      "summary": "Autopilot cycle: platform GREEN (validate:deploy 14/14 integrity, ops:collect 0). Peer-review sweep — #4260+#4266+#4269 cursor-authored, verified locally (18/18, 38/38, 26/26 tests), awaiting Claude review. Shipped fix #4269 ivRank dead-wire onto play-brief TerminalPlay. Sunday — RTH/CloudWatch skipped."
+    },
+    {
+      "at": "2026-09-06T13:55:06.941Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4269,
+      "title": "fix(swing): wire ivRank onto play-brief TerminalPlay for Largo coaching",
+      "branch": "fix/swing-brief-ivrank-wire",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:54:56Z"
+    },
+    {
+      "number": 4266,
+      "title": "fix(swing): flag prior-session discovery scan in play-brief C3 channel",
+      "branch": "fix/swing-brief-stale-discovery-scan",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:55:04Z"
+    },
+    {
+      "number": 4260,
+      "title": "fix(swing): forward Vector unavailable_sections to play-brief envelope",
+      "branch": "fix/swing-brief-vector-section-absence",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:54:58Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
