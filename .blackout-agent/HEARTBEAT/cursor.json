@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "56c00e1e-a0fc-4d29-ba8d-cd542929f991",
-  "last_seen": "2026-09-06T17:09:22.375Z",
-  "last_productive_action": "heartbeat",
-  "current_task": "consolidated handoff PR",
-  "current_phase": "HANDOFF",
-  "branch": "cursor/handoff-consolidated-20260906T1709",
+  "run_id": "78e13ae9-c0a7-4990-b5b0-708e965ae507",
+  "last_seen": "2026-09-06T17:10:13.586Z",
+  "last_productive_action": "session_start",
+  "current_task": "BO-P1-0100",
+  "current_phase": "RESUMED",
+  "branch": null,
   "pr": null,
   "healthy": true
 }

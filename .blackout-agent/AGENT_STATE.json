@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T17:09:20.481Z",
+  "updated_at": "2026-09-06T17:11:06.681Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T17:08:13.646Z",
-      "lease_until": "2026-09-06T18:38:13.646Z",
+      "lease_until": "2026-09-06T18:40:13.586Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "78e13ae9-c0a7-4990-b5b0-708e965ae507"
     }
   },
   "reviews": {
@@ -793,68 +793,49 @@
       "agent": "cursor",
       "run_id": "2bad1240-3c50-46a6-86a2-3b773db21ee6",
       "summary": "Recovery cycle (pull_request dispatch): synced main@3327088. Peer-review lane clear — no Claude/fix PRs open. Merged this session wave: #4326 roll-plan fail-closed, #4329 uncalibrated thesis health silenced, #4330 technicalsCoaching evidence, #4334 SPX float rounding, #4335 thesis-health leak fix. validate:deploy GREEN; ops:collect 0. Consolidating 4 stale duplicate handoff PRs (#4332/#4336/#4337/#4338) into single handoff. Off-hours Sunday — RTH lifecycle skipped."
+    },
+    {
+      "at": "2026-09-06T17:10:13.586Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T17:10:14.426Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T17:10:15.221Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T17:11:06.681Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T17:11:06.681Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d8294c7c-90eb-4eaf-9ad6-850397caccaf",
+      "summary": "Cycle complete: closed duplicate handoffs #4332-4340; opened #4341 consolidated handoff. Peer lane clear (no Claude PRs). validate:deploy + lifecycle + ops:collect all GREEN. main@3327088 deployed. Awaiting Claude review on #4341."
     }
   ],
   "open_prs": [
     {
-      "number": 4340,
-      "title": "chore(blackout-agent): cursor handoff — merged #4335, deploy GREEN",
-      "branch": "cursor/handoff-20260906-1710",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-06T17:09:15Z"
-    },
-    {
-      "number": 4339,
-      "title": "chore(blackout-agent): cursor handoff — merged #4333-4335, closed #4331",
-      "branch": "cursor/handoff-20260906T1709",
+      "number": 4341,
+      "title": "chore(blackout-agent): cursor handoff — peer lane clear, deploy GREEN",
+      "branch": "cursor/bc-4c08bba6-d2ba-4560-ad1d-f3309f78104a-b61c",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:08:59Z"
-    },
-    {
-      "number": 4338,
-      "title": "chore(blackout-agent): cursor handoff — peer review #4326-4335",
-      "branch": "cursor/handoff-peer-review-20260906T1703",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:07:39Z"
-    },
-    {
-      "number": 4337,
-      "title": "chore(blackout-agent): cursor handoff — #4326/#4329/#4330 merged, deploy GREEN",
-      "branch": "cursor/autopilot-work-loop-faa2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T17:07:16Z"
-    },
-    {
-      "number": 4336,
-      "title": "chore(blackout-agent): cursor handoff — #4335 approved, deploy GREEN",
-      "branch": "cursor/handoff-20260906-1655",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T16:56:03Z"
-    },
-    {
-      "number": 4332,
-      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
-      "branch": "cursor/handoff-20260906-1638",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T16:42:27Z"
+      "updated_at": "2026-09-06T17:10:09Z"
     }
   ],
   "pr_activity": {
