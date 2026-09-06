@@ -111,6 +111,22 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   assert.deepEqual(brief.flowSnapshot, { callPremium: 1_200_000, putPremium: 400_000 });
 });
 
+test("composeSwingPlayBrief: omits envelope.confidence (Largo C6 — no uncalibrated score)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.confidence, undefined);
+});
+
 test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavailableSources (BIE absence contract)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

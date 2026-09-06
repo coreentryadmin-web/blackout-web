@@ -257,12 +257,6 @@ export function composeSwingPlayBrief(
           ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
           : null);
 
-  const hasRichData =
-    ctx.play.factors.length > 0 ||
-    ctx.vector != null ||
-    ctx.ecosystem?.recent_flow != null ||
-    ctx.ecosystem?.arsenal?.earnings != null;
-
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
       headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
@@ -273,10 +267,6 @@ export function composeSwingPlayBrief(
       levels: levelsFromContext(ctx),
       invalidation,
       followups: followupsFor(play),
-      confidence: {
-        level: hasRichData ? "high" : "moderate",
-        why: "Deterministic synthesis from swing lane, ledger, Vector chart, HELIX flow, GEX nodes, earnings & news — no LLM.",
-      },
       unavailableSources: ctx.ecosystem?.arsenal?.unavailable_sources,
     }),
     asOf: ctx.asOf,
