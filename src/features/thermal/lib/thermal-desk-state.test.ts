@@ -22,6 +22,7 @@ import {
   thermalQuoteBadge,
   spotSourceBadge,
   shiftPanelEmptyDescription,
+  shiftBasisFootnote,
   horizonWallsSummary,
 } from "./thermal-desk-state.ts";
 
@@ -353,6 +354,12 @@ test("spotSourceBadge — maps provenance to member-facing labels", () => {
 test("shiftPanelEmptyDescription — mentions session closed when market is closed", () => {
   const closed = shiftPanelEmptyDescription({ hasShiftForLens: true, marketOpen: false, noun: "Gamma" });
   assert.match(closed, /cash session is closed/i);
+});
+
+test("shiftBasisFootnote — SPX GEX only", () => {
+  assert.match(shiftBasisFootnote({ ticker: "SPX", lens: "gex" }) ?? "", /raw market-structure/i);
+  assert.equal(shiftBasisFootnote({ ticker: "SPY", lens: "gex" }), null);
+  assert.equal(shiftBasisFootnote({ ticker: "SPX", lens: "vex" }), null);
 });
 
 test("horizonWallsSummary — formats 0DTE/3DTE/7DTE walls", () => {
