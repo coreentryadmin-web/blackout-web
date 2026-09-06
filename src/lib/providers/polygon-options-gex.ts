@@ -1352,7 +1352,8 @@ async function resolveIndexRestChangePct(
     return prevBar.change_pct;
   }
 
-  return reported;
+  // Index REST often reports 0% after the close when prev_close rolled forward — treat as unknown.
+  return reported === 0 ? null : reported;
 }
 
 async function resolveSpotSnapshot(
