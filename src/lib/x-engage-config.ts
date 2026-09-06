@@ -56,28 +56,6 @@ export const DISCOVERY_SEARCH_QUERIES = [
 
 export const MIN_IMPRESSIONS_FOR_DISCOVERY_RT = 150;
 
-/** Legacy export — prefer x-rate-budget.ts caps. */
-export const ENGAGE_LIMITS = {
-  likes: 8,
-  follows: 3,
-  retweets: 1,
-  mentionReplies: 5,
-  delayMs: 3000,
-  rateLimitBackoffMs: 45_000,
-} as const;
-
-/** @deprecated use X_CRON_RUN_CAPS in x-rate-budget.ts */
-export const ENGAGE_LIMITS_CRON = {
-  likes: 3,
-  follows: 1,
-  retweets: 0,
-  mentionReplies: 2,
-  delayMs: 2500,
-  rateLimitBackoffMs: 30_000,
-  targetBatchSize: 2,
-  searchHits: 4,
-} as const;
-
 export const MAX_TWEET_AGE_HOURS = 6;
 export const MIN_IMPRESSIONS_FOR_RT = 500;
 /** Intensive growth mode — RT giant desk posts with moderate reach. */
