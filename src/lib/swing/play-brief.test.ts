@@ -213,6 +213,34 @@ test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET
   assert.doesNotMatch(positionSection!.body, /\.663Z/, "Position section must not print a raw ISO mark timestamp");
 });
 
+test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1 joins", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: {
+        print_count: 12,
+        window_hours: 24,
+        call_premium: 1_000_000,
+        put_premium: 500_000,
+        unknown_premium: 0,
+      },
+      flow_feed_fresh: true,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flowEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("HELIX flow"));
+  assert.ok(flowEvidence, "expected HELIX flow evidence");
+  assert.equal(flowEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+});
+
 test("composeSwingPlayBrief: swing-scan evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
