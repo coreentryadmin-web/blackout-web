@@ -818,6 +818,33 @@ test("chartLevelsSection: live Vector put wall still shown when GEX matrix is st
   assert.doesNotMatch(section!.body, /Gamma flip/);
 });
 
+test("chartLevelsSection: stale GEX king strike omitted even when Vector desk is present", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gex_king_strike: 100,
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 100,
+      gexWalls: { putWalls: [{ strike: 94 }], callWalls: [] },
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Put wall \(GEX\):\*\* 94\.00/);
+  assert.doesNotMatch(section!.body, /GEX king strike/);
+});
+
 test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {
   const section = meridianCatalystSection({
     play: fixturePlay(),

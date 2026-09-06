@@ -192,7 +192,8 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStaleForLevels;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStaleForLevels;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStaleForLevels;
-  const kingFromStaleGex = gex?.gex_king_strike != null && gexStaleForLevels && vec == null;
+  // King strike is GEX-only in this section — gate whenever the matrix is stale (Vector presence irrelevant).
+  const kingFromStaleGex = gex?.gex_king_strike != null && gexStaleForLevels;
 
   if (callWall != null && !callWallFromStaleGex) {
     lines.push(`**Call wall (GEX):** ${callWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, callWall)}` : ""}`);
