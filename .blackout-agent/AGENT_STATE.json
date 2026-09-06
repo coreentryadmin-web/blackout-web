@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:56:28.473Z",
+  "updated_at": "2026-09-06T12:57:40.547Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T12:33:25.448Z",
-      "lease_until": "2026-09-06T14:19:34.201Z",
+      "claimed_at": "2026-09-06T12:34:19.635Z",
+      "lease_until": "2026-09-06T14:04:19.635Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "3b5d4e64-00f9-492a-9832-0854ce6d2da7"
+      "run_id": null
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6ffcf773122edf97ba3aed533005b5d3dbe79852",
+    "last_main_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T12:56:19Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34034580027",
-    "last_deploy_sha": "6ffcf773122edf97ba3aed533005b5d3dbe79852"
+    "last_deploy_at": "2026-09-06T12:57:26Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34034630833",
+    "last_deploy_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028"
   },
   "events": [
     {
@@ -614,18 +614,31 @@
       "agent": "cursor",
       "run_id": "c8369bc3-ed8e-405b-ac93-30021933e4a0",
       "summary": "PR-event cycle: peer-reviewed #4245 (markIsSync C3) + #4247 (horizon-outcomes as-managed). Merged #4244/#4245/#4247. #4248 (short-vol ratio) CI green — awaiting Claude peer review. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T12:57:40.546Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T12:57:40.547Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b17dd9b7-d7d3-4c8e-a253-30499b6f876e",
+      "summary": "PR-event cycle complete: peer-reviewed+merged #4244 (scanAsOf ET), #4245 (markIsSync absence), #4247 (horizon as-managed), #4248 (short-vol ratio), #4249 (ecosystem/vector fetch failure absence). validate:deploy GREEN; ops:collect 0. Only #4250 (this handoff) remains — awaiting Claude peer review."
     }
   ],
   "open_prs": [
     {
-      "number": 4249,
-      "title": "fix(swing): surface total ecosystem/Vector fetch failures in the absence channel",
-      "branch": "fix/swing-ecosystem-vector-total-fetch-failure-absence",
+      "number": 4250,
+      "title": "chore(blackout-agent): cursor handoff — swing/largo merge wave, #4248 awaiting Claude",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle2",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T12:56:02Z"
+      "updated_at": "2026-09-06T12:56:40Z"
     }
   ],
   "pr_activity": {
