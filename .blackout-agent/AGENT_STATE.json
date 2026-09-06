@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T21:57:21.224Z",
+  "updated_at": "2026-09-06T22:42:47.107Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-06T23:26:29.158Z",
+      "lease_until": "2026-09-07T00:03:46.835Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "9cfadeef-70ef-441d-b68b-73628e00fcca",
+      "run_id": "bd47d985-718b-497b-8021-c1bd1e8d05cc",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-06T23:26:29.158Z",
+      "lease_until": "2026-09-07T00:03:46.835Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "9cfadeef-70ef-441d-b68b-73628e00fcca"
+      "run_id": "bd47d985-718b-497b-8021-c1bd1e8d05cc"
     }
   },
   "reviews": {
@@ -57,11 +57,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "200dd971d505fbefcde15b9a5b5cd45d5fbd8b78",
+    "last_main_sha": "09c257075ab8e0efe815092374d35c31dab12294",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T21:56:57Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34062560370",
-    "last_deploy_sha": "200dd971d505fbefcde15b9a5b5cd45d5fbd8b78"
+    "last_deploy_at": "2026-09-06T22:40:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34064705466",
+    "last_deploy_sha": "09c257075ab8e0efe815092374d35c31dab12294"
   },
   "events": [
     {
@@ -334,18 +334,31 @@
       "agent": "cursor",
       "run_id": "28326438-6a2c-4b75-b65e-9d1525c9f95e",
       "summary": "Main@200dd971d GREEN. Largo stale-Vector wave #4387-#4394 + #4395 stress nightly merged. Open PRs: 0. validate:deploy GREEN, ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T22:42:47.106Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T22:42:47.107Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2838dfac-aeb5-4f87-abe2-f145b93fecc6",
+      "summary": "Main@09c257075 GREEN. #4403 merged. #4401 approved, CI re-run pending. #4402 cursor — Claude."
     }
   ],
   "open_prs": [
     {
-      "number": 4397,
-      "title": "chore(state): sync autopilot handoff after Largo stale-gate cycle",
-      "branch": "chore/autopilot-state-sync",
+      "number": 4402,
+      "title": "fix(largo): gate stale Vector walls/desk in swing play-brief (Largo C2)",
+      "branch": "cursor/autopilot-state-recovery-loop-d3e6",
       "author": "coreentryadmin-web",
-      "agent": "human",
+      "agent": "cursor",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T21:57:20Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T22:41:17Z"
     }
   ]
 }
