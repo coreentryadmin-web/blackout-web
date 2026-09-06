@@ -207,8 +207,8 @@ export function vectorPlayCoaching(vec: VectorFullState | null, play: TerminalPl
   if (!vp?.headline && !vp?.invalidation) return null;
 
   const aligned =
-    (play.direction === "LONG" && vp.thesis?.toLowerCase().includes("long")) ||
-    (play.direction === "SHORT" && vp.thesis?.toLowerCase().includes("short"));
+    (play.direction === "LONG" && vp.bias === "long") ||
+    (play.direction === "SHORT" && vp.bias === "short");
 
   const parts: string[] = [];
   if (vp.headline) parts.push(`Vector desk: **${vp.headline}**`);
@@ -224,14 +224,12 @@ export function vectorPlayCoaching(vec: VectorFullState | null, play: TerminalPl
   return line;
 }
 
-/** Night Hawk + 0DTE + HELIX friction detection. */
+/** Night Hawk + 0DTE + HELIX + Vector friction detection. */
 export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
   const eco = ctx.ecosystem;
-  if (!eco) return null;
-
-  const nh = eco.nighthawk_recent;
-  const z = eco.zerodte_today;
-  const flow = trustedHelixFlow(eco);
+  const nh = eco?.nighthawk_recent;
+  const z = eco?.zerodte_today;
+  const flow = eco ? trustedHelixFlow(eco) : null;
 
   const nhLong = nh?.direction?.toLowerCase() === "long";
   const nhShort = nh?.direction?.toLowerCase() === "short";
@@ -240,11 +238,21 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   const callHeavy = flow && flow.call_premium > flow.put_premium * 1.3;
   const putHeavy = flow && flow.put_premium > flow.call_premium * 1.3;
 
+  const vp = vectorOf(ctx)?.play;
+  const vLong = vp?.bias === "long";
+  const vShort = vp?.bias === "short";
+
   const conflicts: string[] = [];
   if (play.direction === "LONG" && nhShort) conflicts.push("Night Hawk bearish");
   if (play.direction === "SHORT" && nhLong) conflicts.push("Night Hawk bullish");
   if (play.direction === "LONG" && zShort) conflicts.push(`0DTE short (score ${z?.score ?? "—"})`);
   if (play.direction === "SHORT" && zLong) conflicts.push(`0DTE long (score ${z?.score ?? "—"})`);
+  if (play.direction === "LONG" && vShort) {
+    conflicts.push(`Vector bearish (${vp?.headline ?? vp?.grade ?? "desk read"})`);
+  }
+  if (play.direction === "SHORT" && vLong) {
+    conflicts.push(`Vector bullish (${vp?.headline ?? vp?.grade ?? "desk read"})`);
+  }
   if (play.direction === "LONG" && putHeavy) conflicts.push("HELIX put-led");
   if (play.direction === "SHORT" && callHeavy) conflicts.push("HELIX call-led");
 

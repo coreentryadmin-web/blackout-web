@@ -145,6 +145,24 @@ test("crossDeskCoaching: friction when NH conflicts", () => {
   assert.match(line!, /Night Hawk bearish/i);
 });
 
+test("crossDeskCoaching: Vector bearish bias conflicts with LONG swing", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /Vector bearish/i);
+  assert.match(line!, /Fade the rip/i);
+});
+
 test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {
   const line = crossDeskCoaching(
     ctx({
@@ -218,6 +236,21 @@ test("vectorPlayCoaching: null when Vector has no play headline or invalidation"
     vectorPlayCoaching({ play: {} } as unknown as Parameters<typeof vectorPlayCoaching>[0], play()),
     null,
   );
+});
+
+test("vectorPlayCoaching: uses play.bias not thesis substring (long-gamma thesis vs short bias)", () => {
+  const vec = {
+    play: {
+      bias: "short",
+      headline: "Fade into wall",
+      thesis: "Long gamma (spot pinned)",
+      invalidation: "102.00",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  assert.match(line!, /cross-check/i);
+  assert.doesNotMatch(line!, /aligned with swing lane/i);
 });
 
 test("vectorPlayCoaching: returned line has an EVEN count of ** bold markers (no unpaired marker corrupting markdown)", () => {

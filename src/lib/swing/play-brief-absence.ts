@@ -18,6 +18,9 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   if (ctx.openBook === null) {
     out.push({ source: "open book", reason: "ledger read failed" });
   }
+  if (ctx.meridian?.unavailable) {
+    out.push({ source: "Meridian catalysts", reason: "timeline read failed" });
+  }
 
   return out;
 }
