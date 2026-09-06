@@ -1,12 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  attachPlayBriefThesisInputs,
   getSwingServingLane,
   discoverSwingFromPersisted,
   persistSwingServingSnapshot,
   SWING_SERVING_TTL_SEC,
   type SwingDiscoveryLike,
 } from "./serving-lane.ts";
+import { computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health.ts";
 import { SWING_SCAN_PHASES } from "./scan-cadence.ts";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier.ts";
 import type { SwingReads } from "../swing-signals.ts";
@@ -398,6 +400,45 @@ test("no dossier for the ticker → the row is left honest, never given an inven
   const live = lane.sections.MANAGING[0];
   assert.ok(live, "the position still renders");
   assert.equal((live.factors ?? []).length, 0, "no dossier means no factors — the placeholder is correct here");
+});
+
+test("attachPlayBriefThesisInputs: ledger levels + commit archetype calibrate thesis health for Largo", () => {
+  const d = buildSwingDossier(dossier("NRG"));
+  const base = play({
+    ticker: "NRG",
+    archetype: "BREAKOUT",
+    liveStatus: "HOLD",
+    contract: {
+      ticker: "NRG",
+      strike: 110,
+      right: "C",
+      expiry: "2026-09-18",
+      dte: 13,
+      mid: 9,
+      bid: 8.9,
+      ask: 9.1,
+      delta: 0.6,
+      openInterest: 1000,
+    },
+  });
+  const enriched = attachPlayBriefThesisInputs(base, d, undefined, {
+    spot: 100,
+    ledger: { entryUnderlyingPx: 100, thesisInvalidationPx: 90 },
+  });
+  const health = computeSwingThesisHealth({
+    direction: enriched.direction,
+    status: "HOLD",
+    setupState: enriched.setupState,
+    entryStatus: enriched.entryStatus,
+    factors: enriched.factors,
+    regime: enriched.regime,
+    signalKinds: enriched.signalKinds,
+    computedAtEt: "14:00 ET",
+  });
+  assert.ok(enriched.setupState, "setupState from ledger fallback");
+  assert.ok(enriched.entryStatus, "entryStatus needs contract on reads");
+  assert.ok((enriched.signalKinds ?? []).length > 0, "commit archetype maps to a Tier-0 path");
+  assert.equal(thesisHealthUncalibrated(health), false);
 });
 
 test("getSwingServingLane stamps scanAsOf from persisted snapshot", async () => {

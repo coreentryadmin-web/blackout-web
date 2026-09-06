@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { before, describe, mock } from "node:test";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import { pickLanePlayForBrief, parseSwingPlayId, resolveBriefIvRank } from "./play-brief-resolve-pure";
-import { attachThesisExplanation, dossiersByTicker } from "./serving-lane";
+import { attachPlayBriefThesisInputs, attachThesisExplanation, dossiersByTicker } from "./serving-lane";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier";
+import { thesisHealthUncalibrated } from "./thesis-health";
 import type { SwingReads } from "../swing-signals";
 import type { SwingPositionRow } from "@/lib/db";
 
@@ -214,6 +215,7 @@ mock.module("./serving-lane", {
   namedExports: {
     // Real implementations — these are exactly what this test is proving gets WIRED IN.
     attachThesisExplanation,
+    attachPlayBriefThesisInputs,
     dossiersByTicker,
     // Stubs — unused by loadOpenTerminalPlay, but the module must export something for them.
     getSwingServingLane: async () => ({
@@ -242,6 +244,11 @@ describe("loadOpenTerminalPlay: restores factors/regime for a committed row (Lar
     assert.ok(
       (play!.thesisHealth?.pillars?.length ?? 0) > 0,
       "thesis health must compute for a working position",
+    );
+    assert.equal(
+      thesisHealthUncalibrated(play!.thesisHealth),
+      false,
+      "setup/entry/signal inputs from dossier must calibrate thesis health (not the generic 46% band)",
     );
     const regimePillar = play!.thesisHealth?.pillars?.find((p) => p.id === "market");
     assert.ok(regimePillar, "regime/market pillar must be present");

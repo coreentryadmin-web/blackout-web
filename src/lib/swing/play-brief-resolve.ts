@@ -10,7 +10,7 @@ import {
   type SwingPositionRow,
 } from "@/lib/db";
 import {
-  attachThesisExplanation,
+  attachPlayBriefThesisInputs,
   getSwingServingLane,
   discoverSwingFromPersisted,
   readSwingServingSnapshot,
@@ -213,7 +213,14 @@ export async function loadOpenTerminalPlay(
   const dossiers = discovery?.dossiers ?? [];
   const dossier = dossiers.find((d) => d.ticker.toUpperCase() === ticker.toUpperCase());
   const reads = discovery?.readsByTicker?.get(ticker.toUpperCase());
-  lanePlay = attachThesisExplanation(lanePlay, dossier, reads);
+  const spotForReads = spot ?? row.entry_underlying_px ?? null;
+  lanePlay = attachPlayBriefThesisInputs(lanePlay, dossier, reads, {
+    spot: spotForReads,
+    ledger: {
+      entryUnderlyingPx: row.entry_underlying_px,
+      thesisInvalidationPx: row.thesis_invalidation_px,
+    },
+  });
 
   const play = terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay, row.id));
   const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank, featureVector: row.feature_vector });
@@ -268,7 +275,9 @@ export async function resolveSwingPlayForBrief(
     const discovery = await discoverSwingFromPersisted().catch(() => null);
     const dossier = discovery?.dossiers?.find((d) => d.ticker.toUpperCase() === ticker);
     const reads = discovery?.readsByTicker?.get(ticker);
-    const enriched = attachThesisExplanation(lanePlay, dossier, reads);
+    const snap = await readSwingServingSnapshot().catch(() => null);
+    const spot = snap?.spotsByTicker?.[ticker.toUpperCase()] ?? null;
+    const enriched = attachPlayBriefThesisInputs(lanePlay, dossier, reads, { spot });
     const play = terminalPlayFromHorizon(horizonRowToDeckSource(enriched));
     const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank });
     return {

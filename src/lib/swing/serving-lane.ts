@@ -28,8 +28,12 @@ import {
 import {
   buildSwingReadsByTicker,
   swingServingMetaFromDossier,
+  swingServingReadsFromPlan,
   type SwingServingReads,
 } from "./serving-ingest";
+import { signalKindsForObservation } from "./discovery";
+import type { SwingDiscoveryPath } from "./discovery";
+import type { SwingArchetype } from "./taxonomy";
 import type { ChainContract } from "../horizon-fanout";
 import { livePlaysFromOpenPositions } from "./live-plays";
 import type { SwingPositionRow } from "../db";
@@ -158,6 +162,107 @@ export function attachThesisExplanation(
     ...play,
     factors: hasFactors ? meta.factors : play.factors,
     regime: meta.regime ?? play.regime,
+  };
+}
+
+/** Archetype → Tier-0 screen path proxy for committed rows missing signalKinds (brief-only). */
+function discoveryPathHintForArchetype(archetype: SwingArchetype | null | undefined): SwingDiscoveryPath[] {
+  switch (archetype) {
+    case "FLOW_ACCUMULATION":
+    case "EVENT_DRIVEN":
+    case "POST_EARNINGS_DRIFT":
+    case "SECTOR_ROTATION":
+      return ["FLOW"];
+    case "BREAKOUT":
+    case "FAILED_BREAKDOWN":
+    case "PULLBACK_CONTINUATION":
+    case "MEAN_REVERSION":
+      return ["STRUCTURE"];
+    default:
+      return [];
+  }
+}
+
+/** Horizon play contract → ChainContract for entry-geometry reads (brief-only). */
+function chainContractFromHorizonPlay(play: HorizonPlay): ChainContract | null {
+  const c = play.contract;
+  if (!c?.ticker || !c.expiry || c.strike == null) return null;
+  const right = c.right === "P" ? "P" : c.right === "C" ? "C" : null;
+  if (!right) return null;
+  return {
+    ticker: c.ticker,
+    right,
+    expiry: c.expiry,
+    dte: c.dte ?? 0,
+    strike: c.strike,
+    delta: c.delta ?? null,
+    openInterest: c.openInterest ?? 0,
+    bid: c.bid ?? null,
+    ask: c.ask ?? null,
+    mid: c.mid ?? null,
+  };
+}
+
+/**
+ * Ask Largo brief-only enrichment: restore thesis-health inputs (setupState/entryStatus/signalKinds)
+ * from the dossier without borrowing pre-entry lifecycle fields into `getSwingServingLane`.
+ *
+ * `attachThesisExplanation` intentionally skips setupState/entryStatus so live rows are not
+ * mis-routed by a stale pre-entry read. The play-brief path does not route sections — only computes
+ * `computeSwingThesisHealth` — so filling missing inputs here is safe and stops the constant 46%
+ * "Degraded" band when a dossier + reads exist.
+ */
+export function attachPlayBriefThesisInputs(
+  play: HorizonPlay,
+  dossier: SwingDossier | undefined,
+  reads?: SwingServingReads,
+  opts?: {
+    spot?: number | null;
+    /** Commit-pinned underlying levels when the dossier plan is absent (live ledger rows). */
+    ledger?: { entryUnderlyingPx?: number | null; thesisInvalidationPx?: number | null };
+  },
+): HorizonPlay {
+  const withExplanation = attachThesisExplanation(play, dossier, reads);
+  if (!dossier) return withExplanation;
+
+  const spot = opts?.spot ?? null;
+  let effectiveReads =
+    reads ??
+    swingServingReadsFromPlan(dossier, spot ?? undefined, {
+      contract: withExplanation.contract,
+    });
+  const playContract = chainContractFromHorizonPlay(withExplanation);
+  if (!effectiveReads && spot != null && spot > 0) {
+    const entry = opts?.ledger?.entryUnderlyingPx ?? dossier.plan?.entryUnderlyingPx ?? null;
+    const inv = opts?.ledger?.thesisInvalidationPx ?? dossier.plan?.thesisInvalidationPx ?? null;
+    if (entry != null && inv != null && Number.isFinite(entry) && Number.isFinite(inv)) {
+      const atr = Math.abs(entry - inv) / 1.5;
+      effectiveReads = {
+        setup: { price: spot, triggerPx: entry, invalidationPx: inv, atr },
+        entry: { price: spot, triggerPx: entry, atr },
+        ...(playContract ? { contract: playContract } : {}),
+      };
+    }
+  } else if (effectiveReads && playContract && !effectiveReads.contract) {
+    effectiveReads = { ...effectiveReads, contract: playContract };
+  }
+  const meta = swingServingMetaFromDossier(dossier, effectiveReads ?? undefined);
+  // Commit-pinned archetype wins over a fresh dossier re-classification (live ledger is ground truth).
+  const archetypeForSignals = play.archetype ?? dossier.archetype?.archetype ?? null;
+  const signalKinds =
+    withExplanation.signalKinds?.length
+      ? withExplanation.signalKinds
+      : signalKindsForObservation(discoveryPathHintForArchetype(archetypeForSignals), dossier);
+
+  return {
+    ...withExplanation,
+    ...(withExplanation.setupState == null && meta.setupState != null
+      ? { setupState: meta.setupState }
+      : {}),
+    ...(withExplanation.entryStatus == null && meta.entryStatus != null
+      ? { entryStatus: meta.entryStatus }
+      : {}),
+    ...(signalKinds.length && !withExplanation.signalKinds?.length ? { signalKinds } : {}),
   };
 }
 
