@@ -2672,3 +2672,9 @@ than an end-of-session patch.
 - **What changed:** Removed the duplicate `bookContextCoaching()` and its call site; `bookContextSection()` remains the single source for this check.
 - **RTH check:** Open Ask Largo for a swing play whose ticker shares a theme with an existing open position (e.g. a semis name while holding AMD/SMH/NVDA) — the concentration/conflict warning should appear ONCE, in the "Book context" section, not also repeated inside "Trade manager read."
 
+### 40. Ask Largo swing collapse — Desk context hardening + stale title cleanup (P2) — fix/swing-collapse-desk-context-hardening — 2026-09-06
+
+- **What was broken:** #4123 fixed Book context being collapsed, but `main` still carried the stale `"Desk consensus"` entry (renamed to `"Desk context"` in #4111). Accidentally safe today because the string no longer matches — but a future rename back would silently delete NH outcome-history / flow-anomaly content that `crossDeskCoaching` does not cover.
+- **What changed:** Removed stale `"Desk consensus"` from the collapse set; added Desk-context regression test; documented why Book context and Desk context must stay excluded.
+- **RTH check:** For an OPEN/HOLD swing with NH trade history or a recent flow anomaly on the name, confirm "Desk context" still appears even when "Trade manager read" leads.
+
