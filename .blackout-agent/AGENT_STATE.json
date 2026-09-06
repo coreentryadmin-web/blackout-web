@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T10:08:52.629Z",
+  "updated_at": "2026-09-06T10:09:29.495Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -559,9 +559,39 @@
       "agent": "cursor",
       "run_id": "a7659e33-ff33-4b24-87cb-2afb87ad8ea2",
       "summary": "Cycle complete: #4189+#4191 merged to main@f5e3c83be. Peer reviews recorded. Stale handoff PRs closed. validate:deploy GREEN. ops:collect 0. pr-sweep empty."
+    },
+    {
+      "at": "2026-09-06T10:09:04.497Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T10:09:29.495Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T10:09:29.495Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "626212c2-a781-403c-a410-b9d5a6746d3b",
+      "summary": "Hourly wake complete. main@f5e3c83be. Merged #4189+#4191. validate:deploy/api-auth/platform-integrity(14/14) GREEN. ops:collect 0. pr-sweep empty. Handoff PR #4196 open."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4196,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4189/#4191 merged, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-pr-event-20260906-cycle10",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T10:09:14Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
