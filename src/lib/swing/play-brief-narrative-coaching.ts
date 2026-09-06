@@ -33,6 +33,7 @@ function vectorOf(ctx: SwingPlayBriefContext): VectorFullState | null {
 
 /** Urgent thesis invalidation — leads narrative when fired. */
 export function thesisBreakCoaching(play: TerminalPlay): string | null {
+  if (thesisHealthUncalibrated(play.thesisHealth)) return null;
   const level = play.thesisBreak?.level ?? play.thesisHealth?.thesisBreakLevel;
   const note = play.thesisBreak?.note ?? play.thesisHealth?.thesisBreakNote;
   if (!level || level === "unknown" || level === "intact") return null;
@@ -47,6 +48,7 @@ export function thesisBreakCoaching(play: TerminalPlay): string | null {
 export function thesisPillarCoaching(play: TerminalPlay): string | null {
   const h = play.thesisHealth;
   if (!h?.pillars?.length) return null;
+  if (thesisHealthUncalibrated(h)) return null;
 
   const faded = h.pillars
     .filter((p) => p.status === "lost" || p.status === "faded")
