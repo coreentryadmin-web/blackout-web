@@ -611,6 +611,30 @@ test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is f
   assert.match(section!.body, /tape read may lag/);
 });
 
+test("dataFreshnessSection: stale GEX matrix warns when ctx.vector is null (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /GEX matrix \*\*200s\*\* old/);
+  assert.match(section!.body, /dealer posture may lag spot/);
+});
+
 test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {
   const section = meridianCatalystSection({
     play: fixturePlay(),

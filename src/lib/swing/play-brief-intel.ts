@@ -4,7 +4,7 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { playExpectsLiveOptionMark } from "./play-brief-absence";
+import { playExpectsLiveOptionMark, gexMatrixAgeMs, GEX_MATRIX_STALE_MS } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 import { laneRankSection } from "./play-brief-lane-rank";
@@ -628,6 +628,12 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   }
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
+  }
+  const gexAgeMs = gexMatrixAgeMs(ctx.ecosystem?.gex_positioning);
+  if (gexAgeMs != null && gexAgeMs > GEX_MATRIX_STALE_MS) {
+    lines.push(
+      `GEX matrix **${Math.round(gexAgeMs / 1000)}s** old — dealer posture may lag spot`,
+    );
   }
   if (ctx.ecosystem?.flow_feed_fresh === false) {
     lines.push(
