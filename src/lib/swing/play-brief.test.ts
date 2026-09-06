@@ -237,7 +237,7 @@ test("composeSwingPlayBrief: GEX evidence freshness honors matrix_age_sec over r
         flip: 24,
         gamma_posture: "long",
         asof: new Date().toISOString(),
-        matrix_age_sec: 300,
+        matrix_age_sec: 60,
         freshness: "cached",
       },
     } as SwingPlayBriefContext["ecosystem"],
@@ -249,12 +249,12 @@ test("composeSwingPlayBrief: GEX evidence freshness honors matrix_age_sec over r
   assert.equal(
     postureEvidence!.provenance?.freshness,
     "recent",
-    "matrix_age_sec must drive envelope freshness even when asof is recent",
+    "matrix_age_sec must drive envelope freshness even when asof is recent (and matrix is not stale)",
   );
   assert.notEqual(
     postureEvidence!.provenance?.freshness,
     "live",
-    "must not read live when matrix_age_sec is 300s",
+    "must not read live when matrix_age_sec is 60s while asof is fresh",
   );
 });
 
