@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T22:25:02.181Z",
+  "updated_at": "2026-09-06T23:05:09.218Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T22:30:50.946Z",
+      "lease_until": "2026-09-07T00:00:50.946Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null
+    },
+    "BO-P1-0103": {
+      "task_id": "BO-P1-0103",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T22:59:24.191Z",
+      "lease_until": "2026-09-07T00:29:24.191Z",
+      "phase": "AUDITING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -47,16 +59,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T22:59:24.192Z",
+      "current_task": "BO-P1-0103"
     }
   },
   "deploy": {
-    "last_main_sha": "200dd971d505fbefcde15b9a5b5cd45d5fbd8b78",
+    "last_main_sha": "1914d985aac2c112cb1e1615f63a57570ca9c185",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T22:54:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34065316530",
+    "last_deploy_sha": "1914d985aac2c112cb1e1615f63a57570ca9c185"
   },
   "events": [
     {
@@ -806,9 +819,78 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T22:53:13.846Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T22:53:13.847Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "fe3b22fd-ae61-40c4-a7dc-cbbdb9facb9e",
+      "summary": "Peer review cycle: #4403 merged (meridian boot-script). #4401 closed/superseded. #4402 envelope gating completed (dde75126b) — awaiting Claude review. ops:collect 0; validate:deploy GREEN."
+    },
+    {
+      "at": "2026-09-06T22:54:07.869Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T22:54:10.374Z",
+      "type": "pr_webhook",
+      "pr": 4402,
+      "event": "sweep",
+      "head": "c34a074af119432b5ae2edb30f2707db6b51d8f5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T22:59:24.192Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0103",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T23:05:02.767Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:05:02.768Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "73c5078d-b850-41e0-9d8f-718d65912690",
+      "summary": "Cycle complete: #4403+#4401 merged to main. #4402 verify GREEN (c34a074af) — blocked on Claude peer review (Cursor cannot self-approve). ops:collect 0; validate:deploy GREEN. Off-hours — RTH skipped."
+    },
+    {
+      "at": "2026-09-06T23:05:09.218Z",
+      "type": "pr_webhook",
+      "pr": 4402,
+      "event": "sweep",
+      "head": "b5c343a18f8259df57e4ddb56444b68e7dda8314",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4402,
+      "title": "fix(largo): gate stale Vector walls/desk in swing play-brief (Largo C2)",
+      "branch": "cursor/autopilot-state-recovery-loop-d3e6",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T23:05:02Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -838,6 +920,14 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4402": {
+      "last_event": "sweep",
+      "last_head": "b5c343a18f8259df57e4ddb56444b68e7dda8314",
+      "last_feedback_at": "2026-09-06T23:05:09.218Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
