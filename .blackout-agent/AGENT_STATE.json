@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:27:56.381Z",
+  "updated_at": "2026-09-06T12:58:13.389Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T12:46:55.992Z",
+      "lease_until": "2026-09-06T14:28:11.583Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "adf6ac34-dec5-42b3-a79f-acb1f040ab42"
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T12:57:26Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34034630833",
+    "last_deploy_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028"
   },
   "events": [
     {
@@ -598,6 +598,43 @@
     },
     {
       "at": "2026-09-06T12:27:56.381Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T12:58:07.156Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T12:58:07.157Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "55d71f16-86f4-4e5a-80b0-8ad18c6dcbb8",
+      "summary": "Peer-reviewed #4249 (ecosystem/Vector fetch-failure absence) — merged. #4248 (short-volume ratio normalize) also merged. validate:deploy GREEN; ops:collect 0. main@679d9beeb."
+    },
+    {
+      "at": "2026-09-06T12:58:08.035Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T12:58:11.583Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T12:58:12.477Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T12:58:13.389Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
