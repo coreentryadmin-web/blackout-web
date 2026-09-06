@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T08:49:10.670Z",
+  "updated_at": "2026-09-06T09:08:09.321Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T08:37:51.671Z",
-      "lease_until": "2026-09-06T10:09:54.481Z",
+      "claimed_at": "2026-09-06T08:46:24.427Z",
+      "lease_until": "2026-09-06T10:16:24.427Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "b220c2a7-035f-451c-9883-c9f6b04013fe",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0101": {
@@ -50,11 +50,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "dac25ac031e42ee07d549d1095b50012476c9544",
-    "last_deploy_status": "success",
-    "last_deploy_at": "2026-09-06T08:45:51Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34019905319",
-    "last_deploy_sha": "dac25ac031e42ee07d549d1095b50012476c9544"
+    "last_main_sha": "4a0b16c44fa70bd6113f8f3f6531b804a1f093ed",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-06T08:56:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34023260349",
+    "last_deploy_sha": "4a0b16c44fa70bd6113f8f3f6531b804a1f093ed"
   },
   "events": [
     {
@@ -590,38 +590,51 @@
       "agent": "cursor",
       "run_id": "b2ab6709-155e-4990-9352-cf409f14a8ba",
       "summary": "PR-event cycle (updated): lifecycle GREEN. #4173 verify GREEN — awaiting Claude peer review. ops:collect 0. main@dac25ac."
+    },
+    {
+      "at": "2026-09-06T09:08:09.321Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T09:08:09.321Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "dd59c823-f7f6-4100-8e28-cca85b1afc32",
+      "summary": "PR-event cycle complete. Merged #4174 (swing play-brief Largo C6 — omit fabricated confidence). main@4a0b16c. ECS deploy 34023260349 rolling. validate:deploy GREEN. Peer review: #4174 APPROVED+merged. #4173 awaiting Claude review (cursor cannot self-approve). No other open fix/claude PRs."
     }
   ],
   "open_prs": [
+    {
+      "number": 4177,
+      "title": "chore(blackout-agent): cursor PR-event handoff — peer review #4174/#4175, deploy GREEN",
+      "branch": "cursor/autopilot-work-loop-145c",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:02:49Z"
+    },
+    {
+      "number": 4176,
+      "title": "chore(blackout-agent): cursor PR-event handoff — cycle8 peer review complete",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle8",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:01:04Z"
+    },
     {
       "number": 4175,
       "title": "fix(thermal): gate pulse SSE change_pct on REST anchor",
       "branch": "fix/thermal-pulse-change-pct-anchor",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T08:48:52Z"
-    },
-    {
-      "number": 4174,
-      "title": "fix(swing): omit uncalibrated play-brief confidence (Largo C6)",
-      "branch": "fix/swing-brief-omit-fabricated-confidence",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T08:48:52Z"
-    },
-    {
-      "number": 4173,
-      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN, deploy rolling",
-      "branch": "cursor/autopilot-pr-event-20260906-cycle7",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
       "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T08:38:02Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T08:58:07Z"
     }
   ],
   "pr_activity": {
