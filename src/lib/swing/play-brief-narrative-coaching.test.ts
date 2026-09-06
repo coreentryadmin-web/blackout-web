@@ -248,6 +248,32 @@ test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led fri
   assert.equal(line, null, "stale HELIX must not coach cross-desk flow friction");
 });
 
+test("crossDeskCoaching: stale Vector play bias must not invent cross-desk friction (Largo C2)", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: { bias: "short", headline: "Fade the rip", grade: "B" },
+        freshness: "stale",
+        dataAgeMs: 180_000,
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "stale Vector play bias must not appear in cross-desk coaching");
+});
+
+test("vectorPlayCoaching: stale Vector snapshot suppressed (Largo C2)", () => {
+  const line = vectorPlayCoaching(
+    {
+      play: { bias: "long", headline: "Buy dips", invalidation: "below 100" },
+      freshness: "stale",
+      dataAgeMs: 180_000,
+    } as unknown as Parameters<typeof vectorPlayCoaching>[0],
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "stale Vector desk read must not coach alignment");
+});
+
 test("crossDeskCoaching: desk alignment omits undefined NH conviction and junk 0DTE score", () => {
   const line = crossDeskCoaching(
     ctx({

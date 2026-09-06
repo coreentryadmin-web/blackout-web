@@ -3,12 +3,11 @@
  * Pure + deterministic. Consumed by play-brief-narrative.ts.
  */
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { playExpectsLiveOptionMark } from "./play-brief-absence";
+import { playExpectsLiveOptionMark, trustedHelixFlow, vectorSnapshotStale } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtPremium } from "@/lib/fmt-money";
-import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
@@ -207,6 +206,7 @@ export function wallIntegrityCoaching(vec: VectorFullState | null, play: Termina
 
 /** Vector desk play thesis / invalidation alignment. */
 export function vectorPlayCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const vp = vec?.play;
   if (!vp?.headline && !vp?.invalidation) return null;
 
@@ -242,7 +242,8 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   const callHeavy = flow && flow.call_premium > flow.put_premium * 1.3;
   const putHeavy = flow && flow.put_premium > flow.call_premium * 1.3;
 
-  const vp = vectorOf(ctx)?.play;
+  const vec = vectorOf(ctx);
+  const vp = vec && !vectorSnapshotStale(vec, Date.now()) ? vec.play : null;
   const vLong = vp?.bias === "long";
   const vShort = vp?.bias === "short";
 

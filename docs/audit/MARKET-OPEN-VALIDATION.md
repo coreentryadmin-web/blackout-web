@@ -3246,3 +3246,9 @@ than an end-of-session patch.
 - **What was broken:** `dealerPostureLine()` took `flip = vec?.gammaFlip ?? gex?.flip` with no staleness gate. Live Vector `regime.posture` could render under **"Right now"** while a stale GEX-only `flip` still appeared in the `γ-flip` suffix — sixth instance of the Largo C2 stale-GEX class on this read path.
 - **What changed:** Per-value stale GEX gating on flip (mirrors break-watch/counter-thesis/focal-levels): suppress flip when from stale GEX-only fallback; live Vector `gammaFlip` still wins.
 - **RTH check:** Open Ask Largo on a swing with live Vector dealer posture but no Vector flip, GEX matrix >120s old — confirm "Trade manager read" dealer line shows posture without a `γ-flip` cite.
+
+### 58. Ask Largo swing brief — stale Vector desk bias still drove coaching friction — fix/largo-stale-vector-coaching-gate — 2026-09-06
+
+- **What was broken:** `counterThesisLine()` already gated Vector `play.bias` on `vectorSnapshotStale()`, but `crossDeskCoaching()` and `vectorPlayCoaching()` still cited stale Vector desk reads as live cross-desk friction ("Size down until desks agree") and alignment coaching — contradicting the structured `Vector snapshot` unavailable source.
+- **What changed:** Both coaching call sites now gate on `vectorSnapshotStale()` before reading `vec.play`.
+- **RTH check:** Open Ask Largo on a swing where Vector snapshot is stale (>120s / `freshness: stale`) but carries an opposing `play.bias` — confirm Trade manager read does not cite Vector bearish/bullish friction or "Vector desk:" alignment lines.
