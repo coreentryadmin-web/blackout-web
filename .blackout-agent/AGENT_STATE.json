@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:22:26.778Z",
+  "updated_at": "2026-09-06T03:40:03.851Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T03:19:43.340Z",
+      "lease_until": "2026-09-06T04:49:43.340Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -22,6 +22,22 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
+      "safe_to_merge": true
+    },
+    "pr-4112": {
+      "pr": 4112,
+      "head_sha": "7c5bd746",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T03:39:52.332Z",
+      "safe_to_merge": true
+    },
+    "pr-4111": {
+      "pr": 4111,
+      "head_sha": "927df983",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T03:39:52.691Z",
       "safe_to_merge": true
     }
   },
@@ -36,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d61dd9139cb02e9cea430b1bc41b1889930d7557",
+    "last_main_sha": "c6a8766a61bc1b4fd2c4bd80f25580d16718bdb9",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T03:39:53Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34009559591",
+    "last_deploy_sha": "c6a8766a61bc1b4fd2c4bd80f25580d16718bdb9"
   },
   "events": [
     {
@@ -320,19 +336,40 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T03:22:25.673Z",
+      "at": "2026-09-06T03:39:52.332Z",
+      "type": "pr_review",
+      "pr": 4112,
+      "head_sha": "7c5bd746",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T03:39:52.332Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T03:39:52.692Z",
+      "type": "pr_review",
+      "pr": 4111,
+      "head_sha": "927df983",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T03:39:52.691Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T03:39:59.999Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T03:22:26.411Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-06T03:39:59.999Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "785e83bd-56bc-44ec-aec9-4c361e99f248",
+      "summary": "Peer-reviewed #4111 (desk consensus dedup) and #4112 (streak bonus direction gate) — both APPROVED, merged same cycle. main now includes #4104/#4108/#4111/#4112. Open: #4110 cursor coaching-v3 (own PR, await Claude review). ops:collect 0, validate:deploy GREEN."
     },
     {
-      "at": "2026-09-06T03:22:26.778Z",
+      "at": "2026-09-06T03:40:03.851Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
@@ -340,14 +377,14 @@
   ],
   "open_prs": [
     {
-      "number": 4108,
-      "title": "feat(swing): counter-thesis coaching + trade-manager diff narration",
-      "branch": "fix/swing-counter-thesis-coaching",
+      "number": 4110,
+      "title": "feat(swing): coaching v3 — VEX, flow prints, macro, book context, trim diff",
+      "branch": "cursor/swing-brief-coaching-v3",
       "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T03:21:58Z"
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:39:46Z"
     }
   ]
 }
