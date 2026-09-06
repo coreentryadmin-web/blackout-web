@@ -2672,3 +2672,9 @@ than an end-of-session patch.
 - **What changed:** Removed the duplicate `bookContextCoaching()` and its call site; `bookContextSection()` remains the single source for this check.
 - **RTH check:** Open Ask Largo for a swing play whose ticker shares a theme with an existing open position (e.g. a semis name while holding AMD/SMH/NVDA) — the concentration/conflict warning should appear ONCE, in the "Book context" section, not also repeated inside "Trade manager read."
 
+### 40. Ask Largo swing brief — brief v4 collapse silently dropped Book context — fix/swing-brief-book-context-collapse — 2026-09-06
+
+- **What was broken:** `collapseRedundantIntelSections` (#4119) dropped "Book context" whenever Trade manager read led, but #4116 had removed the duplicate narrative bullet — `bookContextSection` was the sole concentration source. Members with theme-overlapping books got zero warning with a false "folded above" footnote.
+- **What changed:** Removed "Book context" from `NARRATIVE_COVERED_TITLES` (#4123). Follow-up: removed stale "Desk consensus" dead string (#4111 renamed section to "Desk context") and documented why both Book/Desk context must stay visible.
+- **RTH check:** Open Ask Largo for a swing play with theme-overlapping open book — confirm "Book context" section is present with concentration text, and "Desk context" (NH outcome history / flow anomaly) is also present when applicable, not falsely claimed as "folded into Trade manager read."
+
