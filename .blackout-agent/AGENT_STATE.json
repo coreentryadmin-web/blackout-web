@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T23:22:37.921Z",
+  "updated_at": "2026-09-06T00:01:00.190Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T23:50:48.753Z",
+      "lease_until": "2026-09-06T01:21:31.669Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "318247e6-d5d2-47ff-8f4e-8ead01149e00",
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +32,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T23:50:48.753Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "70535baf1d8fa9af6ae5de67dc1107fdc2947eb1",
+    "last_main_sha": "a3ddea86dab2333cc34d1c37352543caacb07729",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T23:36:37Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33999109081",
+    "last_deploy_sha": "a3ddea86dab2333cc34d1c37352543caacb07729"
   },
   "events": [
     {
@@ -192,7 +194,88 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:50:38.332Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:50:42.541Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:50:43.283Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:50:44.534Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:50:48.753Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T23:50:51.307Z",
+      "type": "pr_webhook",
+      "pr": 4067,
+      "event": "sweep",
+      "head": "e931e540e647e7067896ff14d2e421cbdde353ad",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T23:51:31.669Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:51:32.444Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:51:33.177Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T00:01:00.189Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T00:01:00.190Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "33554d97-c023-4575-b843-202a6ca8b545",
+      "summary": "workflow_run cycle complete. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours skip). ops:collect 0. main@a3ddea86 deployed. Peer review queue empty — no Claude/fix PRs. #4067 handoff verify GREEN → marked ready for Claude review (Cursor RECUSE merge). Pattern scan: no new P1 defects found this cycle."
     }
   ],
-  "open_prs": []
+  "open_prs": [],
+  "pr_activity": {
+    "pr-4067": {
+      "last_event": "sweep",
+      "last_head": "e931e540e647e7067896ff14d2e421cbdde353ad",
+      "last_feedback_at": "2026-09-05T23:50:51.307Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
