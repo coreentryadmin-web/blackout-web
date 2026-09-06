@@ -117,6 +117,8 @@ test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow 
     sessionDate: "2026-09-05",
     scanAsOf: null,
     scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
     ecosystem: null,
     vector: null,
   };
