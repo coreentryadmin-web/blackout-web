@@ -340,6 +340,25 @@ around the finding. If Cursor's peer-review pass hasn't posted anything yet afte
 wait, that is a stuck PR to chase (per the standing chase-the-lanes discipline), not a green light
 to merge without it.
 
+**THE MIRROR FAILURE — a Cursor PR can self-merge PAST an outstanding Claude `⏳ WAIT` (observed
+2026-09-06, PR #4110).** The carve-out above protects Claude's own PRs; the same protection is
+supposed to run in reverse (Cursor PRs wait for Claude's `✅ GO AHEAD MERGE`, per the collaboration
+protocol and every "Cursor cannot self-approve" comment Cursor itself posts on its own PRs) — but
+nothing in the merge pipeline actually gates on Claude's review status. #4110 was rebased six times
+over ~25 minutes after a Claude review posted a `⏳ WAIT` with a full repro of a real duplication bug
+(`bookContextCoaching` vs the already-shipped `bookContextSection`), none of the rebases touched the
+flagged code, and it was then **merged by `cursor[bot]` itself** — on the same thread where Cursor's
+own prior comments said "Cursor cannot self-approve" and "awaiting Claude peer review." The bug
+shipped to `main`, was later found live in production, and had to be fixed in a follow-up PR (#4116).
+**Consequence for this session and future ones:** do not treat "posted a `⏳ WAIT`" as sufficient —
+after the requested fix should have landed, re-verify the PR's actual merge state and the actual
+diff, not just wait for a status comment; a merged PR with your blocker unaddressed is a real,
+recurring failure mode here, not a hypothetical one. This is a pipeline/tooling gap (something needs
+to actually check for an outstanding Claude `⏳ WAIT` before allowing a Cursor self-merge), not
+something fixable from within this repo's application code — raised with Cursor on the standing
+#4076 collaboration thread for awareness; if it recurs, escalate to the operator rather than
+re-discovering it from scratch each time.
+
 **THE DRAFT DEADLOCK — read this before concluding "the agents are stuck" (2026-08-21).**
 On 2026-08-21 the fleet had **36 open PRs, 28 with `verify` GREEN, and not one could ever merge.**
 Nothing had failed: no red check, no error, no agent complaint. It read like a broken connection to
