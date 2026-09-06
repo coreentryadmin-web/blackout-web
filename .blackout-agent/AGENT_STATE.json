@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:19:09.920Z",
+  "updated_at": "2026-09-06T03:30:41.144Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T02:42:23.495Z",
-      "lease_until": "2026-09-06T04:28:14.512Z",
+      "claimed_at": "2026-09-06T03:18:26.193Z",
+      "lease_until": "2026-09-06T04:48:26.193Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "8701e6ca-9939-47e7-9244-b6cfb3e9452a"
+      "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T03:30:02.934Z",
+      "lease_until": "2026-09-06T05:00:02.934Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +43,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T03:30:02.935Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "41ee65f098c64a078a389038141b348b950e4b4d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T03:04:54Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34008089744",
-    "last_deploy_sha": "3b96df0a63b848514ec30970e24d4a6b6603cada"
+    "last_deploy_at": "2026-09-06T03:20:36Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34008754410",
+    "last_deploy_sha": "d61dd9139cb02e9cea430b1bc41b1889930d7557"
   },
   "events": [
     {
@@ -320,50 +333,46 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T03:18:50.366Z",
-      "type": "pr_webhook",
-      "pr": 4108,
-      "event": "sweep",
-      "head": "df90fcdd42fd1f6a0dfa9aea34666fa254a60312",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": true
+      "at": "2026-09-06T03:30:02.935Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     },
     {
-      "at": "2026-09-06T03:18:52.259Z",
-      "type": "pr_webhook",
-      "pr": 4107,
-      "event": "sweep",
-      "head": "c75dd1f7a84ac46f1decb0802d9bcdcc33772c25",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-06T03:18:54.340Z",
-      "type": "pr_webhook",
-      "pr": 4104,
-      "event": "sweep",
-      "head": "7fe7ed70e841b3cb452ed286f28d3c2f4548d3e8",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-06T03:19:09.920Z",
+      "at": "2026-09-06T03:30:41.143Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 3
     },
     {
-      "at": "2026-09-06T03:19:09.920Z",
+      "at": "2026-09-06T03:30:41.144Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "87a228ce-ff05-4a34-9984-a88ea6dbcc80",
-      "summary": "PR-event cycle: merged wave landed (#4102 docs, #4103 narrative fallback, #4101 book-context+unavailable_sources). Peer-reviewed #4101 (APPROVED cb511924, merged). validate:deploy GREEN. ops:collect 0. Open: #4108 Claude counter-thesis (draft, verify pending — local 12/12 pass, pre-reviewed), #4104 cursor coaching-v2 (ready, verify pending — awaits Claude), #4107 cursor handoff draft. main@41ee65f09."
+      "run_id": "ce1442b7-a65a-4345-83f1-99fa40810674",
+      "summary": "PR-event cycle complete. Peer-reviewed #4108 APPROVED (counter-thesis + diff narration, 12/12 tests). #4104 verify GREEN — awaiting Claude peer review. Ordering: merge #4104 first, then #4108 rebase. validate:deploy GREEN. Open: #4104/#4107/#4108."
     }
   ],
   "open_prs": [
+    {
+      "number": 4110,
+      "title": "feat(swing): coaching v3 — VEX, flow prints, macro, book context, trim diff",
+      "branch": "cursor/swing-brief-coaching-v3",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:24:49Z"
+    },
+    {
+      "number": 4109,
+      "title": "fix(swing): vectorPlayCoaching prepends stray unpaired ** corrupting markdown",
+      "branch": "fix/vector-play-coaching-markdown",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:30:12Z"
+    },
     {
       "number": 4108,
       "title": "feat(swing): counter-thesis coaching + trade-manager diff narration",
@@ -372,53 +381,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T03:12:55Z"
-    },
-    {
-      "number": 4107,
-      "title": "chore(blackout-agent): cursor PR-event handoff — #4104 rebased, duplicate handoffs closed",
-      "branch": "cursor/autopilot-work-loop-5926",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T03:17:34Z"
-    },
-    {
-      "number": 4104,
-      "title": "feat(swing): deep trade-manager coaching — pillars, catalysts, cross-desk, confluence",
-      "branch": "cursor/swing-brief-coaching-v2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T03:15:11Z"
+      "updated_at": "2026-09-06T03:25:24Z"
     }
-  ],
-  "pr_activity": {
-    "pr-4108": {
-      "last_event": "sweep",
-      "last_head": "df90fcdd42fd1f6a0dfa9aea34666fa254a60312",
-      "last_feedback_at": "2026-09-06T03:18:50.366Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4107": {
-      "last_event": "sweep",
-      "last_head": "c75dd1f7a84ac46f1decb0802d9bcdcc33772c25",
-      "last_feedback_at": "2026-09-06T03:18:52.259Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4104": {
-      "last_event": "sweep",
-      "last_head": "7fe7ed70e841b3cb452ed286f28d3c2f4548d3e8",
-      "last_feedback_at": "2026-09-06T03:18:54.340Z",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "comment_action": "created"
-    }
-  }
+  ]
 }
