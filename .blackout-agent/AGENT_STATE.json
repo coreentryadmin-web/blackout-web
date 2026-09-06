@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:22:26.778Z",
+  "updated_at": "2026-09-06T04:00:19.082Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T03:57:18.625Z",
+      "lease_until": "2026-09-06T05:27:18.625Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +32,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T03:57:18.626Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "d61dd9139cb02e9cea430b1bc41b1889930d7557",
+    "last_main_sha": "884983752f98ca0b482a1193f4bfe586e07cf622",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T03:56:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34010246053",
+    "last_deploy_sha": "884983752f98ca0b482a1193f4bfe586e07cf622"
   },
   "events": [
     {
@@ -302,52 +304,48 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T03:06:13.717Z",
+      "at": "2026-09-06T03:57:11.147Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T03:06:14.503Z",
+      "at": "2026-09-06T03:57:15.467Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T03:06:14.904Z",
+      "at": "2026-09-06T03:57:16.096Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T03:22:25.673Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 1
+      "at": "2026-09-06T03:57:18.626Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
     },
     {
-      "at": "2026-09-06T03:22:26.411Z",
+      "at": "2026-09-06T03:57:56.473Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T03:22:26.778Z",
+      "at": "2026-09-06T04:00:19.081Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 1
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T04:00:19.082Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "06568b7a-f8c6-4fdd-ae4e-5cefc5225231",
+      "summary": "Post-#4110 merge cycle GREEN. main@884983752 deployed. 0 open PRs. validate:deploy + platform-integrity 14/14 + api-auth GREEN. ops:collect 0. Ask Largo OPEN/CLOSED pass (WATCH empty/off-hours). No Claude/fix PRs pending review. Off-hours — RTH skipped."
     }
   ],
-  "open_prs": [
-    {
-      "number": 4108,
-      "title": "feat(swing): counter-thesis coaching + trade-manager diff narration",
-      "branch": "fix/swing-counter-thesis-coaching",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T03:21:58Z"
-    }
-  ]
+  "open_prs": []
 }
