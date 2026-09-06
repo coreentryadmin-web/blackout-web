@@ -361,6 +361,13 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
     reasons.push(`0DTE long bias (score ${z.score ?? "—"})`);
   }
 
+  const vp = vec?.play;
+  if (play.direction === "LONG" && vp?.bias === "short") {
+    reasons.push(`Vector bearish (${vp.headline ?? vp.grade ?? "desk read"})`);
+  } else if (play.direction === "SHORT" && vp?.bias === "long") {
+    reasons.push(`Vector bullish (${vp.headline ?? vp.grade ?? "desk read"})`);
+  }
+
   if (spot != null) {
     const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? eco?.gex_positioning?.call_wall ?? null;
     const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? eco?.gex_positioning?.put_wall ?? null;

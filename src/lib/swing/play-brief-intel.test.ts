@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { bookContextSection, deskConsensusSection, lessonsSection } from "./play-brief-intel";
+import { bookContextSection, deskConsensusSection, flowIntelSection, lessonsSection } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
 
@@ -109,4 +109,23 @@ test("lessonsSection: a round-trip past breakeven never renders a nonsensical ne
   assert.ok(section);
   assert.doesNotMatch(section!.body, /-158\.9%|MFE capture: \*\*-/i);
   assert.match(section!.body, /round-tripped past breakeven/i);
+});
+
+test("flowIntelSection: stale HELIX feed must not render recent prints or anomalies", () => {
+  const eco = {
+    ticker: "INTC",
+    flow_feed_fresh: false,
+    recent_flow: null,
+    recent_anomalies: [{ anomaly_type: "sweep", detail: "big call sweep", direction: "bullish" }],
+    flow_full_state: {
+      recent: [{ option_type: "call", strike: 50, premium: 1_000_000 }],
+    },
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay());
+  assert.equal(section, null, "stale feed with only cached prints/anomalies must not invent flow intel");
 });

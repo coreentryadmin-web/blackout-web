@@ -62,3 +62,15 @@ test("collectBriefUnavailableSources: Meridian timeline failure surfaces in enve
     sources.some((s) => s.source === "Meridian catalysts" && s.reason === "timeline read failed"),
   );
 });
+
+test("collectBriefUnavailableSources: HELIX stale without recent_flow still surfaces in envelope", () => {
+  const ctx = {
+    ecosystem: {
+      flow_feed_fresh: false,
+      recent_flow: null,
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "HELIX flow" && s.reason === "pipeline stale"));
+});
