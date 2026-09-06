@@ -143,6 +143,50 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   assert.match(section!.body, /Break watch/i);
 });
 
+test("tradeManagerNarrativeSection: bias reads bullish from technicals on SHORT play with bullish tape (FINDINGS 2026-09-06 #13 parity)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT", status: "HOLD" }),
+      vector: {
+        spot: 95,
+        technicals: {
+          vwap: 94.7,
+          emaStack: "up",
+          rsi: 67,
+          macd: "bull",
+          goldenPocket: null,
+          structure: { type: "CHOCH", direction: "up", level: 94 },
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.equal(section!.bias, "bullish");
+});
+
+test("tradeManagerNarrativeSection: bias reads bearish from technicals on LONG play with bearish tape (FINDINGS 2026-09-06 #13 parity)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG", status: "HOLD" }),
+      vector: {
+        spot: 15,
+        technicals: {
+          vwap: 15.29,
+          emaStack: "down",
+          rsi: 40,
+          macd: "bear",
+          goldenPocket: null,
+          structure: { type: "BOS", direction: "down", level: 15.5 },
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.equal(section!.bias, "bearish");
+});
+
 test("counterThesisLine: steelmans bear case for LONG when desks disagree", () => {
   const line = counterThesisLine(
     ctx({
