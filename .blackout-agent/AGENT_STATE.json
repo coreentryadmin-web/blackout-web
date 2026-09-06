@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:00:46.923Z",
+  "updated_at": "2026-09-06T12:04:42.455Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -694,9 +694,38 @@
       "agent": "cursor",
       "run_id": "59721450-fe58-43fd-9447-ef9ccf9bbc2b",
       "summary": "PR-event cycle: approved #4232+#4236 peer review; #4235 awaits Claude review (Cursor PR); validate:deploy GREEN; ops:collect 0"
+    },
+    {
+      "at": "2026-09-06T12:02:32.950Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:04:42.454Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-06T12:04:42.455Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9968ae39-91bd-4817-a0fe-3928cc73ad59",
+      "summary": "Cycle: peer-approved #4232+#4236 (verify still running); #4235 awaits Claude; validate:deploy GREEN; ops:collect 0; CI subscription active for #4232"
     }
   ],
   "open_prs": [
+    {
+      "number": 4238,
+      "title": "chore(blackout-agent): cursor handoff — #4227/#4231 merged, peer reviews complete",
+      "branch": "cursor/autopilot-work-loop-873b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T12:03:42Z"
+    },
     {
       "number": 4237,
       "title": "chore(blackout-agent): cursor PR-event handoff — #4227/#4231 merged, #4232 approved",
@@ -705,7 +734,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-06T12:00:41Z"
+      "updated_at": "2026-09-06T12:00:54Z"
     },
     {
       "number": 4236,
@@ -715,7 +744,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:59:39Z"
+      "updated_at": "2026-09-06T12:03:34Z"
     },
     {
       "number": 4235,
@@ -725,7 +754,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:59:38Z"
+      "updated_at": "2026-09-06T12:03:56Z"
     },
     {
       "number": 4232,
@@ -735,7 +764,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:59:27Z"
+      "updated_at": "2026-09-06T12:02:30Z"
     }
   ],
   "pr_activity": {
