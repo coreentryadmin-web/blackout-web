@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T02:14:58.957Z",
+  "updated_at": "2026-09-06T02:31:01.578Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T02:02:36.161Z",
+      "lease_until": "2026-09-06T03:42:27.164Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "12ca0410-7331-48c0-a330-5d3780f98ae8"
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4c4bf5a8ee732bc823165146f1e78641e4997284",
+    "last_main_sha": "b78270d994ff53bb208f4e89ea2f078cf653fc77",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T02:25:30Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34006443433",
+    "last_deploy_sha": "b78270d994ff53bb208f4e89ea2f078cf653fc77"
   },
   "events": [
     {
@@ -282,48 +282,72 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T02:30:57.432Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T02:30:59.688Z",
+      "type": "pr_webhook",
+      "pr": 4097,
+      "event": "sweep",
+      "head": "52024b406e120f6a04ad9cebee610911c1b79346",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T02:31:01.578Z",
+      "type": "pr_webhook",
+      "pr": 4096,
+      "event": "sweep",
+      "head": "f716b307655f062daa250096f95331188e614ef9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
     }
   ],
   "open_prs": [
     {
-      "number": 4093,
-      "title": "fix(swing): re-land lane rank null guard (#4081 closed without merge)",
-      "branch": "fix/swing-lane-rank-guard-reland",
+      "number": 4097,
+      "title": "feat(swing): Ask Largo book-context concentration section",
+      "branch": "fix/swing-book-context-only",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T02:14:52Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T02:27:48Z"
     },
     {
-      "number": 4092,
-      "title": "fix(swing): null-guard lane rank when laneRows absent",
-      "branch": "cursor/fix-swing-lane-rank-null-guard",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T02:14:39Z"
-    },
-    {
-      "number": 4087,
-      "title": "feat(swing): Ask Largo book-context — theme/direction concentration awareness",
-      "branch": "fix/swing-book-context-concentration",
+      "number": 4096,
+      "title": "docs(claude): record standing Ask Largo × Night Hawk Swings ownership mandate",
+      "branch": "docs/largo-swing-ownership-mandate",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T02:14:57Z"
-    },
-    {
-      "number": 4084,
-      "title": "feat(swing): trade-manager narrative Ask Largo — dark pool, GEX king, hold/break coaching",
-      "branch": "cursor/swing-brief-narrative",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T02:09:51Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T02:27:18Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4097": {
+      "last_event": "sweep",
+      "last_head": "52024b406e120f6a04ad9cebee610911c1b79346",
+      "last_feedback_at": "2026-09-06T02:30:59.688Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4096": {
+      "last_event": "sweep",
+      "last_head": "f716b307655f062daa250096f95331188e614ef9",
+      "last_feedback_at": "2026-09-06T02:31:01.578Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
