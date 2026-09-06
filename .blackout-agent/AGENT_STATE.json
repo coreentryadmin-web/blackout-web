@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T17:08:08.408Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T16:57:40.370Z",
+      "lease_until": "2026-09-06T18:27:40.370Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -39,6 +39,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4335": {
+      "pr": 4335,
+      "head_sha": "9f369e58795e2821509dc6a65363013d65343684",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T16:58:30.490Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -52,11 +60,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "8d943acade2fe28492d89aaafe185afe4fccf804",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T17:06:45Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34047570898",
+    "last_deploy_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa"
   },
   "events": [
     {
@@ -734,9 +742,73 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:58:30.490Z",
+      "type": "pr_review",
+      "pr": 4335,
+      "head_sha": "9f369e58795e2821509dc6a65363013d65343684",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T16:58:30.490Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T17:08:08.408Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:08:08.408Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b961377a-e6d9-41bd-a276-77c2c85840e8",
+      "summary": "Peer-reviewed #4335 (uncalibrated thesis-health leak fix) — ✅ APPROVED, 141/141 tests pass locally. Posted merge approval; verify CI GREEN but gh merge blocked by PAT rate limit (retry pending). validate:deploy GREEN; ops:collect 0. Off-hours — RTH skipped."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4338,
+      "title": "chore(blackout-agent): cursor handoff — peer review #4326-4335",
+      "branch": "cursor/handoff-peer-review-20260906T1703",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:07:39Z"
+    },
+    {
+      "number": 4337,
+      "title": "chore(blackout-agent): cursor handoff — #4326/#4329/#4330 merged, deploy GREEN",
+      "branch": "cursor/autopilot-work-loop-faa2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:07:16Z"
+    },
+    {
+      "number": 4336,
+      "title": "chore(blackout-agent): cursor handoff — #4335 approved, deploy GREEN",
+      "branch": "cursor/handoff-20260906-1655",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:56:03Z"
+    },
+    {
+      "number": 4332,
+      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
+      "branch": "cursor/handoff-20260906-1638",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:42:27Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
