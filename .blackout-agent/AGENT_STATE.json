@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T07:52:12.288Z",
+  "updated_at": "2026-09-06T07:54:58.621Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T07:32:21.172Z",
-      "lease_until": "2026-09-06T09:11:24.116Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-06T07:45:42.499Z",
+      "lease_until": "2026-09-06T09:15:42.499Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "44a0c326-0ae3-494b-b2c3-9c9eaf5022ce"
+      "run_id": null
     },
     "BO-P1-0105": {
       "task_id": "BO-P1-0105",
@@ -499,6 +499,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T07:54:58.620Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T07:54:58.621Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "dfef5205-e78f-4729-b704-a9d0fecf377b",
+      "summary": "PR-event cycle 2026-09-06T07:58Z. Lifecycle GREEN: validate:deploy, platform-integrity 14/14, rth-open off-hours skip, ops:collect 0. #4166 merged (condor live status). #4169 verify pending — will mark ready when green. No claude/fix PRs for peer review. Deploy pending dac25ac03 (ECR in progress)."
     }
   ],
   "open_prs": [
@@ -509,8 +522,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "COMPLETED/CANCELLED",
-      "updated_at": "2026-09-06T07:51:01Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T07:52:21Z"
     }
   ]
 }
