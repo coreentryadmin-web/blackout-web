@@ -46,3 +46,19 @@ test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal 
   assert.ok(sources.some((s) => s.source === "HELIX flow" && s.reason === "pipeline stale"));
   assert.ok(sources.some((s) => s.source === "open book" && s.reason === "ledger read failed"));
 });
+
+test("collectBriefUnavailableSources: Meridian timeline failure surfaces in envelope", () => {
+  const ctx = {
+    meridian: {
+      as_of: "2026-09-06 06:30 ET",
+      items: [],
+      total_matched: 0,
+      unavailable: true,
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Meridian catalysts" && s.reason === "timeline read failed"),
+  );
+});
