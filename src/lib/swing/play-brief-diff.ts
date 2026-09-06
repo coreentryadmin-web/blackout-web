@@ -94,7 +94,12 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   if (prev.recommendation && next.recommendation && prev.recommendation !== next.recommendation) {
     lines.push(`Desk action **${prev.recommendation}** → **${next.recommendation}**`);
   }
-  if (prev.thesisHealth != null && next.thesisHealth != null && prev.thesisHealth !== next.thesisHealth) {
+  if (
+    prev.thesisHealth != null &&
+    next.thesisHealth != null &&
+    prev.thesisHealth !== next.thesisHealth &&
+    Math.abs(prev.thesisHealth - next.thesisHealth) >= 3
+  ) {
     lines.push(`Thesis health ${fmtDelta(prev.thesisHealth, next.thesisHealth, "%")}`);
   }
   if (prev.pnlPct != null && next.pnlPct != null && Math.abs(prev.pnlPct - next.pnlPct) >= 0.5) {

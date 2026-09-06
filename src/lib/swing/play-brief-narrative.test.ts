@@ -118,6 +118,6 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   assert.ok(section);
   assert.match(section!.body, /Hold the line/i);
   assert.match(section!.body, /Live read/i);
-  assert.match(section!.body, /Manage rails/i);
+  assert.match(section!.body, /Manage plan/i);
   assert.match(section!.body, /Break watch/i);
 });
