@@ -21,6 +21,8 @@
 // property of the product. So it lives here, it is not overridable, and a test asserts no surface
 // formats a time any other way.
 
+import { parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
+
 const ET_TIME_ZONE = "America/New_York";
 
 export type EtClockOptions = {
@@ -60,8 +62,15 @@ function formatterFor(opts: Required<EtClockOptions>): Intl.DateTimeFormat {
 /** Epoch ms from whatever a caller has to hand, or null if it isn't a real instant. */
 function toMs(at: number | string | Date | null | undefined): number | null {
   if (at == null) return null;
-  const ms = at instanceof Date ? at.getTime() : typeof at === "number" ? at : Date.parse(at);
-  return Number.isFinite(ms) ? ms : null;
+  if (at instanceof Date) {
+    const ms = at.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof at === "number") return Number.isFinite(at) ? at : null;
+  const parsed = Date.parse(at);
+  if (Number.isFinite(parsed)) return parsed;
+  // Largo C1 stamps ("YYYY-MM-DD HH:mm ET") are not ISO — Date.parse returns NaN.
+  return parseEtStamp(at);
 }
 
 /**

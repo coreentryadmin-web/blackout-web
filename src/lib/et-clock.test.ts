@@ -42,6 +42,12 @@ test("etClock renders Eastern wall-clock time in every shape the product uses", 
   assert.equal(etClock(EDT, { pad: true, seconds: true, hour12: false }), "14:30:05");
 });
 
+test("etClock parses Largo C1 asOf stamps (YYYY-MM-DD HH:mm ET)", () => {
+  assert.equal(etClock("2026-09-05 16:00 ET"), "4:00 PM");
+  assert.equal(etClock("2026-01-14 16:00 ET"), "4:00 PM");
+  assert.equal(etClock("2026-09-05 16:00 ET", { hour12: false }), "16:00");
+});
+
 test("the zone is the PRODUCT's, not the process's — a UTC server and an ET browser agree", () => {
   // The whole class of bug is a formatter that inherits an ambient zone. This asserts the output is
   // a function of the instant alone: 18:30:05Z is 2:30 PM ET no matter where this test runs.
