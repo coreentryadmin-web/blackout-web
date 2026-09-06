@@ -1,18 +1,31 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T05:02:17.958Z",
+  "updated_at": "2026-09-06T06:44:14.167Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T06:14:56.139Z",
+      "lease_until": "2026-09-06T07:44:56.139Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null,
+      "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T06:24:48.373Z",
+      "lease_until": "2026-09-06T07:54:48.373Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -23,6 +36,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
       "safe_to_merge": true
+    },
+    "pr-4151": {
+      "pr": 4151,
+      "head_sha": "6d9772b3f753394fc18a0f85c7a8f6ee3a595817",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T06:24:35.264Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -31,16 +52,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T06:24:48.374Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "1a98c378bc6799c17ecdece9faea4a81fbdf0a5b",
+    "last_main_sha": "0c0ac76eb0d4176d88f1c21d4b6d9b77f11d6101",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T06:38:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34017018266",
+    "last_deploy_sha": "0c0ac76eb0d4176d88f1c21d4b6d9b77f11d6101"
   },
   "events": [
     {
@@ -426,7 +448,98 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:14:47.106Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T06:14:50.615Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T06:14:51.609Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T06:14:52.857Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T06:14:56.140Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T06:24:35.264Z",
+      "type": "pr_review",
+      "pr": 4151,
+      "head_sha": "6d9772b3f753394fc18a0f85c7a8f6ee3a595817",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T06:24:35.264Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T06:24:42.028Z",
+      "type": "pr_webhook",
+      "pr": 4151,
+      "event": "sweep",
+      "head": "6d9772b3f753394fc18a0f85c7a8f6ee3a595817",
+      "verdict": "✅ **MERGE** — approved at current HEAD",
+      "directive": "MERGE",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T06:24:45.151Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:24:48.374Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T06:44:07.845Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T06:44:07.845Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a145f199-b968-4b52-bb1a-5d4258f77d9d",
+      "summary": "Workflow_run cycle: peer-reviewed #4151 (Ask Largo audit tunnel helper) — validated scripts GREEN, approved, undrafted, auto-merged. Deploy main@949b925 + validate:deploy GREEN. #4150 status checked. ops:collect 0. Off-hours Sunday — RTH skipped."
+    },
+    {
+      "at": "2026-09-06T06:44:14.167Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
-  "open_prs": []
+  "open_prs": [],
+  "pr_activity": {
+    "pr-4151": {
+      "last_event": "sweep",
+      "last_head": "6d9772b3f753394fc18a0f85c7a8f6ee3a595817",
+      "last_feedback_at": "2026-09-06T06:24:42.027Z",
+      "verdict": "✅ **MERGE** — approved at current HEAD",
+      "directive": "MERGE",
+      "comment_action": "created"
+    }
+  }
 }
