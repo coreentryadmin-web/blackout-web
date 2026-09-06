@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T20:23:42.673Z",
+  "updated_at": "2026-09-06T20:39:47.007Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-06T21:37:12.683Z",
+      "lease_until": "2026-09-06T21:54:08.724Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "3d512a4b-eff2-41cb-8527-d6ff302c27a5",
+      "run_id": "a8b9279c-7991-40cd-a2c3-5958f257cb71",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-06T21:37:12.683Z",
+      "lease_until": "2026-09-06T21:54:08.724Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "3d512a4b-eff2-41cb-8527-d6ff302c27a5"
+      "run_id": "a8b9279c-7991-40cd-a2c3-5958f257cb71"
     }
   },
   "reviews": {
@@ -59,9 +59,9 @@
   "deploy": {
     "last_main_sha": "af148408afcc5542efaf9cfe6e25db35ca667aa8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T20:20:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34057697678",
-    "last_deploy_sha": "af148408afcc5542efaf9cfe6e25db35ca667aa8"
+    "last_deploy_at": "2026-09-06T20:36:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34058508700",
+    "last_deploy_sha": "858d211158593ded7d011fad3a1df67875a12559"
   },
   "events": [
     {
@@ -265,9 +265,44 @@
       "agent": "cursor",
       "run_id": "42a47562-f9a8-450b-948d-264b3108e16c",
       "summary": "Main@af148408a. #4377-#4381+#4379 merged. #4382 cursor thermal pending Claude. validate:deploy next."
+    },
+    {
+      "at": "2026-09-06T20:24:08.724Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T20:24:09.475Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T20:39:47.007Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T20:39:47.007Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2d3618c8-0f84-4a50-b52d-8c9e535b3eb5",
+      "summary": "Main@af148408a GREEN (11 checks). Swing wave complete (#4376-#4381+#4379). #4382 thermal follow-up — 27/27 local, verify pending, Claude review required."
     }
   ],
   "open_prs": [
+    {
+      "number": 4385,
+      "title": "fix(nav): stop DeskSidebar and Nav hand-duplicating the same 7-desk list",
+      "branch": "fix/desk-sidebar-nav-shared-links",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T20:32:16Z"
+    },
     {
       "number": 4382,
       "title": "fix(thermal): follow-up harness + SPX shift caveat + provenance attrs",
@@ -276,7 +311,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T20:22:39Z"
+      "updated_at": "2026-09-06T20:36:47Z"
     }
   ]
 }
