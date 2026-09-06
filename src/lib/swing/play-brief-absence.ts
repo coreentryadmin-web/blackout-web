@@ -28,6 +28,15 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   if (ctx.meridian?.unavailable) {
     out.push({ source: "Meridian catalysts", reason: "timeline read failed" });
   }
+  // FINDINGS 2026-09-06 (#11): `ecosystem`/`vector` being null is otherwise ambiguous between a
+  // legitimately empty read and a total fetch failure — the arsenal-level unavailable_sources
+  // above only covers a failure WITHIN a successful ecosystem read, not the whole call throwing.
+  if (ctx.ecosystemFetchFailed === true) {
+    out.push({ source: "ecosystem context", reason: "fetch failed" });
+  }
+  if (ctx.vectorFetchFailed === true) {
+    out.push({ source: "Vector state", reason: "fetch failed" });
+  }
 
   return out;
 }

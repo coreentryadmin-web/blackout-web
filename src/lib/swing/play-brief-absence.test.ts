@@ -75,6 +75,31 @@ test("collectBriefUnavailableSources: HELIX stale without recent_flow still surf
   assert.ok(sources.some((s) => s.source === "HELIX flow" && s.reason === "pipeline stale"));
 });
 
+test("collectBriefUnavailableSources: a total ecosystem fetch failure surfaces in envelope, distinct from legitimately-empty (FINDINGS 2026-09-06 #11)", () => {
+  const ctx = {
+    ecosystem: null,
+    ecosystemFetchFailed: true,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "ecosystem context" && s.reason === "fetch failed"));
+});
+
+test("collectBriefUnavailableSources: ecosystem null WITHOUT a fetch failure does not fabricate an absence entry", () => {
+  const ctx = { ecosystem: null } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "ecosystem context"));
+});
+
+test("collectBriefUnavailableSources: a total Vector fetch failure surfaces in envelope (FINDINGS 2026-09-06 #11)", () => {
+  const ctx = {
+    vector: null,
+    vectorFetchFailed: true,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "Vector state" && s.reason === "fetch failed"));
+});
+
 test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope (FINDINGS 2026-09-06 #22)", () => {
   // dataHonestyCoaching() already narrates "mark not synced to live tape" from this exact
   // boolean — this asserts the same fact reaches the structured C3 channel, not just prose.
