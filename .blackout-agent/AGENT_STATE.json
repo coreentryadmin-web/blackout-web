@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T00:24:23.259Z",
+  "updated_at": "2026-09-06T00:52:56.338Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T00:51:10.189Z",
+      "lease_until": "2026-09-06T02:21:53.689Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "28e7d64d-7e64-4a68-bffa-5d8c2ab0e3bd"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T00:51:52.938Z",
+      "lease_until": "2026-09-06T02:21:53.690Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "28e7d64d-7e64-4a68-bffa-5d8c2ab0e3bd",
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +43,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T00:51:52.938Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "a3ddea86dab2333cc34d1c37352543caacb07729",
+    "last_main_sha": "38939b0bc597eb4cea1a8191c15b56e09b09bfec",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T00:39:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34001859806",
+    "last_deploy_sha": "38939b0bc597eb4cea1a8191c15b56e09b09bfec"
   },
   "events": [
     {
@@ -210,6 +223,49 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T00:51:49.248Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T00:51:52.939Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T00:51:53.689Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T00:51:54.505Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T00:51:55.227Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T00:52:56.338Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T00:52:56.338Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "61203432-236b-46b6-829d-3b24a77b6608",
+      "summary": "workflow_run cycle: synced main@38939b0bc. Lifecycle GREEN (ops:collect 0, validate:deploy/api-auth/platform-integrity 14/14/seo 22/22, rth-open off-hours skip). pr-sweep empty — 0 open PRs for peer review. ECR deploy run 34001859806 stuck pending (no jobs, GH queue); prod HTTP smoke GREEN. npm ci restored (missing pg). Weekend — RTH deferred to Mon 09:00 ET."
     }
   ],
   "open_prs": []
