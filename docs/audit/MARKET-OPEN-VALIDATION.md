@@ -120,7 +120,26 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
-### 0a-1y. Option-mark "not synced to live tape" caveat was narrated in prose but never reached the structured unavailableSources channel — fix/swing-markissync-not-structured-absence (pending)
+### 0a-1z. A total ecosystem/Vector fetch failure was indistinguishable from legitimately-empty data — never reached the structured unavailableSources channel — fix/swing-ecosystem-vector-total-fetch-failure-absence (pending)
+
+**What was broken:** `fetchEcosystemContext`/`fetchVectorFullState` were wrapped in
+`.catch(() => null)` in `play-brief-context.ts` with no signal captured — a total fetch failure
+(network, timeout, provider error) was structurally indistinguishable from "legitimately nothing
+to report." The existing `unavailableSources` plumbing only covered a failure WITHIN a successful
+ecosystem read (`arsenal.unavailable_sources`), not the whole call throwing.
+
+**Fix:** Added `ecosystemFetchFailed`/`vectorFetchFailed` booleans to `SwingPlayBriefContext`, set
+in the loader's `.catch()` handlers, read by `collectBriefUnavailableSources()` to push a
+structured entry — same shape as the existing HELIX/open-book/Meridian/option-mark absence
+entries.
+
+**Check at the open:** No easy live repro (requires an actual Polygon/UW/Vector fetch failure at
+brief-composition time). Note "no fetch failure observed this session" rather than treating
+silence as a pass.
+
+---
+
+### 0a-1y. Option-mark "not synced to live tape" caveat was narrated in prose but never reached the structured unavailableSources channel — fix/swing-markissync-not-structured-absence (merged #4245)
 
 **What was broken:** `dataHonestyCoaching()` already computes `play.markIsSync === true` (sync
 quote without a freshness timestamp) and turns it into a "Data caveat" bullet in the "Trade manager

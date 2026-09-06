@@ -49,9 +49,20 @@ export async function loadSwingPlayBriefContext(
   const meridian = await fetchMeridianForTicker(ticker).catch(() => null);
   const meridianPeer = await fetchMeridianPeerForBrief(meridian, ticker).catch(() => null);
 
+  // Distinguish a genuine "no data" null from a thrown fetch — FINDINGS 2026-09-06 (#11): an
+  // ecosystem/vector fetch that THROWS must not read the same as one that legitimately returned
+  // nothing, or a total upstream failure can still leave confidence.level at "high".
+  let ecosystemFetchFailed = false;
+  let vectorFetchFailed = false;
   const [ecosystem, vector, openBook] = await Promise.all([
-    fetchEcosystemContext(ticker).catch(() => null),
-    fetchVectorFullState(ticker, normalizeDteHorizon("all")).catch(() => null),
+    fetchEcosystemContext(ticker).catch(() => {
+      ecosystemFetchFailed = true;
+      return null;
+    }),
+    fetchVectorFullState(ticker, normalizeDteHorizon("all")).catch(() => {
+      vectorFetchFailed = true;
+      return null;
+    }),
     loadOpenBook(),
   ]);
 
@@ -70,5 +81,7 @@ export async function loadSwingPlayBriefContext(
     meridian,
     meridianPeer,
     openBook,
+    ecosystemFetchFailed,
+    vectorFetchFailed,
   };
 }
