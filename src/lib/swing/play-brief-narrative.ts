@@ -297,6 +297,35 @@ function breakTrigger(play: TerminalPlay, focal: FocalLevel[], flip: number | nu
   return null;
 }
 
+function railsFallback(play: TerminalPlay): string | null {
+  const ep = play.exitPolicy;
+  if (!ep) return null;
+  const trims = ep.trim_levels
+    .map((t) => `+${t.trigger_pct}%${t.fired ? " ✓" : ""}`)
+    .join(" · ");
+  const rails: string[] = [];
+  if (trims) rails.push(`trim ladder ${trims}`);
+  if (ep.stop_premium != null || ep.target_premium != null) {
+    const stop = ep.stop_premium != null ? fmtUsd(ep.stop_premium) : "—";
+    const target = ep.target_premium != null ? fmtUsd(ep.target_premium) : "—";
+    rails.push(`stop **${stop}** · target **${target}**`);
+  }
+  if (!rails.length) return null;
+  return `**Manage rails** — ${rails.join(" · ")}. Honor stops on closing basis; bank trims into strength.`;
+}
+
+function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
+  if (bucket === "closed") return null;
+  const rec = play.recommendation ?? play.swingEntryAction?.toUpperCase() ?? "HOLD";
+  const health = play.thesisHealth?.health;
+  const pnl = fin(play.pnlPct);
+  const peak = fin(play.peak);
+  const giveback = pnl != null && peak != null && peak - pnl > 15 ? ` · gave back **${(peak - pnl).toFixed(0)}%** from peak` : "";
+  const healthBit = health != null ? ` · thesis **${health}%**` : "";
+  const markBit = play.mark != null ? ` · mark **${fmtUsd(play.mark)}**` : "";
+  return `**Live read** — Vector spot not wired on this tick; desk still says **${rec}**${healthBit}${markBit}${giveback}. Levels refresh on next poll.`;
+}
+
 /** Largo-style trade manager narration — levels, flow, hold/break coaching. */
 export function tradeManagerNarrativeSection(
   ctx: SwingPlayBriefContext,
@@ -305,13 +334,20 @@ export function tradeManagerNarrativeSection(
   const { play } = ctx;
   const vec = vectorOf(ctx);
   const spot = fin(vec?.spot) ?? fin(ctx.ecosystem?.gex_positioning?.spot);
-  if (spot == null && bucket !== "closed") return null;
 
   const bullets: string[] = [];
+
+  const action = actionNarrative(play, bucket);
+  if (action) bullets.push(`• ${action}`);
 
   if (spot != null) {
     const posture = dealerPostureLine(ctx, spot);
     if (posture) bullets.push(`• ${posture}`);
+  } else {
+    const degraded = degradedReadLine(play, bucket);
+    if (degraded) bullets.push(`• ${degraded}`);
+    const rails = railsFallback(play);
+    if (rails) bullets.push(`• ${rails}`);
   }
 
   if (spot != null) {
@@ -357,12 +393,14 @@ export function tradeManagerNarrativeSection(
   const flow = flowNarrative(ctx, play);
   if (flow) bullets.push(`• ${flow}`);
 
-  const action = actionNarrative(play, bucket);
-  if (action) bullets.push(`• ${action}`);
-
   const flip = fin(vec?.gammaFlip) ?? fin(ctx.ecosystem?.gex_positioning?.flip);
   const focal = spot != null ? collectFocalLevels(ctx, spot) : [];
-  const breakLine = breakTrigger(play, focal, flip);
+  let breakLine = breakTrigger(play, focal, flip);
+  if (!breakLine && play.direction === "LONG" && play.exitPolicy?.stop_premium != null) {
+    breakLine = `**Break watch** — lose premium stop **${fmtUsd(play.exitPolicy.stop_premium)}** → cut size or exit.`;
+  } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.target_premium != null) {
+    breakLine = `**Break watch** — reclaim **${fmtUsd(play.exitPolicy.target_premium)}** → cover shorts.`;
+  }
   if (breakLine) bullets.push(`• ${breakLine}`);
 
   if (!bullets.length) return null;
