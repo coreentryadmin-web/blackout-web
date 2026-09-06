@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { etClock } from "@/lib/et-clock";
 import type { TerminalPlay } from "./types";
 import { playContractHeadline } from "./play-card-lifecycle";
@@ -8,9 +10,29 @@ import { useSwingPlayBrief } from "@/hooks/useSwingPlayBrief";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { renderEnvelopeMarkdown } from "@/lib/bie/answer-envelope";
 
+function largoTerminalHref(play: TerminalPlay, q?: string): string {
+  const params = new URLSearchParams({
+    desk: "nighthawk",
+    ticker: play.ticker,
+  });
+  if (play.contract) params.set("contract", play.contract);
+  if (play.status) params.set("status", play.status);
+  if (q) params.set("q", q);
+  return `/terminal?${params.toString()}`;
+}
+
 /** Center-rail Largo play intelligence — deterministic Ask Largo brief per selected play. */
 export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null }) {
-  const { envelope, asOf, loading, error, refresh } = useSwingPlayBrief(play);
+  const router = useRouter();
+  const { envelope, asOf, loading, error, refresh, changeCount } = useSwingPlayBrief(play);
+
+  const onFollowup = useCallback(
+    (q: string) => {
+      if (!play) return;
+      router.push(largoTerminalHref(play, q));
+    },
+    [play, router],
+  );
 
   if (!play) {
     return (
@@ -24,7 +46,7 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
   }
 
   const headline = playContractHeadline(play);
-  const largoHref = `/largo?desk=nighthawk&ticker=${encodeURIComponent(play.ticker)}`;
+  const largoHref = largoTerminalHref(play);
 
   return (
     <aside className="nh-deck-largo nh-deck-largo--brief" aria-label={`Ask Largo — ${headline}`}>
@@ -32,6 +54,11 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
         <div>
           <span className="nh-deck-largo__kicker">Ask Largo · live intelligence</span>
           <h2 className="nh-deck-largo__title">{headline}</h2>
+          {changeCount > 0 ? (
+            <span className="nh-deck-largo__delta" aria-live="polite">
+              {changeCount} update{changeCount === 1 ? "" : "s"} since last read
+            </span>
+          ) : null}
         </div>
         <div className="nh-deck-largo__actions">
           <button type="button" className="nh-deck-largo__refresh" onClick={() => refresh()} aria-label="Refresh brief">
@@ -58,6 +85,7 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
             className="nh-deck-largo__bie"
             bodyClassName="nh-deck-largo__bie-body"
             showAsOf={Boolean(asOf)}
+            onFollowup={onFollowup}
           />
         ) : (
           <p className="nh-deck-largo__error">No brief for this play.</p>

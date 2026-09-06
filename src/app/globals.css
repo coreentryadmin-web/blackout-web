@@ -22970,6 +22970,10 @@ html.product-shell .nav-mega {
 .nh-deck-largo__bie .bie-section-card{margin:6px 0}
 .nh-deck-largo__bie .bie-section-card__title{font-size:10px}
 .nh-deck-largo__bie .bie-section-card__body{font-size:12px;line-height:1.45;color:#E2E8F0}
+.nh-deck-largo__delta{display:block;margin-top:4px;font-size:10px;font-weight:700;letter-spacing:.06em;color:#FBBF24}
+.nh-deck-largo__bie .bie-answer-followups{padding:6px 6px 10px;border-top:1px solid var(--dk-line);margin-top:4px}
+.nh-deck-largo__bie .bie-answer-followups-row{flex-wrap:wrap;gap:6px}
+.nh-deck-largo__bie .bie-followup-chip{font-size:10px;padding:4px 8px;line-height:1.3;max-width:100%;text-align:left;white-space:normal}
 .nh-deck-trade-hero__tk-contract{font-size:22px;letter-spacing:.03em}
 
 /* Swing Command — readability: brighter secondary text + larger type on dense panels. */

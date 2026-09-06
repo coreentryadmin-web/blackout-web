@@ -1,8 +1,15 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import {
+  diffBriefSnapshots,
+  envelopeWithDiffSection,
+  snapshotFromBrief,
+  type BriefSnapshot,
+} from "@/lib/swing/play-brief-diff";
 
 export type SwingPlayBriefResponse = {
   available: boolean;
@@ -60,8 +67,35 @@ function briefRefreshMs(): number {
   return 20_000;
 }
 
+function extrasFromEnvelope(envelope: BieAnswerEnvelope) {
+  const levels = envelope.levels ?? [];
+  const price = (substr: string) =>
+    levels.find((l) => l.label.toLowerCase().includes(substr))?.price ?? null;
+  return {
+    spot: price("spot"),
+    gammaFlip: price("gamma flip"),
+    callWall: price("call wall"),
+    putWall: price("put wall"),
+  };
+}
+
+function playLiveSig(play: TerminalPlay | null): string {
+  if (!play) return "";
+  return [
+    play.mark,
+    play.pnlPct,
+    play.recommendation,
+    play.thesisHealth?.health,
+    play.peak,
+    play.status,
+  ].join("|");
+}
+
 export function useSwingPlayBrief(play: TerminalPlay | null) {
   const key = play ? briefUrl(play) : null;
+  const prevSnapRef = useRef<BriefSnapshot | null>(null);
+  const prevPlayIdRef = useRef<string | null>(null);
+  const prevLiveSigRef = useRef("");
 
   const { data, error, isLoading, mutate } = useSWR<SwingPlayBriefResponse>(key, json, {
     refreshInterval: briefRefreshMs(),
@@ -69,12 +103,52 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
     dedupingInterval: 3_000,
   });
 
+  const [envelope, setEnvelope] = useState<BieAnswerEnvelope | null>(null);
+  const [changeCount, setChangeCount] = useState(0);
+
+  useEffect(() => {
+    if (play?.id !== prevPlayIdRef.current) {
+      prevSnapRef.current = null;
+      prevPlayIdRef.current = play?.id ?? null;
+      prevLiveSigRef.current = "";
+      setChangeCount(0);
+    }
+  }, [play?.id]);
+
+  const liveSig = playLiveSig(play);
+  useEffect(() => {
+    if (!key || !liveSig || liveSig === prevLiveSigRef.current) return;
+    prevLiveSigRef.current = liveSig;
+    void mutate();
+  }, [key, liveSig, mutate]);
+
+  useEffect(() => {
+    const raw = data?.envelope;
+    if (!raw) {
+      setEnvelope(null);
+      return;
+    }
+    if (!play) {
+      setEnvelope(raw);
+      return;
+    }
+    const extras = extrasFromEnvelope(raw);
+    const nextSnap = snapshotFromBrief(raw, play, extras);
+    const changes = diffBriefSnapshots(prevSnapRef.current, nextSnap);
+    prevSnapRef.current = nextSnap;
+    setChangeCount(changes.length);
+    setEnvelope(changes.length ? envelopeWithDiffSection(raw, changes) : raw);
+  }, [data?.envelope, play, liveSig]);
+
+  const refresh = useCallback(() => mutate(), [mutate]);
+
   return {
     brief: data?.available ? data : null,
-    envelope: data?.envelope ?? null,
-    asOf: data?.asOf ?? null,
+    envelope,
+    asOf: data?.asOf ?? data?.envelope?.asOf ?? null,
     loading: Boolean(key) && isLoading && !data,
     error: error ?? (data?.degraded ? new Error("brief degraded") : null),
-    refresh: mutate,
+    refresh,
+    changeCount,
   };
 }
