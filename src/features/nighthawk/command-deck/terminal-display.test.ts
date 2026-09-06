@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TerminalPlay } from "./types";
+import { computeSwingThesisHealth } from "@/lib/swing/thesis-health";
 import {
   expectedMovePct,
   marketContextItems,
@@ -61,6 +62,24 @@ test("thesisStrengthPct: uses thesis health when wired", () => {
 
 test("thesisStrengthPct: null when no health signal", () => {
   assert.equal(thesisStrengthPct(play({ thesisHealth: null })), null);
+});
+
+test("thesisStrengthPct: uncalibrated SWING with thesisBreak warn does not fabricate 45%", () => {
+  const thesisHealth = computeSwingThesisHealth({
+    direction: "LONG",
+    status: "HOLD",
+    computedAtEt: "14:00 ET",
+  });
+  assert.ok(thesisHealth);
+  const swing = play({
+    id: "SWING:NN",
+    ticker: "NN",
+    horizon: "SWING",
+    status: "HOLD",
+    thesisHealth,
+    thesisBreak: { level: "warn", note: "Thesis fading" },
+  });
+  assert.equal(thesisStrengthPct(swing), null);
 });
 
 test("convictionDisplay: grade + score from tier and quality", () => {
