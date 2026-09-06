@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T17:44:56.223Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T17:40:04.881Z",
+      "lease_until": "2026-09-06T19:10:04.881Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -47,16 +48,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T17:40:04.882Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "0afadca12f3b22810a335d33d893a6f257d39f7f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T17:39:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34049010823",
+    "last_deploy_sha": "0afadca12f3b22810a335d33d893a6f257d39f7f"
   },
   "events": [
     {
@@ -734,9 +736,117 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:39:55.701Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T17:39:59.827Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T17:40:01.128Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T17:40:04.882Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T17:40:07.540Z",
+      "type": "pr_webhook",
+      "pr": 4352,
+      "event": "sweep",
+      "head": "af81c1f78cb36f8d65eb96496e098770619ad950",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:40:09.808Z",
+      "type": "pr_webhook",
+      "pr": 4351,
+      "event": "sweep",
+      "head": "b0fced06912c8ae686b4c846b2d84283cd15a338",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:44:56.222Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-06T17:44:56.223Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7dcc7374-0e64-4809-a73f-73ebb9173618",
+      "summary": "Autopilot wake (workflow_run): closed duplicate #4351; platform-integrity 14/14 GREEN; validate:deploy GREEN; ops:collect 0. Four Largo/swing PRs in flight (#4353-#4356) — locally verified #4355 (69/69) + #4356 (5/5); awaiting Claude peer review. ECR deploy in progress for 0afadca."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4357,
+      "title": "fix(swing): label Vector regime as dealer gamma posture, not bare long/short",
+      "branch": "fix/swing-chart-vector-regime-gamma-label",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:44:30Z"
+    },
+    {
+      "number": 4356,
+      "title": "fix(swing): surface Meridian peer thin-cohort caveat in Largo brief (C8)",
+      "branch": "fix/swing-meridian-peer-cohort-caveat",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:43:35Z"
+    },
+    {
+      "number": 4355,
+      "title": "fix(swing): gate GEX-only dealer posture on matrix staleness (Largo C2)",
+      "branch": "fix/largo-gex-stale-dealer-posture",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:43:04Z"
+    },
+    {
+      "number": 4354,
+      "title": "fix(swing): honest hold-plan DTE label and grounded desk alignment",
+      "branch": "fix/largo-swing-brief-copy-truth",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:41:55Z"
+    },
+    {
+      "number": 4353,
+      "title": "fix(swing): promote Meridian peer earnings cohort to dedicated Largo section",
+      "branch": "fix/largo-meridian-peer-section",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:43:37Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -767,6 +877,22 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4352": {
+      "last_event": "sweep",
+      "last_head": "af81c1f78cb36f8d65eb96496e098770619ad950",
+      "last_feedback_at": "2026-09-06T17:40:07.540Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4351": {
+      "last_event": "sweep",
+      "last_head": "b0fced06912c8ae686b4c846b2d84283cd15a338",
+      "last_feedback_at": "2026-09-06T17:40:09.808Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
