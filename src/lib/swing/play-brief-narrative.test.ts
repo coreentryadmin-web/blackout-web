@@ -297,6 +297,44 @@ test("tradeManagerNarrativeSection: live Vector gamma posture still drives GEX k
   assert.match(section!.body, /Pin risk/i, "live Vector posture must still drive the directional call");
 });
 
+test("magnetCoaching (via tradeManagerNarrativeSection): must not claim long-gamma regime when posture is short (live NRG repro 2026-09-06)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 118.95,
+        magnet: { strike: 134.37, distancePct: 13.0, pull: "up" },
+        regime: { posture: "short" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Gamma magnet 134\.37/i);
+  assert.doesNotMatch(
+    section!.body,
+    /long-gamma regimes/i,
+    "posture is measured SHORT — must not claim a long-gamma dealer regime",
+  );
+  assert.match(section!.body, /Pivot node/i, "short/unknown posture falls back to acceleration-risk framing");
+});
+
+test("magnetCoaching (via tradeManagerNarrativeSection): still claims long-gamma regime when posture is measured long", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 118.95,
+        magnet: { strike: 134.37, distancePct: 13.0, pull: "up" },
+        regime: { posture: "long" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /long-gamma regimes/i);
+});
+
 test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

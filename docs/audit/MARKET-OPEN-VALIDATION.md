@@ -3246,3 +3246,9 @@ than an end-of-session patch.
 - **What was broken:** `dealerPostureLine()` took `flip = vec?.gammaFlip ?? gex?.flip` with no staleness gate. Live Vector `regime.posture` could render under **"Right now"** while a stale GEX-only `flip` still appeared in the `γ-flip` suffix — sixth instance of the Largo C2 stale-GEX class on this read path.
 - **What changed:** Per-value stale GEX gating on flip (mirrors break-watch/counter-thesis/focal-levels): suppress flip when from stale GEX-only fallback; live Vector `gammaFlip` still wins.
 - **RTH check:** Open Ask Largo on a swing with live Vector dealer posture but no Vector flip, GEX matrix >120s old — confirm "Trade manager read" dealer line shows posture without a `γ-flip` cite.
+
+### 58. Ask Largo swing brief — magnet coaching claimed "long-gamma regime" regardless of measured posture — fix/largo-magnet-coaching-posture — 2026-09-06
+
+- **What was broken:** `magnetCoaching()` hardcoded "Dealer hedging center of mass — price gravitates here in long-gamma regimes." for any far-from-spot gamma magnet, never consulting actual measured posture. Live repro (`SWING:NRG`, 2026-09-06): the same brief's own dealer-posture line said "dealers **short gamma**" while the magnet line asserted a long-gamma regime — an internally contradictory, factually wrong claim (not a staleness issue — both reads were fresh).
+- **What changed:** `magnetCoaching()` now takes `ctx` and resolves posture via the shared `resolveGammaPosture(ctx, vec)` helper (relocated to `play-brief-absence.ts`); when posture isn't measured "long" it now says "Pivot node — acceleration risk if the magnet fails to hold." instead.
+- **RTH check:** Open Ask Largo on an open swing position with a far gamma magnet (>1.2% from spot) while the desk's dealer-posture line reads "short gamma" or unresolved — confirm the magnet line says "Pivot node — acceleration risk", never "long-gamma regimes".

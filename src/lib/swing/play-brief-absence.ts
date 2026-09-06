@@ -68,6 +68,25 @@ export function vectorSnapshotStale(
   return false;
 }
 
+/**
+ * Gamma posture for narrative/coaching call sites that cite dealer positioning — mirrors the
+ * stale-GEX gating already applied to gexPostureSection/counterThesisLine/watchForSection/
+ * chartLevelsSection/narrateKing/narrateMagnet (largo C2). Live Vector regime always wins; the
+ * GEX-only fallback is suppressed once the matrix is stale, since posture drives a directional
+ * narrative claim ("pin risk" vs "acceleration", "long-gamma" vs not).
+ */
+export function resolveGammaPosture(
+  ctx: SwingPlayBriefContext,
+  vec: VectorWithReadContext | null | undefined,
+): string | null {
+  const vecPosture = vec?.regime?.posture ?? null;
+  if (vecPosture != null) return vecPosture;
+  const gex = ctx.ecosystem?.gex_positioning;
+  if (gex?.gamma_posture == null) return null;
+  if (gexMatrixStale(gex, Date.now())) return null;
+  return gex.gamma_posture;
+}
+
 /** Only committed working rows expect a live-synced option mark — WATCH uses static chain mid by design. */
 export function playExpectsLiveOptionMark(status: string | null | undefined): boolean {
   return status === "OPEN" || status === "HOLD" || status === "TRIM";

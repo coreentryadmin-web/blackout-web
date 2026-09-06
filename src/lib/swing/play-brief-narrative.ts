@@ -6,7 +6,7 @@
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { trustedHelixFlow, gexMatrixAgeMs, gexMatrixStale, vectorSnapshotStale } from "./play-brief-absence";
+import { trustedHelixFlow, gexMatrixAgeMs, gexMatrixStale, vectorSnapshotStale, resolveGammaPosture } from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
@@ -215,24 +215,6 @@ function narrateWall(level: FocalLevel, play: TerminalPlay, spot: number): strin
     `**${isCall ? "Call" : "Put"} wall ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} from spot) — ${verb}. ` +
     `${action.charAt(0).toUpperCase()}${action.slice(1)}.`
   );
-}
-
-/**
- * Gamma posture for magnet/king narration — mirrors the stale-GEX gating already applied
- * to gexPostureSection/counterThesisLine/watchForSection/chartLevelsSection (largo C2).
- * Live Vector regime always wins; the GEX-only fallback is suppressed once the matrix is
- * stale, since posture drives a directional narrative claim ("pin risk" vs "acceleration").
- */
-function resolveGammaPosture(
-  ctx: SwingPlayBriefContext,
-  vec: (VectorFullState & Partial<VectorFreshnessBlock>) | null,
-): string | null {
-  const vecPosture = vec?.regime?.posture ?? null;
-  if (vecPosture != null) return vecPosture;
-  const gex = ctx.ecosystem?.gex_positioning;
-  if (gex?.gamma_posture == null) return null;
-  if (gexMatrixStale(gex, Date.now())) return null;
-  return gex.gamma_posture;
 }
 
 function narrateKing(level: FocalLevel, posture: string | null): string {

@@ -3,7 +3,7 @@
  * Pure + deterministic. Consumed by play-brief-narrative.ts.
  */
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { playExpectsLiveOptionMark } from "./play-brief-absence";
+import { playExpectsLiveOptionMark, resolveGammaPosture } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
@@ -127,15 +127,21 @@ export function watchGateCoaching(play: TerminalPlay): string | null {
 }
 
 /** Gamma magnet pin gravity. */
-export function magnetCoaching(vec: VectorFullState | null, spot: number): string | null {
+export function magnetCoaching(
+  ctx: SwingPlayBriefContext,
+  vec: VectorFullState | null,
+  spot: number,
+): string | null {
   const m = vec?.magnet;
   if (!m?.strike) return null;
   const lead = m.pull === "at" ? "pinned at" : `pull **${m.pull}** toward`;
   const near = Math.abs(m.distancePct) < 1.2;
-  const pin =
-    near
-      ? "You're sitting on the magnet — expect chop; trim into extensions, don't chase breakouts."
-      : "Dealer hedging center of mass — price gravitates here in long-gamma regimes.";
+  const posture = resolveGammaPosture(ctx, vec);
+  const pin = near
+    ? "You're sitting on the magnet — expect chop; trim into extensions, don't chase breakouts."
+    : posture === "long"
+      ? "Dealer hedging center of mass — price gravitates here in long-gamma regimes."
+      : "Pivot node — acceleration risk if the magnet fails to hold.";
   return `**Gamma magnet ${m.strike.toFixed(2)}** (${fmtPct(m.distancePct)} from spot) — ${lead} this node. ${pin}`;
 }
 
@@ -662,7 +668,7 @@ export function collectCoachingBullets(
   if (spot != null) {
     push(vexCoaching(vec, spot));
     push(flowPrintsCoaching(vec, play));
-    push(magnetCoaching(vec, spot));
+    push(magnetCoaching(ctx, vec, spot));
     push(confluenceCoaching(vec, play, spot));
     push(expectedMoveCoaching(vec, spot));
     push(wallIntegrityCoaching(vec, play));
