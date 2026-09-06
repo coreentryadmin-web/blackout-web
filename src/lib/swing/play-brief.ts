@@ -2,7 +2,11 @@
  * Swing Play Intelligence Engine — deterministic, real-time play brief composer.
  * No Anthropic calls. Every claim traces to platform data with null-honesty.
  */
-import type { BieAnswerEnvelope, BieBias, BieEvidence, BieLevel } from "@/lib/bie/answer-envelope";
+import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
+import { freshnessFromAgeMs } from "@/lib/bie/answer-envelope";
+import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
+import type { GexPositioning } from "@/lib/providers/gex-positioning";
+import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { buildRichEnvelope, type RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { playContractHeadline } from "@/features/nighthawk/command-deck/play-card-lifecycle";
@@ -10,6 +14,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
+import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
 
@@ -115,51 +120,93 @@ function closedSection(play: TerminalPlay): RichSection {
   return { title: "Outcome", body: lines.join("\n") };
 }
 
-function levelsFromContext(ctx: SwingPlayBriefContext): BieLevel[] {
+function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): BieFreshness {
+  if (!gex?.asof) return "unknown";
+  const observedMs = Date.parse(gex.asof);
+  if (!Number.isFinite(observedMs)) return "unknown";
+  return freshnessFromAgeMs(readMs - observedMs);
+}
+
+function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshness {
+  if (!vec?.asOf) return "unknown";
+  return describeVectorFreshness(vec.asOf, readMs).freshness;
+}
+
+function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel[] {
   const levels: BieLevel[] = [];
   const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
   const gex = ctx.ecosystem?.gex_positioning;
+  const vecFresh = vectorFreshness(vec, readMs);
+  const gexFresh = gexFreshness(gex, readMs);
   const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall;
   const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall;
   const flip = vec?.gammaFlip ?? gex?.flip;
   if (callWall != null) {
-    levels.push({ label: "call wall", price: callWall, provenance: { source: "GEX", freshness: "recent" } });
+    levels.push({
+      label: "call wall",
+      price: callWall,
+      provenance: { source: "GEX", asOf: gex?.asof ?? vec?.asOf ?? null, freshness: gex?.call_wall != null ? gexFresh : vecFresh },
+    });
   }
   if (putWall != null) {
-    levels.push({ label: "put wall", price: putWall, provenance: { source: "GEX", freshness: "recent" } });
+    levels.push({
+      label: "put wall",
+      price: putWall,
+      provenance: { source: "GEX", asOf: gex?.asof ?? vec?.asOf ?? null, freshness: gex?.put_wall != null ? gexFresh : vecFresh },
+    });
   }
   if (flip != null) {
-    levels.push({ label: "gamma flip", price: flip, provenance: { source: "GEX", freshness: "recent" } });
+    levels.push({
+      label: "gamma flip",
+      price: flip,
+      provenance: { source: "GEX", asOf: gex?.asof ?? vec?.asOf ?? null, freshness: gex?.flip != null ? gexFresh : vecFresh },
+    });
   }
   const spot = vec?.spot ?? gex?.spot;
   if (spot != null) {
-    levels.push({ label: "spot", price: spot, provenance: { source: "Vector", freshness: "live" } });
+    levels.push({
+      label: "spot",
+      price: spot,
+      provenance: {
+        source: vec?.spot != null ? "Vector" : "GEX",
+        asOf: vec?.asOf ?? gex?.asof ?? null,
+        freshness: vec?.spot != null ? vecFresh : gexFresh,
+      },
+    });
   }
   for (const z of vec?.confluenceZones ?? []) {
     levels.push({
       label: `confluence (${z.kinds.join("+")})`,
       price: z.center,
-      provenance: { source: "Vector", freshness: "recent" },
+      provenance: { source: "Vector", asOf: vec?.asOf ?? null, freshness: vecFresh },
     });
   }
   for (const dp of vec?.darkPoolLevels ?? []) {
     levels.push({
       label: "dark pool",
       price: dp.strike,
-      provenance: { source: "HELIX", freshness: "recent" },
+      provenance: { source: "HELIX", asOf: vec?.asOf ?? null, freshness: vecFresh },
     });
   }
   const king = gex?.gex_king_strike;
   if (king != null) {
-    levels.push({ label: "GEX king", price: king, provenance: { source: "GEX", freshness: "recent" } });
+    levels.push({
+      label: "GEX king",
+      price: king,
+      provenance: { source: "GEX", asOf: gex?.asof ?? null, freshness: gexFresh },
+    });
   }
   if (vec?.maxPain != null) {
-    levels.push({ label: "max pain", price: vec.maxPain, provenance: { source: "Vector", freshness: "recent" } });
+    levels.push({
+      label: "max pain",
+      price: vec.maxPain,
+      provenance: { source: "Vector", asOf: vec?.asOf ?? null, freshness: vecFresh },
+    });
   }
   return levels.slice(0, 10);
 }
 
-function evidenceFromContext(ctx: SwingPlayBriefContext): BieEvidence[] {
+function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvidence[] {
   const out: BieEvidence[] = [];
   if (ctx.scanAsOf) {
     out.push({
@@ -169,18 +216,24 @@ function evidenceFromContext(ctx: SwingPlayBriefContext): BieEvidence[] {
     });
   }
   if (ctx.play.markAsOf) {
+    const markMs = Date.parse(ctx.play.markAsOf);
     out.push({
       kind: "fact",
       text: `Option mark as of ${ctx.play.markAsOf}.`,
-      provenance: { source: "Swing ledger", asOf: ctx.play.markAsOf, freshness: "recent" },
+      provenance: {
+        source: "Swing ledger",
+        asOf: ctx.play.markAsOf,
+        freshness: Number.isFinite(markMs) ? freshnessFromAgeMs(readMs - markMs) : "unknown",
+      },
     });
   }
   const eco = ctx.ecosystem;
-  if (eco?.recent_flow) {
+  const flow = trustedHelixFlow(eco);
+  if (flow) {
     out.push({
       kind: "fact",
-      text: `HELIX flow ${eco.recent_flow.print_count} prints in ${eco.recent_flow.window_hours}h.`,
-      provenance: { source: "HELIX", freshness: eco.flow_feed_fresh ? "live" : "recent" },
+      text: `HELIX flow ${flow.print_count} prints in ${flow.window_hours}h.`,
+      provenance: { source: "HELIX", freshness: "live" },
     });
   }
   if (eco?.arsenal?.earnings?.earnings_date) {
@@ -218,6 +271,7 @@ export function composeSwingPlayBrief(
   ctx: SwingPlayBriefContext,
   opts?: ComposeSwingPlayBriefOptions,
 ): SwingPlayBriefResult {
+  const readMs = Date.now();
   const { play } = ctx;
   const bucket = statusBucket(play);
   const headline = playContractHeadline(play);
@@ -263,16 +317,16 @@ export function composeSwingPlayBrief(
       bias: biasFromDirection(play.direction),
       intent: "swing_play_brief",
       sections,
-      evidence: evidenceFromContext(ctx),
-      levels: levelsFromContext(ctx),
+      evidence: evidenceFromContext(ctx, readMs),
+      levels: levelsFromContext(ctx, readMs),
       invalidation,
       followups: followupsFor(play),
-      unavailableSources: ctx.ecosystem?.arsenal?.unavailable_sources,
+      unavailableSources: collectBriefUnavailableSources(ctx),
     }),
     asOf: ctx.asOf,
   };
 
-  const flow = ctx.ecosystem?.recent_flow;
+  const flow = trustedHelixFlow(ctx.ecosystem);
   const flowSnapshot = flow
     ? { callPremium: flow.call_premium, putPremium: flow.put_premium }
     : null;

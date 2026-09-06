@@ -27,9 +27,10 @@ export type SwingPlayBriefContext = {
   /**
    * The member's OTHER open swing positions (this play excluded) — feeds the
    * "Book context" theme-overlap section. Empty array when there are none;
-   * `undefined` only in fixtures that predate this field (treated as "unknown", not "none").
+   * `null` when the ledger read failed; `undefined` only in fixtures that predate
+   * this field (treated as "unknown", not "none").
    */
-  openBook?: PortfolioPosition[];
+  openBook?: PortfolioPosition[] | null;
 };
 
 export type SwingPlayBriefResult = {

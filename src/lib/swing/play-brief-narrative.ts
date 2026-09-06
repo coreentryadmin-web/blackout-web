@@ -6,6 +6,7 @@
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { trustedHelixFlow } from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
@@ -224,7 +225,7 @@ function narrateFlip(level: FocalLevel, play: TerminalPlay): string {
 }
 
 function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
-  const flow = ctx.ecosystem?.recent_flow;
+  const flow = trustedHelixFlow(ctx.ecosystem);
   if (!flow || flow.print_count === 0) return null;
 
   const callHeavy = flow.call_premium > flow.put_premium * 1.3;
@@ -497,8 +498,8 @@ export function tradeManagerNarrativeSection(
   let breakLine = breakTrigger(play, focal, flip);
   if (!breakLine && play.direction === "LONG" && play.exitPolicy?.stop_premium != null) {
     breakLine = `**Break watch** — lose premium stop **${fmtUsd(play.exitPolicy.stop_premium)}** → cut size or exit.`;
-  } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.target_premium != null) {
-    breakLine = `**Break watch** — reclaim **${fmtUsd(play.exitPolicy.target_premium)}** → cover shorts.`;
+  } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.stop_premium != null) {
+    breakLine = `**Break watch** — reclaim **${fmtUsd(play.exitPolicy.stop_premium)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine);
 

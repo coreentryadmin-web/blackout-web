@@ -201,6 +201,47 @@ test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow 
   assert.equal(brief.flowSnapshot, null);
 });
 
+test("composeSwingPlayBrief: stale HELIX flow omitted from snapshot and unavailableSources (C2/C3)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      recent_flow: {
+        window_hours: 24,
+        print_count: 12,
+        call_premium: 1_200_000,
+        put_premium: 400_000,
+        unknown_premium: 0,
+      },
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      spx_desk_convergence: null,
+      flow_feed_fresh: false,
+      gex_positioning: null,
+      vector_full_state: null,
+      arsenal: null,
+    },
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.flowSnapshot, null);
+  assert.ok(
+    brief.envelope.unavailableSources?.some((u) => u.source === "HELIX flow" && u.reason === "pipeline stale"),
+  );
+  assert.ok(!brief.envelope.sections.some((s) => /call-heavy/i.test(s.body)), "stale flow must not coach tape bias");
+});
+
 test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
@@ -344,6 +385,51 @@ test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
   };
   const brief = composeSwingPlayBrief(ctx);
   assert.ok(brief.envelope.sections.some((s) => s.title === "Outcome" && s.body.includes("42")));
+});
+
+test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, not hardcoded live", () => {
+  const staleAsOf = new Date(Date.now() - 20 * 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        asof: staleAsOf,
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date_et: "2026-09-05",
+        market_phase: "closed",
+        gex_king_strike: 25,
+        net_gex: null,
+        nearest_wall: null,
+        gamma_posture: "long",
+        vanna_posture: null,
+        delta_posture: null,
+        charm_posture: null,
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: staleAsOf,
+      spot: 24.5,
+      gammaFlip: 24,
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const spot = brief.envelope.levels?.find((l) => l.label === "spot");
+  assert.equal(spot?.provenance?.freshness, "stale", "20m-old Vector snapshot must not read as live");
+  const callWall = brief.envelope.levels?.find((l) => l.label === "call wall");
+  assert.equal(callWall?.provenance?.freshness, "stale");
 });
 
 test("composeSwingPlayBrief: book concentration is reported ONCE, not duplicated across 'Trade manager read' and 'Book context'", () => {
