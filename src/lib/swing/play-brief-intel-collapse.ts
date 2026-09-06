@@ -18,6 +18,9 @@ const NARRATIVE_COVERED_TITLES = new Set([
   "Vector desk",
 ]);
 
+/** Collapsed sections whose body must survive inside Trade manager read (not silently dropped). */
+const FOLD_BODY_INTO_NARRATIVE = new Set(["Book context"]);
+
 /**
  * Filter redundant intel sections when Trade manager read is leading.
  * Always keeps setup, catalysts, freshness, watch levels, lessons.
@@ -28,7 +31,14 @@ export function collapseRedundantIntelSections(
 ): RichSection[] {
   if (!opts.hasNarrative) return sections;
 
-  const filtered = sections.filter((s) => !NARRATIVE_COVERED_TITLES.has(s.title));
+  const foldBodies: string[] = [];
+  const filtered = sections.filter((s) => {
+    if (!NARRATIVE_COVERED_TITLES.has(s.title)) return true;
+    if (FOLD_BODY_INTO_NARRATIVE.has(s.title) && s.body.trim()) {
+      foldBodies.push(s.body);
+    }
+    return false;
+  });
 
   const dropped = sections.length - filtered.length;
   if (dropped === 0) return filtered;
@@ -39,12 +49,14 @@ export function collapseRedundantIntelSections(
   const note =
     `_Desk detail for ${dropped} section${dropped === 1 ? "" : "s"} folded into Trade manager read above — expand via follow-up chips or Open Largo._`;
   const narrative = filtered[narrativeIdx]!;
-  filtered[narrativeIdx] = {
-    ...narrative,
-    body: narrative.body.includes("folded into Trade manager read")
-      ? narrative.body
-      : `${narrative.body}\n\n${note}`,
-  };
+  let body = narrative.body;
+  if (foldBodies.length && !foldBodies.every((b) => body.includes(b))) {
+    body = `${body}\n\n${foldBodies.join("\n\n")}`;
+  }
+  if (!body.includes("folded into Trade manager read")) {
+    body = `${body}\n\n${note}`;
+  }
+  filtered[narrativeIdx] = { ...narrative, body };
 
   return filtered;
 }

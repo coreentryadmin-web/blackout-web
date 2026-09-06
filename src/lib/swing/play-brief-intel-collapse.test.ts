@@ -29,3 +29,18 @@ test("collapseRedundantIntelSections: drops covered titles when narrative leads"
   const narrative = out.find((s) => s.title === "Trade manager read");
   assert.match(narrative!.body, /folded into Trade manager read/i);
 });
+
+test("collapseRedundantIntelSections: folds Book context body into Trade manager read (not silently dropped)", () => {
+  const concentration =
+    "**CONCENTRATION** — NVDA LONG stacks with AMD LONG and SMH LONG in the same theme.";
+  const sections = [
+    { title: "Trade manager read", body: "Hold the runner.", bias: "neutral" as const },
+    { title: "Book context", body: concentration, bias: "neutral" as const },
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(!out.some((s) => s.title === "Book context"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /concentration/i);
+  assert.match(narrative!.body, /AMD LONG/);
+});
