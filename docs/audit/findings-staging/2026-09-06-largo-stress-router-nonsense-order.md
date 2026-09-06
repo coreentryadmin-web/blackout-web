@@ -18,8 +18,9 @@ Secondary: Largo stress runs ~32–45 minutes while `STALE_USER_MS` was 30 minut
 ### Fix
 
 1. Mirror production router ordering: out-of-scope → nonsense → compound → classify.
-2. Set `AUDIT_STALE_USER_MS=3600000` for live stress runs; honor env override in `prod-clerk-session.mjs`.
-3. Skip `honesty-no-grounded-numbers` for `concept_read` answers (calendar spread explanations).
+2. Export shared `isCompoundQuestion()` in `question-focus.ts` with `isNonsenseQuestion` guard; stress harness imports it.
+3. Set `AUDIT_STALE_USER_MS=3600000` for live stress runs; honor env override in `prod-clerk-session.mjs`.
+4. Intent-aware `honestyIssues()` exemptions for scenario, concept_read, platform_read; skip `concept_read` in scoring.
 
 ### Evidence
 
