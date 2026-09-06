@@ -19,6 +19,10 @@ import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import {
+  meridianPeerEarningsCoaching,
+  pickEarningsForSwingPeer,
+} from "./play-brief-meridian-peer-core";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -514,6 +518,17 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
   return { title: "Meridian catalysts", body: lines.join("\n") };
 }
 
+/**
+ * Meridian peer earnings cohort — sector beat-rate context for the name's print.
+ * Lives as its own section so MAX_BULLETS narrative cap cannot drop peer history.
+ */
+export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | null {
+  const earningsItem = pickEarningsForSwingPeer(ctx.meridian?.items, ctx.play.ticker);
+  const body = meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem);
+  if (!body) return null;
+  return { title: "Earnings peer lens", body };
+}
+
 /** Macro rates + market breadth when arsenal fetched index context. */
 export function macroTapeSection(eco: EcosystemContext | null): RichSection | null {
   const arsenal = eco?.arsenal;
@@ -700,6 +715,9 @@ export function buildIntelSections(
 
   const meridian = meridianCatalystSection(ctx);
   if (meridian) out.push(meridian);
+
+  const meridianPeer = meridianPeerSection(ctx);
+  if (meridianPeer) out.push(meridianPeer);
 
   const macro = macroTapeSection(ecosystem);
   if (macro) out.push(macro);

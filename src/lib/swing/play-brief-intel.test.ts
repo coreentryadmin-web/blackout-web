@@ -11,12 +11,15 @@ import {
   holdPlanSection,
   lessonsSection,
   meridianCatalystSection,
+  meridianPeerSection,
   whyThisSetupSection,
 } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import { collectCoachingBullets } from "./play-brief-narrative-coaching";
+import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -674,6 +677,178 @@ test("meridianCatalystSection: empty successful read states quiet calendar, not 
   assert.ok(section);
   assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
   assert.match(section!.body, /quiet, not missing/);
+});
+
+test("meridianPeerSection: surfaces peer beat rates as dedicated section (not coaching-cap dependent)", () => {
+  const section = meridianPeerSection({
+    play: fixturePlay({ ticker: "BBWI" }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-09-06 09:00 ET",
+      items: [
+        {
+          id: "earnings:BBWI:2026-09-10",
+          kind: "earnings",
+          title: "BBWI earnings",
+          subtitle: null,
+          date: "2026-09-10",
+          time: null,
+          impact: "high",
+          days_until: 4,
+          ticker: "BBWI",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 8.5,
+          sector_label: "Retail",
+        },
+      ],
+      total_matched: 1,
+    },
+    meridianPeer: {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "ULTA",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.equal(section!.title, "Earnings peer lens");
+  assert.match(section!.body, /ULTA/i);
+  assert.match(section!.body, /75% beat/i);
+});
+
+test("meridianPeerSection: null for index swings (no per-name peer cohort)", () => {
+  const section = meridianPeerSection({
+    play: fixturePlay({ ticker: "SPY" }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-09-06 09:00 ET",
+      items: [
+        {
+          id: "earnings:AAPL:2026-09-10",
+          kind: "earnings",
+          title: "AAPL earnings",
+          subtitle: null,
+          date: "2026-09-10",
+          time: null,
+          impact: "high",
+          days_until: 4,
+          ticker: "AAPL",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 5,
+          sector_label: "Tech",
+        },
+      ],
+      total_matched: 1,
+    },
+    meridianPeer: null,
+    ecosystem: null,
+    vector: null,
+  });
+  assert.equal(section, null);
+});
+
+test("meridianPeerSection: dedicated section — coaching bullets must not duplicate peer lens", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "BBWI" }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-09-06 09:00 ET",
+      items: [
+        {
+          id: "earnings:BBWI:2026-09-10",
+          kind: "earnings",
+          title: "BBWI earnings",
+          subtitle: null,
+          date: "2026-09-10",
+          time: null,
+          impact: "high",
+          days_until: 4,
+          ticker: "BBWI",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 8.5,
+          sector_label: "Retail",
+        },
+      ],
+      total_matched: 1,
+    },
+    meridianPeer: {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "ULTA",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    ecosystem: null,
+    vector: null,
+  };
+  assert.ok(meridianPeerSection(ctx));
+  const bullets = collectCoachingBullets(ctx, "watch", 100);
+  assert.equal(
+    bullets.filter((b) => /Earnings peer lens/i.test(b)).length,
+    0,
+    "peer lens belongs only in meridianPeerSection",
+  );
+  const narrative = tradeManagerNarrativeSection(ctx, "watch");
+  if (narrative) {
+    assert.equal(
+      (narrative.body.match(/Earnings peer lens/gi) ?? []).length,
+      0,
+      "Trade manager read must not repeat dedicated peer section",
+    );
+  }
 });
 
 test("whyThisSetupSection: surfaces subLane alongside archetype", () => {

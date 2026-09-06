@@ -8,7 +8,6 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtPremium } from "@/lib/fmt-money";
-import { meridianPeerEarningsCoaching, pickEarningsForSwingPeer } from "./play-brief-meridian-peer-core";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -647,8 +646,9 @@ export function collectCoachingBullets(
 
   push(manageLifecycleCoaching(play, bucket));
   push(catalystCoaching(ctx));
-  const earningsItem = pickEarningsForSwingPeer(ctx.meridian?.items, play.ticker);
-  push(meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem));
+  // Meridian peer earnings live in meridianPeerSection (play-brief-intel.ts) — not here.
+  // Duplicating meridianPeerEarningsCoaching in both places re-shipped the #4110/#4116
+  // book-context failure mode when MAX_BULLETS had room.
   push(crossDeskCoaching(ctx, play));
   push(laneRankCoaching(play, ctx.laneRows));
   push(macroTapeCoaching(ctx));

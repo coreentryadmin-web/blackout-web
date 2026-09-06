@@ -3190,7 +3190,13 @@ than an end-of-session patch.
 - **What changed:** Shared `gexMatrixAgeMs`/`gexMatrixStale` helpers; narrative lead uses "Last snapshot" when GEX-sourced posture is stale; Data freshness warns; `unavailableSources` emits `{ source: "GEX matrix", reason: "stale — dealer posture may lag spot" }`.
 - **RTH check:** Night Hawk Swings → row with GEX positioning but no Vector regime → Ask Largo Trade manager read: when matrix is >120s old, confirm "Last snapshot (~Ns old)" not "Right now", and UnavailableChip/Data freshness mention stale GEX matrix.
 
-### 51. Ask Largo swing brief — "Vector regime" label read as a directional call, not dealer gamma posture — fix/swing-chart-vector-regime-gamma-label — 2026-09-06
+### 51. Ask Largo swing brief — Meridian peer earnings cohort dropped by narrative bullet cap — fix/largo-meridian-peer-section — 2026-09-06
+
+- **What was broken:** `fetchMeridianPeerForBrief()` loaded sector peer beat-rate cohort on earnings plays, but only `meridianPeerEarningsCoaching()` in `collectCoachingBullets()` consumed it. When Vector/GEX coaching filled `MAX_BULLETS` (14), peer earnings history could be silently dropped despite live cohort data on the read.
+- **What changed:** Added `meridianPeerSection()` wired into `buildIntelSections()` as **Earnings peer lens** — outside `NARRATIVE_COVERED_TITLES`, so collapse logic cannot remove it.
+- **RTH check:** Open Ask Largo on a single-name earnings swing (e.g. retail name within 14d print) with rich Vector/GEX context — confirm **Earnings peer lens** section appears with peer beat rates (`n=`) even when Trade manager read is long.
+
+### 52. Ask Largo swing brief — "Vector regime" label read as a directional call, not dealer gamma posture — fix/swing-chart-vector-regime-gamma-label — 2026-09-06
 
 - **What was broken:** `chartTechnicalsSection()` printed `Vector regime: **long**`/`**short**` bare — this is a dealer GAMMA regime (spot vs gamma flip), not a directional call — sitting in the same section as directional signals (EMA, MACD, structure) and right before the separate "Vector desk" section's own directional POSITION call. Live repro (`SWING:NN`): Chart technicals showed "Vector regime: long" while Vector desk showed "momentum short" for the same ticker.
 - **What changed:** Relabeled to `Dealer gamma regime: **long gamma**`/`**short gamma**`/`**transition** (near flip)` — matches the labeling already used everywhere else this field is surfaced (`play-brief-narrative.ts`'s `dealerPostureLine`). No data changed, only the label.
