@@ -37,20 +37,40 @@ deep-dive. If a future session reads this and the 5 triggers look like they've d
 missing, recreate them from this description rather than treating their absence as "done."
 
 **Collaboration channel:** durable via PR comments on #4076 (comment ids 5556239866,
-5556321562 — trader-perspective research + prioritized ideas, offering to split work with Cursor
-to avoid file-overlap churn). Shipped so far: #4087 (portfolio/theme concentration awareness via
-`bookContextSection`, reusing the swing gate's own `checkPortfolioOverlap`; narrated "Dealer &
-dark-pool read" replacing three separate bullet-dump sections with one connected trade-manager-
-voice synthesis of dealer posture/king-strike/max-pain/dark-pool/wall-dynamics). Scoped but not
-yet built: historical archetype/sub-lane win-rate context (blocked on a cache layer — the cron-
-side `analyzeArchetypeRecord`/`analyzeSubLaneRecord` compute is cheap but nothing persists a
-reusable report for the brief's request path to read, same shape as the `APLUS_UNLOCKED = false`
-TODO already on record in `ZeroDteBoard.tsx` for the analogous 0DTE case); narrating the live
-"what changed" diff the same trade-manager way instead of numeric deltas; narrating cross-desk
-disagreement instead of listing it; steelmanning the counter-thesis. A fresh session should read
-the two PR comments above for the full, current state of ideas raised vs. shipped vs. blocked
-before assuming this list is exhaustive — it is a snapshot, and the mandate is to keep extending
-it, not to treat it as a fixed backlog.
+5556321562, 5556389569 — trader-perspective research + prioritized ideas, offering to split work
+with Cursor to avoid file-overlap churn).
+
+**Correction (2026-09-06): this section previously mis-attributed what shipped where — a live
+example of the exact cross-PR/cross-AGENT race this file's own "CROSS-PR ORDERING DEPENDENCIES"
+section warns about (two independent workers building the same feature idea in parallel, not two
+PRs with a stale allowlist entry). Corrected against `main` directly, not against memory:**
+- **#4084 (merged)** shipped the narrated dealer/dark-pool read — `tradeManagerNarrativeSection`
+  in `src/lib/swing/play-brief-narrative.ts` (dealer posture, GEX king strike, max pain, dark-pool
+  levels, hold/break coaching, one connected trade-manager-voice synthesis instead of separate
+  bullet-dump sections).
+- **#4087 and #4097 (both closed without merging)** — two independent, overlapping attempts at
+  portfolio/theme concentration awareness (`bookContextSection`), superseded/duplicated by each
+  other and by #4084's narrative landing first. Neither is on `main`.
+- **#4101 (open at time of writing)** is the current, clean attempt: rebased on `main` post-#4084,
+  ships ONLY the two still-independent, still-wanted pieces — `bookContextSection` (theme/direction
+  concentration via the swing gate's own `checkPortfolioOverlap`) and a genuine gap found while
+  auditing the brief against `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle:
+  `arsenal.unavailable_sources` was computed honestly server-side but never reached
+  `envelope.unavailableSources` (and therefore never reached the UI's existing `UnavailableChip`)
+  because the shared `buildRichEnvelope()` helper never forwarded the field — fixed at that shared
+  layer, so every rich Largo answer benefits, not just swing.
+- Scoped but not yet built: historical archetype/sub-lane win-rate context (blocked on a cache
+  layer — the cron-side `analyzeArchetypeRecord`/`analyzeSubLaneRecord` compute is cheap but
+  nothing persists a reusable report for the brief's request path to read, same shape as the
+  `APLUS_UNLOCKED = false` TODO already on record in `ZeroDteBoard.tsx` for the analogous 0DTE
+  case); narrating the live "what changed" diff the same trade-manager way instead of numeric
+  deltas; narrating cross-desk disagreement instead of listing it; steelmanning the counter-thesis.
+
+**A fresh session must verify against `main` (PR state via the API), never trust a "shipped so
+far" list here at face value** — that is exactly how the previous version of this section went
+stale within the same session that wrote it. Read the PR comments above for the full state of
+ideas raised vs. shipped vs. blocked, cross-check against actual merged PR numbers, and treat any
+list in this file as a snapshot to verify, not a ledger to trust.
 
 ## STANDING PERFORMANCE/LATENCY AUDIT MANDATE (confirmed 2026-09-02, ongoing/24-7)
 **The operator's own words:** *"Keep scanning the entire website and products and all values ..
