@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:21:54.784Z",
+  "updated_at": "2026-09-06T12:32:30.769Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -31,6 +31,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4239": {
+      "pr": 4239,
+      "head_sha": "8b155f430",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T12:31:58.760Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "fc87a18f2d4ea0bcd6a6cc9f9f1dc692ed425f8c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T12:08:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34032205869",
-    "last_deploy_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb"
+    "last_deploy_at": "2026-09-06T12:27:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34033030520",
+    "last_deploy_sha": "fc87a18f2d4ea0bcd6a6cc9f9f1dc692ed425f8c"
   },
   "events": [
     {
@@ -601,48 +609,127 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:31:58.761Z",
+      "type": "pr_review",
+      "pr": 4239,
+      "head_sha": "8b155f430",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T12:31:58.760Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T12:32:11.615Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T12:32:15.590Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T12:32:15.590Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "33b2023e-41cd-4d9d-afb3-32da3312d367",
+      "summary": "PR-event cycle complete: merged #4232/#4235/#4236/#4239; all peer-reviewed; validate:deploy GREEN; ops:collect 0; handoff PR #4246"
+    },
+    {
+      "at": "2026-09-06T12:32:17.601Z",
+      "type": "pr_webhook",
+      "pr": 4246,
+      "event": "sweep",
+      "head": "2e0abbd1f8371b01605b21e858389f70fa4f30b0",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T12:32:20.151Z",
+      "type": "pr_webhook",
+      "pr": 4245,
+      "event": "sweep",
+      "head": "2259afe467c2f62bb0c67d79452a3fe594dde90a",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T12:32:22.724Z",
+      "type": "pr_webhook",
+      "pr": 4244,
+      "event": "sweep",
+      "head": "0caec11e407ccd0df86ffbe593a5e4f4e76db818",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T12:32:25.783Z",
+      "type": "pr_webhook",
+      "pr": 4246,
+      "event": "sweep",
+      "head": "2e0abbd1f8371b01605b21e858389f70fa4f30b0",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T12:32:28.105Z",
+      "type": "pr_webhook",
+      "pr": 4245,
+      "event": "sweep",
+      "head": "2259afe467c2f62bb0c67d79452a3fe594dde90a",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T12:32:30.769Z",
+      "type": "pr_webhook",
+      "pr": 4244,
+      "event": "sweep",
+      "head": "0caec11e407ccd0df86ffbe593a5e4f4e76db818",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
     }
   ],
   "open_prs": [
     {
-      "number": 4242,
-      "title": "chore(blackout-agent): cursor PR-event handoff — #4232/#4235/#4236 merged, #4239 WAIT verify",
-      "branch": "cursor/autopilot-work-loop-7088",
+      "number": 4246,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing/largo merge wave + #4239 approved",
+      "branch": "cursor/autopilot-work-loop-handoff",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T12:18:17Z"
+      "updated_at": "2026-09-06T12:32:06Z"
     },
     {
-      "number": 4241,
-      "title": "chore(blackout-agent): cursor PR-event handoff — #4232 merged, #4239 peer review in flight",
-      "branch": "cursor/autopilot-pr-event-handoff-4232-4239",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T12:16:39Z"
-    },
-    {
-      "number": 4240,
-      "title": "chore(blackout-agent): cursor handoff — swing/Largo merge wave complete",
-      "branch": "cursor/autopilot-handoff-2026-09-06-cycle5",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T12:16:43Z"
-    },
-    {
-      "number": 4239,
-      "title": "fix(swing): ex-dividend read failure must fail SAFE, not fail-open, on Q39 structural stop",
-      "branch": "fix/ex-dividend-fail-open-structural-stop",
+      "number": 4245,
+      "title": "fix(swing): surface unsynced option marks in the structured absence channel",
+      "branch": "fix/swing-markissync-not-structured-absence",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T12:21:37Z"
+      "updated_at": "2026-09-06T12:29:47Z"
+    },
+    {
+      "number": 4244,
+      "title": "fix(swing): convert scanAsOf to Largo C1 ET stamp in play-brief",
+      "branch": "fix/swing-scan-asof-et-stamp",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T12:28:38Z"
     }
   ],
   "pr_activity": {
@@ -674,6 +761,30 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4246": {
+      "last_event": "sweep",
+      "last_head": "2e0abbd1f8371b01605b21e858389f70fa4f30b0",
+      "last_feedback_at": "2026-09-06T12:32:25.783Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4245": {
+      "last_event": "sweep",
+      "last_head": "2259afe467c2f62bb0c67d79452a3fe594dde90a",
+      "last_feedback_at": "2026-09-06T12:32:28.105Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4244": {
+      "last_event": "sweep",
+      "last_head": "0caec11e407ccd0df86ffbe593a5e4f4e76db818",
+      "last_feedback_at": "2026-09-06T12:32:30.769Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
