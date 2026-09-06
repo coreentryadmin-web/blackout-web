@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T18:22:21.048Z",
+  "updated_at": "2026-09-06T20:20:20.925Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -52,7 +52,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "12d062a75dff718568cafd37075bf39c4bc11215",
+    "last_main_sha": "ef32ea931c4e3024eaf1834e5697c4aa3f3280f9",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T16:34:08Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
@@ -752,30 +752,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
-    }
-  ],
-  "open_prs": [
-    {
-      "number": 4360,
-      "title": "fix(swing): extend stale GEX gating to gexPostureSection and counter-thesis",
-      "branch": "fix/largo-gex-stale-parity",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T18:18:37Z"
     },
     {
-      "number": 4359,
-      "title": "fix(swing): decode HTML entities in Benzinga headlines for swing brief",
-      "branch": "fix/swing-arsenal-news-headline-html-entities",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T18:22:06Z"
+      "at": "2026-09-06T20:20:20.159Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T20:20:20.657Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T20:20:20.925Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
