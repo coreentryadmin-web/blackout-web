@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { bookContextSection, deskConsensusSection, flowIntelSection, lessonsSection } from "./play-brief-intel";
+import { bookContextSection, chartTechnicalsSection, deskConsensusSection, flowIntelSection, lessonsSection } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
+import type { VectorFullState } from "@/lib/bie/vector-full-state";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -109,6 +110,67 @@ test("lessonsSection: a round-trip past breakeven never renders a nonsensical ne
   assert.ok(section);
   assert.doesNotMatch(section!.body, /-158\.9%|MFE capture: \*\*-/i);
   assert.match(section!.body, /round-tripped past breakeven/i);
+});
+
+function fixtureVec(overrides: Partial<VectorFullState> = {}): VectorFullState {
+  return {
+    spot: 100,
+    technicals: null,
+    regime: null,
+    play: null,
+    ...overrides,
+  } as unknown as VectorFullState;
+}
+
+test("chartTechnicalsSection: bias reads bearish from the technicals on a SHORT play whose tape is entirely bullish (FINDINGS 2026-09-06 #13, INTC shape)", () => {
+  // Reproduces the live INTC envelope: SHORT position, but EMA-up/above-VWAP/RSI-bull/CHOCH-up —
+  // an entirely bullish technical picture. The badge must say bullish (the tape), not bearish
+  // (the position direction it used to echo).
+  const vec = fixtureVec({
+    spot: 95,
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.equal(section?.bias, "bullish");
+});
+
+test("chartTechnicalsSection: bias reads bearish from the technicals on a LONG play whose tape is entirely bearish (FINDINGS 2026-09-06 #13, NN shape)", () => {
+  const vec = fixtureVec({
+    spot: 15,
+    technicals: {
+      vwap: 15.29,
+      emaStack: "down",
+      rsi: 40,
+      macd: "bear",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "down", level: 15.5 },
+    },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.equal(section?.bias, "bearish");
+});
+
+test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), never fabricated", () => {
+  const vec = fixtureVec({
+    spot: 105, // above vwap -> bull
+    technicals: {
+      vwap: 100,
+      emaStack: "down", // bear
+      rsi: 50,
+      macd: "bull", // bull
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "down", level: 90 }, // bear
+    },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.equal(section?.bias, "neutral");
 });
 
 test("flowIntelSection: stale HELIX feed must not render recent prints or anomalies", () => {

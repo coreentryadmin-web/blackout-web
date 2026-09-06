@@ -156,6 +156,32 @@ any CLOSED row matches `calendarDte(closed_at date, expiry date)` by hand for at
 
 ---
 
+### 0a-1v. Chart technicals bias badge echoed the play's LONG/SHORT direction instead of the technicals it labels — fix/swing-chart-technicals-bias-direction-echo (pending)
+
+**What was broken:** `chartTechnicalsSection`'s `bias` field (`play-brief-intel.ts`) was set from
+`play.direction === "SHORT" ? "bearish" : play.direction === "LONG" ? "bullish" : "neutral"` — a pure
+echo of the position's own direction, carrying zero information from the EMA stack / MACD / VWAP
+side / market-structure lines the badge is attached to. Live evidence: an INTC SHORT play tagged
+`[bearish]` while its own body read EMA-up, price-above-VWAP, RSI 67, MACD bull, CHOCH up (an
+entirely bullish tape); an NN LONG play tagged `[bullish]` while its body read EMA-down,
+price-below-VWAP, MACD bear, BOS down (entirely bearish); a closed AAPL LONG play tagged `[bullish]`
+on its own post-mortem while its technicals read entirely bearish. Misleading exactly when it
+matters most — reviewing why a losing play failed, or judging whether current technicals still
+support an open position.
+
+**Fix:** Added `technicalsBias()` — a majority vote across the four directional signals already
+rendered in the section (EMA stack up/down, MACD bull/bear, spot-vs-VWAP side, market-structure
+BOS/CHOCH direction). A 2-2 split or no readable signals falls back to `neutral`. `chartTechnicalsSection`
+no longer takes a `play: TerminalPlay` param at all — its bias is derived entirely from the
+technicals it already has in hand.
+
+**Check at the open:** Open `/nighthawk` → Swings and inspect the "Chart technicals" section's bias
+badge on a live position — confirm it agrees with the EMA stack / MACD / VWAP-side / structure lines
+printed directly below it (majority read), not with whether the play itself is LONG or SHORT. A
+SHORT play with a bullish-reading tape should show a bullish (not bearish) badge, and vice versa.
+
+---
+
 ### 0a-1t. SWING Management Action card fabricated a "TRIM 33%" size once the single trim tranche had already fired — fix/swing-trim-size-fabricated-33pct (pending)
 
 **What was broken:** `managementActionDisplay` (`terminal-display.ts`) sized every TRIM action
