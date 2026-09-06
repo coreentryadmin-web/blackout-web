@@ -4,6 +4,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
+import type { PortfolioPosition } from "./portfolio";
 
 /** Inputs gathered server-side for deterministic swing play brief composition. */
 export type SwingPlayBriefContext = {
@@ -20,6 +21,12 @@ export type SwingPlayBriefContext = {
   laneRows: HorizonPlay[];
   /** Meridian catalyst calendar slice for this ticker. */
   meridian: SwingMeridianCatalystSlice | null;
+  /**
+   * The member's OTHER open swing positions (this play excluded) — feeds the
+   * "Book context" theme-overlap section. Empty array when there are none;
+   * `undefined` only in fixtures that predate this field (treated as "unknown", not "none").
+   */
+  openBook?: PortfolioPosition[];
 };
 
 export type SwingPlayBriefResult = {
