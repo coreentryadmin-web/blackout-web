@@ -3093,3 +3093,9 @@ than an end-of-session patch.
 - **What changed:** `checkPortfolioOverlap` accepts `{ excludeSelfMatch?: boolean }` (default `true`); `gates-pr5.ts` passes `false`.
 - **RTH check:** During discovery, inspect a dossier whose ticker+direction already exists in the open book — `evaluateSwingGates` soft penalties should include `portfolio_overlap` with concentration reason text, not silence.
 
+### 47. Ask Largo swing play-brief — HELIX pipeline staleness missing from Data freshness — fix/swing-brief-helix-freshness-section — 2026-09-06
+
+- **What was broken:** When `flow_feed_fresh === false`, structured `unavailableSources` and `dataHonestyCoaching()` warned, but `dataFreshnessSection()` stayed silent if mark/scan/Vector were all fine — no Data freshness section at all despite stale HELIX pipeline.
+- **What changed:** `dataFreshnessSection()` adds a HELIX pipeline stale line when `flow_feed_fresh === false`.
+- **RTH check:** During a HELIX pipeline stale window, open Ask Largo on a swing row with fresh mark/scan/Vector — confirm Data freshness section mentions HELIX pipeline stale (not only UnavailableChip/coaching).
+
