@@ -11,6 +11,21 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-06 (00:16 UTC / Sat 2026-09-05 20:17 ET) — [SEO] Lane heartbeat: clean queue, entity graph confirmed
+
+**Severity.** — (no defect found)
+
+Weekend cycle, market closed. `/api/og?title=Test`: `200`, `image/png`, 44687 bytes — still
+crawlable (#2448 holds). `agent-pr-sweep.mjs`: **0 open agent PRs** — clean queue, nothing to
+unblock.
+
+New check this cycle: verified the entity `@id` graph on the homepage — `Organization` carries
+both `@id` and `knowsAbout` as designed; `WebSite` has `@id` (no `knowsAbout` needed); `FAQPage`/
+`WebPage` correctly lack `@id` (nothing references them). Matches intent, no defect.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-05 (23:28 UTC) — [DISCOVERY] `cron-dst-audit` re-verification: `banger-discovery` deployed schedule still not widened
 
 **Severity.** Not new — re-verifying an open item from `cron-dst-audit.mjs`'s 2026-08-24 re-run
