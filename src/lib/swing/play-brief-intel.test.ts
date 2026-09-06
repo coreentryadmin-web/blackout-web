@@ -225,6 +225,36 @@ test("deskConsensusSection: narrates NH outcome history when present", () => {
   assert.match(section?.body ?? "", /weigh that track record/i);
 });
 
+test("deskConsensusSection: an unresolved last swing (outcome 'open') never reads as 'closed open' — a live contradiction", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-07-29",
+      direction: "long",
+      conviction: "medium",
+      outcome: "open",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }));
+  assert.ok(section);
+  assert.doesNotMatch(section?.body ?? "", /closed \*\*open\*\*/i);
+  assert.match(section?.body ?? "", /still \*\*unresolved\*\*/i);
+});
+
+test("deskConsensusSection: outcome 'pending' also reads as unresolved, not closed", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-07-29",
+      direction: "short",
+      conviction: "medium",
+      outcome: "pending",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "SHORT" }));
+  assert.ok(section);
+  assert.doesNotMatch(section?.body ?? "", /closed \*\*pending\*\*/i);
+  assert.match(section?.body ?? "", /still \*\*unresolved\*\*/i);
+});
+
 test("deskConsensusSection: null when only flow anomaly (covered by flowNarrative + Flow & positioning)", () => {
   const eco: EcosystemContext = {
     recent_anomalies: [{ anomaly_type: "sweep_cluster", detail: "$4.2M call sweeps at 145" }],

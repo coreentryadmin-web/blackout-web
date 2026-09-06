@@ -532,10 +532,16 @@ export function deskConsensusSection(eco: EcosystemContext | null, play: Termina
   const nh = eco.nighthawk_recent;
   if (!nh?.outcome || !nh.edition_for) return null;
 
+  // `outcome` is "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled"
+  // (nighthawk/lib/play-outcomes.ts) — "open"/"pending" mean the swing hasn't resolved
+  // yet, so hardcoding "closed" produced a live contradiction ("closed open").
+  const unresolved = nh.outcome === "open" || nh.outcome === "pending";
+  const verdict = unresolved ? "is still **unresolved**" : `closed **${nh.outcome}**`;
+
   return {
     title: "Desk context",
     body:
-      `Night Hawk's last swing on this name (**${nh.edition_for}**) closed **${nh.outcome}** — ` +
+      `Night Hawk's last swing on this name (**${nh.edition_for}**) ${verdict} — ` +
       `weigh that track record against today's **${play.direction}** setup before sizing.`,
   };
 }
