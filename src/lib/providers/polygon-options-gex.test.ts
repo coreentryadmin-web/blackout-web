@@ -118,9 +118,11 @@ test("resolveSpotSnapshot: never fabricates change_pct as flat 0% when unknown",
   );
   assert.match(src, /return \{ price: bar\.c, change_pct: null \}/);
   assert.match(src, /restSnap\?\.change_pct \?\? null/);
-  assert.match(src, /resolveIndexRestChangePct/);
+  // REST branch seeds from snap?.change_pct ?? null, then index tickers may rebase via
+  // resolveIndexRestChangePct (SPX 0% after close → SPY session %). Never inline ?? 0.
+  assert.match(src, /let changePct = snap\?\.change_pct \?\? null;/);
   assert.match(src, /change_pct: changePct, source: "rest"/);
-  assert.match(src, /const changePct = snap\?\.change_pct \?\? null;/);
+  assert.match(src, /resolveIndexRestChangePct/);
   assert.match(src, /change_pct: ctx\?\.changePct \?\? null/);
   assert.doesNotMatch(
     src,
