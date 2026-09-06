@@ -267,7 +267,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     out.push({
       kind: "fact",
       text: `Next earnings ${eco.arsenal.earnings.earnings_date}.`,
-      provenance: { source: "Earnings calendar", freshness: "recent" },
+      provenance: { source: "Earnings calendar", asOf: ctx.asOf, freshness: "recent" },
     });
   }
   return out;
