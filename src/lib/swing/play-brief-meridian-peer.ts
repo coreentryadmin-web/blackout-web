@@ -3,9 +3,9 @@
  */
 import { loadMeridianPeerCohortForLargo } from "@/lib/largo/meridian-peer-cohort-for-largo";
 import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
-import type { SwingMeridianPeerAvailable, SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
+import type { SwingMeridianPeerAvailable, SwingMeridianPeerSlice, SwingMeridianPeerUnavailable } from "./play-brief-meridian-peer-core";
 
-export type { SwingMeridianPeerAvailable, SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
+export type { SwingMeridianPeerAvailable, SwingMeridianPeerUnavailable, SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
 export { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
 
 /** Load peer cohort when ticker has an upcoming earnings catalyst in the Meridian window. */
@@ -27,9 +27,13 @@ export async function fetchMeridianPeerForBrief(
       ticker,
       date: earnings.date,
     });
-    if (!cohort.available) return null;
+    if (!cohort.available) return cohort as SwingMeridianPeerUnavailable;
     return cohort as SwingMeridianPeerAvailable;
   } catch {
-    return null;
+    return {
+      available: false,
+      error: "fetch_failed",
+      note: "Meridian peer cohort load threw — NOT evidence that no peers exist.",
+    };
   }
 }

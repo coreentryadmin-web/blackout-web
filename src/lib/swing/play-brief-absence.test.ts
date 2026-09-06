@@ -100,6 +100,34 @@ test("collectBriefUnavailableSources: a total Vector fetch failure surfaces in e
   assert.ok(sources.some((s) => s.source === "Vector state" && s.reason === "fetch failed"));
 });
 
+test("collectBriefUnavailableSources: vectorFetchFailed does not surface when ecosystem.vector_full_state is present (#4249 follow-up)", () => {
+  const ctx = {
+    vector: null,
+    vectorFetchFailed: true,
+    ecosystem: {
+      vector_full_state: { spot: 100, gammaFlip: 98 },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "Vector state"));
+});
+
+test("collectBriefUnavailableSources: Meridian peer cohort failure surfaces in envelope", () => {
+  const ctx = {
+    meridianPeer: {
+      available: false,
+      error: "timeline_lookup_failed",
+      note: "The Meridian timeline could not be read.",
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Meridian peer cohort" && s.reason === "timeline_lookup_failed"),
+  );
+});
+
 test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope (FINDINGS 2026-09-06 #22)", () => {
   // dataHonestyCoaching() already narrates "mark not synced to live tape" from this exact
   // boolean — this asserts the same fact reaches the structured C3 channel, not just prose.
