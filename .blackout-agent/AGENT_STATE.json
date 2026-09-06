@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:25:43.658Z",
+  "updated_at": "2026-09-06T12:26:56.258Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T12:18:48.147Z",
-      "lease_until": "2026-09-06T13:48:48.147Z",
+      "claimed_at": "2026-09-06T12:14:11.533Z",
+      "lease_until": "2026-09-06T13:56:13.403Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "f935e336-f2a4-470a-80e3-2f9857912cf8"
     }
   },
   "reviews": {
@@ -596,18 +596,31 @@
       "agent": "cursor",
       "run_id": "acbb41d4-3447-4d3c-bc17-1488a70e46c3",
       "summary": "Cycle complete: #4239 merged (ex-div Q39 fail-safe). validate:deploy GREEN; ops:collect 0. Standing queue only."
+    },
+    {
+      "at": "2026-09-06T12:26:56.257Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T12:26:56.258Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "85f467cf-f239-4ed6-a28c-67596ab63b62",
+      "summary": "Cycle complete: #4239 merged (ex-div Q39 fail-safe); lifecycle GREEN; ops:collect 0; queue clean"
     }
   ],
   "open_prs": [
     {
-      "number": 4242,
-      "title": "chore(blackout-agent): cursor PR-event handoff — #4232/#4235/#4236 merged, #4239 WAIT verify",
-      "branch": "cursor/autopilot-work-loop-7088",
+      "number": 4243,
+      "title": "chore(blackout-agent): cursor handoff — #4239 merged, queue clean",
+      "branch": "cursor/autopilot-handoff-4239-merged",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T12:18:17Z"
+      "updated_at": "2026-09-06T12:25:56Z"
     }
   ],
   "pr_activity": {
