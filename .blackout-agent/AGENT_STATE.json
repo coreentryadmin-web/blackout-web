@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T13:25:34.105Z",
+  "updated_at": "2026-09-06T13:26:21.984Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T13:24:50.237Z",
-      "lease_until": "2026-09-06T14:54:50.237Z",
-      "phase": "CLAIMED",
+      "claimed_at": "2026-09-06T13:25:24.347Z",
+      "lease_until": "2026-09-06T14:55:24.347Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -680,6 +680,19 @@
       "agent": "cursor",
       "run_id": "1d960418-a855-4df4-867c-f18a3364e013",
       "summary": "Cycle: #4253 merged (cold GEX/Vector unavailableSources). Deploy pending 70cf88c. ops:collect 0. Standing checks GREEN."
+    },
+    {
+      "at": "2026-09-06T13:26:21.984Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T13:26:21.984Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "afe8bcc5-bfd8-4379-9400-24d462debe15",
+      "summary": "Merge landed @ 70cf88c (#4253 play-brief unavailableSources). validate:deploy GREEN; ops:collect 0. No Claude PRs open. #4255 handoff updating for peer review."
     }
   ],
   "open_prs": [
@@ -690,7 +703,7 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "QUEUED/",
+      "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-06T13:25:29Z"
     },
     {
@@ -701,7 +714,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-06T13:25:26Z"
+      "updated_at": "2026-09-06T13:25:46Z"
     }
   ],
   "pr_activity": {
