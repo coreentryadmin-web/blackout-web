@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T07:01:09.182Z",
+  "updated_at": "2026-09-06T07:27:34.211Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -54,11 +54,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0c0ac76eb0d4176d88f1c21d4b6d9b77f11d6101",
+    "last_main_sha": "3c05fef46471a6e96271226630bcce57907f3076",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T06:38:31Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34017018266",
-    "last_deploy_sha": "0c0ac76eb0d4176d88f1c21d4b6d9b77f11d6101"
+    "last_deploy_at": "2026-09-06T07:25:07Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34019089569",
+    "last_deploy_sha": "3c05fef46471a6e96271226630bcce57907f3076"
   },
   "events": [
     {
@@ -533,30 +533,22 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
-    }
-  ],
-  "open_prs": [
-    {
-      "number": 4158,
-      "title": "fix(nighthawk): delegate PlayTerminal etClock to shared C1 parser",
-      "branch": "fix/play-terminal-etclock-c1-parse",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T06:53:01Z"
     },
     {
-      "number": 4154,
-      "title": "fix(audit): align Ask Largo harness with swing deck brief dedupe (#4150)",
-      "branch": "fix/ask-largo-validate-deck-dedupe",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T07:00:34Z"
+      "at": "2026-09-06T07:27:34.211Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T07:27:34.211Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9fb9dd6d-381e-48d0-b358-67cbc685dc0f",
+      "summary": "CI-event cycle: #4156 CI success was stale (branch closed/merged into #4154). #4154 merged@20af897. Peer-reviewed Claude #4160 G-4 condor calibration — ✅ GO AHEAD MERGE posted; merged@3c05fef. validate:deploy GREEN, ops:collect 0, platform-integrity 14/14 earlier. No open PRs."
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4158": {
       "last_event": "sweep",
