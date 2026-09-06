@@ -12,6 +12,7 @@ import {
   type LargoTimelineItem,
 } from "@/lib/largo/meridian-timeline-for-largo";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 export type SwingMeridianCatalystSlice = {
   as_of: string;
@@ -34,7 +35,7 @@ export async function fetchMeridianForTicker(ticker: string): Promise<SwingMerid
     );
   } catch {
     return {
-      as_of: new Date().toISOString(),
+      as_of: etStamp(Date.now()),
       items: [],
       total_matched: 0,
       unavailable: true,
