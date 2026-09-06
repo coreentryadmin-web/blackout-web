@@ -259,9 +259,15 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   const eco = ctx.ecosystem;
   const flow = trustedHelixFlow(eco);
   if (flow) {
+    const bias =
+      flow.call_premium > flow.put_premium * 1.3
+        ? "call-heavy"
+        : flow.put_premium > flow.call_premium * 1.3
+          ? "put-heavy"
+          : "balanced";
     out.push({
       kind: "fact",
-      text: `HELIX flow ${flow.print_count} prints in ${flow.window_hours}h.`,
+      text: `HELIX flow (${flow.window_hours}h): ${bias} — calls ${fmtUsd(flow.call_premium)} · puts ${fmtUsd(flow.put_premium)} · ${flow.print_count} prints`,
       provenance: { source: "HELIX", asOf: ctx.asOf, freshness: "recent" },
     });
   }

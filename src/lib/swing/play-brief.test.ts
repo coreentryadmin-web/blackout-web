@@ -270,6 +270,10 @@ test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1
   const brief = composeSwingPlayBrief(ctx);
   const flowEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("HELIX flow"));
   assert.ok(flowEvidence, "expected HELIX flow evidence");
+  assert.match(flowEvidence!.text, /call-heavy/);
+  assert.match(flowEvidence!.text, /\$1000000\.00/);
+  assert.match(flowEvidence!.text, /\$500000\.00/);
+  assert.match(flowEvidence!.text, /12 prints/);
   assert.equal(flowEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
   assert.equal(flowEvidence?.provenance?.freshness, "recent", "HELIX flow is a cached window aggregate, not tick-live");
 });
