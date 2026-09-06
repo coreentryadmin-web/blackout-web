@@ -2982,3 +2982,9 @@ than an end-of-session patch.
 - **What changed:** Level provenance now uses `describeVectorFreshness(vec.asOf, readMs)` and `freshnessFromAgeMs` on `gex_positioning.asof`; option-mark evidence uses measured age when parseable.
 - **RTH check:** Night Hawk Swings → OPEN/HOLD row → Largo brief levels table: when Vector cache is aged (>60s), spot/wall provenance should show `recent` or `stale`, aligned with the "Data freshness" section.
 
+### 43. Ask Largo swing play-brief — cold GEX / missing Vector silent in unavailableSources — fix/swing-brief-gex-vector-absence — 2026-09-06
+
+- **What was broken:** When `fetchEcosystemContext` succeeded but `gex_positioning` was null (cold matrix), or ecosystem loaded but neither `ctx.vector` nor `ecosystem.vector_full_state` had a live spot, GEX/Vector sections were omitted with no `UnavailableChip`. Total fetch failures were already surfaced via `ecosystemFetchFailed`/`vectorFetchFailed` (#11); cold-matrix / no-spot cases were not.
+- **What changed:** `collectBriefUnavailableSources()` emits structured absence entries for cold GEX and missing Vector desk state when the upstream read succeeded but returned no usable positioning/snapshot.
+- **RTH check:** Night Hawk Swings → open row → Ask Largo: when matrix is cold or Vector has no spot, confirm `UnavailableChip` shows "GEX positioning" and/or "Vector desk state" (not silent omission).
+
