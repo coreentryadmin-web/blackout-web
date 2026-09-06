@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T10:33:17.533Z",
+  "updated_at": "2026-09-06T10:33:53.308Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:50:13.335Z",
-      "lease_until": "2026-09-06T11:20:13.335Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-06T10:10:27.073Z",
+      "lease_until": "2026-09-06T11:40:27.073Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -30,14 +30,6 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
-      "safe_to_merge": true
-    },
-    "pr-4202": {
-      "pr": 4202,
-      "head_sha": "c427dd49703da97b7c1f5bb65b4c8c887d6c95ef",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T10:33:05.438Z",
       "safe_to_merge": true
     }
   },
@@ -531,36 +523,37 @@
       "open_pr_count": 6
     },
     {
-      "at": "2026-09-06T10:22:52.010Z",
+      "at": "2026-09-06T10:33:42.985Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 3
+      "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T10:33:05.438Z",
-      "type": "pr_review",
-      "pr": 4202,
-      "head_sha": "c427dd49703da97b7c1f5bb65b4c8c887d6c95ef",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T10:33:05.438Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T10:33:17.532Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T10:33:17.533Z",
+      "at": "2026-09-06T10:33:42.986Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "7f447015-0b37-4bb7-b9c4-4e311e8536db",
-      "summary": "PR-event cycle complete. Peer-reviewed + merged: #4189 (closed brief intel), #4191 (thesis-health tests), #4197 (lane rank COMMIT), #4202 (weekend serving-snapshot TTL). #4200/#4201 also merged by fleet. validate:deploy GREEN. ops:collect 0. pr-sweep empty. main@50cdc9db2. Zero open PRs."
+      "run_id": "b8c51d52-85f4-42e6-8ff8-4bd6d5e8b6d8",
+      "summary": "Cycle complete: peer-reviewed+merged #4197 (lane rank COMMIT peers), #4200 (trustedHelixFlow crossdesk), #4202 (120h weekend TTL). Also #4201 dead-code cleanup auto-merged. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. ECR deploy pending for 50cdc9db. Handoff PR #4205 updated; #4204 closed dup. Awaiting Claude review on cursor handoff PRs."
+    },
+    {
+      "at": "2026-09-06T10:33:53.308Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4206,
+      "title": "chore(blackout-agent): cursor PR-event handoff — swing audit wave complete (#4189–#4202)",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle12",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T10:33:30Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
