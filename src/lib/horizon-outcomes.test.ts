@@ -131,6 +131,36 @@ test("mapZeroDteOutcome: WS-10/WS-11 executable lane can flip a mid LOSS into an
   assert.equal(out.pnl_pct, 6.25);
 });
 
+test("mapZeroDteOutcome: a live-only exit (thesis_break) that ISN'T a WS-11 reconstruction reports the AS-MANAGED result, not the executable/mechanical one", () => {
+  // WS-10 executable lane says "doubled" +6.25% (mechanical hold-to-target simulation, no
+  // tranches — not a WS-11 reconstruction). The engine's REAL recorded exit closed the position
+  // early on a live-only thesis-break for -12%. officialPlanPnlPct/isZeroDteWin (the pre-fix
+  // source) never sees the real exit here — officialOverridingRealExit only fires when a GENUINE
+  // trim-scale reconstruction exists to override, and there are no tranches — so it would read
+  // the executable +6.25% "win". record.ts's own managedGradeView (the actual member-facing
+  // headline, matching /api/market/zerodte/record and the Track Record UI) prefers the real
+  // terminal exit here (thesis_break is a live-only reason, not bar-walk reproducible) and
+  // reports -12% "loss". This is the case get_horizon_outcomes must agree with.
+  const row = zeroDteRow({
+    plan_outcome: "stopped",
+    plan_pnl_pct: -50, // mid: irrelevant once entry_context.executable is present
+    entry_context: {
+      executable: {
+        // No tranches: a plain executable grade, not a WS-11 reconstruction.
+        plan_outcome: "doubled",
+        plan_pnl_pct: 6.25,
+      },
+      exit: {
+        reason: "thesis_break:gex_walls",
+        pnl_pct: -12,
+      },
+    },
+  });
+  const out = mapZeroDteOutcome(row);
+  assert.equal(out.label, "loss");
+  assert.equal(out.pnl_pct, -12);
+});
+
 test("mapZeroDteOutcome: ungradeable / ungraded row maps to a null label and null pnl", () => {
   const out = mapZeroDteOutcome(zeroDteRow({ plan_outcome: "ungradeable", plan_pnl_pct: null }));
   assert.equal(out.label, null);
