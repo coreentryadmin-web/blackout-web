@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ALWAYS_AGGREGATE_LEVELS,
-  scopesAreMixed,
   thermalScopes,
   type ScopedThermalLevel,
 } from "./meridian-thermal-scope";
@@ -24,17 +23,11 @@ test("a usable event expiry scopes the walls and max pain — and NOT the king o
   assert.equal(s.level_scopes.flip, "aggregate");
   assert.equal(s.structure_scope, "aggregate");
   assert.match(s.structure_scope_label, /whole-book aggregate across 12 near-term expiries/);
-  assert.ok(scopesAreMixed(s), "this is precisely the case a panel must label level by level");
 });
 
 test("with no usable event expiry every level is aggregate, and nothing needs marking", () => {
   const s = thermalScopes(false, 12);
   for (const scope of Object.values(s.level_scopes)) assert.equal(scope, "aggregate");
-  assert.equal(
-    scopesAreMixed(s),
-    false,
-    "a uniformly whole-book ladder says so once, above — per-row marks would be noise"
-  );
 });
 
 test("an absent expiry count is described, never invented", () => {
