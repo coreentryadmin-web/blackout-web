@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:21:07.338Z",
+  "updated_at": "2026-09-06T15:23:50.281Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -12,7 +12,8 @@
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,6 +32,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4300": {
+      "pr": 4300,
+      "head_sha": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T15:22:16.875Z",
+      "safe_to_merge": false
+    },
+    "pr-4301": {
+      "pr": 4301,
+      "head_sha": "4c7756a4997e59f094ca010ae26922948fb084b9",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T15:22:21.006Z",
+      "safe_to_merge": false
+    },
+    "pr-4302": {
+      "pr": 4302,
+      "head_sha": "9151ad5dd7dfe0e65da71a2948dedb7bd1f5cb4c",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T15:23:39.391Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -39,16 +64,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T15:19:29.110Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
     "last_main_sha": "7418ff9e746c44e6b6206dd35acc0bc0ec6340be",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T15:18:31Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34041890166",
-    "last_deploy_sha": "7418ff9e746c44e6b6206dd35acc0bc0ec6340be"
+    "last_deploy_at": "2026-09-06T15:23:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34042170591",
+    "last_deploy_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f"
   },
   "events": [
     {
@@ -603,87 +629,169 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T14:27:41.054Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T14:27:41.785Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T14:27:42.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T14:42:56.129Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T14:42:56.893Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T14:42:57.258Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T14:55:29.441Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T14:55:30.246Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T14:55:30.547Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T15:20:54.209Z",
+      "at": "2026-09-06T15:19:19.077Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
     },
     {
-      "at": "2026-09-06T15:20:54.209Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "8730f0e8-822a-41c5-9b1a-62dd3f2d192c",
-      "summary": "Cycle post-#4298: merged Meridian OpEx cohort fix. Pre-reviewed swing Largo PRs #4300/#4301/#4302 locally (tests pass, merge-safe). Awaiting Claude peer sign-off on Cursor-authored fix/* PRs. validate:deploy GREEN; ops:collect 0."
-    },
-    {
-      "at": "2026-09-06T15:21:07.338Z",
+      "at": "2026-09-06T15:19:22.707Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
     },
     {
-      "at": "2026-09-06T15:21:07.338Z",
+      "at": "2026-09-06T15:19:23.670Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T15:19:26.277Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T15:19:29.110Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T15:20:38.300Z",
+      "type": "pr_webhook",
+      "pr": 4303,
+      "event": "sweep",
+      "head": "144987fa87875bee821c5581d70df5216bed5175",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:20:40.690Z",
+      "type": "pr_webhook",
+      "pr": 4302,
+      "event": "sweep",
+      "head": "9151ad5dd7dfe0e65da71a2948dedb7bd1f5cb4c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:20:42.868Z",
+      "type": "pr_webhook",
+      "pr": 4301,
+      "event": "sweep",
+      "head": "4c7756a4997e59f094ca010ae26922948fb084b9",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:20:45.221Z",
+      "type": "pr_webhook",
+      "pr": 4300,
+      "event": "sweep",
+      "head": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:21:20.680Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T15:22:16.876Z",
+      "type": "pr_review",
+      "pr": 4300,
+      "head_sha": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T15:22:16.875Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T15:22:21.006Z",
+      "type": "pr_review",
+      "pr": 4301,
+      "head_sha": "4c7756a4997e59f094ca010ae26922948fb084b9",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T15:22:21.006Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T15:23:39.392Z",
+      "type": "pr_review",
+      "pr": 4302,
+      "head_sha": "9151ad5dd7dfe0e65da71a2948dedb7bd1f5cb4c",
+      "reviewer": "cursor",
+      "verdict": "PRE_REVIEWED",
+      "reviewed_at": "2026-09-06T15:23:39.391Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T15:23:43.686Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-06T15:23:43.687Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "62470ce9-e3a9-4895-9006-6646780ebbaa",
-      "summary": "Peer-review pass: #4300/#4301/#4302 pre-reviewed locally (awaiting Claude). #4303 handoff rebased on main. validate:deploy GREEN; ops:collect 0."
+      "run_id": "2d3a9b66-b3de-4353-a883-f5be6b09e4b1",
+      "summary": "Cycle complete post-#4298: #4300/#4301/#4302 all verify GREEN, pre-reviewed locally (PRE_REVIEWED — awaiting Claude GO AHEAD MERGE). #4302 undrafted. #4303 handoff updated on main. validate:deploy GREEN; ops:collect 0. Deploy sha 7418ff9 (#4298)."
+    },
+    {
+      "at": "2026-09-06T15:23:50.281Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T15:23:50.281Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b812cf97-e4cc-458e-bb77-1a540b1a6847",
+      "summary": "All swing Largo PRs verify GREEN (#4300/#4301/#4302). Claude peer sign-off pending. #4298 deployed at 7418ff9."
     }
   ],
   "open_prs": [
+    {
+      "number": 4306,
+      "title": "chore(blackout-agent): cursor handoff — merged swing Largo wave #4290-#4301",
+      "branch": "cursor/handoff-20260906-1523",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:23:34Z"
+    },
+    {
+      "number": 4305,
+      "title": "fix(swing): align stale HELIX coaching copy with pipeline-stale absence (rebased)",
+      "branch": "fix/swing-brief-helix-stale-coaching-copy-rebased",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:23:29Z"
+    },
+    {
+      "number": 4304,
+      "title": "chore(blackout-agent): cursor handoff — merged #4298/#4300, #4302 in review",
+      "branch": "cursor/autopilot-state-recovery-loop-0c27",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:22:51Z"
+    },
     {
       "number": 4303,
       "title": "chore(blackout-agent): cursor handoff — #4297/#4298 cycle",
@@ -691,38 +799,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-06T15:21:00Z"
-    },
-    {
-      "number": 4302,
-      "title": "fix(swing): align stale HELIX coaching copy with pipeline-stale absence (C3)",
-      "branch": "fix/swing-brief-helix-stale-coaching-copy",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:21:03Z"
-    },
-    {
-      "number": 4301,
-      "title": "fix(swing): stamp earnings evidence asOf for Largo C1 joins",
-      "branch": "fix/swing-brief-earnings-evidence-asof",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:21:03Z"
-    },
-    {
-      "number": 4300,
-      "title": "fix(swing): HELIX flow evidence freshness is recent, not live",
-      "branch": "fix/swing-brief-helix-flow-evidence-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:21:03Z"
+      "updated_at": "2026-09-06T15:21:17Z"
     }
   ],
   "pr_activity": {
@@ -755,6 +833,38 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4303": {
+      "last_event": "sweep",
+      "last_head": "144987fa87875bee821c5581d70df5216bed5175",
+      "last_feedback_at": "2026-09-06T15:20:38.300Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4302": {
+      "last_event": "sweep",
+      "last_head": "9151ad5dd7dfe0e65da71a2948dedb7bd1f5cb4c",
+      "last_feedback_at": "2026-09-06T15:20:40.690Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4301": {
+      "last_event": "sweep",
+      "last_head": "4c7756a4997e59f094ca010ae26922948fb084b9",
+      "last_feedback_at": "2026-09-06T15:20:42.868Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4300": {
+      "last_event": "sweep",
+      "last_head": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
+      "last_feedback_at": "2026-09-06T15:20:45.221Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
