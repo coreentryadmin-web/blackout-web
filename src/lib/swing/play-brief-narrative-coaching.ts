@@ -323,13 +323,10 @@ export function technicalsCoaching(vec: VectorFullState | null, play: TerminalPl
     const word = t.emaStack === "up" ? "bull stack" : t.emaStack === "down" ? "bear stack" : "mixed EMAs";
     parts.push(word);
   }
-<<<<<<< HEAD
-  if (t.structure) {
-    parts.push(`structure **${t.structure.type} ${t.structure.direction} @ ${t.structure.level.toFixed(2)}**`);
-=======
   if (t.structure?.type) {
-    parts.push(`structure **${t.structure.type.replace(/_/g, " ")}** @ **${t.structure.level.toFixed(2)}**`);
->>>>>>> 6ff615ad6 (fix(swing): typecheck wall integrity tiers and technicals structure)
+    parts.push(
+      `structure **${t.structure.type.replace(/_/g, " ")} ${t.structure.direction}** @ **${t.structure.level.toFixed(2)}**`,
+    );
   }
   if (!parts.length) return null;
 
