@@ -396,15 +396,14 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   };
 }
 
-/** Hold plan — till when, trim ladder, time stops, earnings risk. */
+/** Hold plan — time/theta, earnings risk, session stops, thesis-health coaching for open rows. */
 export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null {
   const { play, ecosystem } = ctx;
   if (statusBucket(play) !== "open") return null;
 
   const lines: string[] = [];
-  const action = play.recommendation ?? "HOLD";
-  lines.push(`**Desk stance:** ${action}`);
-  if (play.recNote) lines.push(play.recNote);
+  // recNote, desk stance, trim ladder, rails, and manageAction live in Management (play-brief.ts)
+  // — do not repeat them here (same duplication class as whyThisSetupSection, FINDINGS 2026-09-06).
 
   const dteMatch = play.contract.match(/(\d+)DTE/);
   if (dteMatch) {
@@ -422,15 +421,8 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
   if (play.exitPolicy) {
     const ep = play.exitPolicy;
     if (ep.time_stop_et) lines.push(`Session time stop: **${ep.time_stop_et} ET**`);
-    const trims = ep.trim_levels
-      .map((t) => `+${t.trigger_pct}%${t.fired ? " ✓ banked" : ""}`)
-      .join(" · ");
-    if (trims) lines.push(`Trim ladder: ${trims}`);
     if (ep.runner_fraction != null) {
       lines.push(`Runner: **${Math.round(ep.runner_fraction * 100)}%** of position after trims`);
-    }
-    if (ep.stop_premium != null || ep.target_premium != null) {
-      lines.push(`Rails: stop **${fmtUsd(ep.stop_premium)}** · target **${fmtUsd(ep.target_premium)}**`);
     }
   }
 
@@ -443,9 +435,7 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
     }
   }
 
-  if (play.manageAction) {
-    lines.push(`Manage engine: **${play.manageAction.replace(/_/g, " ")}**`);
-  }
+  if (!lines.length) return null;
 
   return { title: "Hold plan", body: lines.join("\n\n") };
 }

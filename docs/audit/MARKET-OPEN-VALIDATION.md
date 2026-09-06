@@ -258,7 +258,7 @@ any CLOSED row matches `calendarDte(closed_at date, expiry date)` by hand for at
 
 ---
 
-### 0a-1w. Ask Largo swing brief repeated the SAME recNote sentence in two sections — "Why this setup" read as a bullet dump, not one trade-manager voice — fix/swing-brief-why-setup-recnote-dup (pending)
+### 0a-1w. Ask Largo swing brief repeated the SAME recNote sentence in two sections — "Why this setup" read as a bullet dump, not one trade-manager voice — fix/swing-brief-why-setup-recnote-dup (merged #4257)
 
 **What was broken:** found live during the 2026-09-06 5-engine monitor's Ask Largo deep-dive on
 `SWING_NRG_34` (NRG 110C, HOLD, thesis health 46%). `play.recNote` is already rendered verbatim —
@@ -291,6 +291,20 @@ is untouched, so the sentence still appears exactly once per brief.
 carrying a `recNote` (e.g. a HOLD/TRIM play with a thesis-fading note) and confirm the note text
 appears in Management (open) or Verdict (watch) but is NOT repeated verbatim under "Why this
 setup" — that section should show only signals/archetype/pillar content.
+
+---
+
+### 0a-1x. Hold plan duplicated Management stance/note/rails on OPEN swings — fix/swing-hold-plan-recnote-dup (pending)
+
+**What was broken:** For OPEN/HOLD plays where Hold plan renders (no Trade manager read narrative, or
+`expandIntel`), `holdPlanSection` repeated `recNote`, desk stance, trim ladder, rails, and manage
+engine — all already in **Management** one section above.
+
+**Fix:** `holdPlanSection` now carries only hold-specific coaching (DTE/theta, earnings window,
+session time stop, runner fraction, thesis-health fade/giveback).
+
+**Check at the open:** On a live HOLD swing with `recNote` and DTE on the contract, confirm the note
+appears once under Management; Hold plan (if visible) shows time/earnings/theta only.
 
 ---
 
