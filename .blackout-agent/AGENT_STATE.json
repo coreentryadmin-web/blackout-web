@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:22:51.092Z",
+  "updated_at": "2026-09-06T15:24:18.408Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T14:42:22.099Z",
-      "lease_until": "2026-09-06T16:36:16.811Z",
+      "claimed_at": "2026-09-06T15:08:25.182Z",
+      "lease_until": "2026-09-06T16:38:25.182Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "160f6ff6-95fc-4350-9900-bfffd50c2c8c"
+      "run_id": null
     }
   },
   "reviews": {
@@ -31,6 +31,38 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4298": {
+      "pr": 4298,
+      "head_sha": "a8c7651fa38e035ac6b9400241c7debbdc7b669a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:18:48.608Z",
+      "safe_to_merge": true
+    },
+    "pr-4301": {
+      "pr": 4301,
+      "head_sha": "4c7756a4997e59f094ca010ae26922948fb084b9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:22:19.813Z",
+      "safe_to_merge": true
+    },
+    "pr-4300": {
+      "pr": 4300,
+      "head_sha": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:22:28.803Z",
+      "safe_to_merge": true
+    },
+    "pr-4302": {
+      "pr": 4302,
+      "head_sha": "9151ad5dd7dfe0e65da71a2948dedb7bd1f5cb4c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:23:45.304Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +76,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9ab8d62fd36d7af7449ea253ddee4bab4e5f3db4",
+    "last_main_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T15:22:27Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34042101125",
-    "last_deploy_sha": "9ab8d62fd36d7af7449ea253ddee4bab4e5f3db4"
+    "last_deploy_at": "2026-09-06T15:23:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34042170591",
+    "last_deploy_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f"
   },
   "events": [
     {
@@ -657,59 +689,141 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T15:22:47.016Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
+      "at": "2026-09-06T15:18:48.608Z",
+      "type": "pr_review",
+      "pr": 4298,
+      "head_sha": "a8c7651fa38e035ac6b9400241c7debbdc7b669a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:18:48.608Z",
+      "safe_to_merge": true
     },
     {
-      "at": "2026-09-06T15:22:47.017Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "21a6c0ad-e0c5-4516-9a76-30b24ceac28d",
-      "summary": "Merged wave: #4280 (prior), #4290 put-only HELIX diff, #4292 Vector dead-code, #4300 HELIX freshness, #4301 earnings asOf. Blocked #4296 (stale rebase — superseded by #4301). validate:deploy GREEN; ops:collect 0. main @ 9ab8d62fd."
-    },
-    {
-      "at": "2026-09-06T15:22:48.976Z",
+      "at": "2026-09-06T15:19:13.472Z",
       "type": "pr_webhook",
       "pr": 4303,
       "event": "sweep",
-      "head": "e92cf626d819b1f48e42711758a09f74814d4e19",
+      "head": "144987fa87875bee821c5581d70df5216bed5175",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
     },
     {
-      "at": "2026-09-06T15:22:51.092Z",
+      "at": "2026-09-06T15:19:15.835Z",
       "type": "pr_webhook",
       "pr": 4302,
       "event": "sweep",
       "head": "9151ad5dd7dfe0e65da71a2948dedb7bd1f5cb4c",
-      "verdict": "⏳ **WAIT** — CI pending",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:19:18.398Z",
+      "type": "pr_webhook",
+      "pr": 4301,
+      "event": "sweep",
+      "head": "4c7756a4997e59f094ca010ae26922948fb084b9",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:19:20.635Z",
+      "type": "pr_webhook",
+      "pr": 4300,
+      "event": "sweep",
+      "head": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:22:19.814Z",
+      "type": "pr_review",
+      "pr": 4301,
+      "head_sha": "4c7756a4997e59f094ca010ae26922948fb084b9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:22:19.813Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T15:22:28.803Z",
+      "type": "pr_review",
+      "pr": 4300,
+      "head_sha": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:22:28.803Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T15:22:33.524Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T15:23:45.304Z",
+      "type": "pr_review",
+      "pr": 4302,
+      "head_sha": "9151ad5dd7dfe0e65da71a2948dedb7bd1f5cb4c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T15:23:45.304Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T15:23:50.720Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T15:23:50.721Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "44e9ba3b-97b6-49d8-8b58-1e38d9e9f3cc",
+      "summary": "Peer-review cycle: merged #4297 (desk context unresolved), #4298 (Meridian OpEx QQQ cohort), #4301 (earnings asOf), #4300 (HELIX freshness recent), #4302 (stale HELIX coaching). All verified locally + CI green. validate:deploy GREEN; ops:collect 0. Open: #4303 draft handoff only."
+    },
+    {
+      "at": "2026-09-06T15:24:13.610Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:24:15.310Z",
+      "type": "pr_webhook",
+      "pr": 4306,
+      "event": "sweep",
+      "head": "cd09c97bec3503e1414643fdc946dc45d4f589de",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:24:18.408Z",
+      "type": "pr_webhook",
+      "pr": 4306,
+      "event": "sweep",
+      "head": "cd09c97bec3503e1414643fdc946dc45d4f589de",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     }
   ],
   "open_prs": [
     {
-      "number": 4303,
-      "title": "chore(blackout-agent): cursor handoff — #4297/#4298 cycle",
-      "branch": "cursor/blackout-autopilot-state-5d0a",
+      "number": 4306,
+      "title": "chore(blackout-agent): cursor handoff — merged swing Largo wave #4290-#4301",
+      "branch": "cursor/handoff-20260906-1523",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:21:17Z"
-    },
-    {
-      "number": 4302,
-      "title": "fix(swing): align stale HELIX coaching copy with pipeline-stale absence (C3)",
-      "branch": "fix/swing-brief-helix-stale-coaching-copy",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:22:29Z"
+      "updated_at": "2026-09-06T15:23:34Z"
     }
   ],
   "pr_activity": {
@@ -747,8 +861,8 @@
     },
     "pr-4303": {
       "last_event": "sweep",
-      "last_head": "e92cf626d819b1f48e42711758a09f74814d4e19",
-      "last_feedback_at": "2026-09-06T15:22:48.976Z",
+      "last_head": "144987fa87875bee821c5581d70df5216bed5175",
+      "last_feedback_at": "2026-09-06T15:19:13.472Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
@@ -756,8 +870,32 @@
     "pr-4302": {
       "last_event": "sweep",
       "last_head": "9151ad5dd7dfe0e65da71a2948dedb7bd1f5cb4c",
-      "last_feedback_at": "2026-09-06T15:22:51.092Z",
+      "last_feedback_at": "2026-09-06T15:19:15.835Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4301": {
+      "last_event": "sweep",
+      "last_head": "4c7756a4997e59f094ca010ae26922948fb084b9",
+      "last_feedback_at": "2026-09-06T15:19:18.398Z",
       "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4300": {
+      "last_event": "sweep",
+      "last_head": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
+      "last_feedback_at": "2026-09-06T15:19:20.635Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4306": {
+      "last_event": "sweep",
+      "last_head": "cd09c97bec3503e1414643fdc946dc45d4f589de",
+      "last_feedback_at": "2026-09-06T15:24:18.408Z",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     }

@@ -1,18 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T15:22:47.017Z
-**Run:** 21a6c0ad-e0c5-4516-9a76-30b24ceac28d
+**At:** 2026-09-06T15:25:00.000Z
+**Run:** 26892ad0-449b-4df0-96a2-b3d0cd4a4bc3
 
 ## Summary
 
-Merged wave: #4280 (prior), #4290 put-only HELIX diff, #4292 Vector dead-code, #4300 HELIX freshness, #4301 earnings asOf. Blocked #4296 (stale rebase — superseded by #4301). validate:deploy GREEN; ops:collect 0. main @ 9ab8d62fd.
+Peer-review cycle: merged #4297 (desk context unresolved), #4298 (Meridian OpEx QQQ cohort), #4300 (HELIX freshness recent), #4301 (earnings asOf), #4302 (stale HELIX coaching). All verified locally + CI green. validate:deploy GREEN; validate:platform-integrity 14/14; ops:collect 0.
 
 ## Deploy
 
-- main: `9ab8d62fd36d7af7449ea253ddee4bab4e5f3db4`
-- status: 
+- main: `a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f`
+- status: GREEN (validate:deploy off-hours)
 
 ## Open PRs
 
-- #4303 [cursor] chore(blackout-agent): cursor handoff — #4297/#4298 cycle
-- #4302 [agent] fix(swing): align stale HELIX coaching copy with pipeline-stale absence (C3)
+- #4306 [cursor] chore(blackout-agent): cursor handoff — merged swing Largo wave (awaiting Claude review)
