@@ -456,8 +456,9 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
   }
   if (gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
   if (gex.nearest_wall != null && gex.spot != null) {
+    const { strike, kind, distance_pts } = gex.nearest_wall;
     lines.push(
-      `Nearest wall: **${gex.nearest_wall.strike.toFixed(2)}** (${gex.nearest_wall.kind}) vs spot **${gex.spot.toFixed(2)}**`,
+      `Nearest wall: **${strike.toFixed(2)}** (${kind}, ${distance_pts.toFixed(1)} pts from spot **${gex.spot.toFixed(2)}**)`,
     );
   }
   if (gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
