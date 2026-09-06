@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:27:42.105Z",
+  "updated_at": "2026-09-06T14:51:27.880Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T14:34:20.761Z",
+      "lease_until": "2026-09-06T16:04:20.761Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -31,6 +31,38 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4287": {
+      "pr": 4287,
+      "head_sha": "42c48750cdc98acf57331a0b3f1acc5b96c74d63",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:37:32.530Z",
+      "safe_to_merge": true
+    },
+    "pr-4280": {
+      "pr": 4280,
+      "head_sha": "d83b9d1e35066e39af66cb1fece5d1fa22d18019",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:45:08.200Z",
+      "safe_to_merge": true
+    },
+    "pr-4284": {
+      "pr": 4284,
+      "head_sha": "8ee3ea0fb063ef0555077948d0e2f3866e72e2ce",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:45:09.266Z",
+      "safe_to_merge": true
+    },
+    "pr-4292": {
+      "pr": 4292,
+      "head_sha": "7b91aa47ee15505acb131dfc992e06f390390562",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:45:13.041Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +76,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "af4a791de0d07b7025e89db6fdd20aefb4a3092d",
+    "last_main_sha": "4616cc7bdefce6d28c6a6f63e6d6ca1c7b07d6e1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T14:44:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34040112851",
+    "last_deploy_sha": "4616cc7bdefce6d28c6a6f63e6d6ca1c7b07d6e1"
   },
   "events": [
     {
@@ -619,9 +651,93 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T14:37:32.531Z",
+      "type": "pr_review",
+      "pr": 4287,
+      "head_sha": "42c48750cdc98acf57331a0b3f1acc5b96c74d63",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:37:32.530Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:45:08.201Z",
+      "type": "pr_review",
+      "pr": 4280,
+      "head_sha": "d83b9d1e35066e39af66cb1fece5d1fa22d18019",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:45:08.200Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:45:09.266Z",
+      "type": "pr_review",
+      "pr": 4284,
+      "head_sha": "8ee3ea0fb063ef0555077948d0e2f3866e72e2ce",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:45:09.266Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:45:13.041Z",
+      "type": "pr_review",
+      "pr": 4292,
+      "head_sha": "7b91aa47ee15505acb131dfc992e06f390390562",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:45:13.041Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:51:27.879Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T14:51:27.880Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "707b2e26-34eb-4cb5-93db-0b90f96d0332",
+      "summary": "Post-#4285 wave: peer-reviewed and merged #4280 (dark pool provenance), #4284 (HELIX freshness section), #4287 (WATCH thesis attach), #4292 (Vector dead code). #4290 (HELIX put-only diff) approved, CI pending. validate:deploy GREEN; ops:collect 0."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4295,
+      "title": "fix(thermal): stop GreeksDistributionPanel mutating its memoized buckets order",
+      "branch": "fix/greeks-distribution-panel-mutating-sort",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:51:22Z"
+    },
+    {
+      "number": 4293,
+      "title": "chore(blackout-agent): cursor handoff — #4287 merged, swing Largo PRs verified",
+      "branch": "cursor/handoff-20260906-1438",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T14:49:54Z"
+    },
+    {
+      "number": 4290,
+      "title": "fix(swing): detect put-only HELIX flow build in brief diff",
+      "branch": "fix/swing-brief-helix-put-flow-diff",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:51:05Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
