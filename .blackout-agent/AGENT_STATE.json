@@ -1,18 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:58:13.389Z",
+  "updated_at": "2026-09-06T13:01:02.262Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T12:46:55.992Z",
-      "lease_until": "2026-09-06T14:28:11.583Z",
+      "claimed_at": "2026-09-06T12:38:39.355Z",
+      "lease_until": "2026-09-06T14:25:09.725Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "adf6ac34-dec5-42b3-a79f-acb1f040ab42"
+      "run_id": "bb374515-9ae6-4f16-b40f-9db660357090"
+    },
+    "BO-TEST-0004": {
+      "task_id": "BO-TEST-0004",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T12:55:07.039Z",
+      "lease_until": "2026-09-06T14:25:09.725Z",
+      "phase": "CLAIMED",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "bb374515-9ae6-4f16-b40f-9db660357090"
     }
   },
   "reviews": {
@@ -31,6 +42,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4248": {
+      "pr": 4248,
+      "head_sha": "4ec85792ff341f5ec4f4e04e7639fb943b3ad756",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:00:18.950Z",
+      "safe_to_merge": true
+    },
+    "pr-4249": {
+      "pr": 4249,
+      "head_sha": "785a6a3c4b43cab73e69e8b8cfeffd8a32161e0a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:00:19.383Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -45,10 +72,8 @@
   },
   "deploy": {
     "last_main_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T12:57:26Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34034630833",
-    "last_deploy_sha": "679d9beeb6b474d6bc083e02fb7f24ccedcc7028"
+    "last_deploy_status": "GREEN",
+    "last_deploy_at": "2026-09-06T13:00:40Z"
   },
   "events": [
     {
@@ -80,7 +105,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
+      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) \u2014 peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
     },
     {
       "at": "2026-09-05T19:35:03.828Z",
@@ -109,7 +134,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
+      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) \u2014 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
       "at": "2026-09-05T20:41:08.341Z",
@@ -469,7 +494,7 @@
       "pr": 4190,
       "event": "sweep",
       "head": "fcde84548d0e91171e164389bf1311c8dfec64c8",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "dispatch": false
     },
@@ -479,7 +504,7 @@
       "pr": 4189,
       "event": "sweep",
       "head": "97db344dcd3ac2a83568690dae5cd293acbf5f48",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "dispatch": true
     },
@@ -489,7 +514,7 @@
       "pr": 4188,
       "event": "sweep",
       "head": "656b59005d206131a85ea51a1f2a2765d767a1ef",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "dispatch": false
     },
@@ -499,7 +524,7 @@
       "pr": 4187,
       "event": "sweep",
       "head": "86aff8fc854866dd11db13747eaa55594afc99ff",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "dispatch": false
     },
@@ -582,7 +607,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "87520518-9d11-43da-b194-302260aa2e54",
-      "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
+      "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) \u2014 both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
     },
     {
       "at": "2026-09-06T12:27:55.473Z",
@@ -603,50 +628,87 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T12:58:07.156Z",
+      "at": "2026-09-06T12:55:08.436Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T12:58:07.157Z",
+      "at": "2026-09-06T12:55:09.725Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T12:55:10.914Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T13:00:18.951Z",
+      "type": "pr_review",
+      "pr": 4248,
+      "head_sha": "4ec85792ff341f5ec4f4e04e7639fb943b3ad756",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:00:18.950Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T13:00:19.384Z",
+      "type": "pr_review",
+      "pr": 4249,
+      "head_sha": "785a6a3c4b43cab73e69e8b8cfeffd8a32161e0a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:00:19.383Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T13:00:26.447Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T13:00:26.448Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "55d71f16-86f4-4e5a-80b0-8ad18c6dcbb8",
-      "summary": "Peer-reviewed #4249 (ecosystem/Vector fetch-failure absence) — merged. #4248 (short-volume ratio normalize) also merged. validate:deploy GREEN; ops:collect 0. main@679d9beeb."
+      "run_id": "6c73fb5c-282e-4245-bc7d-fc543790609d",
+      "summary": "Peer-reviewed #4247+#4248+#4249 (all merged before undraft). Swing fixes: AS-MANAGED horizon outcomes, short-vol ratio normalization, ecosystem/Vector fetch-failure absence. validate:deploy pending. ops:collect 0."
     },
     {
-      "at": "2026-09-06T12:58:08.035Z",
+      "at": "2026-09-06T13:00:43.831Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T12:58:11.583Z",
+      "at": "2026-09-06T13:01:02.262Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T12:58:12.477Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T12:58:13.389Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 1
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4251,
+      "title": "chore(blackout-agent): cursor handoff \u2014 #4248/#4249 merged, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-06-1259",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T12:59:18Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
       "last_head": "fcde84548d0e91171e164389bf1311c8dfec64c8",
       "last_feedback_at": "2026-09-06T09:43:03.489Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -654,7 +716,7 @@
       "last_event": "sweep",
       "last_head": "97db344dcd3ac2a83568690dae5cd293acbf5f48",
       "last_feedback_at": "2026-09-06T09:43:06.278Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -662,7 +724,7 @@
       "last_event": "sweep",
       "last_head": "656b59005d206131a85ea51a1f2a2765d767a1ef",
       "last_feedback_at": "2026-09-06T09:43:08.803Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -670,9 +732,10 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "comment_action": "created"
     }
-  }
+  },
+  "last_handoff_at": "2026-09-06T13:00:26.448Z"
 }
