@@ -60,7 +60,7 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
   };
 }
 
-export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): RichSection | null {
+export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[] | null | undefined): RichSection | null {
   const snap = computeLaneRank(play, laneRows);
   if (!snap) return null;
 
