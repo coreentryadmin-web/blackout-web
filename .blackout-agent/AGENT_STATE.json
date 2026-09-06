@@ -1,30 +1,21 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:22:26.778Z",
+  "updated_at": "2026-09-06T04:37:18.320Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T04:29:10.163Z",
+      "lease_until": "2026-09-06T06:06:01.520Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "9b7e4558-f953-405f-aaaa-684e9ef73abc"
     }
   },
-  "reviews": {
-    "pr-4037": {
-      "pr": 4037,
-      "head_sha": "2c4363b2c",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T19:35:19.109Z",
-      "safe_to_merge": true
-    }
-  },
+  "reviews": {},
   "agents": {
     "claude": {
       "status": "unknown",
@@ -36,318 +27,25 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d61dd9139cb02e9cea430b1bc41b1889930d7557",
+    "last_main_sha": "2da6c1c543cded2d13a8dab9c7ffde706317c5b8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T04:36:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34011927617",
+    "last_deploy_sha": "2da6c1c543cded2d13a8dab9c7ffde706317c5b8"
   },
   "events": [
     {
-      "at": "2026-09-05T19:07:30.161Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-05T19:07:42.137Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-05T19:34:21.505Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
-    {
-      "at": "2026-09-05T19:34:45.361Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-09-05T19:34:45.361Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
-    },
-    {
-      "at": "2026-09-05T19:35:03.828Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-09-05T19:35:19.110Z",
-      "type": "pr_review",
-      "pr": 4037,
-      "head_sha": "2c4363b2c",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T19:35:19.109Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-05T19:35:26.152Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-09-05T19:35:26.152Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
-    },
-    {
-      "at": "2026-09-05T20:41:08.341Z",
+      "at": "2026-09-06T04:37:08.952Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T20:41:08.976Z",
+      "at": "2026-09-06T04:37:18.320Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T20:41:09.263Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.295Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.899Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:58.167Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:49.766Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:50.307Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:50.539Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T22:19:16.536Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T22:19:17.152Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T22:19:17.459Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T23:22:37.057Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T23:22:37.647Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T23:22:37.921Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T00:24:22.358Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T00:24:22.943Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T00:24:23.259Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T01:18:49.487Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T01:18:50.047Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T01:18:50.328Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T01:30:57.846Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T01:30:58.433Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T01:30:58.687Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T02:08:55.788Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T02:08:56.472Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T02:08:56.847Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T02:14:57.876Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-06T02:14:58.629Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-06T02:14:58.957Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-06T02:35:01.129Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T02:35:02.828Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-06T02:35:03.337Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T03:06:13.717Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T03:06:14.503Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T03:06:14.904Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T03:22:25.673Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 1
-    },
-    {
-      "at": "2026-09-06T03:22:26.411Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T03:22:26.778Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 1
     }
   ],
-  "open_prs": [
-    {
-      "number": 4108,
-      "title": "feat(swing): counter-thesis coaching + trade-manager diff narration",
-      "branch": "fix/swing-counter-thesis-coaching",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T03:21:58Z"
-    }
-  ]
+  "open_prs": []
 }
