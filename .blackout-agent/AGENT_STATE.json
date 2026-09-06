@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T04:04:15.847Z",
+  "updated_at": "2026-09-06T04:18:04.674Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T04:05:52.628Z",
+      "lease_until": "2026-09-06T05:35:52.628Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "fea8a366cd4f92eb4f8fd50ec8c8e1fc3b353a02",
+    "last_main_sha": "5ef08f716d55eefe3c2268e90178a0c398839b9d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T04:17:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34011138370",
+    "last_deploy_sha": "5ef08f716d55eefe3c2268e90178a0c398839b9d"
   },
   "events": [
     {
@@ -356,44 +356,58 @@
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T04:04:14.770Z",
+      "at": "2026-09-06T04:17:48.772Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T04:17:48.772Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d21bdb7b-e237-409f-af25-089a10a563bb",
+      "summary": "PR-event cycle: peer-reviewed + merged #4114 (swing MFE round-trip fix). Rebased onto coaching v3, 27/27 tests pass, verify GREEN. validate:deploy GREEN, ops:collect 0. ECR deploy in progress for coaching v3@fea8a366c. #4115 handoff draft pending."
+    },
+    {
+      "at": "2026-09-06T04:17:53.193Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T04:18:04.674Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T04:04:15.515Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T04:04:15.847Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
+      "at": "2026-09-06T04:18:04.674Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2e7575a1-5bc4-443c-869d-02f99d868ef8",
+      "summary": "PR-event cycle complete. Merged #4114 (swing MFE round-trip). validate:deploy GREEN, ops:collect 0. ECR deploy pending for 5ef08f716 + 88498375."
     }
   ],
   "open_prs": [
     {
-      "number": 4114,
-      "title": "fix(swing): MFE capture rendered a nonsensical negative % on a round-trip loss",
-      "branch": "fix/swing-mfe-capture-roundtrip",
+      "number": 4117,
+      "title": "docs(claude): record the mirror-failure — Cursor self-merged past a Claude WAIT (PR #4110)",
+      "branch": "docs/mirror-failure-cursor-self-merge-past-wait",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T04:03:50Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T04:13:52Z"
     },
     {
-      "number": 4113,
-      "title": "chore(blackout-agent): cursor PR-event handoff — post-#4110 merge @884983752",
-      "branch": "cursor/autopilot-post-4110-handoff",
+      "number": 4116,
+      "title": "fix(swing): remove duplicate bookContextCoaching that shipped past a flagged blocker",
+      "branch": "fix/swing-remove-duplicate-book-context-coaching",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T04:00:39Z"
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T04:13:52Z"
     }
   ]
 }
