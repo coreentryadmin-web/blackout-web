@@ -153,6 +153,16 @@ manager read), not repeated under Hold plan.
 
 ---
 
+### 0a-1ae. Stale Vector narrated as "Right now" in dealer posture — fix/swing-brief-stale-vector-right-now (pending)
+
+**What was broken:** `dealerPostureLine()` always led with **"Right now"** even when Vector snapshot was stale (`dataAgeMs > 120s` or `freshness === "stale"`), while structured absence and data honesty coaching correctly flagged staleness — Largo C2 contradiction.
+
+**Fix:** Qualify lead-in as **"Last snapshot (~Ns old)"** when Vector is stale; keep **"Right now"** only on fresh reads.
+
+**Check at the open:** On Swings with a stale Vector read (>2 min), Ask Largo Trade manager read dealer posture line must say **Last snapshot**, not **Right now**.
+
+---
+
 ### 0a-1ad. Stale HELIX mislabeled "quiet" in dataHonestyCoaching — fix/swing-brief-helix-stale-coaching-copy (pending)
 
 **What was broken:** When `flow_feed_fresh === false`, `dataHonestyCoaching()` said "HELIX feed quiet" while `unavailableSources` and `dataFreshnessSection()` correctly labeled pipeline **stale** — C3 absence contradiction.
