@@ -15,6 +15,7 @@ import {
   vectorPlayCoaching,
   vexCoaching,
   watchGateCoaching,
+  technicalsCoaching,
 } from "./play-brief-narrative-coaching";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -339,3 +340,55 @@ test("ivRankCoaching: fires when play carries ivRank", () => {
   assert.equal(ivRankCoaching(play({ ivRank: null })), null);
 });
 
+test("technicalsCoaching: bias reads bullish from tape on SHORT play (Largo C5 — chart evidence, not position direction)", () => {
+  const vec = {
+    spot: 95,
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line = technicalsCoaching(vec, play({ direction: "SHORT", ticker: "INTC" }));
+  assert.match(line!, /chart reads bullish/i);
+  assert.match(line!, /conflicts with swing direction/i);
+  assert.doesNotMatch(line!, /supports short swing/i);
+});
+
+test("technicalsCoaching: bias reads bearish from tape on LONG play (Largo C5)", () => {
+  const vec = {
+    spot: 15,
+    technicals: {
+      vwap: 15.29,
+      emaStack: "down",
+      rsi: 40,
+      macd: "bear",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "down", level: 15.5 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line = technicalsCoaching(vec, play({ direction: "LONG", ticker: "NN" }));
+  assert.match(line!, /chart reads bearish/i);
+  assert.match(line!, /conflicts with swing direction/i);
+  assert.doesNotMatch(line!, /supports long swing/i);
+});
+
+test("technicalsCoaching: aligned LONG + bullish tape notes alignment without echoing direction as bias", () => {
+  const vec = {
+    spot: 100,
+    technicals: {
+      vwap: 98,
+      emaStack: "up",
+      rsi: 55,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "up", level: 99 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line = technicalsCoaching(vec, play({ direction: "LONG" }));
+  assert.match(line!, /chart reads bullish/i);
+  assert.match(line!, /aligns with swing direction/i);
+});
