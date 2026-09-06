@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T13:25:02.938Z",
+  "updated_at": "2026-09-06T13:25:34.105Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T13:24:50.237Z",
+      "lease_until": "2026-09-06T14:54:50.237Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     },
     "BO-P1-0105": {
       "task_id": "BO-P1-0105",
@@ -63,11 +63,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b17816699124deef3fc99de64e4617948c07c18f",
+    "last_main_sha": "70cf88c84142150344b80bee4bf2d1989fec1364",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T13:14:02Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34035466627",
-    "last_deploy_sha": "b17816699124deef3fc99de64e4617948c07c18f"
+    "last_deploy_at": "2026-09-06T13:24:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34036016288",
+    "last_deploy_sha": "70cf88c84142150344b80bee4bf2d1989fec1364"
   },
   "events": [
     {
@@ -667,28 +667,41 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T13:25:02.938Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T13:25:34.105Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T13:25:34.105Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1d960418-a855-4df4-867c-f18a3364e013",
+      "summary": "Cycle: #4253 merged (cold GEX/Vector unavailableSources). Deploy pending 70cf88c. ops:collect 0. Standing checks GREEN."
     }
   ],
   "open_prs": [
     {
-      "number": 4254,
-      "title": "chore(blackout-agent): cursor handoff — #4247-#4252 merged, #4253 pending",
-      "branch": "cursor/autopilot-state-recovery-loop-125e",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T13:14:26Z"
-    },
-    {
-      "number": 4253,
-      "title": "fix(swing): surface cold GEX and missing Vector in play-brief unavailableSources",
-      "branch": "fix/swing-brief-gex-vector-absence",
+      "number": 4257,
+      "title": "fix(swing): stop duplicating recNote between Management/Verdict and Why this setup",
+      "branch": "fix/swing-brief-why-setup-recnote-dup",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T13:23:53Z"
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T13:25:29Z"
+    },
+    {
+      "number": 4256,
+      "title": "chore(blackout-agent): cursor handoff — #4252/#4253 merged, deploy GREEN",
+      "branch": "cursor/bc-e3328c5b-aee4-42bd-a2a7-1e74ed9c6bd6-a66b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T13:25:26Z"
     }
   ],
   "pr_activity": {
