@@ -7,6 +7,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   diffBriefSnapshots,
   envelopeWithDiffSection,
+  extrasFromBriefResponse,
   snapshotFromBrief,
   type BriefSnapshot,
 } from "@/lib/swing/play-brief-diff";
@@ -18,6 +19,7 @@ export type SwingPlayBriefResponse = {
   envelope?: BieAnswerEnvelope;
   asOf?: string;
   engine?: "swing_play_intelligence";
+  flowSnapshot?: { callPremium: number | null; putPremium: number | null } | null;
   degraded?: boolean;
   error?: string;
 };
@@ -65,18 +67,6 @@ function briefRefreshMs(): number {
     /* fall through */
   }
   return 20_000;
-}
-
-function extrasFromEnvelope(envelope: BieAnswerEnvelope) {
-  const levels = envelope.levels ?? [];
-  const price = (substr: string) =>
-    levels.find((l) => l.label.toLowerCase().includes(substr))?.price ?? null;
-  return {
-    spot: price("spot"),
-    gammaFlip: price("gamma flip"),
-    callWall: price("call wall"),
-    putWall: price("put wall"),
-  };
 }
 
 function playLiveSig(play: TerminalPlay | null): string {
@@ -132,13 +122,13 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
       setEnvelope(raw);
       return;
     }
-    const extras = extrasFromEnvelope(raw);
+    const extras = extrasFromBriefResponse(data ?? {});
     const nextSnap = snapshotFromBrief(raw, play, extras);
     const changes = diffBriefSnapshots(prevSnapRef.current, nextSnap);
     prevSnapRef.current = nextSnap;
     setChangeCount(changes.length);
     setEnvelope(changes.length ? envelopeWithDiffSection(raw, changes) : raw);
-  }, [data?.envelope, play, liveSig]);
+  }, [data, play, liveSig]);
 
   const refresh = useCallback(() => mutate(), [mutate]);
 

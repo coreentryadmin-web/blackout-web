@@ -30,6 +30,33 @@ function fmtDelta(prev: number, next: number, suffix = ""): string {
   return `${prev}${suffix} → ${next}${suffix} (${sign}${d.toFixed(1)}${suffix})`;
 }
 
+/**
+ * Derive the diff engine's raw inputs from a play-brief API response.
+ *
+ * spot/gammaFlip/callWall/putWall come from `envelope.levels` by label — those are
+ * `BieLevel` price levels the envelope already carries for chart annotation, so re-deriving
+ * them here (rather than duplicating the field) keeps one source of truth. HELIX flow premiums
+ * are NOT price levels (a `BieLevel.price` means "a level on the chart"; a premium total is a
+ * dollar sum), so they ride the response's own explicit `flowSnapshot` field instead of being
+ * shoehorned into `levels` or string-matched out of rendered text.
+ */
+export function extrasFromBriefResponse(response: {
+  envelope?: BieAnswerEnvelope;
+  flowSnapshot?: { callPremium: number | null; putPremium: number | null } | null;
+}) {
+  const levels = response.envelope?.levels ?? [];
+  const price = (substr: string) =>
+    levels.find((l) => l.label.toLowerCase().includes(substr))?.price ?? null;
+  return {
+    spot: price("spot"),
+    gammaFlip: price("gamma flip"),
+    callWall: price("call wall"),
+    putWall: price("put wall"),
+    flowCallPremium: response.flowSnapshot?.callPremium ?? null,
+    flowPutPremium: response.flowSnapshot?.putPremium ?? null,
+  };
+}
+
 /** Build a comparable snapshot from API response + live play overlay. */
 export function snapshotFromBrief(
   envelope: BieAnswerEnvelope,

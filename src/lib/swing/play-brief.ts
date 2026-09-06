@@ -258,11 +258,17 @@ export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBrie
     asOf: ctx.asOf,
   };
 
+  const flow = ctx.ecosystem?.recent_flow;
+  const flowSnapshot = flow
+    ? { callPremium: flow.call_premium, putPremium: flow.put_premium }
+    : null;
+
   return {
     playId: play.id,
     ticker: play.ticker,
     envelope,
     asOf: ctx.asOf,
     engine: "swing_play_intelligence",
+    flowSnapshot,
   };
 }
