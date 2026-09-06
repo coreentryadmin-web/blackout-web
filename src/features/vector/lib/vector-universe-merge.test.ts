@@ -119,6 +119,28 @@ test("an undated row that keeps failing to refresh eventually expires across REP
   );
 });
 
+test("an undated row that keeps being ATTEMPTED (present in fresh, still no asOf) also expires across REPEATED cycles", () => {
+  // Same real incident as the test above, reached through the OTHER branch: a ticker whose chain
+  // fetch keeps failing but is still IN the fan-out every cycle (not dropped from it) lands in
+  // `fresh` every time with asOf still null. The fresh-row loop must carry forward the
+  // `undatedSince` the previous-row loop already froze for it, not reset to nowMs just because
+  // this cycle's freshly-built row object doesn't itself carry that field yet.
+  let snap = { updatedAt: NOW, rows: [{ ticker: "META", asOf: null }] };
+  const CYCLE_MS = 5 * 60_000;
+  let now = NOW;
+  for (let i = 0; i < 4; i++) {
+    now += CYCLE_MS;
+    const merged = mergeUniverseSnapshot(snap, [{ ticker: "META", asOf: null }], now);
+    snap = { updatedAt: now, rows: merged.rows };
+  }
+  assert.deepEqual(
+    snap.rows.map((r) => r.ticker),
+    [],
+    "a ticker re-attempted every cycle but never dated must still expire once genuinely stale " +
+      "longer than maxAgeMs — being present in `fresh` every cycle must not reset its age clock"
+  );
+});
+
 test("tickers are keyed case- and whitespace-insensitively", () => {
   const previous = { updatedAt: NOW, rows: [{ ticker: "spy", asOf: NOW }] };
   const merged = mergeUniverseSnapshot(previous, [{ ticker: " SPY ", asOf: NOW }], NOW);
