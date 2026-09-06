@@ -1,10 +1,10 @@
 {
   "agent": "cursor",
-  "run_id": "3392d591-a48f-4530-b422-2abfb6a7abc6",
-  "last_seen": "2026-09-06T18:22:20.714Z",
-  "last_productive_action": "session_start",
-  "current_task": null,
-  "current_phase": "DISCOVERY",
+  "run_id": "4d62c2b2-f10d-4eae-9160-e7e944dd03a3",
+  "last_seen": "2026-09-06T20:09:19.093Z",
+  "last_productive_action": "heartbeat",
+  "current_task": "BO-P1-0100 peer review Largo PRs",
+  "current_phase": "REVIEWING",
   "branch": null,
   "pr": null,
   "healthy": true
