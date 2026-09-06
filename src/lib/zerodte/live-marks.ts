@@ -57,6 +57,7 @@ import {
 } from "./marks-math";
 import type { PlayStatus } from "./plan";
 import { fetchActiveSwingPlaysForMarks, mergeSwingActivePlays } from "@/lib/swing/live-marks-active";
+import { liveMarkBriefSig } from "@/lib/swing/play-brief-live-sig";
 
 export {
   ZERODTE_LIVE_CONTRACT_CAP,
@@ -197,6 +198,8 @@ export type ZeroDteLiveMarkRow = {
   live_pnl_pct_exec: number | null;
   /** Live greeks (Δ Γ Θ V + IV) for the terminal's streaming strip; null until a snapshot has priced them. */
   greeks: ZeroDteGreeks | null;
+  /** Swing Ask Largo brief refresh sig — mark/P&L/status the ~1s lane can push without a full brief compose. */
+  brief_sig?: string | null;
 };
 
 export type ZeroDteLiveMarksPayload = {
@@ -851,6 +854,7 @@ export function buildZeroDteLiveMarksPayloadFrom(
           : pinnedLivePnlPct(p.entry_premium, resolved.bid),
       greeks: resolved.greeks,
     };
+    row.brief_sig = liveMarkBriefSig(row);
     return [row];
   });
   // Round HERE, not in the routes: this is the single build that BOTH the SSE lane

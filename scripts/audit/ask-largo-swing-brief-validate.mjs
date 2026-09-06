@@ -140,6 +140,28 @@ function expectedSections(tab) {
   return ["Verdict", "Outcome"];
 }
 
+function validateTabV4(tab, panel, apiCalls = []) {
+  const issues = [];
+  if (tab === "OPEN") {
+    const collapsed = ["Hold plan", "GEX posture", "Flow & positioning"];
+    for (const title of collapsed) {
+      if (panel.sections.includes(title)) {
+        issues.push(`v4: OPEN still has uncollapsed section "${title}"`);
+      }
+    }
+    if (!panel.sections.includes("Trade manager read")) {
+      issues.push("v4: missing Trade manager read");
+    }
+  }
+  const lastApi = apiCalls.at(-1);
+  if (lastApi?.sections?.length && tab === "OPEN") {
+    if (lastApi.sections.includes("Hold plan")) {
+      issues.push("v4 api: Hold plan should be collapsed");
+    }
+  }
+  return issues;
+}
+
 function validateTab(tab, panel, api, rowCount, apiCalls = []) {
   const issues = [];
   const warnings = [];
@@ -178,6 +200,8 @@ function validateTab(tab, panel, api, rowCount, apiCalls = []) {
     if (api.engine && api.engine !== "swing_play_intelligence") issues.push(`api engine ${api.engine}`);
   }
 
+  issues.push(...validateTabV4(tab, panel, apiCalls));
+
   return { pass: issues.length === 0, issues, warnings };
 }
 
@@ -213,6 +237,7 @@ async function main() {
       playId: json?.playId ?? null,
       headline: json?.envelope?.headline ?? null,
       sections: json?.envelope?.sections?.map((s) => s.title) ?? [],
+      briefContentKey: json?.briefContentKey ?? null,
     });
   });
 

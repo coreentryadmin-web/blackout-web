@@ -22959,6 +22959,8 @@ html.product-shell .nav-mega {
 .nh-deck-largo__note{margin:0;font-size:11px;line-height:1.45;color:var(--dk-text-secondary)}
 .nh-deck-largo--brief .nh-deck-largo__brief-body{flex:1;min-height:0;overflow:auto;padding:0 8px 8px}
 .nh-deck-largo__actions{display:flex;align-items:center;gap:8px}
+.nh-deck-largo__detail-toggle{border:1px solid var(--dk-border);background:transparent;color:var(--dk-text-secondary);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.nh-deck-largo__detail-toggle.is-on{border-color:rgba(56,189,248,.45);color:var(--dk-cyan)}
 .nh-deck-largo__refresh{border:1px solid var(--dk-border);background:transparent;color:var(--dk-cyan);border-radius:4px;width:28px;height:28px;cursor:pointer;font-size:14px}
 .nh-deck-largo__loading{display:flex;flex-direction:column;gap:8px;padding:12px}
 .nh-deck-largo__skel{height:12px;border-radius:4px;background:linear-gradient(90deg,rgba(56,189,248,.08),rgba(56,189,248,.18),rgba(56,189,248,.08));animation:nhSkel 1.2s ease-in-out infinite}

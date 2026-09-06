@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
@@ -11,6 +11,7 @@ import {
   snapshotFromBrief,
   type BriefSnapshot,
 } from "@/lib/swing/play-brief-diff";
+import { useZeroDteLiveMarks } from "@/features/nighthawk/command-deck/use-live-marks";
 
 export type SwingPlayBriefResponse = {
   available: boolean;
@@ -26,12 +27,17 @@ export type SwingPlayBriefResponse = {
   error?: string;
 };
 
+export type UseSwingPlayBriefOptions = {
+  /** Request uncollapsed intel sections (GEX, Flow, Hold plan, etc.). */
+  expandIntel?: boolean;
+};
+
 const json = (url: string) =>
   fetch(url, { cache: "no-store", credentials: "same-origin" }).then((r) =>
     r.ok ? r.json() : ({ available: false, degraded: true } as SwingPlayBriefResponse),
   );
 
-function briefUrl(play: TerminalPlay): string | null {
+function briefUrl(play: TerminalPlay, expandIntel: boolean): string | null {
   if (!play?.id || !play.ticker) return null;
   const params = new URLSearchParams({
     playId: play.id,
@@ -45,6 +51,7 @@ function briefUrl(play: TerminalPlay): string | null {
     params.set("strike", m[1]!);
     params.set("right", m[2]!);
   }
+  if (expandIntel) params.set("expandIntel", "1");
   return `/api/market/swing/play-brief?${params.toString()}`;
 }
 
@@ -92,11 +99,19 @@ function playLiveSig(play: TerminalPlay | null): string {
   ].join("|");
 }
 
-export function useSwingPlayBrief(play: TerminalPlay | null) {
-  const key = play ? briefUrl(play) : null;
+export function useSwingPlayBrief(play: TerminalPlay | null, opts?: UseSwingPlayBriefOptions) {
+  const expandIntel = opts?.expandIntel ?? false;
+  const key = play ? briefUrl(play, expandIntel) : null;
+  const liveMarks = useZeroDteLiveMarks(Boolean(play?.occ));
+  const marksBriefSig = useMemo(() => {
+    if (!play?.occ) return "";
+    return liveMarks.get(play.occ)?.brief_sig ?? "";
+  }, [play?.occ, liveMarks]);
+
   const prevSnapRef = useRef<BriefSnapshot | null>(null);
   const prevPlayIdRef = useRef<string | null>(null);
   const prevLiveSigRef = useRef("");
+  const prevMarksBriefSigRef = useRef("");
 
   const { data, error, isLoading, isValidating, mutate } = useSWR<SwingPlayBriefResponse>(key, json, {
     refreshInterval: briefRefreshMs(),
@@ -112,6 +127,7 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
       prevSnapRef.current = null;
       prevPlayIdRef.current = play?.id ?? null;
       prevLiveSigRef.current = "";
+      prevMarksBriefSigRef.current = "";
       setChangeCount(0);
     }
   }, [play?.id]);
@@ -123,6 +139,13 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
     void mutate();
   }, [key, liveSig, mutate]);
 
+  /** Marks SSE ~1s lane — server-authoritative refresh when mark/P&L/status moves. */
+  useEffect(() => {
+    if (!key || !marksBriefSig || marksBriefSig === prevMarksBriefSigRef.current) return;
+    prevMarksBriefSigRef.current = marksBriefSig;
+    void mutate();
+  }, [key, marksBriefSig, mutate]);
+
   useEffect(() => {
     const raw = data?.envelope;
     if (!raw) {
@@ -133,6 +156,7 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
       setEnvelope(raw);
       return;
     }
+
     const extras = extrasFromBriefResponse(data ?? {});
     const nextSnap = snapshotFromBrief(raw, play, extras);
     const changes = diffBriefSnapshots(prevSnapRef.current, nextSnap);
@@ -152,5 +176,6 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
     refresh,
     changeCount,
     isLiveRefreshing: isValidating && Boolean(data),
+    briefContentKey: data?.briefContentKey ?? null,
   };
 }

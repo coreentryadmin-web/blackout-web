@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import { etClock } from "@/lib/et-clock";
@@ -72,7 +72,10 @@ function SwingBriefActionStrip({ play }: { play: TerminalPlay }) {
 /** Center-rail Largo play intelligence — deterministic Ask Largo brief per selected play. */
 export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null }) {
   const router = useRouter();
-  const { envelope, asOf, loading, error, refresh, changeCount, isLiveRefreshing } = useSwingPlayBrief(play);
+  const [expandIntel, setExpandIntel] = useState(false);
+  const { envelope, asOf, loading, error, refresh, changeCount, isLiveRefreshing } = useSwingPlayBrief(play, {
+    expandIntel,
+  });
 
   const onFollowup = useCallback(
     (q: string) => {
@@ -81,6 +84,8 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
     },
     [play, router],
   );
+
+  const hasNarrative = envelope?.sections?.some((s) => s.title === "Trade manager read") ?? false;
 
   if (!play) {
     return (
@@ -112,6 +117,16 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
           ) : null}
         </div>
         <div className="nh-deck-largo__actions">
+          {hasNarrative ? (
+            <button
+              type="button"
+              className={clsx("nh-deck-largo__detail-toggle", expandIntel && "is-on")}
+              onClick={() => setExpandIntel((v) => !v)}
+              aria-pressed={expandIntel}
+            >
+              {expandIntel ? "Hide detail" : "Show detail"}
+            </button>
+          ) : null}
           <button type="button" className="nh-deck-largo__refresh" onClick={() => refresh()} aria-label="Refresh brief">
             ↻
           </button>

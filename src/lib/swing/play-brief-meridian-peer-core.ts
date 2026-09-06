@@ -37,6 +37,9 @@ export function meridianPeerEarningsCoaching(
       item.days_until <= 0 ? "reports **today**" : `reports in **${item.days_until}d**`,
     );
   }
+  if (item.days_until <= 3) {
+    parts.push("**print imminent** — vol crush risk elevated");
+  }
 
   if (peer && peer.available && peer.members?.length) {
     if (peer.position_summary) parts.push(peer.position_summary);
