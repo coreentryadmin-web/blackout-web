@@ -164,7 +164,11 @@ test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavai
     vector: null,
   };
   const brief = composeSwingPlayBrief(ctx);
-  assert.deepEqual(brief.envelope.unavailableSources, [{ source: "short-interest", reason: "provider timeout" }]);
+  assert.deepEqual(brief.envelope.unavailableSources, [
+    { source: "short-interest", reason: "provider timeout" },
+    { source: "GEX positioning", reason: "cold matrix / no positioning read" },
+    { source: "Vector desk state", reason: "snapshot unavailable" },
+  ]);
 });
 
 test("composeSwingPlayBrief: envelope.asOf uses Largo C1 ET stamp (not a bare UTC instant)", () => {
