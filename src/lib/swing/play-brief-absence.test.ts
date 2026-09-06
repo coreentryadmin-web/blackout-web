@@ -75,6 +75,50 @@ test("collectBriefUnavailableSources: HELIX stale without recent_flow still surf
   assert.ok(sources.some((s) => s.source === "HELIX flow" && s.reason === "pipeline stale"));
 });
 
+test("collectBriefUnavailableSources: cold GEX matrix surfaces in envelope", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: null,
+      vector_full_state: { spot: 100 },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "GEX positioning" && s.reason === "cold matrix / no positioning read"),
+  );
+  assert.ok(!sources.some((s) => s.source === "Vector desk state"));
+});
+
+test("collectBriefUnavailableSources: missing Vector desk state surfaces in envelope", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: { spot: 100, flip: 98, gamma_posture: "long" },
+      vector_full_state: null,
+    },
+    vector: null,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Vector desk state" && s.reason === "snapshot unavailable"),
+  );
+  assert.ok(!sources.some((s) => s.source === "GEX positioning"));
+});
+
+test("collectBriefUnavailableSources: ctx.vector satisfies Vector desk state when ecosystem slice is null", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: { spot: 100, flip: 98, gamma_posture: "long" },
+      vector_full_state: null,
+    },
+    vector: { spot: 100 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "Vector desk state"));
+});
+
 test("collectBriefUnavailableSources: a total ecosystem fetch failure surfaces in envelope, distinct from legitimately-empty (FINDINGS 2026-09-06 #11)", () => {
   const ctx = {
     ecosystem: null,

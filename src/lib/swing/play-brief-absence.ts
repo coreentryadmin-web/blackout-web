@@ -8,6 +8,11 @@ export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
   return eco.recent_flow;
 }
 
+function hasVectorDeskState(ctx: SwingPlayBriefContext): boolean {
+  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+  return vec != null && Number.isFinite(vec.spot);
+}
+
 /** Aggregate every honest absence signal for the swing play brief envelope (Largo C3). */
 export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieUnavailableSource[] {
   const out: BieUnavailableSource[] = [...(ctx.ecosystem?.arsenal?.unavailable_sources ?? [])];
@@ -21,6 +26,16 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // wrong. Same class of gap this file already closed for HELIX flow staleness.
   if (ctx.play?.markIsSync === true) {
     out.push({ source: "option mark", reason: "sync quote without freshness timestamp" });
+  }
+  // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared
+  // matrix had no positioning for this ticker.
+  if (!ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
+    out.push({ source: "GEX positioning", reason: "cold matrix / no positioning read" });
+  }
+  // Missing Vector desk state is distinct from vectorFetchFailed — ecosystem read succeeded but
+  // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.
+  if (!ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
+    out.push({ source: "Vector desk state", reason: "snapshot unavailable" });
   }
   if (ctx.openBook === null) {
     out.push({ source: "open book", reason: "ledger read failed" });
