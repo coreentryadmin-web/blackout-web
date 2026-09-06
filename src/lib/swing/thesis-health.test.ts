@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { computeSwingThesisHealth } from "./thesis-health.ts";
+import { computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health.ts";
 
 describe("computeSwingThesisHealth", () => {
   test("returns null for WATCH rows", () => {
@@ -43,5 +43,28 @@ describe("computeSwingThesisHealth", () => {
     assert.ok(h);
     const persistence = h!.pillars.find((p) => p.label === "Persistence");
     assert.equal(persistence?.status, "lost");
+  });
+
+  test("thesisHealthUncalibrated: true when default pillar labels present", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    assert.equal(thesisHealthUncalibrated(h), true);
+  });
+
+  test("thesisHealthUncalibrated: false when commit inputs wired", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW", "VECTOR"],
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    assert.equal(thesisHealthUncalibrated(h), false);
   });
 });

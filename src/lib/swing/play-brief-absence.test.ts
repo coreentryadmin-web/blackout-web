@@ -282,3 +282,69 @@ test("collectBriefUnavailableSources: same-day scan does not surface stale disco
 
   assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "swing discovery scan"));
 });
+
+test("collectBriefUnavailableSources: uncalibrated thesis health surfaces in envelope (Largo C3/C6)", () => {
+  const h = {
+    health: 46,
+    entryIndex: 60,
+    currentIndex: 46,
+    delta: -14,
+    rung: "DEGRADED",
+    rungLabel: "Degraded",
+    pillars: [
+      {
+        id: "structure",
+        label: "Persistence",
+        weight: 0.28,
+        commitScore: 0.4,
+        currentScore: 0.35,
+        commitLabel: "unknown",
+        currentLabel: "unknown",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "momentum",
+        label: "Entry geometry",
+        weight: 0.22,
+        commitScore: 0.5,
+        currentScore: 0.45,
+        commitLabel: "n/a",
+        currentLabel: "n/a",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "flow",
+        label: "Signal stack",
+        weight: 0.2,
+        commitScore: 0.35,
+        currentScore: 0.35,
+        commitLabel: "no signals",
+        currentLabel: "no signals",
+        status: "intact",
+        contributionPts: 7,
+        deltaPts: 0,
+      },
+    ],
+    moves: [],
+    committedAtEt: null,
+    computedAtEt: "10:00 ET",
+    advisory: "Thesis fading — tighten risk or trim into strength.",
+    thesisBreakLevel: "warn",
+  };
+  const ctx = {
+    play: { status: "HOLD", thesisHealth: h },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) =>
+        s.source === "thesis health" &&
+        s.reason === "setup/entry/signal inputs unavailable for committed positions",
+    ),
+  );
+});
