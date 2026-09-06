@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:28:41.641Z",
+  "updated_at": "2026-09-06T15:49:08.575Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -80,9 +80,9 @@
   "deploy": {
     "last_main_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T15:23:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34042170591",
-    "last_deploy_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f"
+    "last_deploy_at": "2026-09-06T15:47:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34043383671",
+    "last_deploy_sha": "02add5a37fddb52e000ed4962ea384014833315d"
   },
   "events": [
     {
@@ -808,6 +808,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T15:49:08.574Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:49:08.575Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "04768cb9-cbce-4587-a358-d09039dc4f2a",
+      "summary": "Merged #4309+#4310 (swing Largo C2/C3). #4311 peer-reviewed, verify likely green — merge blocked on GH rate limit. Handoff PR #4312 open. validate:deploy GREEN; ops:collect 0."
     }
   ],
   "open_prs": [
@@ -819,27 +832,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:28:23Z"
-    },
-    {
-      "number": 4310,
-      "title": "fix(swing): prior-session scan freshness stale; skip mark absence on CLOSED",
-      "branch": "fix/swing-brief-closed-mark-and-stale-scan-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:28:23Z"
-    },
-    {
-      "number": 4309,
-      "title": "fix(swing): stale Vector snapshot must not say Right now (Largo C2)",
-      "branch": "fix/swing-brief-stale-vector-right-now",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:28:39Z"
+      "updated_at": "2026-09-06T15:45:42Z"
     }
   ],
   "pr_activity": {
