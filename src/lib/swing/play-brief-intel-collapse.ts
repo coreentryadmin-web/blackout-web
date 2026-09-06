@@ -6,7 +6,8 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
 
 /** Section titles omitted when a narrative block is present (coaching already spoke). */
 const NARRATIVE_COVERED_TITLES = new Set([
-  "Book context",
+  // Book context is NOT collapsed — concentration lives here only (#4116 removed the duplicate
+  // from Trade manager read; collapsing this section left zero concentration on the brief).
   "Lane rank",
   "Levels on chart",
   "GEX posture",
