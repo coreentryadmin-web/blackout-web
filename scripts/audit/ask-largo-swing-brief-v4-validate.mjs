@@ -25,6 +25,14 @@ const COLLAPSED_WHEN_NARRATIVE = new Set([
   "Vector desk",
 ]);
 
+/** Center rail strips these — deck chrome owns them (#4150). */
+const DECK_OMIT_PANEL_SECTIONS = new Set([
+  "Verdict",
+  "Management",
+  "Thesis health",
+  "Position",
+]);
+
 function validateV4Open(apiJson, panelSections) {
   const issues = [];
   const warnings = [];
@@ -58,11 +66,17 @@ function validateV4Open(apiJson, panelSections) {
     issues.push(`UI still shows pre-v4 sections: hold=${uiHasHold} gex=${uiHasGex}`);
   }
 
+  const dupedInPanel = panelSections.filter((t) => DECK_OMIT_PANEL_SECTIONS.has(t));
+  if (dupedInPanel.length) {
+    issues.push(`deck dedupe: center rail still shows duplicate sections: ${dupedInPanel.join(", ")}`);
+  }
+
   return { issues, warnings, titles, narrativeSnippet: narrative?.body?.slice(0, 400) ?? "" };
 }
 
 async function clickFilter(page, tab) {
   const bar = page.locator('.nh-deck-filterbar[aria-label="Filter plays by status"]');
+  await bar.waitFor({ state: "visible", timeout: 30_000 });
   await bar.locator(".nh-deck-filtbtn").filter({ hasText: new RegExp(`^${tab}\\b`, "i") }).click({ timeout: 15_000 });
   await page.waitForTimeout(1500);
 }
