@@ -119,6 +119,62 @@ test("collectBriefUnavailableSources: ctx.vector satisfies Vector desk state whe
   assert.ok(!sources.some((s) => s.source === "Vector desk state"));
 });
 
+test("collectBriefUnavailableSources: forwards Vector unavailable_sections to envelope", () => {
+  const ctx = {
+    vector: {
+      spot: 100,
+      unavailable_sections: ["dark_pool_levels", "expected_move"],
+      wall_history_empty_reason: null,
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "Vector dark pool" && s.reason === "not present on this read"));
+  assert.ok(sources.some((s) => s.source === "Vector expected move" && s.reason === "not present on this read"));
+});
+
+test("collectBriefUnavailableSources: skips wall_history absence pre-RTH (expected empty rail)", () => {
+  const ctx = {
+    vector: {
+      spot: 100,
+      unavailable_sections: ["wall_history", "technicals"],
+      wall_history_empty_reason: "outside_rth_no_recording_yet",
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "Vector wall history"));
+  assert.ok(sources.some((s) => s.source === "Vector technicals"));
+});
+
+test("collectBriefUnavailableSources: stale Vector snapshot surfaces in envelope", () => {
+  const ctx = {
+    vector: {
+      spot: 100,
+      dataAgeMs: 180_000,
+      unavailable_sections: [],
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "Vector snapshot" && s.reason === "stale — levels may lag spot"));
+});
+
+test("collectBriefUnavailableSources: flowMarkers.available false surfaces in envelope", () => {
+  const ctx = {
+    vector: {
+      spot: 100,
+      unavailable_sections: [],
+      flowMarkers: { available: false, reason: "chain read failed", prints: [] },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Vector flow prints" && s.reason === "chain read failed"),
+  );
+});
+
 test("collectBriefUnavailableSources: a total ecosystem fetch failure surfaces in envelope, distinct from legitimately-empty (FINDINGS 2026-09-06 #11)", () => {
   const ctx = {
     ecosystem: null,
