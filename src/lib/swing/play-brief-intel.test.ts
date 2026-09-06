@@ -10,6 +10,7 @@ import {
   flowIntelSection,
   holdPlanSection,
   lessonsSection,
+  meridianCatalystSection,
   whyThisSetupSection,
 } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
@@ -389,6 +390,31 @@ test("dataFreshnessSection: prior-session scan warns when scanSessionDay lags se
   const section = dataFreshnessSection(ctx);
   assert.match(section!.body, /prior session 2026-09-05/);
   assert.match(section!.body, /today's discovery not yet run/);
+});
+
+test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {
+  const section = meridianCatalystSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: { as_of: "2026-09-06 09:00 ET", items: [], total_matched: 0 },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
+  assert.match(section!.body, /quiet, not missing/);
+});
+
+test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ archetype: "momentum_breakout", subLane: "earnings_lead" }),
+  );
+  assert.match(section.body, /\*\*Archetype:\*\* momentum breakout/);
+  assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
 });
 
 test("flowIntelSection: stale HELIX feed must not render recent prints or anomalies", () => {
