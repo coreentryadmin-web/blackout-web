@@ -87,7 +87,7 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
   const prevPlayIdRef = useRef<string | null>(null);
   const prevLiveSigRef = useRef("");
 
-  const { data, error, isLoading, mutate } = useSWR<SwingPlayBriefResponse>(key, json, {
+  const { data, error, isLoading, isValidating, mutate } = useSWR<SwingPlayBriefResponse>(key, json, {
     refreshInterval: briefRefreshMs(),
     revalidateOnFocus: true,
     dedupingInterval: 3_000,
@@ -140,5 +140,6 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
     error: error ?? (data?.degraded ? new Error("brief degraded") : null),
     refresh,
     changeCount,
+    isLiveRefreshing: isValidating && Boolean(data),
   };
 }

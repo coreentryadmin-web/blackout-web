@@ -7,6 +7,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 import { laneRankSection } from "./play-brief-lane-rank";
+import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
@@ -580,6 +581,9 @@ export function buildIntelSections(
   const { play, ecosystem } = ctx;
   const vec = vectorOf(ctx);
   const out: RichSection[] = [];
+
+  const narrative = tradeManagerNarrativeSection(ctx, bucket);
+  if (narrative) out.push(narrative);
 
   out.push(whyThisSetupSection(play));
 
