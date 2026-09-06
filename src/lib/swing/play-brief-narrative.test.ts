@@ -199,6 +199,22 @@ test("counterThesisLine: stale HELIX flow must not steelman call-led / put-led",
   assert.equal(line, null, "stale HELIX must not appear in counter-thesis");
 });
 
+test("counterThesisLine: Vector bearish bias steelmans bear case for LONG swing", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        play: { bias: "short", headline: "Fade the rip", grade: "B" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.ok(line);
+  assert.match(line!, /Counter-thesis \(bear case\)/i);
+  assert.match(line!, /Vector bearish/i);
+  assert.match(line!, /Fade the rip/i);
+});
+
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

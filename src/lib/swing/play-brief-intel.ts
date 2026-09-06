@@ -219,7 +219,9 @@ export function flowIntelSection(eco: EcosystemContext | null, play: TerminalPla
     );
   }
 
-  if (eco.recent_anomalies?.length) {
+  const helixFresh = eco.flow_feed_fresh !== false;
+
+  if (helixFresh && eco.recent_anomalies?.length) {
     const anomalies = eco.recent_anomalies
       .slice(0, 4)
       .map((a) => `• **${a.anomaly_type}** — ${a.detail}${a.direction ? ` (${a.direction})` : ""}`)
@@ -227,7 +229,7 @@ export function flowIntelSection(eco: EcosystemContext | null, play: TerminalPla
     lines.push("**Flow anomalies:**\n" + anomalies);
   }
 
-  const recent = eco.flow_full_state?.recent ?? [];
+  const recent = helixFresh ? (eco.flow_full_state?.recent ?? []) : [];
   if (recent.length) {
     const prints = recent
       .slice(0, 5)
