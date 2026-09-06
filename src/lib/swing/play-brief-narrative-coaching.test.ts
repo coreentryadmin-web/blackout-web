@@ -15,6 +15,7 @@ import {
   vectorPlayCoaching,
   vexCoaching,
   watchGateCoaching,
+  technicalsCoaching,
 } from "./play-brief-narrative-coaching";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -92,6 +93,69 @@ test("thesisPillarCoaching: names fading pillar", () => {
   );
   assert.match(line!, /Pillar fade/i);
   assert.match(line!, /Persistence/i);
+});
+
+function uncalibratedThesisHealth() {
+  return {
+    health: 46,
+    entryIndex: 60,
+    currentIndex: 46,
+    delta: -14,
+    rung: "DEGRADED",
+    rungLabel: "Degraded",
+    pillars: [
+      {
+        id: "structure",
+        label: "Persistence",
+        weight: 0.28,
+        commitScore: 0.4,
+        currentScore: 0.35,
+        commitLabel: "unknown",
+        currentLabel: "unknown",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "momentum",
+        label: "Entry geometry",
+        weight: 0.22,
+        commitScore: 0.5,
+        currentScore: 0.45,
+        commitLabel: "n/a",
+        currentLabel: "n/a",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "flow",
+        label: "Signal stack",
+        weight: 0.2,
+        commitScore: 0.35,
+        currentScore: 0.35,
+        commitLabel: "no signals",
+        currentLabel: "no signals",
+        status: "intact",
+        contributionPts: 7,
+        deltaPts: 0,
+      },
+    ],
+    moves: ["Persistence: unknown → unknown"],
+    committedAtEt: null,
+    computedAtEt: "10:00 ET",
+    advisory: "Thesis fading — tighten risk or trim into strength.",
+    thesisBreakLevel: "warn",
+    thesisBreakNote: "pillars fading",
+  };
+}
+
+test("thesisBreakCoaching: silent when thesis health is uncalibrated (extends #4318)", () => {
+  assert.equal(thesisBreakCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
+});
+
+test("thesisPillarCoaching: silent when thesis health is uncalibrated (extends #4318)", () => {
+  assert.equal(thesisPillarCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
 });
 
 test("manageLifecycleCoaching: trim ladder + time stop", () => {
@@ -339,3 +403,55 @@ test("ivRankCoaching: fires when play carries ivRank", () => {
   assert.equal(ivRankCoaching(play({ ivRank: null })), null);
 });
 
+test("technicalsCoaching: bias reads bullish from tape on SHORT play (Largo C5 — chart evidence, not position direction)", () => {
+  const vec = {
+    spot: 95,
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line = technicalsCoaching(vec, play({ direction: "SHORT", ticker: "INTC" }));
+  assert.match(line!, /chart reads bullish/i);
+  assert.match(line!, /conflicts with swing direction/i);
+  assert.doesNotMatch(line!, /supports short swing/i);
+});
+
+test("technicalsCoaching: bias reads bearish from tape on LONG play (Largo C5)", () => {
+  const vec = {
+    spot: 15,
+    technicals: {
+      vwap: 15.29,
+      emaStack: "down",
+      rsi: 40,
+      macd: "bear",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "down", level: 15.5 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line = technicalsCoaching(vec, play({ direction: "LONG", ticker: "NN" }));
+  assert.match(line!, /chart reads bearish/i);
+  assert.match(line!, /conflicts with swing direction/i);
+  assert.doesNotMatch(line!, /supports long swing/i);
+});
+
+test("technicalsCoaching: aligned LONG + bullish tape notes alignment without echoing direction as bias", () => {
+  const vec = {
+    spot: 100,
+    technicals: {
+      vwap: 98,
+      emaStack: "up",
+      rsi: 55,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "up", level: 99 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line = technicalsCoaching(vec, play({ direction: "LONG" }));
+  assert.match(line!, /chart reads bullish/i);
+  assert.match(line!, /aligns with swing direction/i);
+});

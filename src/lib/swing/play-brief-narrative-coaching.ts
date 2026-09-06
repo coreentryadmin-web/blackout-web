@@ -12,6 +12,7 @@ import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { technicalsBias } from "./play-brief-technicals";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -33,6 +34,7 @@ function vectorOf(ctx: SwingPlayBriefContext): VectorFullState | null {
 
 /** Urgent thesis invalidation — leads narrative when fired. */
 export function thesisBreakCoaching(play: TerminalPlay): string | null {
+  if (thesisHealthUncalibrated(play.thesisHealth)) return null;
   const level = play.thesisBreak?.level ?? play.thesisHealth?.thesisBreakLevel;
   const note = play.thesisBreak?.note ?? play.thesisHealth?.thesisBreakNote;
   if (!level || level === "unknown" || level === "intact") return null;
@@ -47,6 +49,7 @@ export function thesisBreakCoaching(play: TerminalPlay): string | null {
 export function thesisPillarCoaching(play: TerminalPlay): string | null {
   const h = play.thesisHealth;
   if (!h?.pillars?.length) return null;
+  if (thesisHealthUncalibrated(h)) return null;
 
   const faded = h.pillars
     .filter((p) => p.status === "lost" || p.status === "faded")
@@ -529,13 +532,25 @@ export function technicalsCoaching(vec: VectorFullState | null, play: TerminalPl
   }
   if (!parts.length) return null;
 
-  const bias =
-    play.direction === "LONG" && (t.emaStack === "up" || (t.rsi != null && t.rsi < 65))
-      ? "supports long swing"
-      : play.direction === "SHORT" && (t.emaStack === "down" || (t.rsi != null && t.rsi > 35))
-        ? "supports short swing"
-        : "mixed vs swing direction";
-  return `**Chart read** — ${parts.join(" · ")} — ${bias}.`;
+  const chartBias = technicalsBias(t, vec?.spot ?? null);
+  const biasLabel =
+    chartBias === "bullish"
+      ? "chart reads bullish"
+      : chartBias === "bearish"
+        ? "chart reads bearish"
+        : "mixed chart read";
+  const aligned =
+    (play.direction === "LONG" && chartBias === "bullish") ||
+    (play.direction === "SHORT" && chartBias === "bearish");
+  const conflicts =
+    (play.direction === "LONG" && chartBias === "bearish") ||
+    (play.direction === "SHORT" && chartBias === "bullish");
+  const alignment = aligned
+    ? "aligns with swing direction"
+    : conflicts
+      ? "conflicts with swing direction"
+      : null;
+  return `**Chart read** — ${parts.join(" · ")} — ${biasLabel}${alignment ? ` (${alignment})` : ""}.`;
 }
 
 /** Data honesty — stale marks, quiet HELIX, old Vector. */
