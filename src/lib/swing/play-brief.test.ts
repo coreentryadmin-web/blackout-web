@@ -345,7 +345,7 @@ test("composeSwingPlayBrief: stale GEX-only envelope levels must not cite walls/
   };
   const brief = composeSwingPlayBrief(ctx);
   const labels = (brief.envelope.levels ?? []).map((l) => l.label);
-  assert.ok(labels.includes("spot"), "spot may still render from stale GEX with stale freshness");
+  assert.ok(!labels.includes("spot"), "stale GEX-only spot must be suppressed");
   assert.ok(!labels.includes("call wall"), "stale GEX-only call wall must be suppressed");
   assert.ok(!labels.includes("put wall"), "stale GEX-only put wall must be suppressed");
   assert.ok(!labels.includes("gamma flip"), "stale GEX-only gamma flip must be suppressed");
@@ -1038,8 +1038,7 @@ test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, 
   };
   const brief = composeSwingPlayBrief(ctx);
   const spot = brief.envelope.levels?.find((l) => l.label === "spot");
-  assert.equal(spot?.provenance?.source, "GEX", "stale Vector spot must not win — fall through to GEX");
-  assert.equal(spot?.provenance?.freshness, "stale", "20m-old GEX matrix must not read as live");
+  assert.equal(spot, undefined, "stale GEX spot must not render when Vector snapshot is also stale");
   const callWall = brief.envelope.levels?.find((l) => l.label === "call wall");
   assert.equal(callWall, undefined, "stale Vector walls must be omitted from envelope levels, not merely tagged stale");
 });
