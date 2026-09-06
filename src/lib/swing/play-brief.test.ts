@@ -151,6 +151,24 @@ test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavai
   assert.deepEqual(brief.envelope.unavailableSources, [{ source: "short-interest", reason: "provider timeout" }]);
 });
 
+test("composeSwingPlayBrief: envelope.asOf uses Largo C1 ET stamp (not a bare UTC instant)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const { envelope, asOf } = composeSwingPlayBrief(ctx);
+  assert.equal(envelope.asOf, "2026-09-05 16:00 ET");
+  assert.equal(asOf, "2026-09-05 16:00 ET");
+  assert.doesNotMatch(envelope.asOf!, /Z$/, "asOf must not be a UTC ISO instant");
+});
+
 test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

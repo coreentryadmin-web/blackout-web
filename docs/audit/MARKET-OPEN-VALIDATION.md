@@ -2690,3 +2690,9 @@ than an end-of-session patch.
 - **What changed:** Documented why Book context and Desk context must stay excluded from `NARRATIVE_COVERED_TITLES`; hardened regression tests.
 - **RTH check:** For an OPEN/HOLD swing with NH trade history on the name, confirm "Desk context" still appears even when "Trade manager read" leads; flow anomalies appear once in Trade manager read, not again in Desk context.
 
+### 41. Ask Largo swing play-brief — `asOf` was UTC ISO instead of ET stamp — fix/swing-play-brief-asof-et — 2026-09-06
+
+- **What was broken:** `loadSwingPlayBriefContext()` stamped `asOf` with `new Date().toISOString()` (`…Z`), violating Largo C1 (time must be `YYYY-MM-DD HH:mm ET`). Vector/BIE tools already use `etStamp()`; the swing brief was the outlier, making cross-product freshness joins unreliable.
+- **What changed:** `play-brief-context.ts` now sets `asOf` from `etStamp(nowMs)` (ISO fallback only if stamping fails).
+- **RTH check:** `GET /api/market/swing/play-brief` for any swing row — response `asOf` and `envelope.asOf` should read like `2026-09-06 09:32 ET`, not a `…Z` UTC instant.
+

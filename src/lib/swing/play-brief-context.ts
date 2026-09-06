@@ -5,7 +5,7 @@
 import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { fetchOpenSwingPositions } from "@/lib/db";
-import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-brief-resolve";
@@ -49,7 +49,8 @@ export async function loadSwingPlayBriefContext(
   ]);
 
   const nowMs = Date.now();
-  const asOf = new Date(nowMs).toISOString();
+  // Largo C1: brief read time on the market clock — same convention as Vector/BIE tools.
+  const asOf = etStamp(nowMs) ?? new Date(nowMs).toISOString();
   return {
     play: resolved.play,
     asOf,
