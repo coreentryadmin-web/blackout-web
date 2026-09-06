@@ -14,7 +14,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
+import { collectBriefUnavailableSources, gexMatrixAgeMs, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
 import {
@@ -131,10 +131,9 @@ function closedSection(play: TerminalPlay): RichSection {
 }
 
 function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): BieFreshness {
-  if (!gex?.asof) return "unknown";
-  const observedMs = Date.parse(gex.asof);
-  if (!Number.isFinite(observedMs)) return "unknown";
-  return freshnessFromAgeMs(readMs - observedMs);
+  const ageMs = gexMatrixAgeMs(gex, readMs);
+  if (ageMs == null) return "unknown";
+  return freshnessFromAgeMs(ageMs);
 }
 
 function fundamentalsFreshness(

@@ -3219,3 +3219,9 @@ than an end-of-session patch.
 - **What was broken:** `narrateKing`/`narrateMagnet` resolved `posture` inline as `vec?.regime?.posture ?? ecosystem.gex_positioning?.gamma_posture ?? null` with no staleness gate — a fifth instance of the same class #4360/#4364/#4367/#4372 fixed elsewhere on this read path. A Vector-sourced (live, fresh) king strike could still get its "Pin risk" vs "acceleration" directional call from an independently-stale GEX-only `gamma_posture` read.
 - **What changed:** Shared `resolveGammaPosture(ctx, vec)` helper — live Vector regime always wins; GEX-only fallback suppressed once `gexMatrixStale()`. Both `narrateKing` and `narrateMagnet` call sites now go through it.
 - **RTH check:** Open Ask Largo on an open swing position whose GEX king strike is Vector-sourced (live) while `gex_positioning.matrix_age_sec` is independently stale (>120s) — confirm the king-strike line reads "Max-gamma node" (posture-unknown), not a confident "Pin risk" call.
+
+### 56. Ask Largo swing brief — envelope GEX provenance ignored matrix_age_sec — fix/largo-gex-freshness-matrix-age-sec — 2026-09-06
+
+- **What was broken:** `gexFreshness()` in `play-brief.ts` derived envelope provenance freshness only from `gex.asof`, ignoring `matrix_age_sec` that every other GEX staleness gate on the swing path uses. When `asof` was recent but `matrix_age_sec` > 120s, narrative sections correctly treated the matrix as stale while BIE envelope evidence still labeled dealer posture as **live**.
+- **What changed:** `gexFreshness()` now routes through shared `gexMatrixAgeMs()` — same age source as `gexMatrixStale()` and `unavailableSources`.
+- **RTH check:** Pull `GET /api/market/swing/play-brief` for a position where `gex_positioning.matrix_age_sec` > 120 but `asof` is recent — confirm envelope dealer-posture evidence provenance is not `live` (should be `recent` or `stale` per age).
