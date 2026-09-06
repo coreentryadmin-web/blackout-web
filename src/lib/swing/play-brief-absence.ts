@@ -4,6 +4,7 @@ import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { thesisHealthUncalibrated } from "./thesis-health";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
 
@@ -134,6 +135,18 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     out.push({
       source: "swing discovery scan",
       reason: `prior session (${ctx.scanSessionDay}) — today's scan not yet run`,
+    });
+  }
+  // Committed positions compute thesis health without setup/entry/signal inputs — the aggregate
+  // % collapses to a generic default. Surface that honestly (Largo C3/C6) rather than showing 46%.
+  if (
+    ctx.play &&
+    ["OPEN", "HOLD", "TRIM"].includes(String(ctx.play.status ?? "").toUpperCase()) &&
+    thesisHealthUncalibrated(ctx.play.thesisHealth)
+  ) {
+    out.push({
+      source: "thesis health",
+      reason: "setup/entry/signal inputs unavailable for committed positions",
     });
   }
 

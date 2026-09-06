@@ -10,6 +10,7 @@ import { fmtPremium } from "@/lib/fmt-money";
 import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
+import { thesisHealthUncalibrated } from "./thesis-health";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -60,7 +61,7 @@ export function thesisPillarCoaching(play: TerminalPlay): string | null {
     return `**What moved** — ${h.moves.slice(0, 2).join(" · ")}.`;
   }
 
-  if (h.health < 55 && h.advisory) {
+  if (!thesisHealthUncalibrated(h) && h.health < 55 && h.advisory) {
     return `**Thesis ${h.rungLabel}** (${h.health}%) — ${h.advisory}`;
   }
 

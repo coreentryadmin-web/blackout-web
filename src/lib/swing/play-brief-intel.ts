@@ -17,6 +17,7 @@ import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { thesisHealthUncalibrated } from "./thesis-health";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -401,12 +402,20 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
 
   if (play.thesisHealth) {
     const h = play.thesisHealth;
-    // advisory is NOT repeated here — it's the exact sentence tradeManagerNarrativeSection's
-    // pillar-fade narration already carries in "Trade manager read" (both render for any live
-    // play). Health%/rung is a compact number, not a repeated sentence, so it stays.
-    lines.push(`Thesis health **${h.health}%** (${h.rungLabel})`);
-    if (h.health < 45) lines.push("**Tighten risk** — thesis fading; don't add size");
-    else if (play.peak != null && play.pnlPct != null && play.peak - play.pnlPct > 25) {
+    const uncalibrated = thesisHealthUncalibrated(h);
+    if (!uncalibrated) {
+      // advisory is NOT repeated here — it's the exact sentence tradeManagerNarrativeSection's
+      // pillar-fade narration already carries in "Trade manager read" (both render for any live
+      // play). Health%/rung is a compact number, not a repeated sentence, so it stays.
+      lines.push(`Thesis health **${h.health}%** (${h.rungLabel})`);
+      if (h.health < 45) lines.push("**Tighten risk** — thesis fading; don't add size");
+    }
+    if (
+      !uncalibrated &&
+      play.peak != null &&
+      play.pnlPct != null &&
+      play.peak - play.pnlPct > 25
+    ) {
       lines.push(`Gave back **${(play.peak - play.pnlPct).toFixed(0)}%** from peak — consider trim into strength`);
     }
   }

@@ -18,6 +18,7 @@ import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-a
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { thesisHealthUncalibrated } from "./thesis-health";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -50,10 +51,14 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
       return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
     })
     .join("\n");
+  const uncalibrated = thesisHealthUncalibrated(h);
+  const headline = uncalibrated
+    ? "Inputs not wired for committed positions — aggregate score withheld."
+    : `**${h.health}%** · ${h.rungLabel}`;
   return {
     title: "Thesis health",
-    body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
-    bias: h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
+    body: `${headline}\n\n${rows || "Pillars not wired on this row."}`,
+    bias: uncalibrated ? "neutral" : h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
   };
 }
 

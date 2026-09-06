@@ -449,7 +449,10 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   assert.ok(titles.includes("Why this setup"));
   assert.ok(titles.includes("What to watch"));
   assert.ok(!titles.includes("Hold plan"), "hold plan folded into Trade manager read");
-  assert.ok(brief.envelope.sections.some((s) => s.body.includes("54%")));
+  assert.ok(
+    brief.envelope.sections.some((s) => s.title === "Thesis health" && /score withheld/i.test(s.body)),
+    "uncalibrated thesis health must not show aggregate %",
+  );
 });
 
 test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", () => {
