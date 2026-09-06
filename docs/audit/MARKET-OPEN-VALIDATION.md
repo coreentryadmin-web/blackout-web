@@ -134,6 +134,24 @@ starting with `Short interest:` matching Catalysts section numbers.
 
 ---
 
+### 0a-1ag. Timestamped but stale option marks invisible in Ask Largo — fix/swing-brief-stale-mark-absence (pending)
+
+**What was broken:** `markIsSync` (no timestamp) correctly surfaced in `unavailableSources`, Data
+freshness, and coaching. A mark with `markAsOf` but older than `ZERODTE_MARK_STALE_MS` only got
+`provenance.freshness: "stale"` on an evidence row — no `UnavailableChip`, no freshness-section
+callout, no coaching line. PlayTerminal dims stale marks; the brief did not.
+
+**Fix:** `optionMarkIsStale()` in `play-brief-absence.ts` (same 5s window as PlayTerminal).
+Surfaces through `collectBriefUnavailableSources`, `dataFreshnessSection`, `dataHonestyCoaching`.
+
+**Evidence:** 4 new regression tests. 85/85 in touched test files GREEN.
+
+**Check at the open:** OPEN/HOLD swing with a mark timestamp >5s old — Ask Largo must show
+`UnavailableChip` for "option mark" (quote stale) and Data freshness section must warn; fresh mark
+must not.
+
+---
+
 ### 0a-1af. WATCH rows falsely flagged option mark unavailable in Ask Largo — fix/swing-brief-watch-mark-absence-false-positive (pending)
 
 **What was broken:** WATCH candidates carry a static chain mid with no `markAsOf` (`markIsSync: true`
