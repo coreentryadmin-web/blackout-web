@@ -93,8 +93,40 @@ test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now
   );
 
   assert.ok(section);
+  // Stale Vector regime is suppressed — must not narrate "Right now" or stale long-gamma posture.
+  assert.match(section!.body, /not resolved on this read/i);
+  assert.doesNotMatch(section!.body, /Right now/i);
+  assert.doesNotMatch(section!.body, /long gamma/i);
+});
+
+test("tradeManagerNarrativeSection: stale Vector with live GEX fallback uses Last snapshot lead (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        dataAgeMs: 180_000,
+        freshness: "stale",
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "short",
+          matrix_age_sec: 30,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
   assert.match(section!.body, /Last snapshot/i);
   assert.match(section!.body, /180s old/i);
+  assert.match(section!.body, /short gamma/i);
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 

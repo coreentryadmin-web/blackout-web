@@ -1,7 +1,71 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
+import {
+  collectBriefUnavailableSources,
+  resolveGammaPosture,
+  trustedHelixFlow,
+} from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+
+test("resolveGammaPosture: stale Vector regime falls back to live GEX posture", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "short",
+        matrix_age_sec: 30,
+        freshness: "cached",
+      },
+    },
+    vector: {
+      regime: { posture: "long", label: "LONG GAMMA" },
+      freshness: "stale",
+      dataAgeMs: 180_000,
+    },
+  } as SwingPlayBriefContext;
+
+  assert.equal(resolveGammaPosture(ctx, ctx.vector), "short");
+});
+
+test("resolveGammaPosture: stale Vector regime with stale GEX returns null", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    },
+    vector: {
+      regime: { posture: "long", label: "LONG GAMMA" },
+      freshness: "stale",
+      dataAgeMs: 180_000,
+    },
+  } as SwingPlayBriefContext;
+
+  assert.equal(resolveGammaPosture(ctx, ctx.vector), null);
+});
+
+test("resolveGammaPosture: live Vector regime wins over GEX fallback", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "short",
+        matrix_age_sec: 30,
+        freshness: "cached",
+      },
+    },
+    vector: {
+      regime: { posture: "long", label: "LONG GAMMA" },
+      freshness: "live",
+      dataAgeMs: 5_000,
+    },
+  } as SwingPlayBriefContext;
+
+  assert.equal(resolveGammaPosture(ctx, ctx.vector), "long");
+});
 
 test("trustedHelixFlow: null when feed stale even if recent_flow exists", () => {
   const eco = {
