@@ -143,7 +143,8 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
   const gex = ctx.ecosystem?.gex_positioning;
   const readMs = Date.now();
   const posture = resolveGammaPosture(ctx, vec);
-  const vecFlip = vec?.gammaFlip;
+  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexMatrixStale(gex, readMs);
   const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
 
@@ -166,7 +167,6 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
       : "";
 
   const vecAgeMs = vec?.dataAgeMs;
-  const vectorStale = vectorSnapshotStale(vec, readMs);
   const snapshotStale = vectorStale;
   const snapshotAgeMs = vectorStale ? vecAgeMs : null;
   const lead = snapshotStale
@@ -537,12 +537,13 @@ export function tradeManagerNarrativeSection(
       }
     }
 
-    const prox = vec?.proximity;
+    const vectorLive = !vectorSnapshotStale(vec, Date.now());
+    const prox = vectorLive ? vec?.proximity : undefined;
     if (prox?.callout && bullets.length < MAX_BULLETS) {
       add(`**Nearest wall ${prox.strike.toFixed(2)}** (${prox.side}) — ${prox.callout}`);
     }
 
-    const walls = vec?.wallEvents ?? [];
+    const walls = vectorLive ? (vec?.wallEvents ?? []) : [];
     if (walls[0] && bullets.length < MAX_BULLETS) {
       const w = walls[walls.length - 1]!;
       add(`**Wall just moved** — ${w.kind.replace(/_/g, " ")}: ${w.message}`);
@@ -553,7 +554,8 @@ export function tradeManagerNarrativeSection(
   if (flow && !bullets.some((b) => /HELIX tape/i.test(b))) add(flow);
 
   const gexForFlip = ctx.ecosystem?.gex_positioning;
-  const vecFlip = vec?.gammaFlip;
+  const vectorStaleForFlip = vectorSnapshotStale(vec, Date.now());
+  const vecFlip = vectorStaleForFlip ? undefined : vec?.gammaFlip;
   const flipRaw = fin(vecFlip) ?? fin(gexForFlip?.flip);
   const flipFromStaleGex =
     vecFlip == null && gexForFlip?.flip != null && gexMatrixStale(gexForFlip, Date.now());

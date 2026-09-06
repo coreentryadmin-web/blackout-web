@@ -5,15 +5,21 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   catalystCoaching,
   closedCoaching,
+  confluenceCoaching,
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
+  expectedMoveCoaching,
+  flowPrintsCoaching,
   ivRankCoaching,
+  magnetCoaching,
   manageLifecycleCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
   vectorPlayCoaching,
   vexCoaching,
+  wallDynamicsCoaching,
+  wallIntegrityCoaching,
   watchGateCoaching,
   technicalsCoaching,
 } from "./play-brief-narrative-coaching";
@@ -336,7 +342,7 @@ test("closedCoaching: a round-trip past breakeven never renders a nonsensical ne
 
 // ─── vectorPlayCoaching ─────────────────────────────────────────────────────
 
-test("vectorPlayCoaching: stale Vector must not claim aligned with swing lane", () => {
+test("vectorPlayCoaching: stale Vector must not coach desk thesis (Largo C2)", () => {
   const vec = {
     freshness: "stale",
     play: {
@@ -346,8 +352,7 @@ test("vectorPlayCoaching: stale Vector must not claim aligned with swing lane", 
     },
   } as unknown as Parameters<typeof vectorPlayCoaching>[0];
   const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
-  assert.ok(line);
-  assert.doesNotMatch(line!, /aligned with swing lane/i);
+  assert.equal(line, null, "stale Vector must not coach thesis/invalidation");
 });
 
 test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {
@@ -545,4 +550,77 @@ test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => 
     },
   } as import("@/lib/bie/vector-full-state").VectorFullState;
   assert.equal(technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" })), null);
+});
+
+const staleVec = {
+  dataAgeMs: 200_000,
+  freshness: "stale",
+  spot: 100,
+} as import("@/lib/bie/vector-full-state").VectorFullState;
+
+test("magnetCoaching: stale Vector snapshot returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    magnet: { strike: 101, distancePct: 1, pull: "up" },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(magnetCoaching(ctx(), vec, 100), null);
+});
+
+test("expectedMoveCoaching: stale Vector snapshot returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    expectedMove: {
+      bands: [{ sigma: 1, low: 95, high: 105, movePts: 5 }],
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(expectedMoveCoaching(vec, 100), null);
+});
+
+test("confluenceCoaching: stale Vector snapshot returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    confluenceZones: [{ center: 102, kinds: ["gex"], score: 80 }],
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(confluenceCoaching(vec, play(), 100), null);
+});
+
+test("wallIntegrityCoaching: stale Vector snapshot returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    wallIntegrity: { call: { tier: "thin" }, put: { tier: "firm" } },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(wallIntegrityCoaching(vec, play({ direction: "LONG" })), null);
+});
+
+test("wallDynamicsCoaching: stale Vector snapshot returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    wallEvents: [
+      { kind: "call_wall_shift", message: "moved to 105" },
+      { kind: "put_wall_shift", message: "moved to 95" },
+    ],
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(wallDynamicsCoaching(vec), null);
+});
+
+test("vexCoaching: stale Vector snapshot returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    vexFlip: 99,
+    gammaFlip: 98,
+    vexWalls: { callWalls: [{ strike: 103 }], putWalls: [{ strike: 97 }] },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(vexCoaching(vec, 100), null);
+});
+
+test("flowPrintsCoaching: stale Vector snapshot returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    flowMarkers: {
+      available: true,
+      prints: [{ side: "call", strike: 105, premium: 2_000_000 }],
+      meta: { largeFound: 1 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(flowPrintsCoaching(vec, play({ direction: "LONG" })), null);
 });

@@ -250,6 +250,49 @@ test("tradeManagerNarrativeSection: stale GEX-only gamma flip must not drive Bre
   assert.doesNotMatch(section!.body, /Break watch.*98\.00/i, "stale GEX flip must not anchor break trigger");
 });
 
+test("tradeManagerNarrativeSection: stale Vector gamma flip must not drive Break watch (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        dataAgeMs: 200_000,
+        freshness: "stale",
+        gammaFlip: 98,
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: { spot: 100 },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Break watch.*98\.00/i, "stale Vector flip must not anchor break trigger");
+});
+
+test("tradeManagerNarrativeSection: stale Vector proximity and wall events must not narrate (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        dataAgeMs: 200_000,
+        freshness: "stale",
+        proximity: { strike: 101, side: "call", callout: "thin wall overhead" },
+        wallEvents: [{ kind: "call_wall_shift", message: "moved to 102" }],
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: { spot: 100 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Nearest wall/i, "stale Vector proximity must not narrate");
+  assert.doesNotMatch(section!.body, /Wall just moved/i, "stale Vector wall events must not narrate");
+});
+
 test("tradeManagerNarrativeSection: live Vector put wall still drives Break watch when GEX matrix is stale", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
