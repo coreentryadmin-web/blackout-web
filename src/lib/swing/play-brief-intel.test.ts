@@ -16,6 +16,7 @@ import {
   meridianPeerSection,
   watchForSection,
   whyThisSetupSection,
+  vectorDeskSection,
 } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
@@ -538,6 +539,46 @@ test("chartTechnicalsSection: Vector regime is labeled as dealer GAMMA posture, 
   const section = chartTechnicalsSection(vec);
   assert.match(section!.body, /Dealer gamma regime: \*\*long gamma\*\*/);
   assert.doesNotMatch(section!.body, /Vector regime:/);
+});
+
+test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (Largo C2)", () => {
+  const vec = fixtureVec({
+    freshness: "stale",
+    play: {
+      bias: "long",
+      headline: "Ride momentum",
+      grade: "A",
+      conviction: "high",
+      thesis: "Breakout continuation",
+      entryZone: "100-102",
+      targets: ["110"],
+      invalidation: "below 98",
+      starred: ["watch 105"],
+    },
+  } as Partial<VectorFullState>);
+  const section = vectorDeskSection(vec);
+  assert.ok(section);
+  assert.equal(section!.bias, "neutral", "stale Vector must not badge directional bias");
+});
+
+test("vectorDeskSection: live Vector play.bias badges bullish/bearish", () => {
+  const live = vectorDeskSection(
+    fixtureVec({
+      freshness: "live",
+      play: {
+        bias: "long",
+        headline: "Ride momentum",
+        grade: "A",
+        conviction: "high",
+        thesis: "",
+        entryZone: "",
+        targets: [],
+        invalidation: "",
+        starred: [],
+      },
+    } as Partial<VectorFullState>),
+  );
+  assert.equal(live?.bias, "bullish");
 });
 
 test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), never fabricated", () => {
