@@ -195,10 +195,6 @@ export function isVectorLevelId(v: unknown): v is VectorLevelId {
  */
 export type VectorStructureId = "market-structure";
 
-export function isVectorStructureId(v: unknown): v is VectorStructureId {
-  return v === "market-structure";
-}
-
 /**
  * "Oscillators" — momentum studies drawn in their OWN sub-pane BELOW the price pane (not overlaid
  * on price, whose scale is unrelated). Each maps to a `vector-indicators` computer and a dedicated
@@ -206,10 +202,6 @@ export function isVectorStructureId(v: unknown): v is VectorStructureId {
  * timeframe with too few bars simply draws nothing (honest, like the levels).
  */
 export type VectorOscillatorId = "rsi" | "macd";
-
-export function isVectorOscillatorId(v: unknown): v is VectorOscillatorId {
-  return v === "rsi" || v === "macd";
-}
 
 /**
  * "Confluence" — a single toggle that highlights the strongest CONFLUENCE ZONE on the price pane:
@@ -221,10 +213,6 @@ export function isVectorOscillatorId(v: unknown): v is VectorOscillatorId {
  */
 export type VectorConfluenceId = "confluence-band";
 
-export function isVectorConfluenceId(v: unknown): v is VectorConfluenceId {
-  return v === "confluence-band";
-}
-
 /**
  * "Flow" — chart MARKERS at the strike + time of notable LARGE option prints (institutional-size
  * trades), so the member sees WHERE big money is hitting relative to the candles and gamma walls.
@@ -234,10 +222,6 @@ export function isVectorConfluenceId(v: unknown): v is VectorConfluenceId {
  */
 export type VectorFlowId = "flow-markers";
 
-export function isVectorFlowId(v: unknown): v is VectorFlowId {
-  return v === "flow-markers";
-}
-
 /**
  * "Expected move" — the options-implied ±1σ/2σ price band the chain is pricing through the horizon's
  * front expiry, drawn as dashed price-lines (the "cone" #15). One toggle (default OFF); the chart
@@ -245,10 +229,6 @@ export function isVectorFlowId(v: unknown): v is VectorFlowId {
  * cleared when the toggle is off or there's no real ATM IV to price it.
  */
 export type VectorExpectedMoveId = "expected-move";
-
-export function isVectorExpectedMoveId(v: unknown): v is VectorExpectedMoveId {
-  return v === "expected-move";
-}
 
 /**
  * "Expected move — CONE" — the honest "remaining intraday move" companion to the flat ±1σ/2σ band.
@@ -309,10 +289,6 @@ export function isVectorGammaRegimeId(v: unknown): v is VectorGammaRegimeId {
  * (off-hours, a brand-new ticker) draws nothing, never a fabricated profile.
  */
 export type VectorVolumeProfileId = "volume-profile";
-
-export function isVectorVolumeProfileId(v: unknown): v is VectorVolumeProfileId {
-  return v === "volume-profile";
-}
 
 /** Bead-rail display toggles — canvas primitive channels (not separate chart layers). */
 export type VectorBeadDisplayId =
