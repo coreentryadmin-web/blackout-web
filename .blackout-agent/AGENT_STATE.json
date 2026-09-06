@@ -1,29 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T07:47:23.022Z",
+  "updated_at": "2026-09-06T07:49:41.863Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T07:36:56.603Z",
-      "lease_until": "2026-09-06T09:13:17.497Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T07:47:32.384Z",
+      "lease_until": "2026-09-06T09:17:32.384Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "d37765df-42b4-447f-a8dd-3a0961e5cdbd"
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-06T07:43:16.593Z",
-      "lease_until": "2026-09-06T09:13:17.497Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "d37765df-42b4-447f-a8dd-3a0961e5cdbd"
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -42,8 +32,9 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T07:47:32.385Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
@@ -457,17 +448,29 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T07:47:23.021Z",
+      "at": "2026-09-06T07:47:30.108Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T07:47:23.022Z",
+      "at": "2026-09-06T07:47:32.385Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T07:49:41.862Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T07:49:41.863Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "84784a3c-68ed-4e58-8e16-a1ff293c61b2",
-      "summary": "Cycle complete post-merge. #4166 condor live-status fix MERGED dac25ac03 (verified pre-merge: 251 tests, CI GREEN). ECR deploy triggered 34019905319. validate:deploy GREEN post-merge. ops:collect 0. platform-integrity 14/14. No open PRs. Sun off-hours — RTH checks skipped. Blocked: none."
+      "run_id": "953041ac-a0eb-4b4d-aca5-a21f17f8a825",
+      "summary": "PR-event cycle: lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, ask-largo-swing-brief pass). ops:collect 0. No open claude/fix PRs for peer review. main@dac25ac03. #4170 handoff draft CI pending — awaiting verify."
     }
   ],
   "open_prs": []

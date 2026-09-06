@@ -1,17 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T07:47:23.022Z
-**Run:** 84784a3c-68ed-4e58-8e16-a1ff293c61b2
+**At:** 2026-09-06T07:49:41.862Z
+**Run:** 953041ac-a0eb-4b4d-aca5-a21f17f8a825
 
 ## Summary
 
-Cycle complete post-merge. #4166 condor live-status fix MERGED dac25ac03 (verified pre-merge: 251 tests, CI GREEN). ECR deploy triggered 34019905319. validate:deploy GREEN post-merge. ops:collect 0. platform-integrity 14/14. No open PRs. Sun off-hours — RTH checks skipped. Blocked: none.
+PR-event cycle: lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, ask-largo-swing-brief pass, seo 22/22). ops:collect 0. No open claude/fix PRs for peer review. main@dac25ac03 (#4166 condor fix merged). Sun off-hours — RTH checks skipped. #4170 handoff draft CI pending verify.
 
 ## Deploy
 
 - main: `dac25ac031e42ee07d549d1095b50012476c9544`
-- status: 
+- status: GREEN
 
 ## Open PRs
 
-_none_
+- #4170 [cursor] chore(blackout-agent): cursor cycle handoff — #4166 condor fix merged (draft, CI pending)
