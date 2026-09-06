@@ -35,9 +35,27 @@ export interface PortfolioOverlap {
 }
 
 /**
- * Detect theme/direction overlap between a candidate and the existing book. Self-matches (same ticker AND
- * same direction as the candidate) are excluded — a position doesn't overlap itself. Empty `existing` is a
- * valid, common case (returns no overlap). Pure.
+ * Detect theme/direction overlap between a candidate and the existing book. Self-match exclusion
+ * (same ticker AND same direction as the candidate) removes only the FIRST such row — a position
+ * doesn't overlap itself, and every caller today (the play-brief's open book, the entry gate's
+ * `ctx.existingPositions`) is expected to carry at most that one "this is me" record. Empty
+ * `existing` is a valid, common case (returns no overlap). Pure.
+ *
+ * CORRECTNESS NOTE (2026-09-06, SWING-SYSTEM-CTO-AUDIT finding #10): commit.ts's own design
+ * permits MULTIPLE independent open positions on the same ticker+direction —
+ * `swingThesisKey(ticker, direction, archetype)` treats a different archetype on the same
+ * name+side as a different thesis (commit.ts:310-313) — so a SECOND (or later) row sharing the
+ * candidate's ticker+direction is a genuinely separate position, not another copy of "self", and
+ * must be counted as concentration. The prior version excluded EVERY row matching ticker+direction
+ * (not just the first), which silently hid exactly the most extreme concentration case this
+ * function exists to catch: two independently-opened bets on the same name in the same direction
+ * (e.g. two EWZ LONG positions under different archetypes) — see the finding for the live
+ * `record.json` evidence (EWZ rootPositionId 29 & 26, WULF rootPositionId 17 & 13, both pairs
+ * same-direction). `PortfolioPosition` intentionally carries no identity field (ticker+direction
+ * is the whole shape) — excluding only the first match is the minimal fix that does not require
+ * plumbing a position id through every caller; a caller whose candidate is NOT itself present in
+ * `existing` (e.g. a not-yet-committed gate candidate) loses nothing it had before under this
+ * change, and gains correct detection whenever a SECOND matching row exists.
  */
 export function checkPortfolioOverlap(
   candidate: PortfolioPosition,
@@ -49,9 +67,18 @@ export function checkPortfolioOverlap(
   const sameDir: PortfolioPosition[] = [];
   const opposedDir: PortfolioPosition[] = [];
 
+  // Skip only the FIRST row that looks like "the candidate's own identical position" (same
+  // ticker + same direction) — not every such row. See the correctness note above.
+  let selfExcluded = false;
   for (const pos of existing) {
-    // Skip the candidate's own identical position (same ticker + same direction).
-    if (pos.ticker.trim().toUpperCase() === candTicker && pos.direction === candidate.direction) continue;
+    if (
+      !selfExcluded &&
+      pos.ticker.trim().toUpperCase() === candTicker &&
+      pos.direction === candidate.direction
+    ) {
+      selfExcluded = true;
+      continue;
+    }
     if (!sameThesis(candidate.ticker, pos.ticker)) continue;
     if (pos.direction === candidate.direction) sameDir.push(pos);
     else opposedDir.push(pos);

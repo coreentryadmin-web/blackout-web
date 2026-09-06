@@ -40,3 +40,28 @@ test("the candidate's own identical position does not overlap itself", () => {
   assert.equal(o2.hasOverlap, true);
   assert.equal(o2.sameThemeOpposedDirection.length, 1);
 });
+
+// Regression — SWING-SYSTEM-CTO-AUDIT-2026-09-06 finding #10. commit.ts's own design
+// (swingThesisKey(ticker, direction, archetype)) permits MULTIPLE independent open positions on
+// the SAME ticker + SAME direction (a different archetype is a different thesis) — e.g. a real
+// EWZ LONG position under a BREAKOUT thesis and a second, independent EWZ LONG position under a
+// POST_EARNINGS_DRIFT thesis, both open simultaneously. The self-match exclusion must remove only
+// the ONE row standing in for "the candidate's own position" (the play-brief always reviews a
+// position that is itself part of the open book being scanned) — every ADDITIONAL row sharing
+// ticker+direction is a genuinely separate position and must be reported as concentration, not
+// silently dropped along with the true self-match.
+test("a second, independent same-ticker/same-direction position is NOT swallowed by self-match exclusion", () => {
+  // Two independent open EWZ LONG positions (different archetypes in reality; PortfolioPosition
+  // carries no identity field, so they are indistinguishable input-wise — that's the point: the
+  // function must still surface N-1 of them as overlap, not zero).
+  const o = checkPortfolioOverlap(long("EWZ"), [long("EWZ"), long("EWZ")]);
+  assert.equal(o.hasOverlap, true, "a second independent EWZ LONG position must be visible as overlap");
+  assert.equal(o.sameThemeSameDirection.length, 1, "exactly one self-match excluded, the other counted");
+  assert.equal(o.sameThemeOpposedDirection.length, 0);
+});
+
+test("three independent same-ticker/same-direction positions: one self-match excluded, two counted", () => {
+  const o = checkPortfolioOverlap(long("WULF"), [long("WULF"), long("WULF"), long("WULF")]);
+  assert.equal(o.hasOverlap, true);
+  assert.equal(o.sameThemeSameDirection.length, 2);
+});
