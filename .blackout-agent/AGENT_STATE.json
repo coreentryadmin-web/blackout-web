@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:31:06.424Z",
+  "updated_at": "2026-09-06T11:38:27.758Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:37:21.095Z",
-      "lease_until": "2026-09-06T11:07:21.095Z",
+      "claimed_at": "2026-09-06T11:30:09.395Z",
+      "lease_until": "2026-09-06T13:00:09.395Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88914ce012cddb8265605ba923ff8aa3899db711",
+    "last_main_sha": "a37960c92712ca5986df2042d0c32a44153cfd92",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T09:39:38Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
-    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
+    "last_deploy_at": "2026-09-06T11:38:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
+    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
   },
   "events": [
     {
@@ -557,9 +557,53 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T11:38:27.757Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T11:38:27.758Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "01300919-180f-4883-9735-dc6e545f61fc",
+      "summary": "PR-event cycle: approved+merged #4222 (swing TRIM 33% fix) and #4224 (helix hot tickers direction); #4227 cleanup pending verify; main synced to a37960c"
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4228,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4218/#4220/#4222 merged",
+      "branch": "cursor/autopilot-handoff-2026-09-06-cycle2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:35:49Z"
+    },
+    {
+      "number": 4227,
+      "title": "chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature",
+      "branch": "fix/dead-code-flow-strike-stacks-exports",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:38:22Z"
+    },
+    {
+      "number": 4226,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4220/#4222 merged",
+      "branch": "cursor/autopilot-handoff-2026-09-06T1132",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:31:23Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
