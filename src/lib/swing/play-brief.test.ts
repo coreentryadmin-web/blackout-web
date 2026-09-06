@@ -352,6 +352,52 @@ test("composeSwingPlayBrief: stale GEX-only envelope levels must not cite walls/
   assert.ok(!labels.includes("GEX king"), "stale GEX king strike must be suppressed");
 });
 
+test("composeSwingPlayBrief: stale Vector snapshot envelope levels must not cite walls/max pain/confluence (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        matrix_age_sec: 30,
+        asof: "2026-09-05T20:00:00Z",
+        as_of_et: "2026-09-05 16:00 ET",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: "2026-09-05T18:00:00.000Z",
+      asOfEt: "2026-09-05 14:00 ET",
+      spot: 24.5,
+      dataAgeMs: 200_000,
+      freshness: "stale",
+      regime: { posture: "long", label: "LONG" },
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+      gammaFlip: 24,
+      maxPain: 23.5,
+      confluenceZones: [{ center: 25, kinds: ["gex"], score: 80 }],
+      darkPoolLevels: [{ strike: 24.8, premium: 1_200_000, pct: 35 }],
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const labels = (brief.envelope.levels ?? []).map((l) => l.label);
+  assert.ok(labels.includes("spot"), "spot may still render from stale Vector with stale freshness");
+  assert.ok(!labels.includes("call wall"), "stale Vector call wall must be suppressed");
+  assert.ok(!labels.includes("put wall"), "stale Vector put wall must be suppressed");
+  assert.ok(!labels.includes("gamma flip"), "stale Vector gamma flip must be suppressed");
+  assert.ok(!labels.includes("max pain"), "stale Vector max pain must be suppressed");
+  assert.ok(!labels.some((l) => l.startsWith("confluence")), "stale Vector confluence must be suppressed");
+  assert.ok(!labels.includes("dark pool"), "stale Vector dark pool must be suppressed");
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.equal(postureEvidence, undefined, "stale Vector regime must not ground envelope dealer posture");
+});
+
 test("composeSwingPlayBrief: diff snapshot must not bypass stale-gated envelope levels (Largo C2)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
@@ -453,7 +499,7 @@ test("composeSwingPlayBrief: live Vector regime still drives dealer posture when
       },
     } as SwingPlayBriefContext["ecosystem"],
     vector: {
-      asOf: "2026-09-05T20:00:00.000Z",
+      asOf: new Date().toISOString(),
       asOfEt: "2026-09-05 16:00 ET",
       spot: 24.5,
       regime: { posture: "long", label: "LONG" },
@@ -945,7 +991,7 @@ test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, 
   const spot = brief.envelope.levels?.find((l) => l.label === "spot");
   assert.equal(spot?.provenance?.freshness, "stale", "20m-old Vector snapshot must not read as live");
   const callWall = brief.envelope.levels?.find((l) => l.label === "call wall");
-  assert.equal(callWall?.provenance?.freshness, "stale");
+  assert.equal(callWall, undefined, "stale Vector walls must be omitted from envelope levels, not merely tagged stale");
 });
 
 test("composeSwingPlayBrief: dark pool envelope levels attribute Vector provenance, not HELIX (C8)", () => {
@@ -959,7 +1005,7 @@ test("composeSwingPlayBrief: dark pool envelope levels attribute Vector provenan
     meridian: null,
     ecosystem: null,
     vector: {
-      asOf: "2026-09-05T20:00:00.000Z",
+      asOf: new Date().toISOString(),
       asOfEt: "2026-09-05 16:00 ET",
       spot: 24.5,
       darkPoolLevels: [{ strike: 99, premium: 5_000_000, pct: 35 }],

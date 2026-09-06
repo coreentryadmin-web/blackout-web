@@ -14,7 +14,13 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { collectBriefUnavailableSources, gexMatrixAgeMs, gexMatrixStale, trustedHelixFlow } from "./play-brief-absence";
+import {
+  collectBriefUnavailableSources,
+  gexMatrixAgeMs,
+  gexMatrixStale,
+  trustedHelixFlow,
+  vectorSnapshotStale,
+} from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import {
@@ -173,6 +179,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   const vecFresh = vectorFreshness(vec, readMs);
   const gexFresh = gexFreshness(gex, readMs);
   const gexStale = gexMatrixStale(gex, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs);
   const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
   const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
   const vecFlip = vec?.gammaFlip;
@@ -182,7 +189,10 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
-  if (callWall != null && !callWallFromStaleGex) {
+  const callWallFromStaleVec = vecCallWall != null && vectorStale;
+  const putWallFromStaleVec = vecPutWall != null && vectorStale;
+  const flipFromStaleVec = vecFlip != null && vectorStale;
+  if (callWall != null && !callWallFromStaleGex && !callWallFromStaleVec) {
     levels.push({
       label: "call wall",
       price: callWall,
@@ -193,7 +203,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  if (putWall != null && !putWallFromStaleGex) {
+  if (putWall != null && !putWallFromStaleGex && !putWallFromStaleVec) {
     levels.push({
       label: "put wall",
       price: putWall,
@@ -204,7 +214,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  if (flip != null && !flipFromStaleGex) {
+  if (flip != null && !flipFromStaleGex && !flipFromStaleVec) {
     levels.push({
       label: "gamma flip",
       price: flip,
@@ -227,19 +237,21 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  for (const z of vec?.confluenceZones ?? []) {
-    levels.push({
-      label: `confluence (${z.kinds.join("+")})`,
-      price: z.center,
-      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
-    });
-  }
-  for (const dp of vec?.darkPoolLevels ?? []) {
-    levels.push({
-      label: "dark pool",
-      price: dp.strike,
-      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
-    });
+  if (!vectorStale) {
+    for (const z of vec?.confluenceZones ?? []) {
+      levels.push({
+        label: `confluence (${z.kinds.join("+")})`,
+        price: z.center,
+        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      });
+    }
+    for (const dp of vec?.darkPoolLevels ?? []) {
+      levels.push({
+        label: "dark pool",
+        price: dp.strike,
+        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      });
+    }
   }
   const king = gex?.gex_king_strike;
   const kingFromStaleGex = king != null && gexStale;
@@ -250,7 +262,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       provenance: { source: "GEX", asOf: levelProvenanceAsOf(gex, vec, "gex"), freshness: gexFresh },
     });
   }
-  if (vec?.maxPain != null) {
+  if (vec?.maxPain != null && !vectorStale) {
     levels.push({
       label: "max pain",
       price: vec.maxPain,
@@ -289,7 +301,9 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   const gex = eco?.gex_positioning;
   const vec = ctx.vector ?? eco?.vector_full_state ?? null;
   const gexStale = gexMatrixStale(gex, readMs);
-  const postureFromVec = vec?.regime?.posture ?? null;
+  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const postureFromVec =
+    vec?.regime?.posture != null && !vectorStale ? vec.regime.posture : null;
   const postureFromGex = gex?.gamma_posture && !gexStale ? gex.gamma_posture : null;
   const gammaPosture = postureFromVec ?? postureFromGex;
   if (gammaPosture) {
