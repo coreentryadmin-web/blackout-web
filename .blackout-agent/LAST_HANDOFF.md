@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T17:09:01.902Z
-**Run:** f6ee2961-e6a4-49b4-b7fa-16e5a192c2b3
+**At:** 2026-09-06T17:09:30.479Z
+**Run:** b2589107-92e1-4718-a087-40a70b3f855e
 
 ## Summary
 
-Merged #4335 (swing thesis-health uncalibrated leak — peer-reviewed, verify GREEN). validate:deploy + lifecycle GREEN. ops:collect 0. GitHub API rate-limited for further PR ops.
+Cycle complete: merged #4335, ECR deploy polling, handoff #4340 open (draft). validate:deploy + lifecycle GREEN. ops:collect 0. Stale handoff drafts (#4327-4337) to consolidate next cycle.
 
 ## Deploy
 
@@ -14,6 +14,7 @@ Merged #4335 (swing thesis-health uncalibrated leak — peer-reviewed, verify GR
 
 ## Open PRs
 
+- #4340 [cursor] chore(blackout-agent): cursor handoff — merged #4335, deploy GREEN
 - #4339 [cursor] chore(blackout-agent): cursor handoff — merged #4333-4335, closed #4331
 - #4338 [cursor] chore(blackout-agent): cursor handoff — peer review #4326-4335
 - #4337 [cursor] chore(blackout-agent): cursor handoff — #4326/#4329/#4330 merged, deploy GREEN
