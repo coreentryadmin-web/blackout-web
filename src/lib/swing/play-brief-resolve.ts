@@ -11,8 +11,9 @@ import {
 } from "@/lib/db";
 import {
   attachThesisExplanation,
-  getSwingServingLane,
   discoverSwingFromPersisted,
+  dossiersByTicker,
+  getSwingServingLane,
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
 import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
@@ -171,7 +172,7 @@ async function loadLaneRows(ticker: string): Promise<{
   };
 }
 
-async function loadOpenTerminalPlay(
+export async function loadOpenTerminalPlay(
   ticker: string,
   hints: { positionId?: number | null; strike?: number | null; right?: "C" | "P" | null; status?: string | null },
 ): Promise<TerminalPlay | null> {
@@ -208,10 +209,15 @@ async function loadOpenTerminalPlay(
   let lanePlay = livePlayFromSwingPosition(row, spot, manageEvents.get(row.id) ?? null);
   if (!lanePlay) return null;
 
-  const discovery = await discoverSwingFromPersisted().catch(() => null);
-  const dossiers = discovery?.dossiers ?? [];
-  const dossier = dossiers.find((d) => d.ticker.toUpperCase() === ticker.toUpperCase());
-  const reads = discovery?.readsByTicker?.get(ticker.toUpperCase());
+  // A committed row's own factors/regime are evicted the moment it commits (live capital wins the
+  // section over its pre-entry twin — see serving-lane.ts's `getSwingServingLane`), which is exactly
+  // why the main board restores them via `attachThesisExplanation`. Ask Largo's play-brief resolver
+  // bypassed that restoration entirely, so `computeSwingThesisHealth`'s regime pillar (thesis-health.ts)
+  // always fell back to its generic "unread" default for every live swing position. Mirror the board's
+  // own fix here.
+  const discovered = await discoverSwingFromPersisted().catch(() => null);
+  const dossier = discovered ? dossiersByTicker(discovered.dossiers).get(ticker.toUpperCase()) : undefined;
+  const reads = discovered?.readsByTicker?.get(ticker.toUpperCase());
   lanePlay = attachThesisExplanation(lanePlay, dossier, reads);
 
   return terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay, row.id));
