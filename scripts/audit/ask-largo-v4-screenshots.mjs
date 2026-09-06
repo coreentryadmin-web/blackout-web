@@ -1,32 +1,15 @@
 #!/usr/bin/env node
-/** Capture Trade manager read + narrative bullets on live prod after v4 deploy. */
+/** Capture Trade manager read + narrative bullets on live prod after v4 deploy.
+ *
+ * Uses createTunneledContext (CONNECT tunnel) — Chromium has no direct network in this sandbox.
+ * Run from repo root: NODE_USE_ENV_PROXY=1 node scripts/audit/ask-largo-v4-screenshots.mjs
+ */
 import { mkdir, writeFile } from "node:fs/promises";
-import { chromium } from "playwright";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
-import { resolveChromiumPath } from "./lib/playwright-chromium-path.mjs";
+import { createPlaywrightAuditContext } from "./lib/playwright-audit-context.mjs";
 
 const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const OUT = process.env.SCREENSHOT_OUT || "/opt/cursor/artifacts/ask-largo-v4-deployed";
-
-function cookiesFromHeader(header, domain) {
-  return header
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((p) => {
-      const [n, ...r] = p.split("=");
-      const name = n.trim();
-      return {
-        name,
-        value: r.join("=").trim(),
-        domain,
-        path: "/",
-        httpOnly: name === "__session",
-        secure: domain !== "localhost",
-        sameSite: "Lax",
-      };
-    });
-}
 
 async function main() {
   await mkdir(OUT, { recursive: true });
@@ -39,14 +22,13 @@ async function main() {
     process.exit(2);
   }
 
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: resolveChromiumPath(),
-    args: ["--no-sandbox"],
+  const { browser, ctx, counts, mode } = await createPlaywrightAuditContext({
+    url: BASE,
+    cookie: session.cookieHeader,
+    viewport: "1680x1050",
+    desktop: true,
+    requestTimeoutMs: 60_000,
   });
-  const host = new URL(BASE).hostname;
-  const ctx = await browser.newContext({ viewport: { width: 1680, height: 1050 }, deviceScaleFactor: 1.5 });
-  await ctx.addCookies(cookiesFromHeader(session.cookieHeader, host));
   const page = await ctx.newPage();
 
   await page.goto(`${BASE}/nighthawk?view=swings`, { waitUntil: "domcontentloaded", timeout: 120_000 });
@@ -128,7 +110,7 @@ async function main() {
     };
   });
 
-  const report = { capturedAt: new Date().toISOString(), base: BASE, probe };
+  const report = { capturedAt: new Date().toISOString(), base: BASE, routed: counts, mode, probe };
   await writeFile(`${OUT}/v4-screenshot-report.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 
