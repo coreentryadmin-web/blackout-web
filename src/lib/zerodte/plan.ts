@@ -744,13 +744,18 @@ export function derivePlayStatus(input: {
   /** When true, skip the latched plan-stop close so the exit engine can honor a
    *  protective floor first (scan.ts / live-marks.ts run the engine on this pass). */
   deferPlanStop?: boolean;
+  /** Credit condor: skip directional peak/trough plan-stop/target latch — held to
+   *  time-stop; settlement owned by gradeCondorFromBars (FINDINGS 2026-09-06). */
+  isCondor?: boolean;
 }): LivePlayState {
-  const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop } = input;
+  const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop, isCondor } = input;
   const stopPct = input.stopPct ?? PLAN_RULES.stop_pct;
   const targetPct = input.targetPct ?? PLAN_RULES.target_pct;
   const pnl =
     entryPremium != null && entryPremium > 0 && mark != null && mark > 0
-      ? Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100
+      ? isCondor
+        ? Math.round(((entryPremium - mark) / entryPremium) * 10000) / 100
+        : Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100
       : null;
 
   // The hard exit closes EVERYTHING — including rows with no entry premium or no
@@ -760,6 +765,9 @@ export function derivePlayStatus(input: {
   }
   if (!(entryPremium != null && entryPremium > 0)) {
     return { status: "HOLD", live_pnl_pct: null, closed_reason: null };
+  }
+  if (isCondor) {
+    return { status: "HOLD", live_pnl_pct: pnl, closed_reason: null };
   }
   const stop = entryPremium * (1 + stopPct / 100);
   const target = entryPremium * (1 + targetPct / 100);

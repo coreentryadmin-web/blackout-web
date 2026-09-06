@@ -574,6 +574,20 @@ test("deriveGovernorFromLedger: a non-positive entry_premium can never be a trou
   assert.equal(snap.stops.length, 0, "entry<=0 → the trough test is skipped, never a divide/degenerate stop");
 });
 
+test("deriveGovernorFromLedger: condor trough at directional stop level is NOT a session stop", () => {
+  const snap = deriveGovernorFromLedger([
+    row({
+      ticker: "SPXW",
+      status: "CLOSED",
+      entry_premium: 0.6,
+      trough_premium: 0.25,
+      entry_context: { play_type: "CONDOR", condor: { max_loss: 400 } },
+      plan_pnl_pct: null,
+    }),
+  ]);
+  assert.equal(snap.stops.length, 0, "credit-structure trough latch must not feed governor stop count");
+});
+
 test("deriveGovernorFromLedger: a graded hard stop counts ONCE as a realized loser (no double-tally)", () => {
   // plan_outcome stopped AND plan_pnl_pct −50 → realized loser once, session −50 (prefers the graded pnl).
   const snap = deriveGovernorFromLedger([

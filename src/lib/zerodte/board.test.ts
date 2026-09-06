@@ -1158,6 +1158,22 @@ test("lifecycle: a play that hits the stop WITHOUT ever reaching target still cl
   assert.equal(s.closed_reason, "stopped");
 });
 
+test("lifecycle: a winning condor with decaying mark stays HOLD — no directional trough stop", () => {
+  // Credit $0.60, mark falls to $0.25 (+58.3% seller P&L). Directional latch would
+  // read trough <= credit*0.5 as stopped; condor path must not.
+  const s = derivePlayStatus({
+    entryPremium: 0.6,
+    mark: 0.25,
+    peak: 0.6,
+    trough: 0.25,
+    nowEtMinutes: 13 * 60,
+    isCondor: true,
+  });
+  assert.equal(s.status, "HOLD");
+  assert.equal(s.closed_reason, null);
+  assert.equal(s.live_pnl_pct, 58.33);
+});
+
 test("lifecycle: deferPlanStop skips latched stop close so the exit engine can honor a floor first", () => {
   const deferred = derivePlayStatus({
     entryPremium: 4.0,

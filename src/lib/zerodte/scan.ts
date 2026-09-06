@@ -2425,6 +2425,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
         deferPlanStop: true,
         targetPct: rails.targetPct,
         stopPct: rails.stopPct,
+        isCondor,
       });
       const exit =
         preStop.status !== "CLOSED"
@@ -2458,6 +2459,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
               nowEtMinutes,
               targetPct: rails.targetPct,
               stopPct: rails.stopPct,
+              isCondor,
             })
           : preStop;
       const status = exit ? ("CLOSED" as const) : state.status;
@@ -2467,8 +2469,9 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       // deliberately NOT counted — the governor's halt counts busted plans, and a
       // breakeven-floor scratch or a banked runner is not one.
       if (
-        (state.status === "CLOSED" && state.closed_reason === "stopped") ||
-        exit?.decision.reason === "plan_stop"
+        !isCondor &&
+        ((state.status === "CLOSED" && state.closed_reason === "stopped") ||
+          exit?.decision.reason === "plan_stop")
       ) {
         stopEvents.push({ ticker: r.ticker, direction: r.direction, at_ms: Date.now() });
       }

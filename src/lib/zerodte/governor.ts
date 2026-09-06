@@ -433,6 +433,9 @@ export type GovernorLedgerRow = Pick<
  *  before the lazy grader has run. A time-stop close is NOT a stop. */
 function ledgerRowStopped(r: GovernorLedgerRow): boolean {
   if (r.plan_outcome === "stopped") return true;
+  // Condor rows must not count a directional trough latch as a session stop — credit
+  // structures use inverted mark semantics (FINDINGS 2026-09-06).
+  if (r.entry_context?.play_type === "CONDOR") return false;
   if (r.status !== "CLOSED") return false;
   return (
     r.entry_premium != null &&
