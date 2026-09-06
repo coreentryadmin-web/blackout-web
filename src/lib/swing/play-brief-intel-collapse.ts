@@ -13,7 +13,6 @@ const NARRATIVE_COVERED_TITLES = new Set([
   "Wall dynamics",
   "Flow & positioning",
   "Macro tape",
-  "Desk consensus",
   "Hold plan",
   "Vector desk",
 ]);
