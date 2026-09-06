@@ -20,6 +20,7 @@ import { playMemberReadCacheSec } from "@/features/spx/lib/spx-play-config";
 import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
+import { roundFloats } from "@/lib/round-floats";
 import { withServerCache, peekServerCache } from "@/lib/server-cache";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
@@ -79,7 +80,7 @@ export function summarizeSpxDesk(merged: SpxDeskPayload): SpxDeskSummary {
 
 export async function getSpxDeskSummary(): Promise<SpxDeskSummary> {
   const { merged } = await loadMergedSpxDesk();
-  return summarizeSpxDesk(merged);
+  return roundFloats(summarizeSpxDesk(merged));
 }
 
 async function evaluateSpxPlayState() {
@@ -135,10 +136,10 @@ async function evaluateSpxPlayState() {
     console.warn("[spx-playbook-shadow]", err instanceof Error ? err.message : err);
   });
   void observeSpxPlayVoiceTransitions(play, sessionDate).catch(() => {});
-  return {
+  return roundFloats({
     ...play,
     playbook_shadow,
-  };
+  });
 }
 
 const SPX_PLAY_EVAL_LOCK_PREFIX = "spx-play-eval-lock";
