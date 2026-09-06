@@ -98,7 +98,7 @@ test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
-test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now (Largo C2)", () => {
+test("tradeManagerNarrativeSection: stale GEX-only matrix does not narrate dealer posture (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
       vector: { spot: 100 } as SwingPlayBriefContext["vector"],
@@ -117,8 +117,9 @@ test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now
   );
 
   assert.ok(section);
-  assert.match(section!.body, /Last snapshot/i);
-  assert.match(section!.body, /180s old/i);
+  assert.match(section!.body, /dealer gamma posture not resolved/i);
+  assert.doesNotMatch(section!.body, /long gamma/i);
+  assert.doesNotMatch(section!.body, /γ-flip/i);
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 

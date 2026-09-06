@@ -139,8 +139,7 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
   const readMs = Date.now();
-  const vecPosture = vec?.regime?.posture;
-  const posture = vecPosture ?? gex?.gamma_posture ?? null;
+  const posture = resolveGammaPosture(ctx, vec);
   const vecFlip = vec?.gammaFlip;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexMatrixStale(gex, readMs);
   const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
@@ -165,14 +164,8 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
 
   const vecAgeMs = vec?.dataAgeMs;
   const vectorStale = vectorSnapshotStale(vec, readMs);
-  const postureFromGex = !vecPosture && gex?.gamma_posture;
-  const gexStale = postureFromGex && gexMatrixStale(gex, readMs);
-  const snapshotStale = vectorStale || gexStale;
-  const snapshotAgeMs = vectorStale
-    ? vecAgeMs
-    : gexStale
-      ? gexMatrixAgeMs(gex, readMs)
-      : null;
+  const snapshotStale = vectorStale;
+  const snapshotAgeMs = vectorStale ? vecAgeMs : null;
   const lead = snapshotStale
     ? `**Last snapshot**${snapshotAgeMs != null ? ` (~${Math.round(snapshotAgeMs / 1000)}s old)` : ""}`
     : "**Right now**";
