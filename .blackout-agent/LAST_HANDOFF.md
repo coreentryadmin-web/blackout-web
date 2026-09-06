@@ -1,17 +1,19 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T16:36:24.481Z
-**Run:** 0ea154c4-0a2a-4c18-8a61-7908b0d12e4b
+**At:** 2026-09-06T20:36:10.996Z
+**Run:** c03bb875-0361-476c-93cc-985b2309ef6e
 
 ## Summary
 
-Extended cycle: merged #4314 (SPX King node), #4311 (HELIX flow evidence), #4319 (WATCH mark absence false positive). #4318 (cursor thesis-health uncalibrated) verify GREEN — awaiting Claude peer review (Cursor cannot self-approve). ops:collect 0; validate:deploy GREEN. ECR deploy in flight for latest main.
+Main @ 388007bb (state sync chore only; last prod fix #4379 @ af148408a). Open #4382 thermal follow-up — verify pending, cursor/* needs Claude review. ops:collect 0; validate:deploy GREEN.
 
 ## Deploy
 
-- main: `a590024676191b528bb23feff899bb29d73da393`
+- main: `388007bb10b2e36f019931302683ab9956628f33`
 - status: 
 
 ## Open PRs
 
-_none_
+- #4385 [agent] fix(nav): stop DeskSidebar and Nav hand-duplicating the same 7-desk list
+- #4384 [agent] chore(cleanup): remove 4 unused motion components (zero real callers)
+- #4382 [cursor] fix(thermal): follow-up harness + SPX shift caveat + provenance attrs
