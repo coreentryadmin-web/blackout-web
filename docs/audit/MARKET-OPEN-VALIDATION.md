@@ -120,7 +120,28 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
-### 0a-1u. CLOSED swing positions served a live-recomputed (negative/nonsensical) DTE instead of the frozen exit-date DTE — fix/swing-closed-dte-negative (pending)
+### 0a-1w. Option-mark timestamps reached the swing play-brief as raw ISO-8601 UTC instead of the Largo C1 ET stamp — fix/swing-markasof-raw-iso-not-et (pending)
+
+**What was broken:** `play.markAsOf` (a raw ISO string from the DB) was inserted unconverted into
+three places: the "Position" section body (`Mark: **$X** (2026-09-04T21:45:18.663Z)`), the
+top-level evidence array (`text`/`provenance.asOf`), and the "Data freshness" section — all
+violating Largo contract C1 ("YYYY-MM-DD HH:mm ET", never a bare epoch/ISO instant). The brief's
+own top-level `asOf` was already fixed this way in PR #4142, but that fix didn't touch `markAsOf`.
+Live evidence: all 4 sampled open-position envelopes (CG, NN, NRG, CRWD) showed the raw-ISO pattern.
+
+**Fix:** Added `etStampFromIso()` to `bar-session-date.ts` (parses a raw ISO instant, falls back to
+the original string if unparseable) and wired it into all three `markAsOf` render sites. The
+internal freshness-age math (`Date.parse` against the raw value) is untouched — only the displayed
+string changed.
+
+**Check at the open:** Open any live SWING position's Ask Largo brief
+(`GET /api/market/swing/play-brief?playId=SWING:<TICKER>`) and confirm the "Position" and "Data
+freshness" sections, plus the top-level `evidence[].text`/`provenance.asOf` for the option-mark
+entry, all show `YYYY-MM-DD HH:mm ET` — never a string ending in `Z` or containing `T`.
+
+---
+
+### 0a-1u. CLOSED swing positions served a live-recomputed (negative/nonsensical) DTE instead of the frozen exit-date DTE — fix/swing-closed-dte-negative (merged #4231)
 
 **What was broken:** `closedDeckSourceFromRow` (`closed-plays.ts`) computed a CLOSED position's
 `contract.dte` as `calendarDte(etYmd(), expiry)` — days between **today** (the moment the record is
@@ -156,7 +177,7 @@ any CLOSED row matches `calendarDte(closed_at date, expiry date)` by hand for at
 
 ---
 
-### 0a-1v. Chart technicals bias badge echoed the play's LONG/SHORT direction instead of the technicals it labels — fix/swing-chart-technicals-bias-direction-echo (pending)
+### 0a-1v. Chart technicals bias badge echoed the play's LONG/SHORT direction instead of the technicals it labels — fix/swing-chart-technicals-bias-direction-echo (merged #4232)
 
 **What was broken:** `chartTechnicalsSection`'s `bias` field (`play-brief-intel.ts`) was set from
 `play.direction === "SHORT" ? "bearish" : play.direction === "LONG" ? "bullish" : "neutral"` — a pure

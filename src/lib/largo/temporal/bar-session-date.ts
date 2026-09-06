@@ -58,6 +58,20 @@ export function etStamp(tMs: unknown): string | null {
   return parts ? `${parts.date} ${parts.time} ET` : null;
 }
 
+/**
+ * Largo C1 stamp for a raw ISO-8601 instant (option marks, ledger timestamps — anything that
+ * arrives from the DB as a bare `Date.toISOString()` rather than epoch-ms). Falls back to the
+ * original string when it can't be parsed, so a malformed input degrades to "at least visible"
+ * rather than silently vanishing — the same defensive fallback `play-brief-context.ts` already
+ * uses for the brief's own top-level `asOf`.
+ */
+export function etStampFromIso(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return raw;
+  return etStamp(ms) ?? raw;
+}
+
 const ET_STAMP_RE = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}) ET$/;
 
 /**
