@@ -15,6 +15,7 @@ import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
 import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
+import { meridianPeerEvidenceText } from "./play-brief-meridian-peer-core";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
@@ -270,6 +271,16 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       kind: "fact",
       text: `Next earnings ${eco.arsenal.earnings.earnings_date}.`,
       provenance: { source: "Earnings calendar", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
+  const earningsItem =
+    ctx.meridian?.items?.find((i) => i.kind === "earnings" && i.days_until <= 14) ?? null;
+  const peerEvidence = meridianPeerEvidenceText(ctx.meridianPeer, earningsItem);
+  if (peerEvidence) {
+    out.push({
+      kind: "fact",
+      text: peerEvidence,
+      provenance: { source: "Meridian peer cohort", asOf: ctx.asOf, freshness: "recent" },
     });
   }
   return out;

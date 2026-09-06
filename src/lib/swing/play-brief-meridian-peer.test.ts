@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
+import { meridianPeerEarningsCoaching, meridianPeerEvidenceText } from "./play-brief-meridian-peer-core";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 
 function earningsItem(overrides: Partial<LargoTimelineItem> = {}): LargoTimelineItem {
@@ -88,4 +88,37 @@ test("meridianPeerEarningsCoaching: surfaces sector_label and interpretation", (
   );
   assert.match(line!, /sector \*\*Retail\*\*/i);
   assert.match(line!, /top quartile/i);
+});
+
+test("meridianPeerEvidenceText: peer beat rates for structured evidence rail", () => {
+  const text = meridianPeerEvidenceText(
+    {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "ULTA",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    earningsItem(),
+  );
+  assert.ok(text);
+  assert.match(text!, /ULTA 75% beat \(n=4\)/);
+  assert.match(text!, /sector Retail/);
+  assert.match(text!, /implied move 8\.5%/);
 });

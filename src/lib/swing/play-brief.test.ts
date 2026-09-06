@@ -245,6 +245,69 @@ test("composeSwingPlayBrief: earnings evidence carries brief asOf for Largo C1 j
   assert.equal(earningsEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
 });
 
+test("composeSwingPlayBrief: Meridian peer beat rates surface in envelope evidence (Largo C7)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      items: [
+        {
+          id: "earnings:BBWI:2026-09-10",
+          kind: "earnings",
+          title: "BBWI earnings",
+          subtitle: null,
+          date: "2026-09-10",
+          time: null,
+          impact: "high",
+          days_until: 4,
+          ticker: "BBWI",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 8.5,
+          sector_label: "Retail",
+        },
+      ],
+      unavailable: null,
+    },
+    meridianPeer: {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "ULTA",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const peerEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Meridian peer cohort"));
+  assert.ok(peerEvidence, "expected Meridian peer evidence");
+  assert.match(peerEvidence!.text, /ULTA 75% beat \(n=4\)/);
+  assert.equal(peerEvidence?.provenance?.source, "Meridian peer cohort");
+  assert.equal(peerEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+});
+
 test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1 joins", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
