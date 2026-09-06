@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T17:07:16.088Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T16:56:35.604Z",
+      "lease_until": "2026-09-06T18:26:35.604Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -39,6 +39,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4335": {
+      "pr": 4335,
+      "head_sha": "9f369e58795e2821509dc6a65363013d65343684",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:06:44.521Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -52,11 +60,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T17:06:45Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34047570898",
+    "last_deploy_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa"
   },
   "events": [
     {
@@ -734,9 +742,92 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:04:08.633Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:04:08.634Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1386f526-3c84-4c0e-beeb-72fa568a59d9",
+      "summary": "Cycle: #4334 merged (SPX roundFloats). Peer-reviewing Claude #4335 (thesis-health uncalibrated leak) — local RED→GREEN test pass, verify CI in flight. validate:deploy GREEN; ops:collect 0. Subscribed to #4335 CI."
+    },
+    {
+      "at": "2026-09-06T17:06:44.522Z",
+      "type": "pr_review",
+      "pr": 4335,
+      "head_sha": "9f369e58795e2821509dc6a65363013d65343684",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:06:44.521Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T17:06:49.968Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:07:16.087Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:07:16.088Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a0d5333d-73cc-4c61-89bd-bcc0a234b868",
+      "summary": "Cycle complete: merged #4334 (SPX roundFloats) + #4335 (thesis-health uncalibrated leak — Cursor peer-reviewed ✅). validate:deploy GREEN; ops:collect 0. Open PRs: cursor handoff drafts only — consolidating duplicates."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4338,
+      "title": "chore(blackout-agent): cursor handoff — peer review #4326-4335",
+      "branch": "cursor/handoff-peer-review-20260906T1703",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:04:37Z"
+    },
+    {
+      "number": 4337,
+      "title": "chore(blackout-agent): cursor handoff — #4326/#4329/#4330 merged, deploy GREEN",
+      "branch": "cursor/autopilot-work-loop-faa2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T17:07:12Z"
+    },
+    {
+      "number": 4336,
+      "title": "chore(blackout-agent): cursor handoff — #4335 approved, deploy GREEN",
+      "branch": "cursor/handoff-20260906-1655",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:56:03Z"
+    },
+    {
+      "number": 4332,
+      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
+      "branch": "cursor/handoff-20260906-1638",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:42:27Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
