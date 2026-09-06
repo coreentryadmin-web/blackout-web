@@ -303,6 +303,7 @@ test("composeSwingPlayBrief: earnings evidence carries brief asOf for Largo C1 j
 });
 
 test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims for Largo C7", () => {
+  const recentAsOf = new Date(Date.now() - 5 * 60_000).toISOString();
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
     asOf: "2026-09-05 16:00 ET",
@@ -318,7 +319,12 @@ test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims fo
       arsenal: {
         scope: "single_name",
         earnings: null,
-        fundamentals: { days_to_cover: 2.1, short_volume_ratio: 0.35, price_target: null, as_of: "2026-09-05" },
+        fundamentals: {
+          days_to_cover: 2.1,
+          short_volume_ratio: 0.35,
+          price_target: null,
+          as_of: recentAsOf,
+        },
         related: null,
         news: null,
         macro: null,
@@ -335,7 +341,48 @@ test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims fo
   assert.match(siEvidence!.text, /short vol ratio 35%/);
   assert.equal(siEvidence?.provenance?.source, "Polygon / Benzinga");
   assert.equal(siEvidence?.provenance?.freshness, "recent");
-  assert.equal(siEvidence?.provenance?.asOf, "2026-09-05 16:00 ET", "date-only as_of must anchor at session close ET, not prior evening");
+});
+
+test("composeSwingPlayBrief: short interest evidence freshness is stale when fund.as_of is old (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: {
+          days_to_cover: 2.1,
+          short_volume_ratio: 0.35,
+          price_target: null,
+          as_of: "2026-08-01",
+        },
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const siEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Short interest:"));
+  assert.ok(siEvidence, "expected short interest evidence");
+  assert.equal(siEvidence?.provenance?.freshness, "stale");
+  assert.equal(
+    siEvidence?.provenance?.asOf,
+    "2026-08-01 16:00 ET",
+    "date-only as_of must anchor at session close ET, not prior evening",
+  );
 });
 
 test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1 joins", () => {

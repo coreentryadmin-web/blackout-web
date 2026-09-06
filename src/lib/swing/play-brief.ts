@@ -17,7 +17,11 @@ import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-t
 import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
-import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import {
+  etStampFromDateOrIso,
+  etStampFromIso,
+  parseEtStamp,
+} from "@/lib/largo/temporal/bar-session-date";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
@@ -130,6 +134,19 @@ function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): B
   if (!gex?.asof) return "unknown";
   const observedMs = Date.parse(gex.asof);
   if (!Number.isFinite(observedMs)) return "unknown";
+  return freshnessFromAgeMs(readMs - observedMs);
+}
+
+function fundamentalsFreshness(
+  asOf: string | null | undefined,
+  readMs: number,
+): BieFreshness {
+  if (!asOf) return "unknown";
+  const etStamp = etStampFromDateOrIso(asOf);
+  const observedMs =
+    (etStamp ? parseEtStamp(etStamp) : null) ??
+    (Number.isFinite(Date.parse(asOf)) ? Date.parse(asOf) : null);
+  if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
   return freshnessFromAgeMs(readMs - observedMs);
 }
 
@@ -319,7 +336,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: {
         source: "Polygon / Benzinga",
         asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
-        freshness: "recent",
+        freshness: fundamentalsFreshness(fund.as_of, readMs),
       },
     });
   }
