@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T17:11:40.178Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T17:06:09.871Z",
+      "lease_until": "2026-09-06T18:36:09.871Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null
+    },
+    "BO-P1-LARGO-003": {
+      "task_id": "BO-P1-LARGO-003",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T17:10:31.843Z",
+      "lease_until": "2026-09-06T18:40:31.843Z",
+      "phase": "IMPLEMENTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -39,6 +51,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4335": {
+      "pr": 4335,
+      "head_sha": "9f369e58795e2821509dc6a65363013d65343684",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:07:30.460Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -47,16 +67,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T17:10:31.844Z",
+      "current_task": "BO-P1-LARGO-003"
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T17:06:45Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34047570898",
+    "last_deploy_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa"
   },
   "events": [
     {
@@ -734,9 +755,95 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:07:30.462Z",
+      "type": "pr_review",
+      "pr": 4335,
+      "head_sha": "9f369e58795e2821509dc6a65363013d65343684",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:07:30.460Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T17:07:40.050Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:07:42.375Z",
+      "type": "pr_webhook",
+      "pr": 4338,
+      "event": "sweep",
+      "head": "02f039a4433cf9a5326a8959eead66ab7f8bba65",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:07:46.662Z",
+      "type": "pr_webhook",
+      "pr": 4337,
+      "event": "sweep",
+      "head": "2b4bf8c33fbdcbf0b35808f06e3ea5c954dda3c1",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:07:49.097Z",
+      "type": "pr_webhook",
+      "pr": 4336,
+      "event": "sweep",
+      "head": "7ca3c6dc599d0ec74b07706eddfafa2cbe3f5ec9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:07:51.444Z",
+      "type": "pr_webhook",
+      "pr": 4332,
+      "event": "sweep",
+      "head": "a45f873a8bc15791ddd21e5a33b3939f0fc5e14e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:10:31.844Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-LARGO-003",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T17:11:40.176Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T17:11:40.178Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "14c1d36c-180f-4e07-bd41-bf54e010aae2",
+      "summary": "Cycle: peer-reviewed+merged #4335 (thesis health leak). Found follow-up leak via thesisBreak warn→45% fallback; opened fix/swing-thesis-strength-warn-fallback-leak PR. validate:deploy GREEN, ops:collect 0, platform-integrity 14/14."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4341,
+      "title": "chore(blackout-agent): cursor handoff — peer lane clear, deploy GREEN",
+      "branch": "cursor/bc-4c08bba6-d2ba-4560-ad1d-f3309f78104a-b61c",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:11:14Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -766,6 +873,38 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4338": {
+      "last_event": "sweep",
+      "last_head": "02f039a4433cf9a5326a8959eead66ab7f8bba65",
+      "last_feedback_at": "2026-09-06T17:07:42.375Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4337": {
+      "last_event": "sweep",
+      "last_head": "2b4bf8c33fbdcbf0b35808f06e3ea5c954dda3c1",
+      "last_feedback_at": "2026-09-06T17:07:46.662Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4336": {
+      "last_event": "sweep",
+      "last_head": "7ca3c6dc599d0ec74b07706eddfafa2cbe3f5ec9",
+      "last_feedback_at": "2026-09-06T17:07:49.097Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4332": {
+      "last_event": "sweep",
+      "last_head": "a45f873a8bc15791ddd21e5a33b3939f0fc5e14e",
+      "last_feedback_at": "2026-09-06T17:07:51.444Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
