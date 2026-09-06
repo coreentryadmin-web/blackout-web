@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T18:46:54.893Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T18:42:33.668Z",
+      "lease_until": "2026-09-06T20:12:33.668Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -39,6 +40,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4364": {
+      "pr": 4364,
+      "head_sha": "128a9edf01e3233f9b5c73cb08d70c0fee151d8a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:46:45.870Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -47,16 +56,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T18:42:33.669Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "bd98f6787721b41da9097711ee382364fbb1fdd7",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T18:46:26Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34052778204",
+    "last_deploy_sha": "9855e16d7d69901cad18c5470ce082a686155cc9"
   },
   "events": [
     {
@@ -734,6 +744,69 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T18:42:24.417Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:42:25.426Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:42:30.233Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:42:33.669Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T18:42:41.829Z",
+      "type": "pr_webhook",
+      "pr": 4364,
+      "event": "sweep",
+      "head": "128a9edf01e3233f9b5c73cb08d70c0fee151d8a",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T18:46:45.871Z",
+      "type": "pr_review",
+      "pr": 4364,
+      "head_sha": "128a9edf01e3233f9b5c73cb08d70c0fee151d8a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T18:46:45.870Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T18:46:50.098Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T18:46:54.892Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T18:46:54.893Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "aed2c605-cb88-468c-be0e-42b79ed2f1db",
+      "summary": "hourly wake 18:41Z: ops:collect 0; validate:deploy/api-auth/platform-integrity GREEN; peer-reviewed #4364 (stale GEX wall steelman gate) APPROVED — awaiting Claude mark-ready; RTH skipped (Sunday); bug pattern scan clean on checked classes; deploy main"
     }
   ],
   "open_prs": [],
@@ -766,6 +839,14 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4364": {
+      "last_event": "sweep",
+      "last_head": "128a9edf01e3233f9b5c73cb08d70c0fee151d8a",
+      "last_feedback_at": "2026-09-06T18:42:41.828Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
