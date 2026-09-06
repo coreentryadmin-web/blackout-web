@@ -4,6 +4,18 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-09-05 — [P3, consistency] SPX Desk Brief mislabeled GEX King magnet as generic pin — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+| **Severity** | P3 — SPX Slayer desk `WHY` and `LEVELS` lines used generic "pin" label instead of source-aware "GEX king" / "max pain" |
+| **Root cause** | `spx-desk-brief.ts` computed `resolveDeskMagnet()` correctly (king > max_pain precedence) and stored its `source`, but `buildWhy()` and level-building paths hard-coded "pin" prose instead of consulting `magnet.source` |
+| **Fix** | Introduced `deskMagnetProse(source: DeskMagnetSource)` + `deskMagnetLevelsSuffix(source: DeskMagnetSource)` functions mapping `"gex_king"` → `SPX_PIN_GEX_KING_LABEL_PROSE` / `"max_pain"` → `SPX_DESK_MAX_PAIN_LABEL.toLowerCase()`. Updated three usage sites: line 423 (`buildWhy` pullback text), line 513 (levels string with suffix), line 580 (next 5m line) — all now call `deskMagnetProse(magnet.source)` with correct fallback |
+| **Evidence** | `src/lib/bie/spx-desk-brief.test.ts` lines 135–147: asserts "WHY and LEVELS name GEX king node — not generic pin — when gex_king is the magnet"; negates patterns "toward pin {{" and "LEVELS.*pin {{" |
+| **RTH validation** | On `/terminal` SPX Slayer `WHY` line when desk shows both gex_king (e.g., 5900) and max_pain (5850): must say "toward GEX king 5900", never "toward pin 5900". LEVELS line must list "GEX king 5900 (max \|net γ\|)" with gamma suffix, never bare "pin". When one source is null, prose correctly labels the present one (e.g., "max pain 5850 (OI anchor)" if king absent) |
+
 ## 2026-09-05 — [P2, data-correctness] `ThermalCompareStrip` raw `change_pct` not rebased on live push — FIXED
 
 > **kind:** `FINDING`
