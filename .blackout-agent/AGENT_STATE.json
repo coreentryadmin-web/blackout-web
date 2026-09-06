@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:59:51.639Z",
+  "updated_at": "2026-09-06T12:00:35.747Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T11:52:10.449Z",
-      "lease_until": "2026-09-06T13:22:10.449Z",
+      "lease_until": "2026-09-06T13:30:03.622Z",
       "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "fc6072b9-1953-432c-bf65-a7f8f4ff17ec"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T12:00:02.636Z",
+      "lease_until": "2026-09-06T13:30:03.622Z",
+      "phase": "CLAIMED",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "fc6072b9-1953-432c-bf65-a7f8f4ff17ec",
+      "title": null
     }
   },
   "reviews": {
@@ -55,8 +67,9 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T12:00:02.636Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
@@ -625,6 +638,49 @@
       "agent": "cursor",
       "run_id": "52b64717-6ca9-4613-ada3-77f9a97ca496",
       "summary": "PR-event: rebased+#4232 approved; reviewed+#4235+#4236 approved; #4230 merged; validate:deploy GREEN; ops:collect 0"
+    },
+    {
+      "at": "2026-09-06T11:59:57.846Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:00:02.636Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T12:00:03.621Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:00:04.596Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:00:05.415Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:00:35.746Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T12:00:35.747Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cd8d34a4-824c-4ec3-86a9-a8e30e63b9d6",
+      "summary": "Cycle complete: #4232 rebased+✅approved (verify pending); #4235+#4236 ✅approved (verify pending); #4230 merged; lifecycle GREEN off-hours; ops:collect 0; handoff #4237 pushed"
     }
   ],
   "open_prs": [
@@ -636,7 +692,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-06T11:59:42Z"
+      "updated_at": "2026-09-06T11:59:54Z"
     },
     {
       "number": 4236,
