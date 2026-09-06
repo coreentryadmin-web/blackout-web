@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T20:08:25.017Z",
+  "updated_at": "2026-09-06T20:25:44.201Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T20:06:50.699Z",
+      "lease_until": "2026-09-06T21:51:22.327Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "ee053ad6-cfde-4506-aa22-973ac89733d7"
     }
   },
   "reviews": {
@@ -39,30 +39,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
-    },
-    "pr-4381": {
-      "pr": 4381,
-      "head_sha": "3cb6b24bb",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T20:08:24.339Z",
-      "safe_to_merge": true
-    },
-    "pr-4377": {
-      "pr": 4377,
-      "head_sha": "92439896c",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T20:08:24.682Z",
-      "safe_to_merge": true
-    },
-    "pr-4379": {
-      "pr": 4379,
-      "head_sha": "69897eaac",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T20:08:25.017Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -76,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "12d062a75dff718568cafd37075bf39c4bc11215",
+    "last_main_sha": "af148408afcc5542efaf9cfe6e25db35ca667aa8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T20:20:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34057697678",
+    "last_deploy_sha": "af148408afcc5542efaf9cfe6e25db35ca667aa8"
   },
   "events": [
     {
@@ -778,86 +754,52 @@
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T20:08:07.700Z",
-      "type": "pr_webhook",
-      "pr": 4382,
-      "event": "sweep",
-      "head": "ec14f980a2c1daade2ce3f9f8a2147ed330fbe5f",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": false
+      "at": "2026-09-06T20:22:30.401Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     },
     {
-      "at": "2026-09-06T20:08:09.587Z",
-      "type": "pr_webhook",
-      "pr": 4381,
-      "event": "sweep",
-      "head": "3cb6b24bbff7ac456967cfe83868ad96fc439e94",
-      "verdict": "👀 **REVIEW** — peer sign-off required",
-      "directive": "REVIEW",
-      "dispatch": true
+      "at": "2026-09-06T20:22:30.401Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b6494b83-929f-4b18-9b23-e3c5d871a66f",
+      "summary": "#4379 + #4381 merged to main (af148408a). Deploy GREEN on af148408a. Largo stale-GEX lane complete for this wave. #4382 thermal follow-up rebased on main, tsc+tests pass locally; CI re-running — awaiting verify then Claude peer review (Cursor cannot self-approve). ops:collect 0."
     },
     {
-      "at": "2026-09-06T20:08:11.440Z",
-      "type": "pr_webhook",
-      "pr": 4379,
-      "event": "sweep",
-      "head": "69897eaac38ff6573c7be4e0ba6b710af59e458f",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "dispatch": false
+      "at": "2026-09-06T20:25:44.200Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T20:08:24.339Z",
-      "type": "pr_review",
-      "pr": 4381,
-      "head_sha": "3cb6b24bb",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T20:08:24.339Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T20:08:24.683Z",
-      "type": "pr_review",
-      "pr": 4377,
-      "head_sha": "92439896c",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T20:08:24.682Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T20:08:25.017Z",
-      "type": "pr_review",
-      "pr": 4379,
-      "head_sha": "69897eaac",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T20:08:25.017Z",
-      "safe_to_merge": true
+      "at": "2026-09-06T20:25:44.201Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "caa95468-7829-4160-a5f4-907fe7c9252d",
+      "summary": "#4379 + #4381 merged (af148408a). Deploy GREEN. #4382 thermal CI pending — Claude peer review requested."
     }
   ],
   "open_prs": [
     {
-      "number": 4360,
-      "title": "fix(swing): extend stale GEX gating to gexPostureSection and counter-thesis",
-      "branch": "fix/largo-gex-stale-parity",
+      "number": 4384,
+      "title": "chore(cleanup): remove 4 unused motion components (zero real callers)",
+      "branch": "fix/dead-code-unused-motion-components",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T18:18:37Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T20:24:55Z"
     },
     {
-      "number": 4359,
-      "title": "fix(swing): decode HTML entities in Benzinga headlines for swing brief",
-      "branch": "fix/swing-arsenal-news-headline-html-entities",
+      "number": 4382,
+      "title": "fix(thermal): follow-up harness + SPX shift caveat + provenance attrs",
+      "branch": "cursor/thermal-audit-followup",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T18:22:06Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T20:25:37Z"
     }
   ],
   "pr_activity": {
@@ -890,30 +832,6 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4382": {
-      "last_event": "sweep",
-      "last_head": "ec14f980a2c1daade2ce3f9f8a2147ed330fbe5f",
-      "last_feedback_at": "2026-09-06T20:08:07.700Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4381": {
-      "last_event": "sweep",
-      "last_head": "3cb6b24bbff7ac456967cfe83868ad96fc439e94",
-      "last_feedback_at": "2026-09-06T20:08:09.587Z",
-      "verdict": "👀 **REVIEW** — peer sign-off required",
-      "directive": "REVIEW",
-      "comment_action": "created"
-    },
-    "pr-4379": {
-      "last_event": "sweep",
-      "last_head": "69897eaac38ff6573c7be4e0ba6b710af59e458f",
-      "last_feedback_at": "2026-09-06T20:08:11.440Z",
-      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
