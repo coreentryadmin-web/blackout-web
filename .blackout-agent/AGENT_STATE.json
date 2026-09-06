@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:29:40.036Z",
+  "updated_at": "2026-09-06T16:07:30.376Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T16:00:53.628Z",
+      "lease_until": "2026-09-06T17:30:53.628Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -39,16 +40,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T16:04:55.825Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "7418ff9e746c44e6b6206dd35acc0bc0ec6340be",
+    "last_main_sha": "d45b41666a2ea4efc4d900a4a3f956b395edc2d5",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T15:59:18Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34044003046",
+    "last_deploy_sha": "d45b41666a2ea4efc4d900a4a3f956b395edc2d5"
   },
   "events": [
     {
@@ -691,9 +693,55 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:04:55.825Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T16:07:29.523Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T16:07:29.523Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2c191ace-c3dd-4c05-9bd2-e86ddf5c27df",
+      "summary": "Post-#4311: shipped thesis-health uncalibrated withhold fix (#4318 draft). validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. GitHub PAT rate-limited for gh CLI; PR created via MCP. Awaiting Claude peer review on #4318."
+    },
+    {
+      "at": "2026-09-06T16:07:30.376Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4318,
+      "title": "fix(swing): withhold uncalibrated thesis health % from Largo brief",
+      "branch": "cursor/blackout-cursor-work-loop-3577",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T16:07:25Z"
+    },
+    {
+      "number": 4317,
+      "title": "fix(swing): ground short interest in Largo envelope evidence (C7)",
+      "branch": "fix/largo-short-interest-evidence",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:05:38Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
