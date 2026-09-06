@@ -47,6 +47,18 @@ test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal 
   assert.ok(sources.some((s) => s.source === "open book" && s.reason === "ledger read failed"));
 });
 
+test("collectBriefUnavailableSources: HELIX pipeline down with no cached rows still surfaces absence", () => {
+  const ctx = {
+    ecosystem: {
+      recent_flow: null,
+      flow_feed_fresh: false,
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "HELIX flow" && s.reason === "pipeline stale"));
+});
+
 test("collectBriefUnavailableSources: Meridian timeline failure surfaces in envelope", () => {
   const ctx = {
     meridian: {

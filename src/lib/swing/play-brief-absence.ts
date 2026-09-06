@@ -12,7 +12,8 @@ export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
 export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieUnavailableSource[] {
   const out: BieUnavailableSource[] = [...(ctx.ecosystem?.arsenal?.unavailable_sources ?? [])];
 
-  if (ctx.ecosystem?.recent_flow && ctx.ecosystem.flow_feed_fresh === false) {
+  // Pipeline-down (emptyContext) has recent_flow=null — still absence, not quiet.
+  if (ctx.ecosystem?.flow_feed_fresh === false) {
     out.push({ source: "HELIX flow", reason: "pipeline stale" });
   }
   if (ctx.openBook === null) {
