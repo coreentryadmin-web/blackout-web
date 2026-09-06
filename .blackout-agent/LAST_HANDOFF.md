@@ -1,21 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T09:47:00.174Z
-**Run:** 6590d794-a6fc-464c-ab78-ac993a1e24c3
+**At:** 2026-09-06T09:51:40.308Z
+**Run:** d4ef563a-c922-4b94-984f-2dd9f829fbed
 
 ## Summary
 
-Rebased #4185 onto main post-#4182: kept exports+tests+docs, dropped duplicate wiring. 6/6 tests pass. Posted ✅ GO AHEAD MERGE. Pushed a979f925.
+PR-event cycle: rebased #4185→#4191 (tests+export). Peer-reviewed #4186/#4189 (closed intel collapse ✅). #4180 merged. Deploy GREEN, ops:collect 0. Awaiting verify on #4189/#4191.
 
 ## Deploy
 
-- main: `091c5eef61caf56fa148aca5aaf744350a35bf5e`
+- main: `dc358c707e6113004755e8363c50812f68b52f14`
 - status: 
 
 ## Open PRs
 
 - #4191 [agent] test(swing): add regression coverage for Ask Largo thesis-health wiring (post-#4182)
-- #4190 [cursor] chore(blackout-agent): cursor PR-event handoff — swing merge wave + #4185 review
-- #4189 [agent] fix(swing): keep GEX/flow intel on closed Ask Largo briefs (CTO audit #2)
-- #4188 [cursor] chore(blackout-agent): cursor peer-review cycle handoff — swing PRs approved
-- #4187 [cursor] chore(blackout-agent): cursor PR-event handoff — #4174/#4175 merged, swing reviews
