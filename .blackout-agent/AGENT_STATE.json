@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T17:12:09.632Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T16:59:50.559Z",
+      "lease_until": "2026-09-06T18:39:03.685Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "f98e312e-431a-4b04-87c7-ef000bb0bff3"
     }
   },
   "reviews": {
@@ -52,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T17:06:45Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34047570898",
+    "last_deploy_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa"
   },
   "events": [
     {
@@ -734,9 +734,59 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:10:29.622Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T17:12:09.631Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T17:12:09.632Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "53d590de-484d-429e-8482-32ac0beb8279",
+      "summary": "Cycle complete: #4335 peer-reviewed APPROVED+merged (thesis-health uncalibrated leak). main@3327088e7. ECR deploy pending. validate:deploy/api-auth/platform-integrity/ops:collect all GREEN. RTH lifecycle skipped (weekend). Subscribed to repo PR events."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4343,
+      "title": "chore(blackout-agent): cursor handoff — #4335 merged, #4342 Largo leak fix",
+      "branch": "cursor/handoff-20260906-1712",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T17:11:56Z"
+    },
+    {
+      "number": 4342,
+      "title": "fix(swing): block fabricated thesis strength on uncalibrated warn fallback",
+      "branch": "fix/swing-thesis-strength-warn-fallback-leak",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:11:43Z"
+    },
+    {
+      "number": 4341,
+      "title": "chore(blackout-agent): cursor handoff — peer lane clear, deploy GREEN",
+      "branch": "cursor/bc-4c08bba6-d2ba-4560-ad1d-f3309f78104a-b61c",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:11:14Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
