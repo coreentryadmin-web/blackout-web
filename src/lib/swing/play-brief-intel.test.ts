@@ -4,6 +4,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   bookContextSection,
   catalystsSection,
+  chartLevelsSection,
   chartTechnicalsSection,
   dataFreshnessSection,
   deskConsensusSection,
@@ -760,6 +761,88 @@ test("watchForSection: live Vector put wall still shown when GEX matrix is stale
     "open",
   );
   assert.match(section.body, /put wall \*\*98\.00\*\*/);
+});
+
+test("chartLevelsSection: stale GEX-only walls, flip, and king omitted (Largo C2)", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        call_wall: 105,
+        put_wall: 95,
+        flip: 99,
+        gex_king_strike: 100,
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.equal(section, null);
+});
+
+test("chartLevelsSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        call_wall: 105,
+        put_wall: 95,
+        flip: 99,
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 100,
+      gexWalls: { putWalls: [{ strike: 94 }], callWalls: [] },
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Put wall \(GEX\):\*\* 94\.00/);
+  assert.doesNotMatch(section!.body, /Call wall/);
+  assert.doesNotMatch(section!.body, /Gamma flip/);
+});
+
+test("chartLevelsSection: stale GEX king strike omitted even when Vector desk is present", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gex_king_strike: 100,
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 100,
+      gexWalls: { putWalls: [{ strike: 94 }], callWalls: [] },
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Put wall \(GEX\):\*\* 94\.00/);
+  assert.doesNotMatch(section!.body, /GEX king strike/);
 });
 
 test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {
