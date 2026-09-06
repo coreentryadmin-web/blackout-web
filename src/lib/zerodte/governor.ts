@@ -430,8 +430,12 @@ export type GovernorLedgerRow = Pick<
 /** Did this ledger row stop out? Two independent signals, either suffices:
  *  the graded plan_outcome, or the latched trough at/below the plan's stop level
  *  (derivePlayStatus's own CLOSED/stopped condition) — so the count is right even
- *  before the lazy grader has run. A time-stop close is NOT a stop. */
+ *  before the lazy grader has run. A time-stop close is NOT a stop. Condors are
+ *  excluded: their trough is the winning direction (falling debit-to-close) and
+ *  directional stop math inverts — settlement is gradeCondorFromBars. */
 function ledgerRowStopped(r: GovernorLedgerRow): boolean {
+  const ec = r.entry_context as Record<string, unknown> | null;
+  if (ec?.play_type === "CONDOR" || ec?.condor) return false;
   if (r.plan_outcome === "stopped") return true;
   if (r.status !== "CLOSED") return false;
   return (
@@ -480,6 +484,9 @@ function ledgerRowRealizedPnlPct(r: GovernorLedgerRow): number | null {
   if (mark == null || !Number.isFinite(mark)) return null;
   const observed = r.last_mark_at != null || mark !== entry;
   if (!observed) return null;
+  const ec = r.entry_context as Record<string, unknown> | null;
+  const isCondor = ec?.play_type === "CONDOR" || Boolean(ec?.condor);
+  if (isCondor) return ((entry - mark) / entry) * 100;
   return ((mark - entry) / entry) * 100;
 }
 

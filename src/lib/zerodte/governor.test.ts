@@ -750,3 +750,35 @@ test("an OPEN row is not realized, however far its mark has moved", () => {
   assert.equal(snap.realized_losers, 0);
   assert.equal(snap.session_pnl_pct, 0);
 });
+
+// P1 regression (2026-09-06): condor trough is the winning direction — directional
+// stop latch must not count toward session-halt stop tally.
+test("a condor CLOSED on time-stop with trough below directional stop does NOT count as a stop", () => {
+  const snap = deriveGovernorFromLedger([
+    row({
+      ticker: "SPX",
+      status: "CLOSED",
+      entry_premium: 0.6,
+      trough_premium: 0.25,
+      last_mark: 0.25,
+      last_mark_at: "2026-09-06T15:50:00Z",
+      entry_context: { play_type: "CONDOR", condor: { net_credit: 60 } },
+    }),
+  ]);
+  assert.equal(snap.stops.length, 0, "condor must not contribute a false stop to the halt count");
+  assert.ok(snap.session_pnl_pct! > 0, "winning condor time-stop should count positive P&L");
+});
+
+test("a condor CLOSED on time-stop uses seller-framed P&L in the realized tally", () => {
+  const snap = deriveGovernorFromLedger([
+    row({
+      ticker: "SPX",
+      status: "CLOSED",
+      entry_premium: 0.6,
+      last_mark: 0.25,
+      last_mark_at: "2026-09-06T15:50:00Z",
+      entry_context: { play_type: "CONDOR" },
+    }),
+  ]);
+  assert.equal(snap.session_pnl_pct, 58.333333333333336);
+});

@@ -744,13 +744,19 @@ export function derivePlayStatus(input: {
   /** When true, skip the latched plan-stop close so the exit engine can honor a
    *  protective floor first (scan.ts / live-marks.ts run the engine on this pass). */
   deferPlanStop?: boolean;
+  /** Iron condor: entry_premium is net credit, mark is debit-to-close — directional
+   *  peak/trough TRIM/stop logic is inverted and must not fire. Hold to time-stop;
+   *  settlement is owned by gradeCondorFromBars. */
+  isCondor?: boolean;
 }): LivePlayState {
-  const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop } = input;
+  const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop, isCondor } = input;
   const stopPct = input.stopPct ?? PLAN_RULES.stop_pct;
   const targetPct = input.targetPct ?? PLAN_RULES.target_pct;
   const pnl =
     entryPremium != null && entryPremium > 0 && mark != null && mark > 0
-      ? Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100
+      ? isCondor
+        ? Math.round(((entryPremium - mark) / entryPremium) * 10000) / 100
+        : Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100
       : null;
 
   // The hard exit closes EVERYTHING — including rows with no entry premium or no
@@ -784,10 +790,10 @@ export function derivePlayStatus(input: {
   // exit — the trim/ratchet that this TRIM card actually guides), so what the member is
   // shown and what is booked to their record agree; the mechanical grade is kept beside
   // it only as a labeled hold-to-stop/target comparison.
-  if (peak != null && peak >= target) {
+  if (!isCondor && peak != null && peak >= target) {
     return { status: "TRIM", live_pnl_pct: pnl, closed_reason: null };
   }
-  if (!deferPlanStop && trough != null && trough <= stop) {
+  if (!isCondor && !deferPlanStop && trough != null && trough <= stop) {
     return { status: "CLOSED", live_pnl_pct: stopPct, closed_reason: "stopped" };
   }
   // Symmetric band per this function's own doc comment ("within 10% of entry") — a lower
