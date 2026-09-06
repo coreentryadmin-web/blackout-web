@@ -110,9 +110,10 @@ test("the sweep is age-gated, and the gate exceeds any real run", () => {
   // THE SAFETY ARGUMENT. Without an age gate this is exactly the delete-race that per-run identity
   // was built to remove — it would reap a LIVE concurrent run's user. The threshold must exceed the
   // longest harness here (the paired Largo audit, ~15 min).
-  const ms = /STALE_USER_MS = (\d+) \* 60_000/.exec(CODE)?.[1];
-  assert.ok(ms, "the threshold must be stated as minutes");
-  assert.ok(Number(ms) >= 30, `age gate ${ms}m must comfortably exceed the ~15m longest run`);
+  const defaultMs = /DEFAULT_STALE_USER_MS = (\d+) \* 60_000/.exec(CODE)?.[1];
+  assert.ok(defaultMs, "the default threshold must be stated as minutes");
+  assert.ok(Number(defaultMs) >= 30, `default age gate ${defaultMs}m must comfortably exceed the ~15m longest run`);
+  assert.match(CODE, /AUDIT_STALE_USER_MS/, "long stress runs may extend the gate via env without lowering the default");
   assert.match(CODE, /u\.created_at > cutoff\) continue/, "fresh users must be skipped");
 });
 
