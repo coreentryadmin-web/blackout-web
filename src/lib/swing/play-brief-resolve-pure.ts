@@ -2,6 +2,21 @@ import type { HorizonPlay } from "@/lib/horizon-plays";
 
 const WORKING = new Set(["OPEN", "HOLD", "TRIM"]);
 
+function fin(n: unknown): number | null {
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
+}
+
+/** Resolve IV rank for the play brief — fresh dossier read wins over commit-pinned feature_vector. */
+export function resolveBriefIvRank(input: {
+  dossierIvRank?: number | null;
+  featureVector?: Record<string, unknown> | null;
+}): number | null {
+  const fresh = fin(input.dossierIvRank);
+  if (fresh != null) return fresh;
+  const pinned = fin(input.featureVector?.iv_rank);
+  return pinned;
+}
+
 export type ParsedSwingPlayId = {
   ticker: string;
   positionId: number | null;

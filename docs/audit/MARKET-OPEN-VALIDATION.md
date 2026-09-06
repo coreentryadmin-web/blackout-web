@@ -3044,3 +3044,9 @@ than an end-of-session patch.
 - **What changed:** `levelProvenanceAsOf()` prefers `gex.as_of_et` / `vec.asOfEt`, falling back to `etStampFromIso()` on the raw ISO fields.
 - **RTH check:** `GET /api/market/swing/play-brief` for any row with levels — inspect `envelope.levels[].provenance.asOf`; each must read like `2026-09-06 09:32 ET`, never a `…Z` UTC instant.
 
+### 45. Ask Largo swing play-brief — ivRank never reached TerminalPlay — fix/swing-brief-ivrank-wire — 2026-09-06
+
+- **What was broken:** `ivRankCoaching()` reads `play.ivRank`, but `loadOpenTerminalPlay()` / lane resolution never set it. IV rank existed on `SwingDossier.ivRank` and commit `feature_vector.iv_rank`, so coaching silently never fired.
+- **What changed:** `resolveBriefIvRank()` overlays dossier IV rank (fresh) or commit-pinned `feature_vector.iv_rank` onto the resolved `TerminalPlay` for both open-ledger and lane paths.
+- **RTH check:** Open Ask Largo on a swing row with known elevated IV — confirm trade-manager coaching mentions IV rank (e.g. "vol elevated") when `ivRank >= 60`, not absent.
+

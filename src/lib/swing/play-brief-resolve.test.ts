@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { before, describe, mock } from "node:test";
 import type { HorizonPlay } from "@/lib/horizon-plays";
-import { pickLanePlayForBrief, parseSwingPlayId } from "./play-brief-resolve-pure";
+import { pickLanePlayForBrief, parseSwingPlayId, resolveBriefIvRank } from "./play-brief-resolve-pure";
 import { attachThesisExplanation, dossiersByTicker } from "./serving-lane";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier";
 import type { SwingReads } from "../swing-signals";
@@ -38,6 +38,18 @@ function laneRow(overrides: Partial<HorizonPlay> & { ticker: string }): HorizonP
 test("parseSwingPlayId: extracts ticker and position id", () => {
   assert.deepEqual(parseSwingPlayId("SWING:NRG"), { ticker: "NRG", positionId: null });
   assert.deepEqual(parseSwingPlayId("SWING:AAPL:36"), { ticker: "AAPL", positionId: 36 });
+});
+
+test("resolveBriefIvRank: dossier read wins over pinned feature_vector", () => {
+  assert.equal(resolveBriefIvRank({ dossierIvRank: 72, featureVector: { iv_rank: 40 } }), 72);
+});
+
+test("resolveBriefIvRank: falls back to commit-pinned iv_rank", () => {
+  assert.equal(resolveBriefIvRank({ dossierIvRank: null, featureVector: { iv_rank: 43 } }), 43);
+});
+
+test("resolveBriefIvRank: null when neither source present", () => {
+  assert.equal(resolveBriefIvRank({ dossierIvRank: null, featureVector: null }), null);
 });
 
 test("pickLanePlayForBrief: prefers live OPEN row over WATCH when status hint is HOLD", () => {

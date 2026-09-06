@@ -34,10 +34,11 @@ import { livePlayFromSwingPosition } from "@/lib/swing/live-plays";
 import {
   parseSwingPlayId,
   pickLanePlayForBrief,
+  resolveBriefIvRank,
   type ParsedSwingPlayId,
 } from "./play-brief-resolve-pure";
 
-export { parseSwingPlayId, pickLanePlayForBrief, type ParsedSwingPlayId };
+export { parseSwingPlayId, pickLanePlayForBrief, resolveBriefIvRank, type ParsedSwingPlayId };
 
 const WORKING = new Set(["OPEN", "HOLD", "TRIM"]);
 
@@ -214,7 +215,9 @@ export async function loadOpenTerminalPlay(
   const reads = discovery?.readsByTicker?.get(ticker.toUpperCase());
   lanePlay = attachThesisExplanation(lanePlay, dossier, reads);
 
-  return terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay, row.id));
+  const play = terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay, row.id));
+  const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank, featureVector: row.feature_vector });
+  return ivRank != null ? { ...play, ivRank } : play;
 }
 
 /**
@@ -262,8 +265,12 @@ export async function resolveSwingPlayForBrief(
 
   const lanePlay = pickLanePlayForBrief(rows, ticker, { status, strike, right });
   if (lanePlay) {
+    const discovery = await discoverSwingFromPersisted().catch(() => null);
+    const dossier = discovery?.dossiers?.find((d) => d.ticker.toUpperCase() === ticker);
+    const play = terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay));
+    const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank });
     return {
-      play: terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay)),
+      play: ivRank != null ? { ...play, ivRank } : play,
       scanAsOf,
       scanSessionDay,
       laneRows: rows,

@@ -8,6 +8,7 @@ import {
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
+  ivRankCoaching,
   manageLifecycleCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
@@ -297,4 +298,15 @@ test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   assert.match(line!, /slippage/i);
 });
 
+test("ivRankCoaching: fires when play carries ivRank", () => {
+  const elevated = ivRankCoaching(play({ ivRank: 75 }));
+  assert.match(elevated!, /IV rank 75/i);
+  assert.match(elevated!, /vol elevated/i);
+
+  const cheap = ivRankCoaching(play({ ivRank: 20 }));
+  assert.match(cheap!, /IV rank 20/i);
+  assert.match(cheap!, /vol cheap/i);
+
+  assert.equal(ivRankCoaching(play({ ivRank: null })), null);
+});
 
