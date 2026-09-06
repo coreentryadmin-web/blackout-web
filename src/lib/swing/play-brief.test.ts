@@ -299,6 +299,24 @@ test("composeSwingPlayBrief: swing-scan evidence/provenance use the Largo C1 ET 
   assert.doesNotMatch(freshness!.body, /19:30:00\.000Z/, "Data freshness must not print a raw ISO scan timestamp");
 });
 
+test("composeSwingPlayBrief: prior-session scan evidence uses stale freshness, not recent", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: "2026-09-05T20:00:00.000Z",
+    scanSessionDay: "2026-09-05",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const scanEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Swing discovery scan as of"));
+  assert.ok(scanEvidence, "expected swing-scan evidence");
+  assert.equal(scanEvidence?.provenance?.freshness, "stale", "prior-session scan must not claim recent freshness");
+});
+
 test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

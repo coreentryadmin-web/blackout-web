@@ -607,7 +607,7 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   const lines: string[] = [];
   if (play.markAsOf) {
     lines.push(`Option mark as of **${etStampFromIso(play.markAsOf)}**`);
-  } else if (play.markIsSync) {
+  } else if (play.markIsSync && play.status !== "CLOSED") {
     lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
   }
   if (scanAsOf) {
@@ -629,7 +629,11 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
     );
   }
   if (!lines.length) return null;
-  return { title: "Data freshness", body: lines.join("\n"), bias: play.markIsSync ? "bearish" : "neutral" };
+  return {
+    title: "Data freshness",
+    body: lines.join("\n"),
+    bias: play.markIsSync && play.status !== "CLOSED" ? "bearish" : "neutral",
+  };
 }
 
 /** Build all intelligence sections for the current play state. */

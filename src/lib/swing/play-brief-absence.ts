@@ -76,7 +76,8 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // tape" from this exact boolean, but that prose never reached the structured C3 channel — a
   // consumer reading unavailableSources alone (rather than scraping the narrative) saw nothing
   // wrong. Same class of gap this file already closed for HELIX flow staleness.
-  if (ctx.play?.markIsSync === true) {
+  // Closed plays have no live mark — markIsSync is always true when markAsOf is absent, but exit P&L is settled.
+  if (ctx.play?.markIsSync === true && ctx.play?.status !== "CLOSED") {
     out.push({ source: "option mark", reason: "sync quote without freshness timestamp" });
   }
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared

@@ -232,13 +232,20 @@ test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope 
   // dataHonestyCoaching() already narrates "mark not synced to live tape" from this exact
   // boolean — this asserts the same fact reaches the structured C3 channel, not just prose.
   const ctx = {
-    play: { markIsSync: true },
+    play: { markIsSync: true, status: "OPEN" },
   } as SwingPlayBriefContext;
 
   const sources = collectBriefUnavailableSources(ctx);
   assert.ok(
     sources.some((s) => s.source === "option mark" && s.reason === "sync quote without freshness timestamp"),
   );
+});
+
+test("collectBriefUnavailableSources: closed play with markIsSync does not surface option mark absence", () => {
+  const ctx = {
+    play: { markIsSync: true, status: "CLOSED" },
+  } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "option mark"));
 });
 
 test("collectBriefUnavailableSources: a live-synced mark (markIsSync false/undefined) does not surface", () => {
