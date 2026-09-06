@@ -29,6 +29,15 @@ export function parseSwingPlayId(playId: string): ParsedSwingPlayId {
   return { ticker, positionId: pos != null && Number.isFinite(pos) ? pos : null };
 }
 
+/** Blank query ticker must not block playId-embedded ticker fallback (Largo play-brief route). */
+export function resolveBriefTicker(
+  inputTicker: string | undefined | null,
+  parsed: ParsedSwingPlayId,
+): string {
+  const explicit = inputTicker?.trim();
+  return (explicit || parsed.ticker || "").toUpperCase();
+}
+
 function contractMatches(play: HorizonPlay, strike: number | null, right: "C" | "P" | null): boolean {
   if (strike == null) return true;
   if (play.contract.strike !== strike) return false;

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { before, describe, mock } from "node:test";
 import type { HorizonPlay } from "@/lib/horizon-plays";
-import { pickLanePlayForBrief, parseSwingPlayId, resolveBriefIvRank } from "./play-brief-resolve-pure";
+import { pickLanePlayForBrief, parseSwingPlayId, resolveBriefIvRank, resolveBriefTicker } from "./play-brief-resolve-pure";
 import { attachThesisExplanation, dossiersByTicker } from "./serving-lane";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier";
 import type { SwingReads } from "../swing-signals";
@@ -38,6 +38,14 @@ function laneRow(overrides: Partial<HorizonPlay> & { ticker: string }): HorizonP
 test("parseSwingPlayId: extracts ticker and position id", () => {
   assert.deepEqual(parseSwingPlayId("SWING:NRG"), { ticker: "NRG", positionId: null });
   assert.deepEqual(parseSwingPlayId("SWING:AAPL:36"), { ticker: "AAPL", positionId: 36 });
+});
+
+test("resolveBriefTicker: empty string falls back to playId-embedded ticker", () => {
+  const parsed = parseSwingPlayId("SWING:NVDA");
+  assert.equal(resolveBriefTicker("", parsed), "NVDA");
+  assert.equal(resolveBriefTicker("   ", parsed), "NVDA");
+  assert.equal(resolveBriefTicker(undefined, parsed), "NVDA");
+  assert.equal(resolveBriefTicker("nrg", parsed), "NRG");
 });
 
 test("resolveBriefIvRank: dossier read wins over pinned feature_vector", () => {
@@ -294,5 +302,26 @@ describe("resolveSwingPlayForBrief: WATCH lane restores factors/regime (parity w
     assert.ok(resolved, "the WATCH lane play must resolve");
     assert.ok((resolved!.play.factors?.length ?? 0) > 0, "factors must be restored from dossier");
     assert.ok(resolved!.play.regime != null, "regime must be restored from dossier for WATCH rows");
+  });
+
+  test("empty ticker string falls back to playId-embedded ticker (route omits param → 404 bug)", async () => {
+    mockOpenRows = [];
+    mockLaneRows = [
+      laneRow({
+        ticker: "NVDA",
+        status: "WATCH",
+        factors: [],
+        regime: null,
+      }),
+    ];
+    mockDiscovered = {
+      dossiers: [buildSwingDossier(dossierInput("NVDA"))],
+      plays: [],
+      readsByTicker: new Map([["NVDA", bullReads]]),
+    };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:NVDA", ticker: "" });
+    assert.ok(resolved, "empty ticker must not block playId ticker fallback");
+    assert.equal(resolved!.play.ticker, "NVDA");
   });
 });

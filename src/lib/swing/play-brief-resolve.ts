@@ -33,6 +33,7 @@ import { rowsForSwingSection } from "@/features/nighthawk/command-deck/swing-sec
 import { livePlayFromSwingPosition } from "@/lib/swing/live-plays";
 import {
   parseSwingPlayId,
+  resolveBriefTicker,
   pickLanePlayForBrief,
   resolveBriefIvRank,
   type ParsedSwingPlayId,
@@ -233,7 +234,7 @@ export async function resolveSwingPlayForBrief(
   laneRows: HorizonPlay[];
 } | null> {
   const parsed = parseSwingPlayId(input.playId);
-  const ticker = (input.ticker ?? parsed.ticker).toUpperCase();
+  const ticker = resolveBriefTicker(input.ticker, parsed);
   if (!ticker) return null;
 
   const positionId =
