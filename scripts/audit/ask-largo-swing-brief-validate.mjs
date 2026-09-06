@@ -135,7 +135,7 @@ async function extractPlayMeta(page) {
 }
 
 function expectedSections(tab) {
-  if (tab === "OPEN") return ["Verdict", "Management"];
+  if (tab === "OPEN") return ["Verdict", "Management", "Trade manager read"];
   if (tab === "WATCH") return ["Verdict", "Entry"];
   return ["Verdict", "Outcome"];
 }
