@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:31:06.424Z",
+  "updated_at": "2026-09-06T11:59:51.639Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:37:21.095Z",
-      "lease_until": "2026-09-06T11:07:21.095Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T11:52:10.449Z",
+      "lease_until": "2026-09-06T13:22:10.449Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -31,6 +31,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4235": {
+      "pr": 4235,
+      "head_sha": "03396b4b1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T11:59:39.021Z",
+      "safe_to_merge": true
+    },
+    "pr-4236": {
+      "pr": 4236,
+      "head_sha": "d63b2af3f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T11:59:39.360Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +60,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88914ce012cddb8265605ba923ff8aa3899db711",
+    "last_main_sha": "91bc9f5cc9c3b8da8d2ea79314d9f505df808c28",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T09:39:38Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
-    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
+    "last_deploy_at": "2026-09-06T11:53:05Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34031358175",
+    "last_deploy_sha": "131596890123fc1b13b79c0a8177c96a0ff2fa70"
   },
   "events": [
     {
@@ -557,9 +573,102 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T11:59:39.022Z",
+      "type": "pr_review",
+      "pr": 4235,
+      "head_sha": "03396b4b1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T11:59:39.021Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T11:59:39.360Z",
+      "type": "pr_review",
+      "pr": 4236,
+      "head_sha": "d63b2af3f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T11:59:39.360Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T11:59:46.656Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T11:59:46.657Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d1074965-f82c-4e60-9a1d-fe7131d25e4c",
+      "summary": "PR-event: rebased+#4232 approved; reviewed+#4235+#4236 approved; #4230 merged; validate:deploy GREEN; ops:collect 0"
+    },
+    {
+      "at": "2026-09-06T11:59:50.732Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T11:59:51.638Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T11:59:51.639Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "52b64717-6ca9-4613-ada3-77f9a97ca496",
+      "summary": "PR-event: rebased+#4232 approved; reviewed+#4235+#4236 approved; #4230 merged; validate:deploy GREEN; ops:collect 0"
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4237,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4227/#4231 merged, #4232 approved",
+      "branch": "cursor/autopilot-work-loop-b011",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T11:59:42Z"
+    },
+    {
+      "number": 4236,
+      "title": "fix(swing): convert option-mark timestamps to Largo C1 ET stamp",
+      "branch": "fix/swing-markasof-raw-iso-not-et",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:59:39Z"
+    },
+    {
+      "number": 4235,
+      "title": "fix(largo): round floats at query API boundary",
+      "branch": "fix/largo-query-round-floats-api-boundary",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:59:38Z"
+    },
+    {
+      "number": 4232,
+      "title": "fix(swing): derive chart-technicals bias from the technicals, not play direction",
+      "branch": "fix/swing-chart-technicals-bias-direction-echo",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T11:59:27Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
