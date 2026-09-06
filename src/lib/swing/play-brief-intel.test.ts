@@ -681,7 +681,7 @@ test("dataFreshnessSection: stale GEX matrix warns when ctx.vector is null (Larg
   assert.match(section!.body, /dealer posture may lag spot/);
 });
 
-test("gexPostureSection: stale matrix prefixes Last snapshot, not live dealer read (Largo C2)", () => {
+test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma posture (Largo C2)", () => {
   const section = gexPostureSection({
     play: fixturePlay(),
     asOf: "2026-09-06 10:00 ET",
@@ -705,7 +705,8 @@ test("gexPostureSection: stale matrix prefixes Last snapshot, not live dealer re
   assert.equal(section!.title, "GEX posture");
   assert.match(section!.body, /Last snapshot/i);
   assert.match(section!.body, /200s old/i);
-  assert.match(section!.body, /long gamma/i);
+  assert.doesNotMatch(section!.body, /long gamma/i, "stale GEX-only posture must not render as live");
+  assert.match(section!.body, /Net GEX/i, "non-posture fields may still render with stale warning");
 });
 
 test("watchForSection: stale GEX-only flip and put wall omitted from watch levels (Largo C2)", () => {
