@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T20:27:57.989Z",
+  "updated_at": "2026-09-06T21:33:09.628Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T21:04:39.394Z",
+      "lease_until": "2026-09-06T22:34:39.394Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T21:10:06.379Z",
+      "lease_until": "2026-09-06T22:40:06.379Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -47,16 +59,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T21:10:06.379Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "edb1c8a3e2e5265d61b562f6b81ba1ee86e69d28",
+    "last_main_sha": "b7f13b02d745999543f1cd300d6ad446f2b951d1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T21:25:03Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34061003124",
+    "last_deploy_sha": "2a2308f0e95b5a032e57c938ff42a0da209e2fb9"
   },
   "events": [
     {
@@ -788,9 +801,71 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T21:09:59.100Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T21:10:06.379Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T21:33:05.747Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T21:33:05.747Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b7ea935f-c935-49bf-b9d5-cd579d5da606",
+      "summary": "PR-event cycle (#4387 merged): Largo stale Vector coaching bias fix deployed. pr-sweep empty (0 open PRs). ops:collect 0. validate:deploy GREEN, validate:api-auth GREEN, validate:platform-integrity 14/14 pass. ECR deploy run 34059904386 still rolling ECS web (started 21:04 UTC). Off-hours — RTH skipped. Next: confirm ECR completion + post-deploy smoke."
+    },
+    {
+      "at": "2026-09-06T21:33:09.628Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4391,
+      "title": "fix(largo): surface dissenting MACD vote in swing chart-read narrative",
+      "branch": "fix/swing-technicals-coaching-omits-macd",
+      "author": "app/claude",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T21:30:23Z"
+    },
+    {
+      "number": 4390,
+      "title": "fix(largo): nightly stress router + honesty false BAD cases",
+      "branch": "fix/largo-stress-nightly-bad-cases",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T21:30:09Z"
+    },
+    {
+      "number": 4389,
+      "title": "fix(largo): gate stale Vector EMA/regime in counter-thesis",
+      "branch": "fix/largo-stale-counter-thesis-vector",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T21:27:27Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
