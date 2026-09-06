@@ -493,6 +493,33 @@ test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, 
   assert.equal(callWall?.provenance?.freshness, "stale");
 });
 
+test("composeSwingPlayBrief: dark pool envelope levels attribute Vector provenance, not HELIX (C8)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: "2026-09-05T20:00:00.000Z",
+      asOfEt: "2026-09-05 16:00 ET",
+      spot: 24.5,
+      darkPoolLevels: [{ strike: 99, premium: 5_000_000, pct: 35 }],
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const darkPool = brief.envelope.levels?.find((l) => l.label === "dark pool");
+  assert.ok(darkPool, "dark pool level must be present");
+  assert.equal(
+    darkPool?.provenance?.source,
+    "Vector",
+    "dark pool levels come from Vector full-state, not HELIX tape",
+  );
+});
+
 test("composeSwingPlayBrief: envelope level provenance uses ET stamps, not raw UTC ISO (C1)", () => {
   const staleAsOf = "2026-09-05T20:00:00.000Z";
   const ctx: SwingPlayBriefContext = {
