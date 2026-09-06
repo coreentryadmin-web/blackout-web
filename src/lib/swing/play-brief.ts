@@ -141,7 +141,21 @@ function levelsFromContext(ctx: SwingPlayBriefContext): BieLevel[] {
       provenance: { source: "Vector", freshness: "recent" },
     });
   }
-  return levels.slice(0, 8);
+  for (const dp of vec?.darkPoolLevels ?? []) {
+    levels.push({
+      label: "dark pool",
+      price: dp.strike,
+      provenance: { source: "HELIX", freshness: "recent" },
+    });
+  }
+  const king = gex?.gex_king_strike;
+  if (king != null) {
+    levels.push({ label: "GEX king", price: king, provenance: { source: "GEX", freshness: "recent" } });
+  }
+  if (vec?.maxPain != null) {
+    levels.push({ label: "max pain", price: vec.maxPain, provenance: { source: "Vector", freshness: "recent" } });
+  }
+  return levels.slice(0, 10);
 }
 
 function evidenceFromContext(ctx: SwingPlayBriefContext): BieEvidence[] {
