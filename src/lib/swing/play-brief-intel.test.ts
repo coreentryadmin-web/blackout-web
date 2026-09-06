@@ -8,6 +8,7 @@ import {
   dataFreshnessSection,
   deskConsensusSection,
   flowIntelSection,
+  gexPostureSection,
   holdPlanSection,
   lessonsSection,
   meridianCatalystSection,
@@ -660,6 +661,33 @@ test("dataFreshnessSection: stale GEX matrix warns when ctx.vector is null (Larg
   const section = dataFreshnessSection(ctx);
   assert.match(section!.body, /GEX matrix \*\*200s\*\* old/);
   assert.match(section!.body, /dealer posture may lag spot/);
+});
+
+test("gexPostureSection: stale matrix prefixes Last snapshot, not live dealer read (Largo C2)", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.equal(section!.title, "GEX posture");
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /200s old/i);
+  assert.match(section!.body, /long gamma/i);
 });
 
 test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {

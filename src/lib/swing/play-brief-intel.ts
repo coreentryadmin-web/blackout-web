@@ -4,7 +4,12 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { playExpectsLiveOptionMark, gexMatrixAgeMs, GEX_MATRIX_STALE_MS } from "./play-brief-absence";
+import {
+  playExpectsLiveOptionMark,
+  gexMatrixAgeMs,
+  gexMatrixStale,
+  GEX_MATRIX_STALE_MS,
+} from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 import { laneRankSection } from "./play-brief-lane-rank";
@@ -579,7 +584,15 @@ export function deskConsensusSection(eco: EcosystemContext | null, play: Termina
 export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | null {
   const gex = ctx.ecosystem?.gex_positioning;
   if (!gex) return null;
+  const readMs = Date.now();
+  const stale = gexMatrixStale(gex, readMs);
+  const ageMs = stale ? gexMatrixAgeMs(gex, readMs) : null;
   const lines: string[] = [];
+  if (stale) {
+    lines.push(
+      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — dealer posture may lag spot.`,
+    );
+  }
   if (gex.gamma_posture) {
     const posture =
       gex.gamma_posture === "long"
