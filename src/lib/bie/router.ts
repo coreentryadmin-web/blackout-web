@@ -416,7 +416,12 @@ const PLATFORM_READ_RE =
 // than falling through to Claude or returning a generic answer. Added guard BEFORE REASONING_RE so
 // it catches them before "explain" is tested.
 const OUT_OF_SCOPE_RE =
-  /\b(write me|tell me|make me|create|compose|generate|write a|tell a|make a)\s+(poem|joke|story|song|recipe|code|app|game|essay|article|movie|script)\b|\bexplain\b.{0,40}(quantum|physics|math|relativity|thermodynamics|calculus)\b|\bhow does\b.{0,40}(quantum|physics|relativity)\b/i;
+  /\b(write me|tell me|make me|create|compose|generate|write a|tell a|make a)\s+(poem|joke|story|song|recipe|code|app|game|essay|article|movie|script)\b|\bexplain\b.{0,40}(quantum|physics|math|relativity|thermodynamics|calculus)\b|\bhow does\b.{0,40}(quantum|physics|relativity)\b|\bbook\b.{0,16}\b(flight|hotel|trip|travel)\b|\btranslate\b.{0,20}\b(to|into)\b/i;
+
+/** Member asks outside the trading desk — stress bank marks these with `intent: null`. */
+export function isOutOfScopeQuestion(question: string): boolean {
+  return OUT_OF_SCOPE_RE.test(question.trim());
+}
 
 /** Questions with these shapes need REASONING, not lookup — Claude unless a narrower BIE branch matched first. */
 const REASONING_RE =
@@ -788,6 +793,7 @@ export function isSpxDeskFallbackQuestion(question: string): boolean {
 
 export function classifyBieStagingFallback(question: string): BieRoute {
   const q = question.trim();
+  if (isOutOfScopeQuestion(q)) return { intent: "clarify_read", ticker: null };
   if (isNonsenseQuestion(q)) return { intent: "clarify_read", ticker: null };
   if (wantsHonestUnknown(q)) return { intent: "clarify_read", ticker: null };
   const narrowStructure = narrowStructureRoute(q);

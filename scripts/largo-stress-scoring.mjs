@@ -22,7 +22,15 @@ export function scoreAnswer(entry, route, answer, status) {
   }
   if (entry.requireTopic && !entry.requireTopic.test(answer)) issues.push("missed-topic");
   for (const t of toneIssues(answer ?? "")) issues.push(`tone-${t}`);
-  for (const h of honestyIssues(answer ?? "", route?.intent)) issues.push(`honesty-${h}`);
+  const skipUnnumberedHonesty =
+    entry.intent === null ||
+    route?.intent == null ||
+    (route?.intent === "clarify_read" &&
+      /\b(outside|out of scope|can't help|cannot help|don't (book|translate)|only (assist|help).{0,40}(market|trading|desk))\b/i.test(answer ?? ""));
+  for (const h of honestyIssues(answer ?? "", route?.intent)) {
+    if (h === "no-grounded-numbers" && skipUnnumberedHonesty) continue;
+    issues.push(`honesty-${h}`);
+  }
   const verdict =
     issues.length === 0
       ? "OK"

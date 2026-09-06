@@ -81,7 +81,7 @@ export function honestyIssues(answer: string, intent?: string | null): string[] 
   if (/Zero Claude cost/i.test(answer) && intent !== "platform_read" && intent !== "market_context") {
     issues.push("marketing-tag");
   }
-  if (/\b(unavailable|no data|not available|couldn't compose|rephrase)\b/i.test(answer)) {
+  if (/\b(unavailable|no data|not available|couldn't compose|rephrase|outside (my|our)|out of scope|can't help|cannot help|don't (book|translate)|only (assist|help|answer).{0,40}(market|trading|desk|platform)|not (a|able to) (book|translate))\b/i.test(answer)) {
     return issues;
   }
   if (answer.length > 80 && !/\d/.test(answer) && !/\b(none|flat|inactive|scanning)\b/i.test(answer)) {
