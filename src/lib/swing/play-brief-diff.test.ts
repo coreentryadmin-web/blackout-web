@@ -100,6 +100,7 @@ test("diffBriefSnapshots: detects trim rail fires", () => {
   assert.ok(lines.some((l) => l.includes("Trim rail")));
 });
 
+test("end-to-end: a HELIX call-flow build now actually reaches the diff engine (was previously always null)", () => {
   const baseEnvelope = env();
   const prevResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 500_000, putPremium: 400_000 } };
   const nextResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 900_000, putPremium: 380_000 } };
