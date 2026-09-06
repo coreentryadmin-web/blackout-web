@@ -1,40 +1,51 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T18:33:51.807Z",
+  "updated_at": "2026-09-06T18:35:35.003Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-06T19:51:41.429Z",
+      "lease_until": "2026-09-06T20:05:05.284Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "5892cccd-eb35-4496-8976-8081e9d32349"
+      "run_id": "b4c493b0-3f4b-4888-824a-5b26833a5051",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-06T19:51:41.429Z",
+      "lease_until": "2026-09-06T20:05:05.285Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "5892cccd-eb35-4496-8976-8081e9d32349"
+      "run_id": "b4c493b0-3f4b-4888-824a-5b26833a5051"
     }
   },
-  "reviews": {},
+  "reviews": {
+    "pr-4362": {
+      "pr": 4362,
+      "head_sha": "b58ed8831",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-06T18:35:34.107Z",
+      "safe_to_merge": false
+    }
+  },
   "agents": {
     "claude": {
       "status": "unknown",
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T18:35:23.851Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
@@ -82,6 +93,47 @@
       "agent": "cursor",
       "run_id": "2baa1799-9e26-4d04-9221-4f51e566742b",
       "summary": "Main@847e383f0 GREEN. #4359+#4360 merged (approved). validate:deploy GREEN, ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T18:35:05.284Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:35:06.143Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:35:23.851Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T18:35:34.107Z",
+      "type": "pr_review",
+      "pr": 4362,
+      "head_sha": "b58ed8831",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-06T18:35:34.107Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T18:35:35.003Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T18:35:35.003Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "aba40718-2c11-44b7-8e82-0f58e90a51c7",
+      "summary": "Main@847e383f0 GREEN (CI notifications ack). WAIT #4362 admin double-count — stale base reverts #4359/#4360. validate:deploy GREEN, ops:collect 0."
     }
   ],
   "open_prs": [
@@ -93,7 +145,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T18:28:11Z"
+      "updated_at": "2026-09-06T18:35:34Z"
     }
   ]
 }
