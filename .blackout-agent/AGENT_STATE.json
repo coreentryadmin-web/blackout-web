@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:02:00.843Z",
+  "updated_at": "2026-09-06T16:02:37.524Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -728,6 +728,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:02:37.523Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:02:37.524Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "940d2700-545e-4039-8e09-4cc60618fa23",
+      "summary": "COMPLETE: #4311 merged. Swing Largo wave #4300-4311 on main. validate:deploy + rth-lifecycle GREEN. ops:collect 0. open PRs 0. Handoff branch cursor/handoff-20260906-1602 pushed."
     }
   ],
   "open_prs": [],
