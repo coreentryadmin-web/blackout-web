@@ -535,6 +535,11 @@ export function technicalsCoaching(vec: VectorFullState | null, play: TerminalPl
     const word = t.emaStack === "up" ? "bull stack" : t.emaStack === "down" ? "bear stack" : "mixed EMAs";
     parts.push(word);
   }
+  // technicalsBias() below counts this vote toward bull/bear — surface it, or a MACD dissenting
+  // from the printed bias (e.g. bear MACD inside an otherwise-bullish read) is invisible here.
+  if (t.macd) {
+    parts.push(`MACD **${t.macd === "bull" ? "bullish" : "bearish"}**`);
+  }
   if (t.structure?.type) {
     parts.push(
       `structure **${t.structure.type.replace(/_/g, " ")} ${t.structure.direction}** @ **${t.structure.level.toFixed(2)}**`,
