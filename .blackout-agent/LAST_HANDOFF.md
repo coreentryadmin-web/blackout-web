@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T15:51:51.386Z
-**Run:** 46739558-6d30-402f-97d7-1f546b1d2fb6
+**At:** 2026-09-06T15:53:35.010Z
+**Run:** a258ae92-7330-449d-bb13-dd2def910289
 
 ## Summary
 
-Merge landed def4d529 (#4309 Largo C2 Vector). validate:deploy GREEN; ops:collect 0. Peer-reviewed #4314 APPROVED (SPX King node drift fix, 4/4 tests). Pre-reviewed #4310 verify GREEN + #4311 verify pending — both Cursor swing Largo fixes awaiting Claude sign-off. Open: #4310 #4311 #4314(draft).
+Cycle complete. main
 
 ## Deploy
 
