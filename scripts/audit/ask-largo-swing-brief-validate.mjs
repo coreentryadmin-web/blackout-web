@@ -140,8 +140,8 @@ function expectedSections(tab) {
   return ["Verdict", "Outcome"];
 }
 
-function validateTabV4(tab: string, panel: { sections: string[]; bodySnippet?: string }, apiCalls: { sections?: string[] }[] = []) {
-  const issues: string[] = [];
+function validateTabV4(tab, panel, apiCalls = []) {
+  const issues = [];
   if (tab === "OPEN") {
     const collapsed = ["Hold plan", "GEX posture", "Flow & positioning"];
     for (const title of collapsed) {
