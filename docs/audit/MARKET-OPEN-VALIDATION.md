@@ -153,6 +153,16 @@ manager read), not repeated under Hold plan.
 
 ---
 
+### 0a-1ad. Stale HELIX mislabeled "quiet" in dataHonestyCoaching — fix/swing-brief-helix-stale-coaching-copy (pending)
+
+**What was broken:** When `flow_feed_fresh === false`, `dataHonestyCoaching()` said "HELIX feed quiet" while `unavailableSources` and `dataFreshnessSection()` correctly labeled pipeline **stale** — C3 absence contradiction.
+
+**Fix:** Align coaching copy: "HELIX pipeline stale — flow read unavailable, not evidence of quiet tape".
+
+**Check at the open:** During HELIX pipeline stale window, open Ask Largo on a swing row — Trade manager read Data caveat must say **pipeline stale**, not "feed quiet".
+
+---
+
 ### 0a-1ac. HELIX put-only flow build missed by "what changed" diff — fix/swing-brief-helix-put-flow-diff (pending)
 
 **What was broken:** `diffBriefSnapshots()` only entered the HELIX flow-shift branch when call premium moved >$50k. Put-building was nested inside that branch, so flat call + surging puts emitted zero diff lines on refresh.
