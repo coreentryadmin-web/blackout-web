@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T00:52:56.338Z",
+  "updated_at": "2026-09-06T01:00:57.217Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T00:51:10.189Z",
-      "lease_until": "2026-09-06T02:21:53.689Z",
+      "claimed_at": "2026-09-06T00:39:21.007Z",
+      "lease_until": "2026-09-06T02:09:21.007Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "28e7d64d-7e64-4a68-bffa-5d8c2ab0e3bd"
+      "run_id": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T00:51:52.938Z",
-      "lease_until": "2026-09-06T02:21:53.690Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-06T00:19:21.067Z",
+      "lease_until": "2026-09-06T01:49:21.067Z",
+      "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "28e7d64d-7e64-4a68-bffa-5d8c2ab0e3bd",
+      "run_id": null,
       "title": null
     }
   },
@@ -266,7 +266,31 @@
       "agent": "cursor",
       "run_id": "61203432-236b-46b6-829d-3b24a77b6608",
       "summary": "workflow_run cycle: synced main@38939b0bc. Lifecycle GREEN (ops:collect 0, validate:deploy/api-auth/platform-integrity 14/14/seo 22/22, rth-open off-hours skip). pr-sweep empty — 0 open PRs for peer review. ECR deploy run 34001859806 stuck pending (no jobs, GH queue); prod HTTP smoke GREEN. npm ci restored (missing pg). Weekend — RTH deferred to Mon 09:00 ET."
+    },
+    {
+      "at": "2026-09-06T01:00:57.216Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T01:00:57.217Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "df19b43c-5977-4d43-a72c-42c0a1b259c2",
+      "summary": "Merge-wave cycle @38939b0bc: peer-reviewed #4069 HELIX DarkPool bias fix (APPROVED, merged); #4068 swing Ask Largo v3 on main; lifecycle GREEN (deploy/api-auth/platform-integrity 14/14, seo 22/22); ops:collect 0; ECR 34001859806 pending (GH queue). Weekend — RTH skipped."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4071,
+      "title": "chore(blackout-agent): cursor workflow_run handoff — lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T00:53:12Z"
+    }
+  ]
 }
