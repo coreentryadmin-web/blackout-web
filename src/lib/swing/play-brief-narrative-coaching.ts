@@ -3,7 +3,13 @@
  * Pure + deterministic. Consumed by play-brief-narrative.ts.
  */
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { playExpectsLiveOptionMark, resolveGammaPosture, vectorSnapshotStale } from "./play-brief-absence";
+import {
+  gexMatrixAgeMs,
+  gexMatrixStale,
+  playExpectsLiveOptionMark,
+  resolveGammaPosture,
+  vectorSnapshotStale,
+} from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
@@ -586,6 +592,13 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   }
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     warnings.push(`Vector **${Math.round(vec.dataAgeMs / 1000)}s** stale`);
+  }
+  const gex = ctx.ecosystem?.gex_positioning;
+  const gexAgeMs = gexMatrixAgeMs(gex);
+  if (gexMatrixStale(gex) && gexAgeMs != null) {
+    warnings.push(
+      `GEX matrix **${Math.round(gexAgeMs / 1000)}s** stale — dealer posture may lag spot`,
+    );
   }
   if (ctx.ecosystem?.flow_feed_fresh === false) {
     warnings.push(

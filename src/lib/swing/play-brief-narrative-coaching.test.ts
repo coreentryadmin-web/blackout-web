@@ -508,6 +508,23 @@ test("dataHonestyCoaching: stale HELIX pipeline warns stale, not quiet", () => {
   assert.doesNotMatch(line!, /feed quiet/i);
 });
 
+test("dataHonestyCoaching: stale GEX matrix warns dealer posture may lag (Largo C2)", () => {
+  const line = dataHonestyCoaching(
+    ctx({
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          matrix_age_sec: 180,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play(),
+  );
+  assert.match(line!, /GEX matrix \*\*180s\*\* stale/);
+  assert.match(line!, /dealer posture may lag spot/);
+});
+
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
   assert.match(line!, /slippage/i);
