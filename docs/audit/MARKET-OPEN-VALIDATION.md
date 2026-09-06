@@ -120,7 +120,15 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
-### 0a-1p. Stale HELIX coached cross-desk friction + counter-thesis — fix/swing-stale-helix-crossdesk (pending)
+### 0a-1p. Swing serving-snapshot TTL (26h) doesn't survive the weekend — silently zeroed thesis-health enrichment for every live position — fix/swing-serving-snapshot-weekend-ttl (PR #4202, pending)
+
+**What was broken:** `SWING_SERVING_TTL_SEC` was `26h`, sized for the ordinary weekday scan cadence but `swing-discovery` is `weekdays_only` — so the Friday POST_CLOSE write expires Saturday evening and the persisted snapshot stays empty through Monday morning (~35h+/week). Both `getSwingServingLane` (main board) and `play-brief-resolve.ts`'s `loadOpenTerminalPlay` (Ask Largo, #4182) key their `attachThesisExplanation` factors/regime enrichment off this one snapshot, so an expired key silently reverted **every live committed position's** Ask Largo thesis-health panel to the generic `46% · Degraded`/`unread` defaults — confirmed live 2026-09-06 (Sunday): all 4 open positions (NRG:34, NN:32, CG:25, CRWD:19) byte-identical to the pre-#4182 audit snapshot, `scanAsOf: null` on `/horizons?view=swings`.
+
+**Fix:** `SWING_SERVING_TTL_SEC` raised `26h → 120h` (5 days), sized past the measured worst ordinary gap (Friday POST_CLOSE → Monday PRE_OPEN, ~58h) plus headroom for a Monday holiday (~82h). New regression test derives the worst-case gap from `SWING_SCAN_PHASES` itself so it can't silently drift again.
+
+**Check at the open (Monday 2026-09-07, a market holiday — so also check Tuesday):** `GET /api/market/nighthawk/horizons?view=swings` should show a non-null `scanAsOf`/`scanSessionDay` even first thing Monday/Tuesday morning before the day's own scan has run; `GET /api/market/swing/play-brief` for any live committed position should show a "Thesis health" regime pillar that is NOT the generic `unread`/`46% · Degraded` default if a matching discovery dossier exists from the prior week.
+
+### 0a-1q. Stale HELIX coached cross-desk friction + counter-thesis — fix/swing-stale-helix-crossdesk (pending)
 
 **What was broken:** When `flow_feed_fresh === false`, Ask Largo still cited stale `recent_flow` in `crossDeskCoaching` (`HELIX call-led` / `HELIX put-led`) and `counterThesisLine`, contradicting the C2/C3 absence contract already enforced in `flowNarrative` and `collectBriefUnavailableSources`.
 

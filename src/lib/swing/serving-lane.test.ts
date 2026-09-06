@@ -4,8 +4,10 @@ import {
   getSwingServingLane,
   discoverSwingFromPersisted,
   persistSwingServingSnapshot,
+  SWING_SERVING_TTL_SEC,
   type SwingDiscoveryLike,
 } from "./serving-lane.ts";
+import { SWING_SCAN_PHASES } from "./scan-cadence.ts";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier.ts";
 import type { SwingReads } from "../swing-signals.ts";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context.ts";
@@ -409,4 +411,30 @@ test("getSwingServingLane stamps scanAsOf from persisted snapshot", async () => 
   const lane = await getSwingServingLane({ discover: async () => ({ dossiers: [], plays: [] }) });
   assert.equal(lane.scanAsOf, "2026-07-24T20:00:00.000Z");
   assert.equal(lane.scanSessionDay, "2026-07-24");
+});
+
+test("SWING_SERVING_TTL_SEC survives the ordinary Friday-close -> Monday-open gap, not just a weekday one", () => {
+  // `swing-discovery` is `weekdays_only` (cron-registry.ts) — its snapshot cache must therefore
+  // survive a weekend, not just the ~4h between two same-day phases. MEASURED LIVE 2026-09-06: the
+  // previous 26h TTL let the persisted snapshot expire Saturday evening and stay gone through Monday
+  // morning, silently zeroing `attachThesisExplanation`'s factors/regime enrichment for every live
+  // committed swing position (both the board and the Ask Largo play-brief) for ~35h straight.
+  //
+  // Worst ORDINARY case (no holiday): the day's LAST phase, OVERNIGHT, never fires that Friday (e.g.
+  // an EventBridge tick never lands inside its window), so the freshest write of the week is
+  // POST_CLOSE's own end. The next weekdays_only scan can only be Monday's earliest phase, PRE_OPEN.
+  // Derived from SWING_SCAN_PHASES itself (not a hardcoded number) so this can't silently drift from
+  // scan-cadence.ts the way the original 26h constant drifted from the real weekly cadence.
+  const postCloseEndMin = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!.endMin;
+  const preOpenStartMin = SWING_SCAN_PHASES.find((w) => w.phase === "PRE_OPEN")!.startMin;
+  const minutesInDay = 24 * 60;
+  const fridayRemainderMin = minutesInDay - postCloseEndMin; // POST_CLOSE end -> Friday ET midnight
+  const weekendMin = 2 * minutesInDay; // all of Saturday + Sunday
+  const worstCaseGapSec = (fridayRemainderMin + weekendMin + preOpenStartMin) * 60;
+
+  assert.ok(
+    SWING_SERVING_TTL_SEC > worstCaseGapSec,
+    `SWING_SERVING_TTL_SEC (${SWING_SERVING_TTL_SEC}s) must exceed the Fri-close -> Mon-PRE_OPEN gap ` +
+      `(${worstCaseGapSec}s / ${(worstCaseGapSec / 3600).toFixed(1)}h) or the snapshot silently expires every weekend`,
+  );
 });
