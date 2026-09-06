@@ -6,7 +6,7 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
 
 /** Section titles omitted when a narrative block is present (coaching already spoke). */
 const NARRATIVE_COVERED_TITLES = new Set([
-  "Book context",
+  // Book context stays visible — post-#4116 it is the ONLY concentration source (no narrative bullet).
   "Lane rank",
   "Levels on chart",
   "GEX posture",

@@ -29,3 +29,14 @@ test("collapseRedundantIntelSections: drops covered titles when narrative leads"
   const narrative = out.find((s) => s.title === "Trade manager read");
   assert.match(narrative!.body, /folded into Trade manager read/i);
 });
+
+test("collapseRedundantIntelSections: keeps Book context when narrative leads", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("Book context"),
+    section("GEX posture"),
+  ];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Book context"), "Book context is the sole concentration source post-#4116");
+  assert.ok(!out.some((s) => s.title === "GEX posture"));
+});
