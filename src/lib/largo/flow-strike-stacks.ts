@@ -299,23 +299,6 @@ export function formatFlowStrikeStackLine(stack: FlowStrikeStack): string {
   );
 }
 
-export function formatFlowStrikeStacksSection(stacks: FlowStrikeStack[]): string[] {
-  if (!stacks.length) return [];
-  return [
-    "**Strike stacks / Repeated Hits (UW — call these out in Flow when relevant):**",
-    ...stacks.slice(0, 8).map((s) => `- ${formatFlowStrikeStackLine(s)}`),
-  ];
-}
-
-export function flowStackSignature(stacks: FlowStrikeStack[] | undefined): string {
-  return (stacks ?? [])
-    .map(
-      (s) =>
-        `${s.strike}|${s.option_type}|${s.expiry}|${s.alert_count}|${Math.round(s.total_premium)}`
-    )
-    .join(";");
-}
-
 export function withStrikeStacks<T extends Record<string, unknown>>(
   payload: T,
   alertSources: unknown[][]
