@@ -3171,3 +3171,9 @@ than an end-of-session patch.
 - **What changed:** `dataFreshnessSection()` adds a HELIX pipeline stale line when `flow_feed_fresh === false`.
 - **RTH check:** During a HELIX pipeline stale window, open Ask Largo on a swing row with fresh mark/scan/Vector — confirm Data freshness section mentions HELIX pipeline stale (not only UnavailableChip/coaching).
 
+
+### 48. Ask Largo swing brief — uncalibrated thesis-health % leaked back into Verdict/Management — fix/swing-thesis-health-uncalibrated-leak — 2026-09-06
+
+- **What was broken:** #4318 taught `thesisHealthSection()`/`holdPlanSection()` to withhold the aggregate thesis-health `%` when committed-position pillars are uncalibrated (generic defaults, not real setup/entry/signal inputs). Three OTHER call sites (`thesisStrengthPct()`, `thesisManagementOverlay()` via `swingManagementVerdict()`, `managementReason()`/`actionProbability()`) read `play.thesisHealth.health` directly with no calibration gate, leaking the exact withheld number back out through the Verdict and Management sections of the SAME brief. Reproduced live on `SWING:NN` (2026-09-06): "Thesis health" section said withheld, but Verdict showed "Thesis strength 46%" and Management showed "Thesis health 46% — Thesis fading...".
+- **What changed:** Added `healthIsCalibrated(play)` gate (SWING-scoped only — 0DTE's thesis health is always live-calibrated) to all three call sites in `terminal-display.ts`, and gated `adapters.ts`'s `swingManagementVerdict()` overlay call the same way.
+- **RTH check:** Open Ask Largo on any committed SWING HOLD/OPEN/TRIM row whose "Thesis health" section shows "Inputs not wired... withheld" — confirm Verdict has NO "Thesis strength X%" line and Management's recNote does NOT contain "Thesis health X%". Also check the live command-deck Conviction panel for the same row doesn't show a numeric conviction score under this condition.
