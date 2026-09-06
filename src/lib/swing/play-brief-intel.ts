@@ -404,7 +404,8 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
   const lines: string[] = [];
   const action = play.recommendation ?? "HOLD";
   lines.push(`**Desk stance:** ${action}`);
-  if (play.recNote) lines.push(play.recNote);
+  // recNote is NOT repeated here — managementSection (open bucket, play-brief.ts) already
+  // renders it verbatim. Duplicating it produced the same sentence in Management + Hold plan.
 
   const dteMatch = play.contract.match(/(\d+)DTE/);
   if (dteMatch) {

@@ -8,6 +8,7 @@ import {
   dataFreshnessSection,
   deskConsensusSection,
   flowIntelSection,
+  holdPlanSection,
   lessonsSection,
   whyThisSetupSection,
 } from "./play-brief-intel";
@@ -92,6 +93,24 @@ test("whyThisSetupSection: still reports pillar/signal content when present", ()
   });
   const section = whyThisSetupSection(play);
   assert.match(section.body, /Momentum/);
+});
+
+test("holdPlanSection: does not repeat recNote — Management already surfaces it for open bucket", () => {
+  const recNote = "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength.";
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD", recNote }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.ok(!section!.body.includes(recNote));
 });
 
 test("deskConsensusSection: null when only NH direction / 0DTE stance (covered by crossDeskCoaching)", () => {

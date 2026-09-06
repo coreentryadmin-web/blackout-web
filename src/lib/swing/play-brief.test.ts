@@ -493,6 +493,29 @@ test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, 
   assert.equal(callWall?.provenance?.freshness, "stale");
 });
 
+test("composeSwingPlayBrief: recNote appears ONCE for open bucket — not in Management and Hold plan", () => {
+  const recNote = "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength.";
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD", recNote }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sectionsWithRecNote = brief.envelope.sections.filter((s) => s.body.includes(recNote));
+  assert.equal(
+    sectionsWithRecNote.length,
+    1,
+    `expected recNote in exactly one section, found in: ${sectionsWithRecNote.map((s) => s.title).join(", ")}`,
+  );
+  assert.equal(sectionsWithRecNote[0]?.title, "Management");
+});
+
 test("composeSwingPlayBrief: book concentration is reported ONCE, not duplicated across 'Trade manager read' and 'Book context'", () => {
   // Reproduces a live bug from PR #4110: bookContextCoaching (in the "Trade manager read" bullets)
   // and bookContextSection (the dedicated "Book context" section, #4101) both call
