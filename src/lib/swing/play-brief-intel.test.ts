@@ -753,10 +753,11 @@ test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma p
   assert.doesNotMatch(section!.body, /Net GEX/i, "stale matrix numeric fields must not render as live");
 });
 
-test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and prefixes Last snapshot (Largo C2)", () => {
+test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and omits live-looking technicals (Largo C2)", () => {
   const vec = fixtureVec({
     spot: 95,
     dataAgeMs: 200_000,
+    play: { grade: "A" },
     technicals: {
       vwap: 94.7,
       emaStack: "up",
@@ -770,6 +771,11 @@ test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and prefixe
   assert.equal(section?.bias, "neutral");
   assert.match(section!.body, /Last snapshot/i);
   assert.match(section!.body, /200s old/i);
+  assert.match(section!.body, /from prior snapshot/i);
+  assert.doesNotMatch(section!.body, /Spot:/i, "stale Vector spot must not render as live");
+  assert.doesNotMatch(section!.body, /EMA 9\/21\/50/i, "stale EMA stack must not render as live");
+  assert.doesNotMatch(section!.body, /VWAP/i, "stale VWAP must not render as live");
+  assert.doesNotMatch(section!.body, /RSI:/i, "stale RSI must not render as live");
 });
 
 test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (Largo C2)", () => {

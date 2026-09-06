@@ -141,6 +141,9 @@ export function chartTechnicalsSection(vec: VectorFullState | null): RichSection
     lines.push(
       `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — chart read may lag spot.`,
     );
+    if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}** (from prior snapshot)`);
+    if (!lines.length) return null;
+    return { title: "Chart technicals", body: lines.join("\n"), bias: "neutral" };
   }
   if (vec.spot != null) lines.push(`Spot: **${vec.spot.toFixed(2)}**`);
   if (t?.emaStack) lines.push(`EMA 9/21/50 stack: **${t.emaStack}**`);
@@ -162,16 +165,14 @@ export function chartTechnicalsSection(vec: VectorFullState | null): RichSection
   // labeling it bare "long"/"short" next to directional signals (EMA stack, MACD, structure
   // direction) in this same section risks reading as a trade direction that can contradict the
   // very next "Vector desk" section's own directional POSITION call for the same ticker.
-  if (vec.regime?.posture && vec.regime.posture !== "unknown" && vec.regime.posture !== "transition" && !vectorStale) {
+  if (vec.regime?.posture && vec.regime.posture !== "unknown" && vec.regime.posture !== "transition") {
     lines.push(`Dealer gamma regime: **${vec.regime.posture} gamma**`);
-  } else if (vec.regime?.posture === "transition" && !vectorStale) {
+  } else if (vec.regime?.posture === "transition") {
     lines.push(`Dealer gamma regime: **transition** (near flip)`);
   }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
   if (!lines.length) return null;
-  // Largo C2 — stale Vector technicals must not badge bullish/bearish (same gate as vectorDeskSection #4387).
-  const bias =
-    !vectorStale && t ? technicalsBias(t, vec.spot ?? null) : "neutral";
+  const bias = t ? technicalsBias(t, vec.spot ?? null) : "neutral";
   return {
     title: "Chart technicals",
     body: lines.join("\n"),
