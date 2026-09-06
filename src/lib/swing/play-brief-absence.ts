@@ -94,6 +94,13 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     out.push(...collectVectorSectionAbsences(vec));
     const stale = collectVectorStalenessAbsence(vec);
     if (stale) out.push(stale);
+    // reportVectorAbsences treats non-null flowMarkers as present even when available=false.
+    if (vec.flowMarkers?.available === false) {
+      out.push({
+        source: "Vector flow prints",
+        reason: vec.flowMarkers.reason ?? "unavailable",
+      });
+    }
   }
   if (ctx.openBook === null) {
     out.push({ source: "open book", reason: "ledger read failed" });

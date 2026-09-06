@@ -160,6 +160,21 @@ test("collectBriefUnavailableSources: stale Vector snapshot surfaces in envelope
   assert.ok(sources.some((s) => s.source === "Vector snapshot" && s.reason === "stale — levels may lag spot"));
 });
 
+test("collectBriefUnavailableSources: flowMarkers.available false surfaces in envelope", () => {
+  const ctx = {
+    vector: {
+      spot: 100,
+      unavailable_sections: [],
+      flowMarkers: { available: false, reason: "chain read failed", prints: [] },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Vector flow prints" && s.reason === "chain read failed"),
+  );
+});
+
 test("collectBriefUnavailableSources: a total ecosystem fetch failure surfaces in envelope, distinct from legitimately-empty (FINDINGS 2026-09-06 #11)", () => {
   const ctx = {
     ecosystem: null,
