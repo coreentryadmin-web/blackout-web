@@ -17,6 +17,7 @@ import {
   watchForSection,
   whyThisSetupSection,
   vectorDeskSection,
+  wallDynamicsSection,
 } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
@@ -843,6 +844,24 @@ test("watchForSection: live Vector put wall still shown when GEX matrix is stale
     "open",
   );
   assert.match(section.body, /put wall \*\*98\.00\*\*/);
+});
+
+test("wallDynamicsSection: stale Vector returns null (Largo C2)", () => {
+  const vec = fixtureVec({
+    dataAgeMs: 200_000,
+    wallEvents: [{ kind: "call_wall_build", message: "building", strike: 105 }],
+  });
+  assert.equal(wallDynamicsSection(vec), null);
+});
+
+test("wallDynamicsSection: live Vector wall events render", () => {
+  const vec = fixtureVec({
+    dataAgeMs: 5_000,
+    wallEvents: [{ kind: "call_wall_build", message: "building", strike: 105 }],
+  });
+  const section = wallDynamicsSection(vec);
+  assert.ok(section);
+  assert.match(section!.body, /call wall build/i);
 });
 
 test("chartLevelsSection: stale GEX-only walls, flip, and king omitted (Largo C2)", () => {

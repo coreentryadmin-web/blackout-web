@@ -653,6 +653,7 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
 
 /** Wall bead dynamics — building/fading nodes from Vector wall history. */
 export function wallDynamicsSection(vec: VectorFullState | null): RichSection | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const events = vec?.wallEvents ?? [];
   if (!events.length) return null;
   const lines = events
