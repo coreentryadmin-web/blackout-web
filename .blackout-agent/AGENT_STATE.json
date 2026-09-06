@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T22:57:01.479Z",
+  "updated_at": "2026-09-06T23:33:42.440Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-07T00:18:40.188Z",
+      "lease_until": "2026-09-07T00:55:03.684Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ad707c71-34c2-4414-a10a-8086f507400f",
+      "run_id": "3d948425-2244-4bb8-a539-6c074f0f1575",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-07T00:18:40.188Z",
+      "lease_until": "2026-09-07T00:55:03.684Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ad707c71-34c2-4414-a10a-8086f507400f"
+      "run_id": "3d948425-2244-4bb8-a539-6c074f0f1575"
     }
   },
   "reviews": {
@@ -57,11 +57,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1914d985aac2c112cb1e1615f63a57570ca9c185",
+    "last_main_sha": "a54f4c9e53bf291dc1a254f3d9cf6ad6fd0aa9a9",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T22:54:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34065316530",
-    "last_deploy_sha": "1914d985aac2c112cb1e1615f63a57570ca9c185"
+    "last_deploy_at": "2026-09-06T23:31:52Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34066609745",
+    "last_deploy_sha": "3c2e6f2714b723d9a62924bd791641d8ddb9ddd2"
   },
   "events": [
     {
@@ -385,18 +385,51 @@
       "agent": "cursor",
       "run_id": "fb3da1f6-48c2-4a88-b213-e36346ac6d9a",
       "summary": "Main@1914d985a (#4401 envelope merged). #4402 needs rebase — intel-only delta. validate:deploy GREEN."
+    },
+    {
+      "at": "2026-09-06T23:33:42.439Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T23:33:42.440Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "68b97804-9b38-486d-8e77-79c5bda430f6",
+      "summary": "Main@fc0aa0d30 (#4402+#4411 merged). #4414+#4415 draft — 48/48+70/70 local, verify pending. Largo C2 sweep continues."
     }
   ],
   "open_prs": [
     {
-      "number": 4402,
-      "title": "fix(largo): gate stale Vector walls/desk in swing play-brief (Largo C2)",
-      "branch": "cursor/autopilot-state-recovery-loop-d3e6",
+      "number": 4416,
+      "title": "fix(middleware): dedupe hasBearerToken, remove 3 dead exports from middleware-shared.ts",
+      "branch": "fix/middleware-shared-bearer-token-dead-code",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
+      "agent": "agent",
+      "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T22:57:00Z"
+      "updated_at": "2026-09-06T23:31:08Z"
+    },
+    {
+      "number": 4415,
+      "title": "fix(largo): gate stale GEX spot in narrative + coaching caveat (Largo C2)",
+      "branch": "fix/largo-gex-stale-spot-coaching",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T23:32:51Z"
+    },
+    {
+      "number": 4414,
+      "title": "fix(largo): suppress stale Vector chart technicals body (Largo C2)",
+      "branch": "fix/largo-chart-technicals-stale-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T23:31:40Z"
     }
   ]
 }
