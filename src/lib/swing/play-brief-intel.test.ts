@@ -147,13 +147,50 @@ test("holdPlanSection: does not repeat the thesis-health advisory sentence — a
       recommendation: "HOLD",
       contract: "110C · 12DTE",
       thesisHealth: {
-        health: 46,
-        entryIndex: 60,
-        currentIndex: 46,
-        delta: -14,
-        rung: "degraded",
-        rungLabel: "Degraded",
-        pillars: [],
+        health: 72,
+        entryIndex: 70,
+        currentIndex: 72,
+        delta: 2,
+        rung: "MINOR",
+        rungLabel: "Minor drift",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.9,
+            currentScore: 0.9,
+            commitLabel: "triggered",
+            currentLabel: "triggered",
+            status: "intact",
+            contributionPts: 25,
+            deltaPts: 0,
+          },
+          {
+            id: "momentum",
+            label: "Entry geometry",
+            weight: 0.22,
+            commitScore: 1,
+            currentScore: 1,
+            commitLabel: "at trigger",
+            currentLabel: "at trigger",
+            status: "intact",
+            contributionPts: 22,
+            deltaPts: 0,
+          },
+          {
+            id: "flow",
+            label: "Signal stack",
+            weight: 0.2,
+            commitScore: 0.6,
+            currentScore: 0.6,
+            commitLabel: "FLOW+VECTOR",
+            currentLabel: "FLOW+VECTOR",
+            status: "intact",
+            contributionPts: 12,
+            deltaPts: 0,
+          },
+        ],
         moves: [],
         committedAtEt: null,
         computedAtEt: "10:00 ET",
@@ -173,7 +210,106 @@ test("holdPlanSection: does not repeat the thesis-health advisory sentence — a
   const section = holdPlanSection(ctx);
   assert.ok(section);
   assert.doesNotMatch(section!.body, /Thesis fading — tighten risk or trim into strength\./);
-  assert.match(section!.body, /Thesis health \*\*46%\*\* \(Degraded\)/);
+  assert.match(section!.body, /Thesis health \*\*72%\*\* \(Minor drift\)/);
+});
+
+test("holdPlanSection: omits aggregate thesis health % when inputs uncalibrated", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Thesis health \*\*46%\*\*/);
+});
+
+test("holdPlanSection: peak giveback warning still shows when thesis health is uncalibrated", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 129,
+      pnlPct: 95,
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Thesis health \*\*46%\*\*/);
+  assert.match(section!.body, /Gave back \*\*34%\*\* from peak/);
 });
 
 test("holdPlanSection: null when no unique hold-plan content beyond Management", () => {
@@ -424,6 +560,38 @@ test("dataFreshnessSection: prior-session scan warns when scanSessionDay lags se
   const section = dataFreshnessSection(ctx);
   assert.match(section!.body, /prior session 2026-09-05/);
   assert.match(section!.body, /today's discovery not yet run/);
+});
+
+test("dataFreshnessSection: closed play with markIsSync does not warn mark age unknown", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED", markIsSync: true, markAsOf: null }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "closed play with no live mark should not emit a freshness section");
+});
+
+test("dataFreshnessSection: WATCH play with markIsSync does not warn mark age unknown", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", markIsSync: true, markAsOf: null }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "WATCH static chain mid should not emit mark-age warning");
 });
 
 test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is false", () => {

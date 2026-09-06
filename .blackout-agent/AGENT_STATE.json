@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:00:24.948Z",
+  "updated_at": "2026-09-06T16:50:56.719Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-06T17:20:08.369Z",
+      "lease_until": "2026-09-06T18:07:41.623Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c5535c56-79d1-4891-9522-01913464691f"
+      "run_id": "4d93a26e-24fd-4f52-a9d8-aae9edd1c4f4"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-06T17:20:08.369Z",
+      "lease_until": "2026-09-06T18:07:41.623Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c5535c56-79d1-4891-9522-01913464691f"
+      "run_id": "4d93a26e-24fd-4f52-a9d8-aae9edd1c4f4"
     }
   },
   "reviews": {},
@@ -38,26 +38,107 @@
     }
   },
   "deploy": {
-    "last_main_sha": "02add5a37fddb52e000ed4962ea384014833315d",
+    "last_main_sha": "13073fee4785426e1e11a8d87adf08e9587e4235",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T15:59:18Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34044003046",
-    "last_deploy_sha": "d45b41666a2ea4efc4d900a4a3f956b395edc2d5"
+    "last_deploy_at": "2026-09-06T16:50:06Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34046705756",
+    "last_deploy_sha": "13073fee4785426e1e11a8d87adf08e9587e4235"
   },
   "events": [
     {
-      "at": "2026-09-06T16:00:24.947Z",
+      "at": "2026-09-06T16:50:56.718Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 8
     },
     {
-      "at": "2026-09-06T16:00:24.948Z",
+      "at": "2026-09-06T16:50:56.719Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "882662aa-14e9-4542-a583-759cc8c7ad28",
-      "summary": "Main@02add5a37 GREEN. Merged wave #4300-#4314. APPROVED #4311 HELIX flow premium evidence. validate:deploy GREEN, ops:collect 0."
+      "run_id": "63fdcbac-3443-402e-bcaa-43982317ee7e",
+      "summary": "Main@13073fee4 GREEN. #4326 roll-plan fail-closed + #4329 thesis health coaching merged. validate:deploy GREEN, ops:collect 0."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4335,
+      "title": "fix(swing): stop uncalibrated thesis-health % leaking back into Verdict/Management",
+      "branch": "fix/swing-thesis-health-uncalibrated-leak",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:50:27Z"
+    },
+    {
+      "number": 4334,
+      "title": "fix(spx): round floats at shared play/desk derivation for BIE/Largo parity",
+      "branch": "fix/spx-roundfloats-asymmetry",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:50:31Z"
+    },
+    {
+      "number": 4333,
+      "title": "fix(swing): measure short-interest evidence freshness for Largo C2",
+      "branch": "fix/swing-brief-si-freshness-c2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:50:34Z"
+    },
+    {
+      "number": 4332,
+      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
+      "branch": "cursor/handoff-20260906-1638",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:42:27Z"
+    },
+    {
+      "number": 4331,
+      "title": "fix(swing): withhold uncalibrated thesis % from Verdict and diff engine",
+      "branch": "fix/swing-brief-thesis-verdict-diff-withhold",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:50:39Z"
+    },
+    {
+      "number": 4330,
+      "title": "fix(swing): ground technicalsCoaching chart bias in evidence, not play direction (Largo C5)",
+      "branch": "fix/largo-technicals-coaching-bias",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:47:15Z"
+    },
+    {
+      "number": 4328,
+      "title": "chore(blackout-agent): cursor handoff — #4322 merged, all checks GREEN",
+      "branch": "cursor/autopilot-handoff-20260906T1635",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T16:50:19Z"
+    },
+    {
+      "number": 4327,
+      "title": "chore(blackout-agent): cursor handoff — peer review cycle #4318-4322",
+      "branch": "cursor/handoff-pr-event-4322",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:48:22Z"
+    }
+  ]
 }

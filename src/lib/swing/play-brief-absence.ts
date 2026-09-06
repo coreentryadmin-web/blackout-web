@@ -4,6 +4,7 @@ import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { thesisHealthUncalibrated } from "./thesis-health";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
 
@@ -23,6 +24,11 @@ const VECTOR_SECTION_LABELS: Record<VectorSection, string> = {
 };
 
 const VECTOR_STALE_MS = 120_000;
+
+/** Only committed working rows expect a live-synced option mark — WATCH uses static chain mid by design. */
+export function playExpectsLiveOptionMark(status: string | null | undefined): boolean {
+  return status === "OPEN" || status === "HOLD" || status === "TRIM";
+}
 
 /** HELIX recent_flow is only trustworthy when the feed is fresh — stale pipeline rows are absence, not signal. */
 export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
@@ -76,7 +82,11 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // tape" from this exact boolean, but that prose never reached the structured C3 channel — a
   // consumer reading unavailableSources alone (rather than scraping the narrative) saw nothing
   // wrong. Same class of gap this file already closed for HELIX flow staleness.
-  if (ctx.play?.markIsSync === true) {
+  // WATCH rows carry a static chain mid (no markAsOf) by design — not a missing source.
+  if (
+    ctx.play?.markIsSync === true &&
+    playExpectsLiveOptionMark(ctx.play?.status)
+  ) {
     out.push({ source: "option mark", reason: "sync quote without freshness timestamp" });
   }
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared
@@ -133,6 +143,18 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     out.push({
       source: "swing discovery scan",
       reason: `prior session (${ctx.scanSessionDay}) — today's scan not yet run`,
+    });
+  }
+  // Committed positions compute thesis health without setup/entry/signal inputs — the aggregate
+  // % collapses to a generic default. Surface that honestly (Largo C3/C6) rather than showing 46%.
+  if (
+    ctx.play &&
+    ["OPEN", "HOLD", "TRIM"].includes(String(ctx.play.status ?? "").toUpperCase()) &&
+    thesisHealthUncalibrated(ctx.play.thesisHealth)
+  ) {
+    out.push({
+      source: "thesis health",
+      reason: "setup/entry/signal inputs unavailable for committed positions",
     });
   }
 

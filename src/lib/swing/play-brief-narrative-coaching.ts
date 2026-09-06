@@ -3,6 +3,7 @@
  * Pure + deterministic. Consumed by play-brief-narrative.ts.
  */
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { playExpectsLiveOptionMark } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
@@ -10,6 +11,7 @@ import { fmtPremium } from "@/lib/fmt-money";
 import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
+import { thesisHealthUncalibrated } from "./thesis-health";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -31,6 +33,7 @@ function vectorOf(ctx: SwingPlayBriefContext): VectorFullState | null {
 
 /** Urgent thesis invalidation — leads narrative when fired. */
 export function thesisBreakCoaching(play: TerminalPlay): string | null {
+  if (thesisHealthUncalibrated(play.thesisHealth)) return null;
   const level = play.thesisBreak?.level ?? play.thesisHealth?.thesisBreakLevel;
   const note = play.thesisBreak?.note ?? play.thesisHealth?.thesisBreakNote;
   if (!level || level === "unknown" || level === "intact") return null;
@@ -45,6 +48,7 @@ export function thesisBreakCoaching(play: TerminalPlay): string | null {
 export function thesisPillarCoaching(play: TerminalPlay): string | null {
   const h = play.thesisHealth;
   if (!h?.pillars?.length) return null;
+  if (thesisHealthUncalibrated(h)) return null;
 
   const faded = h.pillars
     .filter((p) => p.status === "lost" || p.status === "faded")
@@ -60,7 +64,7 @@ export function thesisPillarCoaching(play: TerminalPlay): string | null {
     return `**What moved** — ${h.moves.slice(0, 2).join(" · ")}.`;
   }
 
-  if (h.health < 55 && h.advisory) {
+  if (!thesisHealthUncalibrated(h) && h.health < 55 && h.advisory) {
     return `**Thesis ${h.rungLabel}** (${h.health}%) — ${h.advisory}`;
   }
 
@@ -542,12 +546,16 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   const warnings: string[] = [];
 
   // markIsSync === true means no markAsOf timestamp (sync quote without freshness) — same polarity as dataFreshnessSection.
-  if (play.markIsSync === true) warnings.push("mark not synced to live tape");
+  if (play.markIsSync === true && playExpectsLiveOptionMark(play.status)) {
+    warnings.push("mark not synced to live tape");
+  }
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     warnings.push(`Vector **${Math.round(vec.dataAgeMs / 1000)}s** stale`);
   }
   if (ctx.ecosystem?.flow_feed_fresh === false) {
-    warnings.push("HELIX feed quiet — flow read may lag");
+    warnings.push(
+      "HELIX pipeline stale — flow read unavailable, not evidence of quiet tape",
+    );
   }
   if (
     ctx.scanSessionDay &&

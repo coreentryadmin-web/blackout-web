@@ -52,6 +52,67 @@ test("diffBriefSnapshots: detects thesis health and P&L moves", () => {
   assert.ok(lines.some((l) => l.includes("P&L")));
 });
 
+test("diffBriefSnapshots: omits thesis health delta when uncalibrated (extends #4318)", () => {
+  const uncalibrated = {
+    health: 46,
+    rungLabel: "Degraded",
+    pillars: [
+      {
+        id: "structure",
+        label: "Persistence",
+        weight: 0.28,
+        commitScore: 0.4,
+        currentScore: 0.35,
+        commitLabel: "unknown",
+        currentLabel: "unknown",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "momentum",
+        label: "Entry geometry",
+        weight: 0.22,
+        commitScore: 0.5,
+        currentScore: 0.45,
+        commitLabel: "n/a",
+        currentLabel: "n/a",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "flow",
+        label: "Signal stack",
+        weight: 0.2,
+        commitScore: 0.35,
+        currentScore: 0.35,
+        commitLabel: "no signals",
+        currentLabel: "no signals",
+        status: "intact",
+        contributionPts: 7,
+        deltaPts: 0,
+      },
+    ],
+    moves: [],
+    advisory: "",
+    entryIndex: 60,
+    currentIndex: 46,
+    delta: -14,
+    rung: "DEGRADED",
+    committedAtEt: "",
+    computedAtEt: "",
+  };
+  const prev = snapshotFromBrief(env(), play({ thesisHealth: uncalibrated, pnlPct: 20 }));
+  const next = snapshotFromBrief(
+    env(),
+    play({ thesisHealth: { ...uncalibrated, health: 52, currentIndex: 52, delta: -8 }, pnlPct: 25 }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(!lines.some((l) => l.includes("Thesis")), "uncalibrated rows must not narrate thesis % shifts");
+  assert.ok(lines.some((l) => l.includes("P&L")), "P&L diff still fires on uncalibrated rows");
+});
+
 test("envelopeWithDiffSection: prepends change section", () => {
   const out = envelopeWithDiffSection(env(), ["Spot moved"]);
   assert.equal(out.sections[0]?.title, "What changed");

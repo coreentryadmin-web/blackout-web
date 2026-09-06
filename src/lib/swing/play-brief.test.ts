@@ -183,10 +183,67 @@ test("composeSwingPlayBrief: envelope.asOf uses Largo C1 ET stamp (not a bare UT
     ecosystem: null,
     vector: null,
   };
-  const { envelope, asOf } = composeSwingPlayBrief(ctx);
-  assert.equal(envelope.asOf, "2026-09-05 16:00 ET");
-  assert.equal(asOf, "2026-09-05 16:00 ET");
-  assert.doesNotMatch(envelope.asOf!, /Z$/, "asOf must not be a UTC ISO instant");
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.asOf, "2026-09-05 16:00 ET");
+  assert.equal(brief.asOf, "2026-09-05 16:00 ET");
+  assert.equal(brief.sessionDate, "2026-09-05");
+  assert.doesNotMatch(brief.envelope.asOf!, /Z$/, "asOf must not be a UTC ISO instant");
+});
+
+test("composeSwingPlayBrief: GEX dealer posture grounds in envelope evidence (Largo C7)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        change_pct: 1.2,
+        asof: "2026-09-05T20:00:00Z",
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        max_pain: null,
+        gex_king_strike: 25,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        gamma_regime_read: "long gamma",
+        net_vex: 0,
+        vanna_posture: null,
+        vanna_regime_read: "",
+        net_dex: null,
+        dex_posture: null,
+        dex_regime_read: null,
+        net_charm: null,
+        charm_posture: null,
+        charm_regime_read: null,
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
+        freshness: "cached",
+        matrix_age_sec: 30,
+      },
+      arsenal: null,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence");
+  assert.match(postureEvidence!.text, /γ long/);
+  assert.match(postureEvidence!.text, /net GEX \+12\.3M/);
+  assert.match(postureEvidence!.text, /nearest wall 26\.00/);
+  assert.equal(postureEvidence?.provenance?.source, "GEX");
+  assert.equal(postureEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
 });
 
 test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant (FINDINGS 2026-09-06 #21)", () => {
@@ -211,6 +268,74 @@ test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET
   const positionSection = brief.envelope.sections.find((s) => s.title === "Position");
   assert.match(positionSection!.body, /2026-09-04 17:45 ET/);
   assert.doesNotMatch(positionSection!.body, /\.663Z/, "Position section must not print a raw ISO mark timestamp");
+});
+
+test("composeSwingPlayBrief: earnings evidence carries brief asOf for Largo C1 joins", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: { earnings_date: "2026-09-12", days_until: 7, report_time: "AMC", is_confirmed: true },
+        fundamentals: null,
+        related: [],
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const earningsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Next earnings"));
+  assert.ok(earningsEvidence, "expected earnings evidence");
+  assert.equal(earningsEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+});
+
+test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims for Largo C7", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: { days_to_cover: 2.1, short_volume_ratio: 0.35, price_target: null, as_of: "2026-09-05" },
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const siEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Short interest:"));
+  assert.ok(siEvidence, "expected short interest evidence");
+  assert.match(siEvidence!.text, /DTC 2\.1d/);
+  assert.match(siEvidence!.text, /short vol ratio 35%/);
+  assert.equal(siEvidence?.provenance?.source, "Polygon / Benzinga");
+  assert.equal(siEvidence?.provenance?.freshness, "recent");
+  assert.equal(siEvidence?.provenance?.asOf, "2026-09-05 16:00 ET", "date-only as_of must anchor at session close ET, not prior evening");
 });
 
 test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1 joins", () => {
@@ -238,7 +363,12 @@ test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1
   const brief = composeSwingPlayBrief(ctx);
   const flowEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("HELIX flow"));
   assert.ok(flowEvidence, "expected HELIX flow evidence");
+  assert.match(flowEvidence!.text, /call-heavy/);
+  assert.match(flowEvidence!.text, /\$1000000\.00/);
+  assert.match(flowEvidence!.text, /\$500000\.00/);
+  assert.match(flowEvidence!.text, /12 prints/);
   assert.equal(flowEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+  assert.equal(flowEvidence?.provenance?.freshness, "recent", "HELIX flow is a cached window aggregate, not tick-live");
 });
 
 test("composeSwingPlayBrief: swing-scan evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant", () => {
@@ -264,6 +394,24 @@ test("composeSwingPlayBrief: swing-scan evidence/provenance use the Largo C1 ET 
   assert.ok(freshness, "expected Data freshness section when scanAsOf is set");
   assert.match(freshness!.body, /2026-09-05 15:30 ET/);
   assert.doesNotMatch(freshness!.body, /19:30:00\.000Z/, "Data freshness must not print a raw ISO scan timestamp");
+});
+
+test("composeSwingPlayBrief: prior-session scan evidence uses stale freshness, not recent", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: "2026-09-05T20:00:00.000Z",
+    scanSessionDay: "2026-09-05",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const scanEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Swing discovery scan as of"));
+  assert.ok(scanEvidence, "expected swing-scan evidence");
+  assert.equal(scanEvidence?.provenance?.freshness, "stale", "prior-session scan must not claim recent freshness");
 });
 
 test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
@@ -394,7 +542,10 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   assert.ok(titles.includes("Why this setup"));
   assert.ok(titles.includes("What to watch"));
   assert.ok(!titles.includes("Hold plan"), "hold plan folded into Trade manager read");
-  assert.ok(brief.envelope.sections.some((s) => s.body.includes("54%")));
+  assert.ok(
+    brief.envelope.sections.some((s) => s.title === "Thesis health" && /score withheld/i.test(s.body)),
+    "uncalibrated thesis health must not show aggregate %",
+  );
 });
 
 test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", () => {

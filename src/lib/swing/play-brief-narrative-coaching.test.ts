@@ -94,6 +94,69 @@ test("thesisPillarCoaching: names fading pillar", () => {
   assert.match(line!, /Persistence/i);
 });
 
+function uncalibratedThesisHealth() {
+  return {
+    health: 46,
+    entryIndex: 60,
+    currentIndex: 46,
+    delta: -14,
+    rung: "DEGRADED",
+    rungLabel: "Degraded",
+    pillars: [
+      {
+        id: "structure",
+        label: "Persistence",
+        weight: 0.28,
+        commitScore: 0.4,
+        currentScore: 0.35,
+        commitLabel: "unknown",
+        currentLabel: "unknown",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "momentum",
+        label: "Entry geometry",
+        weight: 0.22,
+        commitScore: 0.5,
+        currentScore: 0.45,
+        commitLabel: "n/a",
+        currentLabel: "n/a",
+        status: "intact",
+        contributionPts: 10,
+        deltaPts: -1,
+      },
+      {
+        id: "flow",
+        label: "Signal stack",
+        weight: 0.2,
+        commitScore: 0.35,
+        currentScore: 0.35,
+        commitLabel: "no signals",
+        currentLabel: "no signals",
+        status: "intact",
+        contributionPts: 7,
+        deltaPts: 0,
+      },
+    ],
+    moves: ["Persistence: unknown → unknown"],
+    committedAtEt: null,
+    computedAtEt: "10:00 ET",
+    advisory: "Thesis fading — tighten risk or trim into strength.",
+    thesisBreakLevel: "warn",
+    thesisBreakNote: "pillars fading",
+  };
+}
+
+test("thesisBreakCoaching: silent when thesis health is uncalibrated (extends #4318)", () => {
+  assert.equal(thesisBreakCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
+});
+
+test("thesisPillarCoaching: silent when thesis health is uncalibrated (extends #4318)", () => {
+  assert.equal(thesisPillarCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
+});
+
 test("manageLifecycleCoaching: trim ladder + time stop", () => {
   const line = manageLifecycleCoaching(
     play({
@@ -286,11 +349,21 @@ test("vexCoaching: narrates vanna flip", () => {
 });
 
 test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf does not", () => {
-  const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true }));
+  const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "OPEN" }));
   assert.match(stale!, /mark not synced to live tape/i);
 
   const fresh = dataHonestyCoaching(ctx(), play({ markIsSync: false, markAsOf: "2026-09-04T21:45:18.731Z" }));
   assert.equal(fresh, null);
+});
+
+test("dataHonestyCoaching: closed play with markIsSync does not warn mark staleness", () => {
+  const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "CLOSED" }));
+  assert.equal(line, null);
+});
+
+test("dataHonestyCoaching: WATCH play with markIsSync does not warn mark staleness", () => {
+  const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "WATCH" }));
+  assert.equal(line, null);
 });
 
 test("dataHonestyCoaching: prior-session discovery scan warns", () => {
@@ -300,6 +373,16 @@ test("dataHonestyCoaching: prior-session discovery scan warns", () => {
   );
   assert.match(line!, /swing discovery from \*\*2026-09-05\*\*/);
   assert.match(line!, /today's scan not yet run/);
+});
+
+test("dataHonestyCoaching: stale HELIX pipeline warns stale, not quiet", () => {
+  const line = dataHonestyCoaching(
+    ctx({ ecosystem: { flow_feed_fresh: false } as SwingPlayBriefContext["ecosystem"] }),
+    play(),
+  );
+  assert.match(line!, /HELIX pipeline stale/);
+  assert.match(line!, /not evidence of quiet tape/);
+  assert.doesNotMatch(line!, /feed quiet/i);
 });
 
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {

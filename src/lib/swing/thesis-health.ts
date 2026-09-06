@@ -41,6 +41,26 @@ const PILLAR_ID_MAP: Record<SwingThesisPillarId, ThesisPillarId> = {
   theta_budget: "volatility",
 };
 
+/** Default pillar labels when commit-time inputs (setupState/entryStatus/signalKinds) are not wired. */
+const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string>> = {
+  persistence: "unknown",
+  entry_geometry: "n/a",
+  flow_corroboration: "no signals",
+};
+
+/** True when the aggregate health % is built from generic defaults — not a calibrated read. */
+export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefined): boolean {
+  if (!h?.pillars?.length) return false;
+  for (const [id, defaultLabel] of Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<
+    [SwingThesisPillarId, string]
+  >) {
+    const mappedId = PILLAR_ID_MAP[id];
+    const pillar = h.pillars.find((p) => p.id === mappedId);
+    if (pillar?.currentLabel === defaultLabel) return true;
+  }
+  return false;
+}
+
 const DEFAULT_WEIGHTS: Record<SwingThesisPillarId, number> = {
   persistence: 0.28,
   entry_geometry: 0.22,

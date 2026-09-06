@@ -17,7 +17,8 @@ import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-t
 import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
-import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { thesisHealthUncalibrated } from "./thesis-health";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -50,10 +51,14 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
       return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
     })
     .join("\n");
+  const uncalibrated = thesisHealthUncalibrated(h);
+  const headline = uncalibrated
+    ? "Inputs not wired for committed positions — aggregate score withheld."
+    : `**${h.health}%** · ${h.rungLabel}`;
   return {
     title: "Thesis health",
-    body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
-    bias: h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
+    body: `${headline}\n\n${rows || "Pillars not wired on this row."}`,
+    bias: uncalibrated ? "neutral" : h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
   };
 }
 
@@ -235,10 +240,12 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   const out: BieEvidence[] = [];
   if (ctx.scanAsOf) {
     const scanEt = etStampFromIso(ctx.scanAsOf);
+    const staleScan =
+      ctx.scanSessionDay && ctx.sessionDate && ctx.scanSessionDay !== ctx.sessionDate;
     out.push({
       kind: "fact",
       text: `Swing discovery scan as of ${scanEt}.`,
-      provenance: { source: "Swing lane", asOf: scanEt, freshness: "recent" },
+      provenance: { source: "Swing lane", asOf: scanEt, freshness: staleScan ? "stale" : "recent" },
     });
   }
   if (ctx.play.markAsOf) {
@@ -255,19 +262,65 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     });
   }
   const eco = ctx.ecosystem;
+  const gex = eco?.gex_positioning;
+  if (gex?.gamma_posture) {
+    const parts: string[] = [`γ ${gex.gamma_posture}`];
+    if (Number.isFinite(gex.net_gex)) {
+      const netM = gex.net_gex / 1e6;
+      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${netM.toFixed(1)}M`);
+    }
+    const wall = gex.nearest_wall;
+    if (wall) {
+      parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
+    } else if (gex.flip != null) {
+      parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
+    }
+    out.push({
+      kind: "calc",
+      text: `Dealer posture: ${parts.join(" · ")}`,
+      provenance: {
+        source: "GEX",
+        asOf: gex.as_of_et ?? etStampFromIso(gex.asof) ?? ctx.asOf,
+        freshness: gexFreshness(gex, readMs),
+      },
+    });
+  }
   const flow = trustedHelixFlow(eco);
   if (flow) {
+    const bias =
+      flow.call_premium > flow.put_premium * 1.3
+        ? "call-heavy"
+        : flow.put_premium > flow.call_premium * 1.3
+          ? "put-heavy"
+          : "balanced";
     out.push({
       kind: "fact",
-      text: `HELIX flow ${flow.print_count} prints in ${flow.window_hours}h.`,
-      provenance: { source: "HELIX", asOf: ctx.asOf, freshness: "live" },
+      text: `HELIX flow (${flow.window_hours}h): ${bias} — calls ${fmtUsd(flow.call_premium)} · puts ${fmtUsd(flow.put_premium)} · ${flow.print_count} prints`,
+      provenance: { source: "HELIX", asOf: ctx.asOf, freshness: "recent" },
     });
   }
   if (eco?.arsenal?.earnings?.earnings_date) {
     out.push({
       kind: "fact",
       text: `Next earnings ${eco.arsenal.earnings.earnings_date}.`,
-      provenance: { source: "Earnings calendar", freshness: "recent" },
+      provenance: { source: "Earnings calendar", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
+  const fund = eco?.arsenal?.fundamentals;
+  if (fund && (fund.days_to_cover != null || fund.short_volume_ratio != null)) {
+    const parts: string[] = [];
+    if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
+    if (fund.short_volume_ratio != null) {
+      parts.push(`short vol ratio ${(fund.short_volume_ratio * 100).toFixed(0)}%`);
+    }
+    out.push({
+      kind: "fact",
+      text: `Short interest: ${parts.join(" · ")}`,
+      provenance: {
+        source: "Polygon / Benzinga",
+        asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
+        freshness: "recent",
+      },
     });
   }
   return out;
@@ -376,6 +429,7 @@ export function composeSwingPlayBrief(
     ticker: play.ticker,
     envelope,
     asOf: ctx.asOf,
+    sessionDate: ctx.sessionDate,
     engine: "swing_play_intelligence",
     flowSnapshot,
     briefContentKey: briefContentKey(snap),

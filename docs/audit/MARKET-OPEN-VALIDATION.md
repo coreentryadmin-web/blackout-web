@@ -120,6 +120,38 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1ac. Short interest missing from envelope.evidence (Largo C7) — fix/largo-short-interest-evidence (pending)
+
+**What was broken:** Catalysts/coaching prose showed DTC and short vol ratio from
+`arsenal.fundamentals`, but `envelope.evidence[]` had no structured row — same failure mode #4311
+fixed for HELIX flow premiums. Largo evidence rail could not ground short-interest claims.
+
+**Fix:** `evidenceFromContext()` emits `Short interest: DTC … · short vol ratio …` with
+`provenance.asOf` from `fundamentals.as_of`.
+
+**Check at the open:** WATCH swing with fundamentals populated — play-brief API returns evidence row
+starting with `Short interest:` matching Catalysts section numbers.
+
+---
+
+### 0a-1af. WATCH rows falsely flagged option mark unavailable in Ask Largo — fix/swing-brief-watch-mark-absence-false-positive (pending)
+
+**What was broken:** WATCH candidates carry a static chain mid with no `markAsOf` (`markIsSync: true`
+by design). The play-brief absence collector, `dataHonestyCoaching`, and `dataFreshnessSection`
+treated this as a C3 failure (`option mark: sync quote without freshness timestamp`), surfacing an
+`UnavailableChip` on the most common Ask Largo surface even though the quote shape is expected
+pre-entry.
+
+**Fix:** Introduced `playExpectsLiveOptionMark()` — only OPEN/HOLD/TRIM rows expect live mark
+freshness. Applied consistently across absence, coaching, and intel sections.
+
+**Evidence:** 3 new tests (absence + coaching + intel). 73/73 in touched test files GREEN.
+
+**Check at the open:** Swings desk WATCH tab → select a candidate → Ask Largo panel must NOT show
+an `UnavailableChip` for "option mark" when the only signal is the expected static chain mid.
+
+---
+
 ### 0a-1aa. Hold plan still repeated the thesis-health advisory sentence after #4261's recNote fix — fix/swing-brief-holdplan-thesis-advisory-dup (pending)
 
 **What was broken:** #4261 fixed `holdPlanSection` repeating `recNote`/rails/manage-engine content
@@ -150,6 +182,26 @@ manager read), not repeated under Hold plan.
 **Fix:** Change dark pool level `provenance.source` from `"HELIX"` → `"Vector"`. Regression test in `play-brief.test.ts`.
 
 **Check at the open:** Swings desk → select a play with Vector dark pool levels → Ask Largo level table / SourceStamp for dark pool row must show **Vector**, not HELIX.
+
+---
+
+### 0a-1ae. Stale Vector narrated as "Right now" in dealer posture — fix/swing-brief-stale-vector-right-now (pending)
+
+**What was broken:** `dealerPostureLine()` always led with **"Right now"** even when Vector snapshot was stale (`dataAgeMs > 120s` or `freshness === "stale"`), while structured absence and data honesty coaching correctly flagged staleness — Largo C2 contradiction.
+
+**Fix:** Qualify lead-in as **"Last snapshot (~Ns old)"** when Vector is stale; keep **"Right now"** only on fresh reads.
+
+**Check at the open:** On Swings with a stale Vector read (>2 min), Ask Largo Trade manager read dealer posture line must say **Last snapshot**, not **Right now**.
+
+---
+
+### 0a-1ad. Stale HELIX mislabeled "quiet" in dataHonestyCoaching — fix/swing-brief-helix-stale-coaching-copy (pending)
+
+**What was broken:** When `flow_feed_fresh === false`, `dataHonestyCoaching()` said "HELIX feed quiet" while `unavailableSources` and `dataFreshnessSection()` correctly labeled pipeline **stale** — C3 absence contradiction.
+
+**Fix:** Align coaching copy: "HELIX pipeline stale — flow read unavailable, not evidence of quiet tape".
+
+**Check at the open:** During HELIX pipeline stale window, open Ask Largo on a swing row — Trade manager read Data caveat must say **pipeline stale**, not "feed quiet".
 
 ---
 

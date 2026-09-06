@@ -180,8 +180,11 @@ async function buildRollChild(
   if (!pick) return { blocked: ["no_liquid_child_contract"] };
 
   // A roll must buy TIME: the child expiry has to be strictly further out than the parent's current DTE (+buffer).
+  // Fail closed when parent DTE is unknown — every other missing input in this function blocks; skipping the
+  // check when reads.dte is null/NaN would accept a flat/nearer child without verification (CTO audit #25).
   const parentDte = reads.dte;
-  if (isFin(parentDte) && !(pick.dte > parentDte + buffer)) {
+  if (!isFin(parentDte)) return { blocked: ["no_parent_dte"] };
+  if (!(pick.dte > parentDte + buffer)) {
     return { blocked: [`child_not_further_out (child ${pick.dte}dte <= parent ${parentDte}dte + ${buffer})`] };
   }
 

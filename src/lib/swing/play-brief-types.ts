@@ -46,6 +46,8 @@ export type SwingPlayBriefResult = {
   ticker: string;
   envelope: BieAnswerEnvelope;
   asOf: string;
+  /** ET session date (YYYY-MM-DD) for the brief read — Largo C1 join key. */
+  sessionDate: string | null;
   /** Deterministic — no Anthropic spend. */
   engine: "swing_play_intelligence";
   /**
