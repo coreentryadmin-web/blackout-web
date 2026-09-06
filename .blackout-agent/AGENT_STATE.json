@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T17:34:57.893Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T17:12:53.291Z",
+      "lease_until": "2026-09-06T19:04:56.496Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "079a7927-58f2-440a-bd26-e801efdcafac"
     }
   },
   "reviews": {
@@ -39,6 +39,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4342": {
+      "pr": 4342,
+      "head_sha": "02aed3926681e1be9743215803a3f747d4581c9e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:16:10.107Z",
+      "safe_to_merge": true
+    },
+    "pr-4346": {
+      "pr": 4346,
+      "head_sha": "c11b9ce9141c32b2d7437def2ca5b8da1a6a0b00",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:27:08.128Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -52,11 +68,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "0afadca12f3b22810a335d33d893a6f257d39f7f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T17:34:15Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34049010823",
+    "last_deploy_sha": "0afadca12f3b22810a335d33d893a6f257d39f7f"
   },
   "events": [
     {
@@ -734,6 +750,124 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:16:10.107Z",
+      "type": "pr_review",
+      "pr": 4342,
+      "head_sha": "02aed3926681e1be9743215803a3f747d4581c9e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:16:10.107Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T17:23:14.315Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T17:23:14.316Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "facc1508-6ab4-476e-9c4c-37b78c2b13de",
+      "summary": "Peer-reviewed and merged #4342 (thesis strength warn fallback leak). validate:deploy GREEN; ops:collect 0. Closed duplicate #4341. Deploy main a976ec822."
+    },
+    {
+      "at": "2026-09-06T17:23:16.718Z",
+      "type": "pr_webhook",
+      "pr": 4348,
+      "event": "sweep",
+      "head": "7868b19aa462c03247f3af4802e8a8de1b1b13dc",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:23:18.632Z",
+      "type": "pr_webhook",
+      "pr": 4347,
+      "event": "sweep",
+      "head": "bcb2c376da0b35776453cc66e743bd11d07d3f93",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T17:23:20.692Z",
+      "type": "pr_webhook",
+      "pr": 4346,
+      "event": "sweep",
+      "head": "c11b9ce9141c32b2d7437def2ca5b8da1a6a0b00",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T17:24:17.854Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T17:24:18.863Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T17:24:19.745Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T17:27:08.128Z",
+      "type": "pr_review",
+      "pr": 4346,
+      "head_sha": "c11b9ce9141c32b2d7437def2ca5b8da1a6a0b00",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T17:27:08.128Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T17:34:23.249Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:34:23.250Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4645cc98-ee0c-4f57-85eb-9075a50ef4be",
+      "summary": "Merged #4342 (thesis strength warn fallback) + #4346 (Largo brief: playId fallback, peer earnings match, pillar float). Closed docs-only #4347. validate:deploy GREEN; ops:collect 0. main 0afadca12."
+    },
+    {
+      "at": "2026-09-06T17:34:44.695Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:34:56.495Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:34:57.181Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:34:57.893Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "open_prs": [],
@@ -766,6 +900,30 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4348": {
+      "last_event": "sweep",
+      "last_head": "7868b19aa462c03247f3af4802e8a8de1b1b13dc",
+      "last_feedback_at": "2026-09-06T17:23:16.718Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4347": {
+      "last_event": "sweep",
+      "last_head": "bcb2c376da0b35776453cc66e743bd11d07d3f93",
+      "last_feedback_at": "2026-09-06T17:23:18.632Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4346": {
+      "last_event": "sweep",
+      "last_head": "c11b9ce9141c32b2d7437def2ca5b8da1a6a0b00",
+      "last_feedback_at": "2026-09-06T17:23:20.692Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
