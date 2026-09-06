@@ -286,11 +286,16 @@ test("vexCoaching: narrates vanna flip", () => {
 });
 
 test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf does not", () => {
-  const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true }));
+  const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "OPEN" }));
   assert.match(stale!, /mark not synced to live tape/i);
 
   const fresh = dataHonestyCoaching(ctx(), play({ markIsSync: false, markAsOf: "2026-09-04T21:45:18.731Z" }));
   assert.equal(fresh, null);
+});
+
+test("dataHonestyCoaching: closed play with markIsSync does not warn mark staleness", () => {
+  const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "CLOSED" }));
+  assert.equal(line, null);
 });
 
 test("dataHonestyCoaching: prior-session discovery scan warns", () => {

@@ -235,10 +235,12 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   const out: BieEvidence[] = [];
   if (ctx.scanAsOf) {
     const scanEt = etStampFromIso(ctx.scanAsOf);
+    const staleScan =
+      ctx.scanSessionDay && ctx.sessionDate && ctx.scanSessionDay !== ctx.sessionDate;
     out.push({
       kind: "fact",
       text: `Swing discovery scan as of ${scanEt}.`,
-      provenance: { source: "Swing lane", asOf: scanEt, freshness: "recent" },
+      provenance: { source: "Swing lane", asOf: scanEt, freshness: staleScan ? "stale" : "recent" },
     });
   }
   if (ctx.play.markAsOf) {
