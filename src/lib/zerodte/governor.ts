@@ -37,6 +37,7 @@
 
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { PLAN_RULES } from "./plan";
+import { isCondorRow } from "./condor-record";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
 import { timeOfDayFactor } from "./intraday";
@@ -432,6 +433,8 @@ export type GovernorLedgerRow = Pick<
  *  (derivePlayStatus's own CLOSED/stopped condition) — so the count is right even
  *  before the lazy grader has run. A time-stop close is NOT a stop. */
 function ledgerRowStopped(r: GovernorLedgerRow): boolean {
+  // Condors never use directional trough stops — gradeCondorFromBars owns breach/win.
+  if (isCondorRow(r.entry_context)) return false;
   if (r.plan_outcome === "stopped") return true;
   if (r.status !== "CLOSED") return false;
   return (

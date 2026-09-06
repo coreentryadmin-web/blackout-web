@@ -43,6 +43,7 @@ function row(overrides: Partial<GovernorLedgerRow> = {}): GovernorLedgerRow {
     plan_pnl_pct: null,
     last_mark: null,
     last_mark_at: null,
+    entry_context: null,
     ...overrides,
   };
 }
@@ -567,6 +568,19 @@ test("deriveGovernorFromLedger: trough EXACTLY at the −50% stop level is a sto
   // trough 2.01 → above the stop level → NOT a stop (and not a realized loser via this channel).
   const above = deriveGovernorFromLedger([row({ ticker: "SPY", status: "CLOSED", entry_premium: 4.0, trough_premium: 2.01, plan_pnl_pct: null })]);
   assert.equal(above.stops.length, 0);
+});
+
+test("deriveGovernorFromLedger: condor trough at directional stop level is NOT a session stop", () => {
+  const snap = deriveGovernorFromLedger([
+    row({
+      ticker: "SPX",
+      status: "CLOSED",
+      entry_premium: 0.6,
+      trough_premium: 0.25,
+      entry_context: { play_type: "CONDOR" },
+    }),
+  ]);
+  assert.equal(snap.stops.length, 0);
 });
 
 test("deriveGovernorFromLedger: a non-positive entry_premium can never be a trough-derived stop (guarded)", () => {

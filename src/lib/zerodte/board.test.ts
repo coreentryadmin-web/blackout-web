@@ -1135,6 +1135,20 @@ test("lifecycle: a touched stop stays CLOSED even if the premium bounces", () =>
   assert.equal(s.live_pnl_pct, -50);
 });
 
+test("lifecycle: condor ignores directional trough stop — decaying mark stays HOLD with seller P&L", () => {
+  const s = derivePlayStatus({
+    entryPremium: 0.6,
+    mark: 0.25,
+    peak: 0.6,
+    trough: 0.25,
+    nowEtMinutes: 13 * 60,
+    isCondor: true,
+  });
+  assert.equal(s.status, "HOLD");
+  assert.equal(s.closed_reason, null);
+  assert.equal(s.live_pnl_pct, 58.33);
+});
+
 // P0 regression guard: peak/trough are latched extremes with no timestamp, so once
 // BOTH have crossed their thresholds this function alone can't know which happened
 // first. A play that legitimately doubled (peak >= target) and only later craters
