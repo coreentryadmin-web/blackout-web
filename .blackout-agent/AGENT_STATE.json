@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:27:56.381Z",
+  "updated_at": "2026-09-06T14:05:31.620Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T14:03:36.557Z",
+      "lease_until": "2026-09-06T15:35:29.098Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "26231da7-a0db-450e-8a28-05128a7f0f1b"
     }
   },
   "reviews": {
@@ -31,6 +31,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4260": {
+      "pr": 4260,
+      "head_sha": "f2c4c6d05",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:04:42.638Z",
+      "safe_to_merge": true
+    },
+    "pr-4266": {
+      "pr": 4266,
+      "head_sha": "e561cb00d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:04:43.105Z",
+      "safe_to_merge": true
+    },
+    "pr-4269": {
+      "pr": 4269,
+      "head_sha": "122b31b109ae5ce14435715407aac29ae416210f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:04:43.504Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +68,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "83694ea2a26757d1683b72ec7b801893dd914ddb",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T14:04:22Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34038014764",
+    "last_deploy_sha": "83694ea2a26757d1683b72ec7b801893dd914ddb"
   },
   "events": [
     {
@@ -601,9 +625,157 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T14:04:42.639Z",
+      "type": "pr_review",
+      "pr": 4260,
+      "head_sha": "f2c4c6d05",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:04:42.638Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:04:43.106Z",
+      "type": "pr_review",
+      "pr": 4266,
+      "head_sha": "e561cb00d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:04:43.105Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:04:43.505Z",
+      "type": "pr_review",
+      "pr": 4269,
+      "head_sha": "122b31b109ae5ce14435715407aac29ae416210f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:04:43.504Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:04:49.983Z",
+      "type": "pr_webhook",
+      "pr": 4271,
+      "event": "sweep",
+      "head": "b1aae9f3cf145bb48f20bd2b6aabc8c6750ea351",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:04:52.336Z",
+      "type": "pr_webhook",
+      "pr": 4270,
+      "event": "sweep",
+      "head": "cf0d8d497bea8d064a82520939ce251d94d38256",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:04:54.895Z",
+      "type": "pr_webhook",
+      "pr": 4269,
+      "event": "sweep",
+      "head": "122b31b109ae5ce14435715407aac29ae416210f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:04:57.512Z",
+      "type": "pr_webhook",
+      "pr": 4266,
+      "event": "sweep",
+      "head": "e561cb00d1c381d224204887b0a23f48d1c7df1f",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:05:02.812Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:05:20.456Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:05:20.457Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b825c43f-8233-4aa5-9d20-2436e2cdd298",
+      "summary": "Peer-reviewed 3 swing Largo PRs (#4260 Vector C3 absence, #4266 stale discovery scan, #4269 ivRank wire) — all APPROVED with GO AHEAD MERGE comments. #4260 merge blocked by GitHub PAT rate limit (284440397). validate:deploy GREEN; ops:collect 0. Main at a97062e."
+    },
+    {
+      "at": "2026-09-06T14:05:29.097Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:05:30.290Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:05:31.620Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4271,
+      "title": "chore(blackout-agent): cursor handoff — swing Largo peer reviews, #4253/#4257 merged",
+      "branch": "cursor/autopilot-handoff-20260906-1400",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:00:45Z"
+    },
+    {
+      "number": 4270,
+      "title": "chore(blackout-agent): cursor handoff — platform GREEN, Largo fixes in flight",
+      "branch": "cursor/autopilot-handoff-2026-09-06-1355",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:02:47Z"
+    },
+    {
+      "number": 4269,
+      "title": "fix(swing): wire ivRank onto play-brief TerminalPlay for Largo coaching",
+      "branch": "fix/swing-brief-ivrank-wire",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:04:38Z"
+    },
+    {
+      "number": 4266,
+      "title": "fix(swing): flag prior-session discovery scan in play-brief C3 channel",
+      "branch": "fix/swing-brief-stale-discovery-scan",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T14:05:28Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -634,6 +806,38 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4271": {
+      "last_event": "sweep",
+      "last_head": "b1aae9f3cf145bb48f20bd2b6aabc8c6750ea351",
+      "last_feedback_at": "2026-09-06T14:04:49.983Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4270": {
+      "last_event": "sweep",
+      "last_head": "cf0d8d497bea8d064a82520939ce251d94d38256",
+      "last_feedback_at": "2026-09-06T14:04:52.336Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4269": {
+      "last_event": "sweep",
+      "last_head": "122b31b109ae5ce14435715407aac29ae416210f",
+      "last_feedback_at": "2026-09-06T14:04:54.895Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4266": {
+      "last_event": "sweep",
+      "last_head": "e561cb00d1c381d224204887b0a23f48d1c7df1f",
+      "last_feedback_at": "2026-09-06T14:04:57.512Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
