@@ -17,10 +17,6 @@ export function isSharedUniverseTickerSync(ticker: string): boolean {
   return t.length > 0 && sharedSet.has(t);
 }
 
-export function getSharedUniverseSetForTest(): ReadonlySet<string> {
-  return sharedSet;
-}
-
 /** Replace the set (tests only). */
 export function _setSharedUniverseForTest(tickers: readonly string[]): void {
   sharedSet = new Set(tickers.map((t) => normalizeVectorTicker(t)));

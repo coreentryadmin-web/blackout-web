@@ -110,9 +110,4 @@ export async function getHorizonStrikeTotals(
   }
 }
 
-/** Test-only reset of the request-coalescing memo. */
-export function _resetPerExpiryWallsMemoForTest(): void {
-  memo.clear();
-}
-
 export { perExpiryWallsFromContracts } from "./vector-dte-walls-core";

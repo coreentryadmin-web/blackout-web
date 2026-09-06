@@ -319,10 +319,6 @@ export function nextRailMemoAt(
   return prevAt;
 }
 
-/** Test-only reset so a suite cannot leak one test's rail into the next. */
-export function _resetWallRailMemoForTest(): void {
-  railMemo.clear();
-}
 
 export async function appendSessionWallSample(
   sessionYmd: string,
