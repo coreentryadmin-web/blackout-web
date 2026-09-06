@@ -21,8 +21,9 @@
 // to the WATCH rail once its thesis has PERSISTED across ≥2 distinct session days (accumulation-store).
 // A first-sighting candidate is OBSERVED (accreted into the memory) but stays BELOW the WATCH bar this run.
 //
-// EVIDENCE-ONLY (`commitEligibleCount` held at 0): PR-11 wires a WATCH-only rail. Nothing here COMMITs or
-// sizes risk — the lane isn't authorized to commit until its archetype×sub-lane bucket graduates (PR-16).
+// COMMIT IS OPTIONAL (injected deps): unit tests and evidence-only callers omit `insertPosition`, so nothing
+// opens. The authorized cron (swing-discovery/route.ts) injects the live commit seam — real positions when
+// WATCH candidates clear armed budget + caps + idempotency (graduation is evidence-only since 2026-08-06).
 //
 // SHAPE: `deriveSwingCandidates` + the merge/rank helpers are PURE and deterministic (unit-testable on fixed
 // inputs). `runSwingDiscoveryScan` is the thin IO shell — every fetch/accessor is INJECTED, so the whole
