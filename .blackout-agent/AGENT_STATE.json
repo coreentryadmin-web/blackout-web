@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:20:58.698Z",
+  "updated_at": "2026-09-06T16:37:57.614Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T16:26:54.563Z",
+      "lease_until": "2026-09-06T17:56:54.563Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -31,6 +31,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4319": {
+      "pr": 4319,
+      "head_sha": "354423ab",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T16:34:17.431Z",
+      "safe_to_merge": true
+    },
+    "pr-4322": {
+      "pr": 4322,
+      "head_sha": "9c2fb58e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T16:34:17.762Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +60,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a590024676191b528bb23feff899bb29d73da393",
+    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T16:34:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
+    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
   },
   "events": [
     {
@@ -709,9 +725,79 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T16:34:17.432Z",
+      "type": "pr_review",
+      "pr": 4319,
+      "head_sha": "354423ab",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T16:34:17.431Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T16:34:17.762Z",
+      "type": "pr_review",
+      "pr": 4322,
+      "head_sha": "9c2fb58e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T16:34:17.762Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T16:37:53.771Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T16:37:57.613Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T16:37:57.614Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e40d5ef3-083e-4ff1-a9c0-8876cc8fe598",
+      "summary": "Cycle: recovered state, peer-reviewed swing Largo fixes #4318-4322 (all merged to main @ 13d1155). #4326 roll-plan fail-closed under review. Deploy in flight for #4320/#4322. ops:collect 0. validate:deploy GREEN."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4327,
+      "title": "chore(blackout-agent): cursor handoff — peer review cycle #4318-4322",
+      "branch": "cursor/handoff-pr-event-4322",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:37:22Z"
+    },
+    {
+      "number": 4326,
+      "title": "fix(swing): fail closed when roll plan lacks parent DTE",
+      "branch": "fix/roll-plan-missing-parent-dte-fail-closed",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:37:18Z"
+    },
+    {
+      "number": 4325,
+      "title": "chore(blackout-agent): cursor handoff — merged #4314/#4311/#4319, queue clear",
+      "branch": "cursor/handoff-20260906-1637",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T16:37:07Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
