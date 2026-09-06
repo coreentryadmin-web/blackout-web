@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T05:02:17.958Z",
+  "updated_at": "2026-09-06T05:32:43.127Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T05:16:44.279Z",
+      "lease_until": "2026-09-06T06:46:44.279Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1a98c378bc6799c17ecdece9faea4a81fbdf0a5b",
+    "last_main_sha": "e278a26f6c87db8281356e6f3241118232434569",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T05:27:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34014014168",
+    "last_deploy_sha": "e278a26f6c87db8281356e6f3241118232434569"
   },
   "events": [
     {
@@ -426,7 +426,47 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T05:32:26.660Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T05:32:26.660Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "315b1edc-5ae6-47a0-9692-0b26b346034c",
+      "summary": "Workflow_run cycle: merged #4138 (G-6 condor calibration, Cursor APPROVED), #4135 (collapse hardening). Closed superseded #4136/#4143. #4142 ET-stamp fix awaiting verify+Claude review. Deploy validate GREEN, ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T05:32:43.127Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4145,
+      "title": "chore(blackout-agent): cursor cycle handoff — #4138 merged, dupes closed",
+      "branch": "cursor/autopilot-handoff-2026-09-06-v5",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T05:31:03Z"
+    },
+    {
+      "number": 4142,
+      "title": "fix(swing): stamp play-brief asOf with ET per Largo C1",
+      "branch": "cursor/blackout-autopilot-work-loop-d40d",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T05:28:43Z"
+    }
+  ]
 }
