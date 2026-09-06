@@ -4,11 +4,21 @@
  */
 import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
+import { fetchOpenSwingPositions } from "@/lib/db";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-brief-resolve";
 import { fetchMeridianForTicker } from "./play-brief-meridian";
+import type { PortfolioPosition } from "./portfolio";
+
+async function loadOpenBook(): Promise<PortfolioPosition[]> {
+  const rows = await fetchOpenSwingPositions().catch(() => []);
+  return rows.map((r) => ({
+    ticker: r.ticker,
+    direction: r.direction === "short" ? ("SHORT" as const) : ("LONG" as const),
+  }));
+}
 
 export type LoadSwingPlayBriefInput = SwingBriefResolveHints;
 
@@ -23,10 +33,11 @@ export async function loadSwingPlayBriefContext(
   if (!resolved) return null;
 
   const ticker = resolved.play.ticker.toUpperCase();
-  const [ecosystem, vector, meridian] = await Promise.all([
+  const [ecosystem, vector, meridian, openBook] = await Promise.all([
     fetchEcosystemContext(ticker).catch(() => null),
     fetchVectorFullState(ticker, normalizeDteHorizon("all")).catch(() => null),
     fetchMeridianForTicker(ticker).catch(() => null),
+    loadOpenBook(),
   ]);
 
   const nowMs = Date.now();
@@ -41,5 +52,6 @@ export async function loadSwingPlayBriefContext(
     vector,
     laneRows: resolved.laneRows,
     meridian,
+    openBook,
   };
 }

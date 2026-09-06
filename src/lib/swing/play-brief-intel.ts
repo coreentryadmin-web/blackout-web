@@ -11,6 +11,7 @@ import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
+import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -556,6 +557,35 @@ export function vectorDeskSection(vec: VectorFullState | null): RichSection | nu
   return { title: "Vector desk", body: lines.join("\n\n"), bias: p.bias === "short" ? "bearish" : p.bias === "long" ? "bullish" : "neutral" };
 }
 
+/**
+ * Book context — does this candidate stack or fight a theme the member already holds elsewhere?
+ * Reuses the same theme resolver the swing entry gate uses (`portfolio.ts`/`theme-cluster.ts`).
+ */
+export function bookContextSection(play: TerminalPlay, openBook: PortfolioPosition[] | undefined): RichSection | null {
+  if (!openBook?.length) return null;
+  const overlap = checkPortfolioOverlap({ ticker: play.ticker, direction: play.direction }, openBook);
+  if (!overlap.hasOverlap) return null;
+
+  const lines: string[] = [];
+  if (overlap.sameThemeSameDirection.length) {
+    const names = overlap.sameThemeSameDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
+    lines.push(
+      `**Concentration** — already holding ${overlap.sameThemeSameDirection.length} same-direction ` +
+        `position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in theme "${overlap.theme}": ${names}. ` +
+        `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`,
+    );
+  }
+  if (overlap.sameThemeOpposedDirection.length) {
+    const names = overlap.sameThemeOpposedDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
+    lines.push(
+      `**Internal conflict** — theme "${overlap.theme}" already has an OPPOSED position: ${names}. ` +
+        `One leg is structurally betting against the other; this is not a hedge unless intentional.`,
+    );
+  }
+
+  return { title: "Book context", body: lines.join("\n\n"), bias: "neutral" };
+}
+
 /** Honest data freshness — mark age, scan age, vector staleness. */
 export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | null {
   const { play, scanAsOf, vector: vec } = ctx;
@@ -586,6 +616,9 @@ export function buildIntelSections(
   if (narrative) out.push(narrative);
 
   out.push(whyThisSetupSection(play));
+
+  const book = bookContextSection(play, ctx.openBook);
+  if (book) out.push(book);
 
   const rank = laneRankSection(play, ctx.laneRows);
   if (rank) out.push(rank);
