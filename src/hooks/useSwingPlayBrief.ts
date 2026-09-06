@@ -6,7 +6,7 @@ import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   diffBriefSnapshots,
-  envelopeWithDiffSection,
+  envelopeWithNarrativePulse,
   extrasFromBriefResponse,
   snapshotFromBrief,
   type BriefSnapshot,
@@ -138,7 +138,7 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
     const changes = diffBriefSnapshots(prevSnapRef.current, nextSnap);
     prevSnapRef.current = nextSnap;
     setChangeCount(changes.length);
-    setEnvelope(changes.length ? envelopeWithDiffSection(raw, changes) : raw);
+    setEnvelope(changes.length ? envelopeWithNarrativePulse(raw, changes) : raw);
   }, [data, play, liveSig]);
 
   const refresh = useCallback(() => mutate(), [mutate]);

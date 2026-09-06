@@ -192,6 +192,33 @@ export function briefContentKey(snap: BriefSnapshot): string {
   });
 }
 
+/** Inject live refresh pulse into Trade manager read; overflow goes to What changed. */
+export function envelopeWithNarrativePulse(
+  envelope: BieAnswerEnvelope,
+  changes: string[],
+): BieAnswerEnvelope {
+  if (!changes.length) return envelope;
+
+  const narrativeIdx = envelope.sections.findIndex((s) => s.title === "Trade manager read");
+  if (narrativeIdx < 0) return envelopeWithDiffSection(envelope, changes);
+
+  const pulseLines = changes.slice(0, 3).map((c) => `• **Since last read** — ${c}`);
+  const overflow = changes.slice(3);
+
+  const sections = [...envelope.sections];
+  const narrative = sections[narrativeIdx]!;
+  const alreadyHasPulse = narrative.body.includes("Since last read");
+  sections[narrativeIdx] = {
+    ...narrative,
+    body: alreadyHasPulse
+      ? narrative.body
+      : `${pulseLines.join("\n")}\n${narrative.body}`,
+  };
+
+  const base = { ...envelope, sections };
+  return overflow.length ? envelopeWithDiffSection(base, overflow) : base;
+}
+
 /** Inject a "What changed" section at the top of an envelope when deltas exist. */
 export function envelopeWithDiffSection(
   envelope: BieAnswerEnvelope,

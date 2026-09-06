@@ -7,6 +7,7 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtPremium } from "@/lib/fmt-money";
+import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
 import { mfeCaptureOutcome } from "./mfe-capture";
 
 function fin(n: unknown): number | null {
@@ -455,6 +456,24 @@ export function wallDynamicsCoaching(vec: VectorFullState | null): string | null
   return `**Wall dynamics** — ${lines}. Structure shifting — re-check break levels.`;
 }
 
+/** Morning-confirm / legacy pre-market gate coaching on WATCH rows. */
+export function morningConfirmCoaching(play: TerminalPlay): string | null {
+  if (play.pulled || play.morningStatus === "INVALIDATED") {
+    const reason = play.morningReason ? ` — ${play.morningReason}` : "";
+    return `**Morning confirm FAILED**${reason}. Do not enter; setup invalidated.`;
+  }
+  if (play.morningStatus === "DEGRADED") {
+    return `**Pre-market DEGRADED** — validate gates before entry; size down vs full signal.`;
+  }
+  if (play.morningStatus === "UNVERIFIED") {
+    return `**Morning unverified** — wait for CONFIRMED status before sizing.`;
+  }
+  if (play.morningStatus === "CONFIRMED" && play.status === "WATCH") {
+    return `**Pre-market CONFIRMED** — mechanical gates cleared; wait for trigger geometry.`;
+  }
+  return null;
+}
+
 export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefContext["laneRows"]): string | null {
   const snap = computeLaneRank(play, laneRows);
   if (!snap || snap.total < 2) return null;
@@ -576,6 +595,7 @@ export function collectCoachingBullets(
   push(thesisPillarCoaching(play));
 
   if (bucket === "watch") {
+    push(morningConfirmCoaching(play));
     push(watchGateCoaching(play));
     if (play.flagUnderlyingPx != null) {
       push(`**Flag anchor ${play.flagUnderlyingPx.toFixed(2)}** — track trigger geometry from here.`);
@@ -587,6 +607,8 @@ export function collectCoachingBullets(
 
   push(manageLifecycleCoaching(play, bucket));
   push(catalystCoaching(ctx));
+  const earningsItem = ctx.meridian?.items.find((i) => i.kind === "earnings" && i.days_until <= 14) ?? null;
+  push(meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem));
   push(crossDeskCoaching(ctx, play));
   push(laneRankCoaching(play, ctx.laneRows));
   push(macroTapeCoaching(ctx));

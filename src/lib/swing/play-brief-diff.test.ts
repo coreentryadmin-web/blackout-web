@@ -5,6 +5,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   diffBriefSnapshots,
   envelopeWithDiffSection,
+  envelopeWithNarrativePulse,
   extrasFromBriefResponse,
   snapshotFromBrief,
 } from "./play-brief-diff";
@@ -100,7 +101,31 @@ test("diffBriefSnapshots: detects trim rail fires", () => {
   assert.ok(lines.some((l) => l.includes("Trim rail")));
 });
 
-test("end-to-end: a HELIX call-flow build now actually reaches the diff engine (was previously always null)", () => {
+test("envelopeWithNarrativePulse: weaves pulse into Trade manager read", () => {
+  const base = {
+    ...env(),
+    sections: [
+      { title: "Trade manager read", body: "• Hold the line", bias: "neutral" as const },
+      { title: "Verdict", body: "ok", bias: "neutral" as const },
+    ],
+  };
+  const out = envelopeWithNarrativePulse(base, ["P&L +5% → +8%", "Spot moved"]);
+  const narrative = out.sections.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /Since last read/i);
+  assert.match(narrative!.body, /Hold the line/);
+  assert.ok(!out.sections.some((s) => s.title === "What changed"));
+});
+
+test("envelopeWithNarrativePulse: overflow changes get What changed section", () => {
+  const base = {
+    ...env(),
+    sections: [{ title: "Trade manager read", body: "• Hold", bias: "neutral" as const }],
+  };
+  const out = envelopeWithNarrativePulse(base, ["a", "b", "c", "d"]);
+  assert.ok(out.sections.some((s) => s.title === "What changed"));
+});
+
+test("diffBriefSnapshots: detects HELIX flow shift", () => {
   const baseEnvelope = env();
   const prevResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 500_000, putPremium: 400_000 } };
   const nextResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 900_000, putPremium: 380_000 } };
