@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:27:56.381Z",
+  "updated_at": "2026-09-06T14:09:39.370Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T13:53:07.550Z",
+      "lease_until": "2026-09-06T15:23:07.550Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -31,6 +31,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4263": {
+      "pr": 4263,
+      "head_sha": "5da3362143d31e3260aaa4f3a893b671a1d4328e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:53:35.412Z",
+      "safe_to_merge": true
+    },
+    "pr-4260": {
+      "pr": 4260,
+      "head_sha": "f2c4c6d05",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:08:02.681Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +60,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "a97062e1621a2a8c3538c1b30839fbca4239059b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T14:09:13Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34038191327",
+    "last_deploy_sha": "e503648743e944d3fd765ff3e09a064704222cc6"
   },
   "events": [
     {
@@ -601,9 +617,83 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T13:53:35.413Z",
+      "type": "pr_review",
+      "pr": 4263,
+      "head_sha": "5da3362143d31e3260aaa4f3a893b671a1d4328e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T13:53:35.412Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:08:02.682Z",
+      "type": "pr_review",
+      "pr": 4260,
+      "head_sha": "f2c4c6d05",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:08:02.681Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:09:39.369Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:09:39.370Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "363e8494-a11d-46a9-b8c8-a305b33be6a4",
+      "summary": "Cycle: merged #4262/#4263/#4260 (swing Largo C1/C3/C5 fixes). Reviewed+approved #4266 (stale discovery scan) — CI pending. Rebased PR branches onto main. validate:deploy GREEN; ops:collect 0."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4272,
+      "title": "chore(blackout-agent): cursor handoff — #4260 merged, #4266/#4269 peer-reviewed",
+      "branch": "cursor/autopilot-handoff-20260906-1406",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:06:30Z"
+    },
+    {
+      "number": 4271,
+      "title": "chore(blackout-agent): cursor handoff — swing Largo peer reviews, #4253/#4257 merged",
+      "branch": "cursor/autopilot-handoff-20260906-1400",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:00:45Z"
+    },
+    {
+      "number": 4270,
+      "title": "chore(blackout-agent): cursor handoff — platform GREEN, Largo fixes in flight",
+      "branch": "cursor/autopilot-handoff-2026-09-06-1355",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:02:47Z"
+    },
+    {
+      "number": 4266,
+      "title": "fix(swing): flag prior-session discovery scan in play-brief C3 channel",
+      "branch": "fix/swing-brief-stale-discovery-scan",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:09:30Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
