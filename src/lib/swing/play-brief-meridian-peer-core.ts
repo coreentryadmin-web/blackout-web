@@ -85,6 +85,11 @@ export function meridianPeerEarningsCoaching(
         .join(" · ");
       parts.push(`peer history: ${snippets}`);
     }
+    if (peer.insufficient_reason?.trim()) {
+      parts.push(
+        `_Implied-move cohort thin: ${peer.insufficient_reason.trim()} — peer beat rates are directional only._`,
+      );
+    }
   }
 
   if (!parts.length) return null;

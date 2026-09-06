@@ -132,6 +132,11 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const peer = ctx.meridianPeer;
     const reason = peer.error ?? peer.note ?? "unavailable";
     out.push({ source: "Meridian peer cohort", reason });
+  } else if (ctx.meridianPeer?.available === true && ctx.meridianPeer.insufficient_reason?.trim()) {
+    out.push({
+      source: "Meridian peer cohort",
+      reason: ctx.meridianPeer.insufficient_reason.trim(),
+    });
   }
   // Prior-session discovery scan: WATCH rows can still carry yesterday's lane snapshot while the
   // brief stamps today's sessionDate — without this, scanAsOf prose looks current (C3 gap).
