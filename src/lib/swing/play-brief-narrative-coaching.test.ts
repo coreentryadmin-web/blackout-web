@@ -302,6 +302,16 @@ test("dataHonestyCoaching: prior-session discovery scan warns", () => {
   assert.match(line!, /today's scan not yet run/);
 });
 
+test("dataHonestyCoaching: stale HELIX pipeline warns stale, not quiet", () => {
+  const line = dataHonestyCoaching(
+    ctx({ ecosystem: { flow_feed_fresh: false } as SwingPlayBriefContext["ecosystem"] }),
+    play(),
+  );
+  assert.match(line!, /HELIX pipeline stale/);
+  assert.match(line!, /not evidence of quiet tape/);
+  assert.doesNotMatch(line!, /feed quiet/i);
+});
+
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
   assert.match(line!, /slippage/i);
