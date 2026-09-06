@@ -1,17 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T07:46:36.679Z
-**Run:** 83745499-546b-4d19-ad37-4f43d6e0d3f6
+**At:** 2026-09-06T07:51:30.722Z
+**Run:** b8f9a235-0ebe-499b-9b35-79f525274c4f
 
 ## Summary
 
-PR-event cycle: lifecycle GREEN (deploy, api-auth 225 routes, platform-integrity 14/14, seo 22/22, rth-open off-hours skip). ops:collect 0. #4166 merged main@dac25ac03. Closed stale #4168. No open PRs, no Claude/fix PRs for peer review. ECR deploy pending dac25ac.
+PR-event cycle complete. Peer-reviewed condor P1 fix **#4166** (merged `main@dac25ac03`). Closed duplicate racing PRs **#4163–#4165**. Lifecycle GREEN (`validate:deploy` pass, ops:collect 0). No Claude/fix PRs awaiting peer review. Open: **#4169** cursor handoff (this PR).
 
 ## Deploy
 
 - main: `dac25ac031e42ee07d549d1095b50012476c9544`
-- status: 
+- status: GREEN (validate:deploy)
 
 ## Open PRs
 
-_none_
+- #4169 [cursor] chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN, #4166 merged

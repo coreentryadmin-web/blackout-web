@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T07:46:36.680Z",
+  "updated_at": "2026-09-06T07:52:12.288Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T07:44:53.443Z",
-      "lease_until": "2026-09-06T09:14:53.443Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T07:32:21.172Z",
+      "lease_until": "2026-09-06T09:11:24.116Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "44a0c326-0ae3-494b-b2c3-9c9eaf5022ce"
     },
     "BO-P1-0105": {
       "task_id": "BO-P1-0105",
@@ -25,6 +25,17 @@
       "reviewer": null,
       "run_id": null,
       "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T07:51:37.666Z",
+      "lease_until": "2026-09-06T09:21:37.666Z",
+      "phase": "DEPLOY_VERIFY",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null
     }
   },
   "reviews": {
@@ -482,7 +493,24 @@
       "agent": "cursor",
       "run_id": "83745499-546b-4d19-ad37-4f43d6e0d3f6",
       "summary": "PR-event cycle: lifecycle GREEN (deploy, api-auth 225 routes, platform-integrity 14/14, seo 22/22, rth-open off-hours skip). ops:collect 0. #4166 merged main@dac25ac03. Closed stale #4168. No open PRs, no Claude/fix PRs for peer review. ECR deploy pending dac25ac."
+    },
+    {
+      "at": "2026-09-06T07:52:12.288Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4169,
+      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN, #4166 merged",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle6",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/CANCELLED",
+      "updated_at": "2026-09-06T07:51:01Z"
+    }
+  ]
 }

@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "fdac95d7-4f52-49ce-9f92-2334105441c5",
-  "last_seen": "2026-09-06T07:45:26.148Z",
-  "last_productive_action": "heartbeat",
+  "run_id": "11f46b26-0b6a-4fd3-ad79-de4f5eb0086b",
+  "last_seen": "2026-09-06T07:52:00.000Z",
+  "last_productive_action": "handoff",
   "current_task": "BO-P1-0101",
-  "current_phase": "VERIFYING",
-  "branch": null,
-  "pr": null,
+  "current_phase": "DEPLOY_VERIFY",
+  "branch": "cursor/autopilot-pr-event-20260906-cycle6",
+  "pr": 4169,
   "healthy": true
 }
