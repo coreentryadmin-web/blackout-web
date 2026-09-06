@@ -422,12 +422,13 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
     }
   }
 
-  const ema = vec?.technicals?.emaStack ?? null;
+  const vectorStale = vectorSnapshotStale(vec, Date.now());
+  const ema = !vectorStale ? vec?.technicals?.emaStack ?? null : null;
   if (play.direction === "LONG" && ema === "down") reasons.push("bear EMA stack on chart");
   if (play.direction === "SHORT" && ema === "up") reasons.push("bull EMA stack on chart");
 
   const gex = eco?.gex_positioning;
-  const vecPosture = vec?.regime?.posture;
+  const vecPosture = !vectorStale ? vec?.regime?.posture ?? null : null;
   const posture = vecPosture ?? gex?.gamma_posture ?? null;
   const postureFromGex = !vecPosture && gex?.gamma_posture;
   const skipGexPosture = postureFromGex && gexMatrixStale(gex, Date.now());
