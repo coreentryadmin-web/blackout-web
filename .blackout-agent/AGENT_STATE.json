@@ -1,18 +1,31 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T23:20:33.147Z",
+  "updated_at": "2026-09-06T23:56:35.041Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T23:44:07.927Z",
+      "lease_until": "2026-09-07T01:14:07.927Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": null,
+      "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T23:53:15.840Z",
+      "lease_until": "2026-09-07T01:23:15.840Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -47,16 +60,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T23:53:15.841Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "76db6013eb2f8135643e2a2efda8d209275f2836",
+    "last_main_sha": "a097bf1501dde882b47f26351c025d2939369458",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T23:52:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34068111246",
+    "last_deploy_sha": "a097bf1501dde882b47f26351c025d2939369458"
   },
   "events": [
     {
@@ -824,6 +838,90 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T23:43:56.765Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:44:00.845Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:44:01.668Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:44:02.589Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:44:07.928Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T23:44:49.560Z",
+      "type": "pr_webhook",
+      "pr": 4419,
+      "event": "sweep",
+      "head": "5b5cf622f8323d1cf59c6def93445470ab7197c3",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T23:53:09.163Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T23:53:09.164Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "40dded6e-c4d9-41c0-b4e1-cdaa1cc2cd09",
+      "summary": "Recovered autopilot state. PR #4419 (Largo stale GEX spot levels) verify+CodeQL GREEN; local 80/80 pass. Cursor cannot self-approve — awaiting Claude peer review. validate:deploy GREEN; ops:collect 0 items. Deploy main at 15f13e51."
+    },
+    {
+      "at": "2026-09-06T23:53:13.118Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T23:53:15.841Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T23:56:25.107Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T23:56:35.041Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T23:56:35.041Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "266adc51-dd8f-4a33-b95a-da24a185a6bb",
+      "summary": "Autopilot recovery complete. #4419 merged (Largo stale GEX spot levels). All sweeps GREEN: validate:deploy, validate:api-auth, validate:platform-integrity (14/14), ops:collect 0. No open PRs. main"
     }
   ],
   "open_prs": [],
@@ -857,6 +955,14 @@
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4419": {
+      "last_event": "sweep",
+      "last_head": "5b5cf622f8323d1cf59c6def93445470ab7197c3",
+      "last_feedback_at": "2026-09-06T23:44:49.559Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "created"
     }
