@@ -248,6 +248,30 @@ test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led fri
   assert.equal(line, null, "stale HELIX must not coach cross-desk flow friction");
 });
 
+test("crossDeskCoaching: desk alignment omits undefined NH conviction and junk 0DTE score", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        nighthawk_recent: {
+          edition_for: "NRG",
+          direction: "long",
+          conviction: undefined as unknown as string,
+          outcome: "bullish",
+          score: 80,
+        },
+        zerodte_today: {
+          direction: "long",
+          score: undefined as unknown as number,
+          ticker: "NRG",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "thin aligned desks must not emit Desk alignment with undefined tokens");
+});
+
 test("catalystCoaching: earnings within 14d", () => {
   const line = catalystCoaching(
     ctx({

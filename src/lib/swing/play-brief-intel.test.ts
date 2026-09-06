@@ -132,6 +132,8 @@ test("holdPlanSection: does not repeat recNote or Management-owned rails — uni
   assert.ok(!section!.body.includes("Trim ladder"));
   assert.ok(!section!.body.includes("Rails:"));
   assert.ok(!section!.body.includes("Manage engine"));
+  assert.match(section!.body, /Contract runway/);
+  assert.ok(!section!.body.includes("Time in trade"));
   assert.match(section!.body, /14 DTE/);
   assert.match(section!.body, /15:50/);
 });
