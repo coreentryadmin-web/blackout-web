@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:20:06.191Z",
+  "updated_at": "2026-09-06T01:20:28.124Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T00:53:54.565Z",
-      "lease_until": "2026-09-06T02:23:54.565Z",
+      "claimed_at": "2026-09-06T01:13:05.728Z",
+      "lease_until": "2026-09-06T02:47:59.810Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "cd881393-893b-4a30-b15c-634ff48997ff"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -49,7 +49,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "38939b0bc597eb4cea1a8191c15b56e09b09bfec",
+    "last_main_sha": "2c2301275da86bfcd6f64dba43529602f5c0f4c9",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T01:18:29Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34003550757",
@@ -292,6 +292,19 @@
       "agent": "cursor",
       "run_id": "4a9679f4-c5f8-4079-9331-6491b4ef24ee",
       "summary": "PR-event cycle complete. Lifecycle GREEN (ops:collect 0, deploy/api-auth/platform-integrity 14/14/seo 22/22, rth-open weekend skip). #4071 verify GREEN @ bb629f454 — marked ready for Claude review. No claude/fix PRs to review. Peer BO-P1-0100 clear."
+    },
+    {
+      "at": "2026-09-06T01:20:28.123Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T01:20:28.124Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3f958075-16c5-4f29-90ff-d3c1ce4d3c21",
+      "summary": "workflow_run cycle complete. #4072 swing asOf footer MERGED main@2c2301275. Lifecycle GREEN. ops:collect 0. No Claude PRs to review."
     }
   ],
   "open_prs": [
@@ -301,9 +314,9 @@
       "branch": "cursor/autopilot-handoff-2026-09-06",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T01:10:57Z"
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T01:20:16Z"
     }
   ]
 }
