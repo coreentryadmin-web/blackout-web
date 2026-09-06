@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T06:20:40.476Z",
+  "updated_at": "2026-09-06T09:22:46.151Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T09:14:55.450Z",
+      "lease_until": "2026-09-06T10:44:55.450Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -23,6 +23,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
       "safe_to_merge": true
+    },
+    "pr-4178": {
+      "pr": 4178,
+      "head_sha": "0bdb7328",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-06T09:18:34.664Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -36,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f40f4236378d61caa8b3a4a13ac169a28c42d971",
+    "last_main_sha": "a4f7761321d0aa609c3289515874789f48b99e29",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T09:09:28Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34023844982",
+    "last_deploy_sha": "a4f7761321d0aa609c3289515874789f48b99e29"
   },
   "events": [
     {
@@ -444,7 +452,189 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T09:18:34.665Z",
+      "type": "pr_review",
+      "pr": 4178,
+      "head_sha": "0bdb7328",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-06T09:18:34.664Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-06T09:18:37.170Z",
+      "type": "pr_webhook",
+      "pr": 4182,
+      "event": "sweep",
+      "head": "9539d79e076b5faf221368a2135a46fc57116a59",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T09:18:39.110Z",
+      "type": "pr_webhook",
+      "pr": 4181,
+      "event": "sweep",
+      "head": "3d70efcdbc3aaab851c0a198ed11bc1aad43a03b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T09:18:41.191Z",
+      "type": "pr_webhook",
+      "pr": 4180,
+      "event": "sweep",
+      "head": "d2ec516f11558d4953b3d5f3a9179965b6c4d22a",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T09:18:43.019Z",
+      "type": "pr_webhook",
+      "pr": 4179,
+      "event": "sweep",
+      "head": "8ab0cc3860d5ba1536d54353fd7970864430caea",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T09:18:45.047Z",
+      "type": "pr_webhook",
+      "pr": 4178,
+      "event": "sweep",
+      "head": "0bdb7328f771520885d8c4ac9016ff2b34c376fe",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T09:22:12.582Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-06T09:22:12.583Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "fa444d6a-c766-4cb3-b0d0-360bb478b736",
+      "summary": "PR-event cycle: peer-reviewed Claude #4178 (docs audit) → WAIT per docs-only policy. Verified Cursor #4179/#4180 locally (tests GREEN). ops:collect 0. validate:deploy GREEN. main@a4f7761 deployed. Awaiting Claude review on #4179 (Largo C2 freshness) and #4180 (swing-discovery docs)."
+    },
+    {
+      "at": "2026-09-06T09:22:46.151Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4183,
+      "title": "chore(blackout-agent): cursor workflow_run handoff — #4174/#4175 merged, #4179/#4181 reviewed",
+      "branch": "cursor/autopilot-workflow-run-0906",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T09:22:40Z"
+    },
+    {
+      "number": 4182,
+      "title": "fix(swing): CTO audit critical batch — brief P&L, thesis enrich, mark caveat",
+      "branch": "fix/swing-audit-critical-batch-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:18:33Z"
+    },
+    {
+      "number": 4181,
+      "title": "fix(swing): honest HELIX flow absence + SHORT break-watch + open-book failure",
+      "branch": "fix/swing-brief-absence-correctness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:22:23Z"
+    },
+    {
+      "number": 4180,
+      "title": "fix(swing): correct swing-discovery \"commits nothing\" operator docs (#4/#18)",
+      "branch": "cursor/swing-discovery-doc-accuracy-0ef2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:14:05Z"
+    },
+    {
+      "number": 4179,
+      "title": "fix(swing): measure Vector/GEX freshness on play-brief levels (Largo C2)",
+      "branch": "fix/swing-brief-vector-freshness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:22:11Z"
+    },
+    {
+      "number": 4178,
+      "title": "docs(audit): deep A-to-Z CTO audit of the entire Swing system",
+      "branch": "docs/swing-system-cto-audit-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T09:18:37Z"
+    }
+  ],
+  "pr_activity": {
+    "pr-4182": {
+      "last_event": "sweep",
+      "last_head": "9539d79e076b5faf221368a2135a46fc57116a59",
+      "last_feedback_at": "2026-09-06T09:18:37.170Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4181": {
+      "last_event": "sweep",
+      "last_head": "3d70efcdbc3aaab851c0a198ed11bc1aad43a03b",
+      "last_feedback_at": "2026-09-06T09:18:39.110Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4180": {
+      "last_event": "sweep",
+      "last_head": "d2ec516f11558d4953b3d5f3a9179965b6c4d22a",
+      "last_feedback_at": "2026-09-06T09:18:41.191Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4179": {
+      "last_event": "sweep",
+      "last_head": "8ab0cc3860d5ba1536d54353fd7970864430caea",
+      "last_feedback_at": "2026-09-06T09:18:43.019Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4178": {
+      "last_event": "sweep",
+      "last_head": "0bdb7328f771520885d8c4ac9016ff2b34c376fe",
+      "last_feedback_at": "2026-09-06T09:18:45.047Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
