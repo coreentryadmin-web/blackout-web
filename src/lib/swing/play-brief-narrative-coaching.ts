@@ -3,6 +3,7 @@
  * Pure + deterministic. Consumed by play-brief-narrative.ts.
  */
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { playExpectsLiveOptionMark } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
@@ -542,7 +543,7 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   const warnings: string[] = [];
 
   // markIsSync === true means no markAsOf timestamp (sync quote without freshness) — same polarity as dataFreshnessSection.
-  if (play.markIsSync === true && play.status !== "CLOSED") {
+  if (play.markIsSync === true && playExpectsLiveOptionMark(play.status)) {
     warnings.push("mark not synced to live tape");
   }
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {

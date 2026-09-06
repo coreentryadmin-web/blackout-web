@@ -24,6 +24,11 @@ const VECTOR_SECTION_LABELS: Record<VectorSection, string> = {
 
 const VECTOR_STALE_MS = 120_000;
 
+/** Only committed working rows expect a live-synced option mark — WATCH uses static chain mid by design. */
+export function playExpectsLiveOptionMark(status: string | null | undefined): boolean {
+  return status === "OPEN" || status === "HOLD" || status === "TRIM";
+}
+
 /** HELIX recent_flow is only trustworthy when the feed is fresh — stale pipeline rows are absence, not signal. */
 export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
   if (!eco?.recent_flow || eco.flow_feed_fresh === false) return null;
@@ -76,8 +81,11 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // tape" from this exact boolean, but that prose never reached the structured C3 channel — a
   // consumer reading unavailableSources alone (rather than scraping the narrative) saw nothing
   // wrong. Same class of gap this file already closed for HELIX flow staleness.
-  // Closed plays have no live mark — markIsSync is always true when markAsOf is absent, but exit P&L is settled.
-  if (ctx.play?.markIsSync === true && ctx.play?.status !== "CLOSED") {
+  // WATCH rows carry a static chain mid (no markAsOf) by design — not a missing source.
+  if (
+    ctx.play?.markIsSync === true &&
+    playExpectsLiveOptionMark(ctx.play?.status)
+  ) {
     out.push({ source: "option mark", reason: "sync quote without freshness timestamp" });
   }
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared

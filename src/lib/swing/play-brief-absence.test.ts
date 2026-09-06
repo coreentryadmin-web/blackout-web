@@ -248,6 +248,13 @@ test("collectBriefUnavailableSources: closed play with markIsSync does not surfa
   assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "option mark"));
 });
 
+test("collectBriefUnavailableSources: WATCH play with markIsSync does not surface option mark absence (static chain mid by design)", () => {
+  const ctx = {
+    play: { markIsSync: true, status: "WATCH" },
+  } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "option mark"));
+});
+
 test("collectBriefUnavailableSources: a live-synced mark (markIsSync false/undefined) does not surface", () => {
   const ctx = { play: { markIsSync: false } } as SwingPlayBriefContext;
   assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "option mark"));

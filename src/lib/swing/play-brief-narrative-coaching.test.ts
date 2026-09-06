@@ -298,6 +298,11 @@ test("dataHonestyCoaching: closed play with markIsSync does not warn mark stalen
   assert.equal(line, null);
 });
 
+test("dataHonestyCoaching: WATCH play with markIsSync does not warn mark staleness", () => {
+  const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "WATCH" }));
+  assert.equal(line, null);
+});
+
 test("dataHonestyCoaching: prior-session discovery scan warns", () => {
   const line = dataHonestyCoaching(
     ctx({ sessionDate: "2026-09-06", scanSessionDay: "2026-09-05" }),
