@@ -12,6 +12,7 @@ import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { technicalsBias } from "./play-brief-technicals";
+import { thesisHealthUncalibrated } from "./thesis-health";
 
 const MAX_BULLETS = 14;
 
@@ -264,7 +265,7 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
   if (bucket === "closed") return null;
 
   const rec = play.recommendation ?? "HOLD";
-  const health = play.thesisHealth?.health;
+  const health = thesisHealthUncalibrated(play.thesisHealth) ? null : play.thesisHealth?.health;
   const lines: string[] = [];
 
   if (bucket === "watch") {
@@ -413,7 +414,7 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
 function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
   const rec = play.recommendation ?? play.swingEntryAction?.toUpperCase() ?? "HOLD";
-  const health = play.thesisHealth?.health;
+  const health = thesisHealthUncalibrated(play.thesisHealth) ? null : play.thesisHealth?.health;
   const pnl = fin(play.pnlPct);
   const peak = fin(play.peak);
   const giveback = pnl != null && peak != null && peak - pnl > 15 ? ` · gave back **${(peak - pnl).toFixed(0)}%** from peak` : "";
