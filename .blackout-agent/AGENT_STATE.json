@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:27:56.381Z",
+  "updated_at": "2026-09-06T13:25:13.849Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T12:59:41.260Z",
+      "lease_until": "2026-09-06T14:37:19.843Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "bbd6163a-4eb0-4c9e-8de2-3d357a56eb0b"
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "70cf88c84142150344b80bee4bf2d1989fec1364",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T13:24:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34036016288",
+    "last_deploy_sha": "70cf88c84142150344b80bee4bf2d1989fec1364"
   },
   "events": [
     {
@@ -601,9 +601,33 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T13:25:13.848Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T13:25:13.849Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3f7df545-cd45-4621-b810-ca816f996c8b",
+      "summary": "Merged #4252+#4253 (Largo C1/C3 swing brief fixes). main@70cf88c84. validate:deploy GREEN; ops:collect 0. No open code PRs."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4255,
+      "title": "chore(blackout-agent): cursor hourly wake handoff — #4252 merged, #4253 reviewed",
+      "branch": "cursor/hourly-handoff-2026-09-06-1313",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T13:25:11Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
