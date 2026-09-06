@@ -267,7 +267,9 @@ export async function resolveSwingPlayForBrief(
   if (lanePlay) {
     const discovery = await discoverSwingFromPersisted().catch(() => null);
     const dossier = discovery?.dossiers?.find((d) => d.ticker.toUpperCase() === ticker);
-    const play = terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay));
+    const reads = discovery?.readsByTicker?.get(ticker);
+    const enriched = attachThesisExplanation(lanePlay, dossier, reads);
+    const play = terminalPlayFromHorizon(horizonRowToDeckSource(enriched));
     const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank });
     return {
       play: ivRank != null ? { ...play, ivRank } : play,

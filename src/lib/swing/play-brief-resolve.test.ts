@@ -188,7 +188,12 @@ function openRow(ticker: string, id: number): SwingPositionRow {
 }
 
 let mockOpenRows: SwingPositionRow[] = [];
-let mockDiscovered: { dossiers: ReturnType<typeof buildSwingDossier>[]; plays: never[] } | null = null;
+let mockDiscovered: {
+  dossiers: ReturnType<typeof buildSwingDossier>[];
+  plays: never[];
+  readsByTicker?: Map<string, SwingReads>;
+} | null = null;
+let mockLaneRows: HorizonPlay[] = [];
 
 mock.module("../db", {
   namedExports: {
@@ -211,9 +216,11 @@ mock.module("./serving-lane", {
     attachThesisExplanation,
     dossiersByTicker,
     // Stubs — unused by loadOpenTerminalPlay, but the module must export something for them.
-    getSwingServingLane: async () => {
-      throw new Error("not exercised by loadOpenTerminalPlay");
-    },
+    getSwingServingLane: async () => ({
+      sections: { WATCH: mockLaneRows },
+      scanAsOf: "2026-09-06T18:00:00.000Z",
+      scanSessionDay: "2026-09-06",
+    }),
     discoverSwingFromPersisted: async () => mockDiscovered,
     readSwingServingSnapshot: async () => null,
   },
@@ -257,5 +264,35 @@ describe("loadOpenTerminalPlay: restores factors/regime for a committed row (Lar
       "unread",
       "no dossier means no regime read — the honest default must stand, never an invented one",
     );
+  });
+});
+
+describe("resolveSwingPlayForBrief: WATCH lane restores factors/regime (parity with open path)", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("a WATCH lane row with a matching dossier gets factors + regime attached", async () => {
+    mockOpenRows = [];
+    mockLaneRows = [
+      laneRow({
+        ticker: "NVDA",
+        status: "WATCH",
+        factors: [],
+        regime: null,
+      }),
+    ];
+    mockDiscovered = {
+      dossiers: [buildSwingDossier(dossierInput("NVDA"))],
+      plays: [],
+      readsByTicker: new Map([["NVDA", bullReads]]),
+    };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:NVDA", ticker: "NVDA" });
+    assert.ok(resolved, "the WATCH lane play must resolve");
+    assert.ok((resolved!.play.factors?.length ?? 0) > 0, "factors must be restored from dossier");
+    assert.ok(resolved!.play.regime != null, "regime must be restored from dossier for WATCH rows");
   });
 });
