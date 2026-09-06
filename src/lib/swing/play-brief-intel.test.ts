@@ -499,6 +499,28 @@ test("chartTechnicalsSection: bias reads bearish from the technicals on a LONG p
   assert.equal(section?.bias, "bearish");
 });
 
+test("chartTechnicalsSection: Vector regime is labeled as dealer GAMMA posture, never bare long/short (2026-09-06)", () => {
+  // Live NN repro: chart technicals showed "Vector regime: long" (long-GAMMA dealer posture)
+  // immediately followed by the Vector desk section's own directional call "momentum short" for
+  // the SAME ticker — bare "long"/"short" here reads as a contradicting directional signal, not
+  // the unrelated gamma-regime fact it actually is.
+  const vec = fixtureVec({
+    spot: 15.18,
+    technicals: {
+      vwap: 15.29,
+      emaStack: "down",
+      rsi: 47,
+      macd: "bear",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "down", level: 15.22 },
+    },
+    regime: { posture: "long" },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.match(section!.body, /Dealer gamma regime: \*\*long gamma\*\*/);
+  assert.doesNotMatch(section!.body, /Vector regime:/);
+});
+
 test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), never fabricated", () => {
   const vec = fixtureVec({
     spot: 105, // above vwap -> bull

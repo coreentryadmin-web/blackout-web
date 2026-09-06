@@ -138,7 +138,15 @@ export function chartTechnicalsSection(vec: VectorFullState | null): RichSection
       `Structure: **${t.structure.type}** ${t.structure.direction} @ **${t.structure.level.toFixed(2)}**`,
     );
   }
-  if (vec.regime?.posture) lines.push(`Vector regime: **${vec.regime.posture}**`);
+  // "Vector regime" is a DEALER GAMMA posture (long-gamma/short-gamma), not a directional call —
+  // labeling it bare "long"/"short" next to directional signals (EMA stack, MACD, structure
+  // direction) in this same section risks reading as a trade direction that can contradict the
+  // very next "Vector desk" section's own directional POSITION call for the same ticker.
+  if (vec.regime?.posture && vec.regime.posture !== "unknown" && vec.regime.posture !== "transition") {
+    lines.push(`Dealer gamma regime: **${vec.regime.posture} gamma**`);
+  } else if (vec.regime?.posture === "transition") {
+    lines.push(`Dealer gamma regime: **transition** (near flip)`);
+  }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
   if (!lines.length) return null;
   return {
