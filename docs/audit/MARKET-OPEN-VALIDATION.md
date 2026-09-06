@@ -144,6 +144,27 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** On a ticker where Vector `play.bias` opposes the swing direction, Trade manager read should include `Vector bearish`/`Vector bullish` in the cross-desk friction line. If Meridian timeline is unavailable (simulate or catch a real failure), `unavailableSources` should list `Meridian catalysts · timeline read failed`.
 
+### 0a-1s. checkPortfolioOverlap's self-match exclusion swallowed a genuine second same-ticker/same-direction position — fix/swing-portfolio-overlap-self-match (pending)
+
+**What was broken:** `checkPortfolioOverlap` excluded EVERY existing row matching the candidate's
+ticker+direction (not just the one meant to represent "the candidate's own position"), so two
+independent open positions on the same ticker+direction (allowed by design — `commit.ts`'s
+`swingThesisKey(ticker, direction, archetype)` treats a different archetype on the same name+side
+as a different thesis) both got excluded, silently hiding the concentration from Ask Largo's "Book
+context" section and the swing entry gate's `portfolio_overlap` soft penalty. Live evidence: the
+book's own `record.json` shows EWZ (rootPositionId 29 & 26) and WULF (rootPositionId 17 & 13) each
+with two separate `long` position chains — exactly the shape this bug could not see.
+
+**Fix:** Self-match exclusion now skips only the FIRST row sharing ticker+direction; any additional
+matching row is correctly counted in `sameThemeSameDirection`.
+
+**Check at the open:** For any live position whose ticker has (or gains) a second independent
+open position in the same direction (check `GET /api/admin/zerodte/tier-export`-style ledger export
+or the book itself for a repeated ticker+direction pair), Ask Largo's play-brief "Book context"
+section for either position should now show a **Concentration** line naming the OTHER position —
+not silence. If no such double-position ticker exists live at open, this is unverifiable that day;
+note "no qualifying ticker pair observed" rather than treating silence as a pass.
+
 ---
 
 ### 0a-1o. Ask Largo swing thesis-health dead-wired to identical reading for every live position — docs/swing-brief-thesis-health-dead-wired (pending, follows the deep audit PR #4178)
