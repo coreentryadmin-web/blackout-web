@@ -229,6 +229,24 @@ test("dataFreshnessSection: option mark timestamp renders as a Largo C1 ET stamp
   assert.doesNotMatch(section!.body, /\.663Z/, "must not print a raw ISO mark timestamp");
 });
 
+test("dataFreshnessSection: stale ecosystem.vector_full_state warns when ctx.vector is null", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      vector_full_state: fixtureVec({ dataAgeMs: 180_000 }),
+    } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Vector data \*\*180s\*\* old/);
+});
+
 test("flowIntelSection: stale HELIX feed must not render recent prints or anomalies", () => {
   const eco = {
     ticker: "INTC",

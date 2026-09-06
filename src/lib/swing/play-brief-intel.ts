@@ -621,7 +621,8 @@ export function vectorDeskSection(vec: VectorFullState | null): RichSection | nu
 
 /** Honest data freshness — mark age, scan age, vector staleness. */
 export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | null {
-  const { play, scanAsOf, vector: vec } = ctx;
+  const { play, scanAsOf } = ctx;
+  const vec = vectorOf(ctx);
   const lines: string[] = [];
   if (play.markAsOf) {
     lines.push(`Option mark as of **${etStampFromIso(play.markAsOf)}**`);
