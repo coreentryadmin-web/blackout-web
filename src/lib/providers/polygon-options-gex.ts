@@ -1323,6 +1323,38 @@ async function resolveSpotSnapshotLastResort(
   return null;
 }
 
+/**
+ * Index REST snapshots roll `previous_close` forward to equal `close` after the cash session,
+ * so `session.change_percent` reads 0% while SPY/QQQ still carry the last session's move.
+ * Rebase from an explicit prev_close when possible; for I:SPX fall back to SPY's session %.
+ */
+async function resolveIndexRestChangePct(
+  optionsRoot: string,
+  price: number,
+  snap: { price?: number; prev_close?: number | null; change_pct?: number | null } | null,
+  reported: number | null,
+): Promise<number | null> {
+  if (reported != null && Number.isFinite(reported) && reported !== 0) return reported;
+
+  const rebased = rebaseChangePct(price, snap);
+  if (rebased != null && rebased !== 0) return rebased;
+
+  const root = optionsRoot.toUpperCase();
+  if (root === "I:SPX" || root === "SPX") {
+    const spy = await fetchStockSnapshot("SPY").catch(() => null);
+    if (spy?.change_pct != null && Number.isFinite(spy.change_pct) && spy.change_pct !== 0) {
+      return spy.change_pct;
+    }
+  }
+
+  const prevBar = await fetchSpotFromPrevBar(root.startsWith("I:") ? root : optionsRoot);
+  if (prevBar?.change_pct != null && Number.isFinite(prevBar.change_pct) && prevBar.change_pct !== 0) {
+    return prevBar.change_pct;
+  }
+
+  return reported;
+}
+
 async function resolveSpotSnapshot(
   optionsRoot: string
 ): Promise<{ price: number; change_pct: number | null; source: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" } | null> {
@@ -1380,7 +1412,11 @@ async function resolveSpotSnapshot(
     : await fetchStockSnapshot(root).catch(() => null);
   const restPrice = snap && snap.price > 0 ? snap.price : 0;
   if (restPrice > 0) {
-    return { price: restPrice, change_pct: snap?.change_pct ?? null, source: "rest" };
+    let changePct = snap?.change_pct ?? null;
+    if (isIndex) {
+      changePct = await resolveIndexRestChangePct(root, restPrice, snap, changePct);
+    }
+    return { price: restPrice, change_pct: changePct, source: "rest" };
   }
   const prevBar = await resolveSpotSnapshotLastResort(root, isIndex);
   if (prevBar && prevBar.price > 0) return prevBar;

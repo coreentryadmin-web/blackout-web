@@ -23988,6 +23988,22 @@ html.product-shell .nav-mega {
   text-shadow: 0 0 18px rgba(34, 211, 238, 0.22);
 }
 
+.thermal-triple-overlay-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 9999px;
+  background: #a3e635;
+  box-shadow: 0 0 6px rgba(163, 230, 53, 0.55);
+  vertical-align: middle;
+}
+
+.thermal-triple-overlay-dot.is-off {
+  background: rgba(125, 211, 252, 0.35);
+  box-shadow: none;
+}
+
 .thermal-triple-spot {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 13px;

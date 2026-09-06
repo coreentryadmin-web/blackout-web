@@ -36,8 +36,12 @@ import {
   parseThermalUrlState,
   shouldForceMatrixRefresh,
   thermalQuoteBadge,
+  spotSourceBadge,
+  shiftPanelEmptyDescription,
+  horizonWallsSummary,
   type ThermalComparePresetId,
   type ThermalLens,
+  type ThermalSpotSource,
 } from "@/features/thermal/lib/thermal-desk-state";
 // Canonical cash-RTH gate — holiday- and early-close-aware, and documented safe on the client.
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -142,6 +146,11 @@ type GexBlock = {
   total: number;
   flip: number | null;
   regime: GexRegime;
+  walls_by_horizon?: Array<{
+    label: string;
+    callWall: number | null;
+    putWall: number | null;
+  }>;
 };
 
 /** Net dealer dollar-vanna block. */
@@ -254,6 +263,7 @@ type GexHeatmapResponse = {
   underlying?: string;
   spot?: number;
   change_pct?: number;
+  spot_source?: ThermalSpotSource;
   asof?: string;
   expiries?: string[];
   strikes?: number[];
@@ -1411,6 +1421,7 @@ function TickerSwitcher({
   onPick,
   spot,
   changePct,
+  spotSourceBadge: spotBadge,
   showSpot,
   nativeShell = false,
 }: {
@@ -1419,6 +1430,7 @@ function TickerSwitcher({
   /** Live spot beside the selector — the ONE kept clean header spot reference. */
   spot?: number;
   changePct?: number | null;
+  spotSourceBadge?: { label: string; title: string } | null;
   showSpot?: boolean;
   /** iOS native shell — bottom sheet picker instead of fixed dropdown (avoids focus zoom + layout break). */
   nativeShell?: boolean;
@@ -1789,6 +1801,14 @@ function TickerSwitcher({
               {fmtPct(changePct)}
             </span>
           )}
+          {spotBadge ? (
+            <span
+              className="rounded border border-white/10 px-1 py-px font-mono text-[8px] font-bold uppercase tracking-wider text-sky-300/75"
+              title={spotBadge.title}
+            >
+              {spotBadge.label}
+            </span>
+          ) : null}
         </span>
       )}
 
@@ -2290,6 +2310,14 @@ function GexDepthLadderView({
       <p className="mb-3 text-[11px] leading-snug text-sky-300/80">
         Stock dealers must trade to stay hedged <em>if price gets there</em> — not resting orders.
         Buying left, selling right.
+        {depth.calibration_factor != null && Number.isFinite(depth.calibration_factor) ? (
+          <span
+            className="ml-1 text-sky-300/65"
+            title="Closed-form Black-Scholes gamma is scaled to match the matrix's own near-term total. The gap vs provider gamma largely reflects dividend yield — a known model limitation, not a data error."
+          >
+            · γ calibration {depth.calibration_factor.toFixed(2)}×
+          </span>
+        ) : null}
       </p>
 
       {targetFlow && targetFlow.bands > 0 && (
@@ -3589,6 +3617,10 @@ export function GexHeatmap({
                 ? (data?.dex?.regime?.read ?? null)
                 : (data?.charm?.regime?.read ?? null),
         gexShiftNet: lens === "dex" || lens === "charm" ? gexShiftNet : null,
+        horizonLine:
+          lens === "gex" && !scopedExpiryLabel
+            ? horizonWallsSummary(data?.gex?.walls_by_horizon)
+            : null,
       }),
     [
       lens,
@@ -3610,6 +3642,34 @@ export function GexHeatmap({
       gexTileDeltas?.netGex,
       gexShiftNet,
     ]
+  );
+
+  const headerSpotBadge = useMemo(
+    () =>
+      spotSourceBadge({
+        spotSource: data?.spot_source,
+        marketOpen: marketOpenNow,
+      }),
+    [data?.spot_source, marketOpenNow],
+  );
+
+  const scrollMatrixToLevel = useCallback(
+    (key: string) => {
+      const seg = regimeStripModel.segments.find((s) => s.key === key);
+      const strike = seg?.strike;
+      if (strike == null || !Number.isFinite(strike)) return;
+      setPairView("pair-a");
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const box = matrixScrollRef.current;
+          const row = box?.querySelector(`tr[data-thermal-strike="${strike}"]`);
+          if (row instanceof HTMLElement) {
+            row.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
+        });
+      });
+    },
+    [regimeStripModel.segments],
   );
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
@@ -3756,11 +3816,11 @@ export function GexHeatmap({
         <EmptyState
           icon="◷"
           title="Building positioning history"
-          description={
-            hasShiftForLens
-              ? `The shift view fills in as snapshots accumulate (first read ~after the open). ${vocab.noun} migration — where dealer ${vocab.noun.toLowerCase()} is building vs melting and how the pivot drifts — appears once enough history is collected.`
-              : `Intraday migration is tracked for GEX, VEX, DEX, and CHARM — switch lens to see build/melt drift.`
-          }
+          description={shiftPanelEmptyDescription({
+            hasShiftForLens,
+            marketOpen: marketOpenNow,
+            noun: vocab.noun,
+          })}
         />
       )}
     </div>
@@ -3916,6 +3976,7 @@ export function GexHeatmap({
                   <tr
                     key={strike}
                     ref={isSpot ? matrixSpotRowRef : undefined}
+                    data-thermal-strike={strike}
                     className={clsx(
                       "border-b border-white/[0.04]",
                       isSpot && "spx-gex-matrix-spot-row",
@@ -4129,6 +4190,7 @@ export function GexHeatmap({
           }}
           spot={headerSpot}
           changePct={headerChangePct}
+          spotSourceBadge={headerSpotBadge}
           showSpot={(live || quoteOnly) && headerSpot > 0}
           nativeShell={nativeShell}
         />
@@ -4311,6 +4373,7 @@ export function GexHeatmap({
         <ThermalRegimeStrip
           model={regimeStripModel}
           className="mb-2 gex-key-levels thermal-regime-strip"
+          onLevelClick={scrollMatrixToLevel}
           trailing={
             !nativeShell ? (
               <FlowSummaryStrip flowByStrike={flowByStrike} overlaysLoaded={data != null} />

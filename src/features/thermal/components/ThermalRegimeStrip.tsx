@@ -29,13 +29,17 @@ function Pipe() {
   );
 }
 
-function RegimeSegment({ seg }: { seg: RegimeStripSegment }) {
+function RegimeSegment({
+  seg,
+  onClick,
+}: {
+  seg: RegimeStripSegment;
+  onClick?: (key: string) => void;
+}) {
   const tone = seg.tone ? SEGMENT_TONE[seg.tone] : "text-white";
-  return (
-    <span
-      className="inline-flex min-w-0 shrink-0 items-baseline gap-1.5 whitespace-nowrap"
-      data-regime-segment={seg.key}
-    >
+  const clickable = onClick && seg.strike != null && Number.isFinite(seg.strike);
+  const inner = (
+    <>
       {seg.icon ? (
         <span aria-hidden className="text-[12px] leading-none">
           {seg.icon}
@@ -60,7 +64,28 @@ function RegimeSegment({ seg }: { seg: RegimeStripSegment }) {
           ↑{seg.delta.replace(/^\+/, "")}
         </span>
       ) : null}
-    </span>
+    </>
+  );
+  if (!clickable) {
+    return (
+      <span
+        className="inline-flex min-w-0 shrink-0 items-baseline gap-1.5 whitespace-nowrap"
+        data-regime-segment={seg.key}
+      >
+        {inner}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="inline-flex min-w-0 shrink-0 items-baseline gap-1.5 whitespace-nowrap rounded-sm outline-none transition-colors hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-sky-400/60"
+      data-regime-segment={seg.key}
+      title={`Scroll matrix to ${seg.value}`}
+      onClick={() => onClick(seg.key)}
+    >
+      {inner}
+    </button>
   );
 }
 
@@ -68,11 +93,14 @@ export function ThermalRegimeStrip({
   model,
   trailing,
   className,
+  onLevelClick,
 }: {
   model: ThermalRegimeStripModel;
   /** Optional trailing slot (e.g. HELIX flow summary). */
   trailing?: ReactNode;
   className?: string;
+  /** Scroll matrix to the strike behind a level chip (flip, walls, king, max pain). */
+  onLevelClick?: (key: string) => void;
 }) {
   return (
     <div
@@ -130,7 +158,7 @@ export function ThermalRegimeStrip({
           {model.segments.map((seg, i) => (
             <span key={seg.key} className="inline-flex items-center gap-x-2">
               {i > 0 ? <Pipe /> : null}
-              <RegimeSegment seg={seg} />
+              <RegimeSegment seg={seg} onClick={onLevelClick} />
             </span>
           ))}
         </div>
@@ -144,6 +172,12 @@ export function ThermalRegimeStrip({
           data-regime-interpretation
         >
           {model.interpretation}
+        </p>
+      ) : null}
+
+      {model.horizonLine ? (
+        <p className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/85" data-horizon-walls>
+          {model.horizonLine}
         </p>
       ) : null}
 
