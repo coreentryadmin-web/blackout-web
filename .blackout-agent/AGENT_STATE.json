@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T11:42:38.065Z",
+  "updated_at": "2026-09-06T12:02:32.117Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T09:37:21.095Z",
+      "lease_until": "2026-09-06T11:07:21.095Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null
     }
   },
   "reviews": {
@@ -31,6 +31,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4236": {
+      "pr": 4236,
+      "head_sha": "d63b2af3fc6afc0304473a1808200c5df176138b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T12:02:32.116Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -44,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a37960c92712ca5986df2042d0c32a44153cfd92",
+    "last_main_sha": "88914ce012cddb8265605ba923ff8aa3899db711",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T09:39:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
+    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
   },
   "events": [
     {
@@ -559,64 +567,17 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T11:38:55.788Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-06T11:38:55.789Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "5f822654-abf9-4543-9ed7-d50dfb62ec1b",
-      "summary": "Cycle complete: peer-reviewed+merged #4222 (SWING TRIM 33% fix) + #4224 (HELIX Hot Tickers direction). #4220 merged pre-session. validate:deploy GREEN; ops:collect 0. Open: #4227 draft (dead code cleanup), handoff drafts consolidating."
-    },
-    {
-      "at": "2026-09-06T11:42:38.065Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 3
-    },
-    {
-      "at": "2026-09-06T11:42:38.065Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "87520518-9d11-43da-b194-302260aa2e54",
-      "summary": "Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0."
+      "at": "2026-09-06T12:02:32.117Z",
+      "type": "pr_review",
+      "pr": 4236,
+      "head_sha": "d63b2af3fc6afc0304473a1808200c5df176138b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T12:02:32.116Z",
+      "safe_to_merge": true
     }
   ],
-  "open_prs": [
-    {
-      "number": 4231,
-      "title": "fix(swing): freeze CLOSED-position DTE to exit date, not today's date",
-      "branch": "fix/swing-closed-dte-negative",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:42:37Z"
-    },
-    {
-      "number": 4230,
-      "title": "chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged",
-      "branch": "cursor/autopilot-handoff-2026-09-06-cycle3",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:39:12Z"
-    },
-    {
-      "number": 4227,
-      "title": "chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature",
-      "branch": "fix/dead-code-flow-strike-stacks-exports",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T11:40:27Z"
-    }
-  ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
