@@ -67,3 +67,9 @@ test("out-of-scope refusals do not require grounded numbers", () => {
     "I can only assist with live market and trading desk questions on BlackOut — I can't book travel or flights.";
   assert.deepEqual(honestyIssues(refusal, "clarify_read"), []);
 });
+
+test("honest empty-state answers do not require grounded numbers", () => {
+  const empty =
+    "This turn came back empty — nothing was pulled and nothing was written up. That isn't a gap in the desk.";
+  assert.deepEqual(honestyIssues(empty, "platform_read"), []);
+});

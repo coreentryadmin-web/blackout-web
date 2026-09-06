@@ -25,6 +25,7 @@ export function scoreAnswer(entry, route, answer, status) {
   const skipUnnumberedHonesty =
     entry.intent === null ||
     route?.intent == null ||
+    route?.intent === "concept_read" ||
     (route?.intent === "clarify_read" &&
       /\b(outside|out of scope|can't help|cannot help|don't (book|translate)|only (assist|help).{0,40}(market|trading|desk))\b/i.test(answer ?? ""));
   for (const h of honestyIssues(answer ?? "", route?.intent)) {
