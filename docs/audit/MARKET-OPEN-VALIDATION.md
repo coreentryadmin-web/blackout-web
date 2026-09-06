@@ -3044,3 +3044,9 @@ than an end-of-session patch.
 - **What changed:** `levelProvenanceAsOf()` prefers `gex.as_of_et` / `vec.asOfEt`, falling back to `etStampFromIso()` on the raw ISO fields.
 - **RTH check:** `GET /api/market/swing/play-brief` for any row with levels — inspect `envelope.levels[].provenance.asOf`; each must read like `2026-09-06 09:32 ET`, never a `…Z` UTC instant.
 
+### 45. Ask Largo swing play-brief — prior-session discovery scan not flagged — fix/swing-brief-stale-discovery-scan — 2026-09-06
+
+- **What was broken:** `scanSessionDay` from the serving snapshot was never compared to the brief's `sessionDate`. A WATCH row from yesterday's scan still showed a scan timestamp with no staleness warning and no `unavailableSources` entry — discovery looked current when today's scan had not run.
+- **What changed:** `collectBriefUnavailableSources()` emits a structured C3 entry when `scanSessionDay !== sessionDate`; `dataFreshnessSection()` and `dataHonestyCoaching()` narrate the same fact in prose.
+- **RTH check:** Pre-open Monday (or any session before `swing-discovery` cron runs), open Ask Largo on a WATCH swing row — confirm "Data freshness" and/or `UnavailableChip` shows prior-session discovery scan warning, not a silent yesterday timestamp.
+
