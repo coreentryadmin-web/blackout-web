@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T09:26:49.610Z",
+  "updated_at": "2026-09-06T09:27:47.944Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T09:24:02.819Z",
-      "lease_until": "2026-09-06T10:55:35.124Z",
+      "claimed_at": "2026-09-06T09:26:24.584Z",
+      "lease_until": "2026-09-06T10:57:45.540Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "9949dda9-1578-49dd-87fa-dc1763e28ce3"
+      "run_id": "ed31fdd4-2dee-4758-8d9a-a27c2c1c2c10"
     }
   },
   "reviews": {
@@ -24,36 +24,12 @@
       "reviewed_at": "2026-09-05T19:35:19.109Z",
       "safe_to_merge": true
     },
-    "pr-4178": {
-      "pr": 4178,
-      "head_sha": "0bdb7328",
-      "reviewer": "cursor",
-      "verdict": "WAIT",
-      "reviewed_at": "2026-09-06T09:18:34.664Z",
-      "safe_to_merge": false
-    },
     "pr-4182": {
       "pr": 4182,
-      "head_sha": "9539d79e076b5faf221368a2135a46fc57116a59",
+      "head_sha": "99eb1f88e26d2666e45cf6dd59038418595b231b",
       "reviewer": "cursor",
       "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T09:26:48.816Z",
-      "safe_to_merge": true
-    },
-    "pr-4181": {
-      "pr": 4181,
-      "head_sha": "3d70efcdbc3aaab851c0a198ed11bc1aad43a03b",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T09:26:49.199Z",
-      "safe_to_merge": true
-    },
-    "pr-4179": {
-      "pr": 4179,
-      "head_sha": "8ab0cc3860d5ba1536d54353fd7970864430caea",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T09:26:49.609Z",
+      "reviewed_at": "2026-09-06T09:27:17.869Z",
       "safe_to_merge": true
     }
   },
@@ -68,7 +44,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a00e29aea8dbeadff99d4a1b161f10b0628fdf9c",
+    "last_main_sha": "6a4ac9622df65eaae3571f87dd8f8e20e14fb711",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T09:26:29Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34024656209",
@@ -478,126 +454,38 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T09:18:34.665Z",
+      "at": "2026-09-06T09:27:17.870Z",
       "type": "pr_review",
-      "pr": 4178,
-      "head_sha": "0bdb7328",
-      "reviewer": "cursor",
-      "verdict": "WAIT",
-      "reviewed_at": "2026-09-06T09:18:34.664Z",
-      "safe_to_merge": false
-    },
-    {
-      "at": "2026-09-06T09:18:37.170Z",
-      "type": "pr_webhook",
       "pr": 4182,
-      "event": "sweep",
-      "head": "9539d79e076b5faf221368a2135a46fc57116a59",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": true
+      "head_sha": "99eb1f88e26d2666e45cf6dd59038418595b231b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T09:27:17.869Z",
+      "safe_to_merge": true
     },
     {
-      "at": "2026-09-06T09:18:39.110Z",
-      "type": "pr_webhook",
-      "pr": 4181,
-      "event": "sweep",
-      "head": "3d70efcdbc3aaab851c0a198ed11bc1aad43a03b",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": true
-    },
-    {
-      "at": "2026-09-06T09:18:41.191Z",
-      "type": "pr_webhook",
-      "pr": 4180,
-      "event": "sweep",
-      "head": "d2ec516f11558d4953b3d5f3a9179965b6c4d22a",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-06T09:18:43.019Z",
-      "type": "pr_webhook",
-      "pr": 4179,
-      "event": "sweep",
-      "head": "8ab0cc3860d5ba1536d54353fd7970864430caea",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": true
-    },
-    {
-      "at": "2026-09-06T09:18:45.047Z",
-      "type": "pr_webhook",
-      "pr": 4178,
-      "event": "sweep",
-      "head": "0bdb7328f771520885d8c4ac9016ff2b34c376fe",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": true
-    },
-    {
-      "at": "2026-09-06T09:22:12.582Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-06T09:22:12.583Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "fa444d6a-c766-4cb3-b0d0-360bb478b736",
-      "summary": "PR-event cycle: peer-reviewed Claude #4178 (docs audit) → WAIT per docs-only policy. Verified Cursor #4179/#4180 locally (tests GREEN). ops:collect 0. validate:deploy GREEN. main@a4f7761 deployed. Awaiting Claude review on #4179 (Largo C2 freshness) and #4180 (swing-discovery docs)."
-    },
-    {
-      "at": "2026-09-06T09:22:46.151Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-09-06T09:26:46.436Z",
+      "at": "2026-09-06T09:27:40.748Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
     },
     {
-      "at": "2026-09-06T09:26:46.437Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "8deaf7f2-1497-4219-a9ce-b6bdf3636fad",
-      "summary": "PR-event cycle: peer-reviewed #4179/#4181/#4182 (GO AHEAD MERGE, local tests GREEN). #4178 docs audit WAIT (docs-only). Lifecycle GREEN. ops:collect 0. main@a00e29a. Merge order: #4181 → rebase #4179 → #4182. verify CI pending."
+      "at": "2026-09-06T09:27:45.539Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     },
     {
-      "at": "2026-09-06T09:26:48.816Z",
-      "type": "pr_review",
-      "pr": 4182,
-      "head_sha": "9539d79e076b5faf221368a2135a46fc57116a59",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T09:26:48.816Z",
-      "safe_to_merge": true
+      "at": "2026-09-06T09:27:46.965Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     },
     {
-      "at": "2026-09-06T09:26:49.200Z",
-      "type": "pr_review",
-      "pr": 4181,
-      "head_sha": "3d70efcdbc3aaab851c0a198ed11bc1aad43a03b",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T09:26:49.199Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T09:26:49.610Z",
-      "type": "pr_review",
-      "pr": 4179,
-      "head_sha": "8ab0cc3860d5ba1536d54353fd7970864430caea",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T09:26:49.609Z",
-      "safe_to_merge": true
+      "at": "2026-09-06T09:27:47.944Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
@@ -609,7 +497,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:23:03Z"
+      "updated_at": "2026-09-06T09:26:52Z"
     },
     {
       "number": 4183,
@@ -629,7 +517,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:24:44Z"
+      "updated_at": "2026-09-06T09:27:24Z"
     },
     {
       "number": 4180,
@@ -637,51 +525,9 @@
       "branch": "cursor/swing-discovery-doc-accuracy-0ef2",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T09:25:53Z"
+      "draft": false,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T09:27:41Z"
     }
-  ],
-  "pr_activity": {
-    "pr-4182": {
-      "last_event": "sweep",
-      "last_head": "9539d79e076b5faf221368a2135a46fc57116a59",
-      "last_feedback_at": "2026-09-06T09:18:37.170Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4181": {
-      "last_event": "sweep",
-      "last_head": "3d70efcdbc3aaab851c0a198ed11bc1aad43a03b",
-      "last_feedback_at": "2026-09-06T09:18:39.110Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4180": {
-      "last_event": "sweep",
-      "last_head": "d2ec516f11558d4953b3d5f3a9179965b6c4d22a",
-      "last_feedback_at": "2026-09-06T09:18:41.191Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4179": {
-      "last_event": "sweep",
-      "last_head": "8ab0cc3860d5ba1536d54353fd7970864430caea",
-      "last_feedback_at": "2026-09-06T09:18:43.019Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4178": {
-      "last_event": "sweep",
-      "last_head": "0bdb7328f771520885d8c4ac9016ff2b34c376fe",
-      "last_feedback_at": "2026-09-06T09:18:45.047Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    }
-  }
+  ]
 }
