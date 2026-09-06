@@ -4,16 +4,23 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 
-/** Section titles omitted when a narrative block is present (coaching already spoke). */
+/**
+ * Section titles omitted when Trade manager read leads — their coaching is already
+ * in the narrative bullets. Only list titles whose content is genuinely folded in;
+ * a stale rename here silently drops a section (see #4123 / #4124).
+ *
+ * Explicitly NOT collapsed:
+ * - "Book context" — post-#4116, bookContextSection is the sole concentration source.
+ * - "Desk context" — crossDeskCoaching covers direction friction only; NH outcome
+ *   history and flow anomalies stay supplementary in deskConsensusSection.
+ */
 const NARRATIVE_COVERED_TITLES = new Set([
-  // Book context stays visible — post-#4116 it is the ONLY concentration source (no narrative bullet).
   "Lane rank",
   "Levels on chart",
   "GEX posture",
   "Wall dynamics",
   "Flow & positioning",
   "Macro tape",
-  "Desk consensus",
   "Hold plan",
   "Vector desk",
 ]);
