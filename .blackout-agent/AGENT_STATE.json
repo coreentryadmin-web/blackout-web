@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T22:42:47.107Z",
+  "updated_at": "2026-09-06T22:48:21.016Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-07T00:03:46.835Z",
+      "lease_until": "2026-09-07T00:16:06.337Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "bd47d985-718b-497b-8021-c1bd1e8d05cc",
+      "run_id": "dbc6957d-89f5-4463-82cc-6d32702f0fc6",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-07T00:03:46.835Z",
+      "lease_until": "2026-09-07T00:16:06.337Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "bd47d985-718b-497b-8021-c1bd1e8d05cc"
+      "run_id": "dbc6957d-89f5-4463-82cc-6d32702f0fc6"
     }
   },
   "reviews": {
@@ -347,6 +347,19 @@
       "agent": "cursor",
       "run_id": "2838dfac-aeb5-4f87-abe2-f145b93fecc6",
       "summary": "Main@09c257075 GREEN. #4403 merged. #4401 approved, CI re-run pending. #4402 cursor — Claude."
+    },
+    {
+      "at": "2026-09-06T22:48:21.015Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T22:48:21.016Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ff17a957-8b86-47af-b759-28eb6744eab1",
+      "summary": "Main@09c257075. #4401 closed (superseded by #4402). #4402: 78/78 local, verify pending, Claude review."
     }
   ],
   "open_prs": [
@@ -358,7 +371,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T22:41:17Z"
+      "updated_at": "2026-09-06T22:47:46Z"
     }
   ]
 }
