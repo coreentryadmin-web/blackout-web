@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T14:08:47.309Z
-**Run:** 91573e84-2378-4534-bb77-42dacac5ab1f
+**At:** 2026-09-06T14:18:25.604Z
+**Run:** 468be5e0-b56e-4052-bfad-c08cb54aec2a
 
 ## Summary
 
-Peer-review cycle: 5 open draft PRs (#4260/#4266/#4269/#4270/#4271) all cursor-authored → awaiting Claude. Local validation: #4260 absence tests 13015/13015 GREEN on Node 20; #4266/#4269 play-brief suite 110/111 (resolve mock pre-existing). Cross-PR note: #4266 supersedes #4260 vector-absence delta — sequence #4260 first or close #4260. validate:deploy GREEN; ops:collect 0. GitHub API rate-limited — cannot post review comments or check CI.
+Cycle complete: pre-reviewed #4260/#4266/#4269 for Claude; CI green on #4260/#4269; platform GREEN; handoff PR opened
 
 ## Deploy
 
@@ -14,7 +14,10 @@ Peer-review cycle: 5 open draft PRs (#4260/#4266/#4269/#4270/#4271) all cursor-a
 
 ## Open PRs
 
-- #4272 [cursor] chore(blackout-agent): cursor handoff — #4260 merged, #4266/#4269 peer-reviewed
-- #4271 [cursor] chore(blackout-agent): cursor handoff — swing Largo peer reviews, #4253/#4257 merged
-- #4270 [cursor] chore(blackout-agent): cursor handoff — platform GREEN, Largo fixes in flight
-- #4266 [agent] fix(swing): flag prior-session discovery scan in play-brief C3 channel
+- #4282 [cursor] chore(blackout-agent): cursor handoff — Largo PR pre-reviews, platform GREEN
+- #4281 [agent] fix(swing): gate portfolio_overlap must not skip lone same-ticker row
+- #4280 [agent] fix(swing): attribute dark pool level provenance to Vector, not HELIX
+- #4279 [agent] fix(swing): honest empty Meridian calendar + peer cohort coaching
+- #4277 [cursor] chore(blackout-agent): cursor handoff — swing Largo peer reviews merged #4260-#4269
+- #4276 [cursor] chore(blackout-agent): cursor handoff — swing Largo wave merged, platform GREEN
+- #4275 [agent] fix(swing): stop Hold plan from repeating the thesis-health advisory sentence
