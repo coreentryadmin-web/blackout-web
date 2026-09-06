@@ -259,9 +259,14 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
           fetchUwIvRank(row.ticker).catch(() => null),
           closesFor(row.ticker).catch(() => [] as CloseBar[]),
           spyClosesPromise.catch(() => [] as number[]),
+          // resolveSwingExDividendContext already catches its own fetch failures and returns
+          // dataUnavailable:true (never rejects) — this outer .catch is defense-in-depth for an
+          // unexpected throw, and must carry the SAME dataUnavailable:true shape so manage.ts's
+          // Q39 fail-safe (skip structural stop, not fail-open EXIT) applies here too.
           resolveSwingExDividendContext(row.ticker, sessionDay).catch(() => ({
             exDividendSession: false,
             exDividendCash: null,
+            dataUnavailable: true,
           })),
         ]);
         if (spot == null) return null; // no usable underlying read → skip (fail-soft, no snapshot)
@@ -338,6 +343,9 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
           // Q39: ex-dividend mechanical gap must not false-trigger structural_stop on LONG.
           exDividendSession: exDiv.exDividendSession,
           exDividendCash: exDiv.exDividendCash,
+          // Q39 fail-safe: when the ex-div read itself failed this cycle, manage.ts skips
+          // enforcing a LONG structural-stop breach rather than trusting a fail-open false.
+          exDividendDataUnavailable: exDiv.dataUnavailable,
         };
       },
       insertSnapshot: insertSwingSnapshot,

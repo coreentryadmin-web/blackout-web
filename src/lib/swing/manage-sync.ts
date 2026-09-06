@@ -137,6 +137,10 @@ export interface ManageSyncReads {
   /** Ex-dividend session — LONG structural compare uses dividend-adjusted spot (Q39). */
   exDividendSession?: boolean;
   exDividendCash?: number | null;
+  /** True when this cycle's ex-dividend read failed (Polygon error/timeout) — passed through to
+   *  manage.ts so a LONG structural-stop breach is skipped rather than fail-open enforced on data
+   *  we know is unreliable this cycle. See ex-dividend-reads.ts. */
+  exDividendDataUnavailable?: boolean;
 }
 
 /** The live-state latch this refresh will apply (mirrors updateSwingLiveState's arg). status NEVER terminal. */
@@ -317,6 +321,7 @@ export function planManageSync(
     graduatedRungs: reads.graduatedRungs,
     exDividendSession: reads.exDividendSession === true,
     exDividendCash: numOrNull(reads.exDividendCash),
+    exDividendDataUnavailable: reads.exDividendDataUnavailable === true,
   };
   const verdict = evaluateSwingManagement(input);
 

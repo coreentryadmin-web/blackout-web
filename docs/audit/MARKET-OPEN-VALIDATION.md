@@ -120,6 +120,47 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1x. Ex-dividend read failure silently re-enabled the Q39 fail-open structural-stop bug on a still-valid LONG thesis — fix/ex-dividend-fail-open-structural-stop (pending)
+
+**What was broken:** `resolveSwingExDividendContext` (`ex-dividend-reads.ts`) caught ANY
+`fetchPolygonDividends` failure (rate limit, timeout, network blip) and returned
+`{ exDividendSession: false, exDividendCash: null }` — byte-identical to "confirmed: today is not
+an ex-dividend day." `manage.ts`'s `structuralStopBroken()` only adjusts the LONG structural-stop
+compare (adds the cash dividend back onto spot) when `exDividendSession === true` — Q39's whole
+point (#3909) is to stop a legitimate ex-div mechanical price drop from reading as a real thesis
+break. A Polygon error on the dividends fetch — nothing to do with whether the ticker actually
+went ex-div — collapsed straight into the un-adjusted compare, so a real ex-div gap on a day the
+dividends feed happened to be flaky could fire a capital-preservation `EXIT`/`structural_stop` on
+a position whose thesis never actually broke. Same fail-open shape was duplicated in
+`swing-active-refresh/route.ts`'s outer `.catch` around the same call.
+
+**Fix:** `resolveSwingExDividendContext` now returns a third field, `dataUnavailable: boolean`
+(`true` only when the Polygon read itself failed; `false` on every real resolution, including a
+genuine non-ex-div day). Forwarded through `ManageSyncReads.exDividendDataUnavailable` →
+`SwingManageInput.exDividendDataUnavailable`. `structuralStopBroken()` now fails SAFE: when the
+LONG compare is about to declare a breach AND this cycle's ex-div data was unavailable, it returns
+`broken: false` (skip enforcement this cycle — the next ~15-min refresh retries with fresh data)
+instead of trusting the unverifiable `false`. Scoped to LONG only (the adjustment never touches
+SHORT) and only when a breach would otherwise fire — a genuine SHORT breach, or a LONG position
+nowhere near its stop, behaves identically to before. Also added the first REAL behavior tests for
+`resolveSwingExDividendContext` (`ex-dividend-reads.test.ts`) — the pre-existing
+`ex-dividend-reads-freshness.test.ts` only regex-scans the source file and never calls the
+function, so it could not have caught this.
+
+**Check at the open:** No user-visible UI change expected under normal conditions (the fix only
+changes behavior on a real Polygon-dividends fetch failure, which is rare and transient). If any
+swing position's Ask Largo brief or the `/nighthawk` Swings board shows a `structural_stop` EXIT
+around 09:30–10:00 ET on a name that is confirmed ex-dividend that same session (check
+`GET /api/market/swing/record` for the position's ticker against a dividends calendar), cross-check
+CloudWatch logs (`/ecs/blackout-production`, filter on `swing-active-refresh`) for a
+`fetchPolygonDividends`/dividends-related error around the same timestamp — if present, the
+position should NOT have been exited (the fail-safe should have skipped it that cycle) and is worth
+flagging as a regression. Absent any observed Polygon dividends-fetch failure during the session,
+there is nothing to observe live (the code path is a rare-error branch) — note "no ex-div fetch
+failure observed this session" rather than treating silence as a pass.
+
+---
+
 ### 0a-1w. Option-mark timestamps reached the swing play-brief as raw ISO-8601 UTC instead of the Largo C1 ET stamp — fix/swing-markasof-raw-iso-not-et (pending)
 
 **What was broken:** `play.markAsOf` (a raw ISO string from the DB) was inserted unconverted into
@@ -177,7 +218,7 @@ any CLOSED row matches `calendarDte(closed_at date, expiry date)` by hand for at
 
 ---
 
-### 0a-1v. Chart technicals bias badge echoed the play's LONG/SHORT direction instead of the technicals it labels — fix/swing-chart-technicals-bias-direction-echo (pending)
+### 0a-1v. Chart technicals bias badge echoed the play's LONG/SHORT direction instead of the technicals it labels — fix/swing-chart-technicals-bias-direction-echo (merged #4232)
 
 **What was broken:** `chartTechnicalsSection`'s `bias` field (`play-brief-intel.ts`) was set from
 `play.direction === "SHORT" ? "bearish" : play.direction === "LONG" ? "bullish" : "neutral"` — a pure
