@@ -395,6 +395,124 @@ export function lessonsSection(play: TerminalPlay): RichSection | null {
   return { title: "Lessons", body: lines.join("\n") };
 }
 
+/** Macro rates + market breadth when arsenal fetched index context. */
+export function macroTapeSection(eco: EcosystemContext | null): RichSection | null {
+  const arsenal = eco?.arsenal;
+  if (!arsenal) return null;
+  const lines: string[] = [];
+  if (arsenal.macro) {
+    const m = arsenal.macro;
+    const parts: string[] = [];
+    if (m.yield_10_year != null) parts.push(`10Y **${m.yield_10_year.toFixed(2)}%**`);
+    if (m.curve_10y_1y_spread != null) parts.push(`10s-1s **${m.curve_10y_1y_spread.toFixed(2)}**`);
+    if (m.cpi != null) parts.push(`CPI **${m.cpi.toFixed(1)}**`);
+    if (parts.length) lines.push(`Rates backdrop: ${parts.join(" · ")}`);
+  }
+  if (arsenal.breadth) {
+    lines.push(`Market breadth: **${arsenal.breadth.tone}** — ${arsenal.breadth.summary}`);
+  }
+  if (!lines.length) return null;
+  return { title: "Macro tape", body: lines.join("\n\n") };
+}
+
+/** Cross-desk reads — Night Hawk edition + 0DTE stance on this ticker. */
+export function deskConsensusSection(eco: EcosystemContext | null, play: TerminalPlay): RichSection | null {
+  if (!eco) return null;
+  const lines: string[] = [];
+  if (eco.nighthawk_recent) {
+    const nh = eco.nighthawk_recent;
+    lines.push(
+      `Night Hawk **${nh.edition_for}**: ${nh.direction} · ${nh.conviction} conviction · outcome **${nh.outcome}**`,
+    );
+  }
+  if (eco.zerodte_today) {
+    const z = eco.zerodte_today;
+    const aligned =
+      (play.direction === "LONG" && z.direction === "long") ||
+      (play.direction === "SHORT" && z.direction === "short");
+    lines.push(
+      `0DTE desk: **${z.direction}** · score ${z.score}${aligned ? " · aligned with swing" : " · cross-check vs swing direction"}`,
+    );
+  }
+  if (eco.recent_anomalies?.length) {
+    const top = eco.recent_anomalies[0];
+    if (top) lines.push(`Latest flow anomaly: **${top.anomaly_type}** — ${top.detail}`);
+  }
+  if (!lines.length) return null;
+  return { title: "Desk consensus", body: lines.join("\n\n") };
+}
+
+/** GEX dealer posture — gamma/vanna context for the swing. */
+export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | null {
+  const gex = ctx.ecosystem?.gex_positioning;
+  if (!gex) return null;
+  const lines: string[] = [];
+  if (gex.gamma_posture) {
+    const posture =
+      gex.gamma_posture === "long"
+        ? "dealers **long gamma** — dips tend to get bought, range/pin behavior"
+        : "dealers **short gamma** — moves can accelerate, respect walls";
+    lines.push(`Gamma posture: ${posture}`);
+  }
+  if (gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
+  if (gex.nearest_wall != null && gex.spot != null) {
+    const { strike, kind, distance_pts } = gex.nearest_wall;
+    lines.push(
+      `Nearest wall: **${strike.toFixed(2)}** (${kind}, ${distance_pts.toFixed(1)} pts from spot **${gex.spot.toFixed(2)}**)`,
+    );
+  }
+  if (gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
+  if (!lines.length) return null;
+  return { title: "GEX posture", body: lines.join("\n") };
+}
+
+/** Wall bead dynamics — building/fading nodes from Vector wall history. */
+export function wallDynamicsSection(vec: VectorFullState | null): RichSection | null {
+  const events = vec?.wallEvents ?? [];
+  if (!events.length) return null;
+  const lines = events
+    .slice(0, 5)
+    .map((e) => {
+      const at = e.strike != null ? ` @ ${e.strike.toFixed(2)}` : e.flip != null ? ` @ flip ${e.flip.toFixed(2)}` : "";
+      return `• **${e.kind.replace(/_/g, " ")}**${at} — ${e.message}`;
+    })
+    .join("\n");
+  return { title: "Wall dynamics", body: lines };
+}
+
+/** Vector desk play read — entry zone, targets, invalidation from play engine. */
+export function vectorDeskSection(vec: VectorFullState | null): RichSection | null {
+  const p = vec?.play;
+  if (!p) return null;
+  const lines: string[] = [];
+  lines.push(`**${p.headline}** · grade **${p.grade}** · conviction **${p.conviction}**`);
+  if (p.thesis) lines.push(p.thesis);
+  if (p.entryZone) lines.push(`Entry zone: **${p.entryZone}**`);
+  if (p.targets.length) lines.push(`Targets: ${p.targets.map((t) => `**${t}**`).join(" · ")}`);
+  if (p.invalidation) lines.push(`Invalidation: **${p.invalidation}**`);
+  if (p.starred.length) {
+    lines.push("**Watch now:**\n" + p.starred.slice(0, 4).map((s) => `• ${s}`).join("\n"));
+  }
+  return { title: "Vector desk", body: lines.join("\n\n"), bias: p.bias === "short" ? "bearish" : p.bias === "long" ? "bullish" : "neutral" };
+}
+
+/** Honest data freshness — mark age, scan age, vector staleness. */
+export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | null {
+  const { play, scanAsOf, vector: vec } = ctx;
+  const lines: string[] = [];
+  if (play.markAsOf) {
+    lines.push(`Option mark as of **${play.markAsOf}**`);
+  } else if (play.markIsSync) {
+    lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
+  }
+  if (scanAsOf) lines.push(`Swing scan: **${scanAsOf}**`);
+  if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
+    lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
+  }
+  if (!lines.length) return null;
+  return { title: "Data freshness", body: lines.join("\n"), bias: play.markIsSync ? "bearish" : "neutral" };
+}
+
 /** Build all intelligence sections for the current play state. */
 export function buildIntelSections(
   ctx: SwingPlayBriefContext,
@@ -412,11 +530,29 @@ export function buildIntelSections(
   const levels = chartLevelsSection(ctx);
   if (levels) out.push(levels);
 
+  const gex = gexPostureSection(ctx);
+  if (gex) out.push(gex);
+
+  const walls = wallDynamicsSection(vec);
+  if (walls) out.push(walls);
+
+  const vdesk = vectorDeskSection(vec);
+  if (vdesk) out.push(vdesk);
+
   const flow = flowIntelSection(ecosystem, play);
   if (flow) out.push(flow);
 
   const catalysts = catalystsSection(ecosystem);
   if (catalysts) out.push(catalysts);
+
+  const macro = macroTapeSection(ecosystem);
+  if (macro) out.push(macro);
+
+  const consensus = deskConsensusSection(ecosystem, play);
+  if (consensus) out.push(consensus);
+
+  const fresh = dataFreshnessSection(ctx);
+  if (fresh) out.push(fresh);
 
   out.push(watchForSection(ctx, bucket));
 

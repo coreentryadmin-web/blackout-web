@@ -240,20 +240,23 @@ export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBrie
     ctx.ecosystem?.recent_flow != null ||
     ctx.ecosystem?.arsenal?.earnings != null;
 
-  const envelope: BieAnswerEnvelope = buildRichEnvelope({
-    headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
-    bias: biasFromDirection(play.direction),
-    intent: "swing_play_brief",
-    sections,
-    evidence: evidenceFromContext(ctx),
-    levels: levelsFromContext(ctx),
-    invalidation,
-    followups: followupsFor(play),
-    confidence: {
-      level: hasRichData ? "high" : "moderate",
-      why: "Deterministic synthesis from swing lane, ledger, Vector chart, HELIX flow, GEX nodes, earnings & news — no LLM.",
-    },
-  });
+  const envelope: BieAnswerEnvelope = {
+    ...buildRichEnvelope({
+      headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
+      bias: biasFromDirection(play.direction),
+      intent: "swing_play_brief",
+      sections,
+      evidence: evidenceFromContext(ctx),
+      levels: levelsFromContext(ctx),
+      invalidation,
+      followups: followupsFor(play),
+      confidence: {
+        level: hasRichData ? "high" : "moderate",
+        why: "Deterministic synthesis from swing lane, ledger, Vector chart, HELIX flow, GEX nodes, earnings & news — no LLM.",
+      },
+    }),
+    asOf: ctx.asOf,
+  };
 
   return {
     playId: play.id,
