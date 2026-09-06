@@ -16,7 +16,7 @@ import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-di
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
 import { collectBriefUnavailableSources, gexMatrixAgeMs, gexMatrixStale, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
-import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
+import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import {
   etStampFromDateOrIso,
   etStampFromIso,
@@ -446,18 +446,14 @@ export function composeSwingPlayBrief(
     ? { callPremium: flow.call_premium, putPremium: flow.put_premium }
     : null;
 
-  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
-  const gex = ctx.ecosystem?.gex_positioning;
   const trimsFired = play.exitPolicy?.trim_levels?.filter((t) => t.fired).length ?? null;
-  const snap = snapshotFromBrief(envelope, play, {
-    spot: vec?.spot ?? gex?.spot ?? null,
-    gammaFlip: vec?.gammaFlip ?? gex?.flip ?? null,
-    callWall: vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null,
-    putWall: vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null,
-    flowCallPremium: flow?.call_premium ?? null,
-    flowPutPremium: flow?.put_premium ?? null,
-    trimsFired,
-  });
+  // Diff snapshots must read spot/walls/flip from envelope.levels (already stale-gated in
+  // levelsFromContext) — not a parallel vec/gex fallback that bypasses freshness gates.
+  const snap = snapshotFromBrief(
+    envelope,
+    play,
+    extrasFromBriefResponse({ envelope, flowSnapshot, trimsFired }),
+  );
 
   return {
     playId: play.id,
