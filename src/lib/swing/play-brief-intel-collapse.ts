@@ -6,7 +6,8 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
 
 /** Section titles omitted when a narrative block is present (coaching already spoke). */
 const NARRATIVE_COVERED_TITLES = new Set([
-  "Book context",
+  // Book context stays visible — #4116 removed duplicate bookContextCoaching from narrative;
+  // collapsing it here would hide concentration warnings entirely.
   "Lane rank",
   "Levels on chart",
   "GEX posture",
