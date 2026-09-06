@@ -638,6 +638,8 @@ export function collectCoachingBullets(
 ): string[] {
   const { play } = ctx;
   const vec = vectorOf(ctx);
+  const readMs = Date.now();
+  const vectorLive = vec != null && !vectorSnapshotStale(vec, readMs);
   const out: string[] = [];
   const push = (line: string | null | undefined) => {
     if (line) out.push(`• ${line}`);
@@ -677,21 +679,24 @@ export function collectCoachingBullets(
   push(shortInterestCoaching(ctx, play));
   push(ivRankCoaching(play));
 
-  if (spot != null) {
-    push(vexCoaching(vec, spot));
-    push(flowPrintsCoaching(vec, play));
-    push(magnetCoaching(ctx, vec, spot));
-    push(confluenceCoaching(vec, play, spot));
-    push(expectedMoveCoaching(vec, spot));
-    push(wallIntegrityCoaching(vec, play));
-    push(wallDynamicsCoaching(vec));
-    push(technicalsCoaching(vec, play));
-  } else {
-    push(vexCoaching(vec, null));
-    push(flowPrintsCoaching(vec, play));
+  // Largo C2 — Vector-sourced coaching must not fire on a stale desk snapshot (same gate as
+  // technicalsCoaching / vectorPlayCoaching / crossDeskCoaching).
+  if (vectorLive) {
+    if (spot != null) {
+      push(vexCoaching(vec, spot));
+      push(flowPrintsCoaching(vec, play));
+      push(magnetCoaching(ctx, vec, spot));
+      push(confluenceCoaching(vec, play, spot));
+      push(expectedMoveCoaching(vec, spot));
+      push(wallIntegrityCoaching(vec, play));
+      push(wallDynamicsCoaching(vec));
+      push(technicalsCoaching(vec, play));
+    } else {
+      push(vexCoaching(vec, null));
+      push(flowPrintsCoaching(vec, play));
+    }
+    push(vectorPlayCoaching(vec, play));
   }
-
-  push(vectorPlayCoaching(vec, play));
   push(dataHonestyCoaching(ctx, play));
 
   return out;

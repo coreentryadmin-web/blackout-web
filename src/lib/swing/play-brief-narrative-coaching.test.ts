@@ -16,6 +16,7 @@ import {
   vexCoaching,
   watchGateCoaching,
   technicalsCoaching,
+  collectCoachingBullets,
 } from "./play-brief-narrative-coaching";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -545,4 +546,42 @@ test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => 
     },
   } as import("@/lib/bie/vector-full-state").VectorFullState;
   assert.equal(technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" })), null);
+});
+
+test("collectCoachingBullets: stale Vector suppresses Vector-sourced coaching block (Largo C2)", () => {
+  const vec = {
+    spot: 100,
+    dataAgeMs: 200_000,
+    play: { bias: "long", headline: "Breakout continuation", invalidation: "98" },
+    confluenceZones: [{ center: 102, kinds: ["wall"], score: 90 }],
+    expectedMove: { bands: [{ sigma: 1, low: 95, high: 105, movePts: 5 }] },
+    technicals: {
+      vwap: 99,
+      emaStack: "up",
+      rsi: 55,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "up", level: 99 },
+    },
+  } as SwingPlayBriefContext["vector"];
+  const bullets = collectCoachingBullets(ctx({ vector: vec }), "open", 100);
+  const joined = bullets.join("\n");
+  assert.doesNotMatch(joined, /Confluence/i);
+  assert.doesNotMatch(joined, /Expected move/i);
+  assert.doesNotMatch(joined, /Vector desk/i);
+  assert.doesNotMatch(joined, /VWAP/i);
+  // Non-Vector coaching (play-native) still allowed
+  assert.ok(bullets.length >= 0);
+});
+
+test("collectCoachingBullets: live Vector still emits confluence coaching", () => {
+  const vec = {
+    spot: 100,
+    asOf: new Date().toISOString(),
+    dataAgeMs: 5_000,
+    confluenceZones: [{ center: 102, kinds: ["wall"], score: 90 }],
+  } as SwingPlayBriefContext["vector"];
+  const bullets = collectCoachingBullets(ctx({ vector: vec }), "open", 100);
+  const joined = bullets.join("\n");
+  assert.match(joined, /Confluence/i);
 });
