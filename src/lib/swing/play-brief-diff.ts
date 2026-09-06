@@ -143,18 +143,20 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   if (prev.putWall != null && next.putWall != null && Math.abs(prev.putWall - next.putWall) >= 0.05) {
     lines.push(`Put wall ${fmtDelta(prev.putWall, next.putWall)}`);
   }
-  if (
+  const callMoved =
     prev.flowCallPremium != null &&
     next.flowCallPremium != null &&
-    Math.abs(prev.flowCallPremium - next.flowCallPremium) > 50_000
-  ) {
-    const bias =
-      next.flowCallPremium > prev.flowCallPremium * 1.2
-        ? "call flow building"
-        : next.flowPutPremium != null && next.flowPutPremium > (prev.flowPutPremium ?? 0) * 1.2
-          ? "put flow building"
-          : "flow shifted";
-    lines.push(`HELIX tape: ${bias}`);
+    Math.abs(next.flowCallPremium - prev.flowCallPremium) > 50_000;
+  const putMoved =
+    prev.flowPutPremium != null &&
+    next.flowPutPremium != null &&
+    Math.abs(next.flowPutPremium - prev.flowPutPremium) > 50_000;
+  if (callMoved && next.flowCallPremium! > prev.flowCallPremium! * 1.2) {
+    lines.push("HELIX tape: call flow building");
+  } else if (putMoved && next.flowPutPremium! > (prev.flowPutPremium ?? 0) * 1.2) {
+    lines.push("HELIX tape: put flow building");
+  } else if (callMoved || putMoved) {
+    lines.push("HELIX tape: flow shifted");
   }
   if (
     prev.trimsFired != null &&
