@@ -54,7 +54,7 @@ import { createAuditClerkUser, deleteAuditClerkUser } from "./clerk-audit-user.m
 export const AUDIT_TEMP_EMAIL_PREFIX = "claude-audit-temp+";
 
 /** A temp user younger than this may still belong to a LIVE run — never sweep it. */
-export const STALE_USER_MS = 30 * 60_000;
+export const STALE_USER_MS = Number(process.env.AUDIT_STALE_USER_MS) || 30 * 60_000;
 
 /**
  * Pick the leaked audit temp users that are safe to delete.
