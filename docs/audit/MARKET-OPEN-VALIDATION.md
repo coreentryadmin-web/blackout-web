@@ -118,6 +118,18 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
+
+### 0a-1k. Swing Ask Largo — Desk context duplicated HELIX anomalies — fix/swing-brief-desk-context-dedup (pending)
+
+**What was broken:** `deskConsensusSection` repeated `recent_anomalies[0]` even though Trade manager read (`flowNarrative`) and Flow & positioning already surface the same sweep — members saw the anomaly up to three times. Stale collapse title `Desk consensus` never matched section title `Desk context`.
+
+**Fix:** Desk context renders only Night Hawk outcome history (unique vs `crossDeskCoaching`); remove stale collapse allowlist entry.
+
+**Check at the open:** Swings OPEN row with a live HELIX anomaly → Ask Largo panel mentions the sweep once in Trade manager read; Desk context appears only when NH outcome history exists.
+
+---
+
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
 ### 0a-1j. Swing Ask Largo OPEN brief — ticker collision picked WATCH lane row — fix/swing-play-brief-ticker-collision (pending)
