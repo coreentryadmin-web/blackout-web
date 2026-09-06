@@ -12,6 +12,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
+import { mfeCaptureOutcome } from "./mfe-capture";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -413,14 +414,13 @@ export function lessonsSection(play: TerminalPlay): RichSection | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
   if (play.peak != null && play.exitPnlPct != null) {
-    const capture =
-      play.mfeCapturePct != null
-        ? play.mfeCapturePct
-        : play.peak > 0
-          ? (play.exitPnlPct / play.peak) * 100
-          : null;
+    const outcome = mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct);
     lines.push(`Peak was **${fmtPct(play.peak)}** · exited **${fmtPct(play.exitPnlPct)}**`);
-    if (capture != null) {
+    if (outcome?.kind === "round_trip") {
+      lines.push(`**Round-tripped past breakeven** — up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**.`);
+      lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
+    } else if (outcome?.kind === "capture") {
+      const capture = outcome.capturePct;
       lines.push(`MFE capture: **${fmtPct(capture)}** of peak move`);
       if (capture >= 75) {
         lines.push("**Strong exit discipline** — banked most of the move; replicate trim ladder timing.");

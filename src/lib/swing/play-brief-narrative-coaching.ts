@@ -8,6 +8,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { checkPortfolioOverlap } from "./portfolio";
 import { fmtPremium } from "@/lib/fmt-money";
+import { mfeCaptureOutcome } from "./mfe-capture";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -553,14 +554,12 @@ export function closedCoaching(play: TerminalPlay): string | null {
   const lines: string[] = [];
 
   if (play.peak != null && play.exitPnlPct != null) {
-    const capture =
-      play.mfeCapturePct != null
-        ? play.mfeCapturePct
-        : play.peak > 0
-          ? (play.exitPnlPct / play.peak) * 100
-          : null;
+    const outcome = mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct);
     lines.push(`Exited **${fmtPct(play.exitPnlPct)}** vs peak **${fmtPct(play.peak)}**`);
-    if (capture != null) {
+    if (outcome?.kind === "round_trip") {
+      lines.push(`**Round-tripped past breakeven** — was up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**; tighten at first trim rail next time.`);
+    } else if (outcome?.kind === "capture") {
+      const capture = outcome.capturePct;
       if (capture >= 75) lines.push(`**Strong discipline** — captured **${fmtPct(capture)}** of peak; replicate trim timing.`);
       else if (capture < 35 && play.peak > 20) lines.push(`**Gave back the move** — only **${fmtPct(capture)}** MFE capture; tighten at first trim rail next time.`);
       else lines.push(`MFE capture **${fmtPct(capture)}** — review runner vs trim policy.`);

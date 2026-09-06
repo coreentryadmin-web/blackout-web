@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { bookContextSection, deskConsensusSection } from "./play-brief-intel";
+import { bookContextSection, deskConsensusSection, lessonsSection } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
 
@@ -95,4 +95,21 @@ test("deskConsensusSection: narrates flow anomaly in coaching voice", () => {
   assert.ok(section);
   assert.match(section?.body ?? "", /sweep_cluster/i);
   assert.match(section?.body ?? "", /Confirm it still supports/i);
+});
+
+test("lessonsSection: a round-trip past breakeven never renders a nonsensical negative MFE capture", () => {
+  // Reproduces a live production case: INTC:35 peak +25.7%, exited -40.8% used to render
+  // "MFE capture: -158.9% of peak move" (exitPnlPct / peak * 100), a percentage with no honest reading.
+  const section = lessonsSection(
+    fixturePlay({
+      status: "CLOSED",
+      peak: 25.7,
+      exitPnlPct: -40.8,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /-158\.9%|MFE capture: \*\*-/i);
+  assert.match(section!.body, /round-tripped past breakeven/i);
 });
