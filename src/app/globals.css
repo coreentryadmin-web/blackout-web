@@ -22974,6 +22974,22 @@ html.product-shell .nav-mega {
 .nh-deck-largo__bie .bie-answer-followups{padding:6px 6px 10px;border-top:1px solid var(--dk-line);margin-top:4px}
 .nh-deck-largo__bie .bie-answer-followups-row{flex-wrap:wrap;gap:6px}
 .nh-deck-largo__bie .bie-followup-chip{font-size:10px;padding:4px 8px;line-height:1.3;max-width:100%;text-align:left;white-space:normal}
+.nh-deck-largo__action-strip{margin:0 12px 8px;padding:10px 12px;border-radius:6px;border:1px solid var(--dk-border);background:rgba(15,23,42,.6)}
+.nh-deck-largo__action-strip--hold{border-color:rgba(56,189,248,.35)}
+.nh-deck-largo__action-strip--trim{border-color:rgba(251,191,36,.45);background:rgba(251,191,36,.06)}
+.nh-deck-largo__action-strip--sell{border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.06)}
+.nh-deck-largo__action-strip--buy{border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.06)}
+.nh-deck-largo__action-strip-primary{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.nh-deck-largo__action-verb{font-size:16px;font-weight:800;letter-spacing:.06em;color:var(--dk-cyan)}
+.nh-deck-largo__action-strip--trim .nh-deck-largo__action-verb{color:#FBBF24}
+.nh-deck-largo__action-strip--sell .nh-deck-largo__action-verb{color:var(--dk-bear)}
+.nh-deck-largo__action-strip--buy .nh-deck-largo__action-verb{color:var(--dk-bull)}
+.nh-deck-largo__action-size{font-size:13px;font-weight:700;color:var(--dk-text-primary)}
+.nh-deck-largo__action-urgency{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--dk-text-secondary)}
+.nh-deck-largo__action-reason{margin:0;font-size:11px;line-height:1.4;color:var(--dk-text-secondary)}
+.nh-deck-largo__action-trims{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.nh-deck-largo__action-trim{font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;border:1px solid var(--dk-border);color:var(--dk-text-secondary)}
+.nh-deck-largo__action-trim.is-fired{border-color:var(--dk-bull);color:var(--dk-bull)}
 .nh-deck-trade-hero__tk-contract{font-size:22px;letter-spacing:.03em}
 
 /* Swing Command — readability: brighter secondary text + larger type on dense panels. */

@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { clsx } from "clsx";
 import { etClock } from "@/lib/et-clock";
 import type { TerminalPlay } from "./types";
 import { playContractHeadline } from "./play-card-lifecycle";
 import { useSwingPlayBrief } from "@/hooks/useSwingPlayBrief";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { renderEnvelopeMarkdown } from "@/lib/bie/answer-envelope";
+import { managementActionDisplay } from "./terminal-display";
 
 function largoTerminalHref(play: TerminalPlay, q?: string): string {
   const params = new URLSearchParams({
@@ -19,6 +21,52 @@ function largoTerminalHref(play: TerminalPlay, q?: string): string {
   if (play.status) params.set("status", play.status);
   if (q) params.set("q", q);
   return `/terminal?${params.toString()}`;
+}
+
+function isWorkingPlay(play: TerminalPlay): boolean {
+  return play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
+}
+
+function SwingBriefActionStrip({ play }: { play: TerminalPlay }) {
+  const recommendation = play.recommendation ?? "HOLD";
+  const action = useMemo(
+    () => managementActionDisplay(play, recommendation, play.progress ?? null),
+    [play, recommendation],
+  );
+
+  if (!isWorkingPlay(play)) return null;
+
+  const tone =
+    action.verb === "SELL"
+      ? "sell"
+      : action.verb === "TRIM"
+        ? "trim"
+        : action.verb === "BUY"
+          ? "buy"
+          : "hold";
+
+  return (
+    <div className={clsx("nh-deck-largo__action-strip", `nh-deck-largo__action-strip--${tone}`)} aria-label="Desk action">
+      <div className="nh-deck-largo__action-strip-primary">
+        <span className="nh-deck-largo__action-verb">{action.verb}</span>
+        {action.sizePct != null ? <span className="nh-deck-largo__action-size">{action.sizePct}%</span> : null}
+        <span className="nh-deck-largo__action-urgency">{action.urgency}</span>
+      </div>
+      <p className="nh-deck-largo__action-reason">{action.reason}</p>
+      {play.exitPolicy?.trim_levels?.length ? (
+        <div className="nh-deck-largo__action-trims">
+          {play.exitPolicy.trim_levels.map((t) => (
+            <span
+              key={t.trigger_pct}
+              className={clsx("nh-deck-largo__action-trim", t.fired && "is-fired")}
+            >
+              +{t.trigger_pct}%{t.fired ? " ✓" : ""}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /** Center-rail Largo play intelligence — deterministic Ask Largo brief per selected play. */
@@ -69,6 +117,8 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
           </Link>
         </div>
       </header>
+
+      <SwingBriefActionStrip play={play} />
 
       <div className="nh-deck-largo__brief-body">
         {loading && !envelope ? (

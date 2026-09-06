@@ -140,6 +140,22 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   return lines.slice(0, 8);
 }
 
+/** Stable content key for SSE dedupe — excludes time-only fields. */
+export function briefContentKey(snap: BriefSnapshot): string {
+  return JSON.stringify({
+    headline: snap.headline,
+    recommendation: snap.recommendation,
+    thesisHealth: snap.thesisHealth,
+    pnlPct: snap.pnlPct,
+    mark: snap.mark,
+    spot: snap.spot,
+    gammaFlip: snap.gammaFlip,
+    callWall: snap.callWall,
+    putWall: snap.putWall,
+    sectionTitles: snap.sectionTitles,
+  });
+}
+
 /** Inject a "What changed" section at the top of an envelope when deltas exist. */
 export function envelopeWithDiffSection(
   envelope: BieAnswerEnvelope,

@@ -40,6 +40,8 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
     sessionDate: "2026-09-05",
     scanAsOf: "2026-09-05T19:30:00.000Z",
     scanSessionDay: "2026-09-05",
+    laneRows: [],
+    meridian: null,
     ecosystem: {
       ticker: "INTC",
       zerodte_today: null,
@@ -175,6 +177,8 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
     sessionDate: "2026-09-05",
     scanAsOf: null,
     scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
     ecosystem: null,
     vector: null,
   };
@@ -200,6 +204,8 @@ test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
     sessionDate: "2026-09-05",
     scanAsOf: null,
     scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
     ecosystem: null,
     vector: null,
   };
