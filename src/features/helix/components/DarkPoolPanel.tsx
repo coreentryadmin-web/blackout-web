@@ -225,7 +225,13 @@ export function DarkPoolPanel({
     ? allPrints.filter((p) => p.ticker === filterTicker)
     : allPrints.slice(0, 60);
 
-  const biasRead   = readDarkPoolBias(visible);
+  // Market-wide bias must read the SAME population `latestNet`/the sparkline are computed from —
+  // the full up-to-100-row fetch (`allPrints`) — not the 60-row slice `visible` caps the list
+  // display to. Otherwise the BULLISH/BEARISH badge and the adjacent +$X net figure can disagree
+  // in sign whenever rows 61-100 skew hard enough the other way to flip the full-population sum.
+  // When a ticker filter is active, `visible` is already the full matching population (no slice),
+  // so this is a no-op there.
+  const biasRead   = readDarkPoolBias(filterTicker ? visible : allPrints);
   const bias       = biasStyle(biasRead);
   const biasNote   = biasCoverageNote(biasRead);
   const latestNet  = history[history.length - 1]?.net ?? 0;
