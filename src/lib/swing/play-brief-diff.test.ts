@@ -125,7 +125,7 @@ test("envelopeWithNarrativePulse: overflow changes get What changed section", ()
   assert.ok(out.sections.some((s) => s.title === "What changed"));
 });
 
-test("diffBriefSnapshots: detects HELIX flow shift", () => {
+test("diffBriefSnapshots: detects HELIX call flow shift", () => {
   const baseEnvelope = env();
   const prevResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 500_000, putPremium: 400_000 } };
   const nextResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 900_000, putPremium: 380_000 } };
@@ -133,7 +133,20 @@ test("diffBriefSnapshots: detects HELIX flow shift", () => {
   const nextSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(nextResponse));
   const lines = diffBriefSnapshots(prevSnap, nextSnap);
   assert.ok(
-    lines.some((l) => l.includes("HELIX tape")),
-    `expected a HELIX tape flow-shift line, got: ${JSON.stringify(lines)}`,
+    lines.some((l) => l.includes("HELIX tape: call flow building")),
+    `expected call flow building line, got: ${JSON.stringify(lines)}`,
+  );
+});
+
+test("diffBriefSnapshots: detects HELIX put-only flow build when call premium is flat", () => {
+  const baseEnvelope = env();
+  const prevResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 500_000, putPremium: 400_000 } };
+  const nextResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 510_000, putPremium: 1_500_000 } };
+  const prevSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(prevResponse));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(nextResponse));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    lines.some((l) => l.includes("HELIX tape: put flow building")),
+    `expected put flow building line, got: ${JSON.stringify(lines)}`,
   );
 });
