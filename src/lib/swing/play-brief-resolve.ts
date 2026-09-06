@@ -217,6 +217,7 @@ export async function resolveSwingPlayForBrief(
   play: TerminalPlay;
   scanAsOf: string | null;
   scanSessionDay: string | null;
+  laneRows: HorizonPlay[];
 } | null> {
   const parsed = parseSwingPlayId(input.playId);
   const ticker = (input.ticker ?? parsed.ticker).toUpperCase();
@@ -242,11 +243,11 @@ export async function resolveSwingPlayForBrief(
 
   if (parsed.positionId != null) {
     const closed = await loadClosedPlay(ticker, parsed.positionId);
-    if (closed) return { play: closed, scanAsOf, scanSessionDay };
+    if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows };
   }
 
   if (openPlay && (!status || WORKING.has(status.toUpperCase()))) {
-    return { play: openPlay, scanAsOf, scanSessionDay };
+    return { play: openPlay, scanAsOf, scanSessionDay, laneRows: rows };
   }
 
   const lanePlay = pickLanePlayForBrief(rows, ticker, { status, strike, right });
@@ -255,16 +256,17 @@ export async function resolveSwingPlayForBrief(
       play: terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay)),
       scanAsOf,
       scanSessionDay,
+      laneRows: rows,
     };
   }
 
   if (parsed.positionId != null || input.playId.includes("CLOSED")) {
     const closed = await loadClosedPlay(ticker, parsed.positionId);
-    if (closed) return { play: closed, scanAsOf, scanSessionDay };
+    if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows };
   }
 
   const closedFallback = await loadClosedPlay(ticker, null);
-  if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay };
+  if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay, laneRows: rows };
 
   return null;
 }

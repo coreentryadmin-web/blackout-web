@@ -5,6 +5,8 @@
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
+import { laneRankSection } from "./play-brief-lane-rank";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
@@ -373,7 +375,7 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
   return { title: "Hold plan", body: lines.join("\n\n") };
 }
 
-/** Post-mortem for closed plays. */
+/** Post-mortem for closed plays — MFE capture + archetype learning loop. */
 export function lessonsSection(play: TerminalPlay): RichSection | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
@@ -385,14 +387,71 @@ export function lessonsSection(play: TerminalPlay): RichSection | null {
           ? (play.exitPnlPct / play.peak) * 100
           : null;
     lines.push(`Peak was **${fmtPct(play.peak)}** · exited **${fmtPct(play.exitPnlPct)}**`);
-    if (capture != null) lines.push(`MFE capture: **${fmtPct(capture)}** of peak move`);
+    if (capture != null) {
+      lines.push(`MFE capture: **${fmtPct(capture)}** of peak move`);
+      if (capture >= 75) {
+        lines.push("**Strong exit discipline** — banked most of the move; replicate trim ladder timing.");
+      } else if (capture < 35 && play.peak > 20) {
+        lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
+      } else if (capture >= 35 && capture < 75) {
+        lines.push("**Partial capture** — review whether runner policy matched the setup volatility.");
+      }
+    }
   }
-  if (play.closedReason) lines.push(`Exit: **${play.closedReason.replace(/_/g, " ")}**`);
+  if (play.closedReason) {
+    const reason = play.closedReason.replace(/_/g, " ");
+    lines.push(`Exit: **${reason}**`);
+    if (play.closedReason === "target" || play.closedReason === "ratchet") {
+      lines.push("Mechanical exit fired as designed — thesis or ladder did its job.");
+    } else if (play.closedReason === "stopped" || play.closedReason === "stop") {
+      lines.push("Stop loss — check if invalidation level was respected or entry was extended.");
+    } else if (play.closedReason === "thesis") {
+      lines.push("Thesis break exit — pillar degradation was the signal; review which pillar failed first.");
+    }
+  }
   if (play.archetype) {
-    lines.push(`Archetype **${play.archetype.replace(/_/g, " ")}** — review if setup class matched outcome`);
+    lines.push(`Archetype **${play.archetype.replace(/_/g, " ")}** — tag this outcome in your playbook review.`);
+  }
+  if (play.execPnlPct != null && play.exitPnlPct != null && Math.abs(play.execPnlPct - play.exitPnlPct) > 5) {
+    lines.push(
+      `Executable vs mid exit: **${fmtPct(play.execPnlPct)}** vs **${fmtPct(play.exitPnlPct)}** — slippage on the tape.`,
+    );
   }
   if (!lines.length) return null;
   return { title: "Lessons", body: lines.join("\n") };
+}
+
+function formatMeridianItem(i: LargoTimelineItem): string {
+  const when =
+    i.days_until <= 0
+      ? "**today**"
+      : i.days_until === 1
+        ? "**tomorrow**"
+        : `in **${i.days_until}d**`;
+  const em = i.expected_move_pct != null ? ` · implied move **${i.expected_move_pct.toFixed(1)}%**` : "";
+  const printed = i.is_printed ? " · **printed**" : "";
+  const timing = i.time ? ` @ ${i.time}` : "";
+  return `• **${i.title}** (${i.kind}, ${i.impact}) — ${i.date}${timing} ${when}${em}${printed}`;
+}
+
+/** Meridian desk catalyst calendar — richer than UW earnings stub alone. */
+export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection | null {
+  const slice = ctx.meridian;
+  if (slice?.unavailable) {
+    return {
+      title: "Meridian catalysts",
+      body: "Catalyst calendar unavailable on this read — not evidence of a quiet calendar.",
+    };
+  }
+  if (!slice?.items.length) return null;
+
+  const lines = slice.items.map(formatMeridianItem);
+  if (slice.total_matched > slice.items.length) {
+    lines.push(
+      `_${slice.total_matched - slice.items.length} more in window — open Meridian desk for full lane._`,
+    );
+  }
+  return { title: "Meridian catalysts", body: lines.join("\n") };
 }
 
 /** Macro rates + market breadth when arsenal fetched index context. */
@@ -524,6 +583,9 @@ export function buildIntelSections(
 
   out.push(whyThisSetupSection(play));
 
+  const rank = laneRankSection(play, ctx.laneRows);
+  if (rank) out.push(rank);
+
   const technicals = chartTechnicalsSection(vec, play);
   if (technicals) out.push(technicals);
 
@@ -544,6 +606,9 @@ export function buildIntelSections(
 
   const catalysts = catalystsSection(ecosystem);
   if (catalysts) out.push(catalysts);
+
+  const meridian = meridianCatalystSection(ctx);
+  if (meridian) out.push(meridian);
 
   const macro = macroTapeSection(ecosystem);
   if (macro) out.push(macro);
