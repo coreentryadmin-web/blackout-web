@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T23:33:42.440Z",
+  "updated_at": "2026-09-06T23:41:42.891Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-07T00:55:03.684Z",
+      "lease_until": "2026-09-07T01:03:57.791Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "3d948425-2244-4bb8-a539-6c074f0f1575",
+      "run_id": "b59e4ae4-38d6-424d-ae42-4c291cebc261",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-07T00:55:03.684Z",
+      "lease_until": "2026-09-07T01:03:57.791Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "3d948425-2244-4bb8-a539-6c074f0f1575"
+      "run_id": "b59e4ae4-38d6-424d-ae42-4c291cebc261"
     }
   },
   "reviews": {
@@ -43,6 +43,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T19:34:54.972Z",
       "safe_to_merge": true
+    },
+    "pr-4415": {
+      "pr": 4415,
+      "head_sha": "19fc6b3f1046804a647b2dae1a846574868ff3a5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:39:10.540Z",
+      "safe_to_merge": true
+    },
+    "pr-4416": {
+      "pr": 4416,
+      "head_sha": "4ec0ae7d77f1a3d18a215283b1247ebce1e17459",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:39:10.884Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -57,11 +73,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a54f4c9e53bf291dc1a254f3d9cf6ad6fd0aa9a9",
+    "last_main_sha": "092b9bd65638d0b790d1a23b52da2b6feeec3fbe",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T23:31:52Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34066609745",
-    "last_deploy_sha": "3c2e6f2714b723d9a62924bd791641d8ddb9ddd2"
+    "last_deploy_at": "2026-09-06T23:41:28Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34067591230",
+    "last_deploy_sha": "15f13e51cf17d0aa6e752cc2125e4fcd9829b0c6"
   },
   "events": [
     {
@@ -398,38 +414,63 @@
       "agent": "cursor",
       "run_id": "68b97804-9b38-486d-8e77-79c5bda430f6",
       "summary": "Main@fc0aa0d30 (#4402+#4411 merged). #4414+#4415 draft — 48/48+70/70 local, verify pending. Largo C2 sweep continues."
+    },
+    {
+      "at": "2026-09-06T23:33:57.790Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T23:33:58.676Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T23:39:10.541Z",
+      "type": "pr_review",
+      "pr": 4415,
+      "head_sha": "19fc6b3f1046804a647b2dae1a846574868ff3a5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:39:10.540Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T23:39:10.885Z",
+      "type": "pr_review",
+      "pr": 4416,
+      "head_sha": "4ec0ae7d77f1a3d18a215283b1247ebce1e17459",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:39:10.884Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T23:41:42.890Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:41:42.891Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "05306bbe-ed7a-4fa4-a19e-d030efc56de9",
+      "summary": "Main@092b9bd65. #4415+#4416 merged. #4414 chart technicals stale gate — verify pending, 48/48 local approved pending CI."
     }
   ],
   "open_prs": [
     {
-      "number": 4416,
-      "title": "fix(middleware): dedupe hasBearerToken, remove 3 dead exports from middleware-shared.ts",
-      "branch": "fix/middleware-shared-bearer-token-dead-code",
+      "number": 4419,
+      "title": "fix(largo): gate stale GEX spot in levels sections + envelope (Largo C2)",
+      "branch": "fix/largo-gex-stale-spot-levels",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T23:31:08Z"
-    },
-    {
-      "number": 4415,
-      "title": "fix(largo): gate stale GEX spot in narrative + coaching caveat (Largo C2)",
-      "branch": "fix/largo-gex-stale-spot-coaching",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T23:32:51Z"
-    },
-    {
-      "number": 4414,
-      "title": "fix(largo): suppress stale Vector chart technicals body (Largo C2)",
-      "branch": "fix/largo-chart-technicals-stale-gate",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T23:31:40Z"
+      "updated_at": "2026-09-06T23:41:10Z"
     }
   ]
 }
