@@ -8,6 +8,7 @@ import type { DeckStatus, ExitModel, Recommendation, TerminalPlay } from "./type
 import { playQualityPct } from "./play-card-display";
 import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 import { ARCHETYPE_META, SWING_SUB_LANES, type SwingArchetype, type SwingSubLane } from "@/lib/swing/taxonomy";
+import { thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
 
 export type ChecklistItem = { label: string; ok: boolean | null };
 
@@ -26,11 +27,29 @@ export type ManagementActionDisplay = {
   probabilityPct: number | null;
 };
 
+// SWING committed positions can carry an aggregate `health` computed from generic
+// uncalibrated pillar defaults (setup/entry/signal inputs not wired) — same gap
+// `thesisHealthSection`/`holdPlanSection` withhold on the Ask Largo brief. 0DTE thesis
+// health is always computed from live entry_context cortex reads, so it never trips this
+// check (a genuinely partial 0DTE pillar is a single-pillar `na`, not the whole-payload
+// swing-default pattern `thesisHealthUncalibrated` looks for) — scope the guard to SWING
+// so a real 0DTE score/label is never withheld by mistake.
+function healthIsCalibrated(play: TerminalPlay): boolean {
+  return !(play.horizon === "SWING" && thesisHealthUncalibrated(play.thesisHealth));
+}
+
 /** Thesis strength 0–100 — thesis health when wired, else null (never fabricated). */
 export function thesisStrengthPct(play: TerminalPlay): number | null {
-  if (play.thesisHealth?.health != null && Number.isFinite(play.thesisHealth.health)) {
+  if (
+    play.thesisHealth?.health != null &&
+    Number.isFinite(play.thesisHealth.health) &&
+    healthIsCalibrated(play)
+  ) {
     return Math.round(Math.max(0, Math.min(100, play.thesisHealth.health)));
   }
+  // Committed SWING rows can carry thesisBreak warn/break derived from the same
+  // uncalibrated health — never fabricate 45%/15% substitutes when inputs aren't wired.
+  if (!healthIsCalibrated(play)) return null;
   if (play.thesisBreak?.level === "intact") return null;
   if (play.thesisBreak?.level === "warn") return 45;
   if (play.thesisBreak?.level === "break") return 15;
@@ -128,7 +147,9 @@ function managementReason(
   if (recommendation === "TRIM") {
     return exitModel === "SCALE_OUT" ? "Trim ladder" : "Ratchet target";
   }
-  if (play.thesisHealth && play.thesisHealth.health < 60) return "Thesis fading";
+  if (play.thesisHealth && play.thesisHealth.health < 60 && healthIsCalibrated(play)) {
+    return "Thesis fading";
+  }
   return "Hold plan";
 }
 
@@ -139,7 +160,11 @@ function actionProbability(
 ): number | null {
   // WATCH/SKIP rows have no committed position — never paint score-as-confidence on candidates.
   if (play.status === "WATCH" || play.status === "SKIP") return null;
-  if (play.thesisHealth?.health != null && Number.isFinite(play.thesisHealth.health)) {
+  if (
+    play.thesisHealth?.health != null &&
+    Number.isFinite(play.thesisHealth.health) &&
+    healthIsCalibrated(play)
+  ) {
     if (recommendation === "SELL") {
       return Math.round(Math.max(0, Math.min(99, 100 - play.thesisHealth.health)));
     }

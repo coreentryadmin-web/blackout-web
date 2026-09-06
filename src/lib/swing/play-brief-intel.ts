@@ -4,7 +4,7 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import { playExpectsLiveOptionMark } from "./play-brief-absence";
+import { playExpectsLiveOptionMark, gexMatrixAgeMs, GEX_MATRIX_STALE_MS } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 import { laneRankSection } from "./play-brief-lane-rank";
@@ -19,6 +19,10 @@ import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import {
+  meridianPeerEarningsCoaching,
+  pickEarningsForSwingPeer,
+} from "./play-brief-meridian-peer-core";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -134,7 +138,15 @@ export function chartTechnicalsSection(vec: VectorFullState | null): RichSection
       `Structure: **${t.structure.type}** ${t.structure.direction} @ **${t.structure.level.toFixed(2)}**`,
     );
   }
-  if (vec.regime?.posture) lines.push(`Vector regime: **${vec.regime.posture}**`);
+  // "Vector regime" is a DEALER GAMMA posture (long-gamma/short-gamma), not a directional call —
+  // labeling it bare "long"/"short" next to directional signals (EMA stack, MACD, structure
+  // direction) in this same section risks reading as a trade direction that can contradict the
+  // very next "Vector desk" section's own directional POSITION call for the same ticker.
+  if (vec.regime?.posture && vec.regime.posture !== "unknown" && vec.regime.posture !== "transition") {
+    lines.push(`Dealer gamma regime: **${vec.regime.posture} gamma**`);
+  } else if (vec.regime?.posture === "transition") {
+    lines.push(`Dealer gamma regime: **transition** (near flip)`);
+  }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
   if (!lines.length) return null;
   return {
@@ -383,7 +395,7 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
   const dteMatch = play.contract.match(/(\d+)DTE/);
   if (dteMatch) {
     const dte = Number(dteMatch[1]);
-    lines.push(`Time in trade: **${dte} DTE** on contract — theta accelerates inside ~7 DTE`);
+    lines.push(`Contract runway: **${dte} DTE** — theta accelerates inside ~7 DTE`);
   }
 
   const earnings = ecosystem?.arsenal?.earnings;
@@ -504,6 +516,17 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
     );
   }
   return { title: "Meridian catalysts", body: lines.join("\n") };
+}
+
+/**
+ * Meridian peer earnings cohort — sector beat-rate context for the name's print.
+ * Lives as its own section so MAX_BULLETS narrative cap cannot drop peer history.
+ */
+export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | null {
+  const earningsItem = pickEarningsForSwingPeer(ctx.meridian?.items, ctx.play.ticker);
+  const body = meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem);
+  if (!body) return null;
+  return { title: "Earnings peer lens", body };
 }
 
 /** Macro rates + market breadth when arsenal fetched index context. */
@@ -629,6 +652,12 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
   }
+  const gexAgeMs = gexMatrixAgeMs(ctx.ecosystem?.gex_positioning);
+  if (gexAgeMs != null && gexAgeMs > GEX_MATRIX_STALE_MS) {
+    lines.push(
+      `GEX matrix **${Math.round(gexAgeMs / 1000)}s** old — dealer posture may lag spot`,
+    );
+  }
   if (ctx.ecosystem?.flow_feed_fresh === false) {
     lines.push(
       "HELIX flow: **pipeline stale** — tape read may lag; not evidence of quiet flow",
@@ -686,6 +715,9 @@ export function buildIntelSections(
 
   const meridian = meridianCatalystSection(ctx);
   if (meridian) out.push(meridian);
+
+  const meridianPeer = meridianPeerSection(ctx);
+  if (meridianPeer) out.push(meridianPeer);
 
   const macro = macroTapeSection(ecosystem);
   if (macro) out.push(macro);

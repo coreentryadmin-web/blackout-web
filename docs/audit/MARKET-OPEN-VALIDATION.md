@@ -3171,3 +3171,33 @@ than an end-of-session patch.
 - **What changed:** `dataFreshnessSection()` adds a HELIX pipeline stale line when `flow_feed_fresh === false`.
 - **RTH check:** During a HELIX pipeline stale window, open Ask Largo on a swing row with fresh mark/scan/Vector — confirm Data freshness section mentions HELIX pipeline stale (not only UnavailableChip/coaching).
 
+
+### 48. Ask Largo swing brief — uncalibrated thesis-health % leaked back into Verdict/Management — fix/swing-thesis-health-uncalibrated-leak — 2026-09-06
+
+- **What was broken:** #4318 taught `thesisHealthSection()`/`holdPlanSection()` to withhold the aggregate thesis-health `%` when committed-position pillars are uncalibrated (generic defaults, not real setup/entry/signal inputs). Three OTHER call sites (`thesisStrengthPct()`, `thesisManagementOverlay()` via `swingManagementVerdict()`, `managementReason()`/`actionProbability()`) read `play.thesisHealth.health` directly with no calibration gate, leaking the exact withheld number back out through the Verdict and Management sections of the SAME brief. Reproduced live on `SWING:NN` (2026-09-06): "Thesis health" section said withheld, but Verdict showed "Thesis strength 46%" and Management showed "Thesis health 46% — Thesis fading...".
+- **What changed:** Added `healthIsCalibrated(play)` gate (SWING-scoped only — 0DTE's thesis health is always live-calibrated) to all three call sites in `terminal-display.ts`, and gated `adapters.ts`'s `swingManagementVerdict()` overlay call the same way.
+- **RTH check:** Open Ask Largo on any committed SWING HOLD/OPEN/TRIM row whose "Thesis health" section shows "Inputs not wired... withheld" — confirm Verdict has NO "Thesis strength X%" line and Management's recNote does NOT contain "Thesis health X%". Also check the live command-deck Conviction panel for the same row doesn't show a numeric conviction score under this condition.
+
+### 49. Ask Largo swing brief — fabricated 45% thesis strength via thesisBreak warn fallback — fix/swing-thesis-strength-warn-fallback-leak — 2026-09-06
+
+- **What was broken:** #4335 gated the direct `thesisHealth.health` path in `thesisStrengthPct()` but left `thesisBreak.level === "warn"` returning a hardcoded **45%** (and `break` → 15%). On uncalibrated committed SWING rows, `thesisBreak` is derived from the same generic-default health — Verdict could show `Thesis strength **45%**` while Thesis health correctly said withheld.
+- **What changed:** `thesisStrengthPct()` returns `null` when `!healthIsCalibrated(play)` before any thesisBreak fallback.
+- **RTH check:** Same as #48 — committed SWING row with withheld thesis health; confirm Verdict has no `Thesis strength` line and Conviction panel shows `—` not 45.
+
+### 50. Ask Largo swing brief — GEX-only dealer posture says "Right now" on stale matrix — fix/largo-gex-stale-dealer-posture — 2026-09-06
+
+- **What was broken:** When Vector desk state was absent and dealer posture came solely from `ecosystem.gex_positioning`, a matrix older than 120s still produced "**Right now**" in the Trade manager narrative. Vector staleness was gated; GEX `matrix_age_sec`/`asof` was ignored in narrative, Data freshness, and `unavailableSources`.
+- **What changed:** Shared `gexMatrixAgeMs`/`gexMatrixStale` helpers; narrative lead uses "Last snapshot" when GEX-sourced posture is stale; Data freshness warns; `unavailableSources` emits `{ source: "GEX matrix", reason: "stale — dealer posture may lag spot" }`.
+- **RTH check:** Night Hawk Swings → row with GEX positioning but no Vector regime → Ask Largo Trade manager read: when matrix is >120s old, confirm "Last snapshot (~Ns old)" not "Right now", and UnavailableChip/Data freshness mention stale GEX matrix.
+
+### 51. Ask Largo swing brief — Meridian peer earnings cohort dropped by narrative bullet cap — fix/largo-meridian-peer-section — 2026-09-06
+
+- **What was broken:** `fetchMeridianPeerForBrief()` loaded sector peer beat-rate cohort on earnings plays, but only `meridianPeerEarningsCoaching()` in `collectCoachingBullets()` consumed it. When Vector/GEX coaching filled `MAX_BULLETS` (14), peer earnings history could be silently dropped despite live cohort data on the read.
+- **What changed:** Added `meridianPeerSection()` wired into `buildIntelSections()` as **Earnings peer lens** — outside `NARRATIVE_COVERED_TITLES`, so collapse logic cannot remove it.
+- **RTH check:** Open Ask Largo on a single-name earnings swing (e.g. retail name within 14d print) with rich Vector/GEX context — confirm **Earnings peer lens** section appears with peer beat rates (`n=`) even when Trade manager read is long.
+
+### 52. Ask Largo swing brief — "Vector regime" label read as a directional call, not dealer gamma posture — fix/swing-chart-vector-regime-gamma-label — 2026-09-06
+
+- **What was broken:** `chartTechnicalsSection()` printed `Vector regime: **long**`/`**short**` bare — this is a dealer GAMMA regime (spot vs gamma flip), not a directional call — sitting in the same section as directional signals (EMA, MACD, structure) and right before the separate "Vector desk" section's own directional POSITION call. Live repro (`SWING:NN`): Chart technicals showed "Vector regime: long" while Vector desk showed "momentum short" for the same ticker.
+- **What changed:** Relabeled to `Dealer gamma regime: **long gamma**`/`**short gamma**`/`**transition** (near flip)` — matches the labeling already used everywhere else this field is surfaced (`play-brief-narrative.ts`'s `dealerPostureLine`). No data changed, only the label.
+- **RTH check:** Open Ask Largo on any swing row with a resolved Vector gamma regime — confirm "Chart technicals" reads "Dealer gamma regime: X gamma", never a bare "Vector regime: long/short" that could be misread as contradicting the Vector desk section's directional call.

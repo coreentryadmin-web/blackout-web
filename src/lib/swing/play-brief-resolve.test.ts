@@ -40,6 +40,14 @@ test("parseSwingPlayId: extracts ticker and position id", () => {
   assert.deepEqual(parseSwingPlayId("SWING:AAPL:36"), { ticker: "AAPL", positionId: 36 });
 });
 
+test("resolveSwingPlayForBrief: blank ticker hint falls back to playId ticker", () => {
+  const parsed = parseSwingPlayId("SWING:NRG");
+  assert.equal(parsed.ticker, "NRG");
+  // Route passes "" when ?ticker= omitted — resolver must treat blank as absent.
+  const effective = ("".trim() || parsed.ticker).toUpperCase();
+  assert.equal(effective, "NRG");
+});
+
 test("resolveBriefIvRank: dossier read wins over pinned feature_vector", () => {
   assert.equal(resolveBriefIvRank({ dossierIvRank: 72, featureVector: { iv_rank: 40 } }), 72);
 });

@@ -3,6 +3,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent-sections";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
+import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
@@ -24,6 +25,32 @@ const VECTOR_SECTION_LABELS: Record<VectorSection, string> = {
 };
 
 const VECTOR_STALE_MS = 120_000;
+/** Shared with Vector — dealer posture must not read "Right now" past this age. */
+export const GEX_MATRIX_STALE_MS = VECTOR_STALE_MS;
+
+/** Age of the shared GEX matrix in ms — prefers matrix_age_sec, else asof vs read time. */
+export function gexMatrixAgeMs(
+  gex: GexPositioning | null | undefined,
+  readMs: number = Date.now(),
+): number | null {
+  if (!gex) return null;
+  if (typeof gex.matrix_age_sec === "number" && Number.isFinite(gex.matrix_age_sec)) {
+    return gex.matrix_age_sec * 1000;
+  }
+  if (gex.asof) {
+    const observedMs = Date.parse(gex.asof);
+    if (Number.isFinite(observedMs)) return readMs - observedMs;
+  }
+  return null;
+}
+
+export function gexMatrixStale(
+  gex: GexPositioning | null | undefined,
+  readMs: number = Date.now(),
+): boolean {
+  const ageMs = gexMatrixAgeMs(gex, readMs);
+  return ageMs != null && ageMs > GEX_MATRIX_STALE_MS;
+}
 
 /** Only committed working rows expect a live-synced option mark — WATCH uses static chain mid by design. */
 export function playExpectsLiveOptionMark(status: string | null | undefined): boolean {
@@ -71,6 +98,14 @@ function collectVectorStalenessAbsence(vec: VectorWithReadContext): BieUnavailab
   return null;
 }
 
+function collectGexStalenessAbsence(
+  gex: GexPositioning | null | undefined,
+  readMs: number,
+): BieUnavailableSource | null {
+  if (!gexMatrixStale(gex, readMs)) return null;
+  return { source: "GEX matrix", reason: "stale — dealer posture may lag spot" };
+}
+
 /** Aggregate every honest absence signal for the swing play brief envelope (Largo C3). */
 export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieUnavailableSource[] {
   const out: BieUnavailableSource[] = [...(ctx.ecosystem?.arsenal?.unavailable_sources ?? [])];
@@ -94,6 +129,9 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   if (!ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
     out.push({ source: "GEX positioning", reason: "cold matrix / no positioning read" });
   }
+  const gex = ctx.ecosystem?.gex_positioning;
+  const gexStale = collectGexStalenessAbsence(gex, Date.now());
+  if (gexStale) out.push(gexStale);
   // Missing Vector desk state is distinct from vectorFetchFailed — ecosystem read succeeded but
   // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.
   if (!ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
@@ -132,6 +170,11 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const peer = ctx.meridianPeer;
     const reason = peer.error ?? peer.note ?? "unavailable";
     out.push({ source: "Meridian peer cohort", reason });
+  } else if (ctx.meridianPeer?.available === true && ctx.meridianPeer.insufficient_reason?.trim()) {
+    out.push({
+      source: "Meridian peer cohort",
+      reason: ctx.meridianPeer.insufficient_reason.trim(),
+    });
   }
   // Prior-session discovery scan: WATCH rows can still carry yesterday's lane snapshot while the
   // brief stamps today's sessionDate — without this, scanAsOf prose looks current (C3 gap).

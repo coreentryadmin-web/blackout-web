@@ -8,10 +8,10 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtPremium } from "@/lib/fmt-money";
-import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { technicalsBias } from "./play-brief-technicals";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -266,10 +266,10 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
 
   const aligned: string[] = [];
   if (nh && ((play.direction === "LONG" && nhLong) || (play.direction === "SHORT" && nhShort))) {
-    aligned.push(`NH ${nh.conviction}`);
+    if (nh.conviction) aligned.push(`NH ${nh.conviction}`);
   }
   if (z && ((play.direction === "LONG" && zLong) || (play.direction === "SHORT" && zShort))) {
-    aligned.push(`0DTE score ${z.score}`);
+    if (z.score != null && Number.isFinite(z.score)) aligned.push(`0DTE score ${z.score}`);
   }
   if (aligned.length >= 2) {
     return `**Desk alignment** — ${aligned.join(" + ")} **support** the ${play.direction} swing.`;
@@ -531,13 +531,25 @@ export function technicalsCoaching(vec: VectorFullState | null, play: TerminalPl
   }
   if (!parts.length) return null;
 
-  const bias =
-    play.direction === "LONG" && (t.emaStack === "up" || (t.rsi != null && t.rsi < 65))
-      ? "supports long swing"
-      : play.direction === "SHORT" && (t.emaStack === "down" || (t.rsi != null && t.rsi > 35))
-        ? "supports short swing"
-        : "mixed vs swing direction";
-  return `**Chart read** — ${parts.join(" · ")} — ${bias}.`;
+  const chartBias = technicalsBias(t, vec?.spot ?? null);
+  const biasLabel =
+    chartBias === "bullish"
+      ? "chart reads bullish"
+      : chartBias === "bearish"
+        ? "chart reads bearish"
+        : "mixed chart read";
+  const aligned =
+    (play.direction === "LONG" && chartBias === "bullish") ||
+    (play.direction === "SHORT" && chartBias === "bearish");
+  const conflicts =
+    (play.direction === "LONG" && chartBias === "bearish") ||
+    (play.direction === "SHORT" && chartBias === "bullish");
+  const alignment = aligned
+    ? "aligns with swing direction"
+    : conflicts
+      ? "conflicts with swing direction"
+      : null;
+  return `**Chart read** — ${parts.join(" · ")} — ${biasLabel}${alignment ? ` (${alignment})` : ""}.`;
 }
 
 /** Data honesty — stale marks, quiet HELIX, old Vector. */
@@ -634,8 +646,9 @@ export function collectCoachingBullets(
 
   push(manageLifecycleCoaching(play, bucket));
   push(catalystCoaching(ctx));
-  const earningsItem = ctx.meridian?.items.find((i) => i.kind === "earnings" && i.days_until <= 14) ?? null;
-  push(meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem));
+  // Meridian peer earnings live in meridianPeerSection (play-brief-intel.ts) — not here.
+  // Duplicating meridianPeerEarningsCoaching in both places re-shipped the #4110/#4116
+  // book-context failure mode when MAX_BULLETS had room.
   push(crossDeskCoaching(ctx, play));
   push(laneRankCoaching(play, ctx.laneRows));
   push(macroTapeCoaching(ctx));

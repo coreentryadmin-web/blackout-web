@@ -11,12 +11,15 @@ import {
   holdPlanSection,
   lessonsSection,
   meridianCatalystSection,
+  meridianPeerSection,
   whyThisSetupSection,
 } from "./play-brief-intel";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import { collectCoachingBullets } from "./play-brief-narrative-coaching";
+import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -132,6 +135,8 @@ test("holdPlanSection: does not repeat recNote or Management-owned rails — uni
   assert.ok(!section!.body.includes("Trim ladder"));
   assert.ok(!section!.body.includes("Rails:"));
   assert.ok(!section!.body.includes("Manage engine"));
+  assert.match(section!.body, /Contract runway/);
+  assert.ok(!section!.body.includes("Time in trade"));
   assert.match(section!.body, /14 DTE/);
   assert.match(section!.body, /15:50/);
 });
@@ -494,6 +499,28 @@ test("chartTechnicalsSection: bias reads bearish from the technicals on a LONG p
   assert.equal(section?.bias, "bearish");
 });
 
+test("chartTechnicalsSection: Vector regime is labeled as dealer GAMMA posture, never bare long/short (2026-09-06)", () => {
+  // Live NN repro: chart technicals showed "Vector regime: long" (long-GAMMA dealer posture)
+  // immediately followed by the Vector desk section's own directional call "momentum short" for
+  // the SAME ticker — bare "long"/"short" here reads as a contradicting directional signal, not
+  // the unrelated gamma-regime fact it actually is.
+  const vec = fixtureVec({
+    spot: 15.18,
+    technicals: {
+      vwap: 15.29,
+      emaStack: "down",
+      rsi: 47,
+      macd: "bear",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "down", level: 15.22 },
+    },
+    regime: { posture: "long" },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.match(section!.body, /Dealer gamma regime: \*\*long gamma\*\*/);
+  assert.doesNotMatch(section!.body, /Vector regime:/);
+});
+
 test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), never fabricated", () => {
   const vec = fixtureVec({
     spot: 105, // above vwap -> bull
@@ -611,6 +638,30 @@ test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is f
   assert.match(section!.body, /tape read may lag/);
 });
 
+test("dataFreshnessSection: stale GEX matrix warns when ctx.vector is null (Largo C2)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /GEX matrix \*\*200s\*\* old/);
+  assert.match(section!.body, /dealer posture may lag spot/);
+});
+
 test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {
   const section = meridianCatalystSection({
     play: fixturePlay(),
@@ -626,6 +677,178 @@ test("meridianCatalystSection: empty successful read states quiet calendar, not 
   assert.ok(section);
   assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
   assert.match(section!.body, /quiet, not missing/);
+});
+
+test("meridianPeerSection: surfaces peer beat rates as dedicated section (not coaching-cap dependent)", () => {
+  const section = meridianPeerSection({
+    play: fixturePlay({ ticker: "BBWI" }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-09-06 09:00 ET",
+      items: [
+        {
+          id: "earnings:BBWI:2026-09-10",
+          kind: "earnings",
+          title: "BBWI earnings",
+          subtitle: null,
+          date: "2026-09-10",
+          time: null,
+          impact: "high",
+          days_until: 4,
+          ticker: "BBWI",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 8.5,
+          sector_label: "Retail",
+        },
+      ],
+      total_matched: 1,
+    },
+    meridianPeer: {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "ULTA",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.equal(section!.title, "Earnings peer lens");
+  assert.match(section!.body, /ULTA/i);
+  assert.match(section!.body, /75% beat/i);
+});
+
+test("meridianPeerSection: null for index swings (no per-name peer cohort)", () => {
+  const section = meridianPeerSection({
+    play: fixturePlay({ ticker: "SPY" }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-09-06 09:00 ET",
+      items: [
+        {
+          id: "earnings:AAPL:2026-09-10",
+          kind: "earnings",
+          title: "AAPL earnings",
+          subtitle: null,
+          date: "2026-09-10",
+          time: null,
+          impact: "high",
+          days_until: 4,
+          ticker: "AAPL",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 5,
+          sector_label: "Tech",
+        },
+      ],
+      total_matched: 1,
+    },
+    meridianPeer: null,
+    ecosystem: null,
+    vector: null,
+  });
+  assert.equal(section, null);
+});
+
+test("meridianPeerSection: dedicated section — coaching bullets must not duplicate peer lens", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "BBWI" }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-09-06 09:00 ET",
+      items: [
+        {
+          id: "earnings:BBWI:2026-09-10",
+          kind: "earnings",
+          title: "BBWI earnings",
+          subtitle: null,
+          date: "2026-09-10",
+          time: null,
+          impact: "high",
+          days_until: 4,
+          ticker: "BBWI",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 8.5,
+          sector_label: "Retail",
+        },
+      ],
+      total_matched: 1,
+    },
+    meridianPeer: {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "ULTA",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    ecosystem: null,
+    vector: null,
+  };
+  assert.ok(meridianPeerSection(ctx));
+  const bullets = collectCoachingBullets(ctx, "watch", 100);
+  assert.equal(
+    bullets.filter((b) => /Earnings peer lens/i.test(b)).length,
+    0,
+    "peer lens belongs only in meridianPeerSection",
+  );
+  const narrative = tradeManagerNarrativeSection(ctx, "watch");
+  if (narrative) {
+    assert.equal(
+      (narrative.body.match(/Earnings peer lens/gi) ?? []).length,
+      0,
+      "Trade manager read must not repeat dedicated peer section",
+    );
+  }
 });
 
 test("whyThisSetupSection: surfaces subLane alongside archetype", () => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { meridianPeerEarningsCoaching } from "./play-brief-meridian-peer-core";
+import { meridianPeerEarningsCoaching, pickEarningsForSwingPeer } from "./play-brief-meridian-peer-core";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 
 function earningsItem(overrides: Partial<LargoTimelineItem> = {}): LargoTimelineItem {
@@ -88,4 +88,47 @@ test("meridianPeerEarningsCoaching: surfaces sector_label and interpretation", (
   );
   assert.match(line!, /sector \*\*Retail\*\*/i);
   assert.match(line!, /top quartile/i);
+});
+
+test("meridianPeerEarningsCoaching: thin cohort caveat when insufficient_reason is set", () => {
+  const line = meridianPeerEarningsCoaching(
+    {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "ULTA",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: "only 1 peer with implied move",
+    },
+    earningsItem(),
+  );
+  assert.match(line!, /Implied-move cohort thin/i);
+  assert.match(line!, /only 1 peer with implied move/i);
+  assert.match(line!, /directional only/i);
+});
+
+test("pickEarningsForSwingPeer: skips index tickers (market-wide catalyst slice)", () => {
+  const items = [earningsItem({ ticker: "AAPL", days_until: 3 })];
+  assert.equal(pickEarningsForSwingPeer(items, "SPY"), null);
+});
+
+test("pickEarningsForSwingPeer: requires earnings ticker to match swing under review", () => {
+  const items = [earningsItem({ ticker: "AAPL", days_until: 3 })];
+  assert.equal(pickEarningsForSwingPeer(items, "NVDA"), null);
+  assert.equal(pickEarningsForSwingPeer(items, "AAPL")?.ticker, "AAPL");
 });

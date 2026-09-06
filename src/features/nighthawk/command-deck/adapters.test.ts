@@ -1222,6 +1222,35 @@ test("refreshSwingManagement: manage engine wins over thesis overlay (1 Hz parit
   assert.equal(refreshed.recommendation, "TRIM");
 });
 
+test("refreshSwingManagement: uncalibrated thesis health (committed-position inputs unwired) never leaks its % into recNote", () => {
+  // Same fixture shape as the "live OPEN row" test above — no setupState/entryStatus/signalKinds
+  // wired, so thesisHealth.health is computed from generic pillar defaults (a real, non-zero
+  // number) rather than a calibrated read. Production case (2026-09-06, NN SWING:NN): status
+  // HOLD, pnlPct 0 — thesisHealthSection()/holdPlanSection() correctly withhold this same health%
+  // on the Ask Largo brief, but this shared overlay (also used by the live command-deck panels)
+  // embedded the raw health% into recNote regardless, leaking the withheld number right back out
+  // through Management/Verdict.
+  const play = terminalPlayFromHorizon({
+    ticker: "nn",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 23,
+    status: "COMMIT",
+    liveStatus: "HOLD",
+    contract: { strike: 15, right: "C", expiry: "2026-09-25", dte: 19, mid: 1.95 },
+    entryPremium: 1.95,
+    livePnlPct: 0,
+    peakPremium: 2.42,
+    troughPremium: 1.75,
+  });
+  assert.ok(play.thesisHealth, "fixture must produce an uncalibrated-but-non-null thesisHealth");
+  const refreshed = refreshSwingManagement(play);
+  assert.ok(
+    !refreshed.recNote.includes("Thesis health") && !/\d+%/.test(refreshed.recNote),
+    `recNote must not surface an uncalibrated health%, got: ${refreshed.recNote}`,
+  );
+});
+
 test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {
   const p = terminalPlayFromEdition({
     ticker: "NVDA",
