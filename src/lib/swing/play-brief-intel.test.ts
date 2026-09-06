@@ -261,6 +261,57 @@ test("holdPlanSection: omits aggregate thesis health % when inputs uncalibrated"
   assert.doesNotMatch(section!.body, /Thesis health \*\*46%\*\*/);
 });
 
+test("holdPlanSection: peak giveback warning still shows when thesis health is uncalibrated", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 129,
+      pnlPct: 95,
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Thesis health \*\*46%\*\*/);
+  assert.match(section!.body, /Gave back \*\*34%\*\* from peak/);
+});
+
 test("holdPlanSection: null when no unique hold-plan content beyond Management", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({

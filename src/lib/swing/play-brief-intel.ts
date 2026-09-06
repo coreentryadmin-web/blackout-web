@@ -410,12 +410,8 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
       lines.push(`Thesis health **${h.health}%** (${h.rungLabel})`);
       if (h.health < 45) lines.push("**Tighten risk** — thesis fading; don't add size");
     }
-    if (
-      !uncalibrated &&
-      play.peak != null &&
-      play.pnlPct != null &&
-      play.peak - play.pnlPct > 25
-    ) {
+    // Peak giveback is grounded in committed trade marks — independent of thesis-health calibration.
+    if (play.peak != null && play.pnlPct != null && play.peak - play.pnlPct > 25) {
       lines.push(`Gave back **${(play.peak - play.pnlPct).toFixed(0)}%** from peak — consider trim into strength`);
     }
   }
