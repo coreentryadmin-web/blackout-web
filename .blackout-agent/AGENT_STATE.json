@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:30:58.687Z",
+  "updated_at": "2026-09-06T01:52:32.345Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T01:41:04.677Z",
+      "lease_until": "2026-09-06T03:11:04.677Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "764e7f97fb0721161afa7e862588c27516cb4c85",
+    "last_main_sha": "8df5d84fecea2e2a3026308b97411cdd2d43f493",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T01:49:51Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34004774898",
+    "last_deploy_sha": "8df5d84fecea2e2a3026308b97411cdd2d43f493"
   },
   "events": [
     {
@@ -246,7 +246,51 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T01:52:32.344Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T01:52:32.345Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5e754c2d-12ec-423d-87f8-c85c0ccb97a5",
+      "summary": "Cycle: merged #4075 (vector undated fresh-row expiry). Deploy validate GREEN. ops:collect 0. Open: #4076 swing v4 (CI pending, local 6/6 pass). main@8df5d84fe."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4078,
+      "title": "chore(blackout-agent): cursor PR-event handoff — cycle complete @8df5d84fe",
+      "branch": "cursor/autopilot-handoff-pr-event-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T01:48:05Z"
+    },
+    {
+      "number": 4077,
+      "title": "fix(swing): wire HELIX flow premiums into the Ask Largo brief diff engine",
+      "branch": "fix/swing-brief-flow-diff-dead-code",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T01:47:33Z"
+    },
+    {
+      "number": 4076,
+      "title": "feat(swing): Ask Largo v4 — Meridian catalysts, lane rank, action CTAs",
+      "branch": "cursor/swing-play-intelligence-v4",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T01:49:30Z"
+    }
+  ]
 }
