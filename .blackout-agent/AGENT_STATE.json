@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T16:36:42.266Z",
+  "updated_at": "2026-09-06T17:09:20.481Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T17:08:13.646Z",
+      "lease_until": "2026-09-06T18:38:13.646Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -52,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef",
+    "last_main_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T17:06:45Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34047570898",
+    "last_deploy_sha": "3327088e7f74e3d99f8c36faa03f604aa8bcc3aa"
   },
   "events": [
     {
@@ -734,9 +734,129 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T17:08:19.418Z",
+      "type": "pr_webhook",
+      "pr": 4338,
+      "event": "sweep",
+      "head": "02f039a4433cf9a5326a8959eead66ab7f8bba65",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:08:21.361Z",
+      "type": "pr_webhook",
+      "pr": 4337,
+      "event": "sweep",
+      "head": "2b4bf8c33fbdcbf0b35808f06e3ea5c954dda3c1",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:08:23.286Z",
+      "type": "pr_webhook",
+      "pr": 4336,
+      "event": "sweep",
+      "head": "7ca3c6dc599d0ec74b07706eddfafa2cbe3f5ec9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:08:25.238Z",
+      "type": "pr_webhook",
+      "pr": 4332,
+      "event": "sweep",
+      "head": "a45f873a8bc15791ddd21e5a33b3939f0fc5e14e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T17:08:46.648Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:09:20.481Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T17:09:20.481Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2bad1240-3c50-46a6-86a2-3b773db21ee6",
+      "summary": "Recovery cycle (pull_request dispatch): synced main@3327088. Peer-review lane clear — no Claude/fix PRs open. Merged this session wave: #4326 roll-plan fail-closed, #4329 uncalibrated thesis health silenced, #4330 technicalsCoaching evidence, #4334 SPX float rounding, #4335 thesis-health leak fix. validate:deploy GREEN; ops:collect 0. Consolidating 4 stale duplicate handoff PRs (#4332/#4336/#4337/#4338) into single handoff. Off-hours Sunday — RTH lifecycle skipped."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4340,
+      "title": "chore(blackout-agent): cursor handoff — merged #4335, deploy GREEN",
+      "branch": "cursor/handoff-20260906-1710",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T17:09:15Z"
+    },
+    {
+      "number": 4339,
+      "title": "chore(blackout-agent): cursor handoff — merged #4333-4335, closed #4331",
+      "branch": "cursor/handoff-20260906T1709",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:08:59Z"
+    },
+    {
+      "number": 4338,
+      "title": "chore(blackout-agent): cursor handoff — peer review #4326-4335",
+      "branch": "cursor/handoff-peer-review-20260906T1703",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:07:39Z"
+    },
+    {
+      "number": 4337,
+      "title": "chore(blackout-agent): cursor handoff — #4326/#4329/#4330 merged, deploy GREEN",
+      "branch": "cursor/autopilot-work-loop-faa2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T17:07:16Z"
+    },
+    {
+      "number": 4336,
+      "title": "chore(blackout-agent): cursor handoff — #4335 approved, deploy GREEN",
+      "branch": "cursor/handoff-20260906-1655",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:56:03Z"
+    },
+    {
+      "number": 4332,
+      "title": "chore(blackout-agent): cursor handoff — merged #4318-4322, reviewing #4326",
+      "branch": "cursor/handoff-20260906-1638",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T16:42:27Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -766,6 +886,38 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4338": {
+      "last_event": "sweep",
+      "last_head": "02f039a4433cf9a5326a8959eead66ab7f8bba65",
+      "last_feedback_at": "2026-09-06T17:08:19.418Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4337": {
+      "last_event": "sweep",
+      "last_head": "2b4bf8c33fbdcbf0b35808f06e3ea5c954dda3c1",
+      "last_feedback_at": "2026-09-06T17:08:21.361Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4336": {
+      "last_event": "sweep",
+      "last_head": "7ca3c6dc599d0ec74b07706eddfafa2cbe3f5ec9",
+      "last_feedback_at": "2026-09-06T17:08:23.286Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4332": {
+      "last_event": "sweep",
+      "last_head": "a45f873a8bc15791ddd21e5a33b3939f0fc5e14e",
+      "last_feedback_at": "2026-09-06T17:08:25.238Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
