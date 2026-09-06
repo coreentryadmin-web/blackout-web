@@ -1,30 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T18:57:21.355Z",
+  "updated_at": "2026-09-06T19:14:20.870Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T18:29:46.296Z",
-      "lease_until": "2026-09-06T19:59:46.296Z",
+      "claimed_at": "2026-09-06T19:00:44.386Z",
+      "lease_until": "2026-09-06T20:30:44.386Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-06T18:46:55.389Z",
-      "lease_until": "2026-09-06T20:16:55.389Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": null,
-      "title": null
     }
   },
   "reviews": {
@@ -51,22 +39,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
-    },
-    "pr-4362": {
-      "pr": 4362,
-      "head_sha": "bd98f6787",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T18:39:07.254Z",
-      "safe_to_merge": true
-    },
-    "pr-4364": {
-      "pr": 4364,
-      "head_sha": "9855e16d7d69901cad18c5470ce082a686155cc9",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T18:46:33.997Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -75,17 +47,16 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "active",
-      "last_seen": "2026-09-06T18:46:55.389Z",
-      "current_task": "BO-P1-0101"
+      "status": "unknown",
+      "last_seen": null
     }
   },
   "deploy": {
-    "last_main_sha": "9855e16d7d69901cad18c5470ce082a686155cc9",
+    "last_main_sha": "ef0164ebe1dcd18e14c434e8fd8be95e23452c1f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T18:48:00Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34052778204",
-    "last_deploy_sha": "9855e16d7d69901cad18c5470ce082a686155cc9"
+    "last_deploy_at": "2026-09-06T19:12:28Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34054150883",
+    "last_deploy_sha": "921e03fa878ca7029fc89bd95bc802ca93db35ea"
   },
   "events": [
     {
@@ -783,91 +754,45 @@
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T18:39:07.254Z",
-      "type": "pr_review",
-      "pr": 4362,
-      "head_sha": "bd98f6787",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T18:39:07.254Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T18:46:33.998Z",
-      "type": "pr_review",
-      "pr": 4364,
-      "head_sha": "9855e16d7d69901cad18c5470ce082a686155cc9",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-06T18:46:33.997Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-06T18:46:51.228Z",
+      "at": "2026-09-06T19:14:16.188Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-06T18:46:55.389Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-06T18:57:21.354Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-06T18:57:21.355Z",
+      "at": "2026-09-06T19:14:16.188Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "1e11b370-88e4-4eff-8da4-d9558396e8f3",
-      "summary": "Cycle complete post-merge@6e39094: peer-reviewed #4362 (admin premium/community SQL parity) + #4364 (Largo stale GEX wall steelman); both merged to main@9855e16d7. No open PRs. validate:deploy + validate:platform-integrity + validate:api-auth GREEN; ops:collect 0. ECR deploy in_progress for 9855e16d7. Off-hours Sunday — RTH skipped."
+      "run_id": "09afb367-18a2-4e10-b5b8-fb86a66d2590",
+      "summary": "Cycle complete: peer-reviewed + merged #4367/#4369/#4370 (Largo stale-GEX + book-context fixes). Posted ✅ GO AHEAD MERGE on all four; three landed on main (ef0164ebe). #4372 rebased on main remotely, tests 42/42 local, verify CI pending. validate:deploy GREEN. Open: #4372 (Claude, await CI+merge), #4373 (cursor handoff → Claude review), #4371 (thermal draft, cursor-owned)."
+    },
+    {
+      "at": "2026-09-06T19:14:20.870Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "open_prs": [
+    {
+      "number": 4372,
+      "title": "fix(swing): gate stale GEX-only levels in chartLevelsSection",
+      "branch": "fix/largo-gex-stale-chart-levels",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T19:13:53Z"
+    },
     {
       "number": 4371,
       "title": "fix(thermal): audit hardening — spot provenance, SPX change%, horizon walls, UX",
       "branch": "cursor/thermal-audit-fixes",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
+      "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T18:55:52Z"
-    },
-    {
-      "number": 4370,
-      "title": "fix(swing): exclude reviewed position by ledger id in book context overlap",
-      "branch": "fix/swing-book-context-position-id-self-exclude",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T18:56:19Z"
-    },
-    {
-      "number": 4369,
-      "title": "fix(swing): gate stale Vector play bias in Largo counter-thesis (C2)",
-      "branch": "fix/largo-stale-vector-play-bias-counter-thesis",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T18:56:18Z"
-    },
-    {
-      "number": 4367,
-      "title": "fix(swing): gate stale GEX-only levels in watchForSection",
-      "branch": "fix/largo-gex-stale-watch-for",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T18:56:16Z"
+      "updated_at": "2026-09-06T19:12:58Z"
     }
   ],
   "pr_activity": {
