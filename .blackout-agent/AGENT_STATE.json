@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T17:07:53.891Z",
+  "updated_at": "2026-09-06T17:09:01.903Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -814,9 +814,32 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T17:09:01.902Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-06T17:09:01.903Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f6ee2961-e6a4-49b4-b7fa-16e5a192c2b3",
+      "summary": "Merged #4335 (swing thesis-health uncalibrated leak — peer-reviewed, verify GREEN). validate:deploy + lifecycle GREEN. ops:collect 0. GitHub API rate-limited for further PR ops."
     }
   ],
   "open_prs": [
+    {
+      "number": 4339,
+      "title": "chore(blackout-agent): cursor handoff — merged #4333-4335, closed #4331",
+      "branch": "cursor/handoff-20260906T1709",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T17:08:59Z"
+    },
     {
       "number": 4338,
       "title": "chore(blackout-agent): cursor handoff — peer review #4326-4335",
@@ -824,7 +847,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "unknown",
+      "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-06T17:07:39Z"
     },
     {
