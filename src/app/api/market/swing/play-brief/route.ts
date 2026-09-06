@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
   const positionIdRaw = req.nextUrl.searchParams.get("positionId");
   const positionId =
     positionIdRaw != null && positionIdRaw !== "" ? Number(positionIdRaw) : null;
+  const expandIntel = req.nextUrl.searchParams.get("expandIntel") === "1";
   if (!playId) {
     return NextResponse.json({ error: "playId is required" }, { status: 400, headers: NO_STORE_HEADERS });
   }
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
     if (!ctx) {
       return NextResponse.json({ available: false, error: "play not found" }, { status: 404, headers: NO_STORE_HEADERS });
     }
-    const brief = composeSwingPlayBrief(ctx);
+    const brief = composeSwingPlayBrief(ctx, { expandIntel });
     return NextResponse.json(roundFloats({ available: true, ...brief }), { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/swing/play-brief]", error);

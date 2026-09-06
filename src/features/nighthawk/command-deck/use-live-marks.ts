@@ -39,6 +39,7 @@ export interface LiveMarkRow {
   live_pnl_pct: number | null;
   stale: boolean;
   greeks: LiveMarkGreeks | null;
+  brief_sig?: string | null;
   // ── Terminal v2 — the live executable-fill + honest-staleness inputs (all null-safe). The
   //    server already prices these in the SAME frame (live-marks.ts ZeroDteLiveMarkRow); the
   //    terminal renders "mid $X · fill ≈$Y", the executable-P&L line, and the mark age from

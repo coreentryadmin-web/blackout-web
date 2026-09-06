@@ -208,8 +208,16 @@ function followupsFor(play: TerminalPlay): string[] {
   return base;
 }
 
+export type ComposeSwingPlayBriefOptions = {
+  /** When true, keep redundant intel sections (GEX, Flow, Hold plan, etc.) alongside narrative. */
+  expandIntel?: boolean;
+};
+
 /** Compose a full BieAnswerEnvelope for the selected swing play. */
-export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBriefResult {
+export function composeSwingPlayBrief(
+  ctx: SwingPlayBriefContext,
+  opts?: ComposeSwingPlayBriefOptions,
+): SwingPlayBriefResult {
   const { play } = ctx;
   const bucket = statusBucket(play);
   const headline = playContractHeadline(play);
@@ -239,7 +247,7 @@ export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBrie
     sections.push(closedSection(play));
   }
 
-  sections.push(...buildIntelSections(ctx, bucket));
+  sections.push(...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel }));
 
   const invalidation =
     play.thesisBreak?.level === "break"

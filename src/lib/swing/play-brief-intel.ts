@@ -603,6 +603,7 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
 export function buildIntelSections(
   ctx: SwingPlayBriefContext,
   bucket: "watch" | "open" | "closed",
+  opts?: { collapseIntel?: boolean },
 ): RichSection[] {
   const { play, ecosystem } = ctx;
   const vec = vectorOf(ctx);
@@ -663,6 +664,8 @@ export function buildIntelSections(
     const lessons = lessonsSection(play);
     if (lessons) out.push(lessons);
   }
+
+  if (opts?.collapseIntel === false) return out;
 
   return collapseRedundantIntelSections(out, {
     hasNarrative: Boolean(narrative),
