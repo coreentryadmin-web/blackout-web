@@ -124,6 +124,63 @@ test("managementActionDisplay: SELL sizing and probability", () => {
   assert.ok(action.probabilityPct != null);
 });
 
+// Regression for finding #19 (docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md): SWING's exit
+// policy (SWING_SCALE_OUT_POLICY, src/lib/swing/exit-policy.ts) is a SINGLE-tranche ladder — one
+// level banking 50% at 2x, then a runner. Once that one level fires (true for essentially every
+// SWING play whose recommendation reaches TRIM), `trim_levels.find(t => !t.fired)` returns
+// undefined. The old code then fell back to a hardcoded `33` — a magic constant copied from
+// 0DTE's UNRELATED 3-tranche (1/3 each) trim_scale ladder — fabricating a "TRIM 33%" size that
+// exists nowhere in SWING's actual policy. Matches the honest fallback the sibling function
+// (play-card-lifecycle.ts's swingActionDisplay) already uses for this exact case: a bare "TRIM"
+// verb with no fabricated percentage (sizePct null), which both render call sites
+// (TerminalPremiumPanels.tsx's ManagementActionCard, SwingLargoInsightsPanel.tsx's
+// SwingBriefActionStrip) already render null-safely (`action.sizePct != null ? ...% : null`).
+test("managementActionDisplay: SWING all-trims-fired never fabricates the 0DTE 33% fallback", () => {
+  const action = managementActionDisplay(
+    play({
+      horizon: "SWING",
+      status: "TRIM",
+      entry: 16.65,
+      mark: 38.25,
+      exitPolicy: {
+        policy: "trim_scale",
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 6.66,
+        target_premium: 33.3,
+        time_stop_et: "16:00",
+      },
+    }),
+    "TRIM",
+    null
+  );
+  assert.equal(action.verb, "TRIM");
+  assert.notEqual(action.sizePct, 33);
+  assert.equal(action.sizePct, null);
+});
+
+test("managementActionDisplay: SWING with a genuine pending trim level still sizes it honestly", () => {
+  const action = managementActionDisplay(
+    play({
+      horizon: "SWING",
+      status: "TRIM",
+      entry: 16.65,
+      mark: 20,
+      exitPolicy: {
+        policy: "trim_scale",
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: false }],
+        runner_fraction: 0.5,
+        stop_premium: 6.66,
+        target_premium: 33.3,
+        time_stop_et: "16:00",
+      },
+    }),
+    "TRIM",
+    null
+  );
+  assert.equal(action.sizePct, 50);
+});
+
 test("trimLadderVisual: banked + runner states", () => {
   const rows = trimLadderVisual({
     policy: "trim_scale",
