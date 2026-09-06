@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T07:43:52.246Z",
+  "updated_at": "2026-09-06T07:44:17.442Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -55,7 +55,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "3c05fef46471a6e96271226630bcce57907f3076",
+    "last_main_sha": "dac25ac031e42ee07d549d1095b50012476c9544",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T07:43:21Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34019905319",
@@ -533,9 +533,39 @@
       "agent": "cursor",
       "run_id": "b198e6cb-7d91-4390-9e4c-8555582963e3",
       "summary": "Cycle complete. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open off-hours). ops:collect 0. #4166 condor fix: verify GREEN, marked ready, Claude review requested. Closed dupes #4164/#4165. main@3c05fef46. Blocked: Claude peer review on #4166."
+    },
+    {
+      "at": "2026-09-06T07:44:09.794Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T07:44:17.441Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T07:44:17.442Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d020d2df-990b-40b6-8da7-e204ea7d7206",
+      "summary": "#4166 condor fix MERGED@fa1c719 (automerge post-ready). Lifecycle GREEN. Handoff PR #4168 draft. Monitoring deploy. main updated."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4168,
+      "title": "chore(blackout-agent): cursor PR-event handoff — lifecycle GREEN, #4166 awaiting Claude",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle5",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T07:44:05Z"
+    }
+  ],
   "pr_activity": {
     "pr-4166": {
       "last_event": "sweep",
