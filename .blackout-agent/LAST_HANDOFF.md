@@ -1,19 +1,25 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T11:42:38.065Z
-**Run:** 87520518-9d11-43da-b194-302260aa2e54
+**At:** 2026-09-06T14:38:09.086Z
+**Run:** 5cf1e45e-d06b-4e59-9d71-1b2e689b36f5
 
 ## Summary
 
-Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0.
+Cycle post-#4287 merge: synced main (783afa1). Technical verification posted on Cursor-authored swing PRs #4284/#4290 (HELIX freshness + put-only diff); pre-review #4292 dead-code sweep. #4280 has prior reviews, verify pending. validate:deploy GREEN; ops:collect 0. Awaiting Claude merge sign-off on fix/* PRs once verify green.
 
 ## Deploy
 
-- main: `a37960c92712ca5986df2042d0c32a44153cfd92`
+- main: `783afa1ecab369f8f422473b08e6cfc07786c3f2`
 - status: 
 
 ## Open PRs
 
-- #4231 [agent] fix(swing): freeze CLOSED-position DTE to exit date, not today's date
-- #4230 [cursor] chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged
-- #4227 [agent] chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature
+- #4292 [agent] chore(cleanup): remove 9 dead Vector desk exports (zero real callers)
+- #4291 [cursor] chore(blackout-agent): cursor handoff — swing Largo wave merged (#4260-#4275)
+- #4290 [agent] fix(swing): detect put-only HELIX flow build in brief diff
+- #4289 [cursor] chore(blackout-agent): cursor handoff — #4266 merged, swing fixes in flight
+- #4288 [cursor] chore(blackout-agent): cursor handoff — #4266 merged, Largo swing C3 fixes landed
+- #4286 [cursor] chore(blackout-agent): cursor handoff — peer-reviewed #4266/#4269, deploy GREEN
+- #4284 [agent] fix(swing): surface HELIX pipeline staleness in play-brief Data freshness
+- #4282 [cursor] chore(blackout-agent): cursor handoff — Largo PR pre-reviews, platform GREEN
+- #4280 [agent] fix(swing): attribute dark pool level provenance to Vector, not HELIX
