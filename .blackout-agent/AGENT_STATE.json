@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:42:57.259Z",
+  "updated_at": "2026-09-06T15:03:38.170Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
+      "claimed_at": "2026-09-06T15:00:22.829Z",
+      "lease_until": "2026-09-06T16:32:05.442Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": "b32b0062-937e-40d4-b77d-ddc39a2b1524"
     }
   },
   "reviews": {
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "783afa1ecab369f8f422473b08e6cfc07786c3f2",
+    "last_main_sha": "77e26df3b990e63e7d42920df96cc13946b42d98",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T15:00:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34040926301",
+    "last_deploy_sha": "77e26df3b990e63e7d42920df96cc13946b42d98"
   },
   "events": [
     {
@@ -637,9 +637,79 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T15:03:33.633Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-06T15:03:33.635Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5107258a-e296-4f5d-b9e5-400b1e24e746",
+      "summary": "Cycle: synced main (77e26df, #4295 merged). Peer-reviewed #4297 (desk context unresolved outcome) and #4298 (Meridian OpEx QQQ cohort) — both APPROVED with GO AHEAD MERGE comments. Marked #4296 (earnings asOf C1) ready for Claude review. validate:deploy GREEN, ops:collect 0, RTH lifecycle GREEN (off-hours). Open: #4297/#4298 CI pending; #4296 awaiting Claude; #4293 handoff awaiting Claude."
+    },
+    {
+      "at": "2026-09-06T15:03:38.170Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4299,
+      "title": "fix(swing): Desk context no longer renders \"closed open\" for unresolved swings",
+      "branch": "fix/swing-desk-context-unresolved-rebase",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:02:39Z"
+    },
+    {
+      "number": 4298,
+      "title": "fix(meridian): scope OpEx divergence_headline's QQQ claim to its own cohort",
+      "branch": "fix/meridian-opex-divergence-headline-cohort-mismatch",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:03:18Z"
+    },
+    {
+      "number": 4297,
+      "title": "fix(swing): Desk context no longer renders \"closed open\" for an unresolved last swing",
+      "branch": "fix/swing-brief-desk-context-unresolved-outcome",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:02:49Z"
+    },
+    {
+      "number": 4296,
+      "title": "fix(swing): stamp earnings evidence asOf for Largo C1 joins",
+      "branch": "cursor/cursor-continuous-work-loop-a44d",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T15:03:32Z"
+    },
+    {
+      "number": 4293,
+      "title": "chore(blackout-agent): cursor handoff — #4287 merged, swing Largo PRs verified",
+      "branch": "cursor/handoff-20260906-1438",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-06T14:49:54Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
