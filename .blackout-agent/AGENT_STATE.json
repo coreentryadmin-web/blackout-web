@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T23:20:33.147Z",
+  "updated_at": "2026-09-06T23:53:06.725Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-06T23:32:47.942Z",
+      "lease_until": "2026-09-07T01:02:47.942Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -39,6 +39,38 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4414": {
+      "pr": 4414,
+      "head_sha": "f84d5ae1b6e414bef6c7481a2b9379a6ec3d4b7a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:42:11.064Z",
+      "safe_to_merge": true
+    },
+    "pr-4415": {
+      "pr": 4415,
+      "head_sha": "19fc6b3f1046804a647b2dae1a846574868ff3a5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:42:11.500Z",
+      "safe_to_merge": true
+    },
+    "pr-4416": {
+      "pr": 4416,
+      "head_sha": "4ec0ae7d77f1a3d18a215283b1247ebce1e17459",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:42:11.975Z",
+      "safe_to_merge": true
+    },
+    "pr-4419": {
+      "pr": 4419,
+      "head_sha": "5b5cf622f8323d1cf59c6def93445470ab7197c3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:53:00.568Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -52,11 +84,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "76db6013eb2f8135643e2a2efda8d209275f2836",
+    "last_main_sha": "092b9bd65638d0b790d1a23b52da2b6feeec3fbe",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T23:52:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34068111246",
+    "last_deploy_sha": "a097bf1501dde882b47f26351c025d2939369458"
   },
   "events": [
     {
@@ -824,6 +856,81 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T23:42:11.065Z",
+      "type": "pr_review",
+      "pr": 4414,
+      "head_sha": "f84d5ae1b6e414bef6c7481a2b9379a6ec3d4b7a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:42:11.064Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T23:42:11.501Z",
+      "type": "pr_review",
+      "pr": 4415,
+      "head_sha": "19fc6b3f1046804a647b2dae1a846574868ff3a5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:42:11.500Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T23:42:11.976Z",
+      "type": "pr_review",
+      "pr": 4416,
+      "head_sha": "4ec0ae7d77f1a3d18a215283b1247ebce1e17459",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:42:11.975Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T23:42:15.898Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:42:15.899Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5c16e4f8-5ba9-426a-8bcd-39d4b69567a5",
+      "summary": "Peer-reviewed merged Claude PRs #4414/#4415/#4416 (Largo stale gates + middleware hasBearerToken dedupe). All verify GREEN before merge; retroactive APPROVED recorded. Main at 092b9bd65; validate:deploy GREEN; ops:collect 0 items. npm ci restored node_modules."
+    },
+    {
+      "at": "2026-09-06T23:42:37.878Z",
+      "type": "pr_webhook",
+      "pr": 4419,
+      "event": "sweep",
+      "head": "5b5cf622f8323d1cf59c6def93445470ab7197c3",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T23:42:42.156Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T23:53:00.569Z",
+      "type": "pr_review",
+      "pr": 4419,
+      "head_sha": "5b5cf622f8323d1cf59c6def93445470ab7197c3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T23:53:00.568Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T23:53:06.725Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "open_prs": [],
@@ -856,6 +963,14 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4419": {
+      "last_event": "sweep",
+      "last_head": "5b5cf622f8323d1cf59c6def93445470ab7197c3",
+      "last_feedback_at": "2026-09-06T23:42:37.878Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
