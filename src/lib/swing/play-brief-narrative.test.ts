@@ -307,6 +307,69 @@ test("counterThesisLine: stale GEX-only posture must not steelman dealer gamma",
   assert.equal(line, null, "stale GEX posture must not appear in counter-thesis");
 });
 
+test("counterThesisLine: stale GEX-only call wall must not steelman overhead resistance (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          call_wall: 102,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale GEX call wall must not appear in counter-thesis");
+});
+
+test("counterThesisLine: stale GEX-only put wall must not steelman support break (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          put_wall: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "SHORT" }),
+    100,
+  );
+  assert.equal(line, null, "stale GEX put wall must not appear in counter-thesis");
+});
+
+test("counterThesisLine: live Vector call wall still steelmans even when GEX matrix is stale (per-wall gate)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        gexWalls: { callWalls: [{ strike: 101 }], putWalls: [] },
+      } as unknown as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          call_wall: 102,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.ok(line, "a live Vector wall must still steelman even when the GEX matrix is stale");
+  assert.match(line!, /call wall/i);
+});
+
 test("counterThesisLine: Vector bearish bias steelmans bear case for LONG swing", () => {
   const line = counterThesisLine(
     ctx({

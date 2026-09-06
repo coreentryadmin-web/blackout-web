@@ -391,13 +391,24 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   }
 
   if (spot != null) {
-    const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? eco?.gex_positioning?.call_wall ?? null;
-    const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? eco?.gex_positioning?.put_wall ?? null;
-    if (play.direction === "LONG" && callWall != null && callWall > spot) {
+    const gexForWalls = eco?.gex_positioning;
+    const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
+    const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
+    const callWall = vecCallWall ?? gexForWalls?.call_wall ?? null;
+    const putWall = vecPutWall ?? gexForWalls?.put_wall ?? null;
+    // Same Largo C2 gap #4355/#4360 fixed for dealer posture: a wall level cited from the GEX-only
+    // fallback (no live Vector wall) can be from a stale matrix — steelmanning "call wall overhead"
+    // off a stale snapshot is the same dishonesty as "dealers long gamma" off one. Gated per-wall,
+    // not both-or-nothing, since one side can come from a live Vector read while the other falls
+    // back to stale GEX.
+    const gexStaleForWalls = gexMatrixStale(gexForWalls, Date.now());
+    const callWallFromStaleGex = vecCallWall == null && gexForWalls?.call_wall != null && gexStaleForWalls;
+    const putWallFromStaleGex = vecPutWall == null && gexForWalls?.put_wall != null && gexStaleForWalls;
+    if (play.direction === "LONG" && callWall != null && callWall > spot && !callWallFromStaleGex) {
       const d = distPct(spot, callWall);
       if (d < 3) reasons.push(`call wall **${callWall.toFixed(2)}** overhead (${d.toFixed(1)}%)`);
     }
-    if (play.direction === "SHORT" && putWall != null && putWall < spot) {
+    if (play.direction === "SHORT" && putWall != null && putWall < spot && !putWallFromStaleGex) {
       const d = Math.abs(distPct(spot, putWall));
       if (d < 3) reasons.push(`put wall **${putWall.toFixed(2)}** below (${d.toFixed(1)}%)`);
     }
