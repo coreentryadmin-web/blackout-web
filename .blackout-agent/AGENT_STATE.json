@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T09:26:26.699Z",
+  "updated_at": "2026-09-06T09:38:20.083Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -56,9 +56,9 @@
   "deploy": {
     "last_main_sha": "a4f7761321d0aa609c3289515874789f48b99e29",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T09:26:05Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34024636130",
-    "last_deploy_sha": "90d95c059e426a2fc35fe67fb62df23c35cc74ea"
+    "last_deploy_at": "2026-09-06T09:33:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34024656209",
+    "last_deploy_sha": "6a4ac9622df65eaae3571f87dd8f8e20e14fb711"
   },
   "events": [
     {
@@ -560,9 +560,52 @@
       "agent": "cursor",
       "run_id": "b9dc7aa3-d066-40ea-a322-15afd7ad1c76",
       "summary": "PR-event cycle: peer-reviewed #4179 + #4181 APPROVED. Lifecycle GREEN. main@a4f7761."
+    },
+    {
+      "at": "2026-09-06T09:38:20.083Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T09:38:20.083Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7df16d37-bffb-4031-abc7-7e23ae3ea864",
+      "summary": "Autopilot PR-event cycle complete. Merged: #4174 #4175 #4179 #4181. APPROVED: #4182. Lifecycle GREEN."
     }
   ],
   "open_prs": [
+    {
+      "number": 4187,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4174/#4175 merged, swing reviews",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle9",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:36:28Z"
+    },
+    {
+      "number": 4186,
+      "title": "fix(swing): keep GEX/wall intel on closed play-briefs (audit #2)",
+      "branch": "fix/swing-closed-intel-collapse-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:37:50Z"
+    },
+    {
+      "number": 4185,
+      "title": "fix(swing): wire live-position thesis-health explanation into Ask Largo",
+      "branch": "fix/swing-brief-thesis-health-live-wiring",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:38:00Z"
+    },
     {
       "number": 4184,
       "title": "chore(blackout-agent): cursor PR-event cycle handoff — peer review #4178, deploy GREEN",
@@ -571,17 +614,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:23:03Z"
-    },
-    {
-      "number": 4183,
-      "title": "chore(blackout-agent): cursor workflow_run handoff — #4174/#4175 merged, #4179/#4181 reviewed",
-      "branch": "cursor/autopilot-workflow-run-0906",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:22:40Z"
+      "updated_at": "2026-09-06T09:33:53Z"
     },
     {
       "number": 4182,
@@ -591,7 +624,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T09:24:44Z"
+      "updated_at": "2026-09-06T09:38:07Z"
     },
     {
       "number": 4180,
@@ -599,19 +632,9 @@
       "branch": "cursor/swing-discovery-doc-accuracy-0ef2",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T09:25:53Z"
-    },
-    {
-      "number": 4179,
-      "title": "fix(swing): measure Vector/GEX freshness on play-brief levels (Largo C2)",
-      "branch": "fix/swing-brief-vector-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
       "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-06T09:26:24Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:29:55Z"
     }
   ],
   "pr_activity": {
