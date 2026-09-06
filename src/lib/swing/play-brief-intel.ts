@@ -15,6 +15,7 @@ import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
+import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -594,7 +595,7 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   const { play, scanAsOf, vector: vec } = ctx;
   const lines: string[] = [];
   if (play.markAsOf) {
-    lines.push(`Option mark as of **${play.markAsOf}**`);
+    lines.push(`Option mark as of **${etStampFromIso(play.markAsOf)}**`);
   } else if (play.markIsSync) {
     lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
   }

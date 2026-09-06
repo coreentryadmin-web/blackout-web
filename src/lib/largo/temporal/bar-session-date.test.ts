@@ -6,6 +6,7 @@ import {
   aggTimespanFromPath,
   etSessionDate,
   etStamp,
+  etStampFromIso,
   parseEtStamp,
   stampBars,
   stampPolygonAggregatePayload,
@@ -24,6 +25,22 @@ test("a daily bar's session date is the ET calendar date of its timestamp", () =
 
 test("daily bars land at 01:00 ET, not midnight — the detail that made the guess go wrong", () => {
   assert.equal(etStamp(SPX_AUG_20.t), "2026-08-20 01:00 ET");
+});
+
+test("etStampFromIso converts a raw ISO-8601 mark timestamp to the Largo C1 ET stamp (FINDINGS 2026-09-06 #21)", () => {
+  // The exact live shape: option marks reach the DB as Date.toISOString(), not epoch-ms — the
+  // swing play-brief's C1 violation was rendering this raw rather than converting it.
+  assert.equal(etStampFromIso("2026-09-04T21:45:18.663Z"), "2026-09-04 17:45 ET");
+});
+
+test("etStampFromIso passes through a value it cannot parse rather than dropping it", () => {
+  assert.equal(etStampFromIso("not-a-timestamp"), "not-a-timestamp");
+});
+
+test("etStampFromIso is null-safe", () => {
+  assert.equal(etStampFromIso(null), null);
+  assert.equal(etStampFromIso(undefined), null);
+  assert.equal(etStampFromIso(""), null);
 });
 
 test("a non-timestamp yields null rather than a plausible wrong date", () => {
