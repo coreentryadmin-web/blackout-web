@@ -4,16 +4,28 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 
-/** Section titles omitted when a narrative block is present (coaching already spoke). */
+/**
+ * Section titles omitted when a narrative block is present (coaching already spoke).
+ *
+ * "Book context" is deliberately NOT in this set — see #4116/#4123: post-#4116 it is the ONLY
+ * concentration source (no narrative bullet covers it).
+ *
+ * "Desk consensus" was ALSO deliberately removed (was never "Desk context" here — that entry
+ * never matched anything, since #4111 renamed the section to "Desk context" and moved ONLY its
+ * NH-direction/0DTE-stance content into `crossDeskCoaching`, while deliberately KEEPING NH
+ * outcome-history and flow-anomaly content supplementary in `deskConsensusSection`
+ * (play-brief-intel.ts). Naively "fixing" the stale string by renaming it to "Desk context" would
+ * silently delete that supplementary content — the exact bug class #4116/#4123 fixed for Book
+ * context, just for a different section. Do not add "Desk context" here without first confirming
+ * `crossDeskCoaching` covers everything `deskConsensusSection` renders.
+ */
 const NARRATIVE_COVERED_TITLES = new Set([
-  // Book context stays visible — post-#4116 it is the ONLY concentration source (no narrative bullet).
   "Lane rank",
   "Levels on chart",
   "GEX posture",
   "Wall dynamics",
   "Flow & positioning",
   "Macro tape",
-  "Desk consensus",
   "Hold plan",
   "Vector desk",
 ]);
