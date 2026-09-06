@@ -205,6 +205,46 @@ test("tradeManagerNarrativeSection: stale GEX-only gamma flip must not appear in
   );
 });
 
+test("tradeManagerNarrativeSection: stale Vector gamma flip must not appear in dealer posture line (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        dataAgeMs: 200_000,
+        gammaFlip: 97,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: { spot: 100, gamma_posture: "long", freshness: "live" },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /long gamma/i);
+  assert.doesNotMatch(section!.body, /γ-flip/i, "stale Vector flip must not qualify dealer posture");
+});
+
+test("tradeManagerNarrativeSection: stale Vector proximity and wall events omitted (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        dataAgeMs: 200_000,
+        regime: { posture: "long" },
+        proximity: { strike: 102, side: "call", callout: "rejection zone" },
+        wallEvents: [{ kind: "call_wall_shift", message: "wall lifted to 105" }],
+      } as unknown as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Nearest wall/i);
+  assert.doesNotMatch(section!.body, /Wall just moved/i);
+});
+
 test("tradeManagerNarrativeSection: live Vector gamma flip still shown when GEX matrix is stale", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

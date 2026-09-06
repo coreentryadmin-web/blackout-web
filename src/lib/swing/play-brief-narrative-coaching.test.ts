@@ -5,15 +5,19 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   catalystCoaching,
   closedCoaching,
+  confluenceCoaching,
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
+  expectedMoveCoaching,
   ivRankCoaching,
+  magnetCoaching,
   manageLifecycleCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
   vectorPlayCoaching,
   vexCoaching,
+  wallIntegrityCoaching,
   watchGateCoaching,
   technicalsCoaching,
 } from "./play-brief-narrative-coaching";
@@ -354,6 +358,44 @@ test("vectorPlayCoaching: null when Vector has no play headline or invalidation"
     vectorPlayCoaching({ play: {} } as unknown as Parameters<typeof vectorPlayCoaching>[0], play()),
     null,
   );
+});
+
+const staleVec = {
+  dataAgeMs: 200_000,
+  freshness: "stale",
+} as const;
+
+test("magnetCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    magnet: { strike: 100, distancePct: 1, pull: "at" },
+    regime: { posture: "long" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  assert.equal(magnetCoaching(ctx(), vec, 99), null);
+});
+
+test("confluenceCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    confluenceZones: [{ center: 100, kinds: ["gex"], score: 80 }],
+  } as unknown as Parameters<typeof confluenceCoaching>[0];
+  assert.equal(confluenceCoaching(vec, play(), 99), null);
+});
+
+test("expectedMoveCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    expectedMove: { bands: [{ sigma: 1, low: 95, high: 105, movePts: 5 }] },
+  } as unknown as Parameters<typeof expectedMoveCoaching>[0];
+  assert.equal(expectedMoveCoaching(vec, 100), null);
+});
+
+test("wallIntegrityCoaching: stale Vector returns null (Largo C2)", () => {
+  const vec = {
+    ...staleVec,
+    wallIntegrity: { call: { tier: "thin" }, put: { tier: "firm" } },
+  } as unknown as Parameters<typeof wallIntegrityCoaching>[0];
+  assert.equal(wallIntegrityCoaching(vec, play({ direction: "LONG" })), null);
 });
 
 test("vectorPlayCoaching: uses play.bias not thesis substring (long-gamma thesis vs short bias)", () => {

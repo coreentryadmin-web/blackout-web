@@ -132,6 +132,7 @@ export function magnetCoaching(
   vec: VectorFullState | null,
   spot: number,
 ): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const m = vec?.magnet;
   if (!m?.strike) return null;
   const lead = m.pull === "at" ? "pinned at" : `pull **${m.pull}** toward`;
@@ -147,6 +148,7 @@ export function magnetCoaching(
 
 /** Options-implied move envelope — don't chase outside bands. */
 export function expectedMoveCoaching(vec: VectorFullState | null, spot: number): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const em = vec?.expectedMove;
   const b1 = em?.bands?.find((b) => b.sigma === 1);
   if (!b1) return null;
@@ -170,6 +172,7 @@ function playDirectionHint(spot: number, level: number): "above" | "below" | "at
 
 /** Highest-score multi-signal confluence node. */
 export function confluenceCoaching(vec: VectorFullState | null, play: TerminalPlay, spot: number): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const zones = vec?.confluenceZones ?? [];
   if (!zones.length) return null;
   const top = [...zones].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
@@ -192,6 +195,7 @@ export function confluenceCoaching(vec: VectorFullState | null, play: TerminalPl
 
 /** Wall integrity — thin walls break easier. */
 export function wallIntegrityCoaching(vec: VectorFullState | null, play: TerminalPlay): string | null {
+  if (vectorSnapshotStale(vec, Date.now())) return null;
   const wi = vec?.wallIntegrity;
   if (!wi) return null;
   const call = wi.call?.tier;
