@@ -15,6 +15,13 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   if (ctx.ecosystem?.flow_feed_fresh === false) {
     out.push({ source: "HELIX flow", reason: "pipeline stale" });
   }
+  // FINDINGS 2026-09-06 (#22): dataHonestyCoaching() already narrates "mark not synced to live
+  // tape" from this exact boolean, but that prose never reached the structured C3 channel — a
+  // consumer reading unavailableSources alone (rather than scraping the narrative) saw nothing
+  // wrong. Same class of gap this file already closed for HELIX flow staleness.
+  if (ctx.play?.markIsSync === true) {
+    out.push({ source: "option mark", reason: "sync quote without freshness timestamp" });
+  }
   if (ctx.openBook === null) {
     out.push({ source: "open book", reason: "ledger read failed" });
   }

@@ -120,7 +120,28 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
-### 0a-1x. Ex-dividend read failure silently re-enabled the Q39 fail-open structural-stop bug on a still-valid LONG thesis — fix/ex-dividend-fail-open-structural-stop (pending)
+### 0a-1y. Option-mark "not synced to live tape" caveat was narrated in prose but never reached the structured unavailableSources channel — fix/swing-markissync-not-structured-absence (pending)
+
+**What was broken:** `dataHonestyCoaching()` already computes `play.markIsSync === true` (sync
+quote without a freshness timestamp) and turns it into a "Data caveat" bullet in the "Trade manager
+read" narrative. `collectBriefUnavailableSources()` — the function populating the envelope's
+structured `unavailableSources` array (Largo C3) — never read this boolean at all, only
+`flow_feed_fresh`. A consumer reading the structured contract fields (the entire reason C3 mandates
+a structured absence channel) would conclude the mark is fully live when the system's own code
+already knows it isn't.
+
+**Fix:** Added `markIsSync === true` to `collectBriefUnavailableSources()`, pushing
+`{ source: "option mark", reason: "sync quote without freshness timestamp" }` — same shape as the
+existing HELIX/open-book/Meridian entries in the same function.
+
+**Check at the open:** For any live position whose Ask Largo brief narrative shows "mark not
+synced to live tape" in its Data caveat, confirm the same brief's `envelope.unavailableSources`
+now also carries `{"source":"option mark","reason":"sync quote without freshness timestamp"}` —
+not just prose.
+
+---
+
+### 0a-1x. Ex-dividend read failure silently re-enabled the Q39 fail-open structural-stop bug on a still-valid LONG thesis — fix/ex-dividend-fail-open-structural-stop (merged #4239)
 
 **What was broken:** `resolveSwingExDividendContext` (`ex-dividend-reads.ts`) caught ANY
 `fetchPolygonDividends` failure (rate limit, timeout, network blip) and returned
@@ -161,7 +182,7 @@ failure observed this session" rather than treating silence as a pass.
 
 ---
 
-### 0a-1w. Option-mark timestamps reached the swing play-brief as raw ISO-8601 UTC instead of the Largo C1 ET stamp — fix/swing-markasof-raw-iso-not-et (pending)
+### 0a-1w. Option-mark timestamps reached the swing play-brief as raw ISO-8601 UTC instead of the Largo C1 ET stamp — fix/swing-markasof-raw-iso-not-et (merged #4236)
 
 **What was broken:** `play.markAsOf` (a raw ISO string from the DB) was inserted unconverted into
 three places: the "Position" section body (`Mark: **$X** (2026-09-04T21:45:18.663Z)`), the

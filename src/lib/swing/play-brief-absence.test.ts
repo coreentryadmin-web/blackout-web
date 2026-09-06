@@ -74,3 +74,24 @@ test("collectBriefUnavailableSources: HELIX stale without recent_flow still surf
   const sources = collectBriefUnavailableSources(ctx);
   assert.ok(sources.some((s) => s.source === "HELIX flow" && s.reason === "pipeline stale"));
 });
+
+test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope (FINDINGS 2026-09-06 #22)", () => {
+  // dataHonestyCoaching() already narrates "mark not synced to live tape" from this exact
+  // boolean — this asserts the same fact reaches the structured C3 channel, not just prose.
+  const ctx = {
+    play: { markIsSync: true },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "option mark" && s.reason === "sync quote without freshness timestamp"),
+  );
+});
+
+test("collectBriefUnavailableSources: a live-synced mark (markIsSync false/undefined) does not surface", () => {
+  const ctx = { play: { markIsSync: false } } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "option mark"));
+
+  const ctxUndefined = { play: {} } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctxUndefined).some((s) => s.source === "option mark"));
+});
