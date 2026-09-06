@@ -1,30 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:17:26.300Z",
+  "updated_at": "2026-09-06T03:19:09.920Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T03:07:39.707Z",
-      "lease_until": "2026-09-06T04:41:43.832Z",
+      "claimed_at": "2026-09-06T02:42:23.495Z",
+      "lease_until": "2026-09-06T04:28:14.512Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "2ef36939-569d-411f-beff-692363d390dc"
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-06T03:11:42.957Z",
-      "lease_until": "2026-09-06T04:41:43.833Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "2ef36939-569d-411f-beff-692363d390dc",
-      "title": null
+      "run_id": "8701e6ca-9939-47e7-9244-b6cfb3e9452a"
     }
   },
   "reviews": {
@@ -43,9 +31,8 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "active",
-      "last_seen": "2026-09-06T03:11:42.957Z",
-      "current_task": "BO-P1-0101"
+      "status": "unknown",
+      "last_seen": null
     }
   },
   "deploy": {
@@ -333,60 +320,47 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T03:10:28.950Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
+      "at": "2026-09-06T03:18:50.366Z",
+      "type": "pr_webhook",
+      "pr": 4108,
+      "event": "sweep",
+      "head": "df90fcdd42fd1f6a0dfa9aea34666fa254a60312",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
     },
     {
-      "at": "2026-09-06T03:10:28.951Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "9c10786f-591a-4fce-864a-c6bbe4f75582",
-      "summary": "PR-event cycle: rebased #4104 (swing coaching) on main@41ee65f09, 17/17 tests GREEN. Closed duplicate handoff #4105. ops:collect 0, validate:deploy GREEN. #4104 undrafted awaiting Claude peer review. No claude/fix PRs in queue."
+      "at": "2026-09-06T03:18:52.259Z",
+      "type": "pr_webhook",
+      "pr": 4107,
+      "event": "sweep",
+      "head": "c75dd1f7a84ac46f1decb0802d9bcdcc33772c25",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     },
     {
-      "at": "2026-09-06T03:11:39.747Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 1
+      "at": "2026-09-06T03:18:54.340Z",
+      "type": "pr_webhook",
+      "pr": 4104,
+      "event": "sweep",
+      "head": "7fe7ed70e841b3cb452ed286f28d3c2f4548d3e8",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
     },
     {
-      "at": "2026-09-06T03:11:42.958Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-06T03:11:43.832Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-06T03:11:44.623Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-06T03:11:45.444Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-06T03:17:26.299Z",
+      "at": "2026-09-06T03:19:09.920Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 3
     },
     {
-      "at": "2026-09-06T03:17:26.300Z",
+      "at": "2026-09-06T03:19:09.920Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "350298c4-68e4-42ab-afcc-6fc676275ca1",
-      "summary": "PR-event cycle complete. Rebased #4104 on main@41ee65f09 (17/17 tests GREEN). Closed duplicate handoffs #4105/#4106. Open: #4104 (swing coaching, verify pending, awaiting Claude review), #4107 (this handoff). Lifecycle GREEN (22 checks). ops:collect 0. main@41ee65f09."
+      "run_id": "87a228ce-ff05-4a34-9984-a88ea6dbcc80",
+      "summary": "PR-event cycle: merged wave landed (#4102 docs, #4103 narrative fallback, #4101 book-context+unavailable_sources). Peer-reviewed #4101 (APPROVED cb511924, merged). validate:deploy GREEN. ops:collect 0. Open: #4108 Claude counter-thesis (draft, verify pending — local 12/12 pass, pre-reviewed), #4104 cursor coaching-v2 (ready, verify pending — awaits Claude), #4107 cursor handoff draft. main@41ee65f09."
     }
   ],
   "open_prs": [
@@ -408,7 +382,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T03:11:39Z"
+      "updated_at": "2026-09-06T03:17:34Z"
     },
     {
       "number": 4104,
@@ -420,5 +394,31 @@
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-06T03:15:11Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4108": {
+      "last_event": "sweep",
+      "last_head": "df90fcdd42fd1f6a0dfa9aea34666fa254a60312",
+      "last_feedback_at": "2026-09-06T03:18:50.366Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4107": {
+      "last_event": "sweep",
+      "last_head": "c75dd1f7a84ac46f1decb0802d9bcdcc33772c25",
+      "last_feedback_at": "2026-09-06T03:18:52.259Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4104": {
+      "last_event": "sweep",
+      "last_head": "7fe7ed70e841b3cb452ed286f28d3c2f4548d3e8",
+      "last_feedback_at": "2026-09-06T03:18:54.340Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
