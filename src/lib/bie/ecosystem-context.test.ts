@@ -199,6 +199,14 @@ mock.module("./ticker-fundamentals", {
       fundamentalsCalls.push(ticker);
       return mockFundamentals;
     },
+    // assembleEcosystemArsenal imports this alongside fetchTickerFundamentalsBundle;
+    // the mock must re-export it or every assembleEcosystemArsenal test throws
+    // "normalizeShortVolumeRatio is not a function" (Cursor peer-review #4248).
+    normalizeShortVolumeRatio: (raw: number) => {
+      if (!Number.isFinite(raw) || raw <= 0) return null;
+      const fraction = raw > 1 ? raw / 100 : raw;
+      return fraction > 1 ? null : fraction;
+    },
   },
 });
 mock.module("../providers/polygon-related", {
@@ -816,6 +824,24 @@ test("assembleEcosystemArsenal(single_name): earnings/fundamentals/peers/news po
   assert.equal(ars.macro, null);
   assert.equal(ars.breadth, null);
   assert.deepEqual(ars.unavailable_sources, []);
+});
+
+test("assembleEcosystemArsenal(single_name): percent-scale short_volume_ratio normalizes to 0–1 fraction (audit #12)", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: {
+      as_of: "2026-07-10",
+      short_interest: { days_to_cover: 3.4 },
+      short_volume_ratio: 69.13,
+      price_target: null,
+    } as unknown as TickerFundamentalsBundle,
+    related: null,
+    news: null,
+    macro: null,
+    breadth: null,
+  });
+  assert.ok(Math.abs(ars.fundamentals!.short_volume_ratio! - 0.6913) < 1e-9);
 });
 
 test("assembleEcosystemArsenal(index): macro/breadth/catalysts populate; single-name legs null", () => {

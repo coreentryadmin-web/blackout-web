@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   bookContextSection,
+  catalystsSection,
   chartTechnicalsSection,
   dataFreshnessSection,
   deskConsensusSection,
@@ -129,6 +130,36 @@ function fixtureVec(overrides: Partial<VectorFullState> = {}): VectorFullState {
     ...overrides,
   } as unknown as VectorFullState;
 }
+
+test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 fraction (audit #12)", () => {
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 3.4, short_volume_ratio: 0.6913, price_target: null, as_of: "2026-09-05" },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.match(section!.body, /short vol ratio \*\*69%\*\*/);
+  assert.doesNotMatch(section!.body, /6913%/);
+});
 
 test("chartTechnicalsSection: bias reads bearish from the technicals on a SHORT play whose tape is entirely bullish (FINDINGS 2026-09-06 #13, INTC shape)", () => {
   // Reproduces the live INTC envelope: SHORT position, but EMA-up/above-VWAP/RSI-bull/CHOCH-up —
