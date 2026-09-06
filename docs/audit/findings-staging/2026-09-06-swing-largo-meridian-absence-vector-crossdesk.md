@@ -6,7 +6,7 @@
 |-------|-------|
 | **Status** | FIXED |
 | **Area** | Night Hawk Swings / Ask Largo |
-| **PR** | #TBD |
+| **PR** | #4208 |
 
 ## Symptom
 
