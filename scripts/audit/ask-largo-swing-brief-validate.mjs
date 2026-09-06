@@ -116,10 +116,11 @@ async function extractPlayMeta(page) {
   });
 }
 
-function expectedSections(tab) {
-  if (tab === "OPEN") return ["Verdict", "Management", "Trade manager read"];
-  if (tab === "WATCH") return ["Verdict", "Entry"];
-  return ["Verdict", "Outcome"];
+/** Sections the center-rail deck must render — verdict chrome lives in the header/strip. */
+function expectedDeckSections(tab) {
+  if (tab === "OPEN") return ["Trade manager read"];
+  if (tab === "WATCH") return ["Entry"];
+  return ["Outcome", "Trade manager read"];
 }
 
 function validateTabV4(tab, panel, apiCalls = []) {
@@ -157,9 +158,9 @@ function validateTab(tab, panel, api, rowCount, apiCalls = []) {
   if (!panel.hasOpenLink) issues.push("missing Open link");
   if (!/Deterministic/i.test(panel.engine)) issues.push(`footer missing deterministic tag: ${panel.engine}`);
 
-  for (const exp of expectedSections(tab)) {
+  for (const exp of expectedDeckSections(tab)) {
     if (!panel.sections.some((s) => s.toLowerCase().includes(exp.toLowerCase()))) {
-      issues.push(`missing section: ${exp} (got: ${panel.sections.join(", ")})`);
+      issues.push(`missing deck section: ${exp} (got: ${panel.sections.join(", ")})`);
     }
   }
 
@@ -169,9 +170,11 @@ function validateTab(tab, panel, api, rowCount, apiCalls = []) {
 
   const lastApi = apiCalls.at(-1);
   if (lastApi?.sections?.length) {
-    for (const exp of expectedSections(tab)) {
+    // Full API still carries verdict chrome; deck view strips it via envelopeForSwingDeckBrief.
+    const apiMustHave = tab === "WATCH" ? ["Entry"] : ["Verdict", "Trade manager read"];
+    for (const exp of apiMustHave) {
       if (!lastApi.sections.some((s) => s.toLowerCase().includes(exp.toLowerCase()))) {
-        warnings.push(`api sections mismatch for ${tab}: ${lastApi.sections.join(", ")}`);
+        warnings.push(`api missing section for ${tab}: ${exp} (got: ${lastApi.sections.join(", ")})`);
       }
     }
   }
