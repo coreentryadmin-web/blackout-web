@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T12:27:56.381Z",
+  "updated_at": "2026-09-06T14:17:28.526Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T11:22:14.746Z",
-      "lease_until": "2026-09-06T12:55:04.105Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T14:11:15.918Z",
+      "lease_until": "2026-09-06T15:41:15.918Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ec47fa17-a9ef-4db4-8ff9-b137942c9aeb"
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,6 +32,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T09:39:43.719Z",
       "safe_to_merge": true
+    },
+    "pr-4280": {
+      "pr": 4280,
+      "head_sha": "97e517d68a4a1f4c92111ad331365f3cc48601d9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:17:27.663Z",
+      "safe_to_merge": true
+    },
+    "pr-4275": {
+      "pr": 4275,
+      "head_sha": "d10239c93ab0dd3289c03ff20ea5d5a3a03a96a7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:17:28.108Z",
+      "safe_to_merge": true
+    },
+    "pr-4279": {
+      "pr": 4279,
+      "head_sha": "8dbfdf40fc30fa893845b3b3ce5771415f18aed6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:17:28.526Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -39,16 +64,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T14:11:15.919Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "c4af51ca4be6e7dcd5ec858b8192583f9b175ffb",
+    "last_main_sha": "af4a791de0d07b7025e89db6fdd20aefb4a3092d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T11:38:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34030809766",
-    "last_deploy_sha": "a37960c92712ca5986df2042d0c32a44153cfd92"
+    "last_deploy_at": "2026-09-06T14:10:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34038334663",
+    "last_deploy_sha": "af4a791de0d07b7025e89db6fdd20aefb4a3092d"
   },
   "events": [
     {
@@ -601,9 +627,189 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T14:11:04.562Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:11:09.470Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:11:10.487Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:11:11.578Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:11:15.919Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T14:11:19.471Z",
+      "type": "pr_webhook",
+      "pr": 4273,
+      "event": "sweep",
+      "head": "20ce2fd47717c383234415dc8e07014145381b94",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:11:22.035Z",
+      "type": "pr_webhook",
+      "pr": 4272,
+      "event": "sweep",
+      "head": "e7dceaef7a6e3ba908317f2f75637d333330360f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:11:24.462Z",
+      "type": "pr_webhook",
+      "pr": 4271,
+      "event": "sweep",
+      "head": "b1aae9f3cf145bb48f20bd2b6aabc8c6750ea351",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:11:27.032Z",
+      "type": "pr_webhook",
+      "pr": 4270,
+      "event": "sweep",
+      "head": "cf0d8d497bea8d064a82520939ce251d94d38256",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:16:53.624Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-06T14:16:53.625Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b5fea274-6abb-4f24-8837-c639bf75f423",
+      "summary": "Cycle: #4266 merged to main. Opened #4281 fix(swing) gate portfolio_overlap excludeSelfMatch for uncommitted dossiers. Closed superseded handoff PRs #4270-4274. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T14:17:00.210Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T14:17:27.664Z",
+      "type": "pr_review",
+      "pr": 4280,
+      "head_sha": "97e517d68a4a1f4c92111ad331365f3cc48601d9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:17:27.663Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:17:28.109Z",
+      "type": "pr_review",
+      "pr": 4275,
+      "head_sha": "d10239c93ab0dd3289c03ff20ea5d5a3a03a96a7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:17:28.108Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-06T14:17:28.526Z",
+      "type": "pr_review",
+      "pr": 4279,
+      "head_sha": "8dbfdf40fc30fa893845b3b3ce5771415f18aed6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T14:17:28.526Z",
+      "safe_to_merge": true
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4281,
+      "title": "fix(swing): gate portfolio_overlap must not skip lone same-ticker row",
+      "branch": "fix/swing-gate-portfolio-overlap-no-self-skip",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T14:16:50Z"
+    },
+    {
+      "number": 4280,
+      "title": "fix(swing): attribute dark pool level provenance to Vector, not HELIX",
+      "branch": "fix/swing-brief-darkpool-provenance",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:16:36Z"
+    },
+    {
+      "number": 4279,
+      "title": "fix(swing): honest empty Meridian calendar + peer cohort coaching",
+      "branch": "fix/swing-brief-meridian-empty-peer",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:16:04Z"
+    },
+    {
+      "number": 4277,
+      "title": "chore(blackout-agent): cursor handoff — swing Largo peer reviews merged #4260-#4269",
+      "branch": "cursor/autopilot-handoff-20260906-1414",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:14:21Z"
+    },
+    {
+      "number": 4276,
+      "title": "chore(blackout-agent): cursor handoff — swing Largo wave merged, platform GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-06-1415",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:14:01Z"
+    },
+    {
+      "number": 4275,
+      "title": "fix(swing): stop Hold plan from repeating the thesis-health advisory sentence",
+      "branch": "fix/swing-brief-holdplan-thesis-advisory-dup",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:16:37Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -633,6 +839,38 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4273": {
+      "last_event": "sweep",
+      "last_head": "20ce2fd47717c383234415dc8e07014145381b94",
+      "last_feedback_at": "2026-09-06T14:11:19.471Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4272": {
+      "last_event": "sweep",
+      "last_head": "e7dceaef7a6e3ba908317f2f75637d333330360f",
+      "last_feedback_at": "2026-09-06T14:11:22.035Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4271": {
+      "last_event": "sweep",
+      "last_head": "b1aae9f3cf145bb48f20bd2b6aabc8c6750ea351",
+      "last_feedback_at": "2026-09-06T14:11:24.462Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4270": {
+      "last_event": "sweep",
+      "last_head": "cf0d8d497bea8d064a82520939ce251d94d38256",
+      "last_feedback_at": "2026-09-06T14:11:27.032Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
