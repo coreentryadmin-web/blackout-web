@@ -145,7 +145,7 @@ export function useSwingPlayBrief(play: TerminalPlay | null) {
   return {
     brief: data?.available ? data : null,
     envelope,
-    asOf: data?.asOf ?? data?.envelope?.asOf ?? null,
+    asOf: data?.envelope?.asOf ?? data?.asOf ?? null,
     loading: Boolean(key) && isLoading && !data,
     error: error ?? (data?.degraded ? new Error("brief degraded") : null),
     refresh,
