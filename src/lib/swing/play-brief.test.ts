@@ -493,6 +493,54 @@ test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, 
   assert.equal(callWall?.provenance?.freshness, "stale");
 });
 
+test("composeSwingPlayBrief: envelope level provenance uses ET stamps, not raw UTC ISO (C1)", () => {
+  const staleAsOf = "2026-09-05T20:00:00.000Z";
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        flip: 24,
+        call_wall: 26,
+        put_wall: 22,
+        asof: staleAsOf,
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date_et: "2026-09-05",
+        market_phase: "closed",
+        gex_king_strike: 25,
+        net_gex: null,
+        nearest_wall: null,
+        gamma_posture: "long",
+        vanna_posture: null,
+        delta_posture: null,
+        charm_posture: null,
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: staleAsOf,
+      asOfEt: "2026-09-05 16:00 ET",
+      spot: 24.5,
+      gammaFlip: 24,
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  for (const level of brief.envelope.levels ?? []) {
+    const asOf = level.provenance?.asOf;
+    assert.ok(asOf, `${level.label} must carry asOf`);
+    assert.doesNotMatch(asOf!, /T\d{2}:\d{2}:\d{2}\.\d{3}Z/, `${level.label} must not use raw UTC ISO`);
+    assert.match(asOf!, / ET$/, `${level.label} asOf must be ET-stamped`);
+  }
+});
+
 test("composeSwingPlayBrief: book concentration is reported ONCE, not duplicated across 'Trade manager read' and 'Book context'", () => {
   // Reproduces a live bug from PR #4110: bookContextCoaching (in the "Trade manager read" bullets)
   // and bookContextSection (the dedicated "Book context" section, #4101) both call

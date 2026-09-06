@@ -3024,3 +3024,9 @@ than an end-of-session patch.
 - **What changed:** `collectBriefUnavailableSources()` emits structured absence entries for cold GEX and missing Vector desk state when the upstream read succeeded but returned no usable positioning/snapshot.
 - **RTH check:** Night Hawk Swings → open row → Ask Largo: when matrix is cold or Vector has no spot, confirm `UnavailableChip` shows "GEX positioning" and/or "Vector desk state" (not silent omission).
 
+### 44. Ask Largo swing play-brief — BieLevel provenance `asOf` was raw UTC ISO — fix/swing-brief-levels-asof-et — 2026-09-06
+
+- **What was broken:** `levelsFromContext()` stamped every `BieLevel.provenance.asOf` with raw `gex.asof` / `vec.asOf` UTC ISO (`…Z`) while evidence rows already used `etStampFromIso()` — C1 violation that broke cross-product level joins against Vector/Thermal reads carrying `as_of_et`.
+- **What changed:** `levelProvenanceAsOf()` prefers `gex.as_of_et` / `vec.asOfEt`, falling back to `etStampFromIso()` on the raw ISO fields.
+- **RTH check:** `GET /api/market/swing/play-brief` for any row with levels — inspect `envelope.levels[].provenance.asOf`; each must read like `2026-09-06 09:32 ET`, never a `…Z` UTC instant.
+

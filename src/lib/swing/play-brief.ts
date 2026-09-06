@@ -133,6 +133,18 @@ function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshn
   return describeVectorFreshness(vec.asOf, readMs).freshness;
 }
 
+/** C1: BieLevel provenance must carry ET stamps, not raw UTC ISO — cross-product joins depend on it. */
+function levelProvenanceAsOf(
+  gex: GexPositioning | null | undefined,
+  vec: VectorFullState | null,
+  prefer: "gex" | "vector",
+): string | null {
+  if (prefer === "gex") {
+    return gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? vec?.asOfEt ?? etStampFromIso(vec?.asOf) ?? null;
+  }
+  return vec?.asOfEt ?? etStampFromIso(vec?.asOf) ?? gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? null;
+}
+
 function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel[] {
   const levels: BieLevel[] = [];
   const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
@@ -146,21 +158,33 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
     levels.push({
       label: "call wall",
       price: callWall,
-      provenance: { source: "GEX", asOf: gex?.asof ?? vec?.asOf ?? null, freshness: gex?.call_wall != null ? gexFresh : vecFresh },
+      provenance: {
+        source: "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, gex?.call_wall != null ? "gex" : "vector"),
+        freshness: gex?.call_wall != null ? gexFresh : vecFresh,
+      },
     });
   }
   if (putWall != null) {
     levels.push({
       label: "put wall",
       price: putWall,
-      provenance: { source: "GEX", asOf: gex?.asof ?? vec?.asOf ?? null, freshness: gex?.put_wall != null ? gexFresh : vecFresh },
+      provenance: {
+        source: "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, gex?.put_wall != null ? "gex" : "vector"),
+        freshness: gex?.put_wall != null ? gexFresh : vecFresh,
+      },
     });
   }
   if (flip != null) {
     levels.push({
       label: "gamma flip",
       price: flip,
-      provenance: { source: "GEX", asOf: gex?.asof ?? vec?.asOf ?? null, freshness: gex?.flip != null ? gexFresh : vecFresh },
+      provenance: {
+        source: "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, gex?.flip != null ? "gex" : "vector"),
+        freshness: gex?.flip != null ? gexFresh : vecFresh,
+      },
     });
   }
   const spot = vec?.spot ?? gex?.spot;
@@ -170,7 +194,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       price: spot,
       provenance: {
         source: vec?.spot != null ? "Vector" : "GEX",
-        asOf: vec?.asOf ?? gex?.asof ?? null,
+        asOf: levelProvenanceAsOf(gex, vec, vec?.spot != null ? "vector" : "gex"),
         freshness: vec?.spot != null ? vecFresh : gexFresh,
       },
     });
@@ -179,14 +203,14 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
     levels.push({
       label: `confluence (${z.kinds.join("+")})`,
       price: z.center,
-      provenance: { source: "Vector", asOf: vec?.asOf ?? null, freshness: vecFresh },
+      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
     });
   }
   for (const dp of vec?.darkPoolLevels ?? []) {
     levels.push({
       label: "dark pool",
       price: dp.strike,
-      provenance: { source: "HELIX", asOf: vec?.asOf ?? null, freshness: vecFresh },
+      provenance: { source: "HELIX", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
     });
   }
   const king = gex?.gex_king_strike;
@@ -194,14 +218,14 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
     levels.push({
       label: "GEX king",
       price: king,
-      provenance: { source: "GEX", asOf: gex?.asof ?? null, freshness: gexFresh },
+      provenance: { source: "GEX", asOf: levelProvenanceAsOf(gex, vec, "gex"), freshness: gexFresh },
     });
   }
   if (vec?.maxPain != null) {
     levels.push({
       label: "max pain",
       price: vec.maxPain,
-      provenance: { source: "Vector", asOf: vec?.asOf ?? null, freshness: vecFresh },
+      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
     });
   }
   return levels.slice(0, 10);
