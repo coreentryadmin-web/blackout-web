@@ -50,3 +50,8 @@ test("laneRankSection: renders rank line", () => {
   assert.ok(sec);
   assert.match(sec!.body, /#1 of 2/);
 });
+
+test("computeLaneRank: undefined laneRows does not throw", () => {
+  assert.equal(computeLaneRank(play(), undefined), null);
+  assert.equal(laneRankSection(play(), undefined), null);
+});
