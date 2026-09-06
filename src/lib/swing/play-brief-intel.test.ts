@@ -14,6 +14,7 @@ import {
   lessonsSection,
   meridianCatalystSection,
   meridianPeerSection,
+  wallDynamicsSection,
   watchForSection,
   whyThisSetupSection,
   vectorDeskSection,
@@ -1168,4 +1169,18 @@ test("flowIntelSection: stale HELIX feed must not render recent prints or anomal
 
   const section = flowIntelSection(eco, fixturePlay());
   assert.equal(section, null, "stale feed with only cached prints/anomalies must not invent flow intel");
+});
+
+test("wallDynamicsSection: stale Vector snapshot must not render wall bead events (Largo C2)", () => {
+  const vec = {
+    freshness: "stale",
+    dataAgeMs: 200_000,
+    spot: 100,
+    wallEvents: [
+      { kind: "call_wall_built", message: "call wall building at 105" },
+      { kind: "put_wall_faded", message: "put wall fading at 95" },
+    ],
+  } as VectorFullState;
+  const section = wallDynamicsSection(vec);
+  assert.equal(section, null, "stale Vector snapshot must not narrate wall bead dynamics");
 });

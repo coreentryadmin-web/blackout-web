@@ -5,15 +5,21 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   catalystCoaching,
   closedCoaching,
+  confluenceCoaching,
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
+  expectedMoveCoaching,
+  flowPrintsCoaching,
   ivRankCoaching,
+  magnetCoaching,
   manageLifecycleCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
   vectorPlayCoaching,
   vexCoaching,
+  wallDynamicsCoaching,
+  wallIntegrityCoaching,
   watchGateCoaching,
   technicalsCoaching,
 } from "./play-brief-narrative-coaching";
@@ -400,6 +406,68 @@ test("vexCoaching: narrates vanna flip", () => {
   );
   assert.match(line!, /VEX lens/i);
   assert.match(line!, /diverge/i);
+});
+
+const staleVec = (overrides: Record<string, unknown> = {}) =>
+  ({ freshness: "stale", dataAgeMs: 200_000, spot: 100, ...overrides }) as import("@/lib/bie/vector-full-state").VectorFullState;
+
+test("magnetCoaching: stale Vector snapshot must not narrate gamma magnet (Largo C2)", () => {
+  const line = magnetCoaching(
+    ctx(),
+    staleVec({ magnet: { strike: 105, pull: "up", distancePct: 2 } }),
+    100,
+  );
+  assert.equal(line, null);
+});
+
+test("expectedMoveCoaching: stale Vector snapshot must not narrate expected move (Largo C2)", () => {
+  const line = expectedMoveCoaching(
+    staleVec({ expectedMove: { bands: [{ sigma: 1, low: 95, high: 105, movePts: 5 }] } }),
+    100,
+  );
+  assert.equal(line, null);
+});
+
+test("confluenceCoaching: stale Vector snapshot must not narrate confluence node (Largo C2)", () => {
+  const line = confluenceCoaching(
+    staleVec({ confluenceZones: [{ center: 102, kinds: ["gex"], score: 80 }] }),
+    play(),
+    100,
+  );
+  assert.equal(line, null);
+});
+
+test("wallIntegrityCoaching: stale Vector snapshot must not narrate wall integrity (Largo C2)", () => {
+  const line = wallIntegrityCoaching(
+    staleVec({ wallIntegrity: { call: { tier: "thin" }, put: { tier: "firm" } } }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null);
+});
+
+test("vexCoaching: stale Vector snapshot must not narrate VEX lens (Largo C2)", () => {
+  const line = vexCoaching(staleVec({ vexFlip: 100, gammaFlip: 98 }), 101);
+  assert.equal(line, null);
+});
+
+test("flowPrintsCoaching: stale Vector snapshot must not narrate flow prints (Largo C2)", () => {
+  const line = flowPrintsCoaching(
+    staleVec({ flowMarkers: { available: true, prints: [{ side: "call", strike: 100, premium: 500_000 }] } }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null);
+});
+
+test("wallDynamicsCoaching: stale Vector snapshot must not narrate wall bead events (Largo C2)", () => {
+  const line = wallDynamicsCoaching(
+    staleVec({
+      wallEvents: [
+        { kind: "call_wall_built", message: "a" },
+        { kind: "put_wall_faded", message: "b" },
+      ],
+    }),
+  );
+  assert.equal(line, null);
 });
 
 test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf does not", () => {

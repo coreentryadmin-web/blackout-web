@@ -538,12 +538,13 @@ export function tradeManagerNarrativeSection(
       }
     }
 
-    const prox = vec?.proximity;
+    const vectorLiveForProx = !vectorSnapshotStale(vec, Date.now());
+    const prox = vectorLiveForProx ? vec?.proximity : undefined;
     if (prox?.callout && bullets.length < MAX_BULLETS) {
       add(`**Nearest wall ${prox.strike.toFixed(2)}** (${prox.side}) — ${prox.callout}`);
     }
 
-    const walls = vec?.wallEvents ?? [];
+    const walls = vectorLiveForProx ? (vec?.wallEvents ?? []) : [];
     if (walls[0] && bullets.length < MAX_BULLETS) {
       const w = walls[walls.length - 1]!;
       add(`**Wall just moved** — ${w.kind.replace(/_/g, " ")}: ${w.message}`);
