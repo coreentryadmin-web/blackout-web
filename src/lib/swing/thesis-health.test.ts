@@ -67,4 +67,15 @@ describe("computeSwingThesisHealth", () => {
     assert.ok(h);
     assert.equal(thesisHealthUncalibrated(h), false);
   });
+
+  test("default persistence pillar stays intact at float boundary (not falsely faded)", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const persistence = h!.pillars.find((p) => p.label === "Persistence");
+    assert.equal(persistence?.status, "intact", "unknown setupState defaults must not read as faded");
+  });
 });

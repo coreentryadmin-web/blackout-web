@@ -2,7 +2,8 @@
  * Meridian peer-earnings cohort for swing play brief — cached via Largo loader.
  */
 import { loadMeridianPeerCohortForLargo } from "@/lib/largo/meridian-peer-cohort-for-largo";
-import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
+import { type SwingMeridianCatalystSlice } from "./play-brief-meridian";
+import { pickEarningsForSwingPeer } from "./play-brief-meridian-peer-core";
 import type { SwingMeridianPeerAvailable, SwingMeridianPeerSlice, SwingMeridianPeerUnavailable } from "./play-brief-meridian-peer-core";
 
 export type { SwingMeridianPeerAvailable, SwingMeridianPeerUnavailable, SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
@@ -15,9 +16,7 @@ export async function fetchMeridianPeerForBrief(
 ): Promise<SwingMeridianPeerSlice | null> {
   if (!meridian?.items.length) return null;
 
-  const earnings = meridian.items.find(
-    (i) => i.kind === "earnings" && i.days_until >= 0 && i.days_until <= 14,
-  );
+  const earnings = pickEarningsForSwingPeer(meridian.items, ticker);
   if (!earnings) return null;
 
   try {

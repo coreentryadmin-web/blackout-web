@@ -13,6 +13,7 @@ import {
 } from "@/lib/largo/meridian-timeline-for-largo";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { SWING_MERIDIAN_INDEX_TICKERS } from "./play-brief-meridian-peer-core";
 
 export type SwingMeridianCatalystSlice = {
   as_of: string;
@@ -21,7 +22,9 @@ export type SwingMeridianCatalystSlice = {
   unavailable?: boolean;
 };
 
-const INDEX_TICKERS = new Set(["SPX", "SPXW", "SPY", "QQQ", "IWM", "VIX", "NDX"]);
+/** Index/proxy names that use market-wide Meridian catalyst slices — no per-name earnings peer cohort. */
+export { SWING_MERIDIAN_INDEX_TICKERS };
+const INDEX_TICKERS = SWING_MERIDIAN_INDEX_TICKERS;
 
 export async function fetchMeridianForTicker(ticker: string): Promise<SwingMeridianCatalystSlice | null> {
   const sym = ticker.toUpperCase();
