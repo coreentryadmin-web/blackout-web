@@ -36,6 +36,7 @@
 // Pure evaluation + thin persistence, same split as ./gates.ts.
 
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { isCondorRow } from "./condor-record";
 import { PLAN_RULES } from "./plan";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
@@ -432,6 +433,7 @@ export type GovernorLedgerRow = Pick<
  *  (derivePlayStatus's own CLOSED/stopped condition) — so the count is right even
  *  before the lazy grader has run. A time-stop close is NOT a stop. */
 function ledgerRowStopped(r: GovernorLedgerRow): boolean {
+  if (isCondorRow(r.entry_context as Record<string, unknown> | null | undefined)) return false;
   if (r.plan_outcome === "stopped") return true;
   if (r.status !== "CLOSED") return false;
   return (

@@ -414,6 +414,21 @@ test("advancePlayLatch: OPEN band — a mark within ±10% of entry before the cu
   assert.equal(out.status, "OPEN");
 });
 
+test("advancePlayLatch: condor — a winning decay (trough below directional stop) stays HOLD, not CLOSED stopped", () => {
+  // Sold for $0.60 credit; mark falls to $0.25 (+58% win) — directional latch would read stopped.
+  const play = { entry_premium: 0.6, peak_premium: 0.6, trough_premium: null, is_condor: true };
+  const out = advancePlayLatch(play, null, 0.25, NOW_OPEN);
+  assert.equal(out.trough, 0.25);
+  assert.equal(out.status, "HOLD", "condor must not inherit directional stop semantics");
+});
+
+test("advancePlayLatch: condor still time-stops at the session hard exit", () => {
+  const play = { entry_premium: 0.6, peak_premium: 0.6, trough_premium: 0.25, is_condor: true };
+  const prior = { peak: 0.6, trough: 0.25, status: "HOLD" as const };
+  const out = advancePlayLatch(play, prior, 0.25, PLAN_RULES.time_stop_et_minutes + 1);
+  assert.equal(out.status, "CLOSED");
+});
+
 // ── executable-side edge cases (crossed/locked/one-sided books, f clamp) ──────────────
 test("zeroDteHalfSpreadFrac: crossed and locked and one-sided books all return null (default frac used)", () => {
   assert.equal(zeroDteHalfSpreadFrac(1.2, 1.0), null); // crossed (ask < bid)

@@ -584,6 +584,19 @@ test("deriveGovernorFromLedger: a graded hard stop counts ONCE as a realized los
   assert.equal(snap.session_pnl_pct, -50);
 });
 
+test("deriveGovernorFromLedger: condor trough at directional stop level is NOT a session stop", () => {
+  const snap = deriveGovernorFromLedger([
+    row({
+      ticker: "SPX",
+      status: "CLOSED",
+      entry_premium: 0.6,
+      trough_premium: 0.25,
+      entry_context: { play_type: "CONDOR", condor: { max_loss: 4.0 } },
+    }),
+  ]);
+  assert.equal(snap.stops.length, 0, "condor credit decay must not count as a directional hard stop");
+});
+
 // ── correlationGroupOf / correlationGroupId ──────────────────────────────────────────
 test("correlationGroupOf: index/ETF names resolve to their group; sector names resolve to theirs; uncorrelated is null", () => {
   assert.ok(correlationGroupOf("SPY"));

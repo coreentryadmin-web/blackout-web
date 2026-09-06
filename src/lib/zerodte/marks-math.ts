@@ -497,7 +497,12 @@ export function latchPremiumBounds(
 }
 
 export function advancePlayLatch(
-  play: { entry_premium: number | null; peak_premium: number | null; trough_premium: number | null },
+  play: {
+    entry_premium: number | null;
+    peak_premium: number | null;
+    trough_premium: number | null;
+    is_condor?: boolean;
+  },
   prior: PlayLatch | null,
   mark: number | null,
   nowEtMinutes: number,
@@ -516,6 +521,7 @@ export function advancePlayLatch(
     deferPlanStop: opts?.deferPlanStop,
     targetPct: opts?.targetPct,
     stopPct: opts?.stopPct,
+    isCondor: play.is_condor === true,
   });
   return { peak, trough, status: state.status };
 }

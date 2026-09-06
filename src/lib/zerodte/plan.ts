@@ -744,8 +744,12 @@ export function derivePlayStatus(input: {
   /** When true, skip the latched plan-stop close so the exit engine can honor a
    *  protective floor first (scan.ts / live-marks.ts run the engine on this pass). */
   deferPlanStop?: boolean;
+  /** Credit iron condor — directional peak/trough TRIM/stop semantics are inverted
+   *  (a falling debit-to-close mark is winning). Hold to the hard time-stop; settlement
+   *  grading owns the real outcome (`gradeCondorFromBars`). */
+  isCondor?: boolean;
 }): LivePlayState {
-  const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop } = input;
+  const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop, isCondor } = input;
   const stopPct = input.stopPct ?? PLAN_RULES.stop_pct;
   const targetPct = input.targetPct ?? PLAN_RULES.target_pct;
   const pnl =
@@ -760,6 +764,11 @@ export function derivePlayStatus(input: {
   }
   if (!(entryPremium != null && entryPremium > 0)) {
     return { status: "HOLD", live_pnl_pct: null, closed_reason: null };
+  }
+  // Condors are credit structures — peak/trough latch against directional PLAN_RULES
+  // would label a winning decay as "stopped". Stay active until the session clock.
+  if (isCondor) {
+    return { status: "HOLD", live_pnl_pct: pnl, closed_reason: null };
   }
   const stop = entryPremium * (1 + stopPct / 100);
   const target = entryPremium * (1 + targetPct / 100);
