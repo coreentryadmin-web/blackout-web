@@ -119,24 +119,31 @@ function rowForDate(input: CrossMarketBuildInput, date: string): MeridianOpexCro
 
 function divergenceHeadline(rows: MeridianOpexCrossMarketRow[]): string | null {
   if (rows.length < 2) return null;
+  // Mag 7 and QQQ each need their own denominator — a date can have usable SPX+Mag7 data
+  // while QQQ's reaction failed to load (or vice versa), so counting a QQQ-less date
+  // toward the QQQ "X/N" claim's N (as a single shared `n` used to) understates the
+  // percentage: it inflates N for a numerator that date can never contribute to.
   let mag7Led = 0;
+  let nMag7 = 0;
   let qqqLed = 0;
+  let nQqq = 0;
   for (const row of rows) {
-    if (row.mag7.avg_session_pct == null || row.spx_session_pct == null) continue;
-    if (row.mag7.avg_session_pct > row.spx_session_pct) mag7Led += 1;
-    if (row.qqq_session_pct != null && Math.abs(row.qqq_session_pct) > Math.abs(row.spx_session_pct ?? 0)) {
-      qqqLed += 1;
+    if (row.mag7.avg_session_pct != null && row.spx_session_pct != null) {
+      nMag7 += 1;
+      if (row.mag7.avg_session_pct > row.spx_session_pct) mag7Led += 1;
+    }
+    if (row.qqq_session_pct != null && row.spx_session_pct != null) {
+      nQqq += 1;
+      if (Math.abs(row.qqq_session_pct) > Math.abs(row.spx_session_pct)) qqqLed += 1;
     }
   }
-  const n = rows.filter((r) => r.mag7.avg_session_pct != null && r.spx_session_pct != null).length;
-  if (n < 2) return null;
-  if (mag7Led >= Math.ceil(n * 0.67)) {
-    return `Mag 7 outpaced SPX on ${mag7Led}/${n} prior OpEx sessions`;
+  if (nMag7 >= 2 && mag7Led >= Math.ceil(nMag7 * 0.67)) {
+    return `Mag 7 outpaced SPX on ${mag7Led}/${nMag7} prior OpEx sessions`;
   }
-  if (qqqLed >= Math.ceil(n * 0.67)) {
-    return `QQQ moved more than SPX on ${qqqLed}/${n} prior OpEx sessions`;
+  if (nQqq >= 2 && qqqLed >= Math.ceil(nQqq * 0.67)) {
+    return `QQQ moved more than SPX on ${qqqLed}/${nQqq} prior OpEx sessions`;
   }
-  return `Mixed index leadership across ${n} prior OpEx sessions`;
+  return `Mixed index leadership across ${rows.length} prior OpEx sessions`;
 }
 
 /** Shape cross-market OpEx history from batched Polygon reactions + grouped daily. */
