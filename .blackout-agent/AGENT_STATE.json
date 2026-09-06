@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T18:22:21.048Z",
+  "updated_at": "2026-09-06T19:50:03.676Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T19:45:27.024Z",
+      "lease_until": "2026-09-06T21:15:27.024Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -47,16 +48,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T19:45:27.025Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "12d062a75dff718568cafd37075bf39c4bc11215",
+    "last_main_sha": "75af22851a442ad26835ca7e4228448236bc0e0a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-06T19:38:30Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34055532581",
+    "last_deploy_sha": "75af22851a442ad26835ca7e4228448236bc0e0a"
   },
   "events": [
     {
@@ -752,28 +754,143 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-06T19:45:27.025Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T19:45:43.046Z",
+      "type": "pr_webhook",
+      "pr": 4380,
+      "event": "sweep",
+      "head": "2c72eb0cd9207f18a6e3ff5f93b5ed0f07c90405",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T19:45:45.689Z",
+      "type": "pr_webhook",
+      "pr": 4379,
+      "event": "sweep",
+      "head": "f7dccaa5f44c9d8511ad57cde48fbc98bf2c7c4c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T19:45:48.129Z",
+      "type": "pr_webhook",
+      "pr": 4378,
+      "event": "sweep",
+      "head": "6aca1e3149caf582e29b5b8c647a2d76caba29ce",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T19:45:50.881Z",
+      "type": "pr_webhook",
+      "pr": 4377,
+      "event": "sweep",
+      "head": "0d2af217eb8c33e1b3588a28c5f464c7fa4831d8",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T19:45:53.411Z",
+      "type": "pr_webhook",
+      "pr": 4376,
+      "event": "sweep",
+      "head": "cf85d563b274b85c9a39fd7710ed483972df253c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T19:49:59.672Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-06T19:49:59.673Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "64b72ea2-d846-451e-b145-95cbe8b3c668",
+      "summary": "Largo GEX stack: rebased #4377 onto #4378 (import conflict + matrix_age_sec test fix 60s), rebased #4380 onto #4377. Posted merge-order comments (#4378→#4377→#4376→#4379→#4380). #4379 remote already fixed test scope. validate:deploy GREEN; ops:collect 0. All 5 PRs verify still pending — Cursor cannot self-approve, awaiting Claude."
+    },
+    {
+      "at": "2026-09-06T19:50:03.676Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 4360,
-      "title": "fix(swing): extend stale GEX gating to gexPostureSection and counter-thesis",
-      "branch": "fix/largo-gex-stale-parity",
+      "number": 4381,
+      "title": "fix(swing): magnet coaching must not assert long-gamma regime off measured posture",
+      "branch": "fix/largo-magnet-coaching-posture",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T18:18:37Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T19:48:35Z"
     },
     {
-      "number": 4359,
-      "title": "fix(swing): decode HTML entities in Benzinga headlines for swing brief",
-      "branch": "fix/swing-arsenal-news-headline-html-entities",
+      "number": 4380,
+      "title": "fix(swing): route brief diff snapshot through envelope levels",
+      "branch": "fix/swing-brief-diff-levels-single-source",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T19:49:33Z"
+    },
+    {
+      "number": 4379,
+      "title": "fix(swing): suppress stale GEX posture in gexPostureSection + evidence",
+      "branch": "fix/largo-gex-stale-posture-section-parity",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T19:49:24Z"
+    },
+    {
+      "number": 4378,
+      "title": "fix(swing): honor matrix_age_sec in envelope GEX freshness (Largo C2)",
+      "branch": "fix/largo-gex-freshness-matrix-age-sec",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T19:49:28Z"
+    },
+    {
+      "number": 4377,
+      "title": "fix(swing): gate stale GEX-only levels in Largo envelope path",
+      "branch": "fix/largo-gex-stale-envelope-levels",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T18:22:06Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T19:49:54Z"
+    },
+    {
+      "number": 4376,
+      "title": "fix(swing): gate stale GEX-only flip in dealerPostureLine",
+      "branch": "fix/largo-gex-stale-dealer-posture-flip",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T19:49:54Z"
     }
   ],
   "pr_activity": {
@@ -805,6 +922,46 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4380": {
+      "last_event": "sweep",
+      "last_head": "2c72eb0cd9207f18a6e3ff5f93b5ed0f07c90405",
+      "last_feedback_at": "2026-09-06T19:45:43.046Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4379": {
+      "last_event": "sweep",
+      "last_head": "f7dccaa5f44c9d8511ad57cde48fbc98bf2c7c4c",
+      "last_feedback_at": "2026-09-06T19:45:45.689Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4378": {
+      "last_event": "sweep",
+      "last_head": "6aca1e3149caf582e29b5b8c647a2d76caba29ce",
+      "last_feedback_at": "2026-09-06T19:45:48.129Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4377": {
+      "last_event": "sweep",
+      "last_head": "0d2af217eb8c33e1b3588a28c5f464c7fa4831d8",
+      "last_feedback_at": "2026-09-06T19:45:50.881Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4376": {
+      "last_event": "sweep",
+      "last_head": "cf85d563b274b85c9a39fd7710ed483972df253c",
+      "last_feedback_at": "2026-09-06T19:45:53.411Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
