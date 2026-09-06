@@ -40,3 +40,12 @@ test("collapseRedundantIntelSections: keeps Book context when narrative leads", 
   assert.ok(out.some((s) => s.title === "Book context"), "Book context is the sole concentration source post-#4116");
   assert.ok(!out.some((s) => s.title === "GEX posture"));
 });
+
+test("collapseRedundantIntelSections: NEVER drops 'Desk context' — crossDeskCoaching only covers conflict, not NH history/flow anomaly", () => {
+  // #4111 renamed "Desk consensus" to "Desk context" and moved ONLY the direction-conflict content
+  // into crossDeskCoaching; NH outcome-history and flow-anomaly coaching stayed supplementary and
+  // unique to this section. Collapsing it would silently delete that content.
+  const sections = [section("Trade manager read"), section("Desk context"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Desk context"), "Desk context must survive the collapse");
+});
