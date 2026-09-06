@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T01:52:32.345Z",
+  "updated_at": "2026-09-06T01:58:52.741Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -38,9 +38,9 @@
   "deploy": {
     "last_main_sha": "8df5d84fecea2e2a3026308b97411cdd2d43f493",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T01:49:51Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34004774898",
-    "last_deploy_sha": "8df5d84fecea2e2a3026308b97411cdd2d43f493"
+    "last_deploy_at": "2026-09-06T01:58:41Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34005268553",
+    "last_deploy_sha": "4c4bf5a8ee732bc823165146f1e78641e4997284"
   },
   "events": [
     {
@@ -259,38 +259,44 @@
       "agent": "cursor",
       "run_id": "5e754c2d-12ec-423d-87f8-c85c0ccb97a5",
       "summary": "Cycle: merged #4075 (vector undated fresh-row expiry). Deploy validate GREEN. ops:collect 0. Open: #4076 swing v4 (CI pending, local 6/6 pass). main@8df5d84fe."
+    },
+    {
+      "at": "2026-09-06T01:58:50.118Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T01:58:52.741Z",
+      "type": "pr_webhook",
+      "pr": 4079,
+      "event": "sweep",
+      "head": "04e0ef9cf51cfa540f3bf3fd1c151baf8232cce4",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     }
   ],
   "open_prs": [
     {
-      "number": 4078,
-      "title": "chore(blackout-agent): cursor PR-event handoff — cycle complete @8df5d84fe",
-      "branch": "cursor/autopilot-handoff-pr-event-2026-09-06",
+      "number": 4079,
+      "title": "chore(blackout-agent): cursor cycle handoff — #4075 merged @8df5d84fe",
+      "branch": "cursor/autopilot-handoff-8df5d84fe",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T01:48:05Z"
-    },
-    {
-      "number": 4077,
-      "title": "fix(swing): wire HELIX flow premiums into the Ask Largo brief diff engine",
-      "branch": "fix/swing-brief-flow-diff-dead-code",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T01:47:33Z"
-    },
-    {
-      "number": 4076,
-      "title": "feat(swing): Ask Largo v4 — Meridian catalysts, lane rank, action CTAs",
-      "branch": "cursor/swing-play-intelligence-v4",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T01:49:30Z"
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T01:58:44Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4079": {
+      "last_event": "sweep",
+      "last_head": "04e0ef9cf51cfa540f3bf3fd1c151baf8232cce4",
+      "last_feedback_at": "2026-09-06T01:58:52.741Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
