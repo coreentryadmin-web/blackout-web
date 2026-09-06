@@ -1,19 +1,20 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T11:42:38.065Z
-**Run:** 87520518-9d11-43da-b194-302260aa2e54
+**At:** 2026-09-06T15:10:21.455Z
+**Run:** 22d9e6ea-3ef7-415f-ba29-a09aa3649dcf
 
 ## Summary
 
-Cycle: merged #4222+#4224 (peer-reviewed). Pre-reviewed #4227 (dead code, 3/3 tests) + #4231 (closed DTE freeze, 6/6 tests) — both draft, awaiting undraft+CI. Handoff #4230 open. validate:deploy GREEN; ops:collect 0.
+Cycle complete: peer-reviewed+merged #4280/#4284/#4292; #4290 approved verify GREEN merge pending (API rate limit); pushed fix/swing-brief-helix-stale-coaching-copy (Largo C3 stale HELIX coaching); deploy/ops/lifecycle GREEN.
 
 ## Deploy
 
-- main: `a37960c92712ca5986df2042d0c32a44153cfd92`
+- main: `fbd5a1d3aedfa3fedee694aa740d122f836031e5`
 - status: 
 
 ## Open PRs
 
-- #4231 [agent] fix(swing): freeze CLOSED-position DTE to exit date, not today's date
-- #4230 [cursor] chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged
-- #4227 [agent] chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature
+- #4300 [agent] fix(swing): HELIX flow evidence freshness is recent, not live
+- #4298 [agent] fix(meridian): scope OpEx divergence_headline's QQQ claim to its own cohort
+- #4296 [cursor] fix(swing): stamp earnings evidence asOf for Largo C1 joins
+- #4293 [cursor] chore(blackout-agent): cursor handoff — #4287 merged, swing Largo PRs verified
