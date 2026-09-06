@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T14:10:03.044Z",
+  "updated_at": "2026-09-06T14:21:31.332Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -60,11 +60,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b17816699124deef3fc99de64e4617948c07c18f",
+    "last_main_sha": "af4a791de0d07b7025e89db6fdd20aefb4a3092d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T14:09:13Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34038191327",
-    "last_deploy_sha": "e503648743e944d3fd765ff3e09a064704222cc6"
+    "last_deploy_at": "2026-09-06T14:10:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34038334663",
+    "last_deploy_sha": "af4a791de0d07b7025e89db6fdd20aefb4a3092d"
   },
   "events": [
     {
@@ -674,58 +674,211 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-06T14:20:35.410Z",
+      "type": "pr_webhook",
+      "pr": 4286,
+      "event": "sweep",
+      "head": "91b79e544575388f16c982bae20ac03ae87857f6",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:20:37.852Z",
+      "type": "pr_webhook",
+      "pr": 4285,
+      "event": "sweep",
+      "head": "0f9279417eaea213546cd90a2dec854c5cfc71b0",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T14:20:40.441Z",
+      "type": "pr_webhook",
+      "pr": 4284,
+      "event": "sweep",
+      "head": "dbb709ffeca327dd3709df0db6806b866e193bde",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:20:42.981Z",
+      "type": "pr_webhook",
+      "pr": 4283,
+      "event": "sweep",
+      "head": "2c22651d8b5e638d6eee4dec7cad6102797d29f3",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T14:20:45.505Z",
+      "type": "pr_webhook",
+      "pr": 4282,
+      "event": "sweep",
+      "head": "6d880dc3ea55151608701d200b00602fc082b3e1",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:20:48.370Z",
+      "type": "pr_webhook",
+      "pr": 4281,
+      "event": "sweep",
+      "head": "e81f967355ee8839dbf38a9f319decedbff56ed4",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T14:20:51.015Z",
+      "type": "pr_webhook",
+      "pr": 4280,
+      "event": "sweep",
+      "head": "97e517d68a4a1f4c92111ad331365f3cc48601d9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T14:20:53.683Z",
+      "type": "pr_webhook",
+      "pr": 4279,
+      "event": "sweep",
+      "head": "8dbfdf40fc30fa893845b3b3ce5771415f18aed6",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T14:20:56.599Z",
+      "type": "pr_webhook",
+      "pr": 4275,
+      "event": "sweep",
+      "head": "d10239c93ab0dd3289c03ff20ea5d5a3a03a96a7",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T14:21:31.331Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-06T14:21:31.332Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "72415951-f76d-4508-8742-a35ba1ebc60d",
+      "summary": "Merged #4266/#4269 on main. Peer-reviewed #4275/#4280/#4281 (✅). Handoff PR #4286 open. 6+ swing Largo PRs in flight."
     }
   ],
   "open_prs": [
     {
-      "number": 4273,
-      "title": "chore(blackout-agent): cursor handoff — #4260/#4263 merged, #4266 CI pending",
-      "branch": "cursor/blackout-work-loop-entry-2f16",
+      "number": 4286,
+      "title": "chore(blackout-agent): cursor handoff — peer-reviewed #4266/#4269, deploy GREEN",
+      "branch": "cursor/autopilot-work-loop-f969",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T14:21:03Z"
+    },
+    {
+      "number": 4285,
+      "title": "fix(swing): stamp HELIX flow evidence with brief asOf (Largo C1)",
+      "branch": "fix/swing-brief-helix-evidence-asof",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T14:19:37Z"
+    },
+    {
+      "number": 4284,
+      "title": "fix(swing): surface HELIX pipeline staleness in play-brief Data freshness",
+      "branch": "fix/swing-brief-helix-freshness-section",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:18:52Z"
+    },
+    {
+      "number": 4283,
+      "title": "fix(swing): disambiguate lane rank by contract when ticker collides",
+      "branch": "fix/swing-lane-rank-contract-match",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:18:49Z"
+    },
+    {
+      "number": 4282,
+      "title": "chore(blackout-agent): cursor handoff — Largo PR pre-reviews, platform GREEN",
+      "branch": "cursor/autopilot-work-loop-e2fe",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:09:50Z"
+      "updated_at": "2026-09-06T14:18:32Z"
     },
     {
-      "number": 4272,
-      "title": "chore(blackout-agent): cursor handoff — #4260 merged, #4266/#4269 peer-reviewed",
-      "branch": "cursor/autopilot-handoff-20260906-1406",
+      "number": 4281,
+      "title": "fix(swing): gate portfolio_overlap must not skip lone same-ticker row",
+      "branch": "fix/swing-gate-portfolio-overlap-no-self-skip",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:06:30Z"
+      "updated_at": "2026-09-06T14:21:26Z"
     },
     {
-      "number": 4271,
-      "title": "chore(blackout-agent): cursor handoff — swing Largo peer reviews, #4253/#4257 merged",
-      "branch": "cursor/autopilot-handoff-20260906-1400",
+      "number": 4280,
+      "title": "fix(swing): attribute dark pool level provenance to Vector, not HELIX",
+      "branch": "fix/swing-brief-darkpool-provenance",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:00:45Z"
+      "updated_at": "2026-09-06T14:21:26Z"
     },
     {
-      "number": 4270,
-      "title": "chore(blackout-agent): cursor handoff — platform GREEN, Largo fixes in flight",
-      "branch": "cursor/autopilot-handoff-2026-09-06-1355",
+      "number": 4279,
+      "title": "fix(swing): honest empty Meridian calendar + peer cohort coaching",
+      "branch": "fix/swing-brief-meridian-empty-peer",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:02:47Z"
+      "updated_at": "2026-09-06T14:18:39Z"
     },
     {
-      "number": 4266,
-      "title": "fix(swing): flag prior-session discovery scan in play-brief C3 channel",
-      "branch": "fix/swing-brief-stale-discovery-scan",
+      "number": 4275,
+      "title": "fix(swing): stop Hold plan from repeating the thesis-health advisory sentence",
+      "branch": "fix/swing-brief-holdplan-thesis-advisory-dup",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T14:21:26Z"
+    },
+    {
+      "number": 4268,
+      "title": "fix(swing): surface stale Vector snapshot in play-brief unavailableSources",
+      "branch": "fix/swing-brief-vector-stale-absence",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T14:09:30Z"
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-06T14:21:14Z"
     }
   ],
   "pr_activity": {
@@ -757,6 +910,78 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4286": {
+      "last_event": "sweep",
+      "last_head": "91b79e544575388f16c982bae20ac03ae87857f6",
+      "last_feedback_at": "2026-09-06T14:20:35.410Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4285": {
+      "last_event": "sweep",
+      "last_head": "0f9279417eaea213546cd90a2dec854c5cfc71b0",
+      "last_feedback_at": "2026-09-06T14:20:37.852Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4284": {
+      "last_event": "sweep",
+      "last_head": "dbb709ffeca327dd3709df0db6806b866e193bde",
+      "last_feedback_at": "2026-09-06T14:20:40.441Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4283": {
+      "last_event": "sweep",
+      "last_head": "2c22651d8b5e638d6eee4dec7cad6102797d29f3",
+      "last_feedback_at": "2026-09-06T14:20:42.981Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4282": {
+      "last_event": "sweep",
+      "last_head": "6d880dc3ea55151608701d200b00602fc082b3e1",
+      "last_feedback_at": "2026-09-06T14:20:45.505Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4281": {
+      "last_event": "sweep",
+      "last_head": "e81f967355ee8839dbf38a9f319decedbff56ed4",
+      "last_feedback_at": "2026-09-06T14:20:48.370Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4280": {
+      "last_event": "sweep",
+      "last_head": "97e517d68a4a1f4c92111ad331365f3cc48601d9",
+      "last_feedback_at": "2026-09-06T14:20:51.015Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4279": {
+      "last_event": "sweep",
+      "last_head": "8dbfdf40fc30fa893845b3b3ce5771415f18aed6",
+      "last_feedback_at": "2026-09-06T14:20:53.683Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4275": {
+      "last_event": "sweep",
+      "last_head": "d10239c93ab0dd3289c03ff20ea5d5a3a03a96a7",
+      "last_feedback_at": "2026-09-06T14:20:56.599Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
