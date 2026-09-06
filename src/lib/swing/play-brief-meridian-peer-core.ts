@@ -47,9 +47,11 @@ export function meridianPeerEarningsCoaching(
     parts.push("**print imminent** — vol crush risk elevated");
   }
 
-  if (peer && peer.available && peer.members?.length) {
+  if (peer && peer.available) {
+    if (peer.sector_label) parts.push(`sector **${peer.sector_label}**`);
+    if (peer.interpretation?.trim()) parts.push(peer.interpretation.trim());
     if (peer.position_summary) parts.push(peer.position_summary);
-    const peers = peer.members.filter((m) => !m.is_subject && m.beat_rate_n >= 3);
+    const peers = (peer.members ?? []).filter((m) => !m.is_subject && m.beat_rate_n >= 3);
     if (peers.length) {
       const snippets = peers
         .slice(0, 3)

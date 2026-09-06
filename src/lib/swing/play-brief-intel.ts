@@ -52,6 +52,7 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
     lines.push(`**Signals fired:** ${play.discoveryOrigin.join(" · ")}`);
   }
   if (play.archetype) lines.push(`**Archetype:** ${play.archetype.replace(/_/g, " ")}`);
+  if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
   if (play.regime) lines.push(play.regime);
   // recNote is NOT repeated here — Management (open bucket, play-brief.ts) and Verdict (watch
   // bucket) already render it verbatim. Duplicating it produced the same sentence twice in one
@@ -479,7 +480,13 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
       body: "Catalyst calendar unavailable on this read — not evidence of a quiet calendar.",
     };
   }
-  if (!slice?.items.length) return null;
+  if (!slice?.items.length) {
+    return {
+      title: "Meridian catalysts",
+      body:
+        "No catalysts in the **14-day** Meridian window on this read — calendar is quiet, not missing.",
+    };
+  }
 
   const lines = slice.items.map(formatMeridianItem);
   if (slice.total_matched > slice.items.length) {

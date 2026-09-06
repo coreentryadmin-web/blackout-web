@@ -69,3 +69,23 @@ test("meridianPeerEarningsCoaching: peer beat rates when cohort available", () =
   assert.match(line!, /ULTA/i);
   assert.match(line!, /75% beat/i);
 });
+
+test("meridianPeerEarningsCoaching: surfaces sector_label and interpretation", () => {
+  const line = meridianPeerEarningsCoaching(
+    {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [],
+      interpretation: "Implied move sits in the top quartile vs retail peers.",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    earningsItem(),
+  );
+  assert.match(line!, /sector \*\*Retail\*\*/i);
+  assert.match(line!, /top quartile/i);
+});
