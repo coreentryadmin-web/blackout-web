@@ -30,6 +30,24 @@ function fmtDelta(prev: number, next: number, suffix = ""): string {
   return `${prev}${suffix} → ${next}${suffix} (${sign}${d.toFixed(1)}${suffix})`;
 }
 
+function narrateThesisShift(prev: number, next: number): string {
+  const d = next - prev;
+  const verb = d < 0 ? "fading" : "improving";
+  return `**Thesis ${verb}** — health moved **${d >= 0 ? "+" : ""}${d.toFixed(0)} pts** to **${next}%**`;
+}
+
+function narratePnlShift(prev: number, next: number): string {
+  const d = next - prev;
+  const tone = d >= 0 ? "building" : "slipping";
+  return `**P&L ${tone}** — **${fmtDelta(prev, next, "%")}** since last refresh`;
+}
+
+function narrateSpotShift(prev: number, next: number): string {
+  const d = next - prev;
+  const dir = d > 0 ? "higher" : "lower";
+  return `**Spot drifted ${dir}** — **$${next.toFixed(2)}** (${d >= 0 ? "+" : ""}${d.toFixed(2)} vs prior read)`;
+}
+
 /**
  * Derive the diff engine's raw inputs from a play-brief API response.
  *
@@ -92,7 +110,7 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   const lines: string[] = [];
 
   if (prev.recommendation && next.recommendation && prev.recommendation !== next.recommendation) {
-    lines.push(`Desk action **${prev.recommendation}** → **${next.recommendation}**`);
+    lines.push(`**Desk action shifted** — **${prev.recommendation}** → **${next.recommendation}**`);
   }
   if (
     prev.thesisHealth != null &&
@@ -100,16 +118,16 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     prev.thesisHealth !== next.thesisHealth &&
     Math.abs(prev.thesisHealth - next.thesisHealth) >= 3
   ) {
-    lines.push(`Thesis health ${fmtDelta(prev.thesisHealth, next.thesisHealth, "%")}`);
+    lines.push(narrateThesisShift(prev.thesisHealth, next.thesisHealth));
   }
   if (prev.pnlPct != null && next.pnlPct != null && Math.abs(prev.pnlPct - next.pnlPct) >= 0.5) {
-    lines.push(`P&L ${fmtDelta(prev.pnlPct, next.pnlPct, "%")}`);
+    lines.push(narratePnlShift(prev.pnlPct, next.pnlPct));
   }
   if (prev.mark != null && next.mark != null && Math.abs(prev.mark - next.mark) >= 0.05) {
     lines.push(`Option mark $${prev.mark.toFixed(2)} → $${next.mark.toFixed(2)}`);
   }
   if (prev.spot != null && next.spot != null && Math.abs(prev.spot - next.spot) >= 0.01) {
-    lines.push(`Spot ${fmtDelta(prev.spot, next.spot)}`);
+    lines.push(narrateSpotShift(prev.spot, next.spot));
   }
   if (prev.gammaFlip != null && next.gammaFlip != null && Math.abs(prev.gammaFlip - next.gammaFlip) >= 0.05) {
     lines.push(`Gamma flip moved ${fmtDelta(prev.gammaFlip, next.gammaFlip)}`);

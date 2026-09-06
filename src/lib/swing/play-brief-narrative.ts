@@ -332,6 +332,66 @@ function railsFallback(play: TerminalPlay): string | null {
   return `**Manage rails** — ${rails.join(" · ")}. Honor stops on closing basis; bank trims into strength.`;
 }
 
+/** Steelman the opposing case — honest bear/bull risks for the swing direction. */
+export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay, spot: number | null): string | null {
+  const vec = vectorOf(ctx);
+  const eco = ctx.ecosystem;
+  const reasons: string[] = [];
+
+  const flow = eco?.recent_flow;
+  if (flow) {
+    if (play.direction === "LONG" && flow.put_premium > flow.call_premium * 1.2) {
+      reasons.push(`HELIX put-led (${fmtUsd(flow.put_premium)} vs ${fmtUsd(flow.call_premium)} calls)`);
+    } else if (play.direction === "SHORT" && flow.call_premium > flow.put_premium * 1.2) {
+      reasons.push(`HELIX call-led (${fmtUsd(flow.call_premium)} vs ${fmtUsd(flow.put_premium)} puts)`);
+    }
+  }
+
+  const nh = eco?.nighthawk_recent;
+  const z = eco?.zerodte_today;
+  if (play.direction === "LONG" && nh?.direction?.toLowerCase() === "short") {
+    reasons.push(`Night Hawk bearish (${nh.conviction ?? "recent take"})`);
+  } else if (play.direction === "SHORT" && nh?.direction?.toLowerCase() === "long") {
+    reasons.push(`Night Hawk bullish (${nh.conviction ?? "recent take"})`);
+  }
+  if (play.direction === "LONG" && z?.direction === "short") {
+    reasons.push(`0DTE short bias (score ${z.score ?? "—"})`);
+  } else if (play.direction === "SHORT" && z?.direction === "long") {
+    reasons.push(`0DTE long bias (score ${z.score ?? "—"})`);
+  }
+
+  if (spot != null) {
+    const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? eco?.gex_positioning?.call_wall ?? null;
+    const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? eco?.gex_positioning?.put_wall ?? null;
+    if (play.direction === "LONG" && callWall != null && callWall > spot) {
+      const d = distPct(spot, callWall);
+      if (d < 3) reasons.push(`call wall **${callWall.toFixed(2)}** overhead (${d.toFixed(1)}%)`);
+    }
+    if (play.direction === "SHORT" && putWall != null && putWall < spot) {
+      const d = Math.abs(distPct(spot, putWall));
+      if (d < 3) reasons.push(`put wall **${putWall.toFixed(2)}** below (${d.toFixed(1)}%)`);
+    }
+  }
+
+  const ema = vec?.technicals?.emaStack ?? null;
+  if (play.direction === "LONG" && ema === "down") reasons.push("bear EMA stack on chart");
+  if (play.direction === "SHORT" && ema === "up") reasons.push("bull EMA stack on chart");
+
+  const posture = vec?.regime?.posture ?? eco?.gex_positioning?.gamma_posture ?? null;
+  if (play.direction === "LONG" && posture === "long") reasons.push("dealer long-gamma pins rallies");
+  if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
+
+  const faded = play.thesisHealth?.pillars?.find((p) => p.status === "lost" || p.status === "faded");
+  if (faded && (!play.thesisBreak?.level || play.thesisBreak.level === "intact")) {
+    reasons.push(`fading pillar **${faded.label}**`);
+  }
+
+  if (!reasons.length) return null;
+
+  const side = play.direction === "LONG" ? "bear" : "bull";
+  return `**Counter-thesis (${side} case)** — ${reasons.slice(0, 3).join(" · ")}. If this wins, honor invalidation — don't hope.`;
+}
+
 function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
   const rec = play.recommendation ?? play.swingEntryAction?.toUpperCase() ?? "HOLD";
@@ -441,6 +501,9 @@ export function tradeManagerNarrativeSection(
     breakLine = `**Break watch** — reclaim **${fmtUsd(play.exitPolicy.target_premium)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine);
+
+  const counter = counterThesisLine(ctx, play, spot);
+  if (counter && bullets.length < 8) bullets.push(`• ${counter}`);
 
   if (!bullets.length) return null;
 
