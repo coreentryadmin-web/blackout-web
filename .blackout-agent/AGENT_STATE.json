@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:23:54.885Z",
+  "updated_at": "2026-09-06T15:24:26.802Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T15:12:49.568Z",
-      "lease_until": "2026-09-06T16:42:49.568Z",
+      "lease_until": "2026-09-06T16:54:25.322Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "85fbc002-836d-42bb-aa3d-6fee25342011",
       "title": null
     }
   },
@@ -70,7 +70,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8a792e9bf893adb9a07a4f77d5f7deee15c87854",
+    "last_main_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T15:23:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34042170591",
@@ -772,6 +772,90 @@
       "agent": "cursor",
       "run_id": "fc875c39-8e86-4b4d-8f5a-fac012442e91",
       "summary": "Merge wave complete: #4298 Meridian OpEx cohort, #4300 HELIX freshness, #4301 earnings asOf, #4302 stale HELIX coaching. All peer-reviewed + merged. validate:deploy GREEN; ops:collect 0."
+    },
+    {
+      "at": "2026-09-06T15:23:59.583Z",
+      "type": "pr_webhook",
+      "pr": 4306,
+      "event": "sweep",
+      "head": "cd09c97bec3503e1414643fdc946dc45d4f589de",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:24:01.488Z",
+      "type": "pr_webhook",
+      "pr": 4305,
+      "event": "sweep",
+      "head": "cd107678e38752affe65ddcfa117e63e541c29a0",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:24:03.395Z",
+      "type": "pr_webhook",
+      "pr": 4304,
+      "event": "sweep",
+      "head": "1e3af1bef8bacf165145114557d73fa79b45ae50",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:24:05.580Z",
+      "type": "pr_webhook",
+      "pr": 4306,
+      "event": "sweep",
+      "head": "cd09c97bec3503e1414643fdc946dc45d4f589de",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:24:07.396Z",
+      "type": "pr_webhook",
+      "pr": 4305,
+      "event": "sweep",
+      "head": "cd107678e38752affe65ddcfa117e63e541c29a0",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-06T15:24:09.329Z",
+      "type": "pr_webhook",
+      "pr": 4304,
+      "event": "sweep",
+      "head": "1e3af1bef8bacf165145114557d73fa79b45ae50",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:24:20.307Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:24:25.321Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:24:26.034Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:24:26.802Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
   "open_prs": [
@@ -784,26 +868,6 @@
       "draft": true,
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-06T15:23:34Z"
-    },
-    {
-      "number": 4305,
-      "title": "fix(swing): align stale HELIX coaching copy with pipeline-stale absence (rebased)",
-      "branch": "fix/swing-brief-helix-stale-coaching-copy-rebased",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:23:29Z"
-    },
-    {
-      "number": 4304,
-      "title": "chore(blackout-agent): cursor handoff — merged #4298/#4300, #4302 in review",
-      "branch": "cursor/autopilot-state-recovery-loop-0c27",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:22:51Z"
     }
   ],
   "pr_activity": {
@@ -868,6 +932,30 @@
       "last_head": "0c92c088c0a7e60b0199f353341c916c3b9b49e9",
       "last_feedback_at": "2026-09-06T15:20:56.635Z",
       "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4306": {
+      "last_event": "sweep",
+      "last_head": "cd09c97bec3503e1414643fdc946dc45d4f589de",
+      "last_feedback_at": "2026-09-06T15:24:05.580Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4305": {
+      "last_event": "sweep",
+      "last_head": "cd107678e38752affe65ddcfa117e63e541c29a0",
+      "last_feedback_at": "2026-09-06T15:24:07.396Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4304": {
+      "last_event": "sweep",
+      "last_head": "1e3af1bef8bacf165145114557d73fa79b45ae50",
+      "last_feedback_at": "2026-09-06T15:24:09.329Z",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     }
