@@ -675,11 +675,6 @@ export function buildThermalDiscordCardSvg(
 </svg>`;
 }
 
-/** Caption mode for multi-expiry near-term rail. */
-export function thermalDiscordCaptionMode(_columns: ThermalCardColumn[]): "NEAR" {
-  return "NEAR";
-}
-
 let fontconfigCacheDirReady = false;
 
 /**

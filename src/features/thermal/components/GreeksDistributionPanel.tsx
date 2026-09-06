@@ -3,7 +3,10 @@
 import { useMemo } from "react";
 import { Panel, Badge, EmptyState } from "@/components/ui";
 import { PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
-import { analyzeGreeksDistribution } from "@/features/thermal/lib/gex-heatmap/greeks-distribution";
+import {
+  analyzeGreeksDistribution,
+  topGammaBuckets,
+} from "@/features/thermal/lib/gex-heatmap/greeks-distribution";
 import type { GexCells } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
 import { clsx } from "clsx";
 
@@ -32,7 +35,7 @@ export function GreeksDistributionPanel({
     );
   }
 
-  const top5 = analysis.buckets.sort((a, b) => b.absGamma - a.absGamma).slice(0, 5);
+  const top5 = topGammaBuckets(analysis.buckets);
   const maxGamma = Math.max(...top5.map((b) => b.absGamma));
 
   return (
