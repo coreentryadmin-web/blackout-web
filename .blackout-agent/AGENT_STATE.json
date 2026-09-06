@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T19:35:01.059Z",
+  "updated_at": "2026-09-06T19:39:05.463Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -57,11 +57,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "921e03fa878ca7029fc89bd95bc802ca93db35ea",
+    "last_main_sha": "75af22851a442ad26835ca7e4228448236bc0e0a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T19:34:56Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34055339325",
-    "last_deploy_sha": "ff5a4f0881ade0c773458a97501a42bb4bd5e92a"
+    "last_deploy_at": "2026-09-06T19:38:30Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34055532581",
+    "last_deploy_sha": "75af22851a442ad26835ca7e4228448236bc0e0a"
   },
   "events": [
     {
@@ -208,28 +208,25 @@
       "agent": "cursor",
       "run_id": "9f652362-84f0-404e-9e8c-5c4c9525794f",
       "summary": "Main@921e03fa8. #4372 chartLevels stale GEX gating — peer APPROVED, verify GREEN, auto-merge armed. #4371 thermal rebased (11 files, thermal-only) — verify pending, awaits Claude peer review (cursor PR). ops:collect 0."
-    }
-  ],
-  "open_prs": [
-    {
-      "number": 4375,
-      "title": "fix(swing): gate stale GEX-only gamma posture in king/magnet narration",
-      "branch": "fix/largo-gex-stale-posture-magnet-king",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T19:28:30Z"
     },
     {
-      "number": 4371,
-      "title": "fix(thermal): audit hardening — spot provenance, SPX change%, horizon walls, UX",
-      "branch": "cursor/thermal-audit-fixes",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T19:31:30Z"
+      "at": "2026-09-06T19:38:36.290Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T19:39:01.138Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T19:39:05.463Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "open_prs": []
 }
