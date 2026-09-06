@@ -3183,3 +3183,9 @@ than an end-of-session patch.
 - **What was broken:** #4335 gated the direct `thesisHealth.health` path in `thesisStrengthPct()` but left `thesisBreak.level === "warn"` returning a hardcoded **45%** (and `break` → 15%). On uncalibrated committed SWING rows, `thesisBreak` is derived from the same generic-default health — Verdict could show `Thesis strength **45%**` while Thesis health correctly said withheld.
 - **What changed:** `thesisStrengthPct()` returns `null` when `!healthIsCalibrated(play)` before any thesisBreak fallback.
 - **RTH check:** Same as #48 — committed SWING row with withheld thesis health; confirm Verdict has no `Thesis strength` line and Conviction panel shows `—` not 45.
+
+### 50. Ask Largo swing brief — GEX-only dealer posture says "Right now" on stale matrix — fix/largo-gex-stale-dealer-posture — 2026-09-06
+
+- **What was broken:** When Vector desk state was absent and dealer posture came solely from `ecosystem.gex_positioning`, a matrix older than 120s still produced "**Right now**" in the Trade manager narrative. Vector staleness was gated; GEX `matrix_age_sec`/`asof` was ignored in narrative, Data freshness, and `unavailableSources`.
+- **What changed:** Shared `gexMatrixAgeMs`/`gexMatrixStale` helpers; narrative lead uses "Last snapshot" when GEX-sourced posture is stale; Data freshness warns; `unavailableSources` emits `{ source: "GEX matrix", reason: "stale — dealer posture may lag spot" }`.
+- **RTH check:** Night Hawk Swings → row with GEX positioning but no Vector regime → Ask Largo Trade manager read: when matrix is >120s old, confirm "Last snapshot (~Ns old)" not "Right now", and UnavailableChip/Data freshness mention stale GEX matrix.
