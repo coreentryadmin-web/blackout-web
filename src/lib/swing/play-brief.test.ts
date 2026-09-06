@@ -271,6 +271,7 @@ test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1
   const flowEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("HELIX flow"));
   assert.ok(flowEvidence, "expected HELIX flow evidence");
   assert.equal(flowEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+  assert.equal(flowEvidence?.provenance?.freshness, "recent", "HELIX flow is a cached window aggregate, not tick-live");
 });
 
 test("composeSwingPlayBrief: swing-scan evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant", () => {

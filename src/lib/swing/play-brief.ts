@@ -260,7 +260,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     out.push({
       kind: "fact",
       text: `HELIX flow ${flow.print_count} prints in ${flow.window_hours}h.`,
-      provenance: { source: "HELIX", asOf: ctx.asOf, freshness: "live" },
+      provenance: { source: "HELIX", asOf: ctx.asOf, freshness: "recent" },
     });
   }
   if (eco?.arsenal?.earnings?.earnings_date) {
