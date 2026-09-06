@@ -184,15 +184,15 @@ export function wallIntegrityCoaching(vec: VectorFullState | null, play: Termina
   const put = wi.put?.tier;
   if (!call && !put) return null;
 
-  if (play.direction === "LONG" && call && (call === "thin" || call === "weak")) {
+  if (play.direction === "LONG" && call === "thin") {
     return `**Call wall integrity ${call}** — upside cap may break easier; don't assume rejection at the wall.`;
   }
-  if (play.direction === "SHORT" && put && (put === "thin" || put === "weak")) {
+  if (play.direction === "SHORT" && put === "thin") {
     return `**Put wall integrity ${put}** — support may fail fast; cover if floor gives way.`;
   }
-  if (call === "fortified" || put === "fortified") {
-    const side = call === "fortified" ? "call" : "put";
-    return `**${side} wall fortified** — expect firm rejection; respect the node on extensions.`;
+  if (call === "firm" || put === "firm") {
+    const side = call === "firm" ? "call" : "put";
+    return `**${side} wall firm** — expect rejection; respect the node on extensions.`;
   }
   return null;
 }
@@ -268,9 +268,8 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
   const meridian = ctx.meridian?.items?.[0];
 
   if (earnings?.days_until != null && earnings.days_until <= 14) {
-    const em = earnings.expected_move_pct != null ? ` · implied move **${earnings.expected_move_pct.toFixed(1)}%**` : "";
     return (
-      `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date})${em} — ` +
+      `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date}) — ` +
       `size down or exit before report unless thesis is earnings-driven.`
     );
   }
@@ -323,7 +322,9 @@ export function technicalsCoaching(vec: VectorFullState | null, play: TerminalPl
     const word = t.emaStack === "up" ? "bull stack" : t.emaStack === "down" ? "bear stack" : "mixed EMAs";
     parts.push(word);
   }
-  if (t.structure) parts.push(`structure **${t.structure.replace(/_/g, " ")}**`);
+  if (t.structure) {
+    parts.push(`structure **${t.structure.type} ${t.structure.direction} @ ${t.structure.level.toFixed(2)}**`);
+  }
   if (!parts.length) return null;
 
   const bias =
