@@ -180,19 +180,19 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   const gexFresh = gexFreshness(gex, readMs);
   const gexStale = gexMatrixStale(gex, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs);
-  const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
-  const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecFlip = vec?.gammaFlip;
+  // Null at the SOURCE when Vector is stale (not a separate suppression flag) so a live GEX
+  // value for the same level still falls through via `??` instead of the whole entry being
+  // dropped just because the Vector side happened to be present-but-stale.
+  const vecCallWall = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
   const callWall = vecCallWall ?? gex?.call_wall;
   const putWall = vecPutWall ?? gex?.put_wall;
   const flip = vecFlip ?? gex?.flip;
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
-  const callWallFromStaleVec = vecCallWall != null && vectorStale;
-  const putWallFromStaleVec = vecPutWall != null && vectorStale;
-  const flipFromStaleVec = vecFlip != null && vectorStale;
-  if (callWall != null && !callWallFromStaleGex && !callWallFromStaleVec) {
+  if (callWall != null && !callWallFromStaleGex) {
     levels.push({
       label: "call wall",
       price: callWall,
@@ -203,7 +203,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  if (putWall != null && !putWallFromStaleGex && !putWallFromStaleVec) {
+  if (putWall != null && !putWallFromStaleGex) {
     levels.push({
       label: "put wall",
       price: putWall,
@@ -214,7 +214,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  if (flip != null && !flipFromStaleGex && !flipFromStaleVec) {
+  if (flip != null && !flipFromStaleGex) {
     levels.push({
       label: "gamma flip",
       price: flip,

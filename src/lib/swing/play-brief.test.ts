@@ -398,6 +398,52 @@ test("composeSwingPlayBrief: stale Vector snapshot envelope levels must not cite
   assert.equal(postureEvidence, undefined, "stale Vector regime must not ground envelope dealer posture");
 });
 
+test("composeSwingPlayBrief: stale Vector wall must fall through to a LIVE GEX wall, not drop the level entirely (Largo C2)", () => {
+  // Both sources exist for the same level, only Vector has gone stale — the live GEX-sourced
+  // wall must still render. Suppressing the whole entry because Vector happened to be
+  // present-but-stale would hide a value the member could otherwise see.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        matrix_age_sec: 30,
+        asof: new Date().toISOString(),
+        as_of_et: "2026-09-05 16:00 ET",
+        call_wall: 25,
+        put_wall: 23,
+        flip: 24.2,
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: "2026-09-05T18:00:00.000Z",
+      asOfEt: "2026-09-05 14:00 ET",
+      spot: 24.5,
+      dataAgeMs: 200_000,
+      freshness: "stale",
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+      gammaFlip: 24,
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const levels = brief.envelope.levels ?? [];
+  const callWall = levels.find((l) => l.label === "call wall");
+  const putWall = levels.find((l) => l.label === "put wall");
+  const flip = levels.find((l) => l.label === "gamma flip");
+  assert.equal(callWall?.price, 25, "must fall through to the live GEX call wall, not the stale Vector one");
+  assert.equal(callWall?.provenance?.source, "GEX");
+  assert.equal(putWall?.price, 23, "must fall through to the live GEX put wall, not the stale Vector one");
+  assert.equal(flip?.price, 24.2, "must fall through to the live GEX flip, not the stale Vector one");
+});
+
 test("composeSwingPlayBrief: diff snapshot must not bypass stale-gated envelope levels (Largo C2)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
