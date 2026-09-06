@@ -120,6 +120,16 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1l. Night Hawk deck etClock — duplicate parser missed Largo C1 asOf — fix/play-terminal-etclock-c1-parse (pending)
+
+**What was broken:** `PlayTerminal.tsx` exported a local `etClock` that only `Date.parse()`d ISO strings. After #4142/#4152 stamped play-brief `asOf` as `YYYY-MM-DD HH:mm ET`, any C1 stamp routed through the deck why-now ribbon or CommandDeck row chips would render blank time (`— ET`).
+
+**Fix:** Delegate `PlayTerminal.etClock` to `@/lib/et-clock` with `{ hour12: false, pad: true }` so ISO and C1 stamps share `parseEtStamp()`.
+
+**Check at the open:** Swings OPEN row with play-brief `asOf` in C1 format → why-now ribbon and deck row chips show `HH:MM ET`, not `— ET`.
+
+---
+
 ### 0a-1k. Swing Ask Largo — Desk context duplicated HELIX anomalies — fix/swing-brief-desk-context-dedup (merged #4128)
 
 **What was broken:** `deskConsensusSection` repeated `recent_anomalies[0]` even though Trade manager read (`flowNarrative`) and Flow & positioning already surface the same sweep — members saw the anomaly up to three times. Stale collapse title `Desk consensus` never matched section title `Desk context`.
