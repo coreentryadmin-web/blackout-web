@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { describeDarkPoolLevel, tradeManagerNarrativeSection } from "./play-brief-narrative";
+import { describeDarkPoolLevel, counterThesisLine, tradeManagerNarrativeSection } from "./play-brief-narrative";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -120,4 +120,61 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   assert.match(section!.body, /Live read/i);
   assert.match(section!.body, /Manage plan/i);
   assert.match(section!.body, /Break watch/i);
+});
+
+test("counterThesisLine: steelmans bear case for LONG when desks disagree", () => {
+  const line = counterThesisLine(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 10,
+          call_premium: 400_000,
+          put_premium: 1_200_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: { direction: "short", conviction: "high", outcome: "bearish" },
+        zerodte_today: null,
+        gex_positioning: null,
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: { spot: 100, technicals: { emaStack: "down" } } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.ok(line);
+  assert.match(line!, /Counter-thesis \(bear case\)/i);
+  assert.match(line!, /Night Hawk bearish/i);
+  assert.match(line!, /bear EMA stack/i);
+});
+
+test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: { spot: 100, regime: { posture: "long", label: "LONG GAMMA" } } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 8,
+          call_premium: 300_000,
+          put_premium: 900_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: { direction: "short", conviction: "medium", outcome: "bearish" },
+        zerodte_today: null,
+        gex_positioning: { gamma_posture: "long" },
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Counter-thesis/i);
 });

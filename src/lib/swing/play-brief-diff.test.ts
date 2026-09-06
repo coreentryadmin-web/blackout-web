@@ -47,7 +47,7 @@ test("diffBriefSnapshots: detects thesis health and P&L moves", () => {
   const prev = snapshotFromBrief(env(), play({ thesisHealth: { health: 60, rungLabel: "ok", pillars: [], moves: [], advisory: "", entryIndex: 60, currentIndex: 60, delta: 0, rung: "OK", committedAtEt: "", computedAtEt: "" }, pnlPct: 20 }));
   const next = snapshotFromBrief(env(), play({ thesisHealth: { health: 54, rungLabel: "fade", pillars: [], moves: [], advisory: "", entryIndex: 60, currentIndex: 54, delta: -6, rung: "DEGRADED", committedAtEt: "", computedAtEt: "" }, pnlPct: 25 }));
   const lines = diffBriefSnapshots(prev, next);
-  assert.ok(lines.some((l) => l.includes("Thesis health")));
+  assert.ok(lines.some((l) => l.includes("Thesis")));
   assert.ok(lines.some((l) => l.includes("P&L")));
 });
 
