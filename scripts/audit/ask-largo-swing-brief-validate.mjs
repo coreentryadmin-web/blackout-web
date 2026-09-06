@@ -14,6 +14,14 @@ const OUT = process.env.SCREENSHOT_OUT || "/opt/cursor/artifacts/ask-largo-valid
 
 const TABS = ["OPEN", "WATCH", "CLOSED"];
 
+/** Center rail strips these — deck header / action strip / thesis column own them (#4150). */
+const DECK_OMIT_PANEL_SECTIONS = new Set([
+  "Verdict",
+  "Management",
+  "Thesis health",
+  "Position",
+]);
+
 async function readLargoPanel(page) {
   return page.evaluate(() => {
     const panel = document.querySelector(".nh-deck-largo--brief, .nh-deck-largo-empty");
@@ -53,6 +61,7 @@ async function readLargoPanel(page) {
 
 async function clickFilter(page, tab) {
   const bar = page.locator('.nh-deck-filterbar[aria-label="Filter plays by status"]');
+  await bar.waitFor({ state: "visible", timeout: 30_000 });
   const btn = bar.locator(".nh-deck-filtbtn").filter({ hasText: new RegExp(`^${tab}\\b`, "i") });
   await btn.click({ timeout: 15_000 });
   await page.waitForTimeout(1500);
@@ -116,10 +125,17 @@ async function extractPlayMeta(page) {
   });
 }
 
-function expectedSections(tab) {
+/** API envelope still carries full sections; panel rail is trimmed. */
+function expectedApiSections(tab) {
   if (tab === "OPEN") return ["Verdict", "Management", "Trade manager read"];
   if (tab === "WATCH") return ["Verdict", "Entry"];
   return ["Verdict", "Outcome"];
+}
+
+function expectedPanelSections(tab) {
+  if (tab === "OPEN") return ["Trade manager read"];
+  if (tab === "WATCH") return ["Entry"];
+  return ["Outcome", "Trade manager read"];
 }
 
 function validateTabV4(tab, panel, apiCalls = []) {
@@ -156,20 +172,29 @@ function validateTab(tab, panel, api, rowCount, apiCalls = []) {
   if (!panel.hasRefresh) issues.push("missing refresh button");
   if (!panel.hasOpenLink) issues.push("missing Open link");
   if (!/Deterministic/i.test(panel.engine)) issues.push(`footer missing deterministic tag: ${panel.engine}`);
+  // C1 contract: footer must show a real ET wall-clock, not the em-dash fallback (#4152).
+  if (rowCount > 0 && /Updated\s+—\s+ET/i.test(panel.asof)) {
+    issues.push(`asOf footer shows em-dash fallback: ${panel.asof}`);
+  }
 
-  for (const exp of expectedSections(tab)) {
+  for (const exp of expectedPanelSections(tab)) {
     if (!panel.sections.some((s) => s.toLowerCase().includes(exp.toLowerCase()))) {
-      issues.push(`missing section: ${exp} (got: ${panel.sections.join(", ")})`);
+      issues.push(`panel missing section: ${exp} (got: ${panel.sections.join(", ")})`);
     }
   }
 
-  if (panel.title && panel.headline && !panel.headline.includes(panel.title.split(" ")[0])) {
-    warnings.push(`headline/title mismatch: title=${panel.title} headline=${panel.headline}`);
+  const dupedInPanel = panel.sections.filter((s) => DECK_OMIT_PANEL_SECTIONS.has(s));
+  if (dupedInPanel.length) {
+    issues.push(`deck dedupe: center rail still shows duplicate sections: ${dupedInPanel.join(", ")}`);
+  }
+
+  if (panel.headline?.trim()) {
+    issues.push(`deck dedupe: BieAnswer headline should be empty (got: ${panel.headline})`);
   }
 
   const lastApi = apiCalls.at(-1);
   if (lastApi?.sections?.length) {
-    for (const exp of expectedSections(tab)) {
+    for (const exp of expectedApiSections(tab)) {
       if (!lastApi.sections.some((s) => s.toLowerCase().includes(exp.toLowerCase()))) {
         warnings.push(`api sections mismatch for ${tab}: ${lastApi.sections.join(", ")}`);
       }
@@ -180,6 +205,11 @@ function validateTab(tab, panel, api, rowCount, apiCalls = []) {
     if (api.status !== 200) issues.push(`api HTTP ${api.status}`);
     if (api.available === false) issues.push(`api unavailable: ${api.error ?? "unknown"}`);
     if (api.engine && api.engine !== "swing_play_intelligence") issues.push(`api engine ${api.engine}`);
+  }
+
+  const lastApiAsOf = apiCalls.at(-1)?.asOf;
+  if (rowCount > 0 && lastApiAsOf && !/\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+ET/.test(lastApiAsOf)) {
+    warnings.push(`api asOf not Largo C1 stamp: ${lastApiAsOf}`);
   }
 
   issues.push(...validateTabV4(tab, panel, apiCalls));
@@ -217,6 +247,7 @@ async function main() {
       status: res.status(),
       playId: json?.playId ?? null,
       headline: json?.envelope?.headline ?? null,
+      asOf: json?.envelope?.asOf ?? json?.asOf ?? null,
       sections: json?.envelope?.sections?.map((s) => s.title) ?? [],
       briefContentKey: json?.briefContentKey ?? null,
     });
