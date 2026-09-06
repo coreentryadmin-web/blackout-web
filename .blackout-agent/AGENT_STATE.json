@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T13:55:06.941Z",
+  "updated_at": "2026-09-06T14:00:42.727Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T13:38:27.701Z",
-      "lease_until": "2026-09-06T15:08:27.701Z",
+      "claimed_at": "2026-09-06T13:55:39.246Z",
+      "lease_until": "2026-09-06T15:30:40.972Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "1bbc018d-cf18-4d74-bbe9-6df44da412e2"
     }
   },
   "reviews": {
@@ -44,7 +44,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1f05ed157dc4ce4e56677b19fd5882927ab05705",
+    "last_main_sha": "a97062e1621a2a8c3538c1b30839fbca4239059b",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-06T13:53:29Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34037468470",
@@ -603,26 +603,54 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-06T13:55:02.550Z",
+      "at": "2026-09-06T14:00:22.572Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 3
+      "open_pr_count": 4
     },
     {
-      "at": "2026-09-06T13:55:02.550Z",
+      "at": "2026-09-06T14:00:22.573Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "311420a1-3910-4138-b2f2-98a315e1c9fd",
-      "summary": "Autopilot cycle: platform GREEN (validate:deploy 14/14 integrity, ops:collect 0). Peer-review sweep — #4260+#4266+#4269 cursor-authored, verified locally (18/18, 38/38, 26/26 tests), awaiting Claude review. Shipped fix #4269 ivRank dead-wire onto play-brief TerminalPlay. Sunday — RTH/CloudWatch skipped."
+      "run_id": "1eb5ef06-4907-4d7d-aec8-fbc009fe9466",
+      "summary": "Peer-review cycle: rebased #4266 onto #4260 (merge-order fix, 59/59 tests). All 3 Largo fix PRs locally verified. validate:deploy GREEN, ops:collect 0. CI still pending — awaiting Claude review on Cursor-authored PRs #4260/#4266/#4269."
     },
     {
-      "at": "2026-09-06T13:55:06.941Z",
+      "at": "2026-09-06T14:00:27.384Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 3
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:00:40.971Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:00:41.850Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T14:00:42.727Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
+    {
+      "number": 4270,
+      "title": "chore(blackout-agent): cursor handoff — platform GREEN, Largo fixes in flight",
+      "branch": "cursor/autopilot-handoff-2026-09-06-1355",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T13:55:24Z"
+    },
     {
       "number": 4269,
       "title": "fix(swing): wire ivRank onto play-brief TerminalPlay for Largo coaching",
@@ -631,7 +659,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T13:54:56Z"
+      "updated_at": "2026-09-06T13:58:18Z"
     },
     {
       "number": 4266,
@@ -641,7 +669,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T13:55:04Z"
+      "updated_at": "2026-09-06T13:58:18Z"
     },
     {
       "number": 4260,
@@ -651,7 +679,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T13:54:58Z"
+      "updated_at": "2026-09-06T13:58:46Z"
     }
   ],
   "pr_activity": {
