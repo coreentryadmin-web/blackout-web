@@ -593,6 +593,12 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
     brief.envelope.sections.some((s) => s.title === "Thesis health" && /score withheld/i.test(s.body)),
     "uncalibrated thesis health must not show aggregate %",
   );
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "Verdict section expected");
+  assert.ok(
+    !/Thesis strength/i.test(verdict.body),
+    `Verdict must not leak fabricated thesis strength, got: ${verdict.body}`,
+  );
 });
 
 test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", () => {

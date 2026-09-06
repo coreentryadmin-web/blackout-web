@@ -47,6 +47,9 @@ export function thesisStrengthPct(play: TerminalPlay): number | null {
   ) {
     return Math.round(Math.max(0, Math.min(100, play.thesisHealth.health)));
   }
+  // Committed SWING rows can carry thesisBreak warn/break derived from the same
+  // uncalibrated health — never fabricate 45%/15% substitutes when inputs aren't wired.
+  if (!healthIsCalibrated(play)) return null;
   if (play.thesisBreak?.level === "intact") return null;
   if (play.thesisBreak?.level === "warn") return 45;
   if (play.thesisBreak?.level === "break") return 15;
