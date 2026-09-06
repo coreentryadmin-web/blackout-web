@@ -1,18 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T03:32:17.740Z",
+  "updated_at": "2026-09-06T03:32:30.970Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-06T02:56:17.590Z",
+      "lease_until": "2026-09-06T04:26:17.590Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T03:21:17.308Z",
+      "lease_until": "2026-09-06T04:51:17.308Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null
     }
   },
   "reviews": {
@@ -22,6 +33,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
+      "safe_to_merge": true
+    },
+    "pr-4112": {
+      "pr": 4112,
+      "head_sha": "7c5bd746efa4fdfe47e81a4a1cb80622e21c3535",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T03:32:30.970Z",
       "safe_to_merge": true
     }
   },
@@ -36,11 +55,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d61dd9139cb02e9cea430b1bc41b1889930d7557",
+    "last_main_sha": "df8927a1f8a7b53b8884f620e6fbd61fce532a68",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T03:32:06Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34009231018",
+    "last_deploy_sha": "8037638e5a7c0adc1488f3ab91c86e6012ccdc7b"
   },
   "events": [
     {
@@ -426,9 +445,62 @@
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": true
+    },
+    {
+      "at": "2026-09-06T03:32:21.822Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-06T03:32:21.822Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "39544e3f-ea19-422f-999a-79e4409c3fad",
+      "summary": "PR-event cycle complete. Merged while reviewing: #4101 book-context+unavailable_sources, #4104 deep coaching. Peer APPROVED #4101@cb511924 (recorded). #4108 counter-thesis: local review PASS 12/12 tests, verify pending@bd842bb50 — still draft. New Claude queue: #4112 streak bonus, #4111 desk consensus, #4109 vector markdown. Cursor-owned #4110 coaching-v3 — Claude reviews. ops:collect 0, validate:deploy GREEN, main@df8927a1f."
+    },
+    {
+      "at": "2026-09-06T03:32:30.970Z",
+      "type": "pr_review",
+      "pr": 4112,
+      "head_sha": "7c5bd746efa4fdfe47e81a4a1cb80622e21c3535",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-06T03:32:30.970Z",
+      "safe_to_merge": true
     }
   ],
   "open_prs": [
+    {
+      "number": 4112,
+      "title": "fix(nighthawk): flow-streak bonus applied regardless of streak direction",
+      "branch": "fix/nighthawk-streak-bonus-direction-mismatch",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:31:35Z"
+    },
+    {
+      "number": 4111,
+      "title": "fix(swing): dedupe desk consensus — narrative-only supplementary context",
+      "branch": "fix/swing-desk-consensus-narrative",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:31:20Z"
+    },
+    {
+      "number": 4110,
+      "title": "feat(swing): coaching v3 — VEX, flow prints, macro, book context, trim diff",
+      "branch": "cursor/swing-brief-coaching-v3",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-06T03:32:20Z"
+    },
     {
       "number": 4108,
       "title": "feat(swing): counter-thesis coaching + trade-manager diff narration",
@@ -436,8 +508,8 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-06T03:21:58Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T03:25:24Z"
     }
   ],
   "pr_activity": {
