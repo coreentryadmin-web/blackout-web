@@ -258,6 +258,42 @@ any CLOSED row matches `calendarDte(closed_at date, expiry date)` by hand for at
 
 ---
 
+### 0a-1w. Ask Largo swing brief repeated the SAME recNote sentence in two sections — "Why this setup" read as a bullet dump, not one trade-manager voice — fix/swing-brief-why-setup-recnote-dup (pending)
+
+**What was broken:** found live during the 2026-09-06 5-engine monitor's Ask Largo deep-dive on
+`SWING_NRG_34` (NRG 110C, HOLD, thesis health 46%). `play.recNote` is already rendered verbatim —
+once, correctly — by `managementSection` for the open bucket (`play-brief.ts:64`) or by the Verdict
+section for the watch bucket (`play-brief.ts:292`). `whyThisSetupSection` (`play-brief-intel.ts:55`)
+pushed the exact same string a SECOND time for any non-CLOSED play (`play.status !== "CLOSED"`),
+so the composed brief showed:
+
+> Management: "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength."
+> Why this setup: "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength." *(then, separately, "No pillar breakdown on this row — grade is from lane score only.")*
+
+Word-for-word repetition of a full sentence across two sections in one brief — the opposite of the
+"one connected trade-manager-voice synthesis instead of separate bullet-dump sections" standard
+`tradeManagerNarrativeSection` (#4084) set for this product, and it crowded out "Why this setup"'s
+actual job (the pillar/signal breakdown behind the grade) with a repeat of text the member had
+already read one section above.
+
+**Fix:** Removed the duplicate `recNote` push from `whyThisSetupSection`; the section now carries
+only signals-fired / archetype / regime / pillar-or-lane-score content — exactly what its title
+promises and nothing already said above it.
+
+**Evidence:** 2 new tests in `play-brief-intel.test.ts` (RED pre-fix: `whyThisSetupSection` still
+contained the verbatim `recNote`; GREEN post-fix). `play-brief-intel.test.ts` + `play-brief.test.ts`:
+31/31 pass. Full `src/lib/swing/*.test.ts`: 660/660 pass. `npx tsc --noEmit`: clean.
+
+**Blast radius:** `whyThisSetupSection` only — `managementSection`/Verdict's own `recNote` rendering
+is untouched, so the sentence still appears exactly once per brief.
+
+**Check at the open:** Open `/nighthawk` → Swings → Ask Largo on any live OPEN or WATCH position
+carrying a `recNote` (e.g. a HOLD/TRIM play with a thesis-fading note) and confirm the note text
+appears in Management (open) or Verdict (watch) but is NOT repeated verbatim under "Why this
+setup" — that section should show only signals/archetype/pillar content.
+
+---
+
 ### 0a-1v. Chart technicals bias badge echoed the play's LONG/SHORT direction instead of the technicals it labels — fix/swing-chart-technicals-bias-direction-echo (merged #4232)
 
 **What was broken:** `chartTechnicalsSection`'s `bias` field (`play-brief-intel.ts`) was set from

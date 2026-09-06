@@ -52,7 +52,10 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   }
   if (play.archetype) lines.push(`**Archetype:** ${play.archetype.replace(/_/g, " ")}`);
   if (play.regime) lines.push(play.regime);
-  if (play.recNote && play.status !== "CLOSED") lines.push(play.recNote);
+  // recNote is NOT repeated here — Management (open bucket, play-brief.ts) and Verdict (watch
+  // bucket) already render it verbatim. Duplicating it produced the same sentence twice in one
+  // brief (FINDINGS 2026-09-06, live NRG SWING_NRG_34) and crowded out this section's actual job:
+  // the pillar/signal breakdown behind the grade.
 
   if (play.factors.length) {
     const factorLines = play.factors
