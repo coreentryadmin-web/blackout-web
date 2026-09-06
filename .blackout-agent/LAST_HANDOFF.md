@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-06T11:38:27.758Z
-**Run:** 01300919-180f-4883-9735-dc6e545f61fc
+**At:** 2026-09-06T11:49:23.744Z
+**Run:** 92640dc7-4758-40b8-b972-e1a3faadf3d5
 
 ## Summary
 
-PR-event cycle: approved+merged #4222 (swing TRIM 33% fix) and #4224 (helix hot tickers direction); #4227 cleanup pending verify; main synced to a37960c
+PR-event cycle complete: merged #4222/#4224/#4227; handoff PR #4234 opened; validate:deploy GREEN; ops:collect 0
 
 ## Deploy
 
@@ -14,6 +14,7 @@ PR-event cycle: approved+merged #4222 (swing TRIM 33% fix) and #4224 (helix hot 
 
 ## Open PRs
 
-- #4228 [cursor] chore(blackout-agent): cursor PR-event handoff — #4218/#4220/#4222 merged
-- #4227 [agent] chore(cleanup): remove dead formatFlowStrikeStacksSection + flowStackSignature
-- #4226 [cursor] chore(blackout-agent): cursor PR-event handoff — #4220/#4222 merged
+- #4234 [cursor] chore(blackout-agent): cursor PR-event handoff — #4222/#4224 peer reviews merged
+- #4232 [agent] fix(swing): derive chart-technicals bias from the technicals, not play direction
+- #4231 [agent] fix(swing): freeze CLOSED-position DTE to exit date, not today's date
+- #4230 [cursor] chore(blackout-agent): cursor handoff — #4220/#4222/#4224 merged
