@@ -596,11 +596,16 @@ export function buildIntelSections(
   const levels = chartLevelsSection(ctx);
   if (levels) out.push(levels);
 
-  const gex = gexPostureSection(ctx);
-  if (gex) out.push(gex);
+  // When the trade-manager narrative is present it already reads gamma_posture + wallEvents
+  // (play-brief-narrative.ts dealerPostureLine + wall bead bullet). Skip the legacy list sections
+  // so members do not see the same numbers three times.
+  if (!narrative) {
+    const gex = gexPostureSection(ctx);
+    if (gex) out.push(gex);
 
-  const walls = wallDynamicsSection(vec);
-  if (walls) out.push(walls);
+    const walls = wallDynamicsSection(vec);
+    if (walls) out.push(walls);
+  }
 
   const vdesk = vectorDeskSection(vec);
   if (vdesk) out.push(vdesk);

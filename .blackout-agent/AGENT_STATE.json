@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T02:35:03.337Z",
+  "updated_at": "2026-09-06T02:58:04.071Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -13,6 +13,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+    },
+    "BO-P1-0103": {
+      "task_id": "BO-P1-0103",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T02:58:04.070Z",
+      "lease_until": "2026-09-06T04:28:04.070Z",
+      "phase": "IMPLEMENTING",
+      "branch": "fix/swing-brief-dedup-gex-sections",
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,8 +43,9 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T02:58:04.071Z",
+      "current_task": "BO-P1-0103"
     }
   },
   "deploy": {
@@ -300,6 +313,12 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T02:58:04.071Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0103",
+      "owner": "cursor"
     }
   ],
   "open_prs": []

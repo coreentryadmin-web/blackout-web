@@ -218,6 +218,9 @@ test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", ()
   });
   assert.ok(brief.envelope.sections.some((s) => s.title === "Trade manager read"));
   assert.ok(brief.envelope.sections.some((s) => s.title === "Trade manager read" && /dark pool|long gamma/i.test(s.body)));
+  const titles = brief.envelope.sections.map((s) => s.title);
+  assert.ok(!titles.includes("GEX posture"), "legacy GEX posture list duplicates trade manager narrative");
+  assert.ok(!titles.includes("Wall dynamics"), "legacy wall dynamics list duplicates trade manager narrative");
 });
 
 test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
