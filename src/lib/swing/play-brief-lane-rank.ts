@@ -18,6 +18,28 @@ export type LaneRankSnapshot = {
 
 const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
 
+/** Parse strike/right from deck contract label, e.g. "110C · 13DTE". */
+export function parseDeckContractLabel(contract: string | null | undefined): {
+  strike: number | null;
+  right: "C" | "P" | null;
+} {
+  if (!contract) return { strike: null, right: null };
+  const m = contract.trim().match(/^(\d+(?:\.\d+)?)(C|P)\b/i);
+  if (!m) return { strike: null, right: null };
+  const strike = Number(m[1]);
+  const right = m[2]!.toUpperCase() as "C" | "P";
+  return Number.isFinite(strike) ? { strike, right } : { strike: null, right: null };
+}
+
+function laneRowMatchesPlay(row: HorizonPlay, play: TerminalPlay): boolean {
+  if (row.ticker.toUpperCase() !== play.ticker.toUpperCase()) return false;
+  const { strike, right } = parseDeckContractLabel(play.contract);
+  if (strike == null && right == null) return true;
+  if (strike != null && row.contract.strike !== strike) return false;
+  if (right != null && row.contract.right !== right) return false;
+  return true;
+}
+
 function bucketFor(play: TerminalPlay): "open" | "watch" | "closed" {
   if (play.status === "CLOSED") return "closed";
   if (OPEN_STATUSES.has(play.status)) return "open";
@@ -42,7 +64,11 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
 
   const sorted = [...peers].sort((a, b) => b.score - a.score);
   const playScore = play.score ?? 0;
-  const idx = sorted.findIndex((r) => r.ticker.toUpperCase() === play.ticker.toUpperCase());
+  const contractMatches = sorted.filter((r) => laneRowMatchesPlay(r, play));
+  const idx =
+    contractMatches.length === 1
+      ? sorted.findIndex((r) => r === contractMatches[0])
+      : sorted.findIndex((r) => r.ticker.toUpperCase() === play.ticker.toUpperCase());
   const rank = idx >= 0 ? idx + 1 : sorted.length + 1;
 
   const scores = sorted.map((r) => r.score);
