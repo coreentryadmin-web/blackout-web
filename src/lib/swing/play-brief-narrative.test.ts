@@ -122,6 +122,72 @@ test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
+test("tradeManagerNarrativeSection: stale GEX-only put wall must not drive Break watch (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          put_wall: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Break watch.*98\.00/i, "stale GEX put wall must not anchor break trigger");
+});
+
+test("tradeManagerNarrativeSection: stale GEX-only gamma flip must not drive Break watch (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Break watch.*98\.00/i, "stale GEX flip must not anchor break trigger");
+});
+
+test("tradeManagerNarrativeSection: live Vector put wall still drives Break watch when GEX matrix is stale", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gexWalls: { putWalls: [{ strike: 97 }], callWalls: [] },
+      } as unknown as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          put_wall: 95,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*97\.00/i, "live Vector wall must still anchor break trigger");
+});
+
 test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

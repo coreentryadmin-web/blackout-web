@@ -64,14 +64,25 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
     });
   }
 
-  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null;
-  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null;
-  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
-  const king = gex?.gex_king_strike ?? vec?.ladder?.rows?.find((r) => r.isKing)?.strike ?? null;
+  const readMs = Date.now();
+  const gexStale = gexMatrixStale(gex, readMs);
+  const vecPutWall = vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecCallWall = vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecFlip = vec?.gammaFlip;
+  const putWall = vecPutWall ?? gex?.put_wall ?? null;
+  const callWall = vecCallWall ?? gex?.call_wall ?? null;
+  const flip = vecFlip ?? gex?.flip ?? null;
+  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
+  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
+  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
+  const vecKing = vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
+  const kingFromGex = gex?.gex_king_strike;
+  const king = vecKing ?? kingFromGex ?? null;
+  const kingFromStaleGex = vecKing == null && kingFromGex != null && gexStale;
   const maxPain = vec?.maxPain ?? null;
   const magnet = vec?.magnet?.strike ?? null;
 
-  if (putWall != null) {
+  if (putWall != null && !putWallFromStaleGex) {
     out.push({
       price: putWall,
       kind: "put_wall",
@@ -79,7 +90,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, putWall),
     });
   }
-  if (callWall != null) {
+  if (callWall != null && !callWallFromStaleGex) {
     out.push({
       price: callWall,
       kind: "call_wall",
@@ -87,7 +98,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, callWall),
     });
   }
-  if (flip != null) {
+  if (flip != null && !flipFromStaleGex) {
     out.push({
       price: flip,
       kind: "gamma_flip",
@@ -95,7 +106,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, flip),
     });
   }
-  if (king != null) {
+  if (king != null && !kingFromStaleGex) {
     out.push({
       price: king,
       kind: "king",
@@ -544,7 +555,12 @@ export function tradeManagerNarrativeSection(
   const flow = flowNarrative(ctx, play);
   if (flow && !bullets.some((b) => /HELIX tape/i.test(b))) add(flow);
 
-  const flip = fin(vec?.gammaFlip) ?? fin(ctx.ecosystem?.gex_positioning?.flip);
+  const gexForFlip = ctx.ecosystem?.gex_positioning;
+  const vecFlip = vec?.gammaFlip;
+  const flipRaw = fin(vecFlip) ?? fin(gexForFlip?.flip);
+  const flipFromStaleGex =
+    vecFlip == null && gexForFlip?.flip != null && gexMatrixStale(gexForFlip, Date.now());
+  const flip = flipFromStaleGex ? null : flipRaw;
   const focal = spot != null ? collectFocalLevels(ctx, spot) : [];
   let breakLine = breakTrigger(play, focal, flip);
   if (!breakLine && play.direction === "LONG" && play.exitPolicy?.stop_premium != null) {
