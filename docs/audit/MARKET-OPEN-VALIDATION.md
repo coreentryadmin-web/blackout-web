@@ -2672,3 +2672,9 @@ than an end-of-session patch.
 - **What changed:** Removed the duplicate `bookContextCoaching()` and its call site; `bookContextSection()` remains the single source for this check.
 - **RTH check:** Open Ask Largo for a swing play whose ticker shares a theme with an existing open position (e.g. a semis name while holding AMD/SMH/NVDA) — the concentration/conflict warning should appear ONCE, in the "Book context" section, not also repeated inside "Trade manager read."
 
+### 40. Ask Largo swing brief — intel collapse silently dropped book concentration — fix/swing-brief-book-context-collapse-fold — 2026-09-06
+
+- **What was broken:** PR #4119 `collapseRedundantIntelSections()` omitted the standalone "Book context" section when "Trade manager read" leads, but only left a generic fold note — the actual concentration body was discarded. After #4116 removed duplicate coaching, members with overlapping books saw **zero** concentration warning. `main@1c7149b92` verify RED on `play-brief.test.ts`.
+- **What changed:** When collapsing "Book context", append its body into "Trade manager read" before the fold note (`FOLD_BODY_INTO_NARRATIVE`).
+- **RTH check:** Swings OPEN play with theme overlap (NVDA while holding AMD/SMH) → Ask Largo brief must show concentration language exactly once inside "Trade manager read" (no separate "Book context" section when narrative leads).
+
