@@ -13,6 +13,16 @@ test("collapseRedundantIntelSections: no-op without narrative", () => {
   assert.equal(out.length, 3);
 });
 
+test("collapseRedundantIntelSections: keeps Book context when narrative leads (concentration not duplicated in narrative)", () => {
+  const sections = [
+    section("Trade manager read"),
+    { title: "Book context", body: "**Concentration** — already holding", bias: "neutral" },
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Book context"));
+});
+
 test("collapseRedundantIntelSections: drops covered titles when narrative leads", () => {
   const sections = [
     section("Trade manager read"),
