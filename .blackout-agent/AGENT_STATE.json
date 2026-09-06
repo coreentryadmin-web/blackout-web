@@ -1,18 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T06:20:40.476Z",
+  "updated_at": "2026-09-06T09:40:14.574Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-06T09:20:50.378Z",
+      "lease_until": "2026-09-06T11:09:18.782Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "6a6d4f9b-4b25-414a-8102-b84295567792"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T09:39:04.072Z",
+      "lease_until": "2026-09-06T11:09:18.782Z",
+      "phase": "VERIFY",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "6a6d4f9b-4b25-414a-8102-b84295567792"
     }
   },
   "reviews": {
@@ -36,11 +47,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f40f4236378d61caa8b3a4a13ac169a28c42d971",
+    "last_main_sha": "a4f7761321d0aa609c3289515874789f48b99e29",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-06T09:39:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34025275281",
+    "last_deploy_sha": "091c5eef61caf56fa148aca5aaf744350a35bf5e"
   },
   "events": [
     {
@@ -444,7 +455,51 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-06T09:40:14.573Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-06T09:40:14.574Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b4a543e5-47d9-4bef-9f32-9c810dc7d1e1",
+      "summary": "Cycle complete. Peer reviews: APPROVED #4179 #4181 #4182 (verify GREEN, draft — Claude undraft+merge). #4178 docs-only WAIT. #4180 verify GREEN — awaiting Claude peer review. Lifecycle GREEN, ops:collect 0. main@a4f7761."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4187,
+      "title": "chore(blackout-agent): cursor PR-event handoff — #4174/#4175 merged, swing reviews",
+      "branch": "cursor/autopilot-pr-event-20260906-cycle9",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:39:29Z"
+    },
+    {
+      "number": 4186,
+      "title": "fix(swing): keep GEX/wall intel on closed play-briefs (audit #2)",
+      "branch": "fix/swing-closed-intel-collapse-2026-09-06",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:39:55Z"
+    },
+    {
+      "number": 4185,
+      "title": "fix(swing): wire live-position thesis-health explanation into Ask Largo",
+      "branch": "fix/swing-brief-thesis-health-live-wiring",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-06T09:39:56Z"
+    }
+  ]
 }
