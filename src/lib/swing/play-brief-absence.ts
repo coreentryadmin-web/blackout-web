@@ -1,6 +1,28 @@
 import type { BieUnavailableSource } from "@/lib/bie/answer-envelope";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
+import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent-sections";
+import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+
+type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
+
+const VECTOR_SECTION_LABELS: Record<VectorSection, string> = {
+  gex_walls: "Vector GEX walls",
+  gamma_flip: "Vector gamma flip",
+  max_pain: "Vector max pain",
+  expected_move: "Vector expected move",
+  ladder: "Vector GEX ladder",
+  heatmap: "Vector heatmap",
+  technicals: "Vector technicals",
+  flow_markers: "Vector flow prints",
+  vex_walls: "Vector VEX walls",
+  dark_pool_levels: "Vector dark pool",
+  wall_history: "Vector wall history",
+  play: "Vector play",
+};
+
+const VECTOR_STALE_MS = 120_000;
 
 /** HELIX recent_flow is only trustworthy when the feed is fresh — stale pipeline rows are absence, not signal. */
 export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
@@ -8,9 +30,39 @@ export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
   return eco.recent_flow;
 }
 
+function vectorOf(ctx: SwingPlayBriefContext): VectorWithReadContext | null {
+  return ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+}
+
 function hasVectorDeskState(ctx: SwingPlayBriefContext): boolean {
-  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+  const vec = vectorOf(ctx);
   return vec != null && Number.isFinite(vec.spot);
+}
+
+function collectVectorSectionAbsences(vec: VectorWithReadContext): BieUnavailableSource[] {
+  const sections = vec.unavailable_sections ?? [];
+  if (!sections.length) return [];
+
+  const out: BieUnavailableSource[] = [];
+  for (const section of sections) {
+    if (section === "wall_history" && vec.wall_history_empty_reason === "outside_rth_no_recording_yet") {
+      continue;
+    }
+    out.push({
+      source: VECTOR_SECTION_LABELS[section],
+      reason: "not present on this read",
+    });
+  }
+  return out;
+}
+
+function collectVectorStalenessAbsence(vec: VectorWithReadContext): BieUnavailableSource | null {
+  const ageMs = vec.dataAgeMs;
+  const staleByAge = typeof ageMs === "number" && Number.isFinite(ageMs) && ageMs > VECTOR_STALE_MS;
+  if (staleByAge || vec.freshness === "stale") {
+    return { source: "Vector snapshot", reason: "stale — levels may lag spot" };
+  }
+  return null;
 }
 
 /** Aggregate every honest absence signal for the swing play brief envelope (Largo C3). */
@@ -36,6 +88,12 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.
   if (!ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
     out.push({ source: "Vector desk state", reason: "snapshot unavailable" });
+  }
+  const vec = vectorOf(ctx);
+  if (vec && hasVectorDeskState(ctx)) {
+    out.push(...collectVectorSectionAbsences(vec));
+    const stale = collectVectorStalenessAbsence(vec);
+    if (stale) out.push(stale);
   }
   if (ctx.openBook === null) {
     out.push({ source: "open book", reason: "ledger read failed" });
