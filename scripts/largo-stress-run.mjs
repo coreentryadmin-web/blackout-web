@@ -26,7 +26,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { scoreAnswer } from "./largo-stress-scoring.mjs";
 import { loadStressBank, bankStats } from "./largo-stress-banks.mjs";
-import { classifyBieIntent, classifyBieStagingFallback } from "../src/lib/bie/router.ts";
+import { classifyBieIntent, classifyBieStagingFallback, isOutOfScopeQuestion } from "../src/lib/bie/router.ts";
 
 /** Mirrors deleted src/lib/bie/decompose.ts — stress bank expects compound_lookup routing. */
 function isCompoundQuestion(question) {
@@ -62,6 +62,7 @@ function routeQuestion(q) {
     "TSLA", "NVDA", "SPY", "AAPL", "META", "PLTR", "XLF", "GLD", "COIN", "AMD", "AMZN", "MSFT", "QQQ", "IWM",
   ]);
   if (isCompoundQuestion(q)) return { intent: "compound_lookup", ticker: null };
+  if (isOutOfScopeQuestion(q)) return { intent: null, ticker: null };
   return classifyBieIntent(q, ledger) ?? classifyBieStagingFallback(q);
 }
 

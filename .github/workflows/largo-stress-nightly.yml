@@ -49,11 +49,11 @@ jobs:
             echo "concurrency=5" >> "$GITHUB_OUTPUT"
           elif [ -n "${{ github.event.inputs.bank }}" ]; then
             echo "bank=${{ github.event.inputs.bank }}" >> "$GITHUB_OUTPUT"
-            echo "concurrency=5" >> "$GITHUB_OUTPUT"
+            echo "concurrency=2" >> "$GITHUB_OUTPUT"
           else
             BANK=$(node scripts/largo-stress-nightly-bank.mjs)
             echo "bank=${BANK}" >> "$GITHUB_OUTPUT"
-            echo "concurrency=5" >> "$GITHUB_OUTPUT"
+            echo "concurrency=2" >> "$GITHUB_OUTPUT"
           fi
       - name: Run live Largo stress
         env:

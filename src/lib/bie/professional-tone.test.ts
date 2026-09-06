@@ -61,3 +61,9 @@ test("honesty check still demands grounded numbers in a long answer", () => {
   assert.ok(honestyIssues(wordy).includes("no-grounded-numbers"));
   assert.deepEqual(honestyIssues("SPX spot 6012.40 with the call wall at 6100 and put wall 5900."), []);
 });
+
+test("out-of-scope refusals do not require grounded numbers", () => {
+  const refusal =
+    "I can only assist with live market and trading desk questions on BlackOut — I can't book travel or flights.";
+  assert.deepEqual(honestyIssues(refusal, "clarify_read"), []);
+});

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { classifyBieIntent, classifyBieStagingFallback, bieFollowups } from "@/lib/bie/router";
+import { classifyBieIntent, classifyBieStagingFallback, bieFollowups, isOutOfScopeQuestion } from "@/lib/bie/router";
 
 const NO_LEDGER = new Set<string>();
 
@@ -690,5 +690,17 @@ describe("router: NOW / stopword-ticker extraction collision (PR-L4a)", () => {
     // Surgical guard: only function-words are gated; a capitalised content-noun ticker still routes.
     assert.equal(classifyBieStagingFallback("what's going on with ARM").ticker, "ARM");
     assert.equal(classifyBieStagingFallback("what's happening with NVDA").ticker, "NVDA");
+  });
+});
+
+describe("router: out-of-scope guard", () => {
+  test("travel and translation asks return null from classifyBieIntent", () => {
+    assert.equal(classifyBieIntent("book me a flight", NO_LEDGER), null);
+    assert.equal(classifyBieIntent("translate to French", NO_LEDGER), null);
+  });
+
+  test("isOutOfScopeQuestion catches travel and translation", () => {
+    assert.ok(isOutOfScopeQuestion("book me a flight"));
+    assert.ok(isOutOfScopeQuestion("translate to French"));
   });
 });
