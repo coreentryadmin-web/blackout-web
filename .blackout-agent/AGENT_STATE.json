@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:51:51.386Z",
+  "updated_at": "2026-09-06T15:52:08.866Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T15:36:05.815Z",
-      "lease_until": "2026-09-06T17:06:05.815Z",
+      "lease_until": "2026-09-06T17:22:07.189Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "2ddc6cf9-c630-4d35-afee-c6a8366bb23b"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-06T15:52:06.191Z",
+      "lease_until": "2026-09-06T17:22:07.189Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "2ddc6cf9-c630-4d35-afee-c6a8366bb23b",
+      "title": null
     }
   },
   "reviews": {
@@ -55,8 +67,9 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-06T15:52:06.192Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
@@ -734,6 +747,36 @@
       "agent": "cursor",
       "run_id": "46739558-6d30-402f-97d7-1f546b1d2fb6",
       "summary": "Merge landed def4d529 (#4309 Largo C2 Vector). validate:deploy GREEN; ops:collect 0. Peer-reviewed #4314 APPROVED (SPX King node drift fix, 4/4 tests). Pre-reviewed #4310 verify GREEN + #4311 verify pending — both Cursor swing Largo fixes awaiting Claude sign-off. Open: #4310 #4311 #4314(draft)."
+    },
+    {
+      "at": "2026-09-06T15:52:03.566Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:52:06.192Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-06T15:52:07.189Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:52:07.957Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:52:08.866Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
   "open_prs": [
