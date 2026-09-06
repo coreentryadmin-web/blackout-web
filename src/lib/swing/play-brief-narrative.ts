@@ -473,8 +473,11 @@ export function tradeManagerNarrativeSection(
   const vec = vectorOf(ctx);
   const readMs = Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs);
+  const gex = ctx.ecosystem?.gex_positioning;
+  const gexStale = gexMatrixStale(gex, readMs);
+  // Null stale GEX spot at source — same Largo C2 class as walls/flip (#4401/#4411).
   const spot =
-    fin(vectorStale ? undefined : vec?.spot) ?? fin(ctx.ecosystem?.gex_positioning?.spot);
+    fin(vectorStale ? undefined : vec?.spot) ?? fin(gexStale ? undefined : gex?.spot);
 
   const bullets: string[] = [];
   const seen = new Set<string>();

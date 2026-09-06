@@ -176,6 +176,32 @@ test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
+test("tradeManagerNarrativeSection: stale Vector + stale GEX must not cite stale GEX spot (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        dataAgeMs: 200_000,
+        freshness: "stale",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "long",
+          matrix_age_sec: 180,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Spot \*\*100/i, "stale GEX spot must not render as live");
+  assert.match(section!.body, /Vector spot not wired|dealer gamma posture not resolved/i);
+});
+
 test("tradeManagerNarrativeSection: stale GEX-only put wall must not drive Break watch (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
