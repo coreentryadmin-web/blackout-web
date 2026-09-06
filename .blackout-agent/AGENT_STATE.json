@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-06T15:29:19.632Z",
+  "updated_at": "2026-09-06T15:49:42.844Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -44,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f",
+    "last_main_sha": "02add5a37fddb52e000ed4962ea384014833315d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T15:23:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34042170591",
-    "last_deploy_sha": "a2bd6b0f7fcdec3c55dbe7e05fa938b41e0cc69f"
+    "last_deploy_at": "2026-09-06T15:47:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34043383671",
+    "last_deploy_sha": "02add5a37fddb52e000ed4962ea384014833315d"
   },
   "events": [
     {
@@ -698,6 +698,19 @@
       "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "dispatch": false
+    },
+    {
+      "at": "2026-09-06T15:49:42.844Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-06T15:49:42.844Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "94b28b11-439e-4816-9600-7af3ffe3b016",
+      "summary": "Merged Claude #4314 (SPX King node drift) after peer review. Swing wave #4300-#4310 on main. #4311 (C7 HELIX premiums) open awaiting Claude. validate:deploy GREEN; ops:collect 0. GH API rate-limited at end of cycle."
     }
   ],
   "open_prs": [
@@ -709,27 +722,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:28:55Z"
-    },
-    {
-      "number": 4310,
-      "title": "fix(swing): prior-session scan freshness stale; skip mark absence on CLOSED",
-      "branch": "fix/swing-brief-closed-mark-and-stale-scan-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:28:56Z"
-    },
-    {
-      "number": 4309,
-      "title": "fix(swing): stale Vector snapshot must not say Right now (Largo C2)",
-      "branch": "fix/swing-brief-stale-vector-right-now",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-06T15:28:55Z"
+      "updated_at": "2026-09-06T15:45:42Z"
     }
   ],
   "pr_activity": {
