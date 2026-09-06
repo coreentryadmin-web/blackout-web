@@ -171,7 +171,7 @@ async function loadLaneRows(ticker: string): Promise<{
   };
 }
 
-async function loadOpenTerminalPlay(
+export async function loadOpenTerminalPlay(
   ticker: string,
   hints: { positionId?: number | null; strike?: number | null; right?: "C" | "P" | null; status?: string | null },
 ): Promise<TerminalPlay | null> {
