@@ -1,5 +1,5 @@
 import type { VectorDteHorizon } from "./vector-dte-horizon";
-import type { VectorNodeDensity } from "./vector-node-density";
+import { VECTOR_DEFAULT_NODE_DENSITY, type VectorNodeDensity } from "./vector-node-density";
 import { VECTOR_DEFAULT_TIMEFRAME, type VectorPresetTimeframe } from "./vector-bar-timeframes";
 
 /** Default Vector chart symbol — SPX index options desk anchor. */
@@ -70,13 +70,23 @@ export function defaultVectorDteHorizon(_raw: string | null | undefined): Vector
 }
 
 /**
- * Opening NODES density — every desk opens at 20 rows/side so single-name beads match SPX Slayer
- * showcase density (server records up to 20/side for all tickers; AUTO was self-limiting NVDA to ~7).
+ * Opening NODES density — single names open at 20 rows/side so their beads match SPX Slayer
+ * showcase density (server records up to 20/side for all tickers; AUTO was self-limiting NVDA to
+ * ~7). Index tickers (SPX et al.) must open on `"auto"` instead of this fixed count: VectorChart's
+ * NODES-hydration effect only loads the member's saved density pick — or lets the timeframe-driven
+ * AUTO ladder (`wallCountForTimeframe`, 8/11/13/16) apply at all — when the desk-open default is
+ * exactly the `"auto"` sentinel (`if (defaultNodeDensity !== VECTOR_DEFAULT_NODE_DENSITY) return;`).
+ * A fixed 20 for every ticker silently disabled that hydration for SPX too, so the SPX desk opened
+ * permanently at 20 rows regardless of timeframe instead of the pinned Sep-3-reference ladder —
+ * thinning the thick merged bead ribbons into visibly separate dotted circles (member-reported
+ * 2026-09-07). Restoring `"auto"` for index tickers only keeps the deliberate single-name fix
+ * intact while letting the index ladder (and any member NODES preference) resolve again.
  */
 export const VECTOR_ORACLE_DEFAULT_NODE_DENSITY = 20 as const satisfies VectorNodeDensity;
 export const VECTOR_DEFAULT_OPEN_NODE_DENSITY = VECTOR_ORACLE_DEFAULT_NODE_DENSITY;
 
-export function defaultVectorNodeDensity(_raw: string | null | undefined): VectorNodeDensity {
+export function defaultVectorNodeDensity(raw: string | null | undefined): VectorNodeDensity {
+  if (isVectorIndexTicker(normalizeVectorTicker(raw))) return VECTOR_DEFAULT_NODE_DENSITY;
   return VECTOR_DEFAULT_OPEN_NODE_DENSITY;
 }
 
