@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T07:37:28.928Z",
+  "updated_at": "2026-09-07T08:54:40.830Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T08:49:52.276Z",
+      "lease_until": "2026-09-07T10:24:01.663Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "8d8164c2-1d95-49af-a08c-c7a31c97365c",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -60,16 +61,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-07T08:49:52.277Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "ca6172a359163818bcf7b00e13602a5abe93fb2f",
+    "last_main_sha": "06805b7e8ac3fb9252c5cd96a07a719f6b0dc41e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T08:49:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34102610765",
+    "last_deploy_sha": "06805b7e8ac3fb9252c5cd96a07a719f6b0dc41e"
   },
   "events": [
     {
@@ -927,6 +928,67 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:49:37.258Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:49:44.247Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:49:45.184Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:49:46.299Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:49:52.277Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T08:54:01.662Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:54:02.676Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:54:03.603Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:54:40.829Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:54:40.830Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "13bf058e-6933-4a92-aa03-897a676cec46",
+      "summary": "PR-event wake Mon 04:54 ET: no open PRs to review (pr-sweep empty). Deploy current at 06805b7 (#4471 options-cluster future-skew + #4470 bead-rail horizon sync). Platform GREEN — validate:deploy, validate:platform-integrity (14/14), validate:api-auth, ops:collect 0, rth-lifecycle GREEN (off-hours skip). SPX dashboard E2E 18/18 PASS + Vector E2E 42/42 PASS post-#4470. Peer Claude healthy (last_seen 07:37Z). Next: RTH lifecycle @ 09:00 ET."
     }
   ],
   "open_prs": [],

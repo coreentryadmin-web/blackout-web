@@ -1,17 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T04:02:09.850Z
-**Run:** 8f1e7cb0-6b01-468d-be8e-b1274ad0e21e
+**At:** 2026-09-07T08:54:40.830Z
+**Run:** 13bf058e-6933-4a92-aa03-897a676cec46
 
 ## Summary
 
-PR event wake: no open PRs to review. #4455 merged (option mark future-skew). Platform GREEN — validate:deploy, validate:platform-integrity, validate:api-auth, ops:collect 0. Found remaining gap in scenario-read provenance; opened #4457 (fix/scenario-read-future-skew-freshness) awaiting Claude peer review. ECR deploy for #4455 still pending.
+PR-event wake Mon 04:54 ET: no open PRs to review (pr-sweep empty). Deploy current at 06805b7 (#4471 options-cluster future-skew + #4470 bead-rail horizon sync). Platform GREEN — validate:deploy, validate:platform-integrity (14/14), validate:api-auth, ops:collect 0, rth-lifecycle GREEN (off-hours skip). SPX dashboard E2E 18/18 PASS + Vector E2E 42/42 PASS post-#4470. Peer Claude healthy (last_seen 07:37Z). Next: RTH lifecycle @ 09:00 ET.
 
 ## Deploy
 
-- main: `178add55514d9848a81eab346baab7b722bd859b`
+- main: `06805b7e8ac3fb9252c5cd96a07a719f6b0dc41e`
 - status: 
 
 ## Open PRs
 
-- #4457 [agent] fix(largo): fail-closed staleness on future-skewed scenario provenance
+_none_
