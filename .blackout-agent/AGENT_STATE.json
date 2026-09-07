@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T07:37:28.928Z",
+  "updated_at": "2026-09-07T10:13:54.739Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T10:11:21.979Z",
+      "lease_until": "2026-09-07T11:42:46.161Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "e62f8141-4e5d-4b5e-b9e2-3f66b0c1346f"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -51,6 +51,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4474": {
+      "pr": 4474,
+      "head_sha": "7431275ea",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T10:12:13.777Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -65,11 +73,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ca6172a359163818bcf7b00e13602a5abe93fb2f",
+    "last_main_sha": "454b8c9b2a821a781b35e117aa986170efeb5166",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T10:10:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34108250942",
+    "last_deploy_sha": "454b8c9b2a821a781b35e117aa986170efeb5166"
   },
   "events": [
     {
@@ -927,9 +935,174 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T10:12:13.777Z",
+      "type": "pr_review",
+      "pr": 4474,
+      "head_sha": "7431275ea",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T10:12:13.777Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T10:12:46.176Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T10:12:46.177Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6c716c46-2418-4817-9263-b9ff13cd63fe",
+      "summary": "Workflow_run wake: peer-reviewed #4474 (flow-data-freshness future-skew) — APPROVED, 10/10 tests pass. Posted merge sign-off; undraft blocked by GitHub rate limit (Claude/operator to mark ready). Platform GREEN: validate:deploy pass, ops:collect 0 items. Dependabot PRs #4476-4478 in CI queue — no agent review needed."
+    },
+    {
+      "at": "2026-09-07T10:12:47.535Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T10:12:48.797Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T10:12:51.046Z",
+      "type": "pr_webhook",
+      "pr": 4479,
+      "event": "sweep",
+      "head": "8ccc6a25364968b9430fd630e258dfee4d966200",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T10:12:53.761Z",
+      "type": "pr_webhook",
+      "pr": 4478,
+      "event": "sweep",
+      "head": "e96f5beb68f08322a6f3765b761a33e5e7fe9297",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T10:12:56.559Z",
+      "type": "pr_webhook",
+      "pr": 4477,
+      "event": "sweep",
+      "head": "6fbf29b0c2567aab777d562e99824a2939435df0",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T10:12:59.266Z",
+      "type": "pr_webhook",
+      "pr": 4476,
+      "event": "sweep",
+      "head": "a72078de3e4d1ab6f3a9261a9b2b18963015059a",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T10:13:01.813Z",
+      "type": "pr_webhook",
+      "pr": 4474,
+      "event": "sweep",
+      "head": "7431275ea08134c6dd3f5d7b5b1ccb326e99fd66",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T10:13:28.491Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T10:13:54.738Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T10:13:54.739Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5cbf6082-ef5f-4039-a638-288408ad0d38",
+      "summary": "Continuous loop cycle complete. Peer-reviewed #4474 APPROVED (flow-data-freshness future-skew, 10/10 tests). Merge sign-off posted; undraft blocked by GitHub resource_exhausted — PR remains draft with green verify. Platform GREEN: validate:deploy, validate:platform-integrity, validate:api-auth, validate:seo, ops:collect 0. RTH lifecycle skipped (06:13 ET off-hours). Dependabot #4476-4480: WAIT (CI/major policy). main@454b8c9 deployed. Next: undraft+merge #4474 when API budget recovers."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4480,
+      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T10:11:45Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:27Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:04Z"
+    },
+    {
+      "number": 4476,
+      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
+      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:10:51Z"
+    },
+    {
+      "number": 4474,
+      "title": "fix(spx): fail-closed newestFlowAgeMsFromBriefs on future-skewed alerted_at",
+      "branch": "fix/flow-data-freshness-future-skew",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T10:13:36Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -959,6 +1132,46 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4479": {
+      "last_event": "sweep",
+      "last_head": "8ccc6a25364968b9430fd630e258dfee4d966200",
+      "last_feedback_at": "2026-09-07T10:12:51.046Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4478": {
+      "last_event": "sweep",
+      "last_head": "e96f5beb68f08322a6f3765b761a33e5e7fe9297",
+      "last_feedback_at": "2026-09-07T10:12:53.761Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4477": {
+      "last_event": "sweep",
+      "last_head": "6fbf29b0c2567aab777d562e99824a2939435df0",
+      "last_feedback_at": "2026-09-07T10:12:56.559Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4476": {
+      "last_event": "sweep",
+      "last_head": "a72078de3e4d1ab6f3a9261a9b2b18963015059a",
+      "last_feedback_at": "2026-09-07T10:12:59.266Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4474": {
+      "last_event": "sweep",
+      "last_head": "7431275ea08134c6dd3f5d7b5b1ccb326e99fd66",
+      "last_feedback_at": "2026-09-07T10:13:01.813Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
