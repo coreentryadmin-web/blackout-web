@@ -118,6 +118,16 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
+
+### 0a-1ak. Option mark provenance future-skew reads as unknown — fix/largo-option-mark-future-skew (pending)
+
+**What was broken:** `evidenceFromContext` stamped option-mark provenance via `freshnessFromAgeMs(readMs - markMs)`. Clock-skewed future `markAsOf` returned `"unknown"` instead of fail-closed `"stale"` — same class as #4452/#4454 for GEX/fundamentals.
+
+**Fix:** `optionMarkFreshness()` applies `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` before `freshnessFromAgeMs`.
+
+**Check at the open:** OPEN swing row → Ask Largo brief → option-mark evidence freshness must read `stale` (not `unknown`) when mark timestamp is >5s ahead of read time.
+
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
 ### 0a-1aj. Ask Largo swing brief future-skew reads as fresh — fix/largo-brief-future-skew-staleness (pending)
