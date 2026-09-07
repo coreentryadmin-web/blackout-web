@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T02:01:59.001Z",
+  "updated_at": "2026-09-07T02:14:09.879Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -71,11 +71,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "681f299c5bb648c81a91b6a508e90fd2ae95ddf2",
+    "last_main_sha": "6eee4efde3f24fd868248adc7d441c5efac9194f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T01:58:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34074704620",
-    "last_deploy_sha": "681f299c5bb648c81a91b6a508e90fd2ae95ddf2"
+    "last_deploy_at": "2026-09-07T02:10:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34075414995",
+    "last_deploy_sha": "6eee4efde3f24fd868248adc7d441c5efac9194f"
   },
   "events": [
     {
@@ -1010,6 +1010,19 @@
       "agent": "cursor",
       "run_id": "b1b72412-742f-4e37-ba95-49f5650575ce",
       "summary": "Main@681f299c5 CI GREEN (#4439 vector king labels, #4444 session_date envelope, #4446 dynamic-format). Queue clean. validate:deploy GREEN."
+    },
+    {
+      "at": "2026-09-07T02:14:09.877Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T02:14:09.879Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2afeed18-4edd-49e8-8162-18eb80bebcd4",
+      "summary": "Main@6eee4efde (#4448 MTF VWAP intraday session scope). CI GREEN. Queue clean."
     }
   ],
   "open_prs": [],
