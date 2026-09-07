@@ -63,6 +63,14 @@ async function main() {
     return;
   }
 
+  const ymd = todayEtYmd(now);
+  if (!force && !isTradingDayEt(ymd)) {
+    console.log(
+      `${ymd} is a US equity market holiday — skipping RTH-open checks (use --force to override).\n`
+    );
+    return;
+  }
+
   if (!force && !inRthOpenWindow(now)) {
     console.log("Pre-open warm-up window — running deploy validation only (full RTH checks after 09:30 ET).\n");
   }
@@ -78,13 +86,8 @@ async function main() {
   }
 
   if (force || inRthOpenWindow(now)) {
-    const tradingDay = isTradingDayEt(todayEtYmd(now));
+    const tradingDay = isTradingDayEt(ymd);
     console.log("\n2. RTH session checks");
-    if (!tradingDay) {
-      console.log(
-        `  ⚠ ${todayEtYmd(now)} is not a US equity trading session (market holiday) — skipping writer/regime freshness checks`
-      );
-    }
     const dbUrl = resolveAuditDbUrl();
 
     const failures = [];

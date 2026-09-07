@@ -21,6 +21,7 @@ import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 import { isDeployCacheWarmAllowed } from "./lib/cache-warm-deploy-gate.mjs";
+import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -580,8 +581,9 @@ if (skipCli) {
   // 1006 lines in the last 30 log rows even when options.ok is true.
   let socketHealthOk = false;
   const cron = resolveCronSecret();
+  const tradingDay = isTradingDayEt(todayEtYmd());
   if (cron) {
-    socketHealthOk = await runSocketHealthProbe(cron, { hardFail: true });
+    socketHealthOk = await runSocketHealthProbe(cron, { hardFail: tradingDay });
   } else {
     warn("CRON_SECRET unset — socket-health probe skipped (log grep only)");
   }
