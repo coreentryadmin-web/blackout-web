@@ -3602,6 +3602,9 @@ export function GexHeatmap({
     if (desk.compareSet) setCompareSet(desk.compareSet);
     setExpiryScope(desk.expiryScope);
     setPairView(desk.pairView);
+    // Saved desks don't store strike — clear any deep-link scroll from the prior view.
+    setHighlightStrike(null);
+    pendingStrikeScrollRef.current = null;
   }, []);
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
@@ -4130,6 +4133,9 @@ export function GexHeatmap({
             // own matrix instead of being silently ignored underneath the compare grid.
             setTicker(t);
             setCompare(false);
+            // Drop ?strike= — it belongs to the prior symbol, not the new search target.
+            setHighlightStrike(null);
+            pendingStrikeScrollRef.current = null;
           }}
           spot={headerSpot}
           changePct={headerChangePct}
@@ -4336,7 +4342,7 @@ export function GexHeatmap({
         />
       )}
 
-      {showViewTabs && !compare ? (
+      {showViewTabs ? (
         <ThermalSessionTimeline
           className="mb-3"
           events={events}
