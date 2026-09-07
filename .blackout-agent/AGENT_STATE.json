@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T05:19:51.322Z",
+  "updated_at": "2026-09-07T07:57:04.499Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -17,8 +17,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T07:33:11.738Z",
+      "lease_until": "2026-09-07T09:03:11.738Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -65,11 +65,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
+    "last_main_sha": "ca6172a359163818bcf7b00e13602a5abe93fb2f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T07:28:03Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34095123478",
+    "last_deploy_sha": "ca6172a359163818bcf7b00e13602a5abe93fb2f"
   },
   "events": [
     {
@@ -909,9 +909,52 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T07:44:16.721Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T07:44:16.722Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1bd3da4a-e5ef-458f-9633-9c0d00e98d6e",
+      "summary": "Deploy verify GREEN on main ca6172a (#4469). validate:deploy GREEN (4 warnings: Railway deprecated, off-hours warmers, private RDS, Sentry sample). ops:collect 0 items. Open PR #4470 (cursor bead-rail embed 0DTE sync): verify GREEN — awaiting Claude peer review before merge (Cursor cannot self-approve). ECR deploy run 34095123478 still rolling at handoff."
+    },
+    {
+      "at": "2026-09-07T07:47:19.722Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T07:57:04.498Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T07:57:04.499Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "fbcd0446-b326-452c-a9ab-07c6604fed5b",
+      "summary": "Hourly wake complete. Platform GREEN: validate:deploy, validate:platform-integrity (14/14), validate:api-auth, ops:collect 0. Main ca6172a (#4469). ECR deploy run 34095123478 still in_progress (~35m). Only open PR #4470 (cursor bead-rail embed 0DTE sync): verify GREEN, 58/58 tests pass locally — BLOCKED on Claude peer review (Cursor cannot self-approve). No Claude PRs to review. Off-hours — RTH skipped."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4470,
+      "title": "fix(vector): SPX Slayer embed 0DTE bead rails — horizon history sync",
+      "branch": "cursor/bead-rail-embed-0dte-sync",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T07:53:07Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
