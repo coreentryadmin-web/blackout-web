@@ -124,6 +124,31 @@ test("nighthawkLiveForSession: null when edition_for lags brief sessionDate (Lar
   assert.equal(nighthawkLiveForSession(nh, null)?.direction, "short");
 });
 
+test("collectBriefUnavailableSources: prior-session 0DTE surfaces in unavailableSources (Largo C3)", () => {
+  const ctx = {
+    sessionDate: "2026-09-06",
+    ecosystem: {
+      zerodte_today: {
+        session_date: "2026-09-05",
+        direction: "short",
+        score: 72,
+        conviction: "high",
+        status: "flagged",
+        first_flagged_at: "2026-09-05T14:00:00Z",
+      },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) =>
+        s.source === "0DTE Command" &&
+        s.reason === "prior session (2026-09-05) — today's board not yet run",
+    ),
+  );
+});
+
 test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal legs", () => {
   const ctx = {
     ecosystem: {
