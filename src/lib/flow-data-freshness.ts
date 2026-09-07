@@ -1,3 +1,5 @@
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+
 let lastFlowDataAt: number | null = null;
 
 /** Mark UW flow data fresh (WS, REST ingest, or desk poll). */
@@ -19,7 +21,15 @@ export function markFlowDataFromBriefs(flows: Array<{ alerted_at?: string }>): v
   }
 }
 
-/** Age (ms) of the newest `alerted_at` in the supplied tape rows — payload-grounded. */
+/**
+ * Age (ms) of the newest `alerted_at` in the supplied tape rows — payload-grounded.
+ *
+ * Unlike `flowDataAgeMs` (backed by `markFlowDataFresh`, which already rejects a future-skewed
+ * stamp before it can become `lastFlowDataAt`), this recomputes `newest` directly from the raw
+ * `alerted_at` values on every call — so it needs its own future-skew guard. Without it, a single
+ * bad/clock-skewed print reads as 0ms old ("live right now") instead of unusable, which then wins
+ * the `Math.min` in `resolveFlowDataAgeMs` and reports the whole desk's flow as freshly live.
+ */
 export function newestFlowAgeMsFromBriefs(
   flows: Array<{ alerted_at?: string }>,
   now = Date.now()
@@ -31,7 +41,10 @@ export function newestFlowAgeMsFromBriefs(
     if (!Number.isFinite(t)) continue;
     if (newest == null || t > newest) newest = t;
   }
-  return newest != null ? Math.max(0, now - newest) : null;
+  if (newest == null) return null;
+  const rawAge = now - newest;
+  if (rawAge < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return null;
+  return Math.max(0, rawAge);
 }
 
 export function flowDataAgeMs(now = Date.now()): number | null {
