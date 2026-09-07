@@ -8,6 +8,7 @@ import {
   isUsableGexHeatmapPayload,
   parseThermalLens,
   parseThermalTicker,
+  parseThermalStrike,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
   shouldForceBlankMatrixRefresh,
@@ -45,7 +46,10 @@ test("parseThermalTicker / lens / url state", () => {
     lens: "dex",
     compare: true,
     compareSet: "semis",
+    strike: null,
   });
+  assert.equal(parseThermalStrike("775"), 775);
+  assert.equal(parseThermalStrike("bad"), null);
 });
 
 test("buildThermalUrlSearch writes ticker/lens/compare/compareSet and drops compare when off", () => {
@@ -60,9 +64,17 @@ test("buildThermalUrlSearch writes ticker/lens/compare/compareSet and drops comp
   assert.equal(new URLSearchParams(on).get("compare"), "1");
   assert.equal(new URLSearchParams(on).get("compareSet"), "ai");
   assert.equal(new URLSearchParams(on).get("foo"), "1");
-  const off = buildThermalUrlSearch(base, { ticker: "SPY", lens: "vex", compare: false });
+  const withStrike = buildThermalUrlSearch(new URLSearchParams(), {
+    ticker: "SPY",
+    lens: "gex",
+    compare: false,
+    strike: 770,
+  });
+  assert.equal(new URLSearchParams(withStrike).get("strike"), "770");
+  const off = buildThermalUrlSearch(base, { ticker: "SPY", lens: "vex", compare: false, strike: null });
   assert.equal(new URLSearchParams(off).has("compare"), false);
   assert.equal(new URLSearchParams(off).has("compareSet"), false);
+  assert.equal(new URLSearchParams(off).get("strike"), null);
 });
 
 test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {

@@ -107,7 +107,11 @@ import {
 import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 import { ThermalRegimeStrip } from "@/features/thermal/components/ThermalRegimeStrip";
+import { ThermalSessionTimeline } from "@/features/thermal/components/ThermalSessionTimeline";
+import { ThermalSavedDesksMenu } from "@/features/thermal/components/ThermalSavedDesksMenu";
 import { buildThermalRegimeStrip } from "@/features/thermal/lib/thermal-regime-strip";
+import type { ThermalFlipReason } from "@/features/thermal/lib/thermal-flip-reason";
+import type { ThermalSavedDesk } from "@/features/thermal/lib/thermal-saved-desks";
 import { ThermalIntensityRail } from "@/features/thermal/components/ThermalIntensityRail";
 import {
   THERMAL_INTENSITY_MARKER_GLYPH,
@@ -150,6 +154,7 @@ type GexBlock = {
   put_wall: number | null;
   total: number;
   flip: number | null;
+  flip_reason?: ThermalFlipReason;
   regime: GexRegime;
   walls_by_horizon?: Array<{
     label: string;
@@ -2086,124 +2091,6 @@ function ExpiryScopeBar({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Alerts strip (Rank 4c) — compact, dismissible row of server-computed events that
-// rides on the already-polled 20s matrix payload (ZERO extra fetch). `warn` reads
-// bear/amber, `info` reads sky. Relative "Xm ago" is computed client-side from the
-// event `at` timestamp. Reduced-motion safe: a gentle motion-safe pulse on the worst
-// chip only; reduced-motion users get a static strip. Renders nothing when empty.
-// ---------------------------------------------------------------------------
-
-/** Relative "just now" / "2m ago" / "1h ago" from an ISO timestamp. Never throws. */
-function fmtRelative(iso: string, nowMs: number): string {
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return "";
-  const diff = Math.max(0, nowMs - t);
-  const mins = Math.round(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h${m}m ago` : `${h}h ago`;
-}
-
-/** Glyph by event type — ⚡ for crosses/breaks, ▲/▼ for directional flips, • fallback. */
-function eventGlyph(e: GexEvent): string {
-  if (e.type === "wall_broken" || e.type === "flip_crossed") return "⚡";
-  const d = (e.direction ?? "").toLowerCase();
-  if (d.includes("above") || d.includes("long") || d.includes("positive") || d.includes("up")) return "▲";
-  if (d.includes("below") || d.includes("short") || d.includes("negative") || d.includes("down")) return "▼";
-  return "•";
-}
-
-function AlertsStrip({ events }: { events: GexEvent[] }) {
-  // Dismissed locally; re-keyed by the event signature so a NEW event re-opens the strip.
-  const [dismissed, setDismissed] = useState(false);
-  const sig = useMemo(() => events.map((e) => `${e.type}@${e.at}`).join("|"), [events]);
-  const lastSigRef = useRef(sig);
-  // A fresh batch (new signature) clears the dismissal so a new cross is never hidden.
-  if (sig !== lastSigRef.current) {
-    lastSigRef.current = sig;
-    if (dismissed) setDismissed(false);
-  }
-
-  // `nowMs` recomputed each render; the 20s matrix poll re-renders the parent, keeping
-  // "Xm ago" reasonably fresh without a dedicated timer (no extra interval needed).
-  const nowMs = Date.now();
-
-  if (events.length === 0 || dismissed) return null;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="mb-4 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-3 py-2.5"
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
-            Positioning alerts
-          </span>
-          <Badge tone="accent" size="sm">
-            {events.length}
-          </Badge>
-        </span>
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          aria-label="Dismiss positioning alerts"
-          className={clsx(
-            "rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider outline-none transition-colors",
-            "text-sky-300/70 hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-sky-400"
-          )}
-        >
-          Dismiss ✕
-        </button>
-      </div>
-      <ul className="space-y-1.5">
-        {events.map((e, i) => {
-          const warn = e.severity === "warn";
-          // warn → bear red / amber accent; info → sky.
-          const hex = warn ? "#ff2d55" : "#7dd3fc";
-          const rel = fmtRelative(e.at, nowMs);
-          return (
-            <li
-              key={`${e.type}-${e.at}-${i}`}
-              className={clsx(
-                "flex items-start gap-2.5 rounded-lg border px-3 py-1.5",
-                warn
-                  ? "border-bear/35 bg-bear/[0.06]"
-                  : "border-sky-400/25 bg-sky-400/[0.05]"
-              )}
-              style={warn ? { boxShadow: "inset 0 0 14px rgba(255,45,85,0.05)" } : undefined}
-            >
-              <span
-                aria-hidden
-                // Removed `warn && "motion-safe:animate-pulse"` — the bear-red border
-                // + tinted background + boxShadow already signal urgency once. A
-                // forever-pulsing glyph in the reader's periphery competed with the
-                // matrix for attention every second, and the alerts are dismissible
-                // anyway (they don't need to keep begging). Static wins here.
-                className="mt-px shrink-0 text-[12px] leading-none"
-                style={{ color: hex }}
-              >
-                {eventGlyph(e)}
-              </span>
-              <span className="min-w-0 flex-1 text-[12px] leading-snug" style={{ color: warn ? "#ffd6de" : "#dff1ff" }}>
-                {e.message}
-              </span>
-              {rel && (
-                <span className="shrink-0 font-mono text-[10px] tabular-nums text-sky-300/70">
-                  {rel}
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
 
 /**
  * SYNTHETIC ORDER BOOK — the depth ladder.
@@ -2618,6 +2505,8 @@ export function GexHeatmap({
   // picker shows the real date and its real DTE instead. `expiryScope` is resolved against the live
   // axis in an effect below, since `expiries` is not known at mount.
   const [expiryScope, setExpiryScope] = useState<string>("all");
+  const [highlightStrike, setHighlightStrike] = useState<number | null>(() => urlBoot.strike);
+  const pendingStrikeScrollRef = useRef<number | null>(urlBoot.strike);
   const matrixPollMs = usePollIntervalMs(2_000, 5_000);
   const quotePollMs = usePollIntervalMs(2_000, 5_000);
   const sessionLive = useEtMarketOpen();
@@ -2633,11 +2522,12 @@ export function GexHeatmap({
       lens: lens as ThermalLens,
       compare,
       compareSet: compare ? compareSet : null,
+      strike: highlightStrike,
     });
     const next = qs ? `${pathname}?${qs}` : pathname;
     const cur = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
     if (next !== cur) router.replace(next, { scroll: false });
-  }, [ticker, lens, compare, compareSet, pathname, router, searchParams]);
+  }, [ticker, lens, compare, compareSet, highlightStrike, pathname, router, searchParams]);
 
   // Fast-move bypass: when the live quote diverges from the cached matrix snapshot spot
   // by >0.5%, we append `&force=1` to the matrix key for ONE refetch (then clear it) so
@@ -3609,6 +3499,8 @@ export function GexHeatmap({
         footnote: keyLevelsScopeFootnote,
         spot,
         flip: keyFlip,
+        flipReason:
+          lens === "gex" && keyFlip == null ? (data?.gex?.flip_reason ?? null) : null,
         callWall: keyPosWall,
         putWall: keyNegWall,
         maxPain: keyMaxPain,
@@ -3651,6 +3543,7 @@ export function GexHeatmap({
       keyTotal,
       matrixAnchorStrike,
       data?.gex?.regime,
+      data?.gex?.flip_reason,
       data?.vex?.regime,
       data?.dex?.regime,
       data?.charm?.regime,
@@ -3670,24 +3563,49 @@ export function GexHeatmap({
     [data?.spot_source, marketOpenNow],
   );
 
+  const scrollMatrixToStrike = useCallback((strike: number) => {
+    if (!Number.isFinite(strike)) return;
+    setHighlightStrike(strike);
+    setPairView("pair-a");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const box = matrixScrollRef.current;
+        const row = box?.querySelector(`tr[data-thermal-strike="${strike}"]`);
+        if (row instanceof HTMLElement) {
+          row.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      });
+    });
+  }, []);
+
   const scrollMatrixToLevel = useCallback(
     (key: string) => {
       const seg = regimeStripModel.segments.find((s) => s.key === key);
       const strike = seg?.strike;
       if (strike == null || !Number.isFinite(strike)) return;
-      setPairView("pair-a");
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const box = matrixScrollRef.current;
-          const row = box?.querySelector(`tr[data-thermal-strike="${strike}"]`);
-          if (row instanceof HTMLElement) {
-            row.scrollIntoView({ block: "center", behavior: "smooth" });
-          }
-        });
-      });
+      scrollMatrixToStrike(strike);
     },
-    [regimeStripModel.segments],
+    [regimeStripModel.segments, scrollMatrixToStrike],
   );
+
+  useEffect(() => {
+    const pending = pendingStrikeScrollRef.current;
+    if (pending == null || stale || !hasStrikes) return;
+    scrollMatrixToStrike(pending);
+    pendingStrikeScrollRef.current = null;
+  }, [stale, hasStrikes, scrollMatrixToStrike]);
+
+  const recallSavedDesk = useCallback((desk: ThermalSavedDesk) => {
+    setTicker(desk.ticker);
+    setLens(desk.lens as Lens);
+    setCompare(desk.compare);
+    if (desk.compareSet) setCompareSet(desk.compareSet);
+    setExpiryScope(desk.expiryScope);
+    setPairView(desk.pairView);
+    // Saved desks don't store strike — clear any deep-link scroll from the prior view.
+    setHighlightStrike(null);
+    pendingStrikeScrollRef.current = null;
+  }, []);
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
   // Tab A "Matrix" (default): the Strike × Expiry Matrix at full content width.
@@ -4215,6 +4133,9 @@ export function GexHeatmap({
             // own matrix instead of being silently ignored underneath the compare grid.
             setTicker(t);
             setCompare(false);
+            // Drop ?strike= — it belongs to the prior symbol, not the new search target.
+            setHighlightStrike(null);
+            pendingStrikeScrollRef.current = null;
           }}
           spot={headerSpot}
           changePct={headerChangePct}
@@ -4286,6 +4207,17 @@ export function GexHeatmap({
               nativeShell && "thermal-grid-toolbar--native",
             )}
           >
+            <ThermalSavedDesksMenu
+              snapshot={{
+                ticker,
+                lens: lens as ThermalLens,
+                compare,
+                compareSet: compare ? compareSet : null,
+                expiryScope,
+                pairView,
+              }}
+              onRecall={recallSavedDesk}
+            />
             <button
               type="button"
               aria-pressed={compare}
@@ -4410,6 +4342,14 @@ export function GexHeatmap({
         />
       )}
 
+      {showViewTabs ? (
+        <ThermalSessionTimeline
+          className="mb-3"
+          events={events}
+          onLevelClick={scrollMatrixToStrike}
+        />
+      ) : null}
+
       {/* Night Hawk active-play badge — renders only when a NH edition from the last 24h
           has a play for this ticker. Compact inline badge with a tooltip showing the play
           summary and grade. Never fabricated: driven by the server's nighthawk_context field. */}
@@ -4480,7 +4420,6 @@ export function GexHeatmap({
       {/* Compare ON + Matrix tab → sector preset grid (each column self-fetches). */}
       {compare && pairView === "pair-a" ? (
         <div className="mt-1">
-          {data && !stale && !empty ? <AlertsStrip events={events} /> : null}
           <ThermalTripleDesk
             ref={compareDeskRef}
             lens={lens}
@@ -4564,16 +4503,6 @@ export function GexHeatmap({
         />
       ) : (
         <>
-          {/* ── Positioning alerts (Rank 4c) — server-computed events riding on the polled
-              matrix payload (ZERO extra fetch). Dismissible, reduced-motion safe;
-              renders nothing when empty/absent. Sits above the regime header. ── */}
-          <AlertsStrip events={events} />
-
-          {/* ── Main area — 2 tabs:
-                • "Matrix" — full-width Strike × Expiry Matrix + flow rail below.
-                • "Profile + Curve + Shift" — 3 equal columns (lg:grid-cols-3), shared
-                  ExpiryScopeBar + overlay toggles above, no flow rail.
-              ──────────────── */}
           <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c" | "pair-d")} className="mt-3">
             <TabPanels>
               <TabPanel value="pair-a">{matrixPanel}</TabPanel>
