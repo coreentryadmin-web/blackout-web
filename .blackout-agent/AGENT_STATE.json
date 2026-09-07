@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T20:00:43.450Z",
+  "updated_at": "2026-09-07T21:50:35.398Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "18ba5c386c7221c48223e873ebec379a10431f4c",
+    "last_main_sha": "ce844b3370fef225817ba50013fadff7fb16efed",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
@@ -1021,90 +1021,27 @@
       "agent": "cursor",
       "run_id": "4f682668-61cb-4609-b979-5920b46266ef",
       "summary": "Cycle complete: #4563 merged, #4566 verify pending (11/11 local tests), handoff #4568 opened, closed stale #4564/#4565. validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Awaiting Claude on #4566."
+    },
+    {
+      "at": "2026-09-07T21:50:34.329Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T21:50:35.044Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T21:50:35.398Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
-  "open_prs": [
-    {
-      "number": 4568,
-      "title": "chore(state): autopilot handoff after #4563 merge + #4566 review queue",
-      "branch": "cursor/autopilot-handoff-post-4563-4566",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T19:59:09Z"
-    },
-    {
-      "number": 4567,
-      "title": "fix(spx): clamp WATCH age to zero for modest future timestamp skew",
-      "branch": "fix/watch-age-future-skew-clamp",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T19:59:02Z"
-    },
-    {
-      "number": 4566,
-      "title": "fix(perf): widen vector-walls-warm off-window force=1 cooldown",
-      "branch": "fix/vector-walls-warm-off-window-cooldown",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T20:00:11Z"
-    },
-    {
-      "number": 4480,
-      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
-      "branch": "dependabot/npm_and_yarn/next-16.3.4",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-07T10:24:57Z"
-    },
-    {
-      "number": 4479,
-      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
-      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-07T10:25:03Z"
-    },
-    {
-      "number": 4478,
-      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
-      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-07T10:11:10Z"
-    },
-    {
-      "number": 4477,
-      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
-      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-07T10:11:04Z"
-    },
-    {
-      "number": 4476,
-      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
-      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-07T19:18:12Z"
-    }
-  ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
