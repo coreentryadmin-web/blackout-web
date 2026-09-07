@@ -272,6 +272,9 @@ const GAMMA_FLIP_COLOR = "#22d3ee";
 const VANNA_FLIP_COLOR = "#38bdf8";
 const DARK_POOL_COLOR = "#ff8a3d"; // orange, not cyan — dark-pool cyan #00d4ff failed CVD separation vs gamma-flip cyan #22d3ee (worst-pair ΔE 6.9); orange lifts it to 36.7 (validated via dataviz palette checker)
 const REPLAY_STEP_MS = 350;
+/** Post embed fast→full upgrade: narrowed horizons may borrow the blended rail only inside this window. */
+const EMBED_BOOTSTRAP_BLEND_MS = 30 * 60 * 1000;
+const EMBED_BOOTSTRAP_BLEND_MIN_SAMPLES = 120;
 /** Live RTH refresh for reconstructed GEX heatmap — aligned with server cache TTL. */
 const GEX_HEATMAP_REFRESH_MS = VECTOR_GEX_HEATMAP_POLL_MS;
 /** Widen the price axis to reveal walls within this % of spot (env-tunable). Without
@@ -1639,6 +1642,8 @@ export function VectorChart({
   const seedRailEmpty = initialWallHistory.length === 0;
   const seedRailEmptyRef = useRef(seedRailEmpty);
   seedRailEmptyRef.current = seedRailEmpty;
+  /** Set on embed seed upgrade; gates narrowed→blended fallback to the bootstrap window only. */
+  const embedBootstrapBlendUntilMsRef = useRef(0);
   const dteHorizonRef = useRef<VectorDteHorizon>(openingDteHorizon);
   /** Session overview on load (full RTH + bead trail) until the member pans to the live edge. */
   const liveFollowEnabledRef = useRef(defaultChartViewport === "live");
@@ -2495,11 +2500,32 @@ export function VectorChart({
       minuteBarsRef.current,
       timeframeRef.current
     );
-    const railHistory = trimHistoryToSession(
-      composeHorizonTrail(recordedTrail, currentColumn) ??
-        (horizon !== "all" ? [] : wallHistoryRef.current),
-      railBarTimes[0]
-    );
+    const composed = composeHorizonTrail(recordedTrail, currentColumn);
+    const railSource =
+      horizon === "all"
+        ? (composed ?? wallHistoryRef.current)
+        : (() => {
+            const narrowed = composed ?? [];
+            const blended = wallHistoryRef.current;
+            // SPX Slayer opens 0DTE: embed fast-bootstrap can ship a thin narrowed trail while
+            // blended wallHistoryRef already has the full session — prefer the denser source so
+            // beads span RTH instead of clustering in one column on the right edge.
+            // Scoped to the post-upgrade bootstrap window only — a persistently sparse narrowed
+            // horizon must not masquerade as observed narrowed structure all session (#4470).
+            if (narrowed.length >= EMBED_BOOTSTRAP_BLEND_MIN_SAMPLES) {
+              embedBootstrapBlendUntilMsRef.current = 0;
+            }
+            const bootstrapBlendWindow = Date.now() < embedBootstrapBlendUntilMsRef.current;
+            if (
+              bootstrapBlendWindow &&
+              blended.length > narrowed.length &&
+              narrowed.length < EMBED_BOOTSTRAP_BLEND_MIN_SAMPLES
+            ) {
+              return blended;
+            }
+            return narrowed.length ? narrowed : blended;
+          })();
+    const railHistory = trimHistoryToSession(railSource, railBarTimes[0]);
     const markerHistory =
       sessionOverview || !liveSessionRef.current || replayModeRef.current
         ? railHistory
@@ -2613,17 +2639,38 @@ export function VectorChart({
   }, [ticker]);
 
   // SPX Slayer embed upgrades fast rail-bootstrap → full enriched seed without remounting
-  // (VectorChart key is ticker-only). Sync refs so beads span the session after phase-2 lands.
+  // (VectorChart key is ticker-only). Sync BOTH rails — 0DTE desk draws from horizonHistoryRef,
+  // not wallHistoryRef — and reframe session viewport so beads span the full chart width.
   useEffect(() => {
-    if (!initialWallHistory.length) return;
-    const prev = wallHistoryRef.current;
-    if (initialWallHistory.length <= prev.length) return;
-    const merged = mergeWallHistory(prev, initialWallHistory);
-    wallHistoryRef.current = merged;
-    setSessionHistory(merged);
-    if (hasVexInHistory(merged)) setVexAvailable(true);
+    let upgraded = false;
+    if (initialWallHistory.length > wallHistoryRef.current.length) {
+      const merged = mergeWallHistory(wallHistoryRef.current, initialWallHistory);
+      wallHistoryRef.current = merged;
+      setSessionHistory(merged);
+      if (hasVexInHistory(merged)) setVexAvailable(true);
+      upgraded = true;
+    }
+    if (initialHorizonWallHistory.length > horizonHistoryRef.current.length) {
+      const merged = mergeWallHistory(horizonHistoryRef.current, initialHorizonWallHistory);
+      horizonHistoryRef.current = merged;
+      upgraded = true;
+    }
+    if (!upgraded || replayModeRef.current) return;
+    embedBootstrapBlendUntilMsRef.current = Date.now() + EMBED_BOOTSTRAP_BLEND_MS;
+    const chart = chartRef.current;
+    if (
+      chart &&
+      intradayZoomPresetRef.current === "session" &&
+      !liveFollowEnabledRef.current
+    ) {
+      const display = displayBarsFromMinute(
+        lastSessionBars(minuteBarsRef.current),
+        timeframeRef.current
+      );
+      applySessionOverviewViewport(chart, display);
+    }
     refreshTrails(lensRef.current);
-  }, [initialWallHistory, refreshTrails]);
+  }, [initialWallHistory, initialHorizonWallHistory, refreshTrails]);
 
   const refreshOverlays = useCallback(
     (
