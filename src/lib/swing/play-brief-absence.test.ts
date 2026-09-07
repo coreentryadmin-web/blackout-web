@@ -383,6 +383,46 @@ test("collectBriefUnavailableSources: same-day scan does not surface stale disco
   assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "swing discovery scan"));
 });
 
+test("collectBriefUnavailableSources: prior-session Night Hawk surfaces in envelope (Largo C3)", () => {
+  const ctx = {
+    sessionDate: "2026-09-06",
+    ecosystem: {
+      nighthawk_recent: {
+        edition_for: "2026-09-05",
+        direction: "short",
+        conviction: "A",
+        outcome: "pending",
+        score: 80,
+      },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) =>
+        s.source === "Night Hawk swings" &&
+        s.reason === "prior session (2026-09-05) — today's edition not yet published",
+    ),
+  );
+});
+
+test("collectBriefUnavailableSources: same-day Night Hawk does not surface stale edition", () => {
+  const ctx = {
+    sessionDate: "2026-09-06",
+    ecosystem: {
+      nighthawk_recent: {
+        edition_for: "2026-09-06",
+        direction: "long",
+        conviction: "B",
+        outcome: "pending",
+        score: 70,
+      },
+    },
+  } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "Night Hawk swings"));
+});
+
 test("collectBriefUnavailableSources: uncalibrated thesis health surfaces in envelope (Largo C3/C6)", () => {
   const h = {
     health: 46,

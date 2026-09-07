@@ -244,6 +244,15 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       reason: `prior session (${ctx.scanSessionDay}) — today's scan not yet run`,
     });
   }
+  // Prior-session Night Hawk: nighthawkLiveForSession() suppresses stale direction in prose (#4427),
+  // but consumers reading unavailableSources alone still saw nothing wrong (C3 gap).
+  const nh = ctx.ecosystem?.nighthawk_recent;
+  if (nh && ctx.sessionDate && nh.edition_for !== ctx.sessionDate) {
+    out.push({
+      source: "Night Hawk swings",
+      reason: `prior session (${nh.edition_for}) — today's edition not yet published`,
+    });
+  }
   // Committed positions compute thesis health without setup/entry/signal inputs — the aggregate
   // % collapses to a generic default. Surface that honestly (Largo C3/C6) rather than showing 46%.
   if (
