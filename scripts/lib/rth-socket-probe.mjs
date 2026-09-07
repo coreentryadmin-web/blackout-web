@@ -56,6 +56,16 @@ export async function probeOptionsSocketWithRetries({
   for (let attempt = 0; attempt < maxAttempts && !socketProbeOk; attempt++) {
     try {
       const { status, body } = await fetchSocketHealth();
+      // socket-health returns { ok: true, skipped: true } on NYSE holidays (no websockets key).
+      // Treat as pass — RTH-open must not fail open-check on Labor Day etc. (#4520 class).
+      if (body?.skipped === true && body?.ok === true) {
+        socketProbeOk = true;
+        successDetail =
+          typeof body.reason === "string" && body.reason
+            ? `skipped — ${body.reason}`
+            : "skipped — non-trading day";
+        break;
+      }
       const opt = body?.websockets?.options;
       if (opt) {
         const verdict = socketProbeAttemptVerdict(opt, afterOpen930);

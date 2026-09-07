@@ -69,3 +69,21 @@ test("probeOptionsSocketWithRetries: exhausted retries fail during RTH", async (
   assert.equal(result.ok, false);
   assert.match(result.failure ?? "", /still warming/);
 });
+
+test("probeOptionsSocketWithRetries: NYSE holiday skip payload passes without websockets", async () => {
+  let calls = 0;
+  const result = await probeOptionsSocketWithRetries({
+    afterOpen930: true,
+    fetchSocketHealth: async () => {
+      calls++;
+      return {
+        status: 200,
+        body: { ok: true, skipped: true, reason: "non-trading day (2026-09-07)" },
+      };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, true);
+  assert.equal(result.failure, null);
+  assert.match(result.successDetail ?? "", /non-trading day \(2026-09-07\)/);
+});
