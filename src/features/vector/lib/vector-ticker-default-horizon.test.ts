@@ -22,15 +22,15 @@ test("VECTOR_DEFAULT_DTE_HORIZON is 0DTE for standalone desk fallback", () => {
   assert.equal(VECTOR_DEFAULT_DTE_HORIZON, "0dte");
 });
 
-test("defaultVectorDeskOpenProps: centered live · 3m · 0DTE · 20-row nodes for every symbol", () => {
+test("defaultVectorDeskOpenProps: session overview · 3m · 0DTE · 20-row nodes for every symbol", () => {
   const open = defaultVectorDeskOpenProps("SPX");
   assert.equal(open.defaultDteHorizon, "0dte");
-  assert.equal(open.defaultChartViewport, "live");
+  assert.equal(open.defaultChartViewport, "session");
   assert.equal(open.defaultTimeframe, 3);
   assert.equal(open.defaultNodeDensity, 20);
   const nvda = defaultVectorDeskOpenProps("NVDA");
   assert.equal(nvda.defaultDteHorizon, "0dte");
-  assert.equal(nvda.defaultChartViewport, "live");
+  assert.equal(nvda.defaultChartViewport, "session");
   assert.equal(nvda.defaultNodeDensity, 20);
 });
 

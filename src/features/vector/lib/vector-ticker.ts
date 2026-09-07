@@ -88,13 +88,13 @@ export type VectorDeskOpenDefaults = {
   defaultNodeDensity: VectorNodeDensity;
 };
 
-/** Desk open: centered live window · 3m · 0DTE · 20-row beads for every symbol. */
+/** Desk open: full-session bead rails · 3m · 0DTE · 20-row beads for every symbol. */
 export function defaultVectorDeskOpenProps(
   raw: string | null | undefined
 ): VectorDeskOpenDefaults {
   return {
     defaultDteHorizon: defaultVectorDteHorizon(raw),
-    defaultChartViewport: "live",
+    defaultChartViewport: "session",
     defaultTimeframe: VECTOR_DEFAULT_TIMEFRAME,
     defaultNodeDensity: defaultVectorNodeDensity(raw),
   };

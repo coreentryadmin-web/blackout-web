@@ -3,6 +3,12 @@ import { relAlphaT, relStrengthT, beadRadiusForPctShare } from "./vector-wall-vi
 /**
  * Pure colour / size / identity helpers for the Vector bead rail.
  *
+ * ── DO NOT CHANGE BEAD PROMINENCE WITHOUT MEMBER SIGN-OFF (2026-09-07) ────────────────────────
+ * The Sep-3 SPX Slayer reference is dense full-width yellow/magenta session ribbons. Tweaking
+ * BEAD_ROW_FILL / row ladder / halo here is the LAST resort — viewport + x-domain alignment
+ * (`sessionBarTimesFromMinuteBars`, session-overview framing) fixes the common "sparse dots on
+ * the right" regression. See AGENTS.md § "Vector bead rails — DO NOT CHANGE".
+ *
  * Split out of `vector-wall-rail-primitive.ts` for the reason the repo already uses `-core` files:
  * the primitive implements lightweight-charts' `ISeriesPrimitive` and only runs with a live chart
  * and a canvas context, so none of it can be exercised under `tsx --test`. These four functions

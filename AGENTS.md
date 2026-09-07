@@ -122,6 +122,49 @@ that repo's `AGENTS.md` for staging-only policy (never merge staging → prod wi
 - Local Postgres 16: `sudo pg_ctlcluster 16 main start`; `.env.local`:
   `DATABASE_URL=postgres://postgres:postgres@localhost:5432/blackout`, `DATABASE_SSL=0`.
 
+### Vector bead rails — DO NOT CHANGE (standing — member directive 2026-09-07)
+
+**The Vector chart bead rails are a locked product surface.** The member reference is the **Sep 3
+~11am ET SPX Slayer / BlackOut mobile screenshots** — dense yellow (call) and magenta (put)
+**horizontal ribbons spanning the full session width** on the Vector chart. That look is the
+contract. **Do not "improve", refactor, thin, trim, re-center, or experiment with bead rails**
+without an explicit member request that names the change.
+
+**What the reference looks like (non-negotiable):**
+- Beads form **thick, continuous horizontal bands** across **~100% of the visible session** (not
+  sparse dots clustered on the right ~10%).
+- **Session-overview viewport** on desk open (`defaultChartViewport: "session"`).
+- Bead x-projection uses **session-scoped bar times** (`sessionBarTimesFromMinuteBars`) — seed
+  bars carry multiple ET days; wall history is single-session only.
+- `WallRailPrimitive` draws the **full-session rail**; live 45m trim applies to circle markers only,
+  not the ribbon rail.
+
+**Do NOT:**
+- Change `BEAD_ROW_FILL`, row ladder counts, halo gaps, or rail prominence constants to "fix" a
+  symptom without proving x-domain alignment first.
+- Switch desk open to centered-live (~48 bars) — that was the regression that broke Sep-3 ribbons.
+- Merge branches named `bead-rail-prominence-restore` or other render-only reverts without member
+  sign-off (wrong fix path — #2341 render-only revert is explicitly rejected).
+- Spot-filter bead-rail recording (`computeBeadRailGexWalls` must stay separate from overlay
+  `getVectorGexWalls` — PR #4032 split; do not reunify).
+
+**If beads look wrong, check IN THIS ORDER before touching render constants:**
+1. Viewport framing (`applySessionOverviewViewport` vs `applyCenteredLiveViewport` on first paint)
+2. `barTimes` passed to `feedWallRail` (must be session-scoped, not full multi-day seed)
+3. `wallHistoryRef` sync on SPX embed fast→full seed upgrade (`SpxVectorEmbed` two-phase load)
+4. Wall-history data density (API / enrich / `computeBeadRailGexWalls` recording path)
+5. Render prominence (`vector-wall-rail-core.ts`) — **last**, only after 1–4 are verified
+
+**Key files (touch only to restore Sep-3 contract):**
+- `src/features/vector/components/VectorChart.tsx` — `refreshTrails`, first-paint viewport
+- `src/features/vector/lib/vector-chart-viewport.ts` — `sessionBarTimesFromMinuteBars`
+- `src/features/vector/lib/vector-ticker.ts` — `defaultChartViewport: "session"`
+- `src/features/vector/lib/vector-wall-rail-core.ts` — bead fill/halo/row ladder
+- `src/features/vector/lib/vector-snapshot.ts` — `getVectorBeadRailGexWalls` recording path
+
+**Active restore PR:** #4465 (x-domain + viewport alignment). Prior #4460 addressed enrich/render
+only — insufficient alone.
+
 ### Merge policy (standing — confirmed 2026-07-06)
 
 **Auto-merge every verified PR into `main`** once local checks and required CI (`verify`) are green.

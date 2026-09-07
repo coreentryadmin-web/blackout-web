@@ -10,7 +10,7 @@ test("SPX embed seeds 0DTE horizon history and uses shared desk-open defaults", 
   assert.match(embed, /defaultVectorDeskOpenProps\("SPX"\)/);
   assert.match(embed, /import \{ defaultVectorDeskOpenProps \}/);
   const ticker = read("src/features/vector/lib/vector-ticker.ts");
-  assert.match(ticker, /defaultChartViewport: "live"/);
+  assert.match(ticker, /defaultChartViewport: "session"/);
   const shell = read("src/features/vector/components/VectorPageShell.tsx");
   assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
   assert.match(shell, /initialHorizonWallHistory=\{initialHorizonWallHistory\}/);
@@ -70,11 +70,9 @@ test("VectorChart: default load frames centered live when defaultChartViewport i
   assert.match(src, /applyCenteredLiveViewport\(chart, initialDisplay\.length\)/);
 });
 
-test("VectorChart: default load centers the latest candle even when defaultChartViewport is session", () => {
-  // Live member report (2026-08-26): session-overview's right-anchored first paint left candles
-  // looking dropped to one side rather than centered like the "live" viewport default (SPX Slayer
-  // reference). The FIRST-PAINT framing now reuses applyCenteredLiveViewport for both branches;
-  // session-overview's own OWN behavior (re-seed framing, autoscale gating) is unchanged elsewhere.
+test("VectorChart: default load frames session overview when defaultChartViewport is session", () => {
+  // Sep-3 bead ribbons span the full session width — session time-range framing on first paint,
+  // not centered-live (~48 bars) which leaves multi-day seed compressing today's beads to the right.
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(
     src,
@@ -83,7 +81,7 @@ test("VectorChart: default load centers the latest candle even when defaultChart
   assert.match(src, /sessionFramedOnLoad/);
   assert.match(
     src,
-    /if \(sessionFramedOnLoad\) \{[\s\S]{0,1200}applyCenteredLiveViewport\(chart, initialDisplay\.length\)/
+    /if \(sessionFramedOnLoad\) \{[\s\S]{0,1200}applySessionOverviewViewport/
   );
 });
 
@@ -228,6 +226,18 @@ test("vector-chart-viewport: session time range uses lastSessionBars", () => {
   assert.match(lib, /lastSessionBars/);
   assert.match(lib, /setVisibleRange/);
   assert.match(lib, /setVisibleLogicalRange/);
+  assert.match(lib, /sessionBarTimesFromMinuteBars/);
+});
+
+test("vector-chart-viewport: sessionBarTimesFromMinuteBars scopes bead projection to newest ET day", async () => {
+  const { sessionBarTimesFromMinuteBars } = await import(
+    "@/features/vector/lib/vector-chart-viewport"
+  );
+  const prior = Array.from({ length: 60 }, (_, i) => ({ time: 1_700_000_000 + i * 60 }));
+  const today = Array.from({ length: 30 }, (_, i) => ({ time: 1_800_000_000 + i * 60 }));
+  const times = sessionBarTimesFromMinuteBars([...prior, ...today], 1);
+  assert.equal(times.length, 30);
+  assert.equal(times[0], today[0]!.time);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -459,11 +469,18 @@ test("VectorChart: session overview tightens vertical autoscale for readable bea
 
 test("VectorChart: session viewport keeps the full-day bead rail during live RTH", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
-  assert.match(
-    src,
-    /liveSessionRef\.current && !replayModeRef\.current && !sessionOverview/
-  );
+  assert.match(src, /const markerHistory =/);
+  assert.match(src, /sessionOverview \|\| !liveSessionRef\.current \|\| replayModeRef\.current/);
   assert.match(src, /const sessionOverview = wantsSessionOverviewViewport/);
+  assert.match(src, /sessionBarTimesFromMinuteBars/);
+  assert.match(src, /const railHistory = trimHistoryToSession/);
+  assert.match(src, /callRail\.rendered/);
+});
+
+test("VectorChart: embed seed upgrade syncs wallHistoryRef when initialWallHistory grows", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /initialWallHistory\.length <= prev\.length/);
+  assert.match(src, /mergeWallHistory\(prev, initialWallHistory\)/);
 });
 
 test("VectorChart: refreshTrails is a no-op during replay so applyFrame owns the bead rail", () => {
@@ -498,7 +515,7 @@ test("VectorChart: narrowed DTE bead trail never falls back to blended all rail"
   assert.match(src, /composeHorizonTrail\(recordedTrail, currentColumn\)/);
   assert.match(
     src,
-    /composeHorizonTrail\(recordedTrail, currentColumn\) \?\?\s*\n\s*\(horizon !== "all"\s*\n\s*\? \[\]/
+    /composeHorizonTrail\(recordedTrail, currentColumn\) \?\?\s*\n\s*\(horizon !== "all" \? \[\] : wallHistoryRef\.current\)/
   );
 });
 
