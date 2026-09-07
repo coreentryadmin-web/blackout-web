@@ -21,6 +21,7 @@ import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 import { isDeployCacheWarmAllowed } from "./lib/cache-warm-deploy-gate.mjs";
+import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -188,7 +189,13 @@ async function fetchText(path, opts = {}) {
 }
 
 async function runSocketHealthProbe(cron, { hardFail = false } = {}) {
-  const afterOpen930 = etMinutesNow() >= 9 * 60 + 30;
+  const now = new Date();
+  const etDate = todayEtYmd(now);
+  const tradingDay = isTradingDayEt(etDate);
+  const afterOpen930 = etMinutesNow(now) >= 9 * 60 + 30 && tradingDay;
+  if (!tradingDay && etMinutesNow(now) >= 9 * 60 + 30) {
+    warn(`${etDate} is not a US equity trading session — options-socket RTH probe relaxed (holiday/weekend)`);
+  }
   const result = await probeOptionsSocketWithRetries({
     afterOpen930,
     fetchSocketHealth: () =>
