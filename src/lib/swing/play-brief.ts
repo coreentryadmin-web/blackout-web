@@ -14,6 +14,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import {
   collectBriefUnavailableSources,
   gexMatrixAgeMs,
@@ -144,7 +145,19 @@ function closedSection(play: TerminalPlay): RichSection {
 function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): BieFreshness {
   const ageMs = gexMatrixAgeMs(gex, readMs);
   if (ageMs == null) return "unknown";
+  // Align with gexMatrixStale — future-skewed asof must not read as "unknown"/fresh (Largo C2).
+  if (gexMatrixStale(gex, readMs)) return "stale";
   return freshnessFromAgeMs(ageMs);
+}
+
+function fundamentalsObservedMs(asOf: string): number | null {
+  const trimmed = asOf.trim();
+  // Date-only anchors at session close ET (Largo C1) — age uses that clock, not UTC midnight.
+  const dateOnly = /^(\d{4}-\d{2}-\d{2})$/.exec(trimmed);
+  if (dateOnly) return parseEtStamp(`${dateOnly[1]} 16:00 ET`);
+  // Full ISO / clocked stamps: preserve sub-minute precision for skew guards (ET round-trip truncates).
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function fundamentalsFreshness(
@@ -152,12 +165,11 @@ function fundamentalsFreshness(
   readMs: number,
 ): BieFreshness {
   if (!asOf) return "unknown";
-  const etStamp = etStampFromDateOrIso(asOf);
-  const observedMs =
-    (etStamp ? parseEtStamp(etStamp) : null) ??
-    (Number.isFinite(Date.parse(asOf)) ? Date.parse(asOf) : null);
+  const observedMs = fundamentalsObservedMs(asOf);
   if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
-  return freshnessFromAgeMs(readMs - observedMs);
+  const rawAgeMs = readMs - observedMs;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
+  return freshnessFromAgeMs(rawAgeMs);
 }
 
 function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshness {
