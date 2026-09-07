@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T05:33:18.773Z",
+  "updated_at": "2026-09-07T05:52:51.522Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T05:26:04.960Z",
-      "lease_until": "2026-09-07T06:56:04.960Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-07T05:50:44.071Z",
+      "lease_until": "2026-09-07T07:20:44.071Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -17,9 +17,9 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T05:29:26.572Z",
-      "lease_until": "2026-09-07T06:59:26.572Z",
-      "phase": "DEPLOY_VERIFY",
+      "claimed_at": "2026-09-07T05:52:03.798Z",
+      "lease_until": "2026-09-07T07:22:03.798Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -54,11 +54,11 @@
     },
     "pr-4464": {
       "pr": 4464,
-      "head_sha": "97b527c9d95e",
+      "head_sha": "97b527c9d95ecd2ff0243cdcd8a5b8422bbf525b",
       "reviewer": "cursor",
-      "verdict": "WAIT",
-      "reviewed_at": "2026-09-07T05:29:31.566Z",
-      "safe_to_merge": false
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T05:51:44.508Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -68,14 +68,14 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T05:29:26.573Z",
+      "last_seen": "2026-09-07T05:52:03.799Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "48d0bbbc81661f91db1efd377a48ddb099939369",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T05:12:52Z",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-07T05:49:52Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
     "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
@@ -919,48 +919,59 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-07T05:28:14.911Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 1
+      "at": "2026-09-07T05:51:44.509Z",
+      "type": "pr_review",
+      "pr": 4464,
+      "head_sha": "97b527c9d95ecd2ff0243cdcd8a5b8422bbf525b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T05:51:44.508Z",
+      "safe_to_merge": true
     },
     {
-      "at": "2026-09-07T05:29:26.573Z",
+      "at": "2026-09-07T05:52:00.564Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:52:00.564Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "932a16cb-623a-4f0c-b7bf-a5d8546d3738",
+      "summary": "Workflow wake: peer-reviewed Claude #4464 (occ-symbol tests) — APPROVED 14/14 pass. #4465 (cursor bead-rail) local tests 154/154 pass; verify CI still pending — awaits Claude peer review. Deploy GREEN (main 48d0bbbc8), ops:collect 0. All 3 open PRs still draft."
+    },
+    {
+      "at": "2026-09-07T05:52:03.799Z",
       "type": "task_claimed",
       "task_id": "BO-P1-0101",
       "owner": "cursor"
     },
     {
-      "at": "2026-09-07T05:29:31.567Z",
-      "type": "pr_review",
-      "pr": 4464,
-      "head_sha": "97b527c9d95e",
-      "reviewer": "cursor",
-      "verdict": "WAIT",
-      "reviewed_at": "2026-09-07T05:29:31.566Z",
-      "safe_to_merge": false
-    },
-    {
-      "at": "2026-09-07T05:31:10.867Z",
+      "at": "2026-09-07T05:52:51.522Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 2
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-07T05:31:10.868Z",
+      "at": "2026-09-07T05:52:51.522Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "5cf67a95-dbf1-4c4f-9b55-0d1d1e8b3549",
-      "summary": "Merge wake @ 48d0bbbc: synced main, platform GREEN (validate:deploy, validate:platform-integrity, validate:api-auth, ops:collect 0). #4457 merged. One open PR #4464 (Claude draft, occ-symbol tests) — peer-reviewed ⏳ WAIT (CI pending + draft); posted review comment, 14/14 tests pass locally. ECR deploy run 34084033101 still rolling d8a0c426 (ECS web step in_progress ~48m); 48d0bbbc state-only commit deploy pending behind it."
-    },
-    {
-      "at": "2026-09-07T05:33:18.773Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
+      "run_id": "169ffe60-f461-438e-bb9d-3d9ce3109d12",
+      "summary": "Deploy ops GREEN: main@48d0bbbc8, validate:deploy/platform-integrity/api-auth all pass, ops:collect 0. Peer review #4464 APPROVED. #4465 verify CI pending (subscribed). All 3 open PRs draft — blocked on ready + peer review. Off-hours — RTH skipped."
     }
   ],
   "open_prs": [
+    {
+      "number": 4466,
+      "title": "chore(state): cursor handoff after 48d0bbbc merge wake",
+      "branch": "chore/cursor-handoff-48d0bbbc",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:52:23Z"
+    },
     {
       "number": 4465,
       "title": "fix(vector): align bead rail x-domain with session viewport (Sep-3 restore v2)",
@@ -969,7 +980,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T05:30:51Z"
+      "updated_at": "2026-09-07T05:44:22Z"
     },
     {
       "number": 4464,
@@ -978,8 +989,8 @@
       "author": "coreentryadmin-web",
       "agent": "human",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T05:33:12Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:51:39Z"
     }
   ],
   "pr_activity": {
