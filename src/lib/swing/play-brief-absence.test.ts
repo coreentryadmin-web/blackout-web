@@ -149,6 +149,30 @@ test("collectBriefUnavailableSources: prior-session 0DTE surfaces in unavailable
   );
 });
 
+test("collectBriefUnavailableSources: prior-session Night Hawk surfaces in unavailableSources (Largo C3)", () => {
+  const ctx = {
+    sessionDate: "2026-09-06",
+    ecosystem: {
+      nighthawk_recent: {
+        edition_for: "2026-09-05",
+        direction: "short",
+        conviction: "high",
+        outcome: "open",
+        score: 72,
+      },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) =>
+        s.source === "Night Hawk swings" &&
+        s.reason === "prior session (2026-09-05) — today's edition not yet run",
+    ),
+  );
+});
+
 test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal legs", () => {
   const ctx = {
     ecosystem: {
