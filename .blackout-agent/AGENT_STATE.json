@@ -1,29 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T10:37:09.916Z",
+  "updated_at": "2026-09-07T16:20:29.513Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T16:07:31.073Z",
+      "lease_until": "2026-09-07T17:39:27.889Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "40343793-159e-4755-9397-104b00846102",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T16:09:26.767Z",
+      "lease_until": "2026-09-07T17:39:27.889Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "40343793-159e-4755-9397-104b00846102",
       "title": null
     }
   },
@@ -60,16 +61,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T16:09:26.768Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "cfda1017cf14c32702cdd244333b828a638376e4",
+    "last_main_sha": "b1e09450c9de1e8c2dbcdbaa185be4c48d3bb31d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T16:09:35Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34141854334",
+    "last_deploy_sha": "b1e09450c9de1e8c2dbcdbaa185be4c48d3bb31d"
   },
   "events": [
     {
@@ -963,9 +964,232 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T16:07:15.892Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T16:07:21.322Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T16:07:22.280Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T16:07:23.368Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T16:07:31.074Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T16:09:08.589Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T16:09:08.590Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "56b8b703-77a3-497c-8006-e5bb47dcb96e",
+      "summary": "Workflow wake: peer-reviewed #4491/#4492 (Cursor holiday-gate crons). CI GREEN on both. Posted triage — awaiting Claude approval (cannot self-approve). Local tests pass. validate:deploy GREEN, ops:collect 0. Deploy main"
+    },
+    {
+      "at": "2026-09-07T16:09:10.106Z",
+      "type": "pr_webhook",
+      "pr": 4480,
+      "event": "sweep",
+      "head": "94d774bafa30519a40cfceb3681400c2fdceec33",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T16:09:12.167Z",
+      "type": "pr_webhook",
+      "pr": 4479,
+      "event": "sweep",
+      "head": "8ccc6a25364968b9430fd630e258dfee4d966200",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T16:09:14.307Z",
+      "type": "pr_webhook",
+      "pr": 4478,
+      "event": "sweep",
+      "head": "e96f5beb68f08322a6f3765b761a33e5e7fe9297",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T16:09:16.430Z",
+      "type": "pr_webhook",
+      "pr": 4477,
+      "event": "sweep",
+      "head": "6fbf29b0c2567aab777d562e99824a2939435df0",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T16:09:18.894Z",
+      "type": "pr_webhook",
+      "pr": 4476,
+      "event": "sweep",
+      "head": "a72078de3e4d1ab6f3a9261a9b2b18963015059a",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T16:09:23.137Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T16:09:26.768Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T16:09:27.888Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T16:09:28.880Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T16:09:31.340Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T16:20:24.458Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-07T16:20:24.459Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e85673d5-5228-4f4f-b5d4-2321cbc85abe",
+      "summary": "Workflow wake complete. Peer-reviewed holiday-gate Cursor PRs: #4491/#4492 MERGED during session; #4493 (nighthawk-outcomes) triaged PENDING_PEER awaiting Claude. Platform GREEN: validate:deploy, ops:collect 0, rth-lifecycle (Labor Day skip). main"
+    },
+    {
+      "at": "2026-09-07T16:20:29.513Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4496,
+      "title": "fix(cron): gate largo-morning-brief and thermal EOD recap on isTradingDayEt",
+      "branch": "fix/largo-thermal-holiday-gates",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T16:20:27Z"
+    },
+    {
+      "number": 4494,
+      "title": "fix(cron): gate zerodte-grade on isTradingDayEt for NYSE holidays",
+      "branch": "fix/zerodte-grade-holiday-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T16:17:18Z"
+    },
+    {
+      "number": 4493,
+      "title": "fix(cron): gate nighthawk-outcomes on isTradingDayEt for NYSE holidays",
+      "branch": "fix/nighthawk-outcomes-holiday-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T16:12:10Z"
+    },
+    {
+      "number": 4480,
+      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:24:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:04Z"
+    },
+    {
+      "number": 4476,
+      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
+      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:10:51Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -997,6 +1221,46 @@
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4480": {
+      "last_event": "sweep",
+      "last_head": "94d774bafa30519a40cfceb3681400c2fdceec33",
+      "last_feedback_at": "2026-09-07T16:09:10.105Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4479": {
+      "last_event": "sweep",
+      "last_head": "8ccc6a25364968b9430fd630e258dfee4d966200",
+      "last_feedback_at": "2026-09-07T16:09:12.167Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4478": {
+      "last_event": "sweep",
+      "last_head": "e96f5beb68f08322a6f3765b761a33e5e7fe9297",
+      "last_feedback_at": "2026-09-07T16:09:14.307Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4477": {
+      "last_event": "sweep",
+      "last_head": "6fbf29b0c2567aab777d562e99824a2939435df0",
+      "last_feedback_at": "2026-09-07T16:09:16.430Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4476": {
+      "last_event": "sweep",
+      "last_head": "a72078de3e4d1ab6f3a9261a9b2b18963015059a",
+      "last_feedback_at": "2026-09-07T16:09:18.894Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
       "comment_action": "created"
     }
   }
