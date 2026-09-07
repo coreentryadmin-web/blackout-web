@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T10:28:53.654Z",
+  "updated_at": "2026-09-07T10:34:06.463Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -964,6 +964,19 @@
       "agent": "cursor",
       "run_id": "aab9a8c5-27d3-419f-bd47-898ace7fda4e",
       "summary": "Merge wake @ cfda1017: peer-review sweep — 0 agent PRs (5 Dependabot major bumps, red verify, hold). Platform GREEN: validate:deploy, validate:platform-integrity (14/14), validate:api-auth (225 routes), ops:collect 0. RTH skipped (06:25 ET pre-open). ECR deploy pending for #4474 (49204ddd). Recent merges #4473 largo readAgeSeconds + #4474 SPX flow freshness future-skew guards."
+    },
+    {
+      "at": "2026-09-07T10:34:06.463Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T10:34:06.463Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "52bff432-1c65-457c-ad3c-8ae4f7e2949e",
+      "summary": "Merge wake @ cfda1017: peer-review sweep — 0 agent PRs (5 Dependabot major bumps, red verify, hold). Platform GREEN: validate:deploy, validate:platform-integrity (14/14), validate:api-auth (225 routes), ops:collect 0. RTH skipped (06:25 ET pre-open). ECR deploy pending for #4474 (49204ddd)."
     }
   ],
   "open_prs": [
