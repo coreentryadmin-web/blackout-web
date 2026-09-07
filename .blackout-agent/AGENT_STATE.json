@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T01:56:33.122Z",
+  "updated_at": "2026-09-07T01:58:44.535Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -62,11 +62,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e",
+    "last_main_sha": "681f299c5bb648c81a91b6a508e90fd2ae95ddf2",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T01:50:29Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073262128",
-    "last_deploy_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e"
+    "last_deploy_at": "2026-09-07T01:58:06Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34074704620",
+    "last_deploy_sha": "681f299c5bb648c81a91b6a508e90fd2ae95ddf2"
   },
   "events": [
     {
@@ -926,28 +926,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:58:33.844Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:58:44.534Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:58:44.535Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c38747c9-9a3c-492a-ab86-c174a2b396ee",
+      "summary": "Cycle complete: #4444+#4446 merged to main (681f299c5). Local verify GREEN on both. #4447 draft handoff opened. ops:collect 0, validate:deploy GREEN, pr-sweep empty, no Claude PRs pending review."
     }
   ],
   "open_prs": [
     {
-      "number": 4446,
-      "title": "fix(largo): restore dynamic-format.ts for stress-shape harness",
-      "branch": "fix/largo-stress-shape-dynamic-format",
+      "number": 4447,
+      "title": "chore(autopilot): cursor handoff — #4444/#4446 merged, platform GREEN",
+      "branch": "cursor/autopilot-handoff-20260907-0158",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T01:54:17Z"
-    },
-    {
-      "number": 4444,
-      "title": "fix(largo): add session_date to swing brief envelope + persist diff baseline",
-      "branch": "fix/largo-brief-session-date-diff-persist",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-07T01:56:28Z"
+      "updated_at": "2026-09-07T01:58:34Z"
     }
   ],
   "pr_activity": {
