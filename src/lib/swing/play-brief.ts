@@ -432,7 +432,8 @@ export function composeSwingPlayBrief(
   verdictLines.push(`**${headline}** · ${play.direction} · ${action?.label ?? play.status}`);
   if (grade) verdictLines.push(`Grade **${grade}**${quality != null ? ` · score ${quality}` : ""}`);
   if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
-  if (play.regime) verdictLines.push(play.regime);
+  // Dossier regime (discovery-pillar read, e.g. "Breakout · regime 0.82") belongs in "Why this setup"
+  // — not Verdict. It is not Vector/SPX market regime and duplicates archetype when both are present.
   if (play.archetype) verdictLines.push(`Archetype: ${play.archetype}`);
   if (play.recNote && bucket === "watch") verdictLines.push(play.recNote);
 

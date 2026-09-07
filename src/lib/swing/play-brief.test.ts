@@ -130,6 +130,26 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   assert.deepEqual(brief.flowSnapshot, { callPremium: 1_200_000, putPremium: 400_000 });
 });
 
+test("composeSwingPlayBrief: dossier regime stays in Why this setup, not unlabeled Verdict", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ regime: "Sector rotation · regime 0.82", archetype: "BREAKOUT" }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  const why = brief.envelope.sections.find((s) => s.title === "Why this setup");
+  assert.ok(verdict && why);
+  assert.ok(!/Sector rotation · regime 0\.82/.test(verdict!.body), "dossier regime must not appear raw in Verdict");
+  assert.match(why!.body, /\*\*Discovery read:\*\* Sector rotation · regime 0\.82/);
+});
+
 test("composeSwingPlayBrief: omits envelope.confidence (Largo C6 — no uncalibrated score)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
