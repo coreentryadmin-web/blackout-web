@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T05:19:51.322Z",
+  "updated_at": "2026-09-07T05:33:18.773Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-07T05:26:04.960Z",
+      "lease_until": "2026-09-07T06:56:04.960Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -17,9 +17,9 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-07T05:29:26.572Z",
+      "lease_until": "2026-09-07T06:59:26.572Z",
+      "phase": "DEPLOY_VERIFY",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -51,6 +51,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4464": {
+      "pr": 4464,
+      "head_sha": "97b527c9d95e",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-07T05:29:31.566Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -60,16 +68,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T05:29:26.573Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
+    "last_main_sha": "48d0bbbc81661f91db1efd377a48ddb099939369",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T05:12:52Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
+    "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
   "events": [
     {
@@ -909,9 +917,71 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T05:28:14.911Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T05:29:26.573Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T05:29:31.567Z",
+      "type": "pr_review",
+      "pr": 4464,
+      "head_sha": "97b527c9d95e",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-07T05:29:31.566Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-07T05:31:10.867Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T05:31:10.868Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5cf67a95-dbf1-4c4f-9b55-0d1d1e8b3549",
+      "summary": "Merge wake @ 48d0bbbc: synced main, platform GREEN (validate:deploy, validate:platform-integrity, validate:api-auth, ops:collect 0). #4457 merged. One open PR #4464 (Claude draft, occ-symbol tests) — peer-reviewed ⏳ WAIT (CI pending + draft); posted review comment, 14/14 tests pass locally. ECR deploy run 34084033101 still rolling d8a0c426 (ECS web step in_progress ~48m); 48d0bbbc state-only commit deploy pending behind it."
+    },
+    {
+      "at": "2026-09-07T05:33:18.773Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4465,
+      "title": "fix(vector): align bead rail x-domain with session viewport (Sep-3 restore v2)",
+      "branch": "cursor/bead-rail-sep3-restore-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T05:30:51Z"
+    },
+    {
+      "number": 4464,
+      "title": "test(occ-symbol): add missing direct unit coverage for buildOcc",
+      "branch": "test/occ-symbol-coverage",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T05:33:12Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
