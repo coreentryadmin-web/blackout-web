@@ -295,7 +295,7 @@ export function evaluatePlayGates(
     deskStaleSec =
       polledAgeMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS
         ? playGexStaleMaxSec() + 1
-        : polledAgeMs / 1000;
+        : Math.max(0, polledAgeMs / 1000);
   }
   if (desk.gex_age_ms != null) {
     // Same future-skew guard as gexStaleFromAge (WS_TIMESTAMP_FUTURE_TOLERANCE_MS): a negative
@@ -304,7 +304,7 @@ export function evaluatePlayGates(
     const gexSec =
       desk.gex_age_ms < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS
         ? playGexStaleMaxSec() + 1
-        : desk.gex_age_ms / 1000;
+        : Math.max(0, desk.gex_age_ms / 1000);
     deskStaleSec = deskStaleSec != null ? Math.max(deskStaleSec, gexSec) : gexSec;
   }
   if (deskStaleSec != null && deskStaleSec > playGexStaleMaxSec()) {
