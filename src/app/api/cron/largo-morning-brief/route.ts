@@ -54,16 +54,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const sessionDay = todayEt(new Date(started));
-  // Holiday guard: EventBridge is weekday-only and inEtWindow only knows Sat/Sun. On NYSE holidays
-  // the 9:25 ET window still resolves and the route would push a morning brief against a closed tape.
-  // force=1 bypasses for ops recovery (same pattern as nighthawk-morning-confirm / swing-discovery).
-  if (!force && !isTradingDayEt(sessionDay)) {
-    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
-    await logCronRun(CRON_KEY, started, payload);
-    return NextResponse.json(payload);
-  }
-
   try {
     const brief = await buildLargoMorningBrief();
     const push = formatMorningBriefPush(brief);
