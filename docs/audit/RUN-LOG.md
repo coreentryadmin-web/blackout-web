@@ -11,6 +11,28 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-07 (15:33 UTC / Mon 2026-09-07 11:34 ET) — [SEO] Market-hours wake: still Labor Day, canonical + FAQPage/BreadcrumbList validated
+
+**Severity.** — (no defect found)
+
+**Checked the clock myself again** — `TZ=America/New_York date` → Mon 11:34 ET, still inside the
+nominal 09:30–13:00 window, but `2026-09-07` remains the confirmed NYSE Labor Day holiday
+(`isTradingDayEt` → `false`, re-confirmed against `US_MARKET_HOLIDAYS` at the 13:33 UTC cycle
+earlier today). Market closed all day — did normal SEO work again rather than the RTH-only
+`/tools/gamma-snapshot` live-tape checks.
+
+Noticed a related holiday-gating cron fix (#4488, gex-alerts/vector-alerts) merged to `main` since
+the last cycle — the coordinator picked up the pattern flagged on #4482 earlier today.
+
+New ground this cycle: pulled canonical `<link>` tags across 6 page types (`/`, `/pricing`,
+`/learn`, a real `/learn` article, `/faq`, `/tools/gamma-snapshot`) — all self-referential,
+absolute, no trailing-slash inconsistency. Validated `/faq`'s full JSON-LD graph: `FAQPage` (24
+questions, 0 missing answer text), `Organization`, `WebSite`, `WebPage`, and `BreadcrumbList` (2
+entries, sequential `position`, absolute `item` URLs) — all well-formed.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-07 (14:11 UTC) — [SEO] Daily growth cycle: no new opportunity, quiet day; flagged unowned coordinator PR
 
 No new striking-distance query; same 2 as every prior cycle, both already optimized. 28d totals
