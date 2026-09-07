@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  effectiveStaleMinutes,
   evaluateJob,
   expectedNighthawkEdition,
   nighthawkEditionCoversExpected,
@@ -176,4 +177,37 @@ test("evaluateJob: clock-skewed future started_at does not read as fresh", () =>
   );
   assert.equal(health.status, "stale");
   assert.ok(health.age_min != null && health.age_min > 0);
+});
+
+/** Labor Day 2026-09-07 — weekday NYSE holiday. Warmers gate via shouldRunCacheWarmer. */
+const LABOR_DAY_MIDDAY = new Date("2026-09-07T16:00:00Z"); // 12:00 ET Monday holiday
+
+test("effectiveStaleMinutes: NYSE holiday uses relaxed multiplier for market_hours_only jobs", () => {
+  const job = jobDef({ market_hours_only: true, stale_after_min: 15 });
+  const { multiplier, effective } = effectiveStaleMinutes(job, LABOR_DAY_MIDDAY);
+  assert.equal(multiplier, 6);
+  assert.equal(effective, 90);
+});
+
+test("NYSE holiday silence on gated warmers does not false-flag market_hours_stale", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "platform-warm",
+      market_hours_only: true,
+      weekdays_only: true,
+      stale_after_min: 15,
+    }),
+    {
+      id: 1,
+      job_key: "platform-warm",
+      status: "skipped",
+      started_at: new Date(LABOR_DAY_MIDDAY.getTime() - 20 * 60_000).toISOString(),
+      duration_ms: 5,
+      message: "off-hours gate",
+      meta_json: null,
+    },
+    [],
+    LABOR_DAY_MIDDAY
+  );
+  assert.equal(health.market_hours_stale, false);
 });

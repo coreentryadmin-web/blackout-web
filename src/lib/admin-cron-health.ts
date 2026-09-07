@@ -11,7 +11,6 @@ import { loadPlayEngineHeartbeat } from "@/lib/play-engine-heartbeat";
 import {
   formatEtDate,
   isTradingDayEt,
-  isWeekdayEt,
   nextTradingDayEt,
 } from "@/features/nighthawk/lib/session";
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
@@ -160,11 +159,19 @@ export type CronHealthPayload = {
   }>;
 };
 
-function effectiveStaleMinutes(job: CronJobDefinition): { effective: number; multiplier: number } {
-  if (job.weekdays_only && !isWeekdayEt()) {
+/** Stale ceiling multiplier when a job is off its schedule window.
+ * Uses isTradingDayEt (not isWeekdayEt) so NYSE holidays get the same relaxed
+ * thresholds as weekends — weekday-only crons gate/skipped on holidays (#4520). */
+export function effectiveStaleMinutes(
+  job: CronJobDefinition,
+  now: Date = new Date()
+): { effective: number; multiplier: number } {
+  const etDate = formatEtDate(now);
+  const tradingDay = isTradingDayEt(etDate);
+  if (job.weekdays_only && !tradingDay) {
     return { effective: job.stale_after_min * 2.5, multiplier: 2.5 };
   }
-  if (job.market_hours_only && !isWeekdayEt()) {
+  if (job.market_hours_only && !tradingDay) {
     return { effective: job.stale_after_min * 6, multiplier: 6 };
   }
   return { effective: job.stale_after_min, multiplier: 1 };
@@ -190,7 +197,7 @@ export function evaluateJob(
   }
 
   if (!last) {
-    const { effective: effMin, multiplier: effMult } = effectiveStaleMinutes(job);
+    const { effective: effMin, multiplier: effMult } = effectiveStaleMinutes(job, now);
 
     // A JOB THAT HAS NEVER RUN IS THE DEADEST A JOB CAN BE — IT MUST NOT REPORT AS "unknown".
     //
@@ -240,7 +247,7 @@ export function evaluateJob(
     };
   }
 
-  const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
+  const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job, now);
   // Cross-replica clock skew can stamp started_at slightly in the future — an unclamped
   // `Date.now() - started_at` reads negative and falsely reports the job as fresh.
   const trustedAgeMin = ageMinFromIso(last.started_at, now.getTime());
