@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T18:54:26.574Z",
+  "updated_at": "2026-09-07T19:02:30.793Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -222,6 +222,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-07T17:51:56.633Z",
       "safe_to_merge": true
+    },
+    "pr-4554": {
+      "pr": 4554,
+      "head_sha": "c464a6856",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T19:02:24.113Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -236,31 +244,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "23fc31dadeac9c494b28602aad2955cce288e5c7",
+    "last_main_sha": "c464a6856de5151157e3bb55d5bccf5a8501fda3",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T18:32:00Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34151236856",
-    "last_deploy_sha": "7246d9ad2bc971ccdec0cb49f29844f9e43f3b64"
+    "last_deploy_at": "2026-09-07T18:58:10Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34153741489",
+    "last_deploy_sha": "c464a6856de5151157e3bb55d5bccf5a8501fda3"
   },
   "events": [
-    {
-      "at": "2026-09-05T23:22:37.921Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T00:24:22.358Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T00:24:22.943Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-06T00:24:23.259Z",
       "type": "context_sync",
@@ -1576,28 +1566,41 @@
       "agent": "cursor",
       "run_id": "30ab7c66-c0eb-46b0-83d3-1a8ad58ddfd8",
       "summary": "Main@23fc31dad CI 14/14 GREEN — holiday open-check fix chain merged (#4523 socket skip, #4549 rth early exit, #4551 gha-rth-audit). validate:rth-open GREEN. Labor Day complete."
+    },
+    {
+      "at": "2026-09-07T19:02:24.114Z",
+      "type": "pr_review",
+      "pr": 4554,
+      "head_sha": "c464a6856",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T19:02:24.113Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T19:02:30.792Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T19:02:30.793Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ff6b4d39-1fb2-4b95-8f60-48d7fdeb6994",
+      "summary": "Main@c464a6856 CI 7/7 GREEN — #4554 SPX desk_context countdowns gated on isTradingDayEt (Labor Day false countdown fix). validate:deploy + rth-open GREEN."
     }
   ],
   "open_prs": [
     {
-      "number": 4555,
-      "title": "fix(vector): bead-only ribbon — fill 0DTE rail gaps from blended session",
-      "branch": "cursor/bead-rail-ribbon-gap-fill",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T18:51:06Z"
-    },
-    {
-      "number": 4554,
-      "title": "fix(spx): gate desk_context countdowns on isTradingDayEt, not isEtWeekday",
-      "branch": "fix/spx-play-desk-context-holiday-gate",
+      "number": 4556,
+      "title": "fix(largo): per-contract option premiums no longer round to whole dollars in swing brief",
+      "branch": "fix/largo-swing-premium-format",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T18:53:58Z"
+      "updated_at": "2026-09-07T19:00:24Z"
     },
     {
       "number": 4480,
