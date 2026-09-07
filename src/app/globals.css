@@ -23240,7 +23240,12 @@ html.product-shell .nav-mega {
   margin-top:10px;padding-top:10px;border-top:1px solid var(--dk-border-subtle)}
 .nh-deck-trade-hero__metric{display:flex;flex-direction:column;gap:3px;min-width:0}
 .nh-deck-trade-hero__metric .k{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--dk-text-secondary)}
-.nh-deck-trade-hero__metric .v{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--dk-text-primary);line-height:1.1}
+/* overflow:hidden+ellipsis (not just min-width:0 on the flex parent) — a dollar-formatted
+   "Current" value (e.g. "+$4.80") at the is-primary 22-28px font sizes below can be wider than
+   this grid column; without a clip/truncate rule on the text node itself, it paints straight past
+   the column edge and visually overlaps the next metric's value (live repro, desktop /nighthawk
+   swings, NRG 110C 11DTE: "+$4.80" overlapping "Peak 98%"). */
+.nh-deck-trade-hero__metric .v{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--dk-text-primary);line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .nh-deck-trade-hero__metric.is-primary .v{font-size:22px}
 .nh-deck-trade-hero__rank-den{font-size:11px;font-weight:700;color:var(--dk-text-secondary)}
 .nh-deck-trade-hero__age .nh-deck-age-decay{padding:0;border:none;background:transparent;font-size:14px}
