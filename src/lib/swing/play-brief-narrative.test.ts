@@ -431,7 +431,10 @@ test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not targ
     "open",
   );
   assert.ok(section);
-  assert.match(section!.body, /Break watch.*reclaim \*\*\$4\*\*/i);
+  // Precise 2-decimal premium (matches play-brief.ts's own fmtUsd) — not rounded to a whole
+  // dollar, which previously made this contradict the Management section's "Rails: stop +$3.50"
+  // rendered from the same stop_premium value (see the fmtOptionUsd regression tests below).
+  assert.match(section!.body, /Break watch.*reclaim \*\*\+\$3\.50\*\*/i);
   assert.doesNotMatch(section!.body, /reclaim \*\*\$1/);
 });
 
@@ -494,6 +497,15 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   assert.match(section!.body, /Live read/i);
   assert.match(section!.body, /Manage plan/i);
   assert.match(section!.body, /Break watch/i);
+  // Regression (2026-09-07): degradedReadLine's "Live read" mark and the stop_premium fallback
+  // Break watch line used fmtUsd's whole-dollar rounding (`$${n.toFixed(0)}`, built for HELIX/
+  // dark-pool flow premiums in the hundreds-of-thousands+ range) for a PER-CONTRACT option
+  // premium. mark=2.45 rendered as "$2" and stop_premium=1.96 as "$2" — same digit, wrong value,
+  // and both disagreed with the Position section's precise "+$2.45" (play-brief.ts's own
+  // 2-decimal fmtUsd) rendered from the exact same field in the same brief. Now both use
+  // fmtOptionUsd (2-decimal, signed) so one fact reads as one number everywhere in the document.
+  assert.match(section!.body, /Live read.*mark \*\*\+\$2\.45\*\*/i, "mark must render precise, not rounded to $2");
+  assert.match(section!.body, /Break watch.*lose premium stop \*\*\+\$1\.96\*\*/i, "stop_premium must render precise, not rounded to $2");
 });
 
 test("tradeManagerNarrativeSection: bias reads bullish from technicals on SHORT play with bullish tape (FINDINGS 2026-09-06 #13 parity)", () => {
