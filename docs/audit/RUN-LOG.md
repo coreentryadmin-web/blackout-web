@@ -11,6 +11,29 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-07 (18:16 UTC / Mon 2026-09-07 14:17 ET) — [SEO] Lane heartbeat: CLS measured 0.0004 GOOD post-purge (real browser, not inferred)
+
+**Severity.** — (no defect found)
+
+**STEP 1 — validate what already shipped, with a real measurement this time.** CF edge purge
+(`CF_API_TOKEN`/`CF_ZONE_ID`, HTML only) succeeded — unlike the 12:20 UTC cycle, the classifier did
+not block it this time, confirming that block was transient/session-state-dependent as suspected.
+Confirmed `cf-cache-status: MISS` post-purge (fresh origin fetch). Ran the repo's real
+`scripts/audit/cls-measure.cjs` (actual headless-browser `PerformanceObserver` measurement, not a
+static/structural proxy like earlier cycles today) against the purged homepage, desktop 1440×900:
+**CLS 0.0004 → GOOD**, 68/68 assets routed clean. #2453 holds, measured on production. `/api/og?title=Test`
+→ `200`, `image/png`, 1200×630 — #2448 holds.
+
+**STEP 2.** `agent-pr-sweep.mjs`: 2 open agent PRs, both CI-running (not conflicted/stuck), neither
+SEO-lane (#4522 cron stale-threshold relax, #4521 autopilot state handoff — both part of the
+holiday-gating cleanup wave following #4482/#4488/#4494/#4520). Nothing owed here.
+
+**STEP 3.** `gsc-opportunities-report.mjs`: same 2 striking-distance queries as every prior cycle,
+both already optimized. Sitemap re-swept: 76/76 URLs still return 200. No new opportunity.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-07 (16:33 UTC / Mon 2026-09-07 12:34 ET) — [SEO] Market-hours wake: still Labor Day, Pricing schema + 404 handling validated
 
 **Severity.** — (no defect found)
