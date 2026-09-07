@@ -1,12 +1,12 @@
-# largo-morning-brief runs on NYSE holidays despite morning ET window gate — FIXED
+# largo-morning-brief pushed on Labor Day — FIXED
 
 > **kind:** FINDING
 
 | Field | Value |
 |-------|-------|
-| **ID** | BO-P3-largo-morning-brief-holiday-gate |
-| **Priority** | P3 |
-| **Area** | Cron infra / member push |
+| **ID** | BO-P2-largo-morning-brief-holiday-gate |
+| **Priority** | P2 |
+| **Area** | Cron infra / Largo morning brief push |
 | **Status** | FIXED |
 
 ## Symptom
@@ -23,13 +23,13 @@ Same class as `nighthawk-morning-confirm` pre-fix: registry `weekdays_only: true
 
 ## Fix
 
-Added `isTradingDayEt(sessionDay)` gate after the morning window guard; `force=1` bypasses for
-ops recovery.
+Added `isTradingDayEt(sessionDay)` gate after auth and before the ET window guard;
+`force=1` bypasses for ops recovery (same pattern as `nighthawk-morning-confirm`).
 
 ## Blast radius
 
-`largo-morning-brief` route only. Trading-day morning behavior unchanged.
+`largo-morning-brief` route only. In-window behavior on trading days unchanged.
 
 ## Evidence
 
-Static-source test in `holiday-gate.test.ts`. `npx tsx --test` on the file — pass.
+RED→GREEN: `npx tsx --test src/app/api/cron/largo-morning-brief/route.test.ts src/app/api/cron/largo-morning-brief/route.holiday-gate.test.ts`
