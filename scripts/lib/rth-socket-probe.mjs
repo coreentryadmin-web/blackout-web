@@ -56,6 +56,13 @@ export async function probeOptionsSocketWithRetries({
   for (let attempt = 0; attempt < maxAttempts && !socketProbeOk; attempt++) {
     try {
       const { status, body } = await fetchSocketHealth();
+      // socket-health skips on NYSE holidays (#4517) — no websockets payload; still healthy.
+      if (body?.ok === true && body?.skipped === true) {
+        socketProbeOk = true;
+        successDetail =
+          typeof body.reason === "string" ? body.reason : "skipped (non-trading day)";
+        break;
+      }
       const opt = body?.websockets?.options;
       if (opt) {
         const verdict = socketProbeAttemptVerdict(opt, afterOpen930);
