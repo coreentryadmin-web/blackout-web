@@ -335,9 +335,13 @@ export function SpxPulseRail({ desk, live, focus, onFocusLevel }: Props) {
   // after a Tier-1 fires (else it would contradict a fresh pinned regime-flip/wall-break).
   const showQuiet = useMemo(() => {
     void heartbeat; // re-evaluate on the heartbeat tick as a fresh Tier-1 ages out
-    // Event-timing (not tape freshness): clamp skew so a future `at` cannot suppress quiet for hours.
-    const tier1AgeMs = lastTier1 ? Math.max(0, Date.now() - lastTier1.at) : Number.POSITIVE_INFINITY;
-    return !lastTier1 || tier1AgeMs > QUIET_AFTER_MS;
+    if (!lastTier1) return true;
+    const rawAgeMs = Date.now() - lastTier1.at;
+    // Future-skewed event timestamps must not suppress the quiet footer — clamping a negative
+    // raw age to 0 reads as "just fired" and hides quiet indefinitely as wall-clock catches up.
+    if (rawAgeMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return true;
+    const tier1AgeMs = Math.max(0, rawAgeMs);
+    return tier1AgeMs > QUIET_AFTER_MS;
   }, [lastTier1, heartbeat]);
 
   // ── FOCUS MODE — slim vertical strip (effects above keep accumulating) ──
