@@ -36,3 +36,17 @@ test("swing-active-refresh acquires singleton claim before work (Q37)", () => {
   assert.match(routeSrc, /sharedCacheSetNx\(/);
   assert.match(routeSrc, /another refresh pass is still running/);
 });
+
+test("swing-active-refresh gates on isEtCashRth before dispatching Polygon/UW refresh", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isEtCashRth \} from "@\/lib\/et-market-hours"/,
+    "must import the holiday-aware RTH gate"
+  );
+  const authAt = routeSrc.indexOf("isCronAuthorized(req)");
+  const gateAt = routeSrc.indexOf("isEtCashRth()");
+  const dispatchAt = routeSrc.indexOf("const dispatchRefresh");
+  assert.ok(authAt >= 0 && gateAt >= 0 && dispatchAt >= 0);
+  assert.ok(gateAt > authAt, "RTH gate must run after auth");
+  assert.ok(gateAt < dispatchAt, "RTH gate must run before after() dispatch");
+});
