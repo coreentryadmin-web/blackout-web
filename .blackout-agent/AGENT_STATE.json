@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T15:35:38.979Z",
+  "updated_at": "2026-09-07T15:42:12.982Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -140,7 +140,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0a2087dde1d5aa4e6610fadffd85780c50a38764",
+    "last_main_sha": "649ed3ce6b715c994e3fcb95a11c86219ad48700",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T15:35:28Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34138742562",
@@ -1402,19 +1402,34 @@
       "agent": "cursor",
       "run_id": "466c9441-7695-4234-95c0-cdae94a3b838",
       "summary": "Main@0a2087dde holiday cron wave (#4482-#4488) + swing regime placeholder fix (#4487). validate:deploy GREEN; 30/30 targeted tests pass. Post-merge reviews APPROVED. Labor Day — crons now skip via isEtCashRth. Dependabot RED hold."
+    },
+    {
+      "at": "2026-09-07T15:41:44.060Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T15:41:45.078Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T15:42:12.980Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T15:42:12.982Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "08d34406-b998-4f70-9063-29cba2e44e7b",
+      "summary": "Main@649ed3ce6 — #4489 NYSE holiday gate in isDeployCacheWarmAllowed (stops Labor Day desk-warm force storms). validate:deploy GREEN; 7/7 gate tests pass. Docs SEO wake 4c64c8116. Dependabot RED hold."
     }
   ],
   "open_prs": [
-    {
-      "number": 4489,
-      "title": "fix(perf): model NYSE holidays in isDeployCacheWarmAllowed",
-      "branch": "fix/deploy-cache-warm-holiday-gate",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T15:30:56Z"
-    },
     {
       "number": 4480,
       "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
