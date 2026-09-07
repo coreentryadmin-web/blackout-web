@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T15:38:47.537Z
-**Run:** 0bc19b26-68b5-49cd-89f8-97a7d6b87577
+**At:** 2026-09-07T15:47:44.713Z
+**Run:** 8d7fb719-a5bb-4f80-bcac-18c693d37f94
 
 ## Summary
 
-Peer-reviewed and merged #4489 (deploy cache-warm NYSE holiday gate). CI green, holiday list verified identical to session.ts (39/39), tests 9/9 pass. Main now at 649ed3ce6.
+Merge wake @ 4c64c8116: peer-reviewed+merged #4489 (deploy cache-warm NYSE holiday gate). Platform GREEN — validate:deploy, rth-lifecycle, ops:collect 0. No agent PRs open. ECR deploy in_progress for 0a2087dd; #4489 is tooling-only (649ed3ce6). Dependabot PRs red CI — skip per policy.
 
 ## Deploy
 
@@ -14,6 +14,7 @@ Peer-reviewed and merged #4489 (deploy cache-warm NYSE holiday gate). CI green, 
 
 ## Open PRs
 
+- #4490 [agent] fix(cron): gate swing-discovery on isTradingDayEt for NYSE holidays
 - #4480 [human] chore(deps): bump next from 15.5.23 to 16.3.4
 - #4479 [human] chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4
 - #4478 [human] chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2
