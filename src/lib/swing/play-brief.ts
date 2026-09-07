@@ -150,20 +150,22 @@ function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): B
   return freshnessFromAgeMs(ageMs);
 }
 
+function fundamentalsObservedMs(asOf: string): number | null {
+  const trimmed = asOf.trim();
+  // Date-only anchors at session close ET (Largo C1) — age uses that clock, not UTC midnight.
+  const dateOnly = /^(\d{4}-\d{2}-\d{2})$/.exec(trimmed);
+  if (dateOnly) return parseEtStamp(`${dateOnly[1]} 16:00 ET`);
+  // Full ISO / clocked stamps: preserve sub-minute precision for skew guards (ET round-trip truncates).
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function fundamentalsFreshness(
   asOf: string | null | undefined,
   readMs: number,
 ): BieFreshness {
   if (!asOf) return "unknown";
-  // Future-skew on raw ISO first — etStamp truncates to minute and can mask clock skew.
-  const rawIsoMs = Date.parse(asOf);
-  if (Number.isFinite(rawIsoMs) && readMs - rawIsoMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) {
-    return "stale";
-  }
-  const etStamp = etStampFromDateOrIso(asOf);
-  const observedMs =
-    (etStamp ? parseEtStamp(etStamp) : null) ??
-    (Number.isFinite(rawIsoMs) ? rawIsoMs : null);
+  const observedMs = fundamentalsObservedMs(asOf);
   if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
   const rawAgeMs = readMs - observedMs;
   if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
