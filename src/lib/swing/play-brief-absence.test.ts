@@ -528,6 +528,81 @@ test("collectBriefUnavailableSources: same-day scan does not surface stale disco
   assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "swing discovery scan"));
 });
 
+test("collectBriefUnavailableSources: CLOSED play suppresses live-desk-freshness noise (bug report 2026-09-07)", () => {
+  // Reproduces the user-reported live bug: a CLOSED play's Ask Largo panel showed nothing but a
+  // wall of "Unavailable" chips (HELIX flow stale, Vector heatmap/dark pool absent, Vector
+  // snapshot stale, prior-session discovery scan, prior-session 0DTE board) because every one of
+  // these checks compares TODAY's live desk state against a play that closed days ago — which is
+  // always and permanently true once any time has passed. None of that is relevant to a closed
+  // historical play; it should be suppressed the same way closedSection()/thesisHealthSection()
+  // are already bucket-gated elsewhere in play-brief.ts.
+  const ctx = {
+    sessionDate: "2026-09-07",
+    scanSessionDay: "2026-09-06",
+    play: { status: "CLOSED", markIsSync: true },
+    openBook: null,
+    ecosystem: {
+      flow_feed_fresh: false,
+      gex_positioning: null,
+      vector_full_state: null,
+      zerodte_today: {
+        session_date: "2026-09-06",
+        direction: "short",
+        score: 72,
+        conviction: "high",
+        status: "flagged",
+        first_flagged_at: "2026-09-06T14:00:00Z",
+      },
+      nighthawk_recent: {
+        edition_for: "2026-09-06",
+        direction: "short",
+        conviction: "high",
+        outcome: "open",
+        score: 72,
+      },
+    },
+    vector: {
+      spot: 100,
+      dataAgeMs: 180_000,
+      unavailable_sections: ["heatmap", "dark_pool_levels"],
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "HELIX flow"));
+  assert.ok(!sources.some((s) => s.source === "GEX positioning"));
+  assert.ok(!sources.some((s) => s.source === "Vector desk state"));
+  assert.ok(!sources.some((s) => s.source === "Vector heatmap"));
+  assert.ok(!sources.some((s) => s.source === "Vector dark pool"));
+  assert.ok(!sources.some((s) => s.source === "Vector snapshot"));
+  assert.ok(!sources.some((s) => s.source === "open book"));
+  assert.ok(!sources.some((s) => s.source === "swing discovery scan"));
+  assert.ok(!sources.some((s) => s.source === "0DTE Command"));
+  assert.ok(!sources.some((s) => s.source === "Night Hawk swings"));
+  assert.ok(!sources.some((s) => s.source === "option mark"));
+});
+
+test("collectBriefUnavailableSources: CLOSED play still surfaces genuine fetch failures (not just staleness)", () => {
+  const ctx = {
+    play: { status: "CLOSED" },
+    ecosystem: null,
+    ecosystemFetchFailed: true,
+    vector: null,
+    vectorFetchFailed: true,
+    meridian: {
+      as_of: "2026-09-07 06:30 ET",
+      items: [],
+      total_matched: 0,
+      unavailable: true,
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "ecosystem context" && s.reason === "fetch failed"));
+  assert.ok(sources.some((s) => s.source === "Vector state" && s.reason === "fetch failed"));
+  assert.ok(sources.some((s) => s.source === "Meridian catalysts" && s.reason === "timeline read failed"));
+});
+
 test("collectBriefUnavailableSources: uncalibrated thesis health surfaces in envelope (Largo C3/C6)", () => {
   const h = {
     health: 46,

@@ -229,7 +229,19 @@ function collectGexStalenessAbsence(
 export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieUnavailableSource[] {
   const out: BieUnavailableSource[] = [...(ctx.ecosystem?.arsenal?.unavailable_sources ?? [])];
 
-  if (ctx.ecosystem?.flow_feed_fresh === false) {
+  // CLOSED plays are a historical record, not a live position — every check below this point
+  // (HELIX flow freshness, GEX/Vector staleness+desk-state, discovery/0DTE/Night-Hawk "today's
+  // scan/board/edition not yet run") measures whether TODAY's live desk state is current, which
+  // does not apply to a play that closed on some earlier session. Left ungated, these are
+  // individually honest but collectively permanent once ANY time has passed since close — every
+  // one of them fires forever, producing a wall of true-but-unhelpful negative chips with no
+  // positive content (reported live: a screenshot of a CLOSED AAPL play showing six such chips
+  // and nothing else). Genuine fetch failures (ecosystemFetchFailed/vectorFetchFailed/meridian
+  // unavailable) are NOT skipped below — those indicate the read itself broke, which is still
+  // true after close.
+  const isClosed = String(ctx.play?.status ?? "").toUpperCase() === "CLOSED";
+
+  if (!isClosed && ctx.ecosystem?.flow_feed_fresh === false) {
     out.push({ source: "HELIX flow", reason: "pipeline stale" });
   }
   // FINDINGS 2026-09-06 (#22): dataHonestyCoaching() already narrates "mark not synced to live
@@ -245,31 +257,36 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   }
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared
   // matrix had no positioning for this ticker.
-  if (!ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
+  if (!isClosed && !ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
     out.push({ source: "GEX positioning", reason: "cold matrix / no positioning read" });
   }
-  const gex = ctx.ecosystem?.gex_positioning;
-  const gexStale = collectGexStalenessAbsence(gex, Date.now());
-  if (gexStale) out.push(gexStale);
+  if (!isClosed) {
+    const gex = ctx.ecosystem?.gex_positioning;
+    const gexStale = collectGexStalenessAbsence(gex, Date.now());
+    if (gexStale) out.push(gexStale);
+  }
   // Missing Vector desk state is distinct from vectorFetchFailed — ecosystem read succeeded but
   // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.
-  if (!ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
+  if (!isClosed && !ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
     out.push({ source: "Vector desk state", reason: "snapshot unavailable" });
   }
-  const vec = vectorOf(ctx);
-  if (vec && hasVectorDeskState(ctx)) {
-    out.push(...collectVectorSectionAbsences(vec));
-    const stale = collectVectorStalenessAbsence(vec, ctx.sessionDate);
-    if (stale) out.push(stale);
-    // reportVectorAbsences treats non-null flowMarkers as present even when available=false.
-    if (vec.flowMarkers?.available === false) {
-      out.push({
-        source: "Vector flow prints",
-        reason: vec.flowMarkers.reason ?? "unavailable",
-      });
+  if (!isClosed) {
+    const vec = vectorOf(ctx);
+    if (vec && hasVectorDeskState(ctx)) {
+      out.push(...collectVectorSectionAbsences(vec));
+      const stale = collectVectorStalenessAbsence(vec, ctx.sessionDate);
+      if (stale) out.push(stale);
+      // reportVectorAbsences treats non-null flowMarkers as present even when available=false.
+      if (vec.flowMarkers?.available === false) {
+        out.push({
+          source: "Vector flow prints",
+          reason: vec.flowMarkers.reason ?? "unavailable",
+        });
+      }
     }
   }
-  if (ctx.openBook === null) {
+  // Book-context concentration only informs a live/pending decision — irrelevant once a play is closed.
+  if (!isClosed && ctx.openBook === null) {
     out.push({ source: "open book", reason: "ledger read failed" });
   }
   if (ctx.meridian?.unavailable) {
@@ -297,7 +314,9 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   }
   // Prior-session discovery scan: WATCH rows can still carry yesterday's lane snapshot while the
   // brief stamps today's sessionDate — without this, scanAsOf prose looks current (C3 gap).
+  // Not applicable once the play is CLOSED — there is no "today's scan" a historical record awaits.
   if (
+    !isClosed &&
     ctx.scanSessionDay &&
     ctx.sessionDate &&
     ctx.scanSessionDay !== ctx.sessionDate
@@ -308,18 +327,21 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     });
   }
   // Prior-session 0DTE: zerodteLiveForSession() already suppresses stale direction in prose (#4424),
-  // but consumers reading unavailableSources alone still saw nothing wrong (C3 gap).
+  // but consumers reading unavailableSources alone still saw nothing wrong (C3 gap). Same
+  // not-applicable-once-CLOSED reasoning as the discovery-scan check above.
   const z = ctx.ecosystem?.zerodte_today;
-  if (z && ctx.sessionDate && z.session_date !== ctx.sessionDate) {
+  if (!isClosed && z && ctx.sessionDate && z.session_date !== ctx.sessionDate) {
     out.push({
       source: "0DTE Command",
       reason: `prior session (${z.session_date}) — today's board not yet run`,
     });
   }
   // Prior-session Night Hawk: nighthawkLiveForSession() already suppresses stale direction in prose
-  // (#4427), but consumers reading unavailableSources alone still saw nothing wrong (C3 gap).
+  // (#4427), but consumers reading unavailableSources alone still saw nothing wrong (C3 gap). Same
+  // not-applicable-once-CLOSED reasoning as the discovery-scan/0DTE checks above — this is the
+  // exact chip the user's live bug report screenshot showed on a CLOSED AAPL play.
   const nh = ctx.ecosystem?.nighthawk_recent;
-  if (nh && ctx.sessionDate && nh.edition_for !== ctx.sessionDate) {
+  if (!isClosed && nh && ctx.sessionDate && nh.edition_for !== ctx.sessionDate) {
     out.push({
       source: "Night Hawk swings",
       reason: `prior session (${nh.edition_for}) — today's edition not yet run`,
