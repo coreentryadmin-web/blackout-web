@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isEtCashRth } from "@/lib/et-market-hours";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { requireDatabaseInProduction, tryAdvisoryLock, releaseAdvisoryLock } from "@/lib/db";
 import { recordHelixSignalFirings, gradeHelixSignalOutcomes } from "@/lib/helix-signal-outcomes-job";
 import { logCronRun } from "@/lib/cron-run";
@@ -26,8 +26,13 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   // Registered `market_hours_only: true` — grading firings against minute bars only matters during
-  // cash session; skip on weekday holidays to avoid pointless DB churn on a closed tape.
-  if (!isEtCashRth()) {
+  // cash session, but `gradeHelixSignalOutcomes`'s 1h checkpoint for a firing near the close needs
+  // to run PAST 16:00 ET to catch it promptly (deployed schedule `*/15 13-21 * * 1-5` UTC is 9:00-
+  // 17:00 ET under EDT specifically to cover this). Using isEtCashRth's hard 16:00 cutoff here would
+  // remove that margin and delay last-hour checkpoints ~17h to the next session's first fire (PR
+  // #4484 review). isEtExtendedWarmHours (4:00-20:00 ET) still closes the weekday-holiday gap this
+  // PR targets while preserving the post-close grading window.
+  if (!isEtExtendedWarmHours()) {
     const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
     await logCronRun("helix-signal-outcomes", started, payload);
     return NextResponse.json(payload);
