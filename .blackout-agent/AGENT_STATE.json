@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T18:08:02.616Z",
+  "updated_at": "2026-09-07T20:08:20.271Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T18:06:33.647Z",
-      "lease_until": "2026-09-07T19:36:33.647Z",
+      "claimed_at": "2026-09-07T19:52:56.507Z",
+      "lease_until": "2026-09-07T21:28:51.112Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "9e293a41-59e7-42ed-8999-d40d8069bce2"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -65,11 +65,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "20e6df5371b7d66123766154e271da06496f2a12",
+    "last_main_sha": "18ba5c386c7221c48223e873ebec379a10431f4c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T18:05:42Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34150244358",
-    "last_deploy_sha": "20e6df5371b7d66123766154e271da06496f2a12"
+    "last_deploy_at": "2026-09-07T19:57:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
+    "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
     {
@@ -989,18 +989,61 @@
       "agent": "cursor",
       "run_id": "a5792231-bc47-45d5-a207-311f3d5fdf5d",
       "summary": "PR #4520 merged (platform-warm holiday gate). validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Dependabot majors held (red CI). Updated handoff state post-rebase."
+    },
+    {
+      "at": "2026-09-07T20:08:20.269Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
+    },
+    {
+      "at": "2026-09-07T20:08:20.271Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4d45ac37-cdd9-41e1-90b0-a40737c073a9",
+      "summary": "Post-#4563 merge: validate:deploy GREEN, RTH lifecycle GREEN (market holiday), ops:collect 0. #4566 vector-walls-warm cooldown awaiting Claude review. Dependabot majors held."
     }
   ],
   "open_prs": [
     {
-      "number": 4521,
-      "title": "chore(state): autopilot handoff after holiday-gate merge wave",
-      "branch": "cursor/autopilot-state-handoff-v2-2026-09-07",
+      "number": 4569,
+      "title": "chore(state): autopilot handoff after #4561-4563 merge wave",
+      "branch": "cursor/autopilot-handoff-post-4563",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T17:59:24Z"
+      "updated_at": "2026-09-07T20:00:48Z"
+    },
+    {
+      "number": 4568,
+      "title": "chore(state): autopilot handoff after #4563 merge + #4566 review queue",
+      "branch": "cursor/autopilot-handoff-post-4563-4566",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T20:00:53Z"
+    },
+    {
+      "number": 4567,
+      "title": "fix(spx): clamp WATCH age to zero for modest future timestamp skew",
+      "branch": "fix/watch-age-future-skew-clamp",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T20:07:58Z"
+    },
+    {
+      "number": 4566,
+      "title": "fix(perf): widen vector-walls-warm off-window force=1 cooldown",
+      "branch": "fix/vector-walls-warm-off-window-cooldown",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T20:07:58Z"
     },
     {
       "number": 4480,
@@ -1050,7 +1093,7 @@
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-07T10:10:51Z"
+      "updated_at": "2026-09-07T19:18:12Z"
     }
   ],
   "pr_activity": {
