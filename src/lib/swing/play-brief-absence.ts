@@ -1,5 +1,5 @@
 import type { BieUnavailableSource } from "@/lib/bie/answer-envelope";
-import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
+import type { EcosystemContext, EcosystemZeroDteTake } from "@/lib/bie/ecosystem-context";
 import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent-sections";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
@@ -97,6 +97,16 @@ export function playExpectsLiveOptionMark(status: string | null | undefined): bo
 export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
   if (!eco?.recent_flow || eco.flow_feed_fresh === false) return null;
   return eco.recent_flow;
+}
+
+/** 0DTE take is only live cross-desk signal when its session matches the brief's session date. */
+export function zerodteLiveForSession(
+  z: EcosystemZeroDteTake | null | undefined,
+  sessionDate: string | null | undefined,
+): EcosystemZeroDteTake | null {
+  if (!z) return null;
+  if (sessionDate != null && z.session_date !== sessionDate) return null;
+  return z;
 }
 
 function vectorOf(ctx: SwingPlayBriefContext): VectorWithReadContext | null {

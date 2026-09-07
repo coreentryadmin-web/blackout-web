@@ -14,7 +14,7 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtPremium } from "@/lib/fmt-money";
-import { trustedHelixFlow } from "./play-brief-absence";
+import { trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
@@ -250,7 +250,7 @@ export function vectorPlayCoaching(vec: VectorFullState | null, play: TerminalPl
 export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
   const eco = ctx.ecosystem;
   const nh = eco?.nighthawk_recent;
-  const z = eco?.zerodte_today;
+  const z = zerodteLiveForSession(eco?.zerodte_today, ctx.sessionDate);
   const flow = eco ? trustedHelixFlow(eco) : null;
 
   const nhLong = nh?.direction?.toLowerCase() === "long";
