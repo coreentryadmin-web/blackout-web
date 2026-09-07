@@ -1,14 +1,25 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:18:09.688Z",
+  "updated_at": "2026-09-07T01:42:51.748Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-07T01:19:39.181Z",
+      "lease_until": "2026-09-07T02:52:16.970Z",
       "phase": "REVIEWING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "1068e00d-af0b-4610-bb25-8eae9710782a"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-07T01:31:20.700Z",
+      "lease_until": "2026-09-07T03:01:20.700Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -52,11 +63,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7aff243d798540c7da4274886a1427cee38a91b1",
+    "last_main_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-07T01:30:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073262128",
+    "last_deploy_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e"
   },
   "events": [
     {
@@ -839,6 +850,25 @@
     },
     {
       "at": "2026-09-07T00:18:09.688Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:42:44.989Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:42:44.989Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cf954e69-9211-4c6d-8ce5-a229039388ff",
+      "summary": "Cycle complete: #4437+#4439 merged to main (Largo Vector C3 + Vector king-node labels). Peer-review sweep — 0 Claude PRs. ops:collect 0, validate:deploy GREEN, platform-integrity 14/14, rth-lifecycle GREEN (off-hours), Largo swing-brief validate pass. ECR deploy pending for d07fc4d. Open: #4440 handoff draft."
+    },
+    {
+      "at": "2026-09-07T01:42:51.748Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
