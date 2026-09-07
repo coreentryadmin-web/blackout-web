@@ -244,6 +244,15 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       reason: `prior session (${ctx.scanSessionDay}) — today's scan not yet run`,
     });
   }
+  // Prior-session 0DTE: zerodteLiveForSession() already suppresses stale direction in prose (#4424),
+  // but consumers reading unavailableSources alone still saw nothing wrong (C3 gap).
+  const z = ctx.ecosystem?.zerodte_today;
+  if (z && ctx.sessionDate && z.session_date !== ctx.sessionDate) {
+    out.push({
+      source: "0DTE Command",
+      reason: `prior session (${z.session_date}) — today's board not yet run`,
+    });
+  }
   // Committed positions compute thesis health without setup/entry/signal inputs — the aggregate
   // % collapses to a generic default. Surface that honestly (Largo C3/C6) rather than showing 46%.
   if (
