@@ -12,7 +12,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+import { ageSecFromIso, WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
@@ -47,7 +47,12 @@ export function gexMatrixAgeMs(
   }
   if (gex.asof) {
     const observedMs = Date.parse(gex.asof);
-    if (Number.isFinite(observedMs)) return readMs - observedMs;
+    if (Number.isFinite(observedMs)) {
+      const rawAgeMs = readMs - observedMs;
+      if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return rawAgeMs;
+    }
+    const ageSec = ageSecFromIso(gex.asof, readMs);
+    if (ageSec != null) return ageSec * 1000;
   }
   return null;
 }

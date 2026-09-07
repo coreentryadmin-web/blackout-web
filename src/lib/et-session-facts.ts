@@ -28,6 +28,7 @@
 
 import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { marketPhaseFromEt, type MarketPhase } from "@/lib/largo/core/system-status";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 export type { MarketPhase };
 
@@ -87,12 +88,7 @@ export function etSessionFacts(now: Date = new Date()): EtSessionFacts {
   return { market_session, session_date, et_time, as_of_et: `${session_date} ${et_time}`, is_trading_day };
 }
 
-/** Whole seconds between an ISO stamp and `now`, or null when unusable. Never negative. */
+/** Whole seconds between an ISO stamp and `now`, or null when unusable. Delegates to the canonical helper. */
 export function ageSecondsFromIso(iso: string | null | undefined, now = Date.now()): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  const age = Math.round((now - t) / 1000);
-  // A future stamp is clock skew, not a negative age — report it as unusable rather than as "0s old".
-  return age < 0 ? null : age;
+  return ageSecFromIso(iso, now);
 }

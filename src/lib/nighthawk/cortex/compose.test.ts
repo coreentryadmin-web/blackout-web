@@ -104,6 +104,25 @@ describe("compose: evidence decay (design §0 — alpha that expires)", () => {
     assert.equal(cortexDecayFactor(600, 600), 0.5);
     assert.equal(cortexDecayFactor(1200, 600), 0.25);
   });
+
+  test("clock-skewed future asOf is demoted to absent (must not decay at full weight)", () => {
+    const futureMs = NOW_MS + 3_600_000;
+    const v = composeCortexEvidence(
+      baseInputs({
+        direction: "short",
+        wallTrend: {
+          asOf: new Date(futureMs).toISOString(),
+          samples: Array.from({ length: 10 }, (_, i) => ({
+            time: futureMs / 1000 - (9 - i) * 120,
+            callWalls: [{ strike: 105, pct: 30 }],
+            putWalls: [{ strike: 95, pct: 30 - i * 2 }],
+          })),
+        },
+      })
+    );
+    assert.equal(v.supports.some((s) => s.source === "wall-trend"), false);
+    assert.ok(v.absent.some((a) => /wall-trend: evidence asOf is clock-skewed future/.test(a)));
+  });
 });
 
 describe("compose: family caps (NH-R11 — dealer-positioning sources can't stack)", () => {

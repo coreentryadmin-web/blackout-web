@@ -7,7 +7,8 @@ import { validateGexAgainstUW, type GexCrossValidationResult } from "@/lib/provi
 import { resolveNearTermExpiriesForCrossValidation, kingFromStrikeTotals, strikeTotalsFromLadder, wallsFromStrikeTotals, cumulativeGammaFlipDetail } from "@/lib/providers/gex-cross-validation-core";
 import { hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
 import { fmtPremium } from "@/lib/fmt-money";
-import { etSessionFacts, ageSecondsFromIso, type MarketPhase } from "@/lib/et-session-facts";
+import { etSessionFacts, type MarketPhase } from "@/lib/et-session-facts";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 // ---------------------------------------------------------------------------
 // Canonical cross-tool GEX/VEX positioning contract.
@@ -429,7 +430,7 @@ export function gexPositioningFromHeatmap(
     as_of_et: session.as_of_et,
     session_date: session.session_date,
     market_session: session.market_session,
-    matrix_age_sec: ageSecondsFromIso(hm.asof, nowMs),
+    matrix_age_sec: ageSecFromIso(hm.asof, nowMs),
     freshness: "cached",
     flip,
     flip_reason: flip === null ? gex.flip_reason : undefined,

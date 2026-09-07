@@ -34,6 +34,7 @@ import { deriveOpeningHarvestEvidence, OPENING_HARVEST_SUPPORT_CAP } from "./sou
 import { deriveSectorHeatEvidence, SECTOR_HEAT_SUPPORT_CAP } from "./sources/sector-heat";
 import { deriveVexCharmEvidence, VEX_CHARM_SUPPORT_CAP } from "./sources/vex-charm";
 import { deriveWallTrendEvidence, WALL_TREND_SUPPORT_CAP } from "./sources/wall-trend";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 /** Evidence older than 3 half-lives is treated as ABSENT, not merely faint: at 3
  *  half-lives the decayed contribution is ≤12.5% of its raw weight — below that the
@@ -156,7 +157,11 @@ export function composeCortexEvidence(input: CortexInputs): CortexVerdict {
         absent.push(`${source}: evidence had no valid asOf stamp`);
         continue;
       }
-      const ageSec = Math.max(0, (nowMs - asOfMs) / 1000);
+      const ageSec = ageSecFromIso(item.asOf, nowMs);
+      if (ageSec == null) {
+        absent.push(`${source}: evidence asOf is clock-skewed future or unusable — self-silenced`);
+        continue;
+      }
       if (ageSec > item.halfLifeSec * ABSENT_AFTER_HALF_LIVES) {
         absent.push(`${source}: evidence stale (older than ${ABSENT_AFTER_HALF_LIVES} half-lives) — self-silenced`);
         continue;

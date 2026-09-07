@@ -4,7 +4,8 @@ import "server-only";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { strikeTotalsFromLadder } from "@/lib/providers/gex-cross-validation-core";
-import { etSessionFacts, ageSecondsFromIso, type MarketPhase } from "@/lib/et-session-facts";
+import { etSessionFacts, type MarketPhase } from "@/lib/et-session-facts";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 export type GexHeatmapLargoLens = "gex" | "vex" | "dex" | "charm";
 
@@ -256,7 +257,7 @@ export async function gexHeatmapForLargo(
     as_of_et: unavailableFacts.as_of_et,
     session_date: unavailableFacts.session_date,
     market_session: unavailableFacts.market_session,
-    matrix_age_sec: ageSecondsFromIso(hm.asof ?? null, nowMs),
+    matrix_age_sec: ageSecFromIso(hm.asof ?? null, nowMs),
     freshness: "cached",
     cross_validation: crossValidation,
     source: "polygon",
