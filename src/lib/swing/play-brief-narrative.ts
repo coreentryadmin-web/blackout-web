@@ -5,8 +5,16 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { trustedHelixFlow, gexMatrixAgeMs, gexMatrixStale } from "./play-brief-absence";
+import {
+  trustedHelixFlow,
+  gexMatrixStale,
+  vectorSnapshotStale,
+  resolveGammaPosture,
+  nighthawkLiveForSession,
+  zerodteLiveForSession,
+} from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
@@ -20,10 +28,26 @@ function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
+/** For FLOW/aggregate dollar amounts (HELIX premium, dark-pool notional) — these are routinely
+ *  hundreds of thousands to millions, so whole-dollar/k/M is the right precision. NEVER use this
+ *  for a per-contract option premium (mark, stop/target rails) — see fmtOptionUsd below. */
 function fmtUsd(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
   return `$${n.toFixed(0)}`;
+}
+
+/** For a PER-CONTRACT option premium (live mark, stop/target rails) — these are typically
+ *  single/low-double-digit dollars where cents are the difference between a stop and a hold.
+ *  `fmtUsd`'s whole-dollar rounding was reused here for a while and it produced literal
+ *  contradictions within one brief: the Position section's precise "Mark: +$9.70" (2-decimal,
+ *  from play-brief.ts's own fmtUsd) sat beside this file's "Break watch — lose premium stop $2"
+ *  and "Live read — mark $10" (both rounded from $1.96 / $9.70) — same underlying number,
+ *  two different values on the same page. Matches play-brief.ts's fmtUsd exactly on purpose so
+ *  the whole brief renders one number for one fact. */
+function fmtOptionUsd(n: number): string {
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}$${n.toFixed(2)}`;
 }
 
 function fmtPct(n: number, digits = 1): string {
@@ -54,7 +78,11 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
   const gex = ctx.ecosystem?.gex_positioning;
   const out: FocalLevel[] = [];
 
+  const readMs = Date.now();
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+
   for (const dp of (vec?.darkPoolLevels ?? []).slice(0, 3)) {
+    if (vectorStale) break;
     out.push({
       price: dp.strike,
       kind: "dark_pool",
@@ -64,14 +92,24 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
     });
   }
 
-  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null;
-  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null;
-  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
-  const king = gex?.gex_king_strike ?? vec?.ladder?.rows?.find((r) => r.isKing)?.strike ?? null;
+  const gexStale = gexMatrixStale(gex, readMs);
+  const vecPutWall = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecCallWall = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
+  const putWall = vecPutWall ?? gex?.put_wall ?? null;
+  const callWall = vecCallWall ?? gex?.call_wall ?? null;
+  const flip = vecFlip ?? gex?.flip ?? null;
+  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
+  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
+  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
+  const vecKing = vectorStale ? undefined : vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
+  const kingFromGex = gex?.gex_king_strike;
+  const king = vecKing ?? kingFromGex ?? null;
+  const kingFromStaleGex = vecKing == null && kingFromGex != null && gexStale;
   const maxPain = vec?.maxPain ?? null;
   const magnet = vec?.magnet?.strike ?? null;
 
-  if (putWall != null) {
+  if (putWall != null && !putWallFromStaleGex) {
     out.push({
       price: putWall,
       kind: "put_wall",
@@ -79,7 +117,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, putWall),
     });
   }
-  if (callWall != null) {
+  if (callWall != null && !callWallFromStaleGex) {
     out.push({
       price: callWall,
       kind: "call_wall",
@@ -87,7 +125,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, callWall),
     });
   }
-  if (flip != null) {
+  if (flip != null && !flipFromStaleGex) {
     out.push({
       price: flip,
       kind: "gamma_flip",
@@ -95,7 +133,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, flip),
     });
   }
-  if (king != null) {
+  if (king != null && !kingFromStaleGex) {
     out.push({
       price: king,
       kind: "king",
@@ -103,7 +141,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, king),
     });
   }
-  if (maxPain != null) {
+  if (maxPain != null && !vectorStale) {
     out.push({
       price: maxPain,
       kind: "max_pain",
@@ -111,7 +149,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       distancePct: distPct(spot, maxPain),
     });
   }
-  if (magnet != null) {
+  if (magnet != null && !vectorStale) {
     out.push({
       price: magnet,
       kind: "magnet",
@@ -127,9 +165,12 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
 function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | null {
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
-  const vecPosture = vec?.regime?.posture;
-  const posture = vecPosture ?? gex?.gamma_posture ?? null;
-  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
+  const readMs = Date.now();
+  const posture = resolveGammaPosture(ctx, vec);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
+  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexMatrixStale(gex, readMs);
+  const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
 
   if (!posture || posture === "unknown") {
     if (spot != null) return `Spot **${spot.toFixed(2)}** — dealer gamma posture not resolved on this read.`;
@@ -149,19 +190,9 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
       ? ` · γ-flip **${flip.toFixed(2)}**${aboveFlip != null ? (aboveFlip ? " (spot above)" : " (spot below)") : ""}`
       : "";
 
-  const readMs = Date.now();
   const vecAgeMs = vec?.dataAgeMs;
-  const vectorStale =
-    (typeof vecAgeMs === "number" && Number.isFinite(vecAgeMs) && vecAgeMs > 120_000) ||
-    vec?.freshness === "stale";
-  const postureFromGex = !vecPosture && gex?.gamma_posture;
-  const gexStale = postureFromGex && gexMatrixStale(gex, readMs);
-  const snapshotStale = vectorStale || gexStale;
-  const snapshotAgeMs = vectorStale
-    ? vecAgeMs
-    : gexStale
-      ? gexMatrixAgeMs(gex, readMs)
-      : null;
+  const snapshotStale = vectorStale;
+  const snapshotAgeMs = vectorStale ? vecAgeMs : null;
   const lead = snapshotStale
     ? `**Last snapshot**${snapshotAgeMs != null ? ` (~${Math.round(snapshotAgeMs / 1000)}s old)` : ""}`
     : "**Right now**";
@@ -286,8 +317,10 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
           .map((g) => `${g.code}: ${g.reason}`)
           .join(" · ")
       : null;
+    const actionLabel =
+      swingActionDisplay(play)?.label ?? play.swingEntryAction?.toUpperCase() ?? rec;
     lines.push(
-      `**Entry stance** — ${play.swingEntryAction?.toUpperCase() ?? rec}. ` +
+      `**Entry stance** — ${actionLabel}. ` +
         (gateLine
           ? `Clear gates: ${gateLine}.`
           : rec === "BUY"
@@ -347,8 +380,8 @@ function railsFallback(play: TerminalPlay): string | null {
   const rails: string[] = [];
   if (trims) rails.push(`trim ladder ${trims}`);
   if (ep.stop_premium != null || ep.target_premium != null) {
-    const stop = ep.stop_premium != null ? fmtUsd(ep.stop_premium) : "—";
-    const target = ep.target_premium != null ? fmtUsd(ep.target_premium) : "—";
+    const stop = ep.stop_premium != null ? fmtOptionUsd(ep.stop_premium) : "—";
+    const target = ep.target_premium != null ? fmtOptionUsd(ep.target_premium) : "—";
     rails.push(`stop **${stop}** · target **${target}**`);
   }
   if (!rails.length) return null;
@@ -370,8 +403,8 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
     }
   }
 
-  const nh = eco?.nighthawk_recent;
-  const z = eco?.zerodte_today;
+  const nh = nighthawkLiveForSession(eco?.nighthawk_recent, ctx.sessionDate);
+  const z = zerodteLiveForSession(eco?.zerodte_today, ctx.sessionDate);
   if (play.direction === "LONG" && nh?.direction?.toLowerCase() === "short") {
     reasons.push(`Night Hawk bearish (${nh.conviction ?? "recent take"})`);
   } else if (play.direction === "SHORT" && nh?.direction?.toLowerCase() === "long") {
@@ -384,32 +417,55 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   }
 
   const vp = vec?.play;
-  if (play.direction === "LONG" && vp?.bias === "short") {
-    reasons.push(`Vector bearish (${vp.headline ?? vp.grade ?? "desk read"})`);
-  } else if (play.direction === "SHORT" && vp?.bias === "long") {
-    reasons.push(`Vector bullish (${vp.headline ?? vp.grade ?? "desk read"})`);
+  // Same Largo C2 gap as stale GEX walls/posture (#4355/#4364): steelmanning Vector desk bias
+  // off a stale snapshot reads like a live opposing read.
+  if (!vectorSnapshotStale(vec, Date.now(), ctx.sessionDate)) {
+    if (play.direction === "LONG" && vp?.bias === "short") {
+      reasons.push(`Vector bearish (${vp.headline ?? vp.grade ?? "desk read"})`);
+    } else if (play.direction === "SHORT" && vp?.bias === "long") {
+      reasons.push(`Vector bullish (${vp.headline ?? vp.grade ?? "desk read"})`);
+    }
   }
 
   if (spot != null) {
-    const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? eco?.gex_positioning?.call_wall ?? null;
-    const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? eco?.gex_positioning?.put_wall ?? null;
-    if (play.direction === "LONG" && callWall != null && callWall > spot) {
+    const gexForWalls = eco?.gex_positioning;
+    const vectorStaleForWalls = vectorSnapshotStale(vec, Date.now(), ctx.sessionDate);
+    const vecCallWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+    const vecPutWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+    const callWall = vecCallWall ?? gexForWalls?.call_wall ?? null;
+    const putWall = vecPutWall ?? gexForWalls?.put_wall ?? null;
+    // Same Largo C2 gap #4355/#4360 fixed for dealer posture: a wall level cited from the GEX-only
+    // fallback (no live Vector wall) can be from a stale matrix — steelmanning "call wall overhead"
+    // off a stale snapshot is the same dishonesty as "dealers long gamma" off one. Gated per-wall,
+    // not both-or-nothing, since one side can come from a live Vector read while the other falls
+    // back to stale GEX.
+    const gexStaleForWalls = gexMatrixStale(gexForWalls, Date.now());
+    const callWallFromStaleGex = vecCallWall == null && gexForWalls?.call_wall != null && gexStaleForWalls;
+    const putWallFromStaleGex = vecPutWall == null && gexForWalls?.put_wall != null && gexStaleForWalls;
+    if (play.direction === "LONG" && callWall != null && callWall > spot && !callWallFromStaleGex) {
       const d = distPct(spot, callWall);
       if (d < 3) reasons.push(`call wall **${callWall.toFixed(2)}** overhead (${d.toFixed(1)}%)`);
     }
-    if (play.direction === "SHORT" && putWall != null && putWall < spot) {
+    if (play.direction === "SHORT" && putWall != null && putWall < spot && !putWallFromStaleGex) {
       const d = Math.abs(distPct(spot, putWall));
       if (d < 3) reasons.push(`put wall **${putWall.toFixed(2)}** below (${d.toFixed(1)}%)`);
     }
   }
 
-  const ema = vec?.technicals?.emaStack ?? null;
+  const vectorStale = vectorSnapshotStale(vec, Date.now(), ctx.sessionDate);
+  const ema = !vectorStale ? vec?.technicals?.emaStack ?? null : null;
   if (play.direction === "LONG" && ema === "down") reasons.push("bear EMA stack on chart");
   if (play.direction === "SHORT" && ema === "up") reasons.push("bull EMA stack on chart");
 
-  const posture = vec?.regime?.posture ?? eco?.gex_positioning?.gamma_posture ?? null;
-  if (play.direction === "LONG" && posture === "long") reasons.push("dealer long-gamma pins rallies");
-  if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
+  const gex = eco?.gex_positioning;
+  const vecPosture = !vectorStale ? vec?.regime?.posture ?? null : null;
+  const posture = vecPosture ?? gex?.gamma_posture ?? null;
+  const postureFromGex = !vecPosture && gex?.gamma_posture;
+  const skipGexPosture = postureFromGex && gexMatrixStale(gex, Date.now());
+  if (!skipGexPosture) {
+    if (play.direction === "LONG" && posture === "long") reasons.push("dealer long-gamma pins rallies");
+    if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
+  }
 
   const faded = play.thesisHealth?.pillars?.find((p) => p.status === "lost" || p.status === "faded");
   if (faded && (!play.thesisBreak?.level || play.thesisBreak.level === "intact")) {
@@ -424,13 +480,17 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
 
 function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
-  const rec = play.recommendation ?? play.swingEntryAction?.toUpperCase() ?? "HOLD";
+  const rec =
+    swingActionDisplay(play)?.label ??
+    play.recommendation ??
+    play.swingEntryAction?.toUpperCase() ??
+    "HOLD";
   const health = thesisHealthUncalibrated(play.thesisHealth) ? null : play.thesisHealth?.health;
   const pnl = fin(play.pnlPct);
   const peak = fin(play.peak);
   const giveback = pnl != null && peak != null && peak - pnl > 15 ? ` · gave back **${(peak - pnl).toFixed(0)}%** from peak` : "";
   const healthBit = health != null ? ` · thesis **${health}%**` : "";
-  const markBit = play.mark != null ? ` · mark **${fmtUsd(play.mark)}**` : "";
+  const markBit = play.mark != null ? ` · mark **${fmtOptionUsd(play.mark)}**` : "";
   return `**Live read** — Vector spot not wired on this tick; desk still says **${rec}**${healthBit}${markBit}${giveback}. Levels refresh on next poll.`;
 }
 
@@ -441,7 +501,13 @@ export function tradeManagerNarrativeSection(
 ): RichSection | null {
   const { play } = ctx;
   const vec = vectorOf(ctx);
-  const spot = fin(vec?.spot) ?? fin(ctx.ecosystem?.gex_positioning?.spot);
+  const readMs = Date.now();
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const gex = ctx.ecosystem?.gex_positioning;
+  const gexStale = gexMatrixStale(gex, readMs);
+  // Null stale GEX spot at source — same Largo C2 class as walls/flip (#4401/#4411).
+  const spot =
+    fin(vectorStale ? undefined : vec?.spot) ?? fin(gexStale ? undefined : gex?.spot);
 
   const bullets: string[] = [];
   const seen = new Set<string>();
@@ -494,12 +560,10 @@ export function tradeManagerNarrativeSection(
         add(narrateWall(level, play, spot));
         used.add("call_wall");
       } else if (level.kind === "magnet" && !used.has("magnet") && !bullets.some((b) => /Gamma magnet/i.test(b))) {
-        const posture = vec?.regime?.posture ?? ctx.ecosystem?.gex_positioning?.gamma_posture ?? null;
-        add(narrateMagnet(level, posture));
+        add(narrateMagnet(level, resolveGammaPosture(ctx, vec)));
         used.add("magnet");
       } else if (level.kind === "king" && !used.has("king")) {
-        const posture = vec?.regime?.posture ?? ctx.ecosystem?.gex_positioning?.gamma_posture ?? null;
-        add(narrateKing(level, posture));
+        add(narrateKing(level, resolveGammaPosture(ctx, vec)));
         used.add("king");
       } else if (level.kind === "max_pain" && !used.has("max_pain")) {
         add(narrateMaxPain(level, spot));
@@ -510,13 +574,14 @@ export function tradeManagerNarrativeSection(
       }
     }
 
+    const vectorLive = !vectorStale;
     const prox = vec?.proximity;
-    if (prox?.callout && bullets.length < MAX_BULLETS) {
+    if (vectorLive && prox?.callout && bullets.length < MAX_BULLETS) {
       add(`**Nearest wall ${prox.strike.toFixed(2)}** (${prox.side}) — ${prox.callout}`);
     }
 
     const walls = vec?.wallEvents ?? [];
-    if (walls[0] && bullets.length < MAX_BULLETS) {
+    if (vectorLive && walls[0] && bullets.length < MAX_BULLETS) {
       const w = walls[walls.length - 1]!;
       add(`**Wall just moved** — ${w.kind.replace(/_/g, " ")}: ${w.message}`);
     }
@@ -525,13 +590,18 @@ export function tradeManagerNarrativeSection(
   const flow = flowNarrative(ctx, play);
   if (flow && !bullets.some((b) => /HELIX tape/i.test(b))) add(flow);
 
-  const flip = fin(vec?.gammaFlip) ?? fin(ctx.ecosystem?.gex_positioning?.flip);
+  const gexForFlip = ctx.ecosystem?.gex_positioning;
+  const vecFlipRaw = vectorStale ? undefined : vec?.gammaFlip;
+  const flipRaw = fin(vecFlipRaw) ?? fin(gexForFlip?.flip);
+  const flipFromStaleGex =
+    vecFlipRaw == null && gexForFlip?.flip != null && gexMatrixStale(gexForFlip, readMs);
+  const flip = flipFromStaleGex ? null : flipRaw;
   const focal = spot != null ? collectFocalLevels(ctx, spot) : [];
-  let breakLine = breakTrigger(play, focal, flip);
+  let breakLine = spot != null ? breakTrigger(play, focal, flip) : null;
   if (!breakLine && play.direction === "LONG" && play.exitPolicy?.stop_premium != null) {
-    breakLine = `**Break watch** — lose premium stop **${fmtUsd(play.exitPolicy.stop_premium)}** → cut size or exit.`;
+    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(play.exitPolicy.stop_premium)}** → cut size or exit.`;
   } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.stop_premium != null) {
-    breakLine = `**Break watch** — reclaim **${fmtUsd(play.exitPolicy.stop_premium)}** → cover shorts.`;
+    breakLine = `**Break watch** — reclaim **${fmtOptionUsd(play.exitPolicy.stop_premium)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
 
@@ -542,8 +612,9 @@ export function tradeManagerNarrativeSection(
 
   // Bias reads the chart evidence (same majority vote as chartTechnicalsSection), not the play's
   // LONG/SHORT direction — a SHORT into a bullish tape must not badge bearish (FINDINGS 2026-09-06).
+  const vectorLive = !vectorStale;
   const bias =
-    vec?.technicals != null
+    vectorLive && vec?.technicals != null
       ? technicalsBias(vec.technicals, spot)
       : "neutral";
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T19:06:30.273Z",
+  "updated_at": "2026-09-07T19:15:30.913Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -230,6 +230,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-07T19:02:24.113Z",
       "safe_to_merge": true
+    },
+    "pr-4556": {
+      "pr": 4556,
+      "head_sha": "ecd1db9f8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T19:15:29.865Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -244,31 +252,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "dddc83ee4f2685ecda6848494df660a7e070e108",
+    "last_main_sha": "ecd1db9f8eed8dba7b386096e436b151be2c6f92",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T19:02:30Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34154027049",
-    "last_deploy_sha": "dddc83ee4f2685ecda6848494df660a7e070e108"
+    "last_deploy_at": "2026-09-07T19:11:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34154627642",
+    "last_deploy_sha": "ecd1db9f8eed8dba7b386096e436b151be2c6f92"
   },
   "events": [
-    {
-      "at": "2026-09-06T01:18:50.047Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T01:18:50.328Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T01:30:57.846Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-06T01:30:58.433Z",
       "type": "context_sync",
@@ -1590,19 +1580,32 @@
       "agent": "cursor",
       "run_id": "398b0a8d-4045-4d15-a5d9-6395fe5a58b4",
       "summary": "Main@dddc83ee4 CI 7/7 GREEN — #4555 Vector bead rail gap-fill from blended session (Cursor PR, no self-review). validate:deploy GREEN."
+    },
+    {
+      "at": "2026-09-07T19:15:29.867Z",
+      "type": "pr_review",
+      "pr": 4556,
+      "head_sha": "ecd1db9f8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T19:15:29.865Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T19:15:30.912Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T19:15:30.913Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b8fc6c1a-74b4-491d-9382-dd55176f11bb",
+      "summary": "Main@ecd1db9f8 CI 7/7 GREEN — #4556 Largo swing brief fmtOptionUsd (no whole-dollar rounding on per-contract premiums). validate:deploy GREEN."
     }
   ],
   "open_prs": [
-    {
-      "number": 4556,
-      "title": "fix(largo): per-contract option premiums no longer round to whole dollars in swing brief",
-      "branch": "fix/largo-swing-premium-format",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T19:00:24Z"
-    },
     {
       "number": 4480,
       "title": "chore(deps): bump next from 15.5.23 to 16.3.4",

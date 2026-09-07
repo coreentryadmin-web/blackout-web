@@ -93,8 +93,61 @@ test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now
   );
 
   assert.ok(section);
+  // Stale Vector spot is suppressed — without GEX fallback the brief degrades honestly.
+  assert.match(section!.body, /Vector spot not wired on this tick/i);
+  assert.doesNotMatch(section!.body, /Right now/i);
+  assert.doesNotMatch(section!.body, /long gamma/i);
+  assert.doesNotMatch(section!.body, /Break watch.*98\.00/i);
+});
+
+test("tradeManagerNarrativeSection: stale Vector suppresses proximity + wall event bullets (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        dataAgeMs: 180_000,
+        freshness: "stale",
+        proximity: { strike: 102, side: "call", callout: "reject here" },
+        wallEvents: [{ kind: "call_wall_build", message: "wall building", strike: 102 }],
+        gexWalls: { callWalls: [{ strike: 102, pct: 5 }], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Nearest wall/i);
+  assert.doesNotMatch(section!.body, /Wall just moved/i);
+});
+
+test("tradeManagerNarrativeSection: stale Vector with live GEX fallback uses Last snapshot lead (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        dataAgeMs: 180_000,
+        freshness: "stale",
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "short",
+          matrix_age_sec: 30,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
   assert.match(section!.body, /Last snapshot/i);
   assert.match(section!.body, /180s old/i);
+  assert.match(section!.body, /short gamma/i);
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
@@ -117,9 +170,248 @@ test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now
   );
 
   assert.ok(section);
-  assert.match(section!.body, /Last snapshot/i);
-  assert.match(section!.body, /180s old/i);
+  assert.match(section!.body, /dealer gamma posture not resolved/i);
+  assert.doesNotMatch(section!.body, /long gamma/i);
+  assert.doesNotMatch(section!.body, /γ-flip/i);
   assert.doesNotMatch(section!.body, /Right now/i);
+});
+
+test("tradeManagerNarrativeSection: stale Vector + stale GEX must not cite stale GEX spot (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        dataAgeMs: 200_000,
+        freshness: "stale",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "long",
+          matrix_age_sec: 180,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Spot \*\*100/i, "stale GEX spot must not render as live");
+  assert.match(section!.body, /Vector spot not wired|dealer gamma posture not resolved/i);
+});
+
+test("tradeManagerNarrativeSection: stale GEX-only put wall must not drive Break watch (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          put_wall: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Break watch.*98\.00/i, "stale GEX put wall must not anchor break trigger");
+});
+
+test("tradeManagerNarrativeSection: stale GEX-only gamma flip must not appear in dealer posture line (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Right now/i, "live Vector posture must not be relabeled stale");
+  assert.match(section!.body, /long gamma/i);
+  assert.doesNotMatch(
+    section!.body,
+    /γ-flip/i,
+    "stale GEX-only flip must not qualify a live-posture dealer read",
+  );
+});
+
+test("tradeManagerNarrativeSection: live Vector gamma flip still shown when GEX matrix is stale", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 97,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /γ-flip \*\*97\.00\*\*/i, "live Vector flip must still render");
+});
+
+test("tradeManagerNarrativeSection: stale GEX-only gamma flip must not drive Break watch (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Break watch.*98\.00/i, "stale GEX flip must not anchor break trigger");
+});
+
+test("tradeManagerNarrativeSection: live Vector put wall still drives Break watch when GEX matrix is stale", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gexWalls: { putWalls: [{ strike: 97 }], callWalls: [] },
+      } as unknown as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          put_wall: 95,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*97\.00/i, "live Vector wall must still anchor break trigger");
+});
+
+test("tradeManagerNarrativeSection: stale GEX-only gamma posture must not drive GEX king narration (Largo C2)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+      } as unknown as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          gamma_posture: "long",
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /GEX king 103\.00/i);
+  assert.doesNotMatch(
+    section!.body,
+    /Pin risk/i,
+    "stale GEX-only gamma posture must not drive the king strike's directional pin/acceleration call",
+  );
+  assert.match(section!.body, /Max-gamma node/i, "falls back to the posture-unknown narration");
+});
+
+test("tradeManagerNarrativeSection: live Vector gamma posture still drives GEX king narration despite stale GEX matrix", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+        regime: { posture: "long" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          gamma_posture: "short",
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Pin risk/i, "live Vector posture must still drive the directional call");
+});
+
+test("magnetCoaching (via tradeManagerNarrativeSection): must not claim long-gamma regime when posture is short (live NRG repro 2026-09-06)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 118.95,
+        magnet: { strike: 134.37, distancePct: 13.0, pull: "up" },
+        regime: { posture: "short" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Gamma magnet 134\.37/i);
+  assert.doesNotMatch(
+    section!.body,
+    /long-gamma regimes/i,
+    "posture is measured SHORT — must not claim a long-gamma dealer regime",
+  );
+  assert.match(section!.body, /Pivot node/i, "short/unknown posture falls back to acceleration-risk framing");
+});
+
+test("magnetCoaching (via tradeManagerNarrativeSection): still claims long-gamma regime when posture is measured long", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 118.95,
+        magnet: { strike: 134.37, distancePct: 13.0, pull: "up" },
+        regime: { posture: "long" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /long-gamma regimes/i);
 });
 
 test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
@@ -139,7 +431,10 @@ test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not targ
     "open",
   );
   assert.ok(section);
-  assert.match(section!.body, /Break watch.*reclaim \*\*\$4\*\*/i);
+  // Precise 2-decimal premium (matches play-brief.ts's own fmtUsd) — not rounded to a whole
+  // dollar, which previously made this contradict the Management section's "Rails: stop +$3.50"
+  // rendered from the same stop_premium value (see the fmtOptionUsd regression tests below).
+  assert.match(section!.body, /Break watch.*reclaim \*\*\+\$3\.50\*\*/i);
   assert.doesNotMatch(section!.body, /reclaim \*\*\$1/);
 });
 
@@ -147,6 +442,23 @@ test("describeDarkPoolLevel: support language for long below spot", () => {
   const line = describeDarkPoolLevel({ strike: 95, premium: 5_000_000, pct: 30 }, 100, "LONG");
   assert.match(line, /Watch 95\.00/);
   assert.match(line, /support/i);
+});
+
+test("tradeManagerNarrativeSection: watch bucket entry stance uses WAIT not raw HOLD", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "WATCH",
+        recommendation: "HOLD",
+        gateBlocks: [{ code: "G1", reason: "wait" }],
+      }),
+      vector: { spot: 50 } as SwingPlayBriefContext["vector"],
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Entry stance.*WAIT/i);
+  assert.doesNotMatch(section!.body, /Entry stance.*HOLD/i);
 });
 
 test("tradeManagerNarrativeSection: watch bucket entry stance", () => {
@@ -185,6 +497,15 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   assert.match(section!.body, /Live read/i);
   assert.match(section!.body, /Manage plan/i);
   assert.match(section!.body, /Break watch/i);
+  // Regression (2026-09-07): degradedReadLine's "Live read" mark and the stop_premium fallback
+  // Break watch line used fmtUsd's whole-dollar rounding (`$${n.toFixed(0)}`, built for HELIX/
+  // dark-pool flow premiums in the hundreds-of-thousands+ range) for a PER-CONTRACT option
+  // premium. mark=2.45 rendered as "$2" and stop_premium=1.96 as "$2" — same digit, wrong value,
+  // and both disagreed with the Position section's precise "+$2.45" (play-brief.ts's own
+  // 2-decimal fmtUsd) rendered from the exact same field in the same brief. Now both use
+  // fmtOptionUsd (2-decimal, signed) so one fact reads as one number everywhere in the document.
+  assert.match(section!.body, /Live read.*mark \*\*\+\$2\.45\*\*/i, "mark must render precise, not rounded to $2");
+  assert.match(section!.body, /Break watch.*lose premium stop \*\*\+\$1\.96\*\*/i, "stop_premium must render precise, not rounded to $2");
 });
 
 test("tradeManagerNarrativeSection: bias reads bullish from technicals on SHORT play with bullish tape (FINDINGS 2026-09-06 #13 parity)", () => {
@@ -243,7 +564,13 @@ test("counterThesisLine: steelmans bear case for LONG when desks disagree", () =
           put_premium: 1_200_000,
           unknown_premium: 0,
         },
-        nighthawk_recent: { direction: "short", conviction: "high", outcome: "bearish" },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: null,
+        },
         zerodte_today: null,
         gex_positioning: null,
         arsenal: null,
@@ -287,6 +614,153 @@ test("counterThesisLine: stale HELIX flow must not steelman call-led / put-led",
   assert.equal(line, null, "stale HELIX must not appear in counter-thesis");
 });
 
+test("counterThesisLine: prior-session 0DTE must not steelman desk friction (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    118,
+  );
+  assert.equal(line, null, "yesterday's 0DTE short must not appear in counter-thesis");
+});
+
+test("counterThesisLine: prior-session Night Hawk must not steelman desk friction (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "open",
+          score: 78,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    118,
+  );
+  assert.equal(line, null, "yesterday's Night Hawk short must not appear in counter-thesis");
+});
+
+test("counterThesisLine: prior-session Vector must not steelman desk friction (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        vector_full_state: {
+          spot: 118,
+          observed_session_date: "2026-09-05",
+          dataAgeMs: 30_000,
+          freshness: "recent",
+          play: { bias: "short", headline: "Bearish desk read" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    118,
+  );
+  assert.equal(line, null, "yesterday's Vector short must not appear in counter-thesis");
+});
+
+test("counterThesisLine: stale GEX-only posture must not steelman dealer gamma", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          gamma_posture: "long",
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale GEX posture must not appear in counter-thesis");
+});
+
+test("counterThesisLine: stale GEX-only call wall must not steelman overhead resistance (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          call_wall: 102,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale GEX call wall must not appear in counter-thesis");
+});
+
+test("counterThesisLine: stale GEX-only put wall must not steelman support break (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          put_wall: 98,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "SHORT" }),
+    100,
+  );
+  assert.equal(line, null, "stale GEX put wall must not appear in counter-thesis");
+});
+
+test("counterThesisLine: live Vector call wall still steelmans even when GEX matrix is stale (per-wall gate)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        gexWalls: { callWalls: [{ strike: 101 }], putWalls: [] },
+      } as unknown as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 100,
+          call_wall: 102,
+          matrix_age_sec: 200,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.ok(line, "a live Vector wall must still steelman even when the GEX matrix is stale");
+  assert.match(line!, /call wall/i);
+});
+
 test("counterThesisLine: Vector bearish bias steelmans bear case for LONG swing", () => {
   const line = counterThesisLine(
     ctx({
@@ -303,6 +777,61 @@ test("counterThesisLine: Vector bearish bias steelmans bear case for LONG swing"
   assert.match(line!, /Fade the rip/i);
 });
 
+test("counterThesisLine: stale Vector play bias must not steelman desk read (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        play: { bias: "short", headline: "Fade the rip", grade: "B" },
+        freshness: "stale",
+        dataAgeMs: 180_000,
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale Vector play bias must not appear in counter-thesis");
+});
+
+test("counterThesisLine: stale Vector EMA stack must not steelman chart read (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        technicals: { emaStack: "down", macd: "bear", vwapSide: "below", structure: "LH" },
+        freshness: "stale",
+        dataAgeMs: 180_000,
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale Vector EMA stack must not appear in counter-thesis");
+});
+
+test("counterThesisLine: stale Vector regime posture must not steelman dealer gamma (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        regime: { posture: "long", label: "LONG GAMMA" },
+        freshness: "stale",
+        dataAgeMs: 180_000,
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "AAPL",
+        recent_flow: null,
+        nighthawk_recent: null,
+        zerodte_today: null,
+        gex_positioning: null,
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.equal(line, null, "stale Vector regime must not appear in counter-thesis");
+});
+
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
@@ -316,7 +845,13 @@ test("tradeManagerNarrativeSection: includes counter-thesis when opposing signal
           put_premium: 900_000,
           unknown_premium: 0,
         },
-        nighthawk_recent: { direction: "short", conviction: "medium", outcome: "bearish" },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "medium",
+          outcome: "bearish",
+          score: null,
+        },
         zerodte_today: null,
         gex_positioning: { gamma_posture: "long" },
         arsenal: null,
@@ -402,7 +937,13 @@ test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BUL
           put_premium: 1_100_000,
           unknown_premium: 0,
         },
-        nighthawk_recent: { direction: "short", conviction: "high", outcome: "bearish" },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: null,
+        },
         zerodte_today: { direction: "long", conviction: "medium" },
         gex_positioning: {
           spot: 100,
