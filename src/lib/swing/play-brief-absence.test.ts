@@ -4,6 +4,7 @@ import {
   collectBriefUnavailableSources,
   resolveGammaPosture,
   trustedHelixFlow,
+  nighthawkLiveForSession,
   zerodteLiveForSession,
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
@@ -108,6 +109,19 @@ test("zerodteLiveForSession: null when session_date lags brief sessionDate (Larg
   assert.equal(zerodteLiveForSession(z, "2026-09-06"), null);
   assert.equal(zerodteLiveForSession(z, "2026-09-05")?.direction, "short");
   assert.equal(zerodteLiveForSession(z, null)?.direction, "short");
+});
+
+test("nighthawkLiveForSession: null when edition_for lags brief sessionDate (Largo C2)", () => {
+  const nh = {
+    edition_for: "2026-09-05",
+    direction: "short",
+    conviction: "high",
+    outcome: "open",
+    score: 72,
+  };
+  assert.equal(nighthawkLiveForSession(nh, "2026-09-06"), null);
+  assert.equal(nighthawkLiveForSession(nh, "2026-09-05")?.direction, "short");
+  assert.equal(nighthawkLiveForSession(nh, null)?.direction, "short");
 });
 
 test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal legs", () => {

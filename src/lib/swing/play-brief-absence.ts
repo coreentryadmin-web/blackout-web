@@ -1,5 +1,9 @@
 import type { BieUnavailableSource } from "@/lib/bie/answer-envelope";
-import type { EcosystemContext, EcosystemZeroDteTake } from "@/lib/bie/ecosystem-context";
+import type {
+  EcosystemContext,
+  EcosystemNightHawkTake,
+  EcosystemZeroDteTake,
+} from "@/lib/bie/ecosystem-context";
 import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent-sections";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
@@ -107,6 +111,16 @@ export function zerodteLiveForSession(
   if (!z) return null;
   if (sessionDate != null && z.session_date !== sessionDate) return null;
   return z;
+}
+
+/** Night Hawk swing take is only live cross-desk signal when edition_for matches the brief session. */
+export function nighthawkLiveForSession(
+  nh: EcosystemNightHawkTake | null | undefined,
+  sessionDate: string | null | undefined,
+): EcosystemNightHawkTake | null {
+  if (!nh) return null;
+  if (sessionDate != null && nh.edition_for !== sessionDate) return null;
+  return nh;
 }
 
 function vectorOf(ctx: SwingPlayBriefContext): VectorWithReadContext | null {

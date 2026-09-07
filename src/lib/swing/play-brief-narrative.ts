@@ -11,6 +11,7 @@ import {
   gexMatrixStale,
   vectorSnapshotStale,
   resolveGammaPosture,
+  nighthawkLiveForSession,
   zerodteLiveForSession,
 } from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -383,7 +384,7 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
     }
   }
 
-  const nh = eco?.nighthawk_recent;
+  const nh = nighthawkLiveForSession(eco?.nighthawk_recent, ctx.sessionDate);
   const z = zerodteLiveForSession(eco?.zerodte_today, ctx.sessionDate);
   if (play.direction === "LONG" && nh?.direction?.toLowerCase() === "short") {
     reasons.push(`Night Hawk bearish (${nh.conviction ?? "recent take"})`);

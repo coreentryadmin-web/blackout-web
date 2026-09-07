@@ -200,7 +200,7 @@ test("crossDeskCoaching: friction when NH conflicts", () => {
       ecosystem: {
         ticker: "NRG",
         nighthawk_recent: {
-          edition_for: "NRG",
+          edition_for: "2026-09-05",
           direction: "short",
           conviction: "high",
           outcome: "bearish",
@@ -290,13 +290,33 @@ test("crossDeskCoaching: prior-session 0DTE must not invent cross-desk friction 
   assert.equal(line, null, "yesterday's 0DTE short must not read as live cross-desk friction");
 });
 
+test("crossDeskCoaching: prior-session Night Hawk must not invent cross-desk friction (Largo C2)", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "open",
+          score: 78,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "yesterday's Night Hawk short must not read as live cross-desk friction");
+});
+
 test("crossDeskCoaching: desk alignment omits undefined NH conviction and junk 0DTE score", () => {
   const line = crossDeskCoaching(
     ctx({
       ecosystem: {
         ticker: "NRG",
         nighthawk_recent: {
-          edition_for: "NRG",
+          edition_for: "2026-09-05",
           direction: "long",
           conviction: undefined as unknown as string,
           outcome: "bullish",
