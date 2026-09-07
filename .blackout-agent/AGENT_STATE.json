@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T19:42:28.810Z",
+  "updated_at": "2026-09-07T20:01:49.529Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -246,6 +246,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-07T19:42:27.712Z",
       "safe_to_merge": true
+    },
+    "pr-4561": {
+      "pr": 4561,
+      "head_sha": "18ba5c386",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T20:01:47.860Z",
+      "safe_to_merge": true
+    },
+    "pr-4563": {
+      "pr": 4563,
+      "head_sha": "18ba5c386",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T20:01:48.234Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -260,37 +276,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d5a08fc7351799d7446dcb449db9832a1fb69ecf",
+    "last_main_sha": "18ba5c386c7221c48223e873ebec379a10431f4c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T19:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34156364888",
-    "last_deploy_sha": "d5a08fc7351799d7446dcb449db9832a1fb69ecf"
+    "last_deploy_at": "2026-09-07T19:57:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
+    "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-06T02:14:57.876Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-06T02:14:58.629Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-06T02:14:58.957Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-06T02:35:01.129Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-06T02:35:02.828Z",
       "type": "context_sync",
@@ -1617,18 +1609,81 @@
       "agent": "cursor",
       "run_id": "b51e2766-ef9c-4eb0-9e1a-35781e42821b",
       "summary": "Main@d5a08fc73 CI 8/8 GREEN — #4560 data-correctness runWithBackgroundUwSweep tag. validate:deploy GREEN."
+    },
+    {
+      "at": "2026-09-07T20:01:47.862Z",
+      "type": "pr_review",
+      "pr": 4561,
+      "head_sha": "18ba5c386",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T20:01:47.860Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T20:01:48.235Z",
+      "type": "pr_review",
+      "pr": 4563,
+      "head_sha": "18ba5c386",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T20:01:48.234Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T20:01:49.528Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
+    },
+    {
+      "at": "2026-09-07T20:01:49.529Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1fda84fb-762f-4094-ba3a-36a8b3176653",
+      "summary": "Main@18ba5c386 CI 8/8 GREEN — #4561 warm cron off-window cooldown; #4563 SPX desk age Math.max(0) future-skew clamp. validate:deploy GREEN."
     }
   ],
   "open_prs": [
     {
-      "number": 4561,
-      "title": "fix(perf): widen off-window force=1 cooldown on sibling warm crons",
-      "branch": "fix/warm-routes-off-window-cooldown",
+      "number": 4569,
+      "title": "chore(state): autopilot handoff after #4561-4563 merge wave",
+      "branch": "cursor/autopilot-handoff-post-4563",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T20:00:48Z"
+    },
+    {
+      "number": 4568,
+      "title": "chore(state): autopilot handoff after #4563 merge + #4566 review queue",
+      "branch": "cursor/autopilot-handoff-post-4563-4566",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T20:00:53Z"
+    },
+    {
+      "number": 4567,
+      "title": "fix(spx): clamp WATCH age to zero for modest future timestamp skew",
+      "branch": "fix/watch-age-future-skew-clamp",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T19:40:10Z"
+      "updated_at": "2026-09-07T19:59:02Z"
+    },
+    {
+      "number": 4566,
+      "title": "fix(perf): widen vector-walls-warm off-window force=1 cooldown",
+      "branch": "fix/vector-walls-warm-off-window-cooldown",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T20:00:11Z"
     },
     {
       "number": 4480,
