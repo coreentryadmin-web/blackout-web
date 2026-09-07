@@ -10,6 +10,7 @@ import {
   deskConsensusSection,
   flowIntelSection,
   gexPostureSection,
+  buildIntelSections,
   holdPlanSection,
   lessonsSection,
   meridianCatalystSection,
@@ -1248,4 +1249,52 @@ test("flowIntelSection: prior-session 0DTE must not render desk alignment (Largo
 
   const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-06");
   assert.equal(section, null, "yesterday's 0DTE stance must not read as live flow intel");
+});
+
+test("buildIntelSections: CLOSED bucket suppresses live-desk narrative noise (#4461 follow-up)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED", ticker: "AAPL", direction: "LONG" }),
+    asOf: "2026-09-07 10:00 ET",
+    sessionDate: "2026-09-07",
+    scanAsOf: "2026-09-04T20:00:00.000Z",
+    scanSessionDay: "2026-09-04",
+    laneRows: [],
+    meridian: null,
+    openBook: [],
+    ecosystem: {
+      flow_feed_fresh: false,
+      gex_positioning: {
+        spot: 220,
+        gamma_posture: "short",
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+      vector_full_state: null,
+      zerodte_today: null,
+      nighthawk_recent: {
+        edition_for: "2026-09-04",
+        direction: "long",
+        conviction: "high",
+        outcome: "stop",
+        score: 70,
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 220,
+      dataAgeMs: 150_000,
+      unavailable_sections: ["heatmap", "dark_pool_levels"],
+    } as VectorFullState,
+  };
+
+  const sections = buildIntelSections(ctx, "closed", { collapseIntel: false });
+  const titles = sections.map((s) => s.title);
+  const bodies = sections.map((s) => s.body).join("\n");
+
+  assert.ok(!titles.includes("Data freshness"), "closed play must not emit live-desk freshness section");
+  assert.ok(!titles.includes("GEX posture"), "closed play must not emit GEX posture section");
+  assert.ok(!titles.includes("Flow intel"), "closed play must not emit flow intel section");
+  assert.ok(!titles.includes("Book context"), "closed play must not emit book overlap section");
+  assert.ok(!titles.includes("Watch for"), "closed play must not emit live watch-for triggers");
+  assert.ok(!/HELIX flow: \*\*pipeline stale\*\*/.test(bodies));
+  assert.ok(!/Last snapshot.*old/.test(bodies));
 });

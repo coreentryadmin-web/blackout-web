@@ -777,29 +777,47 @@ export function buildIntelSections(
 
   out.push(whyThisSetupSection(play));
 
-  const book = bookContextSection(play, ctx.openBook);
-  if (book) out.push(book);
-
   const rank = laneRankSection(play, ctx.laneRows);
   if (rank) out.push(rank);
 
-  const technicals = chartTechnicalsSection(vec, ctx.sessionDate);
-  if (technicals) out.push(technicals);
+  // CLOSED rows are historical — live-desk sections (GEX/Vector/HELIX freshness, book overlap,
+  // chart levels, macro tape, watch-for triggers) compare TODAY's desk state and permanently read
+  // stale once any time has passed since close. Same bucket-gating rationale as #4461 on
+  // collectBriefUnavailableSources(); without this, prose sections still drown CLOSED panels in
+  // true-but-useless staleness warnings while outcome/lessons content gets collapsed away.
+  if (bucket !== "closed") {
+    const book = bookContextSection(play, ctx.openBook);
+    if (book) out.push(book);
 
-  const levels = chartLevelsSection(ctx);
-  if (levels) out.push(levels);
+    const technicals = chartTechnicalsSection(vec, ctx.sessionDate);
+    if (technicals) out.push(technicals);
 
-  const gex = gexPostureSection(ctx);
-  if (gex) out.push(gex);
+    const levels = chartLevelsSection(ctx);
+    if (levels) out.push(levels);
 
-  const walls = wallDynamicsSection(vec, ctx.sessionDate);
-  if (walls) out.push(walls);
+    const gex = gexPostureSection(ctx);
+    if (gex) out.push(gex);
 
-  const vdesk = vectorDeskSection(vec, ctx.sessionDate);
-  if (vdesk) out.push(vdesk);
+    const walls = wallDynamicsSection(vec, ctx.sessionDate);
+    if (walls) out.push(walls);
 
-  const flow = flowIntelSection(ecosystem, play, ctx.sessionDate);
-  if (flow) out.push(flow);
+    const vdesk = vectorDeskSection(vec, ctx.sessionDate);
+    if (vdesk) out.push(vdesk);
+
+    const flow = flowIntelSection(ecosystem, play, ctx.sessionDate);
+    if (flow) out.push(flow);
+
+    const macro = macroTapeSection(ecosystem);
+    if (macro) out.push(macro);
+
+    const consensus = deskConsensusSection(ecosystem, play);
+    if (consensus) out.push(consensus);
+
+    const fresh = dataFreshnessSection(ctx);
+    if (fresh) out.push(fresh);
+
+    out.push(watchForSection(ctx, bucket));
+  }
 
   const catalysts = catalystsSection(ecosystem);
   if (catalysts) out.push(catalysts);
@@ -809,17 +827,6 @@ export function buildIntelSections(
 
   const meridianPeer = meridianPeerSection(ctx);
   if (meridianPeer) out.push(meridianPeer);
-
-  const macro = macroTapeSection(ecosystem);
-  if (macro) out.push(macro);
-
-  const consensus = deskConsensusSection(ecosystem, play);
-  if (consensus) out.push(consensus);
-
-  const fresh = dataFreshnessSection(ctx);
-  if (fresh) out.push(fresh);
-
-  out.push(watchForSection(ctx, bucket));
 
   if (bucket === "open") {
     const hold = holdPlanSection(ctx);
