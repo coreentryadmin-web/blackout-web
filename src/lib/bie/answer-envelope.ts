@@ -13,6 +13,8 @@
 /** Schema version — additive changes keep it 1; a breaking change bumps it and the UI branches. */
 export const BIE_ANSWER_ENVELOPE_VERSION = 1 as const;
 
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+
 export type BieBias = "bullish" | "bearish" | "neutral" | "mixed";
 
 /** Evidence-quality-based confidence (NOT an arbitrary %), per master spec §1.7 / §4. */
@@ -184,6 +186,13 @@ export function freshnessFromAgeMs(ageMs: number | null | undefined): BieFreshne
   if (ageMs < 60_000) return "live";
   if (ageMs < 10 * 60_000) return "recent";
   return "stale";
+}
+
+/** Age from an observed instant to a read instant — fail-closed stale on future skew (Largo C2). */
+export function freshnessFromObservedMs(observedMs: number, readMs: number): BieFreshness {
+  const rawAgeMs = readMs - observedMs;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
+  return freshnessFromAgeMs(rawAgeMs);
 }
 
 // ── Markdown rendering (backward-compatible string) ────────────────────────

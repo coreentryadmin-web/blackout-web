@@ -3,7 +3,7 @@
  * No Anthropic calls. Every claim traces to platform data with null-honesty.
  */
 import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
-import { freshnessFromAgeMs } from "@/lib/bie/answer-envelope";
+import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
 import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -14,7 +14,6 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import {
   collectBriefUnavailableSources,
   gexMatrixAgeMs,
@@ -158,12 +157,6 @@ function fundamentalsObservedMs(asOf: string): number | null {
   // Full ISO / clocked stamps: preserve sub-minute precision for skew guards (ET round-trip truncates).
   const parsed = Date.parse(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function freshnessFromObservedMs(observedMs: number, readMs: number): BieFreshness {
-  const rawAgeMs = readMs - observedMs;
-  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
-  return freshnessFromAgeMs(rawAgeMs);
 }
 
 function fundamentalsFreshness(
