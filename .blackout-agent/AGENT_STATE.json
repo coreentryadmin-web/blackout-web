@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T04:02:10.079Z",
+  "updated_at": "2026-09-07T04:47:24.644Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T04:26:24.908Z",
+      "lease_until": "2026-09-07T05:59:11.717Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "2eceefca-11c0-4cbe-a76f-46cce7f7f630"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T04:42:30.161Z",
+      "lease_until": "2026-09-07T06:12:30.161Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -60,16 +60,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T04:42:30.161Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "178add55514d9848a81eab346baab7b722bd859b",
+    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T04:41:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
+    "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
   "events": [
     {
@@ -891,20 +891,47 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
-    }
-  ],
-  "open_prs": [
+    },
     {
-      "number": 4457,
-      "title": "fix(largo): fail-closed staleness on future-skewed scenario provenance",
-      "branch": "fix/scenario-read-future-skew-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-07T04:02:04Z"
+      "at": "2026-09-07T04:42:30.161Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T04:44:06.108Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T04:44:06.108Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c3dd2733-b5f5-4fb4-9702-6374648d29c5",
+      "summary": "Merge wake: #4460 (vector bead rail heal) + #4461 (largo CLOSED swing freshness) landed on main @ d8a0c4262. validate:deploy GREEN, ops:collect 0. No open PRs. ECR deploy in flight."
+    },
+    {
+      "at": "2026-09-07T04:46:32.530Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T04:47:24.644Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T04:47:24.644Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b8f11e9c-3f67-4efa-acda-b03073e3681b",
+      "summary": "Continuous loop: main @ d8a0c4262 (#4460 vector bead-rail heal, #4461 largo CLOSED freshness). All validations GREEN (deploy, platform-integrity, api-auth, ops:collect 0). No open PRs. Off-hours RTH skipped. Peer-review queue empty."
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
