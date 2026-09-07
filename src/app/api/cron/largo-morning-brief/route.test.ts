@@ -21,6 +21,7 @@ import { NextRequest } from "next/server";
 // pre-fix code (buildCalls stayed 1 instead of 0). Post-fix it passes.
 
 let etWindowResult = true;
+let tradingDayResult = true;
 let buildCalls = 0;
 let loggedRuns: Array<{ jobKey: string; payload: Record<string, unknown> }> = [];
 
@@ -29,6 +30,12 @@ mock.module("../../../../lib/market-api-auth", {
 });
 mock.module("../../../../features/nighthawk/lib/et-window", {
   namedExports: { inEtWindow: () => etWindowResult },
+});
+mock.module("../../../../features/nighthawk/lib/session", {
+  namedExports: {
+    isTradingDayEt: () => tradingDayResult,
+    todayEt: () => "2026-09-08",
+  },
 });
 mock.module("../../../../lib/cron-run", {
   namedExports: {
@@ -77,8 +84,9 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
     assert.equal(loggedRuns[0]!.payload.skipped, true);
   });
 
-  test("inside the 9:25 ET window: the pipeline runs normally", async () => {
+  test("inside the 9:25 ET window on a trading day: the pipeline runs normally", async () => {
     etWindowResult = true;
+    tradingDayResult = true;
     buildCalls = 0;
     loggedRuns = [];
 
@@ -90,8 +98,23 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
     assert.equal(buildCalls, 1, "the in-window fire must build the brief exactly once");
   });
 
-  test("?force=1 bypasses the window gate (manual/agent-driven runs)", async () => {
+  test("inside the 9:25 ET window on a NYSE holiday: no-op — no fake open brief", async () => {
+    etWindowResult = true;
+    tradingDayResult = false;
+    buildCalls = 0;
+    loggedRuns = [];
+
+    const res = await GET(new NextRequest("http://localhost/api/cron/largo-morning-brief"));
+    const body = await res.json();
+
+    assert.equal(body.skipped, true, "a holiday in-window fire must report skipped");
+    assert.match(String(body.reason), /non-trading day/);
+    assert.equal(buildCalls, 0, "the holiday fire must never build (or push) the brief");
+  });
+
+  test("?force=1 bypasses the window and holiday gates (manual/agent-driven runs)", async () => {
     etWindowResult = false;
+    tradingDayResult = false;
     buildCalls = 0;
 
     const res = await GET(new NextRequest("http://localhost/api/cron/largo-morning-brief?force=1"));
