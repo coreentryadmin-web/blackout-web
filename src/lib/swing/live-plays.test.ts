@@ -4,6 +4,7 @@ import {
   livePlayFromSwingPosition,
   livePlaysFromOpenPositions,
   liveQuoteFromEvent,
+  signalKindsFromFeatureVector,
   structuralBreakFromSpot,
 } from "./live-plays.ts";
 import type { SwingPositionRow } from "../db.ts";
@@ -140,6 +141,31 @@ test("livePlayFromSwingPosition: regime surfaces the archetype label when the do
     row({ archetype: "BREAKOUT", feature_vector: { evidence_score: 82, pil_regime: 0.71 } })
   )!;
   assert.equal(play.regime, "BREAKOUT");
+});
+
+test("signalKindsFromFeatureVector: undefined when no dossier pillars were grounded", () => {
+  assert.equal(signalKindsFromFeatureVector({ evidence_score: 82 }), undefined);
+  assert.equal(signalKindsFromFeatureVector(null), undefined);
+});
+
+test("livePlayFromSwingPosition: signalKinds surfaces grounded discovery pillars from dossier", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      feature_vector: {
+        evidence_score: 82,
+        pil_flow: 0.8,
+        pil_structure: 0.65,
+      },
+    }),
+  )!;
+  assert.deepEqual(play.signalKinds, ["FLOW", "STRUCTURE"]);
+});
+
+test("livePlayFromSwingPosition: signalKinds includes CATALYST only when pil_catalyst was grounded", () => {
+  const play = livePlayFromSwingPosition(
+    row({ feature_vector: { evidence_score: 82, pil_catalyst: 0.55 } }),
+  )!;
+  assert.deepEqual(play.signalKinds, ["CATALYST"]);
 });
 
 test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {

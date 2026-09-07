@@ -18,6 +18,18 @@ import { HORIZONS } from "../horizons";
 
 const LIVE: ReadonlySet<string> = new Set(["OPEN", "HOLD", "TRIM"]);
 
+/** Discovery provenance kinds grounded at commit — only pillars scored in the dossier, never guessed. */
+export function signalKindsFromFeatureVector(
+  featureVector: Record<string, unknown> | null | undefined,
+): string[] | undefined {
+  if (!featureVector || typeof featureVector !== "object") return undefined;
+  const kinds: string[] = [];
+  if (typeof featureVector.pil_flow === "number") kinds.push("FLOW");
+  if (typeof featureVector.pil_structure === "number") kinds.push("STRUCTURE");
+  if (typeof featureVector.pil_catalyst === "number") kinds.push("CATALYST");
+  return kinds.length > 0 ? kinds : undefined;
+}
+
 function liveStatusOf(status: string): SwingLiveStatus | null {
   if (status === "TRIM") return "TRIM";
   if (status === "HOLD") return "HOLD";
@@ -238,6 +250,11 @@ export function livePlayFromSwingPosition(
       ? (row.archetype ?? "regime read")
       : null;
 
+  // Honest signal-stack read: discovery provenance (FLOW / STRUCTURE / CATALYST) is pinned on the
+  // dossier as pil_flow / pil_structure / pil_catalyst — each is a real number only when that pillar
+  // was grounded at commit. VECTOR/BANGER corroboration still comes from lane enrichment, not here.
+  const signalKinds = signalKindsFromFeatureVector(row.feature_vector);
+
   const entry = row.entry_premium;
   const mark = row.last_mark;
   const markAsOf = row.last_mark_at ?? quote?.asOf ?? null;
@@ -255,6 +272,7 @@ export function livePlayFromSwingPosition(
     archetype: (row.archetype as SwingArchetype | null) ?? undefined,
     subLane: (row.sub_lane as SwingSubLane | null) ?? undefined,
     regime,
+    signalKinds,
     liveStatus,
     manageAction,
     thesisLevel,
