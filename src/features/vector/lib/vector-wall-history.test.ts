@@ -8,6 +8,7 @@ import {
   backfillRailPrefix,
   compactHistoryToCap,
   backfillRailGaps,
+  beadRailHistoryForHorizon,
   railCoverageGaps,
   railUncoveredSec,
   decimateSeedHistory,
@@ -864,6 +865,34 @@ test("backfillRailGaps: fills every hole, and NEVER displaces an observed sample
     "the 14:45→15:15 hole must carry ghost beads"
   );
   assert.ok(merged.every((s, i) => i === 0 || s.time > merged[i - 1]!.time), "strictly ordered");
+});
+
+test("beadRailHistoryForHorizon: fills narrowed gaps from blended without displacing observed buckets", () => {
+  const H = (h: number, m = 0) => Math.floor(Date.UTC(2026, 8, 7, 13 + h, m) / 1000);
+  const sample = (t: number): WallHistorySample => ({
+    time: t,
+    callWalls: [{ strike: 7700, pct: 1 }],
+    putWalls: [],
+    modeled: false,
+  });
+  const modeledSample = (t: number): WallHistorySample => ({
+    time: t,
+    callWalls: [{ strike: 7700, pct: 0.5 }],
+    putWalls: [],
+    modeled: true,
+  });
+  // Narrowed starts at 15:30 — the Sep-7 prod gap symptom.
+  const narrowed = [sample(H(1, 30)), sample(H(2)), sample(H(3))];
+  const blended: WallHistorySample[] = [];
+  for (let t = H(0); t <= H(3); t += 300) blended.push(modeledSample(t));
+
+  const merged = beadRailHistoryForHorizon(narrowed, blended, H(0), H(3));
+  assert.ok(merged.some((s) => s.time < H(1, 30) && s.modeled), "prefix gap filled from blended");
+  assert.equal(
+    merged.find((s) => s.time === H(1, 30))?.modeled,
+    false,
+    "observed narrowed bucket stays solid"
+  );
 });
 
 test("backfillRailGaps: no modeled sample lands where the rail already has coverage", () => {

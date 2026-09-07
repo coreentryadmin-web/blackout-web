@@ -484,13 +484,12 @@ test("VectorChart: embed seed upgrade syncs wallHistoryRef when initialWallHisto
   assert.match(src, /applySessionOverviewViewport\(chart, display\)/);
 });
 
-test("VectorChart: narrowed 0DTE rail prefers denser blended fallback only during embed bootstrap window", () => {
+test("VectorChart: narrowed 0DTE bead rail fills session gaps from blended underlay", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
-  assert.match(src, /EMBED_BOOTSTRAP_BLEND_MS/);
-  assert.match(src, /embedBootstrapBlendUntilMsRef/);
-  assert.match(src, /bootstrapBlendWindow/);
-  assert.match(src, /blended\.length > narrowed\.length/);
-  assert.match(src, /narrowed\.length < EMBED_BOOTSTRAP_BLEND_MIN_SAMPLES/);
+  assert.match(src, /beadRailHistoryForHorizon/);
+  assert.match(src, /wallHistoryRef\.current/);
+  assert.doesNotMatch(src, /EMBED_BOOTSTRAP_BLEND_MS/);
+  assert.doesNotMatch(src, /embedBootstrapBlendUntilMsRef/);
 });
 
 test("VectorChart: refreshTrails is a no-op during replay so applyFrame owns the bead rail", () => {
@@ -520,11 +519,11 @@ test("VectorChart: narrowed DTE horizon history poll merges remote tail (does no
   assert.match(src, /mergeWallHistory\(horizonHistoryRef\.current, remote\)/);
 });
 
-test("VectorChart: narrowed DTE bead trail never falls back to blended all rail when narrowed is healthy", () => {
+test("VectorChart: narrowed DTE bead rail keeps observed buckets and only backfills gaps", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /composeHorizonTrail\(recordedTrail, currentColumn\)/);
-  assert.match(src, /const narrowed = composed \?\? \[\]/);
-  assert.match(src, /return narrowed\.length \? narrowed : blended/);
+  assert.match(src, /beadRailHistoryForHorizon/);
+  assert.doesNotMatch(src, /return narrowed\.length \? narrowed : blended/);
 });
 
 test("VectorChart fetches and uses the blended rail when it was given no seed", () => {
