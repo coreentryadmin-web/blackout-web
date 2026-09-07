@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T13:41:09.433Z",
+  "updated_at": "2026-09-07T15:35:38.979Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -78,6 +78,54 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-07T13:41:01.294Z",
       "safe_to_merge": true
+    },
+    "pr-4482": {
+      "pr": 4482,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:28.756Z",
+      "safe_to_merge": true
+    },
+    "pr-4483": {
+      "pr": 4483,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:29.094Z",
+      "safe_to_merge": true
+    },
+    "pr-4484": {
+      "pr": 4484,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:29.440Z",
+      "safe_to_merge": true
+    },
+    "pr-4485": {
+      "pr": 4485,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:29.833Z",
+      "safe_to_merge": true
+    },
+    "pr-4487": {
+      "pr": 4487,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:30.179Z",
+      "safe_to_merge": true
+    },
+    "pr-4488": {
+      "pr": 4488,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:30.540Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -92,11 +140,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6ec512ca31bf32c17647ed80839aa12c18638905",
+    "last_main_sha": "0a2087dde1d5aa4e6610fadffd85780c50a38764",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T13:35:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34128212311",
-    "last_deploy_sha": "ce54cd063f6641739d62fd3e757ac883c245161c"
+    "last_deploy_at": "2026-09-07T15:35:28Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34138742562",
+    "last_deploy_sha": "0a2087dde1d5aa4e6610fadffd85780c50a38764"
   },
   "events": [
     {
@@ -1267,9 +1315,106 @@
       "agent": "cursor",
       "run_id": "9854b8a8-0087-47d4-be39-157b2584f77e",
       "summary": "Main@6ec512ca3 (docs SEO wake) atop #4481 swing REGIME pillar wiring (ce54cd063). validate:deploy GREEN. Post-merge review #4481 APPROVED — 16/16 live-plays tests. Labor Day holiday — no live desk validation. Dependabot #4476-#4480 RED hold."
+    },
+    {
+      "at": "2026-09-07T15:34:50.643Z",
+      "type": "context_sync",
+      "expired_locks": [
+        "BO-P1-0102"
+      ],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T15:34:51.667Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T15:35:28.756Z",
+      "type": "pr_review",
+      "pr": 4482,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:28.756Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T15:35:29.094Z",
+      "type": "pr_review",
+      "pr": 4483,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:29.094Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T15:35:29.440Z",
+      "type": "pr_review",
+      "pr": 4484,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:29.440Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T15:35:29.834Z",
+      "type": "pr_review",
+      "pr": 4485,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:29.833Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T15:35:30.179Z",
+      "type": "pr_review",
+      "pr": 4487,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:30.179Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T15:35:30.540Z",
+      "type": "pr_review",
+      "pr": 4488,
+      "head_sha": "0a2087dde",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T15:35:30.540Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T15:35:38.978Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T15:35:38.979Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "466c9441-7695-4234-95c0-cdae94a3b838",
+      "summary": "Main@0a2087dde holiday cron wave (#4482-#4488) + swing regime placeholder fix (#4487). validate:deploy GREEN; 30/30 targeted tests pass. Post-merge reviews APPROVED. Labor Day — crons now skip via isEtCashRth. Dependabot RED hold."
     }
   ],
   "open_prs": [
+    {
+      "number": 4489,
+      "title": "fix(perf): model NYSE holidays in isDeployCacheWarmAllowed",
+      "branch": "fix/deploy-cache-warm-holiday-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T15:30:56Z"
+    },
     {
       "number": 4480,
       "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
