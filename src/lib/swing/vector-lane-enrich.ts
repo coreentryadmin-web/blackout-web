@@ -32,14 +32,17 @@ export function enrichPlayWithVectorLeader(
   if (!leader) return play;
   const kinds = new Set(play.signalKinds ?? []);
   kinds.add(VECTOR_SIGNAL);
+  // Magnitude unknown → tag VECTOR only; never fabricate a score bump (Largo contract: omit
+  // uncalibrated conviction). A matched leader with null peakPremiumPct is corroboration presence,
+  // not evidence of size.
   const bump =
     leader.peakPremiumPct != null && Number.isFinite(leader.peakPremiumPct)
       ? Math.min(8, Math.round(leader.peakPremiumPct / 5))
-      : 3;
+      : 0;
   return {
     ...play,
     signalKinds: [...kinds],
-    score: Math.min(99, play.score + bump),
+    score: bump > 0 ? Math.min(99, play.score + bump) : play.score,
     reason: play.reason.includes("Vector")
       ? play.reason
       : `${play.reason} · Vector corroboration`,

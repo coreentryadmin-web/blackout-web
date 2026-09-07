@@ -1204,11 +1204,16 @@ test("meridianPeerSection: dedicated section — coaching bullets must not dupli
   }
 });
 
-test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
+test("whyThisSetupSection: surfaces subLane without duplicating Verdict archetype/regime", () => {
   const section = whyThisSetupSection(
-    fixturePlay({ archetype: "momentum_breakout", subLane: "earnings_lead" }),
+    fixturePlay({
+      archetype: "momentum_breakout",
+      regime: "risk_on",
+      subLane: "earnings_lead",
+    }),
   );
-  assert.match(section.body, /\*\*Archetype:\*\* momentum breakout/);
+  assert.ok(!section.body.includes("momentum_breakout"), "archetype belongs in Verdict only");
+  assert.ok(!section.body.includes("risk_on"), "regime belongs in Verdict only");
   assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
 });
 

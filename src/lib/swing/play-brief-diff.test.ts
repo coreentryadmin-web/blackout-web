@@ -8,6 +8,7 @@ import {
   envelopeWithNarrativePulse,
   extrasFromBriefResponse,
   briefSnapshotStorageKey,
+  briefContentKey,
   snapshotFromBrief,
 } from "./play-brief-diff";
 
@@ -211,6 +212,26 @@ test("diffBriefSnapshots: detects HELIX put-only flow build when call premium is
     lines.some((l) => l.includes("HELIX tape: put flow building")),
     `expected put flow building line, got: ${JSON.stringify(lines)}`,
   );
+});
+
+test("briefContentKey: rounds float noise inside the JSON string", () => {
+  const key = briefContentKey({
+    headline: "HOLD",
+    recommendation: "HOLD",
+    thesisHealth: 60,
+    pnlPct: 12.345678901,
+    mark: 3.14159265359,
+    spot: 7499.360000000001,
+    gammaFlip: null,
+    callWall: null,
+    putWall: null,
+    flowCallPremium: null,
+    flowPutPremium: null,
+    trimsFired: null,
+    sectionTitles: ["Verdict"],
+  });
+  assert.ok(!key.includes("7499.360000000001"), "raw IEEE noise must not leak into dedupe key");
+  assert.ok(key.includes("7499.36"));
 });
 
 test("briefSnapshotStorageKey: requires play id and session date", () => {

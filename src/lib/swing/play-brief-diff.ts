@@ -4,6 +4,7 @@
  */
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { roundFloats } from "@/lib/round-floats";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
 export type BriefSnapshot = {
@@ -183,19 +184,24 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
 
 /** Stable content key for SSE dedupe — excludes time-only fields. */
 export function briefContentKey(snap: BriefSnapshot): string {
-  return JSON.stringify({
-    headline: snap.headline,
-    recommendation: snap.recommendation,
-    thesisHealth: snap.thesisHealth,
-    pnlPct: snap.pnlPct,
-    mark: snap.mark,
-    spot: snap.spot,
-    gammaFlip: snap.gammaFlip,
-    callWall: snap.callWall,
-    putWall: snap.putWall,
-    trimsFired: snap.trimsFired,
-    sectionTitles: snap.sectionTitles,
-  });
+  // roundFloats before stringify: briefContentKey is a string, so the route-level roundFloats()
+  // wrapper cannot reach the numeric text inside — round here so SSE dedupe keys match member-visible
+  // rounded values, not raw IEEE noise (CTO audit #57).
+  return JSON.stringify(
+    roundFloats({
+      headline: snap.headline,
+      recommendation: snap.recommendation,
+      thesisHealth: snap.thesisHealth,
+      pnlPct: snap.pnlPct,
+      mark: snap.mark,
+      spot: snap.spot,
+      gammaFlip: snap.gammaFlip,
+      callWall: snap.callWall,
+      putWall: snap.putWall,
+      trimsFired: snap.trimsFired,
+      sectionTitles: snap.sectionTitles,
+    }),
+  );
 }
 
 /** Inject live refresh pulse into Trade manager read; overflow goes to What changed. */

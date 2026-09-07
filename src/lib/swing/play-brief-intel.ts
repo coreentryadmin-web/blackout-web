@@ -64,9 +64,8 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   if (play.discoveryOrigin?.length) {
     lines.push(`**Signals fired:** ${play.discoveryOrigin.join(" · ")}`);
   }
-  if (play.archetype) lines.push(`**Archetype:** ${play.archetype.replace(/_/g, " ")}`);
+  // archetype + regime live in Verdict (play-brief.ts) — do not duplicate here (CTO audit #56).
   if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
-  if (play.regime) lines.push(play.regime);
   // recNote is NOT repeated here — Management (open bucket, play-brief.ts) and Verdict (watch
   // bucket) already render it verbatim. Duplicating it produced the same sentence twice in one
   // brief (FINDINGS 2026-09-06, live NRG SWING_NRG_34) and crowded out this section's actual job:
