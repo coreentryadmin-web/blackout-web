@@ -227,6 +227,17 @@ export function livePlayFromSwingPosition(
       ? (row.feature_vector.evidence_score as number)
       : 0;
 
+  // Honest regime read for computeSwingThesisHealth (thesis-health.ts): the commit-time 7-pillar
+  // dossier (feature-vector.ts) persists `pil_regime` — null when that pillar wasn't grounded, never
+  // a fabricated 0. Surface the archetype label ONLY when the dossier actually scored REGIME, so a
+  // committed position's "Thesis health" panel shows a real regime read instead of always falling
+  // through to the uncalibrated default (thesis-health.ts's `regimeScore()` treats a null regime as
+  // unread, base 0.45; a non-null string bumps the base to 0.75 — this must stay honest, not a guess).
+  const regime =
+    row.feature_vector && typeof row.feature_vector.pil_regime === "number"
+      ? (row.archetype ?? "regime read")
+      : null;
+
   const entry = row.entry_premium;
   const mark = row.last_mark;
   const markAsOf = row.last_mark_at ?? quote?.asOf ?? null;
@@ -243,6 +254,7 @@ export function livePlayFromSwingPosition(
     reason: `live ${row.status.toLowerCase()} — ${row.archetype ?? "swing"} thesis`,
     archetype: (row.archetype as SwingArchetype | null) ?? undefined,
     subLane: (row.sub_lane as SwingSubLane | null) ?? undefined,
+    regime,
     liveStatus,
     manageAction,
     thesisLevel,

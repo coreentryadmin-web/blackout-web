@@ -127,6 +127,21 @@ test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledge
   assert.equal(play.peakPremium, 5.5);
 });
 
+test("livePlayFromSwingPosition: regime is honestly null when the dossier's REGIME pillar wasn't grounded", () => {
+  // Default fixture feature_vector carries only evidence_score — no pil_regime key, same as any
+  // position committed before the 7-pillar dossier wired that pillar. Must stay null, never a
+  // fabricated archetype label — thesis-health.ts's regimeScore() reads a null regime as "unread".
+  const play = livePlayFromSwingPosition(row())!;
+  assert.equal(play.regime, null);
+});
+
+test("livePlayFromSwingPosition: regime surfaces the archetype label when the dossier's REGIME pillar was grounded", () => {
+  const play = livePlayFromSwingPosition(
+    row({ archetype: "BREAKOUT", feature_vector: { evidence_score: 82, pil_regime: 0.71 } })
+  )!;
+  assert.equal(play.regime, "BREAKOUT");
+});
+
 test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {
   const plays = livePlaysFromOpenPositions(
     [
