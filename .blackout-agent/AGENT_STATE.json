@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T06:28:10.737Z",
+  "updated_at": "2026-09-07T08:13:16.894Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -71,11 +71,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ba2405d2889a6695da7e1c214e1c876fdb7522ec",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T06:19:21Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34090304032",
-    "last_deploy_sha": "4d64adf04101db848bb8095a3d2bf25e8cc00a53"
+    "last_main_sha": "1e6056d37bdd1ee4492640d8e917c9ca7ad1ec43",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-07T08:00:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34095123478",
+    "last_deploy_sha": "ca6172a359163818bcf7b00e13602a5abe93fb2f"
   },
   "events": [
     {
@@ -1087,9 +1087,33 @@
       "agent": "cursor",
       "run_id": "d64fc3d5-4126-4114-b347-c92174868d09",
       "summary": "Main@ba2405d28 docs SEO heartbeat log (no code). Queue clean. Next: RTH lifecycle ~2.5h."
+    },
+    {
+      "at": "2026-09-07T08:13:16.893Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T08:13:16.894Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "11481bb6-1d60-4d67-b8dd-4443f166d4dd",
+      "summary": "Main@1e6056d37 (#4469 WATCH WAIT/HOLD parity). #4470 cursor bead-rail 0DTE embed — CI GREEN, AWAITING CLAUDE review. RTH ~5h."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4470,
+      "title": "fix(vector): SPX Slayer embed 0DTE bead rails — horizon history sync",
+      "branch": "cursor/bead-rail-embed-0dte-sync",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T08:13:10Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
