@@ -8,6 +8,9 @@ import {
   diffBriefSnapshots,
   envelopeWithNarrativePulse,
   extrasFromBriefResponse,
+  briefSnapshotStorageKey,
+  loadPersistedBriefSnapshot,
+  persistBriefSnapshot,
   snapshotFromBrief,
   type BriefSnapshot,
 } from "@/lib/swing/play-brief-diff";
@@ -132,6 +135,15 @@ export function useSwingPlayBrief(play: TerminalPlay | null, opts?: UseSwingPlay
     }
   }, [play?.id]);
 
+  /** Hydrate diff baseline from sessionStorage so "since last read" survives remounts. */
+  useEffect(() => {
+    if (!play?.id || !data?.envelope) return;
+    const key = briefSnapshotStorageKey(play.id, data.envelope.session_date ?? data.envelope.asOf?.slice(0, 10));
+    if (!key || prevSnapRef.current) return;
+    const stored = loadPersistedBriefSnapshot(key);
+    if (stored) prevSnapRef.current = stored;
+  }, [play?.id, data?.envelope?.session_date, data?.envelope?.asOf]);
+
   const liveSig = playLiveSig(play);
   useEffect(() => {
     if (!key || !liveSig || liveSig === prevLiveSigRef.current) return;
@@ -161,6 +173,11 @@ export function useSwingPlayBrief(play: TerminalPlay | null, opts?: UseSwingPlay
     const nextSnap = snapshotFromBrief(raw, play, extras);
     const changes = diffBriefSnapshots(prevSnapRef.current, nextSnap);
     prevSnapRef.current = nextSnap;
+    const storageKey = briefSnapshotStorageKey(
+      play.id,
+      raw.session_date ?? raw.asOf?.slice(0, 10),
+    );
+    if (storageKey) persistBriefSnapshot(storageKey, nextSnap);
     setChangeCount(changes.length);
     setEnvelope(changes.length ? envelopeWithNarrativePulse(raw, changes) : raw);
   }, [data, play, liveSig]);

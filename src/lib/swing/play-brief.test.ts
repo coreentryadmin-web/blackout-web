@@ -218,6 +218,7 @@ test("composeSwingPlayBrief: envelope.asOf uses Largo C1 ET stamp (not a bare UT
   assert.equal(brief.envelope.asOf, "2026-09-05 16:00 ET");
   assert.equal(brief.asOf, "2026-09-05 16:00 ET");
   assert.equal(brief.sessionDate, "2026-09-05");
+  assert.equal(brief.envelope.session_date, "2026-09-05", "envelope must carry session_date for Largo C1");
   assert.doesNotMatch(brief.envelope.asOf!, /Z$/, "asOf must not be a UTC ISO instant");
 });
 
