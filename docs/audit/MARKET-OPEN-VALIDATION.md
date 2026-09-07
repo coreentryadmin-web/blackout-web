@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
 
+### 0a-1aj. Ask Largo swing brief future-skew reads as fresh — fix/largo-brief-future-skew-staleness (pending)
+
+**What was broken:** `gexMatrixStale()` and `vectorAgeStale()` in `play-brief-absence.ts` did not fail-closed on clock-skewed future timestamps — negative age read as "not stale", so dealer posture and Vector levels still drove Ask Largo narrative while provenance said unknown.
+
+**Fix:** Mirror `gexStaleFromAge` / `FreshnessChip` semantics — treat `ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS`, `dataAgeMs === POSITIVE_INFINITY`, and `freshness === "unknown"` as stale for gating.
+
+**Check at the open:** Swings Ask Largo on a play when Vector/GEX snapshot carries future-skewed `asof` — `unavailableSources` must include stale GEX/Vector entries; `resolveGammaPosture` must not cite stale dealer posture.
+
 ### 0a-1ai. Stale Vector chart/level fields still read as live in Ask Largo — fix/largo-stale-vector-chart-gating (pending)
 
 **What was broken:** After #4376–#4394 GEX-wall and Vector `play.bias` gates, chart technicals still
