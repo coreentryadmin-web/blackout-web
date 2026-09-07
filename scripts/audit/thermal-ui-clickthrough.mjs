@@ -170,6 +170,15 @@ async function runClickthrough(page) {
     await page.waitForTimeout(500);
   }
 
+  // Session story timeline (replaces dismissible alerts strip)
+  const sessionTimeline = page.locator("[data-thermal-session-timeline]");
+  if ((await sessionTimeline.count()) > 0) rec("session:timeline", "PASS");
+  else rec("session:timeline", "INFO", "timeline hidden in compare mode");
+
+  const savedDesks = page.locator("[data-thermal-saved-desks]");
+  if ((await savedDesks.count()) > 0) rec("desks:saved-menu", "PASS");
+  else rec("desks:saved-menu", "WARN", "saved desks menu missing");
+
   const depthTab = page.getByRole("tab", { name: /Depth|Forced Flow/i });
   if ((await depthTab.count()) > 0) {
     if (await clickIfVisible(page, depthTab, "tab:depth")) {

@@ -80,18 +80,27 @@ export function parseThermalTicker(raw: string | null | undefined): string | nul
   return /^[A-Z][A-Z0-9.\-]{0,7}$/.test(t) ? t : null;
 }
 
+/** Optional matrix scroll target from `?strike=` deep links. */
+export function parseThermalStrike(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /** Read desk state from URLSearchParams (client). */
 export function parseThermalUrlState(params: URLSearchParams): {
   ticker: string | null;
   lens: ThermalLens | null;
   compare: boolean;
   compareSet: ThermalComparePresetId | null;
+  strike: number | null;
 } {
   return {
     ticker: parseThermalTicker(params.get("ticker")),
     lens: parseThermalLens(params.get("lens")),
     compare: params.get("compare") === "1" || params.get("compare") === "true",
     compareSet: parseThermalComparePresetId(params.get("compareSet")),
+    strike: parseThermalStrike(params.get("strike")),
   };
 }
 
@@ -103,6 +112,7 @@ export function buildThermalUrlSearch(
     lens: ThermalLens;
     compare: boolean;
     compareSet?: ThermalComparePresetId | null;
+    strike?: number | null;
   }
 ): string {
   const p = new URLSearchParams(current.toString());
@@ -112,6 +122,11 @@ export function buildThermalUrlSearch(
   else p.delete("compare");
   if (next.compare && next.compareSet) p.set("compareSet", next.compareSet);
   else p.delete("compareSet");
+  if (next.strike != null && Number.isFinite(next.strike) && next.strike > 0) {
+    p.set("strike", String(next.strike));
+  } else {
+    p.delete("strike");
+  }
   return p.toString();
 }
 

@@ -1,6 +1,7 @@
 import { fmtPremium } from "@/lib/fmt-money";
 import { fmtHeatmapStrike } from "@/lib/gex-heatmap-display";
 import { GEX_KING_NODE_LABEL } from "@/lib/gex-king-node-labels";
+import { flipReasonChip, type ThermalFlipReason } from "./thermal-flip-reason";
 
 export type RegimeStripLens = "gex" | "vex" | "dex" | "charm";
 
@@ -9,6 +10,8 @@ export type RegimeStripSegment = {
   icon?: string;
   label: string;
   value: string;
+  /** Hover / SR detail for chips without a numeric strike. */
+  title?: string;
   /** Numeric strike for scroll-to-matrix — omitted for non-strike chips (VOL, Net GEX). */
   strike?: number | null;
   tone?: "bull" | "bear" | "flip" | "wall" | "sky" | "neutral";
@@ -38,6 +41,8 @@ export type BuildThermalRegimeStripInput = {
   footnote?: string | null;
   spot: number;
   flip: number | null;
+  /** When flip is null — explains why (net short everywhere, thin chain, etc.). */
+  flipReason?: ThermalFlipReason | null;
   callWall: number | null;
   putWall: number | null;
   maxPain: number | null;
@@ -143,7 +148,7 @@ function segment(
   key: string,
   label: string,
   value: string,
-  opts?: Partial<Pick<RegimeStripSegment, "icon" | "tone" | "delta" | "strike">>
+  opts?: Partial<Pick<RegimeStripSegment, "icon" | "tone" | "delta" | "strike" | "title">>
 ): RegimeStripSegment {
   return { key, label, value, ...opts };
 }
@@ -155,6 +160,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
     kicker,
     footnote,
     flip,
+    flipReason,
     callWall,
     putWall,
     maxPain,
@@ -199,6 +205,17 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
     }
     if (flip != null) {
       segments.push(segment("flip", "Flip", fmtStrike(flip), { icon: "⚡", tone: "flip", strike: flip }));
+    } else {
+      const chip = flipReasonChip({ flip, reason: flipReason });
+      if (chip) {
+        segments.push(
+          segment("flipReason", "γ Flip", chip.label, {
+            icon: "⚡",
+            tone: "neutral",
+            title: chip.title,
+          })
+        );
+      }
     }
     if (callWall != null) {
       segments.push(

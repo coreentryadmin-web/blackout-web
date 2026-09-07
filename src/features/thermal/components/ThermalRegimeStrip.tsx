@@ -71,6 +71,7 @@ function RegimeSegment({
       <span
         className="inline-flex min-w-0 shrink-0 items-baseline gap-1.5 whitespace-nowrap"
         data-regime-segment={seg.key}
+        title={seg.title}
       >
         {inner}
       </span>
@@ -81,7 +82,7 @@ function RegimeSegment({
       type="button"
       className="inline-flex min-w-0 shrink-0 items-baseline gap-1.5 whitespace-nowrap rounded-sm outline-none transition-colors hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-sky-400/60"
       data-regime-segment={seg.key}
-      title={`Scroll matrix to ${seg.value}`}
+      title={seg.title ?? `Scroll matrix to ${seg.value}`}
       onClick={() => onClick(seg.key)}
     >
       {inner}
