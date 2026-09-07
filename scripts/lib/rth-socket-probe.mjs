@@ -5,6 +5,11 @@
 
 /** @typedef {{ ok: boolean, detail?: string }} SocketHealthOptions */
 
+/** NYSE holiday / non-trading day — socket-health returns ok+skipped without websockets (#4517). */
+export function isSocketHealthSkipped(body) {
+  return body?.ok === true && body?.skipped === true;
+}
+
 /**
  * @param {SocketHealthOptions | null | undefined} opt
  * @param {boolean} afterMarketOpen930
@@ -72,6 +77,10 @@ export async function probeOptionsSocketWithRetries({
             onRetry?.(attempt + 1, opt.detail ?? "warming");
           }
         }
+      } else if (isSocketHealthSkipped(body)) {
+        socketProbeOk = true;
+        successDetail =
+          typeof body.reason === "string" ? body.reason : "non-trading day (socket-health skipped)";
       } else if (status === 401) {
         socketProbeOk = true;
         preOpenWarn = "CRON_SECRET in this env may not match prod";
