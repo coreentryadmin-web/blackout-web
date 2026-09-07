@@ -1008,6 +1008,24 @@ export function mergeModeledUnderlay(
  * spot-constrained recorder rows with the unconstrained reconstruction without discarding observed
  * buckets that are genuinely richer than the model.
  */
+/**
+ * Bead-rail ribbon continuity for narrowed DTE horizons (0DTE / weekly / monthly).
+ *
+ * Markers stay horizon-scoped; the RIBBON fills every session gap from the blended all-horizon
+ * rail so yellow/magenta bands span RTH like the Sep-3 desk. Observed narrowed buckets always win
+ * at the same timestamp — blended only paints where narrowed has no coverage.
+ */
+export function beadRailHistoryForHorizon(
+  narrowed: WallHistorySample[],
+  blended: WallHistorySample[],
+  firstBarTime: number | undefined,
+  lastBarTime: number | undefined
+): WallHistorySample[] {
+  if (!narrowed.length) return blended;
+  if (!blended.length) return narrowed;
+  return backfillRailGaps(narrowed, blended, firstBarTime, lastBarTime, RAIL_GAP_FILL_MIN_SEC);
+}
+
 export function mergePreferDenserUnderlay(
   observed: WallHistorySample[],
   modeled: WallHistorySample[]
