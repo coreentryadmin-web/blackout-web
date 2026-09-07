@@ -116,7 +116,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("?force=1 bypasses the window gate (manual/agent-driven runs)", async () => {
     etWindowResult = false;
-    tradingDayResult = true;
+    tradingDayResult = false;
     buildCalls = 0;
 
     const res = await GET(new NextRequest("http://localhost/api/cron/largo-morning-brief?force=1"));
