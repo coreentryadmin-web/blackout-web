@@ -4,6 +4,7 @@
  */
 import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
 import { freshnessFromAgeMs } from "@/lib/bie/answer-envelope";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -14,7 +15,6 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import {
   collectBriefUnavailableSources,
   gexMatrixAgeMs,
@@ -177,6 +177,14 @@ function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshn
   return describeVectorFreshness(vec.asOf, readMs).freshness;
 }
 
+function optionMarkFreshness(markAsOf: string, readMs: number): BieFreshness {
+  const markMs = Date.parse(markAsOf);
+  if (!Number.isFinite(markMs)) return "unknown";
+  const rawAgeMs = readMs - markMs;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
+  return freshnessFromAgeMs(rawAgeMs);
+}
+
 /** C1: BieLevel provenance must carry ET stamps, not raw UTC ISO — cross-product joins depend on it. */
 function levelProvenanceAsOf(
   gex: GexPositioning | null | undefined,
@@ -303,7 +311,6 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     });
   }
   if (ctx.play.markAsOf) {
-    const markMs = Date.parse(ctx.play.markAsOf);
     const markEt = etStampFromIso(ctx.play.markAsOf);
     out.push({
       kind: "fact",
@@ -311,7 +318,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: {
         source: "Swing ledger",
         asOf: markEt,
-        freshness: Number.isFinite(markMs) ? freshnessFromAgeMs(readMs - markMs) : "unknown",
+        freshness: optionMarkFreshness(ctx.play.markAsOf, readMs),
       },
     });
   }
