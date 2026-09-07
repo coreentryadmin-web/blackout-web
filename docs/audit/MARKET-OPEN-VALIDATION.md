@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
 
+### 0a-1am. data-integrity C6 future-skewed GEX asof bypassed RTH stale flag — fix/data-integrity-gex-future-skew (pending)
+
+**What was broken:** `runDataIntegrityChecks()` C6 computed raw `(now - asof) / 60000` without the future-skew guard already used by `data-integrity-verifier.ts`'s `ageMin()`. A clock-skewed future `pos.asof` produced negative ageMin that never exceeded the 15m stale band — the cron passed while the verifier's redis_gex layer would have flagged.
+
+**Fix:** Shared `gexMatrixStaleDuringRth()` in `data-integrity-gex-freshness.ts` (Infinity beyond 60s future skew); C6 delegates to it.
+
+**Check at the open:** During RTH, if GEX cache carries a future-skewed `asof`, admin data-integrity cron should open `GEX SPX stale during RTH` (not pass clean).
+
 ### 0a-1al. Vector scenario provenance future-skew reads as unknown — fix/scenario-read-future-skew-freshness (pending)
 
 **What was broken:** `buildScenarioEnvelope()` stamped Vector scenario provenance via `freshnessFromAgeMs(Date.now() - Date.parse(state.asOf))` without the `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` guard already on swing brief paths (#4454/#4455). Clock-skewed future `asOf` returned `"unknown"` instead of fail-closed `"stale"`.
