@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T17:52:01.696Z",
+  "updated_at": "2026-09-07T18:27:22.706Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -236,25 +236,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "99f0a41b776caacf24545b4dd200b3207549331a",
+    "last_main_sha": "7246d9ad2bc971ccdec0cb49f29844f9e43f3b64",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T17:48:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34149083058",
-    "last_deploy_sha": "99f0a41b776caacf24545b4dd200b3207549331a"
+    "last_deploy_at": "2026-09-07T18:20:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34151236856",
+    "last_deploy_sha": "7246d9ad2bc971ccdec0cb49f29844f9e43f3b64"
   },
   "events": [
-    {
-      "at": "2026-09-05T22:19:17.152Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T22:19:17.459Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-05T23:22:37.057Z",
       "type": "context_sync",
@@ -1574,18 +1562,81 @@
       "agent": "cursor",
       "run_id": "f95cb7d9-59e8-4f98-a319-c39d0d511321",
       "summary": "Main@99f0a41b7 — Labor Day cron wave (#4500-#4519): largo-morning-brief, socket-health, x-marketing, discord EOD, spx-signal-weight-optimize, x-growth/engage. #4518 dossier regime→Why this setup. #4516 vector bead rail Sep-3 fidelity. validate:deploy GREEN. Dependabot RED hold."
+    },
+    {
+      "at": "2026-09-07T18:27:22.705Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-07T18:27:22.706Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "20a2505c-38d4-40bb-acd0-b1df3b8dcbbb",
+      "summary": "Main@7246d9ad2 open-check RED — socket-health holiday skip broke rth-open probe. Fix #4535 APPROVED (dup #4531 closed). validate:rth-open GREEN on fix branch."
     }
   ],
   "open_prs": [
     {
-      "number": 4520,
-      "title": "fix(cron): gate platform-warm on shouldRunCacheWarmer for NYSE holidays",
-      "branch": "fix/platform-warm-holiday-gate",
+      "number": 4539,
+      "title": "fix(ops): RTH open-check green on NYSE holidays (Labor Day false RED)",
+      "branch": "fix/rth-open-holiday-socket-skip",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T18:27:21Z"
+    },
+    {
+      "number": 4538,
+      "title": "fix(ops): skip RTH open-check session gates on NYSE holidays",
+      "branch": "fix/rth-open-check-holiday-skip",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T18:26:50Z"
+    },
+    {
+      "number": 4537,
+      "title": "fix(ops): RTH open-check must pass on NYSE holidays when socket-health skips",
+      "branch": "fix/rth-open-holiday-socket-probe",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T18:26:29Z"
+    },
+    {
+      "number": 4534,
+      "title": "fix(ops): skip options-socket hard fail on NYSE holidays in RTH open-check",
+      "branch": "fix/rth-open-check-nyse-holiday-socket",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T18:26:21Z"
+    },
+    {
+      "number": 4533,
+      "title": "fix(ops): treat socket-health holiday skip as GREEN in RTH open check",
+      "branch": "fix/rth-open-holiday-socket-health-skip",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T18:26:21Z"
+    },
+    {
+      "number": 4532,
+      "title": "fix(ops): skip rth-open-check on NYSE holidays — socket-health skip is not RED",
+      "branch": "fix/rth-open-holiday-skip",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T17:50:44Z"
+      "updated_at": "2026-09-07T18:26:18Z"
     },
     {
       "number": 4480,
