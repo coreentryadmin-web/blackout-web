@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T04:02:10.079Z",
+  "updated_at": "2026-09-07T04:46:56.954Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-07T04:36:04.776Z",
+      "lease_until": "2026-09-07T06:06:04.776Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -17,9 +17,21 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-07T04:41:30.219Z",
+      "lease_until": "2026-09-07T06:11:30.219Z",
+      "phase": "CLAIMED",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
+    },
+    "BO-P1-0105": {
+      "task_id": "BO-P1-0105",
+      "owner": "cursor",
+      "claimed_at": "2026-09-07T04:46:35.619Z",
+      "lease_until": "2026-09-07T06:16:35.619Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -60,16 +72,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-07T04:46:35.620Z",
+      "current_task": "BO-P1-0105"
     }
   },
   "deploy": {
-    "last_main_sha": "178add55514d9848a81eab346baab7b722bd859b",
+    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T04:41:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
+    "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
   "events": [
     {
@@ -875,36 +887,44 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-07T03:56:10.581Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-07T03:59:28.563Z",
+      "at": "2026-09-07T04:41:27.023Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-07T04:02:10.079Z",
+      "at": "2026-09-07T04:41:30.219Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T04:46:32.655Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
-    }
-  ],
-  "open_prs": [
+    },
     {
-      "number": 4457,
-      "title": "fix(largo): fail-closed staleness on future-skewed scenario provenance",
-      "branch": "fix/scenario-read-future-skew-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-07T04:02:04Z"
+      "at": "2026-09-07T04:46:35.620Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0105",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T04:46:56.954Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T04:46:56.954Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "63c6a09b-1f05-4d94-98ba-86b07d648cb0",
+      "summary": "Autopilot cycle complete. Merged #4461 (Largo CLOSED brief unavailable noise — peer-reviewed APPROVED) + #4460 (Vector bead rail). Open PRs: 0. ops:collect 0. validate:deploy + platform-integrity + api-auth GREEN. ECR deploy in flight for d8a0c4262. Off-hours — RTH skipped."
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
