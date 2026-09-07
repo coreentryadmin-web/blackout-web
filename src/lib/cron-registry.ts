@@ -123,9 +123,12 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Platform Warm",
     kind: "http",
     path: "/api/cron/platform-warm",
-    schedule_label: "~Every 5 min (24/7)",
+    schedule_label: "~Every 5 min (extended warm window)",
     stale_after_min: 15,
-    description: "Pre-warm general platform cache (bootstrap bundle) for 24/7 admin/member page loads outside RTH",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Pre-warm general platform cache (bootstrap bundle) during the extended warm window (4 AM–8 PM ET trading days) — same shouldRunCacheWarmer gate as desk/heatmap/zerodte warmers",
   },
   {
     key: "meridian-warm",

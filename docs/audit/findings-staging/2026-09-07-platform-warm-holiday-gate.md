@@ -25,6 +25,9 @@ Route header claimed "available 24/7" and skipped the shared cache-warmer gate e
 `platform-warm/route.ts`: after auth, skip with `{ ok: true, status: "skipped", reason: "off-hours gate" }`
 when `!shouldRunCacheWarmer(force, …)` unless `force=1` (ops/debug bypass — same as desk-warm).
 
+`cron-registry.ts`: align `weekdays_only` / `market_hours_only` + schedule label with sibling warmers
+so staleness watchdog does not false-flag holiday silence as stale.
+
 ## Blast radius
 
 platform-warm cron only. Off-hours warm on real trading days (4 AM–8 PM ET extended window) unchanged.
