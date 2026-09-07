@@ -20,6 +20,7 @@ import { NextRequest } from "next/server";
 // than the "@/" tsconfig alias.
 
 let cronAuthorized = true;
+let tradingDayResult = true;
 let dbQueryCalls: string[] = [];
 let loggedRuns: Array<{ jobKey: string; payload: Record<string, unknown> }> = [];
 let insertWeightReportCalls: Array<{ lookbackDays: number }> = [];
@@ -28,6 +29,9 @@ mock.module("../../../../lib/market-api-auth", {
   namedExports: {
     isCronAuthorized: () => cronAuthorized,
   },
+});
+mock.module("../../../../features/nighthawk/lib/session", {
+  namedExports: { isTradingDayEt: () => tradingDayResult },
 });
 mock.module("../../../../lib/db", {
   namedExports: {
@@ -132,5 +136,39 @@ describe("GET /api/cron/spx-signal-weight-optimize", () => {
     assert.equal(res.status, 200);
     assert.equal(body.ok, true);
     assert.match(String(body.reason), /last 30 days/);
+  });
+
+  test("NYSE holiday: no-op — no DB queries or weight report on a closed tape", async () => {
+    tradingDayResult = false;
+    dbQueryCalls = [];
+    loggedRuns = [];
+    insertWeightReportCalls = [];
+
+    const res = await GET(new NextRequest("http://localhost/api/cron/spx-signal-weight-optimize"));
+    const body = await res.json();
+
+    assert.equal(body.skipped, true);
+    assert.match(String(body.reason), /non-trading day/);
+    assert.equal(dbQueryCalls.length, 0);
+    assert.equal(insertWeightReportCalls.length, 0);
+    assert.equal(loggedRuns.length, 1);
+    assert.equal(loggedRuns[0]!.payload.skipped, true);
+    tradingDayResult = true;
+  });
+
+  test("?force=1 bypasses the holiday gate", async () => {
+    tradingDayResult = false;
+    dbQueryCalls = [];
+    loggedRuns = [];
+
+    const res = await GET(
+      new NextRequest("http://localhost/api/cron/spx-signal-weight-optimize?force=1")
+    );
+    const body = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(body.ok, true);
+    assert.ok(dbQueryCalls.length > 0);
+    tradingDayResult = true;
   });
 });
