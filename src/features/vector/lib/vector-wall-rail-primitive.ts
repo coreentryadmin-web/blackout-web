@@ -252,19 +252,15 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
             ctx.arc(p.x, cy, r + (2 + emph * 2) * haloMul, 0, Math.PI * 2);
             ctx.fill();
           }
-          if (r >= 2.2) {
-            ctx.lineWidth = emph > 0.5 ? 1.25 : 1;
-            ctx.strokeStyle = withA(
-              b.color,
-              Math.min(1, fillA + 0.04 + emph * 0.3 + (this._tuning.strokeAlphaBoost ?? 0))
-            );
-            ctx.stroke();
-          } else if ((this._tuning.strokeAlphaBoost ?? 0) > 0 && r >= minR) {
-            // Compare panes: tiny weak beads still get a crisp outline on #040407.
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = withA(beadHue, Math.min(1, p.a + (this._tuning.strokeAlphaBoost ?? 0)));
-            ctx.stroke();
-          }
+          // NO PER-BEAD OUTLINE (member-directed, 2026-09-07). A stroked border used to draw on
+          // every bead >= 2.2px radius (a crisp 1-1.25px ring around each fill). On a strike whose
+          // beads are large/dense enough to overlap bead-to-bead, adjacent fills hid each other's
+          // borders and the row still read as one solid ribbon — but on a weaker strike (smaller
+          // beads, real gaps between them), each bead's own border became individually visible,
+          // reading as a field of separate ringed circles rather than "size varies with magnitude,
+          // no ring." Member reference (Sep-3 screenshots): plain filled circles, no outline, size
+          // is the only channel. Removing the stroke makes that true regardless of how dense a
+          // given strike's beads are, instead of depending on incidental full overlap to hide it.
         }
         // Birth/death: drawn by the unified event-glyph layer when enabled.
         if (!this._showEventGlyphs && b.birth) {
