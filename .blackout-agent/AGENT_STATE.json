@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T01:30:58.953Z",
+  "updated_at": "2026-09-07T01:37:32.276Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -66,11 +66,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d73fe9bd2ab754aec288f2a85baae8f268d78e35",
+    "last_main_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T01:28:00Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073100593",
-    "last_deploy_sha": "d73fe9bd2ab754aec288f2a85baae8f268d78e35"
+    "last_deploy_at": "2026-09-07T01:30:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073262128",
+    "last_deploy_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e"
   },
   "events": [
     {
@@ -943,6 +943,19 @@
       "type": "task_claimed",
       "task_id": "BO-P1-0101",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T01:37:32.275Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:37:32.276Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d9bd34a1-e12a-422d-a3e5-3138d908a994",
+      "summary": "Cycle complete: #4437 Largo Vector C3 + #4439 Vector king-node/daily-readout merged to main. No open PRs needing Cursor review. ops:collect 0, validate:deploy GREEN, pr-sweep empty. ECR deploy pending for latest main. Next: Claude peer review on autopilot handoff PR; RTH lifecycle @ 09:00 ET."
     }
   ],
   "open_prs": [],

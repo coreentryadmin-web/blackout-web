@@ -1,17 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T01:30:52.113Z
-**Run:** 76c8147d-7baa-4fe4-8943-ea550d70a171
+**At:** 2026-09-07T01:37:32.276Z
+**Run:** d9bd34a1-e12a-422d-a3e5-3138d908a994
 
 ## Summary
 
-Work loop: #4437 Largo Vector C3 merged to main. #4439 Vector king-node labels + daily chart honest readout — verify GREEN, 58/58 tests pass locally, awaiting Claude peer review (Cursor cannot self-approve). ops:collect 0, validate:deploy GREEN, RTH lifecycle GREEN (off-hours). ECR deploy run 34072016510 still in_progress.
+Cycle complete: #4437 Largo Vector C3 + #4439 Vector king-node/daily-readout merged to main. No open PRs needing Cursor review. ops:collect 0, validate:deploy GREEN, pr-sweep empty. ECR deploy pending for latest main. Next: Claude peer review on autopilot handoff PR; RTH lifecycle @ 09:00 ET.
 
 ## Deploy
 
-- main: `d73fe9bd2ab754aec288f2a85baae8f268d78e35`
+- main: `d07fc4d160a053470410ce0e2057f237759c4d7e`
 - status: 
 
 ## Open PRs
 
-- #4439 [agent] fix(vector): GEX king node labels + honest daily hover readout
+_none_
