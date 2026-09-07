@@ -179,7 +179,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   const vecFresh = vectorFreshness(vec, readMs);
   const gexFresh = gexFreshness(gex, readMs);
   const gexStale = gexMatrixStale(gex, readMs);
-  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   // Null at the SOURCE when Vector is stale (not a separate suppression flag) so a live GEX
   // value for the same level still falls through via `??` instead of the whole entry being
   // dropped just because the Vector side happened to be present-but-stale.
@@ -302,7 +302,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   const gex = eco?.gex_positioning;
   const vec = ctx.vector ?? eco?.vector_full_state ?? null;
   const gexStale = gexMatrixStale(gex, readMs);
-  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const postureFromVec =
     vec?.regime?.posture != null && !vectorStale ? vec.regime.posture : null;
   const postureFromGex = gex?.gamma_posture && !gexStale ? gex.gamma_posture : null;

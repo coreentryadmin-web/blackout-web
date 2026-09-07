@@ -56,8 +56,17 @@ export function gexMatrixStale(
   return ageMs != null && ageMs > GEX_MATRIX_STALE_MS;
 }
 
-/** Vector desk snapshot stale — same 120s bound as GEX matrix (Largo C2). */
-export function vectorSnapshotStale(
+/** ET session the Vector snapshot was measured in — freshness block wins over persisted sessionDate. */
+export function vectorObservedSessionDate(vec: VectorWithReadContext): string | null {
+  if (typeof vec.observed_session_date === "string" && vec.observed_session_date.length > 0) {
+    return vec.observed_session_date;
+  }
+  if (typeof vec.sessionDate === "string" && vec.sessionDate.length > 0) return vec.sessionDate;
+  return null;
+}
+
+/** Age-only staleness — same 120s bound as GEX matrix (Largo C2). */
+export function vectorAgeStale(
   vec: VectorWithReadContext | null | undefined,
   readMs: number = Date.now(),
 ): boolean {
@@ -70,6 +79,34 @@ export function vectorSnapshotStale(
     if (Number.isFinite(observedMs) && readMs - observedMs > VECTOR_STALE_MS) return true;
   }
   return false;
+}
+
+/** Vector desk snapshot is untrustworthy for the brief — age-stale OR measured in a prior session. */
+export function vectorSnapshotStale(
+  vec: VectorWithReadContext | null | undefined,
+  readMs: number = Date.now(),
+  briefSessionDate?: string | null,
+): boolean {
+  if (!vec) return false;
+  if (vectorAgeStale(vec, readMs)) return true;
+  if (briefSessionDate != null) {
+    const observed = vectorObservedSessionDate(vec);
+    if (observed != null && observed !== briefSessionDate) return true;
+  }
+  return false;
+}
+
+/** Vector state is only live cross-desk signal when its measurement session matches the brief. */
+export function vectorLiveForSession(
+  vec: VectorWithReadContext | null | undefined,
+  sessionDate: string | null | undefined,
+): VectorWithReadContext | null {
+  if (!vec) return null;
+  if (sessionDate != null) {
+    const observed = vectorObservedSessionDate(vec);
+    if (observed != null && observed !== sessionDate) return null;
+  }
+  return vec;
 }
 
 /**
@@ -85,7 +122,7 @@ export function resolveGammaPosture(
   readMs: number = Date.now(),
 ): string | null {
   const vecPosture = vec?.regime?.posture ?? null;
-  if (vecPosture != null && !vectorSnapshotStale(vec, readMs)) return vecPosture;
+  if (vecPosture != null && !vectorSnapshotStale(vec, readMs, ctx.sessionDate)) return vecPosture;
   const gex = ctx.ecosystem?.gex_positioning;
   if (gex?.gamma_posture == null) return null;
   if (gexMatrixStale(gex, readMs)) return null;
@@ -149,8 +186,21 @@ function collectVectorSectionAbsences(vec: VectorWithReadContext): BieUnavailabl
   return out;
 }
 
-function collectVectorStalenessAbsence(vec: VectorWithReadContext): BieUnavailableSource | null {
-  if (!vectorSnapshotStale(vec)) return null;
+function collectVectorStalenessAbsence(
+  vec: VectorWithReadContext,
+  briefSessionDate?: string | null,
+  readMs: number = Date.now(),
+): BieUnavailableSource | null {
+  if (briefSessionDate != null) {
+    const observed = vectorObservedSessionDate(vec);
+    if (observed != null && observed !== briefSessionDate) {
+      return {
+        source: "Vector snapshot",
+        reason: `prior session (${observed}) — today's desk read not yet run`,
+      };
+    }
+  }
+  if (!vectorAgeStale(vec, readMs)) return null;
   return { source: "Vector snapshot", reason: "stale — levels may lag spot" };
 }
 
@@ -196,7 +246,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   const vec = vectorOf(ctx);
   if (vec && hasVectorDeskState(ctx)) {
     out.push(...collectVectorSectionAbsences(vec));
-    const stale = collectVectorStalenessAbsence(vec);
+    const stale = collectVectorStalenessAbsence(vec, ctx.sessionDate);
     if (stale) out.push(stale);
     // reportVectorAbsences treats non-null flowMarkers as present even when available=false.
     if (vec.flowMarkers?.available === false) {
