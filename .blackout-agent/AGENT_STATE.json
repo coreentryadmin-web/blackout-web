@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T07:37:28.928Z",
+  "updated_at": "2026-09-07T09:59:59.430Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T09:52:31.504Z",
+      "lease_until": "2026-09-07T11:26:32.949Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "48d344c6-8a7a-4feb-acaf-5804b0695dd5"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -51,6 +51,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4474": {
+      "pr": 4474,
+      "head_sha": "7431275ea081",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T09:59:26.183Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -65,11 +73,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ca6172a359163818bcf7b00e13602a5abe93fb2f",
+    "last_main_sha": "454b8c9b2a821a781b35e117aa986170efeb5166",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T09:50:26Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34108250942",
+    "last_deploy_sha": "454b8c9b2a821a781b35e117aa986170efeb5166"
   },
   "events": [
     {
@@ -927,9 +935,67 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T09:56:32.948Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T09:56:33.931Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T09:56:34.891Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T09:59:26.183Z",
+      "type": "pr_review",
+      "pr": 4474,
+      "head_sha": "7431275ea081",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T09:59:26.183Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T09:59:42.525Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T09:59:42.525Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8331c64b-0c09-4588-a5de-90d153161948",
+      "summary": "PR #4473 merged (Largo rail asof future-skew). Peer-reviewed Claude #4474 (flow-data-freshness age-0 trap) — APPROVED, verify green, posted review comment. Undraft/merge blocked by API rate limit — needs Claude or next cycle to mark ready + merge. Platform GREEN: validate:deploy, platform-integrity 14/14, ops:collect 0, RTH lifecycle off-hours skip."
+    },
+    {
+      "at": "2026-09-07T09:59:59.430Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4474,
+      "title": "fix(spx): fail-closed newestFlowAgeMsFromBriefs on future-skewed alerted_at",
+      "branch": "fix/flow-data-freshness-future-skew",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T09:59:28Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
