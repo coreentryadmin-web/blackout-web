@@ -5,6 +5,7 @@ import { buildLargoMorningBrief, formatMorningBriefPush } from "@/lib/largo/morn
 import { sendWebPush } from "@/lib/push/send-web-push";
 import { dbConfigured, dbQuery } from "@/lib/db";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
+import { isTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -37,6 +38,15 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!inMorningWindow(force)) {
     const payload = { ok: true, skipped: true, reason: "Outside 9:25-9:55 ET window — use ?force=1 to override" };
+    await logCronRun(CRON_KEY, started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const sessionDay = todayEt(new Date(started));
+  // Holiday guard: dual-band EventBridge (13:25/14:25 UTC) still lands 9:25 ET on NYSE holidays.
+  // Without this, opted-in members get a fake "open" brief on Labor Day etc.
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
     await logCronRun(CRON_KEY, started, payload);
     return NextResponse.json(payload);
   }
