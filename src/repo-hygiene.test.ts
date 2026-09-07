@@ -131,8 +131,8 @@ test("known-orphaned modules stay removed", () => {
     "src/components/landing/LandingBackdrop.tsx",
     "src/components/learn/LearnPageShell.tsx",
     // src/lib/bie/decompose.ts — removed 2026-09-04; compound detection for Largo stress lives
-    // inline in scripts/largo-stress-run.mjs (the only non-src consumer). router.ts/composers.ts/
-    // dynamic-format.ts siblings were NOT deleted — see FINDINGS 2026-08-30.
+    // inline in scripts/largo-stress-run.mjs. dynamic-format.ts was restored 2026-09-07 because
+    // scripts/largo-stress-shape.mjs still imports applyDynamicFormat (see staging finding).
     "src/lib/bie/decompose.ts",
   ];
   const present = tracked().filter((p) => removed.includes(p));
