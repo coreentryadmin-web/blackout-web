@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:18:09.688Z",
+  "updated_at": "2026-09-07T01:45:55.703Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -9,6 +9,17 @@
       "claimed_at": "2026-09-06T15:42:29.478Z",
       "lease_until": "2026-09-06T17:12:29.478Z",
       "phase": "REVIEWING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-07T01:28:48.649Z",
+      "lease_until": "2026-09-07T02:58:48.649Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -52,11 +63,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7aff243d798540c7da4274886a1427cee38a91b1",
+    "last_main_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-07T01:30:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073262128",
+    "last_deploy_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e"
   },
   "events": [
     {
@@ -842,9 +853,49 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:36:50.698Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:45:55.702Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:45:55.703Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "769e6dfc-07e3-4392-ba93-a98a46022349",
+      "summary": "Post-#4437/#4439 cycle: both merged to main. No open PRs. Platform integrity 14/14 PASS, validate:deploy GREEN, ops:collect 0, pr-sweep empty. ECR deploy rolling ECS (build-and-push completed; rate-limited on final poll). Standing validations all GREEN off-hours."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4444,
+      "title": "fix(largo): add session_date to swing brief envelope + persist diff baseline",
+      "branch": "fix/largo-brief-session-date-diff-persist",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T01:45:21Z"
+    },
+    {
+      "number": 4443,
+      "title": "chore(autopilot): cursor handoff — Largo C3 merges + platform GREEN",
+      "branch": "cursor/autopilot-handoff-20260907-0143",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T01:43:09Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
