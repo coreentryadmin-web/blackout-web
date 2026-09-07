@@ -15,6 +15,7 @@ import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } fro
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { socketProbeAttemptVerdict, socketProbeFinalFailure } from "./lib/rth-socket-probe.mjs";
+import { shouldRunRthSessionChecks } from "./lib/rth-open-session.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
@@ -78,13 +79,17 @@ async function main() {
   }
 
   if (force || inRthOpenWindow(now)) {
-    const tradingDay = isTradingDayEt(todayEtYmd(now));
-    console.log("\n2. RTH session checks");
-    if (!tradingDay) {
+    const ymd = todayEtYmd(now);
+    const tradingDay = isTradingDayEt(ymd);
+    if (!shouldRunRthSessionChecks(tradingDay)) {
       console.log(
-        `  ⚠ ${todayEtYmd(now)} is not a US equity trading session (market holiday) — skipping writer/regime freshness checks`
+        `\n⚠ ${ymd} is not a US equity trading session (NYSE holiday) — skipping RTH session checks (no open to validate)`
       );
+      console.log("\nGREEN — RTH-open validation passed (market holiday).\n");
+      return;
     }
+
+    console.log("\n2. RTH session checks");
     const dbUrl = resolveAuditDbUrl();
 
     const failures = [];
@@ -98,24 +103,22 @@ async function main() {
         const c = createAuditClient(dbUrl);
         await c.connect();
 
-        if (tradingDay) {
-          const eval15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM cron_job_runs
-               WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-            )
-          ).rows[0].n;
-          if (eval15 > 0) ok(`spx-evaluate ran in last 20m (${eval15} ok run(s))`);
-          else fail("spx-evaluate: no ok run in last 20m during RTH");
+        const eval15 = (
+          await c.query(
+            `SELECT COUNT(*)::int AS n FROM cron_job_runs
+             WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+          )
+        ).rows[0].n;
+        if (eval15 > 0) ok(`spx-evaluate ran in last 20m (${eval15} ok run(s))`);
+        else fail("spx-evaluate: no ok run in last 20m during RTH");
 
-          const regime15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
-            )
-          ).rows[0].n;
-          if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
-          else fail("market_regime: no writes in last 20m during RTH");
-        }
+        const regime15 = (
+          await c.query(
+            `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
+          )
+        ).rows[0].n;
+        if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
+        else fail("market_regime: no writes in last 20m during RTH");
 
         const dc = await c.query(
           `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
@@ -136,16 +139,14 @@ async function main() {
           fail(`provider-health-reconcile latest: ${phRow?.status ?? "never"}`);
         }
 
-        if (tradingDay) {
-          const grid15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM cron_job_runs
-               WHERE job_key = 'zerodte-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-            )
-          ).rows[0].n;
-          if (grid15 > 0) ok(`zerodte-warm ran in last 20m (${grid15} ok run(s))`);
-          else fail("zerodte-warm: no ok run in last 20m during RTH");
-        }
+        const grid15 = (
+          await c.query(
+            `SELECT COUNT(*)::int AS n FROM cron_job_runs
+             WHERE job_key = 'zerodte-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+          )
+        ).rows[0].n;
+        if (grid15 > 0) ok(`zerodte-warm ran in last 20m (${grid15} ok run(s))`);
+        else fail("zerodte-warm: no ok run in last 20m during RTH");
 
         await c.end();
       } catch (e) {
