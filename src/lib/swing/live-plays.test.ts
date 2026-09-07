@@ -127,7 +127,7 @@ test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledge
   assert.equal(play.peakPremium, 5.5);
 });
 
-// CORRECTED 2026-09-07: an earlier version of this fix (see #4484 finding doc) fell back to
+// CORRECTED 2026-09-07: an earlier version of this fix (see #4481 finding doc) fell back to
 // `row.archetype ?? "regime read"` when the dossier's REGIME pillar was scored — that shipped the
 // literal placeholder string "regime read" into the live Ask Largo narrative (play-brief.ts pushes
 // `play.regime` verbatim, unlabeled, into the Verdict section) and would have duplicated the
