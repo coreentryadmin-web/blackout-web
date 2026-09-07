@@ -244,3 +244,36 @@ export function envelopeWithDiffSection(
     ],
   };
 }
+
+const BRIEF_SNAP_STORAGE_PREFIX = "swing-brief-snap:";
+
+/** Session-scoped key for persisting brief diff baselines across remounts. */
+export function briefSnapshotStorageKey(
+  playId: string,
+  sessionDate: string | null | undefined,
+): string | null {
+  if (!playId || !sessionDate) return null;
+  return `${BRIEF_SNAP_STORAGE_PREFIX}${playId}:${sessionDate}`;
+}
+
+export function loadPersistedBriefSnapshot(key: string): BriefSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as BriefSnapshot;
+    if (!parsed || typeof parsed !== "object" || typeof parsed.headline !== "string") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function persistBriefSnapshot(key: string, snap: BriefSnapshot): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(snap));
+  } catch {
+    /* quota / private mode — diff still works in-memory */
+  }
+}

@@ -454,6 +454,7 @@ export function composeSwingPlayBrief(
       unavailableSources: collectBriefUnavailableSources(ctx),
     }),
     asOf: ctx.asOf,
+    session_date: ctx.sessionDate,
   };
 
   const flow = trustedHelixFlow(ctx.ecosystem);

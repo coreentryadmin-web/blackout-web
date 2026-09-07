@@ -7,6 +7,7 @@ import {
   envelopeWithDiffSection,
   envelopeWithNarrativePulse,
   extrasFromBriefResponse,
+  briefSnapshotStorageKey,
   snapshotFromBrief,
 } from "./play-brief-diff";
 
@@ -210,4 +211,10 @@ test("diffBriefSnapshots: detects HELIX put-only flow build when call premium is
     lines.some((l) => l.includes("HELIX tape: put flow building")),
     `expected put flow building line, got: ${JSON.stringify(lines)}`,
   );
+});
+
+test("briefSnapshotStorageKey: requires play id and session date", () => {
+  assert.equal(briefSnapshotStorageKey("SWING:INTC:1", "2026-09-06"), "swing-brief-snap:SWING:INTC:1:2026-09-06");
+  assert.equal(briefSnapshotStorageKey("", "2026-09-06"), null);
+  assert.equal(briefSnapshotStorageKey("SWING:INTC:1", null), null);
 });

@@ -161,6 +161,12 @@ export type BieAnswerEnvelope = {
   turnId?: number | null;
   /** When the envelope was assembled (ISO). */
   asOf: string;
+  /**
+   * ET session date (YYYY-MM-DD) this read belongs to — Largo C1 join key for cross-product
+   * gating (prior-session unavailable chips, live-vs-prior desk reads). Distinct from `asOf`,
+   * which is a wall-clock stamp.
+   */
+  session_date?: string | null;
   /** Backward-compatible markdown rendering (the existing string Largo path). */
   markdown: string;
 };
