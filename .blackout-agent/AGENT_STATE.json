@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:55:17.859Z",
+  "updated_at": "2026-09-07T00:56:07.397Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -946,9 +946,33 @@
       "agent": "cursor",
       "run_id": "f38a15b2-09de-4ea2-94b8-8d554d956390",
       "summary": "Main@b2d656f1d (#4427 NH gate + #4428 0DTE C3 unavailable). #4426 docs merged. Rebased #4428 post-#4427. Open PRs: 0."
+    },
+    {
+      "at": "2026-09-07T00:56:07.396Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T00:56:07.397Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "58b2cb8f-bd30-4eb3-8186-762ccb69acfe",
+      "summary": "#4427 deploy CI @310b97da0 — stale notification; main already @b2d656f1d (#4428 too). Queue clean. validate:deploy GREEN."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4432,
+      "title": "fix(largo): surface prior-session Night Hawk in unavailableSources (Largo C3)",
+      "branch": "fix/largo-nighthawk-unavailable-c3",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T00:55:52Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
