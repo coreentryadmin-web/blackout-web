@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T10:27:30.843Z",
+  "updated_at": "2026-09-07T11:31:18.735Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -71,9 +71,9 @@
     }
   },
   "deploy": {
-    "last_main_sha": "cfda1017cf14c32702cdd244333b828a638376e4",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T10:16:59Z",
+    "last_main_sha": "c0548a42b3222687538645b9021adfa5060575b8",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-07T11:21:07Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34110630445",
     "last_deploy_sha": "49204ddd68b6066534fec863982396c840982e97"
   },
@@ -1125,6 +1125,31 @@
       "agent": "cursor",
       "run_id": "232202f2-77e6-4c9a-b402-1ba21236eb1b",
       "summary": "Main@cfda1017c. Merged #4470-4474 (bead rail 0DTE + future-skew fail-closed wave). Dependabot majors RED — hold. RTH ~2.5h. validate:deploy GREEN."
+    },
+    {
+      "at": "2026-09-07T11:31:10.395Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T11:31:11.623Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T11:31:18.734Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T11:31:18.735Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6cd60c85-6b78-4b20-98e8-b11e09cfe7c5",
+      "summary": "Main@c0548a42 chore state sync (no code delta vs cfda1017). Dependabot majors still RED — hold. RTH ~1.5h. validate:deploy GREEN prior."
     }
   ],
   "open_prs": [
