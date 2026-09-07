@@ -165,6 +165,12 @@ async function main() {
       const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
       const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 180_000);
       const afterOpen930 = et.mins >= 9 * 60 + 30;
+      const requireFreshMarks = afterOpen930 && tradingDay;
+      if (afterOpen930 && !tradingDay) {
+        console.log(
+          "  ⚠ NYSE holiday — options-socket authenticated marks not required (tape closed)"
+        );
+      }
       let socketProbeOk = false;
       let socketLastDetail = null;
       for (let attempt = 0; attempt < 3 && !socketProbeOk; attempt++) {
@@ -184,10 +190,11 @@ async function main() {
           const opt = body.websockets?.options;
           const uw = body.websockets?.unusual_whales;
           if (opt) {
-            const verdict = socketProbeAttemptVerdict(opt, afterOpen930);
+            const verdict = socketProbeAttemptVerdict(opt, requireFreshMarks);
             if (verdict === "pass") {
               if (opt.ok) ok(`options-socket: ${opt.detail}`);
-              else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
+              else if (requireFreshMarks) console.log(`  ⚠ options-socket: warming — ${opt.detail}`);
+              else console.log(`  ⚠ options-socket: pre-RTH/holiday — ${opt.detail}`);
               socketProbeOk = true;
             } else {
               socketLastDetail = opt.detail ?? socketLastDetail;
@@ -197,7 +204,7 @@ async function main() {
                 );
               }
             }
-            if (uw && !uw.ok && afterOpen930) {
+            if (uw && !uw.ok && requireFreshMarks) {
               console.log(`  ⚠ unusual_whales: ${uw.detail}`);
             }
           } else if (res.status === 401) {
@@ -222,7 +229,7 @@ async function main() {
           }
         }
       }
-      const socketFailure = socketProbeFinalFailure(socketProbeOk, socketLastDetail, afterOpen930);
+      const socketFailure = socketProbeFinalFailure(socketProbeOk, socketLastDetail, requireFreshMarks);
       if (socketFailure) fail(socketFailure);
     } else {
       console.log("  ⚠ CRON_SECRET unset — skipping options-socket HTTP probe");

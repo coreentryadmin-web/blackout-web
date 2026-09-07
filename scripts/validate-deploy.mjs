@@ -21,6 +21,7 @@ import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 import { isDeployCacheWarmAllowed } from "./lib/cache-warm-deploy-gate.mjs";
+import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -189,8 +190,15 @@ async function fetchText(path, opts = {}) {
 
 async function runSocketHealthProbe(cron, { hardFail = false } = {}) {
   const afterOpen930 = etMinutesNow() >= 9 * 60 + 30;
+  const tradingDay = isTradingDayEt(todayEtYmd());
+  // Fresh cluster marks are only required on real RTH sessions — NYSE holidays still fire the
+  // weekday 09:40 open-check schedule but the tape is closed (#4520 / Labor Day 2026-09-07).
+  const requireFreshMarks = afterOpen930 && tradingDay;
+  if (afterOpen930 && !tradingDay) {
+    warn(`${todayEtYmd()} is not a US equity trading session — options-socket freshness is warn-only`);
+  }
   const result = await probeOptionsSocketWithRetries({
-    afterOpen930,
+    afterOpen930: requireFreshMarks,
     fetchSocketHealth: () =>
       fetchJson("/api/cron/socket-health", {
         headers: { Authorization: `Bearer ${cron}` },
