@@ -6,6 +6,17 @@
 /** @typedef {{ ok: boolean, detail?: string }} SocketHealthOptions */
 
 /**
+ * socket-health returns `{ ok: true, skipped: true }` on NYSE holidays (no WS boot).
+ * That is a healthy skip — not a missing `websockets.options` failure.
+ *
+ * @param {Record<string, unknown> | null | undefined} body
+ * @returns {boolean}
+ */
+export function isSocketHealthSkipped(body) {
+  return body?.ok === true && body?.skipped === true;
+}
+
+/**
  * @param {SocketHealthOptions | null | undefined} opt
  * @param {boolean} afterMarketOpen930
  * @returns {"pass" | "retry" | "fail"}
@@ -56,6 +67,11 @@ export async function probeOptionsSocketWithRetries({
   for (let attempt = 0; attempt < maxAttempts && !socketProbeOk; attempt++) {
     try {
       const { status, body } = await fetchSocketHealth();
+      if (isSocketHealthSkipped(body)) {
+        socketProbeOk = true;
+        successDetail = typeof body?.reason === "string" ? body.reason : "skipped";
+        break;
+      }
       const opt = body?.websockets?.options;
       if (opt) {
         const verdict = socketProbeAttemptVerdict(opt, afterOpen930);
