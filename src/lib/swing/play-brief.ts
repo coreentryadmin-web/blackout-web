@@ -14,6 +14,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import {
   collectBriefUnavailableSources,
   gexMatrixAgeMs,
@@ -144,6 +145,8 @@ function closedSection(play: TerminalPlay): RichSection {
 function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): BieFreshness {
   const ageMs = gexMatrixAgeMs(gex, readMs);
   if (ageMs == null) return "unknown";
+  // Align with gexMatrixStale — future-skewed asof must not read as "unknown"/fresh (Largo C2).
+  if (gexMatrixStale(gex, readMs)) return "stale";
   return freshnessFromAgeMs(ageMs);
 }
 
@@ -157,7 +160,9 @@ function fundamentalsFreshness(
     (etStamp ? parseEtStamp(etStamp) : null) ??
     (Number.isFinite(Date.parse(asOf)) ? Date.parse(asOf) : null);
   if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
-  return freshnessFromAgeMs(readMs - observedMs);
+  const rawAgeMs = readMs - observedMs;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
+  return freshnessFromAgeMs(rawAgeMs);
 }
 
 function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshness {

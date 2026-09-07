@@ -259,6 +259,48 @@ test("composeSwingPlayBrief: GEX evidence freshness honors matrix_age_sec over r
   );
 });
 
+test("composeSwingPlayBrief: future-skewed fundamentals as_of freshness is stale, not unknown (Largo C2)", () => {
+  const futureAsOf = new Date(Date.now() + 30_000).toISOString(); // 30s ahead — beyond tolerance
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: {
+          days_to_cover: 2.1,
+          short_volume_ratio: 0.35,
+          price_target: null,
+          as_of: futureAsOf,
+        },
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const siEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Short interest:"));
+  assert.ok(siEvidence, "expected short interest evidence");
+  assert.equal(
+    siEvidence!.provenance?.freshness,
+    "stale",
+    "future-skewed fundamentals as_of must fail-closed to stale, not unknown",
+  );
+});
+
 test("composeSwingPlayBrief: GEX dealer posture grounds in envelope evidence (Largo C7)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
