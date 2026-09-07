@@ -74,6 +74,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("outside the 9:25 ET window: no-op — the brief pipeline never runs, no push sent", async () => {
     etWindowResult = false;
+    tradingDayResult = true;
     buildCalls = 0;
     loggedRuns = [];
 
@@ -112,6 +113,8 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
     assert.equal(body.skipped, true);
     assert.match(String(body.reason), /non-trading day/);
     assert.equal(buildCalls, 0, "holiday gate must block brief build even inside ET window");
+    assert.equal(loggedRuns.length, 1);
+    assert.equal(loggedRuns[0]!.payload.skipped, true);
   });
 
   test("?force=1 bypasses the window gate (manual/agent-driven runs)", async () => {
