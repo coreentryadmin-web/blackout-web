@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T05:19:51.322Z",
+  "updated_at": "2026-09-07T06:02:55.380Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T06:00:03.067Z",
+      "lease_until": "2026-09-07T07:31:34.523Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "5c33bce2-290e-4f70-a4ac-7aba33a6a462"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T06:02:17.720Z",
+      "lease_until": "2026-09-07T07:32:17.720Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -60,16 +60,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T06:02:17.721Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_main_sha": "48d0bbbc81661f91db1efd377a48ddb099939369",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-07T05:49:52Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
+    "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
   "events": [
     {
@@ -909,9 +909,69 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T06:02:17.721Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T06:02:55.380Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-07T06:02:55.380Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0050fd2d-2653-475b-b711-818725ac59a8",
+      "summary": "Cycle complete. #4464 APPROVED+CI green (undraft blocked: GH rate limit). #4465 CI green, 105 vector tests pass locally — peer: Claude. Platform 14/14 integrity, lifecycle GREEN, ops 0. Next: undraft+merge #4464 when API resets; Claude review #4465."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4467,
+      "title": "chore(autopilot): Labor Day wake handoff — lifecycle GREEN, #4464 approved",
+      "branch": "cursor/autopilot-work-loop-85a5",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T05:59:15Z"
+    },
+    {
+      "number": 4466,
+      "title": "chore(state): cursor handoff after 48d0bbbc merge wake",
+      "branch": "chore/cursor-handoff-48d0bbbc",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T05:56:35Z"
+    },
+    {
+      "number": 4465,
+      "title": "fix(vector): align bead rail x-domain with session viewport (Sep-3 restore v2)",
+      "branch": "cursor/bead-rail-sep3-restore-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:59:00Z"
+    },
+    {
+      "number": 4464,
+      "title": "test(occ-symbol): add missing direct unit coverage for buildOcc",
+      "branch": "test/occ-symbol-coverage",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T06:01:33Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
