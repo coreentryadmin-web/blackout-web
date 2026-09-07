@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T07:37:28.928Z",
+  "updated_at": "2026-09-07T09:01:59.016Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T08:16:10.747Z",
+      "lease_until": "2026-09-07T09:58:46.262Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "31e49548-0bee-4628-9016-35435de8e418"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T08:55:05.105Z",
+      "lease_until": "2026-09-07T10:25:05.105Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -51,6 +51,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4471": {
+      "pr": 4471,
+      "head_sha": "06805b7e8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T09:01:28.123Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -65,11 +73,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ca6172a359163818bcf7b00e13602a5abe93fb2f",
+    "last_main_sha": "06805b7e8ac3fb9252c5cd96a07a719f6b0dc41e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T09:00:54Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34102610765",
+    "last_deploy_sha": "06805b7e8ac3fb9252c5cd96a07a719f6b0dc41e"
   },
   "events": [
     {
@@ -927,6 +935,35 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T09:01:22.601Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T09:01:28.124Z",
+      "type": "pr_review",
+      "pr": 4471,
+      "head_sha": "06805b7e8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T09:01:28.123Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T09:01:59.016Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T09:01:59.016Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b409aea0-4cfe-46a8-8238-7452f33e712a",
+      "summary": "PR-event cycle complete: #4470+#4471 merged to main @06805b7e8. ECR deploy GREEN. Post-deploy validate:deploy + validate:platform-integrity + validate:api-auth + ops:collect all clean. Zero open PRs. Peer review #4471 recorded APPROVED. Subscribed main CI. Next wake: RTH Mon or new PR event."
     }
   ],
   "open_prs": [],
