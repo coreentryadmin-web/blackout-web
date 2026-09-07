@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:18:09.688Z",
+  "updated_at": "2026-09-07T01:15:22.099Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-07T01:12:34.663Z",
+      "lease_until": "2026-09-07T02:43:53.889Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "15e10967-7aa2-48da-bcf9-ed55c6426ba6"
     }
   },
   "reviews": {
@@ -52,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7aff243d798540c7da4274886a1427cee38a91b1",
+    "last_main_sha": "555befcaf73ba8e3a7a11b0bb4d124d50b7e4de2",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-07T01:08:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34072016510",
+    "last_deploy_sha": "555befcaf73ba8e3a7a11b0bb4d124d50b7e4de2"
   },
   "events": [
     {
@@ -842,9 +842,63 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:13:37.378Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:13:53.887Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:13:54.873Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:13:55.776Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:15:15.260Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:15:15.261Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bfa8455a-6fe9-49c7-88ce-af2af451be90",
+      "summary": "Work loop: peer-review sweep (0 open PRs), ops:collect 0, validate:deploy GREEN, platform-integrity 14/14, RTH lifecycle GREEN (off-hours skip), Ask Largo probe GREEN. ECR deploy run 34072016510 still pending (no jobs queued). Main at 555befca. No Claude PRs to review."
+    },
+    {
+      "at": "2026-09-07T01:15:22.099Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4437,
+      "title": "fix(largo): surface prior-session Vector in unavailableSources (Largo C3)",
+      "branch": "fix/largo-vector-prior-session-absence",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T01:15:09Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
