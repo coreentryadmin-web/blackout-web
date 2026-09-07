@@ -535,7 +535,13 @@ test("counterThesisLine: steelmans bear case for LONG when desks disagree", () =
           put_premium: 1_200_000,
           unknown_premium: 0,
         },
-        nighthawk_recent: { direction: "short", conviction: "high", outcome: "bearish" },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: null,
+        },
         zerodte_today: null,
         gex_positioning: null,
         arsenal: null,
@@ -599,6 +605,27 @@ test("counterThesisLine: prior-session 0DTE must not steelman desk friction (Lar
     118,
   );
   assert.equal(line, null, "yesterday's 0DTE short must not appear in counter-thesis");
+});
+
+test("counterThesisLine: prior-session Night Hawk must not steelman desk friction (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "open",
+          score: 78,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    118,
+  );
+  assert.equal(line, null, "yesterday's Night Hawk short must not appear in counter-thesis");
 });
 
 test("counterThesisLine: stale GEX-only posture must not steelman dealer gamma", () => {
@@ -768,7 +795,13 @@ test("tradeManagerNarrativeSection: includes counter-thesis when opposing signal
           put_premium: 900_000,
           unknown_premium: 0,
         },
-        nighthawk_recent: { direction: "short", conviction: "medium", outcome: "bearish" },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "medium",
+          outcome: "bearish",
+          score: null,
+        },
         zerodte_today: null,
         gex_positioning: { gamma_posture: "long" },
         arsenal: null,
@@ -854,7 +887,13 @@ test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BUL
           put_premium: 1_100_000,
           unknown_premium: 0,
         },
-        nighthawk_recent: { direction: "short", conviction: "high", outcome: "bearish" },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: null,
+        },
         zerodte_today: { direction: "long", conviction: "medium" },
         gex_positioning: {
           spot: 100,
