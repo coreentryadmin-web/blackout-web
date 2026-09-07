@@ -1,19 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T17:25:57.455Z",
+  "updated_at": "2026-09-07T17:33:11.673Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T17:20:42.207Z",
-      "lease_until": "2026-09-07T18:54:47.398Z",
+      "claimed_at": "2026-09-07T17:23:45.474Z",
+      "lease_until": "2026-09-07T18:54:35.242Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "39bc58cc-f93c-4a2a-bce4-d1d13785a43d",
-      "title": null
+      "run_id": "c63ae331-ec7d-46dc-b77b-6b48ffc2504b"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -52,14 +51,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
-    },
-    "pr-4511": {
-      "pr": 4511,
-      "head_sha": "3a14396d4079c7f61d86ff36f0b7d2b421f0b8f6",
-      "reviewer": "cursor",
-      "verdict": "MERGED",
-      "reviewed_at": "2026-09-07T17:24:11.335Z",
-      "safe_to_merge": false
     }
   },
   "agents": {
@@ -69,8 +60,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T17:20:42.208Z",
-      "current_task": "BO-P1-0100"
+      "last_seen": "2026-09-07T03:56:10.581Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
@@ -974,163 +965,40 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-07T17:20:33.355Z",
+      "at": "2026-09-07T17:33:11.672Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
     },
     {
-      "at": "2026-09-07T17:20:36.945Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-09-07T17:20:37.947Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-09-07T17:20:39.161Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-09-07T17:20:42.208Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0100",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-07T17:24:11.336Z",
-      "type": "pr_review",
-      "pr": 4511,
-      "head_sha": "3a14396d4079c7f61d86ff36f0b7d2b421f0b8f6",
-      "reviewer": "cursor",
-      "verdict": "MERGED",
-      "reviewed_at": "2026-09-07T17:24:11.335Z",
-      "safe_to_merge": false
-    },
-    {
-      "at": "2026-09-07T17:24:23.395Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-09-07T17:24:23.397Z",
+      "at": "2026-09-07T17:33:11.673Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "2c6843e6-4248-4f85-a949-3cd70a4c31b5",
-      "summary": "Merged #4511 (Discord EOD recap holiday gate) — verify GREEN, Claude ✅ approved. Main @ 0148b558f. ops:collect 0. #4512 state sync draft still pending verify."
-    },
-    {
-      "at": "2026-09-07T17:24:25.159Z",
-      "type": "pr_webhook",
-      "pr": 4515,
-      "event": "sweep",
-      "head": "71a3a2b468817d887d9a870146bfefe37efe78e9",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-07T17:24:27.352Z",
-      "type": "pr_webhook",
-      "pr": 4480,
-      "event": "sweep",
-      "head": "94d774bafa30519a40cfceb3681400c2fdceec33",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-07T17:24:29.558Z",
-      "type": "pr_webhook",
-      "pr": 4479,
-      "event": "sweep",
-      "head": "8ccc6a25364968b9430fd630e258dfee4d966200",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-07T17:24:31.682Z",
-      "type": "pr_webhook",
-      "pr": 4478,
-      "event": "sweep",
-      "head": "e96f5beb68f08322a6f3765b761a33e5e7fe9297",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-07T17:24:33.716Z",
-      "type": "pr_webhook",
-      "pr": 4477,
-      "event": "sweep",
-      "head": "6fbf29b0c2567aab777d562e99824a2939435df0",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-07T17:24:35.962Z",
-      "type": "pr_webhook",
-      "pr": 4476,
-      "event": "sweep",
-      "head": "a72078de3e4d1ab6f3a9261a9b2b18963015059a",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-07T17:24:40.069Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-09-07T17:24:47.397Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-09-07T17:24:48.341Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-09-07T17:24:49.280Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-09-07T17:25:54.401Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-07T17:25:54.402Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "db40f19f-aa41-4090-9d5a-82f4815484cc",
-      "summary": "Workflow_run wake: merged #4511 (Discord EOD holiday gate) with Claude ✅ approval. Main @ 0148b558f. Platform GREEN — validate:deploy, validate:rth-open (Labor Day skip), ops:collect 0, lifecycle sweep 6/6. #4515 state sync awaiting verify + Claude peer review."
-    },
-    {
-      "at": "2026-09-07T17:25:57.455Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
+      "run_id": "95342de3-c84e-49af-9d56-debb8f3808e4",
+      "summary": "Continuous loop cycle complete. Main @ 0148b558 (#4511 holiday gate deployed). Lifecycle 6/6 GREEN (Labor Day). ops:collect 0. Ask Largo swing brief validate PASS. Peer review: no Claude/fix PRs; #4516 bead-rail Sep-3 restore — local 81/81 tests + tsc clean, verify CI pending, awaiting Claude merge (Cursor cannot self-approve). #4515 state-sync draft pending. Dependabot majors held (red CI)."
     }
   ],
   "open_prs": [
+    {
+      "number": 4517,
+      "title": "fix(cron): gate socket-health on isTradingDayEt for NYSE holidays",
+      "branch": "fix/socket-health-holiday-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T17:31:41Z"
+    },
+    {
+      "number": 4516,
+      "title": "fix(vector): restore Sep-3 bead rail render fidelity (fill + row ladder)",
+      "branch": "cursor/bead-rail-sep3-render-fidelity-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T17:32:15Z"
+    },
     {
       "number": 4480,
       "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
@@ -1213,54 +1081,6 @@
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4515": {
-      "last_event": "sweep",
-      "last_head": "71a3a2b468817d887d9a870146bfefe37efe78e9",
-      "last_feedback_at": "2026-09-07T17:24:25.159Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4480": {
-      "last_event": "sweep",
-      "last_head": "94d774bafa30519a40cfceb3681400c2fdceec33",
-      "last_feedback_at": "2026-09-07T17:24:27.352Z",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "comment_action": "created"
-    },
-    "pr-4479": {
-      "last_event": "sweep",
-      "last_head": "8ccc6a25364968b9430fd630e258dfee4d966200",
-      "last_feedback_at": "2026-09-07T17:24:29.558Z",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "comment_action": "created"
-    },
-    "pr-4478": {
-      "last_event": "sweep",
-      "last_head": "e96f5beb68f08322a6f3765b761a33e5e7fe9297",
-      "last_feedback_at": "2026-09-07T17:24:31.682Z",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "comment_action": "created"
-    },
-    "pr-4477": {
-      "last_event": "sweep",
-      "last_head": "6fbf29b0c2567aab777d562e99824a2939435df0",
-      "last_feedback_at": "2026-09-07T17:24:33.716Z",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
-      "comment_action": "created"
-    },
-    "pr-4476": {
-      "last_event": "sweep",
-      "last_head": "a72078de3e4d1ab6f3a9261a9b2b18963015059a",
-      "last_feedback_at": "2026-09-07T17:24:35.962Z",
-      "verdict": "❌ **BLOCKED** — fix CI first",
-      "directive": "FIX",
       "comment_action": "created"
     }
   }
