@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T04:02:10.079Z",
+  "updated_at": "2026-09-07T05:19:51.322Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "178add55514d9848a81eab346baab7b722bd859b",
+    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T03:55:24Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
@@ -891,20 +891,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
-    }
-  ],
-  "open_prs": [
+    },
     {
-      "number": 4457,
-      "title": "fix(largo): fail-closed staleness on future-skewed scenario provenance",
-      "branch": "fix/scenario-read-future-skew-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-07T04:02:04Z"
+      "at": "2026-09-07T05:19:50.432Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T05:19:51.042Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T05:19:51.322Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
