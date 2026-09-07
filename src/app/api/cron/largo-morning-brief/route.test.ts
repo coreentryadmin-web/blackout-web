@@ -21,6 +21,7 @@ import { NextRequest } from "next/server";
 // pre-fix code (buildCalls stayed 1 instead of 0). Post-fix it passes.
 
 let etWindowResult = true;
+let tradingDayResult = true;
 let buildCalls = 0;
 let loggedRuns: Array<{ jobKey: string; payload: Record<string, unknown> }> = [];
 
@@ -29,6 +30,14 @@ mock.module("../../../../lib/market-api-auth", {
 });
 mock.module("../../../../features/nighthawk/lib/et-window", {
   namedExports: { inEtWindow: () => etWindowResult },
+});
+// Holiday gate added in #4496 — must be mocked so DST-window tests stay calendar-independent
+// (todayEt/isTradingDayEt would otherwise make "in-window" tests fail on real NYSE holidays).
+mock.module("../../../../features/nighthawk/lib/session", {
+  namedExports: {
+    isTradingDayEt: () => tradingDayResult,
+    todayEt: () => "2026-08-05",
+  },
 });
 mock.module("../../../../lib/cron-run", {
   namedExports: {
@@ -79,6 +88,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("inside the 9:25 ET window: the pipeline runs normally", async () => {
     etWindowResult = true;
+    tradingDayResult = true;
     buildCalls = 0;
     loggedRuns = [];
 
@@ -90,8 +100,23 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
     assert.equal(buildCalls, 1, "the in-window fire must build the brief exactly once");
   });
 
+  test("inside the 9:25 ET window on a NYSE holiday: no-op — holiday gate blocks the pipeline", async () => {
+    etWindowResult = true;
+    tradingDayResult = false;
+    buildCalls = 0;
+    loggedRuns = [];
+
+    const res = await GET(new NextRequest("http://localhost/api/cron/largo-morning-brief"));
+    const body = await res.json();
+
+    assert.equal(body.skipped, true);
+    assert.match(String(body.reason), /non-trading day/);
+    assert.equal(buildCalls, 0, "holiday gate must block brief build even inside ET window");
+  });
+
   test("?force=1 bypasses the window gate (manual/agent-driven runs)", async () => {
     etWindowResult = false;
+    tradingDayResult = true;
     buildCalls = 0;
 
     const res = await GET(new NextRequest("http://localhost/api/cron/largo-morning-brief?force=1"));
