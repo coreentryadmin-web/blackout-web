@@ -1,20 +1,19 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T16:46:59.047Z
-**Run:** 0ad626a2-068e-4030-8db7-b5a42c1379f8
+**At:** 2026-09-07T17:09:35.437Z
+**Run:** dd4191ea-4075-45bc-b7e8-6b2cf950dc8f
 
 ## Summary
 
-PR-event wake: peer-reviewed holiday-gate cron PRs. #4494 merged (zerodte-grade). #4496 closed/split → #4498 thermal EOD (approved, merge in progress) + #4499 largo-morning-brief (CI pending). Fixed Labor Day CI failure in largo route.test.ts (mock isTradingDayEt). validate:deploy GREEN, ops:collect 0.
+Work loop cycle complete. Holiday-gate sweep merged (#4494,#4498,#4500,#4503,#4505). Platform GREEN. Only Dependabot PRs remain (verify RED). Agent state handoff PR opened.
 
 ## Deploy
 
-- main: `0a7bc9adce0ea43a91b3c32a5b6ad44f98ad25f5`
+- main: `29129060fd3fa34bdde97a67cd4b65d15ae78987`
 - status: 
 
 ## Open PRs
 
-- #4499 [agent] fix(cron): gate largo-morning-brief on isTradingDayEt for NYSE holidays
 - #4480 [human] chore(deps): bump next from 15.5.23 to 16.3.4
 - #4479 [human] chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4
 - #4478 [human] chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2
