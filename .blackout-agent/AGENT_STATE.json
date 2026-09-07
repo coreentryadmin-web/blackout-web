@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T16:51:00.602Z",
+  "updated_at": "2026-09-07T17:52:01.696Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -166,6 +166,62 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-07T16:26:51.625Z",
       "safe_to_merge": true
+    },
+    "pr-4500": {
+      "pr": 4500,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:53.697Z",
+      "safe_to_merge": true
+    },
+    "pr-4503": {
+      "pr": 4503,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:54.145Z",
+      "safe_to_merge": true
+    },
+    "pr-4505": {
+      "pr": 4505,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:54.548Z",
+      "safe_to_merge": true
+    },
+    "pr-4511": {
+      "pr": 4511,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:54.978Z",
+      "safe_to_merge": true
+    },
+    "pr-4517": {
+      "pr": 4517,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:55.654Z",
+      "safe_to_merge": true
+    },
+    "pr-4518": {
+      "pr": 4518,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:56.006Z",
+      "safe_to_merge": true
+    },
+    "pr-4519": {
+      "pr": 4519,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:56.633Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -180,67 +236,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a8288e12c5020253f0ae5172b3e8079ca54bf554",
+    "last_main_sha": "99f0a41b776caacf24545b4dd200b3207549331a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T16:46:57Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34144821008",
-    "last_deploy_sha": "a8288e12c5020253f0ae5172b3e8079ca54bf554"
+    "last_deploy_at": "2026-09-07T17:48:11Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34149083058",
+    "last_deploy_sha": "99f0a41b776caacf24545b4dd200b3207549331a"
   },
   "events": [
-    {
-      "at": "2026-09-05T20:41:08.976Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T20:41:09.263Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.295Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.899Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:58.167Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:49.766Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:50.307Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:50.539Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T22:19:16.536Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-05T22:19:17.152Z",
       "type": "context_sync",
@@ -1489,48 +1491,101 @@
       "agent": "cursor",
       "run_id": "0bdeb1ed-93d5-4f3a-bea2-b0de92a93468",
       "summary": "Main@a8288e12c — #4498 thermal EOD recap holiday gate (isTradingDayEt). validate:deploy GREEN; 9/9 tests pass. Docs SEO wake 0a7bc9adc. Dependabot RED hold."
+    },
+    {
+      "at": "2026-09-07T17:51:53.699Z",
+      "type": "pr_review",
+      "pr": 4500,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:53.697Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T17:51:54.146Z",
+      "type": "pr_review",
+      "pr": 4503,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:54.145Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T17:51:54.549Z",
+      "type": "pr_review",
+      "pr": 4505,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:54.548Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T17:51:54.979Z",
+      "type": "pr_review",
+      "pr": 4511,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:54.978Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T17:51:55.656Z",
+      "type": "pr_review",
+      "pr": 4517,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:55.654Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T17:51:56.007Z",
+      "type": "pr_review",
+      "pr": 4518,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:56.006Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T17:51:56.634Z",
+      "type": "pr_review",
+      "pr": 4519,
+      "head_sha": "99f0a41b7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T17:51:56.633Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T17:52:01.695Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T17:52:01.696Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f95cb7d9-59e8-4f98-a319-c39d0d511321",
+      "summary": "Main@99f0a41b7 — Labor Day cron wave (#4500-#4519): largo-morning-brief, socket-health, x-marketing, discord EOD, spx-signal-weight-optimize, x-growth/engage. #4518 dossier regime→Why this setup. #4516 vector bead rail Sep-3 fidelity. validate:deploy GREEN. Dependabot RED hold."
     }
   ],
   "open_prs": [
     {
-      "number": 4503,
-      "title": "fix(cron): gate largo-morning-brief on isTradingDayEt for NYSE holidays",
-      "branch": "fix/largo-morning-brief-holiday-gate-v2",
+      "number": 4520,
+      "title": "fix(cron): gate platform-warm on shouldRunCacheWarmer for NYSE holidays",
+      "branch": "fix/platform-warm-holiday-gate",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T16:49:26Z"
-    },
-    {
-      "number": 4502,
-      "title": "fix(vector): restore Sep-3 bead rail render fidelity (fill + row ladder)",
-      "branch": "cursor/bead-rail-sep3-render-fidelity",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T16:48:16Z"
-    },
-    {
-      "number": 4501,
-      "title": "fix(cron): gate largo-morning-brief on isTradingDayEt for NYSE holidays",
-      "branch": "fix/largo-morning-brief-holiday-gate",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T16:49:31Z"
-    },
-    {
-      "number": 4500,
-      "title": "fix(cron): gate X marketing posts on isTradingDayEt for NYSE holidays",
-      "branch": "fix/x-marketing-holiday-gate",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T16:47:40Z"
+      "updated_at": "2026-09-07T17:50:44Z"
     },
     {
       "number": 4480,
