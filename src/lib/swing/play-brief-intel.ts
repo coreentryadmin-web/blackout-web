@@ -633,7 +633,11 @@ export function macroTapeSection(eco: EcosystemContext | null): RichSection | nu
  * `flowNarrative` (Trade manager read) and `flowIntelSection` — only NH outcome history
  * belongs here so members never see the same sweep twice.
  */
-export function deskConsensusSection(eco: EcosystemContext | null, play: TerminalPlay): RichSection | null {
+export function deskConsensusSection(
+  eco: EcosystemContext | null,
+  play: TerminalPlay,
+  bucket: "watch" | "open" | "closed" = "open",
+): RichSection | null {
   if (!eco) return null;
 
   const nh = eco.nighthawk_recent;
@@ -645,11 +649,18 @@ export function deskConsensusSection(eco: EcosystemContext | null, play: Termina
   const unresolved = nh.outcome === "open" || nh.outcome === "pending";
   const verdict = unresolved ? "is still **unresolved**" : `closed **${nh.outcome}**`;
 
+  // Same defect class as watchForSection/vectorDeskSection (#4570/#4571): a CLOSED play has no
+  // sizing decision left to make, so "today's setup ... before sizing" reads as live guidance on
+  // a trade that already resolved. Reframe as a retrospective note instead of dropping the
+  // section — the NH outcome-history fact itself is still useful context for reviewing the trade.
+  const tail =
+    bucket === "closed"
+      ? `— for reference against the **${play.direction}** setup this play traded.`
+      : `— weigh that track record against today's **${play.direction}** setup before sizing.`;
+
   return {
     title: "Desk context",
-    body:
-      `Night Hawk's last swing on this name (**${nh.edition_for}**) ${verdict} — ` +
-      `weigh that track record against today's **${play.direction}** setup before sizing.`,
+    body: `Night Hawk's last swing on this name (**${nh.edition_for}**) ${verdict} ${tail}`,
   };
 }
 
@@ -844,7 +855,7 @@ export function buildIntelSections(
   const macro = macroTapeSection(ecosystem);
   if (macro) out.push(macro);
 
-  const consensus = deskConsensusSection(ecosystem, play);
+  const consensus = deskConsensusSection(ecosystem, play, bucket);
   if (consensus) out.push(consensus);
 
   const fresh = dataFreshnessSection(ctx);
