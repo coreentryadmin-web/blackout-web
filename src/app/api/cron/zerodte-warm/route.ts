@@ -25,6 +25,7 @@ import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
 import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
@@ -66,6 +67,8 @@ const OVERLAP_LOCK_TTL_SEC = 900;
  */
 const RERUN_COOLDOWN_KEY = "zerodte-warm:cooldown";
 const RERUN_COOLDOWN_SEC = 60;
+/** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558 fixed on desk-warm. */
+const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -85,16 +88,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  const effectiveCooldownSec = isEtExtendedWarmHours()
+    ? RERUN_COOLDOWN_SEC
+    : OFF_WINDOW_FORCE_COOLDOWN_SEC;
   const withinCooldown = !(await sharedCacheSetNx(
     RERUN_COOLDOWN_KEY,
     { startedAt: started },
-    RERUN_COOLDOWN_SEC
+    effectiveCooldownSec
   ).catch(() => true));
   if (withinCooldown) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: `rate-limited — zerodte-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+      reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
