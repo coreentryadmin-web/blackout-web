@@ -33,6 +33,25 @@ function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   };
 }
 
+test("composeSwingPlayBrief: WATCH WAIT recommendation uses WAIT label, not raw HOLD (verdict parity)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ recommendation: "HOLD", swingEntryAction: undefined, status: "WATCH" }),
+    asOf: "2026-09-07T02:59:00.000Z",
+    sessionDate: "2026-09-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(entry!.body, /\*\*Entry stance:\*\* WAIT/);
+  assert.doesNotMatch(entry!.body, /\*\*Entry stance:\*\* HOLD/);
+});
+
 test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ discoveryOrigin: ["FLOW", "BREAKOUT"] }),

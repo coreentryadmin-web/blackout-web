@@ -441,6 +441,23 @@ test("describeDarkPoolLevel: support language for long below spot", () => {
   assert.match(line, /support/i);
 });
 
+test("tradeManagerNarrativeSection: watch bucket entry stance uses WAIT not raw HOLD", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "WATCH",
+        recommendation: "HOLD",
+        gateBlocks: [{ code: "G1", reason: "wait" }],
+      }),
+      vector: { spot: 50 } as SwingPlayBriefContext["vector"],
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Entry stance.*WAIT/i);
+  assert.doesNotMatch(section!.body, /Entry stance.*HOLD/i);
+});
+
 test("tradeManagerNarrativeSection: watch bucket entry stance", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

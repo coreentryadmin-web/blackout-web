@@ -115,7 +115,11 @@ function pnlSection(play: TerminalPlay): RichSection {
 
 function watchEntrySection(play: TerminalPlay): RichSection {
   const lines: string[] = [];
-  const label = play.swingEntryAction ? play.swingEntryAction.toUpperCase() : play.recommendation ?? "WAIT";
+  const label =
+    swingActionDisplay(play)?.label ??
+    play.swingEntryAction?.toUpperCase() ??
+    play.recommendation ??
+    "WAIT";
   lines.push(`**Entry stance:** ${label}`);
   if (play.servingSection) lines.push(`Serving section: **${play.servingSection.replace(/_/g, " ")}**`);
   if (play.setupState) lines.push(`Setup: **${play.setupState}**`);

@@ -5,6 +5,7 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   trustedHelixFlow,
@@ -300,8 +301,10 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
           .map((g) => `${g.code}: ${g.reason}`)
           .join(" · ")
       : null;
+    const actionLabel =
+      swingActionDisplay(play)?.label ?? play.swingEntryAction?.toUpperCase() ?? rec;
     lines.push(
-      `**Entry stance** — ${play.swingEntryAction?.toUpperCase() ?? rec}. ` +
+      `**Entry stance** — ${actionLabel}. ` +
         (gateLine
           ? `Clear gates: ${gateLine}.`
           : rec === "BUY"
@@ -461,7 +464,11 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
 
 function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
-  const rec = play.recommendation ?? play.swingEntryAction?.toUpperCase() ?? "HOLD";
+  const rec =
+    swingActionDisplay(play)?.label ??
+    play.recommendation ??
+    play.swingEntryAction?.toUpperCase() ??
+    "HOLD";
   const health = thesisHealthUncalibrated(play.thesisHealth) ? null : play.thesisHealth?.health;
   const pnl = fin(play.pnlPct);
   const peak = fin(play.peak);

@@ -4,9 +4,9 @@
  */
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
+  collectOptionMarkStalenessAbsence,
   gexMatrixAgeMs,
   gexMatrixStale,
-  playExpectsLiveOptionMark,
   resolveGammaPosture,
   vectorSnapshotStale,
 } from "./play-brief-absence";
@@ -618,9 +618,14 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   const vec = vectorOf(ctx);
   const warnings: string[] = [];
 
-  // markIsSync === true means no markAsOf timestamp (sync quote without freshness) — same polarity as dataFreshnessSection.
-  if (play.markIsSync === true && playExpectsLiveOptionMark(play.status)) {
-    warnings.push("mark not synced to live tape");
+  const markAbsence = collectOptionMarkStalenessAbsence(play, Date.now());
+  if (markAbsence) {
+    if (markAbsence.reason === "sync quote without freshness timestamp") {
+      warnings.push("mark not synced to live tape");
+    } else {
+      const stamp = markAbsence.reason.replace(/^stale — last synced /, "");
+      warnings.push(`option mark from **${stamp}** — not live-synced`);
+    }
   }
   if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
     warnings.push(`Vector **${Math.round(vec.dataAgeMs / 1000)}s** stale`);
