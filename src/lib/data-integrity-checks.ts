@@ -1,6 +1,7 @@
 import "server-only";
 
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { gexMatrixRthAgeMin, gexMatrixStaleDuringRth } from "@/lib/data-integrity-gex-freshness";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
@@ -152,6 +153,8 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
 
   // C6 — heatmap freshness during RTH. Heat Maps Warm runs every ~30s, so a >15-min-old
   // (or cold) SPX/SPY matrix during the session is a real stall, not a warm-up gap.
+  // Uses the same ageMin() helper as data-integrity-verifier.ts — a clock-skewed future
+  // `asof` must not read as trivially fresh (negative ageMin never exceeds the 15m band).
   const now = Date.now();
   for (const [label, pos] of [["SPX", gexSpx], ["SPY", gexSpy]] as const) {
     if (!pos) {
@@ -159,9 +162,10 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
       continue;
     }
     checked++;
-    const ageMin = (now - new Date(pos.asof).getTime()) / 60000;
-    if (Number.isFinite(ageMin) && ageMin > 15) {
-      add(`GEX ${label} stale during RTH`, `${label} matrix last computed ${ageMin.toFixed(0)}m ago (asof ${pos.asof})`);
+    if (gexMatrixStaleDuringRth(pos.asof, now)) {
+      const matrixAgeMin = gexMatrixRthAgeMin(pos.asof, now);
+      const ageLabel = Number.isFinite(matrixAgeMin) ? `${matrixAgeMin.toFixed(0)}m` : "unparseable/skewed";
+      add(`GEX ${label} stale during RTH`, `${label} matrix last computed ${ageLabel} ago (asof ${pos.asof})`);
     }
   }
 
