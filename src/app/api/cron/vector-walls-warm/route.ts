@@ -14,7 +14,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { warmVectorWalls, getTickersToWarmAsync } from "@/features/vector/lib/vector-walls-warm";
-import { isEtCashRth } from "@/lib/et-market-hours";
+import { isEtCashRth, isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
@@ -48,6 +48,8 @@ const OVERLAP_LOCK_TTL_SEC = 240;
  */
 const RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown";
 const RERUN_COOLDOWN_SEC = 10;
+/** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558/#4561 fixed on sibling warm crons. */
+const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
 async function runVectorWallsWarm(started: number): Promise<void> {
   try {
@@ -83,16 +85,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  const effectiveCooldownSec = isEtExtendedWarmHours()
+    ? RERUN_COOLDOWN_SEC
+    : OFF_WINDOW_FORCE_COOLDOWN_SEC;
   const withinCooldown = !(await sharedCacheSetNx(
     RERUN_COOLDOWN_KEY,
     { startedAt: started },
-    RERUN_COOLDOWN_SEC
+    effectiveCooldownSec
   ).catch(() => true));
   if (withinCooldown) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: `rate-limited — vector-walls-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+      reason: `rate-limited — vector-walls-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("vector-walls-warm", started, payload);
     return NextResponse.json(payload);
