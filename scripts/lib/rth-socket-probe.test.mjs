@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   socketProbeAttemptVerdict,
   socketProbeFinalFailure,
+  isSocketHealthNonTradingSkip,
   probeOptionsSocketWithRetries,
 } from "./rth-socket-probe.mjs";
 
@@ -55,6 +56,36 @@ test("probeOptionsSocketWithRetries: warming then green passes", async () => {
   assert.equal(result.ok, true);
   assert.equal(result.failure, null);
   assert.equal(result.successDetail, "cluster marks fresh");
+});
+
+test("isSocketHealthNonTradingSkip: holiday skip payload passes", () => {
+  assert.equal(
+    isSocketHealthNonTradingSkip({
+      ok: true,
+      skipped: true,
+      reason: "non-trading day (2026-09-07)",
+    }),
+    true
+  );
+  assert.equal(isSocketHealthNonTradingSkip({ ok: true, skipped: false }), false);
+});
+
+test("probeOptionsSocketWithRetries: non-trading-day skip passes without websockets", async () => {
+  let calls = 0;
+  const result = await probeOptionsSocketWithRetries({
+    afterOpen930: true,
+    fetchSocketHealth: async () => {
+      calls++;
+      return {
+        status: 200,
+        body: { ok: true, skipped: true, reason: "non-trading day (2026-09-07)" },
+      };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, true);
+  assert.equal(result.failure, null);
+  assert.match(result.successDetail ?? "", /non-trading day/);
 });
 
 test("probeOptionsSocketWithRetries: exhausted retries fail during RTH", async () => {
