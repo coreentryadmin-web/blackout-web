@@ -55,20 +55,25 @@ function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
 function thesisHealthSection(play: TerminalPlay): RichSection | null {
   const h = play.thesisHealth;
   if (!h) return null;
+  const uncalibrated = thesisHealthUncalibrated(h);
+  if (uncalibrated) {
+    return {
+      title: "Thesis health",
+      body:
+        "Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown.",
+      bias: "neutral",
+    };
+  }
   const rows = h.pillars
     .map((p) => {
       const deltaStr = p.deltaPts != null ? ` (Δ ${p.deltaPts >= 0 ? "+" : ""}${p.deltaPts.toFixed(1)} pts)` : "";
       return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
     })
     .join("\n");
-  const uncalibrated = thesisHealthUncalibrated(h);
-  const headline = uncalibrated
-    ? "Inputs not wired for committed positions — aggregate score withheld."
-    : `**${h.health}%** · ${h.rungLabel}`;
   return {
     title: "Thesis health",
-    body: `${headline}\n\n${rows || "Pillars not wired on this row."}`,
-    bias: uncalibrated ? "neutral" : h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
+    body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
+    bias: h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
   };
 }
 
