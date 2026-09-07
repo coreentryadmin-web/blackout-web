@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T07:37:28.928Z",
+  "updated_at": "2026-09-07T08:56:26.444Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T08:50:18.776Z",
+      "lease_until": "2026-09-07T10:25:28.815Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "a8de7b44-50be-4d37-8134-1ba4fae56ae0",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -60,16 +61,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-07T08:50:18.777Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "ca6172a359163818bcf7b00e13602a5abe93fb2f",
+    "last_main_sha": "06805b7e8ac3fb9252c5cd96a07a719f6b0dc41e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T08:49:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34102610765",
+    "last_deploy_sha": "06805b7e8ac3fb9252c5cd96a07a719f6b0dc41e"
   },
   "events": [
     {
@@ -927,6 +928,91 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:50:01.666Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:50:07.489Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:50:08.331Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:50:15.649Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:50:18.777Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T08:52:29.518Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:52:30.415Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:52:31.232Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:55:28.814Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:55:29.596Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:55:30.346Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:56:18.139Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:56:26.443Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T08:56:26.444Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2efca93f-5f69-4bfd-99d1-0ee81c9cb33e",
+      "summary": "Merge wake #4471 @06805b7e8 deployed. Platform GREEN: validate:deploy, platform-integrity 14/14, api-auth, seo 22/22, ops:collect 0, pr-sweep 0 open PRs, npm test 13228/0 fail, rth-lifecycle GREEN (off-hours). No open PRs for peer review. GitHub GraphQL rate-limited (user 284440397) — non-blocking with zero open PRs. Next: RTH lifecycle @09:00 ET Mon; monitor for Claude PRs."
     }
   ],
   "open_prs": [],
