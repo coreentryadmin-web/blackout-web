@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T02:14:09.879Z",
+  "updated_at": "2026-09-07T04:49:23.283Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -71,11 +71,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6eee4efde3f24fd868248adc7d441c5efac9194f",
+    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T02:10:46Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34075414995",
-    "last_deploy_sha": "6eee4efde3f24fd868248adc7d441c5efac9194f"
+    "last_deploy_at": "2026-09-07T04:41:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
+    "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
   "events": [
     {
@@ -1023,6 +1023,19 @@
       "agent": "cursor",
       "run_id": "2afeed18-4edd-49e8-8162-18eb80bebcd4",
       "summary": "Main@6eee4efde (#4448 MTF VWAP intraday session scope). CI GREEN. Queue clean."
+    },
+    {
+      "at": "2026-09-07T04:49:23.282Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T04:49:23.283Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6e6d048b-ef2c-4fcd-8dcf-8c7ca0698d3d",
+      "summary": "Main@d8a0c4262 (#4461 CLOSED brief unavailable noise P1). f2f4f99f CI was #4458 thermal. Also merged #4452-4460 future-skew staleness + bead rail. Queue clean."
     }
   ],
   "open_prs": [],
