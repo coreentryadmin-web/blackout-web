@@ -1,24 +1,33 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
+<<<<<<< Updated upstream
   "updated_at": "2026-09-07T10:37:09.916Z",
+=======
+  "updated_at": "2026-09-07T18:31:27.263Z",
+>>>>>>> Stashed changes
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
+<<<<<<< Updated upstream
       "claimed_at": "2026-09-07T03:56:01.299Z",
       "lease_until": "2026-09-07T05:26:01.299Z",
+=======
+      "claimed_at": "2026-09-07T18:21:44.956Z",
+      "lease_until": "2026-09-07T19:56:19.909Z",
+>>>>>>> Stashed changes
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "128f2c79-d52a-492a-8523-4ffc97d22287"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T18:28:12.795Z",
+      "lease_until": "2026-09-07T19:58:12.795Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -60,16 +69,24 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T18:28:12.795Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
+<<<<<<< Updated upstream
     "last_main_sha": "cfda1017cf14c32702cdd244333b828a638376e4",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T03:55:24Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
     "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+=======
+    "last_main_sha": "6007fbe57d581b26369b9afaf182137a24bc64cd",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-07T18:30:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34151236856",
+    "last_deploy_sha": "7246d9ad2bc971ccdec0cb49f29844f9e43f3b64"
+>>>>>>> Stashed changes
   },
   "events": [
     {
@@ -963,6 +980,122 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+<<<<<<< Updated upstream
+=======
+    },
+    {
+      "at": "2026-09-07T17:49:11.102Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T17:49:11.102Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "27ec0749-0268-4c09-aa7b-c721601736ea",
+      "summary": "Workflow wake cycle complete. Merged: #4511/#4516/#4517/#4518/#4519. Platform GREEN. Dependabot majors held."
+    },
+    {
+      "at": "2026-09-07T18:08:02.615Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T18:08:02.616Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a5792231-bc47-45d5-a207-311f3d5fdf5d",
+      "summary": "PR #4520 merged (platform-warm holiday gate). validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Dependabot majors held (red CI). Updated handoff state post-rebase."
+    },
+    {
+      "at": "2026-09-07T18:28:09.118Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T18:28:12.795Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T18:31:27.262Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T18:31:27.263Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c286e2da-7ba4-4707-953d-bc19243a33fc",
+      "summary": "PR event wake: reviewed holiday socket-health race. #4523 merged (isSocketHealthSkipped in shared probe + rth-open-check). Closed/superseded duplicates #4524, #4532-4538. Platform GREEN on main: validate:deploy, validate:platform-integrity (14/14), validate:api-auth, ops:collect 0, blackout:rth-lifecycle. ECR deploy for #4522/#4523 still pending. Dependabot major PRs (#4476-4480) remain red — hold per policy."
+    }
+  ],
+  "open_prs": [
+    {
+      "number": 4547,
+      "title": "fix(ops): stop spurious socket retry log after NYSE holiday skip",
+      "branch": "fix/rth-open-holiday-skip-no-retry-noise",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T18:30:17Z"
+    },
+    {
+      "number": 4480,
+      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:24:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:04Z"
+    },
+    {
+      "number": 4476,
+      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
+      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:10:51Z"
+>>>>>>> Stashed changes
     }
   ],
   "open_prs": [],
