@@ -584,6 +584,46 @@ test("vectorDeskSection: live Vector play.bias badges bullish/bearish", () => {
   assert.equal(live?.bias, "bullish");
 });
 
+test("vectorDeskSection: CLOSED bucket suppresses the live entry/targets/invalidation/watch-now directive block (bucket-blind Vector desk, 2026-09-07)", () => {
+  // Live production repro (CCI/AMZN/GLW/NOW closed positions, 2026-09-07): vectorDeskSection had
+  // no bucket parameter at all and rendered the FULL live, current-moment Vector recommendation
+  // ("Watch now: POSITION · momentum long on continuation -> target 1sigma 264.84", entry zone,
+  // targets, invalidation) under a CLOSED play's brief — reading as an actionable call to re-enter
+  // a trade that already exited days earlier, badged bullish/bearish as if it were guidance on the
+  // closed position. Same defect class already fixed for watchForSection's closed-bucket framing.
+  const vec = fixtureVec({
+    freshness: "live",
+    play: {
+      bias: "long",
+      headline: "POSITION · momentum long on continuation -> target 1sigma 264.84",
+      grade: "B",
+      conviction: 68,
+      thesis: "Short gamma amplifies the move: go WITH strength, not against it.",
+      entryZone: "long on strength / pullback hold",
+      targets: ["1sigma 264.84", "call wall 270"],
+      invalidation: "5m close < 266.06",
+      starred: ["POSITION · momentum long on continuation -> target 1sigma 264.84"],
+    },
+  } as Partial<VectorFullState>);
+
+  const closed = vectorDeskSection(vec, null, "closed");
+  assert.ok(closed);
+  assert.equal(closed!.bias, "neutral", "closed bucket must not badge a live directional call");
+  assert.doesNotMatch(closed!.body, /Entry zone/i);
+  assert.doesNotMatch(closed!.body, /Targets:/i);
+  assert.doesNotMatch(closed!.body, /Invalidation:/i);
+  assert.doesNotMatch(closed!.body, /Watch now/i);
+  assert.doesNotMatch(closed!.body, /momentum long on continuation/i);
+  assert.match(closed!.body, /since this play closed/i);
+
+  // open/watch buckets are unchanged — still render the full live directive block.
+  const open = vectorDeskSection(vec, null, "open");
+  assert.ok(open);
+  assert.equal(open!.bias, "bullish");
+  assert.match(open!.body, /Entry zone/i);
+  assert.match(open!.body, /Watch now/i);
+});
+
 test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), never fabricated", () => {
   const vec = fixtureVec({
     spot: 105, // above vwap -> bull
