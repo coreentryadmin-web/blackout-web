@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T05:19:51.322Z",
+  "updated_at": "2026-09-07T05:54:32.504Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T05:52:33.804Z",
+      "lease_until": "2026-09-07T07:23:07.447Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "ebc256d5-cd38-4dbd-8329-cfe74229e013"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -65,11 +65,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_main_sha": "48d0bbbc81661f91db1efd377a48ddb099939369",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-07T05:49:52Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
+    "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
   "events": [
     {
@@ -909,9 +909,53 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T05:54:32.503Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:54:32.504Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d450cd8d-fc3f-4214-8077-19fa92d46b0a",
+      "summary": "Labor Day wake: lifecycle GREEN (22 checks), deploy GREEN, platform-integrity 14/14, ops:collect 0. Peer-reviewed #4464 APPROVED (14/14 occ-symbol tests). #4465 bead-rail v2 verify GREEN (draft, awaiting author). #4466 state handoff draft. GitHub API rate-limited for undraft/merge. Next: Tuesday RTH validate MARKET-OPEN watch list."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4466,
+      "title": "chore(state): cursor handoff after 48d0bbbc merge wake",
+      "branch": "chore/cursor-handoff-48d0bbbc",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T05:53:14Z"
+    },
+    {
+      "number": 4465,
+      "title": "fix(vector): align bead rail x-domain with session viewport (Sep-3 restore v2)",
+      "branch": "cursor/bead-rail-sep3-restore-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:54:11Z"
+    },
+    {
+      "number": 4464,
+      "title": "test(occ-symbol): add missing direct unit coverage for buildOcc",
+      "branch": "test/occ-symbol-coverage",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:51:39Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
