@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T04:49:23.283Z",
+  "updated_at": "2026-09-07T05:52:24.278Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -71,9 +71,9 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T04:41:23Z",
+    "last_main_sha": "48d0bbbc81661f91db1efd377a48ddb099939369",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-07T05:49:52Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
     "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
@@ -1036,9 +1036,65 @@
       "agent": "cursor",
       "run_id": "6e6d048b-ef2c-4fcd-8dcf-8c7ca0698d3d",
       "summary": "Main@d8a0c4262 (#4461 CLOSED brief unavailable noise P1). f2f4f99f CI was #4458 thermal. Also merged #4452-4460 future-skew staleness + bead rail. Queue clean."
+    },
+    {
+      "at": "2026-09-07T05:51:56.325Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:51:57.153Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:52:24.277Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:52:24.278Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ece639e9-2d97-4f5c-8950-2dcedf373ea8",
+      "summary": "Main@48d0bbbc8 chore state sync CI GREEN (#4461 deployed). #4466 agent-state-only — WAIT close. validate:deploy GREEN, ops:collect 0."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4466,
+      "title": "chore(state): cursor handoff after 48d0bbbc merge wake",
+      "branch": "chore/cursor-handoff-48d0bbbc",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:52:23Z"
+    },
+    {
+      "number": 4465,
+      "title": "fix(vector): align bead rail x-domain with session viewport (Sep-3 restore v2)",
+      "branch": "cursor/bead-rail-sep3-restore-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T05:44:22Z"
+    },
+    {
+      "number": 4464,
+      "title": "test(occ-symbol): add missing direct unit coverage for buildOcc",
+      "branch": "test/occ-symbol-coverage",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:51:39Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
