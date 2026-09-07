@@ -5,9 +5,11 @@ import {
   renderEnvelopeMarkdown,
   envelopeFromMarkdown,
   freshnessFromAgeMs,
+  freshnessFromObservedMs,
   BIE_ANSWER_ENVELOPE_VERSION,
   type BieAnswerEnvelope,
 } from "@/lib/bie/answer-envelope";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 describe("freshnessFromAgeMs", () => {
   test("buckets by age", () => {
@@ -17,6 +19,19 @@ describe("freshnessFromAgeMs", () => {
     assert.equal(freshnessFromAgeMs(30 * 60_000), "stale");
     assert.equal(freshnessFromAgeMs(null), "unknown");
     assert.equal(freshnessFromAgeMs(-5), "unknown");
+  });
+});
+
+describe("freshnessFromObservedMs", () => {
+  test("future skew beyond tolerance is fail-closed stale (Largo C2)", () => {
+    const readMs = 1_700_000_000_000;
+    const futureMs = readMs + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 1;
+    assert.equal(freshnessFromObservedMs(futureMs, readMs), "stale");
+  });
+
+  test("within tolerance still classifies by age", () => {
+    const readMs = 1_700_000_000_000;
+    assert.equal(freshnessFromObservedMs(readMs - 30_000, readMs), "live");
   });
 });
 

@@ -250,7 +250,7 @@ test("withReadContext dataAgeMs rejects clock-skewed future asOf (source scan)",
 test("scenario-read MEASURES provenance freshness instead of asserting it", () => {
   const src = readFileSync("src/lib/bie/scenario-read.ts", "utf8");
   assert.doesNotMatch(src, /freshness: "recent"/, "a hardcoded freshness is a claim nothing checked");
-  assert.match(src, /freshness: freshnessFromAgeMs\(/);
+  assert.match(src, /freshnessFromObservedMs\(/);
 });
 
 test("the capability registry no longer calls this surface realtime", () => {

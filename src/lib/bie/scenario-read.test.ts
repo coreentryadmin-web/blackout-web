@@ -198,6 +198,13 @@ describe("buildScenarioEnvelope — honesty guards", () => {
     assert.ok(labels.includes("max pain"));
     assert.ok(labels.includes("shifted spot"));
   });
+
+  test("future-skewed asOf provenance is fail-closed stale, not unknown", () => {
+    const readMs = Date.now();
+    const futureAsOf = new Date(readMs + 30_000).toISOString();
+    const env = buildScenarioEnvelope(state({ asOf: futureAsOf }), { kind: "pct", pct: -1, raw: "" });
+    assert.equal(env.sections[0]?.provenance?.freshness, "stale");
+  });
 });
 
 // ── Hermetic composeScenario slice ─────────────────────────────────────────────────────────────────
