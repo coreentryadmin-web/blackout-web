@@ -2495,11 +2495,20 @@ export function VectorChart({
       minuteBarsRef.current,
       timeframeRef.current
     );
-    const railHistory = trimHistoryToSession(
-      composeHorizonTrail(recordedTrail, currentColumn) ??
-        (horizon !== "all" ? [] : wallHistoryRef.current),
-      railBarTimes[0]
-    );
+    const composed = composeHorizonTrail(recordedTrail, currentColumn);
+    const railSource =
+      horizon === "all"
+        ? (composed ?? wallHistoryRef.current)
+        : (() => {
+            const narrowed = composed ?? [];
+            const blended = wallHistoryRef.current;
+            // SPX Slayer opens 0DTE: embed fast-bootstrap can ship a thin narrowed trail while
+            // blended wallHistoryRef already has the full session — prefer the denser source so
+            // beads span RTH instead of clustering in one column on the right edge.
+            if (blended.length > narrowed.length && narrowed.length < 120) return blended;
+            return narrowed.length ? narrowed : blended;
+          })();
+    const railHistory = trimHistoryToSession(railSource, railBarTimes[0]);
     const markerHistory =
       sessionOverview || !liveSessionRef.current || replayModeRef.current
         ? railHistory
@@ -2613,17 +2622,37 @@ export function VectorChart({
   }, [ticker]);
 
   // SPX Slayer embed upgrades fast rail-bootstrap → full enriched seed without remounting
-  // (VectorChart key is ticker-only). Sync refs so beads span the session after phase-2 lands.
+  // (VectorChart key is ticker-only). Sync BOTH rails — 0DTE desk draws from horizonHistoryRef,
+  // not wallHistoryRef — and reframe session viewport so beads span the full chart width.
   useEffect(() => {
-    if (!initialWallHistory.length) return;
-    const prev = wallHistoryRef.current;
-    if (initialWallHistory.length <= prev.length) return;
-    const merged = mergeWallHistory(prev, initialWallHistory);
-    wallHistoryRef.current = merged;
-    setSessionHistory(merged);
-    if (hasVexInHistory(merged)) setVexAvailable(true);
+    let upgraded = false;
+    if (initialWallHistory.length > wallHistoryRef.current.length) {
+      const merged = mergeWallHistory(wallHistoryRef.current, initialWallHistory);
+      wallHistoryRef.current = merged;
+      setSessionHistory(merged);
+      if (hasVexInHistory(merged)) setVexAvailable(true);
+      upgraded = true;
+    }
+    if (initialHorizonWallHistory.length > horizonHistoryRef.current.length) {
+      const merged = mergeWallHistory(horizonHistoryRef.current, initialHorizonWallHistory);
+      horizonHistoryRef.current = merged;
+      upgraded = true;
+    }
+    if (!upgraded || replayModeRef.current) return;
+    const chart = chartRef.current;
+    if (
+      chart &&
+      intradayZoomPresetRef.current === "session" &&
+      !liveFollowEnabledRef.current
+    ) {
+      const display = displayBarsFromMinute(
+        lastSessionBars(minuteBarsRef.current),
+        timeframeRef.current
+      );
+      applySessionOverviewViewport(chart, display);
+    }
     refreshTrails(lensRef.current);
-  }, [initialWallHistory, refreshTrails]);
+  }, [initialWallHistory, initialHorizonWallHistory, refreshTrails]);
 
   const refreshOverlays = useCallback(
     (

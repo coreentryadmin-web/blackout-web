@@ -18,6 +18,11 @@ test("Vector seed pipeline: pages client-bootstrap; loadVectorSeedProps stays se
   assert.doesNotMatch(vectorPage, /await loadVectorSeedProps/);
   assert.match(vectorPage, /VectorPageClient/);
   assert.match(vectorClient, /fetchVectorEmbedFastSeed/);
+  const clientSeed = readFileSync(
+    join(process.cwd(), "src/features/vector/lib/vector-client-seed.ts"),
+    "utf8"
+  );
+  assert.match(clientSeed, /lastSessionBars/);
   assert.match(vectorClient, /fetchVectorClientSeed/);
 
   assert.match(dashboardPage, /SpxVectorEmbed/);
