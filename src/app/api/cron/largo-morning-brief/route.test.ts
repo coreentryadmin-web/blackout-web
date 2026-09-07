@@ -21,6 +21,7 @@ import { NextRequest } from "next/server";
 // pre-fix code (buildCalls stayed 1 instead of 0). Post-fix it passes.
 
 let etWindowResult = true;
+let tradingDayResult = true;
 let buildCalls = 0;
 let loggedRuns: Array<{ jobKey: string; payload: Record<string, unknown> }> = [];
 
@@ -29,6 +30,9 @@ mock.module("../../../../lib/market-api-auth", {
 });
 mock.module("../../../../features/nighthawk/lib/et-window", {
   namedExports: { inEtWindow: () => etWindowResult },
+});
+mock.module("../../../../features/nighthawk/lib/session", {
+  namedExports: { isTradingDayEt: () => tradingDayResult },
 });
 mock.module("../../../../lib/cron-run", {
   namedExports: {
@@ -65,6 +69,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("outside the 9:25 ET window: no-op — the brief pipeline never runs, no push sent", async () => {
     etWindowResult = false;
+    tradingDayResult = true;
     buildCalls = 0;
     loggedRuns = [];
 
@@ -79,6 +84,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("inside the 9:25 ET window: the pipeline runs normally", async () => {
     etWindowResult = true;
+    tradingDayResult = true;
     buildCalls = 0;
     loggedRuns = [];
 
@@ -92,6 +98,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("?force=1 bypasses the window gate (manual/agent-driven runs)", async () => {
     etWindowResult = false;
+    tradingDayResult = false;
     buildCalls = 0;
 
     const res = await GET(new NextRequest("http://localhost/api/cron/largo-morning-brief?force=1"));
@@ -100,5 +107,21 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
     assert.equal(res.status, 200);
     assert.equal(body.ok, true);
     assert.equal(buildCalls, 1);
+  });
+
+  test("NYSE holiday: no-op even inside the ET window — no brief push on a closed tape", async () => {
+    etWindowResult = true;
+    tradingDayResult = false;
+    buildCalls = 0;
+    loggedRuns = [];
+
+    const res = await GET(new NextRequest("http://localhost/api/cron/largo-morning-brief"));
+    const body = await res.json();
+
+    assert.equal(body.skipped, true);
+    assert.match(String(body.reason), /non-trading day/);
+    assert.equal(buildCalls, 0);
+    assert.equal(loggedRuns.length, 1);
+    assert.equal(loggedRuns[0]!.payload.skipped, true);
   });
 });
