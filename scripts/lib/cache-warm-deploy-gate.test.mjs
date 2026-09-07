@@ -28,3 +28,17 @@ test("isDeployCacheWarmAllowed: rejects weekday after 8 PM ET", () => {
   // Fri 2026-09-05 00:30 UTC = Thu 8:30 PM ET — use Fri evening instead
   assert.equal(isDeployCacheWarmAllowed(new Date("2026-09-05T00:30:00.000Z")), false);
 });
+
+test("isDeployCacheWarmAllowed: rejects a NYSE holiday that falls on a weekday (Labor Day 2026-09-07)", () => {
+  // Monday 2026-09-07 17:00 UTC = 1 PM ET — inside the 4 AM-8 PM weekday window, but a full-day
+  // NYSE closure (Labor Day). Live bug confirmed the same day: this gate returned true here before
+  // the holiday check was added, letting validate:deploy-class scripts hammer desk-warm?force=1
+  // all session while the server-side warmers correctly stayed off via isEtExtendedWarmHours.
+  assert.equal(isDeployCacheWarmAllowed(new Date("2026-09-07T17:00:00.000Z")), false);
+});
+
+test("isDeployCacheWarmAllowed: still accepts an ordinary weekday one day after a holiday", () => {
+  // Tuesday 2026-09-08 17:00 UTC = 1 PM ET — a normal trading day right after Labor Day, proving
+  // the holiday check doesn't over-match into adjacent days.
+  assert.equal(isDeployCacheWarmAllowed(new Date("2026-09-08T17:00:00.000Z")), true);
+});
