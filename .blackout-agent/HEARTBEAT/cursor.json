@@ -1,10 +1,10 @@
 {
   "agent": "cursor",
-  "run_id": "a9de438d-f317-4e53-8f14-bf182be920ae",
-  "last_seen": "2026-09-07T06:41:47.673Z",
+  "run_id": "f29d09f5-cdfd-4ee1-aa6c-632327a5a27e",
+  "last_seen": "2026-09-07T06:50:43.609Z",
   "last_productive_action": "heartbeat",
-  "current_task": "select-task",
-  "current_phase": "DISCOVERY",
+  "current_task": "workflow_run-wake-complete",
+  "current_phase": "HANDOFF",
   "branch": null,
   "pr": null,
   "healthy": true
