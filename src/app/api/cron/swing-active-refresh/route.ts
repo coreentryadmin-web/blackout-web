@@ -75,6 +75,7 @@ import {
   persistSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
 import { sharedCacheGet, sharedCacheSet, sharedCacheSetNx, sharedCacheDel } from "@/lib/shared-cache";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   activeRefreshClaimTtlSec,
   SWING_ACTIVE_REFRESH_CLAIM_KEY,
@@ -484,6 +485,14 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Registered `market_hours_only: true` but EventBridge fires on fixed UTC weekdays with no holiday
+  // calendar — same ET-INTENT gap fixed on uw-cache-refresh (#4482) and flow-ingest (#4483).
+  if (!isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    await logCronRun("swing-active-refresh", started, payload);
+    return NextResponse.json(payload);
   }
 
   // Per-position Polygon/UW reads + serving-spot refresh + beta warm can exceed Cloudflare's ~100s
