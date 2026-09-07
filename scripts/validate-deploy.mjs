@@ -21,6 +21,7 @@ import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 import { isDeployCacheWarmAllowed } from "./lib/cache-warm-deploy-gate.mjs";
+import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -188,7 +189,8 @@ async function fetchText(path, opts = {}) {
 }
 
 async function runSocketHealthProbe(cron, { hardFail = false } = {}) {
-  const afterOpen930 = etMinutesNow() >= 9 * 60 + 30;
+  const tradingDay = isTradingDayEt(todayEtYmd());
+  const afterOpen930 = etMinutesNow() >= 9 * 60 + 30 && tradingDay;
   const result = await probeOptionsSocketWithRetries({
     afterOpen930,
     fetchSocketHealth: () =>

@@ -164,7 +164,7 @@ async function main() {
     if (cron) {
       const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
       const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 180_000);
-      const afterOpen930 = et.mins >= 9 * 60 + 30;
+      const afterOpen930 = et.mins >= 9 * 60 + 30 && tradingDay;
       let socketProbeOk = false;
       let socketLastDetail = null;
       for (let attempt = 0; attempt < 3 && !socketProbeOk; attempt++) {

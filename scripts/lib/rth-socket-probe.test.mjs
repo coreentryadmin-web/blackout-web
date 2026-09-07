@@ -4,7 +4,29 @@ import {
   socketProbeAttemptVerdict,
   socketProbeFinalFailure,
   probeOptionsSocketWithRetries,
+  socketHealthNonTradingSkipReason,
 } from "./rth-socket-probe.mjs";
+
+test("socketHealthNonTradingSkipReason: recognizes holiday no-op payload", () => {
+  assert.equal(
+    socketHealthNonTradingSkipReason({ ok: true, skipped: true, reason: "non-trading day (2026-09-07)" }),
+    "non-trading day (2026-09-07)"
+  );
+  assert.equal(socketHealthNonTradingSkipReason({ ok: true, websockets: {} }), null);
+});
+
+test("probeOptionsSocketWithRetries: holiday skip passes without websockets.options", async () => {
+  const result = await probeOptionsSocketWithRetries({
+    afterOpen930: true,
+    fetchSocketHealth: async () => ({
+      status: 200,
+      body: { ok: true, skipped: true, reason: "non-trading day (2026-09-07)" },
+    }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.failure, null);
+  assert.match(result.successDetail ?? "", /non-trading day/);
+});
 
 test("socketProbeAttemptVerdict: warming response retries during RTH", () => {
   const warming = { ok: false, detail: "ingest leader lock held — marks warming" };
