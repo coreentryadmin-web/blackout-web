@@ -5,6 +5,8 @@ import { buildLargoMorningBrief, formatMorningBriefPush } from "@/lib/largo/morn
 import { sendWebPush } from "@/lib/push/send-web-push";
 import { dbConfigured, dbQuery } from "@/lib/db";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
+import { todayEt } from "@/lib/et-date";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -37,6 +39,16 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!inMorningWindow(force)) {
     const payload = { ok: true, skipped: true, reason: "Outside 9:25-9:55 ET window — use ?force=1 to override" };
+    await logCronRun(CRON_KEY, started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const sessionDay = todayEt(new Date(started));
+  // Holiday guard: EventBridge is weekday-only and inEtWindow only knows Sat/Sun. On NYSE holidays
+  // the 9:25 ET window still resolves and the route would push a morning brief against a closed tape.
+  // force=1 bypasses for ops recovery (same pattern as nighthawk-morning-confirm / swing-discovery).
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
     await logCronRun(CRON_KEY, started, payload);
     return NextResponse.json(payload);
   }
