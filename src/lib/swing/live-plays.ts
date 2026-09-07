@@ -227,16 +227,21 @@ export function livePlayFromSwingPosition(
       ? (row.feature_vector.evidence_score as number)
       : 0;
 
-  // Honest regime read for computeSwingThesisHealth (thesis-health.ts): the commit-time 7-pillar
-  // dossier (feature-vector.ts) persists `pil_regime` — null when that pillar wasn't grounded, never
-  // a fabricated 0. Surface the archetype label ONLY when the dossier actually scored REGIME, so a
-  // committed position's "Thesis health" panel shows a real regime read instead of always falling
-  // through to the uncalibrated default (thesis-health.ts's `regimeScore()` treats a null regime as
-  // unread, base 0.45; a non-null string bumps the base to 0.75 — this must stay honest, not a guess).
-  const regime =
-    row.feature_vector && typeof row.feature_vector.pil_regime === "number"
-      ? (row.archetype ?? "regime read")
-      : null;
+  // CORRECTED (live regression found 2026-09-07, prior fix in #4481): `regime` is a DISPLAY string —
+  // play-brief.ts's Verdict section pushes `play.regime` verbatim with no label
+  // (`if (play.regime) verdictLines.push(play.regime)`), and thesis-health.ts's `regimeScore()` uses
+  // it as the pillar's shown `label` too. It means a genuine market-regime descriptor (e.g. Vector's
+  // `regime.posture`, SPX's `desk.regime` — "short gamma", "trending", etc.), NOT the swing setup
+  // archetype (BREAKOUT/PULLBACK/...), which is a different concept already shown on its own labeled
+  // "Archetype: X" line. The prior fix fell back to `row.archetype ?? "regime read"` when the
+  // dossier's REGIME pillar was scored but archetype was null — that shipped the literal placeholder
+  // string "regime read" into the live Ask Largo Verdict/"Why this setup" narrative for real members
+  // (confirmed live on NRG SWING:NRG:34), and would have duplicated the archetype text on the "regime"
+  // line when archetype WAS present. No genuine swing-specific market-regime label exists on the
+  // committed position row today — wiring one in (e.g. from Vector's regime.posture, which play-brief
+  // already reads elsewhere in this same envelope) needs a layer change beyond live-plays.ts's scope,
+  // so honest omission (null) is correct here, not a synthesized value. See the corrected finding.
+  const regime: string | null = null;
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
