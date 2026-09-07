@@ -27,3 +27,18 @@ test("force=1 refuses to delete a LIVE running claim (deep-dive Q1)", () => {
   assert.match(routeSrc, /force_refused: true/);
   assert.match(routeSrc, /force=1 refused —/);
 });
+
+test("swing-discovery gates on isTradingDayEt before Polygon/UW whole-market scan", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isTradingDayEt \} from "@\/features\/nighthawk\/lib\/session"/,
+    "must import the NYSE holiday-aware trading-day gate"
+  );
+  const authAt = routeSrc.indexOf("isCronAuthorized(req)");
+  const gateAt = routeSrc.indexOf("isTradingDayEt(sessionDay)");
+  const scanAt = routeSrc.indexOf("decideSwingScan(");
+  assert.ok(authAt >= 0 && gateAt >= 0 && scanAt >= 0);
+  assert.ok(gateAt > authAt, "trading-day gate must run after auth");
+  assert.ok(scanAt > gateAt, "phase decision must run after trading-day gate");
+  assert.match(routeSrc, /!force && !isTradingDayEt\(sessionDay\)/, "force=1 must bypass holiday gate");
+});
