@@ -4,6 +4,7 @@ import {
   collectBriefUnavailableSources,
   resolveGammaPosture,
   trustedHelixFlow,
+  zerodteLiveForSession,
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 
@@ -93,6 +94,20 @@ test("trustedHelixFlow: returns flow when feed fresh", () => {
     flow_feed_fresh: true,
   };
   assert.equal(trustedHelixFlow(eco as SwingPlayBriefContext["ecosystem"])?.print_count, 10);
+});
+
+test("zerodteLiveForSession: null when session_date lags brief sessionDate (Largo C2)", () => {
+  const z = {
+    session_date: "2026-09-05",
+    direction: "short",
+    score: 72,
+    conviction: "high",
+    status: "flagged",
+    first_flagged_at: "2026-09-05T14:00:00Z",
+  };
+  assert.equal(zerodteLiveForSession(z, "2026-09-06"), null);
+  assert.equal(zerodteLiveForSession(z, "2026-09-05")?.direction, "short");
+  assert.equal(zerodteLiveForSession(z, null)?.direction, "short");
 });
 
 test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal legs", () => {

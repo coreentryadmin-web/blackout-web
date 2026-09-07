@@ -579,6 +579,28 @@ test("counterThesisLine: stale HELIX flow must not steelman call-led / put-led",
   assert.equal(line, null, "stale HELIX must not appear in counter-thesis");
 });
 
+test("counterThesisLine: prior-session 0DTE must not steelman desk friction (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    118,
+  );
+  assert.equal(line, null, "yesterday's 0DTE short must not appear in counter-thesis");
+});
+
 test("counterThesisLine: stale GEX-only posture must not steelman dealer gamma", () => {
   const line = counterThesisLine(
     ctx({

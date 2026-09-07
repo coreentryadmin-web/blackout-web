@@ -269,6 +269,27 @@ test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led fri
   assert.equal(line, null, "stale HELIX must not coach cross-desk flow friction");
 });
 
+test("crossDeskCoaching: prior-session 0DTE must not invent cross-desk friction (Largo C2)", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "yesterday's 0DTE short must not read as live cross-desk friction");
+});
+
 test("crossDeskCoaching: desk alignment omits undefined NH conviction and junk 0DTE score", () => {
   const line = crossDeskCoaching(
     ctx({

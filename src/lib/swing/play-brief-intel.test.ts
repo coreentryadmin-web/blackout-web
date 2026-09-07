@@ -1230,3 +1230,22 @@ test("flowIntelSection: stale HELIX feed must not render recent prints or anomal
   const section = flowIntelSection(eco, fixturePlay());
   assert.equal(section, null, "stale feed with only cached prints/anomalies must not invent flow intel");
 });
+
+test("flowIntelSection: prior-session 0DTE must not render desk alignment (Largo C2)", () => {
+  const eco = {
+    ticker: "NRG",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    zerodte_today: {
+      session_date: "2026-09-05",
+      direction: "short",
+      score: 78,
+      conviction: "high",
+      status: "flagged",
+      first_flagged_at: "2026-09-05T14:00:00Z",
+    },
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-06");
+  assert.equal(section, null, "yesterday's 0DTE stance must not read as live flow intel");
+});

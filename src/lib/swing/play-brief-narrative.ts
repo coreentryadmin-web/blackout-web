@@ -6,7 +6,13 @@
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { trustedHelixFlow, gexMatrixAgeMs, gexMatrixStale, vectorSnapshotStale, resolveGammaPosture } from "./play-brief-absence";
+import {
+  trustedHelixFlow,
+  gexMatrixStale,
+  vectorSnapshotStale,
+  resolveGammaPosture,
+  zerodteLiveForSession,
+} from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
@@ -378,7 +384,7 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   }
 
   const nh = eco?.nighthawk_recent;
-  const z = eco?.zerodte_today;
+  const z = zerodteLiveForSession(eco?.zerodte_today, ctx.sessionDate);
   if (play.direction === "LONG" && nh?.direction?.toLowerCase() === "short") {
     reasons.push(`Night Hawk bearish (${nh.conviction ?? "recent take"})`);
   } else if (play.direction === "SHORT" && nh?.direction?.toLowerCase() === "long") {

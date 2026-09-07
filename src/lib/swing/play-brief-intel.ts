@@ -21,7 +21,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
-import { trustedHelixFlow } from "./play-brief-absence";
+import { trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
@@ -259,7 +259,11 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
 }
 
 /** HELIX flow, anomalies, tape prints near GEX nodes. */
-export function flowIntelSection(eco: EcosystemContext | null, play: TerminalPlay): RichSection | null {
+export function flowIntelSection(
+  eco: EcosystemContext | null,
+  play: TerminalPlay,
+  sessionDate?: string | null,
+): RichSection | null {
   if (!eco) return null;
   const lines: string[] = [];
 
@@ -300,8 +304,8 @@ export function flowIntelSection(eco: EcosystemContext | null, play: TerminalPla
     lines.push("**Recent prints:**\n" + prints);
   }
 
-  if (eco.zerodte_today) {
-    const z = eco.zerodte_today;
+  const z = zerodteLiveForSession(eco.zerodte_today, sessionDate);
+  if (z) {
     const aligned =
       (play.direction === "LONG" && z.direction === "long") ||
       (play.direction === "SHORT" && z.direction === "short");
@@ -785,7 +789,7 @@ export function buildIntelSections(
   const vdesk = vectorDeskSection(vec);
   if (vdesk) out.push(vdesk);
 
-  const flow = flowIntelSection(ecosystem, play);
+  const flow = flowIntelSection(ecosystem, play, ctx.sessionDate);
   if (flow) out.push(flow);
 
   const catalysts = catalystsSection(ecosystem);
