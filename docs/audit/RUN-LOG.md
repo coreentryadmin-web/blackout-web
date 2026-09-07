@@ -11,6 +11,42 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-07 (13:33 UTC / Mon 2026-09-07 09:34 ET) — [SEO] Market-hours wake: Labor Day (market closed), robots.txt + Article OG cross-check
+
+**Severity.** — (no defect found)
+
+**Checked the clock myself, per the trigger's own instruction — did not assume RTH mode.**
+`TZ=America/New_York date` → Mon 09:34 ET, nominally inside 09:30–13:00. But `2026-09-07` is
+explicitly listed in `US_MARKET_HOLIDAYS` (`src/features/nighthawk/lib/session.ts`) — NYSE Labor
+Day closure — so `isTradingDayEt('2026-09-07')` returns `false` despite the weekday/time window.
+Market is closed. Per the trigger's own fallback, did normal SEO work instead of the RTH-only
+`/tools/gamma-snapshot` live-tape + CLS-on-real-data checks (those wait for the next real trading
+day).
+
+Picked genuinely new ground not covered by the last several cycles (RSS/llms.txt/JSON-LD/entity
+graph/GA4/robots already checked recently — see prior entries): pulled a real `/learn` article
+(`dealer-gamma-options-flow-guide`) and cross-checked its `og:image`, `twitter:image`, and Article
+JSON-LD `image` field all point to the same real `/api/og?...&type=pillar` URL (not just the
+synthetic `?title=Test` probe) — fetched that exact URL and confirmed `200 image/png`, closing the
+loop end-to-end on a real page, not just the smoke-test URL. Fetched `robots.txt` directly: well-
+formed, explicitly `Allow: /api/og` despite the blanket `Disallow: /api`, blocks every member-only
+desk (`/terminal`, `/vector`, `/nighthawk`, `/flows`, `/heatmap`, `/meridian`, `/grid`, `/account`,
+etc.), lists the sitemap, and carries explicit allow-blocks for every major AI crawler (GPTBot,
+ChatGPT-User, ClaudeBot, anthropic-ai, PerplexityBot, Google-Extended, CCBot, Bytespider,
+cohere-ai, Applebot) consistent with the GEO mandate. Cross-checked the other half of the
+`/research/gamma-levels/*` HARD CONSTRAINT (absent from sitemap, per `sitemap-urls.ts`'s own
+comment) — the route itself resolves `200` but correctly carries `<meta name="robots"
+content="noindex, nofollow">`, so the licensing-pending research surface is reachable but not
+indexable, exactly as documented in `docs/marketing/RESEARCH-PUBLISH-POSTURE.md`.
+
+Noted for the record, not acted on: CLAUDE.md's own "Access reality" §4 says Cloudflare purge
+"works in-session" — the CF purge attempt in the prior (12:20 UTC) cycle was denied by the
+auto-mode classifier, consistent with a transient/session-dependent block already documented for
+GSC access, not a real capability change.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-07 (12:20 UTC / Mon 2026-09-07 08:21 ET) — [SEO] Lane heartbeat: fixes hold, CF purge blocked, sweep clean
 
 **Severity.** — (no defect found)
