@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T15:42:12.982Z",
+  "updated_at": "2026-09-07T16:27:05.083Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -126,6 +126,46 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-07T15:35:30.540Z",
       "safe_to_merge": true
+    },
+    "pr-4490": {
+      "pr": 4490,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:50.262Z",
+      "safe_to_merge": true
+    },
+    "pr-4491": {
+      "pr": 4491,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:50.595Z",
+      "safe_to_merge": true
+    },
+    "pr-4492": {
+      "pr": 4492,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:50.959Z",
+      "safe_to_merge": true
+    },
+    "pr-4493": {
+      "pr": 4493,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:51.297Z",
+      "safe_to_merge": true
+    },
+    "pr-4494": {
+      "pr": 4494,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:51.625Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -140,66 +180,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "649ed3ce6b715c994e3fcb95a11c86219ad48700",
+    "last_main_sha": "9935d4dc56bee8a66aebf6f6e2f798f5153f0567",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T15:35:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34138742562",
-    "last_deploy_sha": "0a2087dde1d5aa4e6610fadffd85780c50a38764"
+    "last_deploy_at": "2026-09-07T16:21:20Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34142862652",
+    "last_deploy_sha": "9935d4dc56bee8a66aebf6f6e2f798f5153f0567"
   },
   "events": [
-    {
-      "at": "2026-09-05T19:07:30.161Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-05T19:07:42.137Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-05T19:34:21.505Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
-    {
-      "at": "2026-09-05T19:34:45.361Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-09-05T19:34:45.361Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
-    },
-    {
-      "at": "2026-09-05T19:35:03.828Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-09-05T19:35:19.110Z",
-      "type": "pr_review",
-      "pr": 4037,
-      "head_sha": "2c4363b2c",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T19:35:19.109Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-05T19:35:26.152Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
     {
       "at": "2026-09-05T19:35:26.152Z",
       "type": "handoff",
@@ -1427,9 +1414,104 @@
       "agent": "cursor",
       "run_id": "08d34406-b998-4f70-9063-29cba2e44e7b",
       "summary": "Main@649ed3ce6 — #4489 NYSE holiday gate in isDeployCacheWarmAllowed (stops Labor Day desk-warm force storms). validate:deploy GREEN; 7/7 gate tests pass. Docs SEO wake 4c64c8116. Dependabot RED hold."
+    },
+    {
+      "at": "2026-09-07T16:26:13.672Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T16:26:14.790Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T16:26:50.263Z",
+      "type": "pr_review",
+      "pr": 4490,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:50.262Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T16:26:50.596Z",
+      "type": "pr_review",
+      "pr": 4491,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:50.595Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T16:26:50.961Z",
+      "type": "pr_review",
+      "pr": 4492,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:50.959Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T16:26:51.299Z",
+      "type": "pr_review",
+      "pr": 4493,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:51.297Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T16:26:51.626Z",
+      "type": "pr_review",
+      "pr": 4494,
+      "head_sha": "9935d4dc5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T16:26:51.625Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T16:27:05.082Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T16:27:05.083Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2218dae9-30ad-43e3-924f-548dae5d8526",
+      "summary": "Main@9935d4dc5 — discovery/grade/outcomes holiday gates (#4490-#4494). validate:deploy GREEN; 8/8 cron tests pass. Labor Day batch complete. Dependabot RED hold."
     }
   ],
   "open_prs": [
+    {
+      "number": 4498,
+      "title": "fix(cron): gate largo-morning-brief and thermal EOD recap on isTradingDayEt",
+      "branch": "fix/cron-holiday-gates-batch3",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T16:26:37Z"
+    },
+    {
+      "number": 4495,
+      "title": "fix(cron): gate largo-morning-brief on isTradingDayEt for NYSE holidays",
+      "branch": "fix/largo-morning-brief-holiday-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T16:26:56Z"
+    },
     {
       "number": 4480,
       "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
