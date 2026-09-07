@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:18:09.688Z",
+  "updated_at": "2026-09-07T01:56:33.122Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-07T01:46:06.223Z",
+      "lease_until": "2026-09-07T03:18:55.521Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "a0516154-4c07-4581-bbee-8f470bde72ec",
+      "title": null
     }
   },
   "reviews": {
@@ -39,6 +40,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-06T16:36:20.625Z",
       "safe_to_merge": true
+    },
+    "pr-4444": {
+      "pr": 4444,
+      "head_sha": "e739ace02",
+      "reviewer": "cursor",
+      "verdict": "VERIFIED_LOCAL",
+      "reviewed_at": "2026-09-07T01:56:28.878Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -47,16 +56,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-07T01:46:06.224Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "7aff243d798540c7da4274886a1427cee38a91b1",
+    "last_main_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-07T01:50:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073262128",
+    "last_deploy_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e"
   },
   "events": [
     {
@@ -842,9 +852,104 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:45:57.318Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:46:01.007Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:46:02.006Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:46:03.443Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:46:06.224Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T01:48:46.324Z",
+      "type": "pr_webhook",
+      "pr": 4444,
+      "event": "sweep",
+      "head": "e739ace02fb3d369b2e2d8b559dbacae1f343537",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T01:48:55.521Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:48:56.566Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:48:57.698Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:56:28.879Z",
+      "type": "pr_review",
+      "pr": 4444,
+      "head_sha": "e739ace02",
+      "reviewer": "cursor",
+      "verdict": "VERIFIED_LOCAL",
+      "reviewed_at": "2026-09-07T01:56:28.878Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-07T01:56:33.122Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4446,
+      "title": "fix(largo): restore dynamic-format.ts for stress-shape harness",
+      "branch": "fix/largo-stress-shape-dynamic-format",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T01:54:17Z"
+    },
+    {
+      "number": 4444,
+      "title": "fix(largo): add session_date to swing brief envelope + persist diff baseline",
+      "branch": "fix/largo-brief-session-date-diff-persist",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T01:56:28Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -874,6 +979,14 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4444": {
+      "last_event": "sweep",
+      "last_head": "e739ace02fb3d369b2e2d8b559dbacae1f343537",
+      "last_feedback_at": "2026-09-07T01:48:46.324Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
