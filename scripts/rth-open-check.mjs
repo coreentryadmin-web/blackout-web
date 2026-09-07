@@ -14,7 +14,7 @@ import { execSync, spawnSync } from "node:child_process";
 import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
-import { socketProbeAttemptVerdict, socketProbeFinalFailure } from "./lib/rth-socket-probe.mjs";
+import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
@@ -165,65 +165,36 @@ async function main() {
       const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
       const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 180_000);
       const afterOpen930 = et.mins >= 9 * 60 + 30;
-      let socketProbeOk = false;
-      let socketLastDetail = null;
-      for (let attempt = 0; attempt < 3 && !socketProbeOk; attempt++) {
-        try {
+      const socketResult = await probeOptionsSocketWithRetries({
+        afterOpen930,
+        fetchSocketHealth: async () => {
           const ac = new AbortController();
           const socketTimer = setTimeout(() => ac.abort(), socketHealthTimeoutMs);
-          let res;
           try {
-            res = await fetch(`${base}/api/cron/socket-health`, {
+            const res = await fetch(`${base}/api/cron/socket-health`, {
               headers: { Authorization: `Bearer ${cron}` },
               signal: ac.signal,
             });
+            const body = await res.json().catch(() => ({}));
+            return { status: res.status, body };
           } finally {
             clearTimeout(socketTimer);
           }
-          const body = await res.json().catch(() => ({}));
-          const opt = body.websockets?.options;
-          const uw = body.websockets?.unusual_whales;
-          if (opt) {
-            const verdict = socketProbeAttemptVerdict(opt, afterOpen930);
-            if (verdict === "pass") {
-              if (opt.ok) ok(`options-socket: ${opt.detail}`);
-              else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
-              socketProbeOk = true;
-            } else {
-              socketLastDetail = opt.detail ?? socketLastDetail;
-              if (attempt < 2) {
-                console.log(
-                  `  ⚠ options-socket (attempt ${attempt + 1}/3): ${opt.detail} — retrying…`
-                );
-              }
-            }
-            if (uw && !uw.ok && afterOpen930) {
-              console.log(`  ⚠ unusual_whales: ${uw.detail}`);
-            }
-          } else if (res.status === 401) {
-            console.log(
-              "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
-            );
-            socketProbeOk = true;
-          } else {
-            socketLastDetail = `probe HTTP ${res.status}`;
-            if (attempt < 2) {
-              console.log(`  ⚠ options-socket (attempt ${attempt + 1}/3): HTTP ${res.status} — retrying…`);
-            }
-          }
-        } catch (e) {
-          if (attempt < 2 && /aborted/i.test(e.message)) {
-            console.log(`  ⚠ options-socket probe slow (attempt ${attempt + 1}) — retrying…`);
-            continue;
-          }
-          socketLastDetail = e.message;
-          if (attempt < 2) {
-            console.log(`  ⚠ options-socket (attempt ${attempt + 1}/3): ${e.message} — retrying…`);
-          }
-        }
+        },
+        onRetry: (attempt, detail) =>
+          console.log(`  ⚠ options-socket (attempt ${attempt}/3): ${detail} — retrying…`),
+      });
+      if (socketResult.preOpenWarn?.includes("CRON_SECRET")) {
+        console.log(
+          "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
+        );
+      } else if (socketResult.failure) {
+        fail(socketResult.failure);
+      } else if (socketResult.preOpenWarn) {
+        console.log(`  ⚠ options-socket: pre-09:30 — ${socketResult.preOpenWarn}`);
+      } else {
+        ok(`options-socket: ${socketResult.successDetail ?? "ok"}`);
       }
-      const socketFailure = socketProbeFinalFailure(socketProbeOk, socketLastDetail, afterOpen930);
-      if (socketFailure) fail(socketFailure);
     } else {
       console.log("  ⚠ CRON_SECRET unset — skipping options-socket HTTP probe");
     }

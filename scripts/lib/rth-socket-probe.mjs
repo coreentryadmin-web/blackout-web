@@ -6,6 +6,24 @@
 /** @typedef {{ ok: boolean, detail?: string }} SocketHealthOptions */
 
 /**
+ * socket-health returns this on NYSE holidays/weekends after #4517 — no websockets payload.
+ * @param {Record<string, unknown> | null | undefined} body
+ * @returns {boolean}
+ */
+export function isSocketHealthNonTradingSkip(body) {
+  return body?.ok === true && body?.skipped === true;
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} body
+ * @returns {string}
+ */
+export function socketHealthNonTradingSkipDetail(body) {
+  const reason = typeof body?.reason === "string" ? body.reason : "non-trading day";
+  return `skipped (${reason})`;
+}
+
+/**
  * @param {SocketHealthOptions | null | undefined} opt
  * @param {boolean} afterMarketOpen930
  * @returns {"pass" | "retry" | "fail"}
@@ -56,6 +74,11 @@ export async function probeOptionsSocketWithRetries({
   for (let attempt = 0; attempt < maxAttempts && !socketProbeOk; attempt++) {
     try {
       const { status, body } = await fetchSocketHealth();
+      if (isSocketHealthNonTradingSkip(body)) {
+        successDetail = socketHealthNonTradingSkipDetail(body);
+        socketProbeOk = true;
+        continue;
+      }
       const opt = body?.websockets?.options;
       if (opt) {
         const verdict = socketProbeAttemptVerdict(opt, afterOpen930);
