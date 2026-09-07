@@ -22,7 +22,7 @@ import type { RelatedCompanies } from "@/lib/providers/polygon-related";
 import type { NewsResult } from "@/lib/providers/polygon-news";
 import type { PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import type { MarketBreadthBundle } from "@/lib/bie/market-breadth";
-import { SPX_CONFIDENCE_OMITTED } from "@/lib/largo/spx-confidence-boundary";
+import { SPX_CONFIDENCE_OMITTED, SPX_SCORE_CLAMP_NOTE } from "@/lib/largo/spx-confidence-boundary";
 
 // mock.module() must be registered before ecosystem-context.ts (and therefore
 // its "@/lib/db" import) is ever loaded — an ordinary top-level `import` of
@@ -415,10 +415,29 @@ test("fetchEcosystemContext: spx_play is null for a non-SPX ticker, and the SPX-
 
 
 /** The fixture as it should arrive at the model: everything verbatim, minus the uncalibrated
- *  `confidence`, plus the named absence that replaces it. */
+ *  `confidence`, plus the named absence that replaces it — and, when the fixture's `factors[]`
+ *  don't sum to its `score` (this hand-typed fixture only carries one representative factor, so
+ *  they don't), the honest clamp note `omitUncalibratedSpxConfidence` also attaches for that same
+ *  reason. Derived here rather than hand-asserted so this stays a byte-for-byte full-fidelity
+ *  guard against the REAL sanitizer, not a copy of its logic that could silently drift from it. */
 function withConfidenceOmitted(payload: Record<string, unknown>): Record<string, unknown> {
   const { rawScore: _omitted, ...rest } = payload;
-  return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
+  const out: Record<string, unknown> = { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
+  const { score, factors } = payload as { score?: unknown; factors?: unknown };
+  if (typeof score === "number" && Array.isArray(factors)) {
+    const rawSum = factors.reduce(
+      (s: number, f) =>
+        s + (f && typeof f === "object" && typeof (f as { weight?: unknown }).weight === "number"
+          ? (f as { weight: number }).weight
+          : 0),
+      0
+    );
+    if (rawSum !== score) {
+      out.factor_sum_pre_clamp = rawSum;
+      out.score_clamp_note = SPX_SCORE_CLAMP_NOTE;
+    }
+  }
+  return out;
 }
 
 // Regression: Largo's own get_spx_play tool (src/lib/largo/run-tool.ts ->
