@@ -3402,3 +3402,9 @@ than an end-of-session patch.
 - **What was broken:** HELIX 24h flow aggregate appeared as `+$1000000.00` in envelope evidence while the Trade-manager-read / Flow intel sections showed `$1.0M` for the same `call_premium` field — Largo contract precision violated within one brief.
 - **What changed:** Routed HELIX aggregate flow and dark-pool notional formatting through `fmtPremium` from `@/lib/fmt-money` in `play-brief.ts`, `play-brief-intel.ts`, and `play-brief-narrative.ts` (via `fmtFlowUsd` wrapper).
 - **RTH check:** Open Ask Largo on a swing row with HELIX flow >$100k — confirm evidence chips and trade-manager narrative show identical k/M strings (e.g. both `$1.2M`, not mixed with `$1200000.00`).
+
+### 69. Ask Largo swing brief — "Vector desk" section rendered a live, actionable directive on CLOSED plays — fix/closed-vector-desk-live-recommendation — 2026-09-07
+
+- **What was broken:** Live repro across four CLOSED swing chains (CCI/AMZN/GLW/NOW, 2026-09-07): `vectorDeskSection()` had no `bucket` parameter and rendered the full CURRENT Vector directive block — entry zone, targets, invalidation, starred "Watch now" call — bullish/bearish-badged, on a play that already closed days earlier. Same defect class as the "Watch levels" fix immediately preceding this one, in a different section that was never made bucket-aware to begin with.
+- **What changed:** `vectorDeskSection` now takes a `bucket` param; for `"closed"` it renders only an informational grade/conviction line framed "since this play closed" with a forced neutral bias, dropping thesis/entryZone/targets/invalidation/starred entirely. Watch/open buckets are unchanged.
+- **RTH check:** Open Ask Largo on any CLOSED swing position — confirm "Vector desk" shows only a neutral "since this play closed" grade line, never an Entry zone/Targets/Invalidation/"Watch now" block, and never a bullish/bearish bias badge.

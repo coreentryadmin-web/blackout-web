@@ -692,6 +692,7 @@ export function wallDynamicsSection(
 export function vectorDeskSection(
   vec: VectorFullState | null,
   sessionDate?: string | null,
+  bucket: "watch" | "open" | "closed" = "open",
 ): RichSection | null {
   const p = vec?.play;
   if (!p) return null;
@@ -705,6 +706,19 @@ export function vectorDeskSection(
     );
     if (p.grade) lines.push(`Vector desk grade: **${p.grade}** (from prior snapshot)`);
     if (!lines.length) return null;
+    return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
+  }
+  // CLOSED plays: `p` is Vector's CURRENT read on the ticker, computed fresh at request time —
+  // it has nothing to do with the specific, already-resolved position under review. Rendering the
+  // full entry-zone/targets/invalidation/"Watch now" directive block (unchanged since before this
+  // fix) for a closed play reads as a live, actionable call to re-enter a trade that already
+  // exited, and badges it bullish/bearish as if it were guidance on the closed position — a
+  // contract violation (identity/direction: whose call is this, and is it live) of the same shape
+  // already fixed for the "Watch levels" section (see watchForSection's closed-bucket handling
+  // above). Closed briefs keep only the informational grade/conviction snapshot, framed as
+  // "since it closed" market context, with no directives and a forced-neutral bias.
+  if (bucket === "closed") {
+    lines.push(`Current Vector read: grade **${p.grade}** · conviction **${p.conviction}** (since this play closed)`);
     return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
   }
   lines.push(`**${p.headline}** · grade **${p.grade}** · conviction **${p.conviction}**`);
@@ -796,7 +810,7 @@ export function buildIntelSections(
   const walls = wallDynamicsSection(vec, ctx.sessionDate);
   if (walls) out.push(walls);
 
-  const vdesk = vectorDeskSection(vec, ctx.sessionDate);
+  const vdesk = vectorDeskSection(vec, ctx.sessionDate, bucket);
   if (vdesk) out.push(vdesk);
 
   const flow = flowIntelSection(ecosystem, play, ctx.sessionDate);
