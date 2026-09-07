@@ -21,6 +21,11 @@ import { NextRequest } from "next/server";
 // pre-fix code (buildCalls stayed 1 instead of 0). Post-fix it passes.
 
 let etWindowResult = true;
+// Without this mock, the route's real isTradingDayEt() call sees whatever the actual calendar
+// date is at test-run time — which fails "inside the window" deterministically on any real NYSE
+// holiday or weekend CI happens to run on (confirmed: this test failed on Labor Day 2026-09-07
+// before the mock was added — see the holiday-gate PR's own review thread).
+let tradingDayResult = true;
 let buildCalls = 0;
 let loggedRuns: Array<{ jobKey: string; payload: Record<string, unknown> }> = [];
 
@@ -29,6 +34,12 @@ mock.module("../../../../lib/market-api-auth", {
 });
 mock.module("../../../../features/nighthawk/lib/et-window", {
   namedExports: { inEtWindow: () => etWindowResult },
+});
+mock.module("../../../../features/nighthawk/lib/session", {
+  namedExports: {
+    isTradingDayEt: () => tradingDayResult,
+    todayEt: () => "2026-09-07",
+  },
 });
 mock.module("../../../../lib/cron-run", {
   namedExports: {
@@ -65,6 +76,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("outside the 9:25 ET window: no-op — the brief pipeline never runs, no push sent", async () => {
     etWindowResult = false;
+    tradingDayResult = true;
     buildCalls = 0;
     loggedRuns = [];
 
@@ -79,6 +91,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("inside the 9:25 ET window: the pipeline runs normally", async () => {
     etWindowResult = true;
+    tradingDayResult = true;
     buildCalls = 0;
     loggedRuns = [];
 
@@ -92,6 +105,7 @@ describe("GET /api/cron/largo-morning-brief — ET-window gate on the dual-band 
 
   test("?force=1 bypasses the window gate (manual/agent-driven runs)", async () => {
     etWindowResult = false;
+    tradingDayResult = false;
     buildCalls = 0;
 
     const res = await GET(new NextRequest("http://localhost/api/cron/largo-morning-brief?force=1"));
