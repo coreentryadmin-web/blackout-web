@@ -3,6 +3,7 @@
  * Surfaces chart technicals, flow, GEX nodes, catalysts, watch levels, and hold plan.
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
+import { fmtPremium } from "@/lib/fmt-money";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
@@ -280,7 +281,7 @@ export function flowIntelSection(
           ? "put-heavy"
           : "balanced";
     lines.push(
-      `HELIX tape (${f.window_hours}h): **${bias}** — calls ${fmtUsd(f.call_premium)} · puts ${fmtUsd(f.put_premium)} · ${f.print_count} prints`,
+      `HELIX tape (${f.window_hours}h): **${bias}** — calls ${fmtPremium(f.call_premium)} · puts ${fmtPremium(f.put_premium)} · ${f.print_count} prints`,
     );
   }
 

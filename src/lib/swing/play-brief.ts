@@ -23,6 +23,7 @@ import {
 } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
+import { fmtPremium } from "@/lib/fmt-money";
 import {
   etStampFromDateOrIso,
   etStampFromIso,
@@ -363,7 +364,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
           : "balanced";
     out.push({
       kind: "fact",
-      text: `HELIX flow (${flow.window_hours}h): ${bias} — calls ${fmtUsd(flow.call_premium)} · puts ${fmtUsd(flow.put_premium)} · ${flow.print_count} prints`,
+      text: `HELIX flow (${flow.window_hours}h): ${bias} — calls ${fmtPremium(flow.call_premium)} · puts ${fmtPremium(flow.put_premium)} · ${flow.print_count} prints`,
       provenance: { source: "HELIX", asOf: ctx.asOf, freshness: "recent" },
     });
   }

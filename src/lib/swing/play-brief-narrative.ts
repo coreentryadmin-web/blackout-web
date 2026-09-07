@@ -19,6 +19,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
+import { fmtPremium } from "@/lib/fmt-money";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
@@ -28,13 +29,11 @@ function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
-/** For FLOW/aggregate dollar amounts (HELIX premium, dark-pool notional) — these are routinely
- *  hundreds of thousands to millions, so whole-dollar/k/M is the right precision. NEVER use this
- *  for a per-contract option premium (mark, stop/target rails) — see fmtOptionUsd below. */
-function fmtUsd(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
-  return `$${n.toFixed(0)}`;
+/** For FLOW/aggregate dollar amounts (HELIX premium, dark-pool notional) — use fmtPremium
+ *  from fmt-money (single source of truth for k/M/B scaling). NEVER use this for a
+ *  per-contract option premium — see fmtOptionUsd below. */
+function fmtFlowUsd(n: number): string {
+  return fmtPremium(n);
 }
 
 /** For a PER-CONTRACT option premium (live mark, stop/target rails) — these are typically
@@ -87,7 +86,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
       price: dp.strike,
       kind: "dark_pool",
       label: "dark pool",
-      meta: `${dp.pct.toFixed(0)}% of DP volume · ${fmtUsd(dp.premium)}`,
+      meta: `${dp.pct.toFixed(0)}% of DP volume · ${fmtFlowUsd(dp.premium)}`,
       distancePct: distPct(spot, dp.strike),
     });
   }
@@ -289,7 +288,7 @@ function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string |
 
   const bias = callHeavy ? "call-heavy" : putHeavy ? "put-heavy" : "balanced";
   let tape =
-    `**HELIX tape** (${flow.window_hours}h) — **${bias}** · calls ${fmtUsd(flow.call_premium)} · puts ${fmtUsd(flow.put_premium)} · ${flow.print_count} prints.`;
+    `**HELIX tape** (${flow.window_hours}h) — **${bias}** · calls ${fmtFlowUsd(flow.call_premium)} · puts ${fmtFlowUsd(flow.put_premium)} · ${flow.print_count} prints.`;
 
   if (alignedLong) tape += " Flow stepping in on the call side **supports** the long swing.";
   else if (alignedShort) tape += " Put flow **aligns** with the short thesis.";
@@ -397,9 +396,9 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   const flow = trustedHelixFlow(eco);
   if (flow) {
     if (play.direction === "LONG" && flow.put_premium > flow.call_premium * 1.2) {
-      reasons.push(`HELIX put-led (${fmtUsd(flow.put_premium)} vs ${fmtUsd(flow.call_premium)} calls)`);
+      reasons.push(`HELIX put-led (${fmtFlowUsd(flow.put_premium)} vs ${fmtFlowUsd(flow.call_premium)} calls)`);
     } else if (play.direction === "SHORT" && flow.call_premium > flow.put_premium * 1.2) {
-      reasons.push(`HELIX call-led (${fmtUsd(flow.call_premium)} vs ${fmtUsd(flow.put_premium)} puts)`);
+      reasons.push(`HELIX call-led (${fmtFlowUsd(flow.call_premium)} vs ${fmtFlowUsd(flow.put_premium)} puts)`);
     }
   }
 
@@ -636,7 +635,7 @@ export function describeDarkPoolLevel(
       price: level.strike,
       kind: "dark_pool",
       label: "dark pool",
-      meta: `${level.pct.toFixed(0)}% of DP volume · ${fmtUsd(level.premium)}`,
+      meta: `${level.pct.toFixed(0)}% of DP volume · ${fmtFlowUsd(level.premium)}`,
       distancePct: distPct(spot, level.strike),
     },
     { direction } as TerminalPlay,
