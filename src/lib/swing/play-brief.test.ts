@@ -607,6 +607,29 @@ test("composeSwingPlayBrief: live Vector regime still drives dealer posture when
   assert.equal(postureEvidence?.provenance?.source, "Vector");
 });
 
+test("composeSwingPlayBrief: future-skewed option mark freshness is stale, not unknown (Largo C2)", () => {
+  const futureMark = new Date(Date.now() + 30_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", markAsOf: futureMark }),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const markEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Option mark as of"));
+  assert.ok(markEvidence, "expected an option-mark evidence entry");
+  assert.equal(
+    markEvidence!.provenance?.freshness,
+    "stale",
+    "future-skewed markAsOf must fail-closed to stale, not unknown",
+  );
+});
+
 test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant (FINDINGS 2026-09-06 #21)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "OPEN", recommendation: "HOLD", markAsOf: "2026-09-04T21:45:18.663Z" }),
