@@ -5,6 +5,8 @@ import { xApiEnabled } from "@/lib/x-api";
 import { runMentionReplySweep } from "@/lib/x-mention-replies";
 import { fetchMarketSnapshot } from "@/lib/x-content";
 import { xMarketingPostsPaused, xMentionRepliesPaused } from "@/lib/x-marketing-env";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
+import { todayEt } from "@/lib/et-date";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +40,22 @@ export async function GET(req: NextRequest) {
 
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
   const cronMode = req.nextUrl.searchParams.get("manual") !== "1";
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
+
+  // No public mention replies with live-desk copy on NYSE holidays (weekday schedule only).
+  if (!force && !isTradingDayEt(sessionDay)) {
+    await logCronRun("x-replies", started, {
+      ok: true,
+      skipped: true,
+      reason: `non-trading day (${sessionDay})`,
+    });
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: `non-trading day (${sessionDay})`,
+    });
+  }
 
   try {
     const marketSnapshot = await fetchMarketSnapshot();
