@@ -107,6 +107,7 @@ import {
   recordWallSample,
   strikeTrailLifecycle,
   trimHistoryForLiveTrails,
+  trimHistoryToSession,
   alignWallHistoryToBarTimes,
   type StrikeTrail,
   type VectorWallLens,
@@ -148,7 +149,7 @@ import { playTechnicalsFromSummary } from "@/features/vector/lib/vector-server-t
 import { buildVectorPlay, type VectorPlay, type VectorPlayEmit, type PlayTechnicals, type PlayBieContext, vectorPlayBieBucketKey } from "@/features/vector/lib/vector-play-engine";
 import { expectedMoveCallouts, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import { evaluateAlerts, type AlertRule, type AlertState, type FiredAlert } from "@/features/vector/lib/vector-alerts";
-import { sessionHodLod } from "@/features/vector/lib/vector-key-levels";
+import { sessionHodLod, lastSessionBars } from "@/features/vector/lib/vector-key-levels";
 import { dominantSwing, goldenPocket } from "@/features/vector/lib/vector-fib-swing";
 import {
   buildReplayTimeline,
@@ -213,6 +214,7 @@ import {
   applyCenteredLiveViewport,
   applySessionOverviewViewport,
   applyVisibleLogicalRange,
+  sessionBarTimesFromMinuteBars,
   wantsSessionOverviewViewport,
   zoomedLogicalRange,
 } from "@/features/vector/lib/vector-chart-viewport";
@@ -1197,7 +1199,6 @@ function applyWallBeadMarkers(
   /** Replay: snap bucket times to visible bar timestamps so the canvas rail can project x. */
   alignBarTimes?: readonly number[]
 ): { strikes: number[]; rendered: StrikeTrail[] } {
-  if (!beadsPlugin) return { strikes: [], rendered: [] };
   let bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
     minBucketSec: trailBucketSec,
     liveBeads,
@@ -1256,7 +1257,7 @@ function applyWallBeadMarkers(
       });
     }
   }
-  beadsPlugin.setMarkers(markers);
+  beadsPlugin?.setMarkers(markers);
   // Return the strikes actually drawn so the caller can widen the price axis to cover them —
   // otherwise a drawn bead outside the current-ladder range clips out on zoom (see beadStrikesRef) —
   // plus the lifecycle-filtered trails so the caller can feed the WallRailPrimitive (ribbon rail),
@@ -2002,7 +2003,10 @@ export function VectorChart({
             ? initialTimeframe
             : timeframeRef.current;
         if (sessionTf !== timeframeRef.current) setTimeframeState(sessionTf);
-        const sessionDisplay = displayBarsFromMinute(minuteBarsRef.current, sessionTf);
+        const sessionDisplay = displayBarsFromMinute(
+          lastSessionBars(minuteBarsRef.current),
+          sessionTf
+        );
         applySessionOverviewViewport(chart, sessionDisplay);
         chart.timeScale().applyOptions({
           ...vectorTimeScaleSpacingOptions(),
@@ -2487,24 +2491,30 @@ export function VectorChart({
       defaultChartViewportRef.current,
       liveFollowEnabledRef.current
     );
-    const history: WallHistorySample[] =
+    const railBarTimes = sessionBarTimesFromMinuteBars(
+      minuteBarsRef.current,
+      timeframeRef.current
+    );
+    const railHistory = trimHistoryToSession(
       composeHorizonTrail(recordedTrail, currentColumn) ??
-      (horizon !== "all"
-        ? []
-        : liveSessionRef.current && !replayModeRef.current && !sessionOverview
-          ? trimHistoryForLiveTrails(
-              wallHistoryRef.current,
-              undefined,
-              liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
-            )
-          : wallHistoryRef.current);
+        (horizon !== "all" ? [] : wallHistoryRef.current),
+      railBarTimes[0]
+    );
+    const markerHistory =
+      sessionOverview || !liveSessionRef.current || replayModeRef.current
+        ? railHistory
+        : trimHistoryForLiveTrails(
+            railHistory,
+            undefined,
+            liveTrailAnchorSec(railHistory, railBarTimes)
+          );
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
     const trailBucketSec = wallTrailSecRef.current;
     const beadProfile: WallBeadRenderProfile = compareCompactBeadsRef.current ? "compare" : "default";
-    const call = applyWallBeadMarkers(
+    applyWallBeadMarkers(
       callBeadsRef.current,
-      history,
+      markerHistory,
       "callWalls",
       v.callColor,
       activeLens,
@@ -2518,9 +2528,9 @@ export function VectorChart({
       compareCompactBeadsRef.current,
       undefined
     );
-    const put = applyWallBeadMarkers(
+    applyWallBeadMarkers(
       putBeadsRef.current,
-      history,
+      markerHistory,
       "putWalls",
       v.putColor,
       activeLens,
@@ -2534,32 +2544,64 @@ export function VectorChart({
       compareCompactBeadsRef.current,
       undefined
     );
+    const callRail = applyWallBeadMarkers(
+      null,
+      railHistory,
+      "callWalls",
+      v.callColor,
+      activeLens,
+      timeframeRef.current,
+      lastBarTime,
+      liveBeads,
+      beadRowCap,
+      pinLiveAnchorBeads,
+      trailBucketSec,
+      spotRef.current,
+      compareCompactBeadsRef.current,
+      railBarTimes
+    );
+    const putRail = applyWallBeadMarkers(
+      null,
+      railHistory,
+      "putWalls",
+      v.putColor,
+      activeLens,
+      timeframeRef.current,
+      lastBarTime,
+      liveBeads,
+      beadRowCap,
+      pinLiveAnchorBeads,
+      trailBucketSec,
+      spotRef.current,
+      compareCompactBeadsRef.current,
+      railBarTimes
+    );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
     const enabled = indicatorsRef.current;
     const eventCursorTime =
       replayModeRef.current ? (timelineRef.current[cursorIndexRef.current] ?? undefined) : undefined;
     feedWallRail(
       wallRailPrimitiveRef.current,
-      call.rendered,
-      put.rendered,
+      callRail.rendered,
+      putRail.rendered,
       v.callColor,
       v.putColor,
       true,
       beadProfile,
-      history,
+      railHistory,
       activeLens,
       enabled.has("bead-integrity-rings"),
       enabled.has("bead-event-glyphs"),
       wallEventsRef.current,
       eventCursorTime,
-      // The candle grid the rail interpolates buckets against. `displayBarsFromMinute` is the same
-      // transform the series itself was fed, so bucket x lands inside the right candle.
-      displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current).map((b) => b.time),
+      // Session-scoped candle grid — aligns bead x with the visible session (multi-day seed carries
+      // prior sessions that have no wall-history samples; see sessionBarTimesFromMinuteBars).
+      railBarTimes,
       timeframeRef.current * 60
     );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
-    beadStrikesRef.current = { call: call.strikes, put: put.strikes };
+    beadStrikesRef.current = { call: callRail.strikes, put: putRail.strikes };
     // Respect a manual vertical zoom — only nudge autoscale when the member hasn't taken the
     // price axis over AND hasn't scrolled within the cooldown window.
     if (
@@ -2569,6 +2611,19 @@ export function VectorChart({
     }
     pinCandlesOnTop(series);
   }, [ticker]);
+
+  // SPX Slayer embed upgrades fast rail-bootstrap → full enriched seed without remounting
+  // (VectorChart key is ticker-only). Sync refs so beads span the session after phase-2 lands.
+  useEffect(() => {
+    if (!initialWallHistory.length) return;
+    const prev = wallHistoryRef.current;
+    if (initialWallHistory.length <= prev.length) return;
+    const merged = mergeWallHistory(prev, initialWallHistory);
+    wallHistoryRef.current = merged;
+    setSessionHistory(merged);
+    if (hasVexInHistory(merged)) setVexAvailable(true);
+    refreshTrails(lensRef.current);
+  }, [initialWallHistory, refreshTrails]);
 
   const refreshOverlays = useCallback(
     (
@@ -2960,6 +3015,28 @@ export function VectorChart({
       (oscMap.get("macd-signal") as ISeriesApi<"Line"> | undefined)?.setData(sig);
     }
   }
+
+  useEffect(() => {
+    if (!initialBars.length) return;
+    const prev = minuteBarsRef.current;
+    if (initialBars.length <= prev.length) return;
+    const merged = mergeBarsByTime(prev, initialBars);
+    minuteBarsRef.current = merged;
+    setSessionBars(merged);
+    if (!seriesRef.current || replayModeRef.current) return;
+    const display = displayBarsFromMinute(merged, timeframeRef.current);
+    applyDisplayBarsPreservingView(
+      chartRef.current,
+      seriesRef.current,
+      volumeSeriesRef.current,
+      volumeAvgSeriesRef.current,
+      display,
+      volumeModeRef.current,
+      liveFollowEnabledRef.current
+    );
+    paintOverlays(display);
+    refreshTrails(lensRef.current);
+  }, [initialBars, refreshTrails, paintOverlays]);
 
   // Sync the enabled-indicator set to the ref the imperative paint reads, and repaint immediately
   // against the currently-shown bars so toggling an indicator is instant (no wait for the next
@@ -3732,7 +3809,10 @@ export function VectorChart({
       if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
       const chart = chartRef.current;
       if (!chart) return;
-      const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+      const display = displayBarsFromMinute(
+        lastSessionBars(minuteBarsRef.current),
+        timeframeRef.current
+      );
       applySessionOverviewViewport(chart, display);
       chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       refreshTrails(lensRef.current);
@@ -4575,17 +4655,13 @@ export function VectorChart({
         intradayZoomPresetRef.current === "live" ||
         (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "live");
       if (sessionFramedOnLoad) {
-        // Live member report (2026-08-26): on first paint, session-overview's right-anchored
-        // framing (applySessionOverviewViewport pins the newest bar 2 slots from the right edge,
-        // with nothing padding the LEFT) left the candles looking dropped into one side of the
-        // pane rather than centered — the exact "SPX Slayer" reference the member pointed to uses
-        // `defaultChartViewport="live"`, whose applyCenteredLiveViewport frames the latest ~48 bars
-        // with the newest bar near the middle. Reuse that same centered framing for the FIRST paint
-        // only — every ongoing session-overview behavior (autoscale gating, re-seed framing on a
-        // new session, live-follow opt-in) still keys off defaultChartViewportRef/
-        // intradayZoomPresetRef being "session", untouched below; this only changes what the member
-        // sees the instant the chart mounts.
-        applyCenteredLiveViewport(chart, initialDisplay.length);
+        // Session overview frames the newest ET day so dense bead rails span the full chart width.
+        // Multi-day seed bars compress today's RTH into a right sliver when fitContent/centered-live
+        // framing is used — the Sep-3 reference ribbons require session time-range framing.
+        applySessionOverviewViewport(
+          chart,
+          displayBarsFromMinute(lastSessionBars(initialBars), initialTimeframe)
+        );
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else if (liveFramedOnLoad) {
         applyCenteredLiveViewport(chart, initialDisplay.length);
