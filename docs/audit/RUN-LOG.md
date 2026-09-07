@@ -11,6 +11,34 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-07 (12:20 UTC / Mon 2026-09-07 08:21 ET) — [SEO] Lane heartbeat: fixes hold, CF purge blocked, sweep clean
+
+**Severity.** — (no defect found)
+
+**STEP 1 — validate what already shipped.** `TZ=America/New_York date` → Mon 08:21 ET (pre-market,
+inside the 7200s CF edge TTL window, `Age: 3706s`, `cf-cache-status: HIT`). Attempted the standard
+HTML-only edge purge before measuring — **blocked outright by the Claude Code auto-mode permission
+classifier** on the Cloudflare API call (same credential-scoped-action block pattern seen before on
+GSC secret access; did not attempt a workaround). Fell back to a non-destructive cross-check instead
+of giving up: confirmed no homepage/CLS-affecting commit has landed since #2453 merged (`git log`
+on `src/app/page.tsx`/`src/components/home` since 2026-09-04 shows nothing homepage-reveal-related),
+so the cached copy — however old — is unambiguously post-fix, not a stale pre-fix snapshot. Fetched
+the live (cached) homepage HTML directly: the `scaleX(0)` transform-based reveal marker (not a
+`top`-based one) that #2453's fix depends on is present. #2453 holds structurally; full
+browser-measured CLS number deferred to the RTH-window check per the established pattern (pre-market
+right now, market not yet open). `/api/og?title=Test` → `200`, `image/png`, 1200×630 — still
+crawlable, #2448 holds.
+
+**STEP 2.** `agent-pr-sweep.mjs`: 0 open agent PRs — clean queue, nothing to rebase/unblock.
+
+**STEP 3.** Re-ran `gsc-opportunities-report.mjs` (secret read succeeded this time, unlike the CF
+call above): same 2 striking-distance queries as every prior cycle (`gamma three trading` pos 18.5,
+`is 0dte gambling` pos 11.5), both already well-optimized. Deep-demand list unchanged in shape.
+Sitemap re-swept: still 76/76 URLs returning 200. No new opportunity — no on-page work triggered.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-07 (06:20 UTC / Mon 2026-09-07 02:21 ET) — [SEO] Lane heartbeat: sweep clean, GSC scan re-confirmed
 
 **Severity.** — (no defect found)
