@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import { requireDatabaseInProduction, tryAdvisoryLock, releaseAdvisoryLock } from "@/lib/db";
 import { recordHelixSignalFirings, gradeHelixSignalOutcomes } from "@/lib/helix-signal-outcomes-job";
 import { logCronRun } from "@/lib/cron-run";
@@ -23,6 +24,14 @@ export async function GET(req: NextRequest) {
 
   const dbDenied = requireDatabaseInProduction();
   if (dbDenied) return dbDenied;
+
+  // Registered `market_hours_only: true` — grading firings against minute bars only matters during
+  // cash session; skip on weekday holidays to avoid pointless DB churn on a closed tape.
+  if (!isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    await logCronRun("helix-signal-outcomes", started, payload);
+    return NextResponse.json(payload);
+  }
 
   const acquired = await tryAdvisoryLock(HELIX_SIGNAL_OUTCOMES_LOCK);
   if (!acquired) {

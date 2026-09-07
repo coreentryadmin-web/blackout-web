@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import { logCronRun } from "@/lib/cron-run";
 import { runSwingActiveRefresh } from "@/lib/swing/active-refresh";
 import type { ManageSyncReads } from "@/lib/swing/manage-sync";
@@ -484,6 +485,15 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Registered `market_hours_only: true` but EventBridge fires on weekday holidays — same ET-INTENT
+  // gap fixed on uw-cache-refresh (#4482) and flow-ingest (#4483). Without this gate, Labor Day
+  // still polled Polygon/UW for every open swing position on the 15-min cadence.
+  if (!isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    await logCronRun("swing-active-refresh", started, payload);
+    return NextResponse.json(payload);
   }
 
   // Per-position Polygon/UW reads + serving-spot refresh + beta warm can exceed Cloudflare's ~100s
