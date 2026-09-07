@@ -1,17 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T04:02:09.850Z
-**Run:** 8f1e7cb0-6b01-468d-be8e-b1274ad0e21e
+**At:** 2026-09-07T04:15:00.981Z
+**Run:** a148fea3-23a5-4b9b-a538-b07f7c595784
 
 ## Summary
 
-PR event wake: no open PRs to review. #4455 merged (option mark future-skew). Platform GREEN — validate:deploy, validate:platform-integrity, validate:api-auth, ops:collect 0. Found remaining gap in scenario-read provenance; opened #4457 (fix/scenario-read-future-skew-freshness) awaiting Claude peer review. ECR deploy for #4455 still pending.
+Continuous loop cycle: merge #4455+#4457 landed (Largo future-skew C2). Peer review 0 open PRs. validate:deploy + validate:platform-integrity + validate:api-auth GREEN. ops:collect 0. ECR push pending for 880c8921b (gh rate-limited). Duplicate scenario-read branch discarded.
 
 ## Deploy
 
-- main: `178add55514d9848a81eab346baab7b722bd859b`
+- main: `880c8921b102a3b1660eea84d9509933a99c9a08`
 - status: 
 
 ## Open PRs
 
-- #4457 [agent] fix(largo): fail-closed staleness on future-skewed scenario provenance
+- #4458 [cursor] feat(thermal): session timeline, saved desks, strike deep-links

@@ -1,10 +1,10 @@
 {
   "agent": "cursor",
-  "run_id": "22d77a86-9b58-4842-93d1-583be03e5e26",
-  "last_seen": "2026-09-07T04:01:59.454Z",
+  "run_id": "28828f5d-1781-4b42-b103-a766256e223a",
+  "last_seen": "2026-09-07T04:14:59.773Z",
   "last_productive_action": "heartbeat",
-  "current_task": "fix/scenario-read-future-skew-freshness",
-  "current_phase": "PR_OPENED",
+  "current_task": "BO-P1-0101",
+  "current_phase": "COMPLETE",
   "branch": null,
   "pr": null,
   "healthy": true
