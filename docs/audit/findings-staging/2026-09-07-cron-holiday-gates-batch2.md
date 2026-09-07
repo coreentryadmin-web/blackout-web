@@ -44,7 +44,8 @@ Labor Day gap this PR targets while preserving the post-close grading window.
 Three routes only. RTH behavior unchanged (aside from the `helix-signal-outcomes` gate correction
 above, which widens rather than narrows its execution window — still closed on weekends/holidays).
 Remaining ungated `market_hours_only` crons documented for follow-up: `socket-health` (partial
-gate), `gex-alerts`/`vector-alerts` (push kill-switch), `legacy-live-sync`.
+gate), `gex-alerts`/`vector-alerts` (push kill-switch). `legacy-live-sync` was fixed separately
+in #4485 (merged) — no longer on this follow-up list.
 
 ## Evidence
 

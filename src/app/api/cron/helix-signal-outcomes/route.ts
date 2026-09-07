@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   // #4484 review). isEtExtendedWarmHours (4:00-20:00 ET) still closes the weekday-holiday gap this
   // PR targets while preserving the post-close grading window.
   if (!isEtExtendedWarmHours()) {
-    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    const payload = { ok: true, skipped: true, reason: "outside extended hours (weekend/holiday/overnight)" };
     await logCronRun("helix-signal-outcomes", started, payload);
     return NextResponse.json(payload);
   }
