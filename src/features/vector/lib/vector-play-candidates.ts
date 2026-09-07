@@ -488,7 +488,7 @@ function rankPick(
   if (spec.role === "fade-rip") reasons.push("Put leg — sell the rip toward range mean");
   if (spec.role === "primary-long") reasons.push("Call leg — aligned with long Suggested Play bias");
   if (spec.role === "primary-short") reasons.push("Put leg — aligned with short Suggested Play bias");
-  if (spec.role === "gex-king-pin") reasons.push("Strike at Thermal GEX king — largest net gamma node");
+  if (spec.role === "gex-king-pin") reasons.push("Strike at Thermal GEX king node — largest net gamma concentration");
   if (spec.role === "magnet-mean") reasons.push("Strike at range mean-revert anchor (magnet / max pain)");
 
   const totals = ctx.enrichment?.strikeTotals;

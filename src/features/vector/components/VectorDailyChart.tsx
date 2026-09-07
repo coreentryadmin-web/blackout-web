@@ -153,7 +153,7 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
   const [showRegime, setShowRegime] = useState(true);
   const [regime, setRegime] = useState<{ rows: DailyRegimeRow[]; coverage: { from: string; to: string; sessions: number } | null } | null>(null);
   const [hover, setHover] = useState<
-    { open: number; high: number; low: number; close: number; changePct: number } | null
+    { open: number; high: number; low: number; close: number; changePct: number | null } | null
   >(null);
   // Held in a ref so the chart-creation effect keeps its empty dependency list. Taking
   // onHoverPrice as a direct dependency would tear down and rebuild the entire chart every time
@@ -239,10 +239,11 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
       onHoverPriceRef.current?.(
         y == null ? null : (candleSeries.coordinateToPrice(y) as number | null)
       );
-      setHover({
-        ...d,
-        changePct: d.open ? ((d.close - d.open) / d.open) * 100 : 0,
-      });
+      // Bar body % (close vs open for this candle). When open is missing/zero, omit the % —
+      // never fabricate a flat 0% that reads as "unchanged on the day".
+      const changePct =
+        d.open > 0 ? ((d.close - d.open) / d.open) * 100 : null;
+      setHover({ ...d, changePct });
     });
 
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
@@ -430,9 +431,18 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
             <span>H {hover.high}</span>
             <span>L {hover.low}</span>
             <span>C {hover.close}</span>
-            <span className={hover.changePct >= 0 ? "is-up" : "is-down"}>
-              {hover.changePct >= 0 ? "+" : ""}
-              {hover.changePct.toFixed(2)}%
+            <span
+              className={
+                hover.changePct == null
+                  ? undefined
+                  : hover.changePct >= 0
+                    ? "is-up"
+                    : "is-down"
+              }
+            >
+              {hover.changePct == null
+                ? "—"
+                : `${hover.changePct >= 0 ? "+" : ""}${hover.changePct.toFixed(2)}%`}
             </span>
           </div>
         )}

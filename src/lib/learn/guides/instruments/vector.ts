@@ -95,7 +95,7 @@ export const vectorGuide = defineToolGuide({
       actions: ["Click a pick to open its drawer: Desk data (cross-product evidence) and Option play (execution detail + why-ranked reasons)"],
       cadence: "Live quote refresh on the contract-picks feed",
       consume:
-        "Roles span primary long/short, range fade, HELIX whale anchor, GEX king pin, and magnet mean — a deeper backfill pool exists if the top picks all read Don't buy. The displayed confidence is always the Play card's own conviction number reused, never a second invented score.",
+        "Roles span primary long/short, range fade, HELIX whale anchor, GEX king node, and magnet mean — a deeper backfill pool exists if the top picks all read Don't buy. The displayed confidence is always the Play card's own conviction number reused, never a second invented score.",
     },
     {
       name: "Live Helix rail",

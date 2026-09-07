@@ -104,3 +104,28 @@ test("buildVectorPickEvidence: omits gex/catalyst when not provided", () => {
   assert.equal(sections.some((s) => s.id === "gex"), false);
   assert.equal(sections.some((s) => s.id === "catalyst"), false);
 });
+
+test("buildVectorPickEvidence: gex-king-pin role labels king node, not pin forecast", () => {
+  const sections = buildVectorPickEvidence({
+    side: "call",
+    strike: 95,
+    expiry: "2026-09-08",
+    dte: 0,
+    premium: 4,
+    role: "gex-king-pin",
+    targetStrike: 95,
+    spot: 100,
+    callWall: 105,
+    putWall: 90,
+    magnetStrike: 100,
+    gammaFlip: 98,
+    regimePosture: "long",
+    technicals: null,
+    platformInputs: null,
+    confluenceZones: null,
+    playStarred: [],
+    gexKingStrike: 95,
+  });
+  const strike = sections.find((s) => s.id === "strike");
+  assert.ok(strike?.items.some((i) => /king node/i.test(i.value) && !/king pin/i.test(i.value)));
+});
