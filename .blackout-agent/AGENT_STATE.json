@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T10:37:09.916Z",
+  "updated_at": "2026-09-07T17:49:11.102Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T17:19:47.540Z",
+      "lease_until": "2026-09-07T18:49:47.540Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -65,11 +65,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "cfda1017cf14c32702cdd244333b828a638376e4",
+    "last_main_sha": "99f0a41b776caacf24545b4dd200b3207549331a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T17:48:11Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34149083058",
+    "last_deploy_sha": "99f0a41b776caacf24545b4dd200b3207549331a"
   },
   "events": [
     {
@@ -963,9 +963,73 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T17:49:11.102Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T17:49:11.102Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "27ec0749-0268-4c09-aa7b-c721601736ea",
+      "summary": "Workflow wake cycle complete. Merged: #4511/#4516/#4517/#4518/#4519. Platform GREEN. Dependabot majors held."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4480,
+      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:24:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:04Z"
+    },
+    {
+      "number": 4476,
+      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
+      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:10:51Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
