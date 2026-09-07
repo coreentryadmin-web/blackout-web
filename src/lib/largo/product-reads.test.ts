@@ -526,6 +526,12 @@ describe("etSessionNow / ageSecondsFrom", () => {
     assert.equal(ageSecondsFrom("not-a-date"), null);
     assert.equal(ageSecondsFrom("2026-08-21T00:24:56.192Z", Date.parse("2026-08-21T00:25:56.192Z")), 60);
   });
+
+  it("future-skewed matrix asof is null, not 0s (Largo C2 age-0 trap)", () => {
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const future = "2026-08-21T00:10:00.000Z";
+    assert.equal(ageSecondsFrom(future, now), null);
+  });
 });
 
 describe("thermalCompareRow — a multi-expiry aggregate names its scope", () => {
