@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildPolygonLargoFetchInit } from "./polygon-largo";
+import { buildPolygonLargoFetchInit, computeLevelsFromBars } from "./polygon-largo";
 
 // Regression for #3187 / PR #3202: a trailing spread `{ cache: "no-store", ...fetchInit }` left
 // `cache` in place when `fetchInit` only set `next.revalidate`, so Next's fetch patch ignored
@@ -23,4 +23,17 @@ test("buildPolygonLargoFetchInit: explicit cache override when no next.revalidat
   const init = buildPolygonLargoFetchInit({ cache: "force-cache" });
   assert.equal(init.cache, "force-cache");
   assert.equal(init.next, undefined);
+});
+
+test("computeLevelsFromBars: includeVwap false omits multi-session VWAP", () => {
+  const bars = [
+    { o: 100, h: 102, l: 99, c: 101, v: 1_000_000 },
+    { o: 101, h: 103, l: 100, c: 102, v: 2_000_000 },
+  ];
+  const withVwap = computeLevelsFromBars(bars, 102);
+  const withoutVwap = computeLevelsFromBars(bars, 102, { includeVwap: false });
+  assert.ok(withVwap.vwap != null);
+  assert.equal(withoutVwap.vwap, null);
+  assert.equal(withVwap.support, withoutVwap.support);
+  assert.equal(withVwap.resistance, withoutVwap.resistance);
 });

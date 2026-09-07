@@ -289,18 +289,26 @@ export async function fetchPolygonNews(ticker: string, limit = 15) {
   });
 }
 
-export function computeLevelsFromBars(bars: AggBar[], price: number) {
+export type ComputeLevelsOptions = {
+  /** When false, omit VWAP — multi-session windows (daily/hourly MTF) are not session VWAP. */
+  includeVwap?: boolean;
+};
+
+export function computeLevelsFromBars(bars: AggBar[], price: number, opts?: ComputeLevelsOptions) {
   if (!bars.length) return { support: null, resistance: null, vwap: null, trend: "unknown" as const };
 
-  let pv = 0;
-  let vol = 0;
-  for (const b of bars) {
-    const v = b.v ?? 0;
-    const tp = (b.h + b.l + b.c) / 3;
-    pv += tp * v;
-    vol += v;
+  let vwap: number | null = null;
+  if (opts?.includeVwap !== false) {
+    let pv = 0;
+    let vol = 0;
+    for (const b of bars) {
+      const v = b.v ?? 0;
+      const tp = (b.h + b.l + b.c) / 3;
+      pv += tp * v;
+      vol += v;
+    }
+    vwap = vol > 0 ? Number((pv / vol).toFixed(2)) : null;
   }
-  const vwap = vol > 0 ? Number((pv / vol).toFixed(2)) : null;
 
   const highs = bars.map((b) => b.h);
   const lows = bars.map((b) => b.l);
@@ -395,8 +403,10 @@ export async function fetchPolygonMtfTechnicals(ticker: string) {
   const missingIndicators = technicalAttempts.filter(a => !a.ok).map(a => a.source);
   recordDataSourceing(sym, "technical_indicators", technicalAttempts, { ema20d, ema50d, ema200d, rsi14d, macdD, ema20h, rsi14h, ema20m, rsi14m }, missingIndicators.length > 0 ? `Missing indicators: ${missingIndicators.join(", ")}` : undefined);
 
-  const dailyLv = computeLevelsFromBars(daily, price);
-  const hourlyLv = computeLevelsFromBars(hourly, price);
+  // VWAP only on today's intraday bars — daily/hourly windows span many sessions and read as
+  // session VWAP in Largo/Night Hawk if we accumulate the whole window.
+  const dailyLv = computeLevelsFromBars(daily, price, { includeVwap: false });
+  const hourlyLv = computeLevelsFromBars(hourly, price, { includeVwap: false });
   const minLv = computeLevelsFromBars(minute15, price);
 
   // ATR14 fallback: daily (preferred) → hourly (off-hours) → prevDay range proxy

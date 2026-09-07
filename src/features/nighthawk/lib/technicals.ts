@@ -184,7 +184,7 @@ export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard 
     rsi14: mtf.rsi?.daily ?? null,
     rel_volume: relVol,
     atr14: mtf.atr14 ?? null,
-    vwap: mtf.timeframes?.daily?.vwap ?? null,
+    vwap: mtf.timeframes?.m15?.vwap ?? null,
     ema20: mtf.emas?.ema20 ?? null,
     ema50: mtf.emas?.ema50 ?? null,
     ema200: mtf.emas?.ema200 ?? null,
