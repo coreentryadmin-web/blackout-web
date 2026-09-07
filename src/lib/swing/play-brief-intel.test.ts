@@ -420,6 +420,42 @@ test("deskConsensusSection: outcome 'pending' also reads as unresolved, not clos
   assert.match(section?.body ?? "", /still \*\*unresolved\*\*/i);
 });
 
+test("deskConsensusSection: CLOSED bucket drops the 'before sizing' live-decision framing", () => {
+  // Reproduces a live production case: AAPL positionId 36 is CLOSED (STOPPED, -56.2%) but its
+  // brief's "Desk context" section still read "weigh that track record against today's LONG
+  // setup before sizing" — sizing language on a trade that already exited. Same defect class as
+  // watchForSection (#4570) and vectorDeskSection (#4571): a bucket-blind section rendering live,
+  // forward-looking guidance for a play that has already resolved.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-07-29",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }), "closed");
+  assert.ok(section);
+  assert.doesNotMatch(section?.body ?? "", /before sizing/i);
+  assert.match(section?.body ?? "", /closed \*\*WIN\*\*/i);
+  assert.match(section?.body ?? "", /for reference against/i);
+});
+
+test("deskConsensusSection: watch/open buckets are unchanged (default param, no regression)", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-04",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const openSection = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }), "open");
+  const watchSection = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }), "watch");
+  assert.match(openSection?.body ?? "", /before sizing/i);
+  assert.match(watchSection?.body ?? "", /before sizing/i);
+});
+
 test("deskConsensusSection: null when only flow anomaly (covered by flowNarrative + Flow & positioning)", () => {
   const eco: EcosystemContext = {
     recent_anomalies: [{ anomaly_type: "sweep_cluster", detail: "$4.2M call sweeps at 145" }],
