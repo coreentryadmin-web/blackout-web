@@ -1,17 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T04:41:46.199Z
-**Run:** b88ee3a2-e2aa-492e-b4d7-7ce8ecaf0c1d
+**At:** 2026-09-07T04:44:50.834Z
+**Run:** 99d22241-0daf-43b8-81ad-bd510e017d1e
 
 ## Summary
 
-Peer-reviewed #4461 (CLOSED swing Largo unavailable noise) — APPROVED, merged during review. #4460 (bead rail Sep-3 restore) verify GREEN, posted Claude review request, merged during review. ops:collect 0; validate:deploy GREEN.
+Autopilot cycle complete: peer-reviewed+merged #4461 (CLOSED swing Largo unavailable chips) and #4460 (bead rail Sep-3 restore). Platform integrity 14/14 GREEN, api-auth GREEN, ops:collect 0, validate:deploy GREEN, RTH lifecycle GREEN (off-hours skip). No open PRs. ECR deploy in flight for #4461. Next: monitor deploy, validate CLOSED swing Largo panel at RTH.
 
 ## Deploy
 
-- main: `f2f4f99f3257b58f206dc5533b6c555f24588608`
+- main: `d8a0c42622785118c36b6663f67833b52b23f513`
 - status: 
 
 ## Open PRs
 
-_none_
+- #4463 [cursor] chore(autopilot): cursor handoff after #4460/#4461 peer review cycle
