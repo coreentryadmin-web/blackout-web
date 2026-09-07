@@ -11,6 +11,24 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-07 (16:33 UTC / Mon 2026-09-07 12:34 ET) — [SEO] Market-hours wake: still Labor Day, Pricing schema + 404 handling validated
+
+**Severity.** — (no defect found)
+
+**Checked the clock myself again** — Mon 12:34 ET, `2026-09-07` still the confirmed NYSE Labor Day
+closure. Continued normal SEO work. Noticed another related holiday-gating cron fix merged since
+the last cycle (#4494, `zerodte-grade`) — the coordinator's sweep of this pattern continues.
+
+New ground: `/pricing`'s `SoftwareApplication` JSON-LD `featureList` still correctly lists all 7
+products (SPX Slayer, HELIX, Thermal, Largo, Night Hawk, Vector, Meridian) — #3797 holds. Cross-
+checked the two `offers` prices (SPX Slayer $49, Premium $199) against the visible page markup —
+each figure appears both in JSON-LD and in the rendered pricing tiers, no staleness. Confirmed a
+bogus URL returns a real `HTTP/2 404` (not a soft-404 masquerading as 200) with `noindex` meta
+present — crawlers get an honest signal, not indexable junk.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-07 (15:33 UTC / Mon 2026-09-07 11:34 ET) — [SEO] Market-hours wake: still Labor Day, canonical + FAQPage/BreadcrumbList validated
 
 **Severity.** — (no defect found)
