@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T18:08:02.616Z",
+  "updated_at": "2026-09-07T19:14:14.013Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -17,13 +17,13 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T19:00:58.484Z",
+      "lease_until": "2026-09-07T20:43:22.968Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "5f26282b-8181-42b0-b203-0b876889d8b0",
       "title": null
     }
   },
@@ -60,16 +60,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T19:12:51.948Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "20e6df5371b7d66123766154e271da06496f2a12",
+    "last_main_sha": "dddc83ee4f2685ecda6848494df660a7e070e108",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T18:05:42Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34150244358",
-    "last_deploy_sha": "20e6df5371b7d66123766154e271da06496f2a12"
+    "last_deploy_at": "2026-09-07T19:11:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34154627642",
+    "last_deploy_sha": "ecd1db9f8eed8dba7b386096e436b151be2c6f92"
   },
   "events": [
     {
@@ -989,19 +989,39 @@
       "agent": "cursor",
       "run_id": "a5792231-bc47-45d5-a207-311f3d5fdf5d",
       "summary": "PR #4520 merged (platform-warm holiday gate). validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Dependabot majors held (red CI). Updated handoff state post-rebase."
+    },
+    {
+      "at": "2026-09-07T19:12:51.948Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T19:13:22.967Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T19:13:24.043Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T19:13:24.891Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T19:14:14.013Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
-    {
-      "number": 4521,
-      "title": "chore(state): autopilot handoff after holiday-gate merge wave",
-      "branch": "cursor/autopilot-state-handoff-v2-2026-09-07",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T17:59:24Z"
-    },
     {
       "number": 4480,
       "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
