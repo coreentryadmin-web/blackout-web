@@ -1,22 +1,25 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T18:08:02.615Z
-**Run:** a5792231-bc47-45d5-a207-311f3d5fdf5d
+**At:** 2026-09-07T20:01:00.000Z
+**Run:** autopilot-state-recovery-loop-125e
 
 ## Summary
 
-PR #4520 merged (platform-warm holiday gate). validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Dependabot majors held (red CI). Updated handoff state post-rebase.
+**main GREEN** at `18ba5c386` — **#4561** (sibling warm-cron off-window cooldown) and **#4563** (SPX desk age clamp for modest future timestamp skew) merged atop #4560. ops:collect 0.
 
 ## Deploy
 
-- main: `20e6df5371b7d66123766154e271da06496f2a12`
-- status: 
+- main: `18ba5c386` (#4561 perf + #4563 SPX desk age clamp)
 
-## Open PRs
+## Peer review queue
 
-- #4521 [cursor] chore(state): autopilot handoff after holiday-gate merge wave
-- #4480 [human] chore(deps): bump next from 15.5.23 to 16.3.4
-- #4479 [human] chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4
-- #4478 [human] chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2
-- #4477 [human] chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0
-- #4476 [human] chore(deps): bump the minor-and-patch group with 11 updates
+- **#4566** `fix/vector-walls-warm-off-window-cooldown` — verify in progress (not draft)
+- **#4567** draft `fix/watch-age-future-skew-clamp` — SPX WATCH age clamp sibling to #4563
+- **#4568/#4569** draft handoff-only — do not merge (docs-only policy)
+
+Dependabot #4476–#4480 held.
+
+## Next
+
+- **Tue 2026-09-08 09:00 ET:** `npm run blackout:rth-lifecycle` + MARKET-OPEN-VALIDATION §66–§67
+- ✅ GO AHEAD MERGE on #4566 when verify green; review #4567 when undrafted
