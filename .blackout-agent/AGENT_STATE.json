@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T18:08:02.616Z",
+  "updated_at": "2026-09-07T18:22:49.266Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T18:06:33.647Z",
-      "lease_until": "2026-09-07T19:36:33.647Z",
+      "claimed_at": "2026-09-07T18:16:43.733Z",
+      "lease_until": "2026-09-07T19:50:58.291Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "73aed0d8-e770-49e6-bf00-0a331e8e192e"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -65,11 +65,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "20e6df5371b7d66123766154e271da06496f2a12",
+    "last_main_sha": "157b8d21eb442a5e663295a037554326cd5f9624",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T18:05:42Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34150244358",
-    "last_deploy_sha": "20e6df5371b7d66123766154e271da06496f2a12"
+    "last_deploy_at": "2026-09-07T18:20:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34151236856",
+    "last_deploy_sha": "7246d9ad2bc971ccdec0cb49f29844f9e43f3b64"
   },
   "events": [
     {
@@ -965,42 +965,126 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-07T17:49:11.102Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-07T17:49:11.102Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "27ec0749-0268-4c09-aa7b-c721601736ea",
-      "summary": "Workflow wake cycle complete. Merged: #4511/#4516/#4517/#4518/#4519. Platform GREEN. Dependabot majors held."
-    },
-    {
-      "at": "2026-09-07T18:08:02.615Z",
+      "at": "2026-09-07T18:20:36.303Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
     },
     {
-      "at": "2026-09-07T18:08:02.616Z",
+      "at": "2026-09-07T18:20:36.303Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "a5792231-bc47-45d5-a207-311f3d5fdf5d",
-      "summary": "PR #4520 merged (platform-warm holiday gate). validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Dependabot majors held (red CI). Updated handoff state post-rebase."
+      "run_id": "1c0ae6ab-6a45-4c44-9a40-d4b5d024abd9",
+      "summary": "Workflow_run wake: verified #4522 locally (12/12 tests), CI GREEN — posted independent verification for Claude (no self-approve). Opened #4523 fix validate:deploy holiday socket false-fail (validate:deploy now GREEN on Labor Day). ops:collect 0. Deploy current at 20e6df53."
+    },
+    {
+      "at": "2026-09-07T18:20:38.306Z",
+      "type": "pr_webhook",
+      "pr": 4523,
+      "event": "sweep",
+      "head": "c83fd216f5e81011eef2a1e706bf4cf612762dbb",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T18:20:40.305Z",
+      "type": "pr_webhook",
+      "pr": 4480,
+      "event": "sweep",
+      "head": "94d774bafa30519a40cfceb3681400c2fdceec33",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T18:20:42.510Z",
+      "type": "pr_webhook",
+      "pr": 4479,
+      "event": "sweep",
+      "head": "8ccc6a25364968b9430fd630e258dfee4d966200",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T18:20:44.441Z",
+      "type": "pr_webhook",
+      "pr": 4478,
+      "event": "sweep",
+      "head": "e96f5beb68f08322a6f3765b761a33e5e7fe9297",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T18:20:46.492Z",
+      "type": "pr_webhook",
+      "pr": 4477,
+      "event": "sweep",
+      "head": "6fbf29b0c2567aab777d562e99824a2939435df0",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T18:20:48.514Z",
+      "type": "pr_webhook",
+      "pr": 4476,
+      "event": "sweep",
+      "head": "a72078de3e4d1ab6f3a9261a9b2b18963015059a",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T18:20:52.923Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T18:20:58.290Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T18:20:59.202Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T18:21:00.176Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T18:22:49.265Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-07T18:22:49.266Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ccdda899-80d1-4458-b459-169e97830f9c",
+      "summary": "Workflow_run wake complete: #4522 CI GREEN (admin-cron-health holiday stale) — Claude review pending. #4523 canonical validate:deploy holiday fix (9/9 tests, CI pending). Closed duplicate #4524. Lifecycle GREEN on Labor Day. ops:collect 0. Dependabot majors held."
     }
   ],
   "open_prs": [
     {
-      "number": 4521,
-      "title": "chore(state): autopilot handoff after holiday-gate merge wave",
-      "branch": "cursor/autopilot-state-handoff-v2-2026-09-07",
+      "number": 4523,
+      "title": "fix(ops): pass validate:deploy on NYSE holiday socket-health skip",
+      "branch": "fix/validate-deploy-socket-health-holiday-skip",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T17:59:24Z"
+      "updated_at": "2026-09-07T18:22:46Z"
     },
     {
       "number": 4480,
@@ -1084,6 +1168,54 @@
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4523": {
+      "last_event": "sweep",
+      "last_head": "c83fd216f5e81011eef2a1e706bf4cf612762dbb",
+      "last_feedback_at": "2026-09-07T18:20:38.306Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4480": {
+      "last_event": "sweep",
+      "last_head": "94d774bafa30519a40cfceb3681400c2fdceec33",
+      "last_feedback_at": "2026-09-07T18:20:40.305Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4479": {
+      "last_event": "sweep",
+      "last_head": "8ccc6a25364968b9430fd630e258dfee4d966200",
+      "last_feedback_at": "2026-09-07T18:20:42.510Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4478": {
+      "last_event": "sweep",
+      "last_head": "e96f5beb68f08322a6f3765b761a33e5e7fe9297",
+      "last_feedback_at": "2026-09-07T18:20:44.441Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4477": {
+      "last_event": "sweep",
+      "last_head": "6fbf29b0c2567aab777d562e99824a2939435df0",
+      "last_feedback_at": "2026-09-07T18:20:46.492Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    },
+    "pr-4476": {
+      "last_event": "sweep",
+      "last_head": "a72078de3e4d1ab6f3a9261a9b2b18963015059a",
+      "last_feedback_at": "2026-09-07T18:20:48.514Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
       "comment_action": "created"
     }
   }
