@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
 
+### 0a-1al. Vector scenario provenance future-skew reads as unknown — fix/scenario-read-future-skew-freshness (pending)
+
+**What was broken:** `buildScenarioEnvelope()` stamped Vector scenario provenance via `freshnessFromAgeMs(Date.now() - Date.parse(state.asOf))` without the `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` guard already on swing brief paths (#4454/#4455). Clock-skewed future `asOf` returned `"unknown"` instead of fail-closed `"stale"`.
+
+**Fix:** Hoist shared `freshnessFromObservedMs()` to `answer-envelope.ts`; scenario-read provenance delegates to it (play-brief deduped to same helper).
+
+**Check at the open:** Ask Largo a Vector what-if scenario (e.g. "if SPX drops 1%") — section provenance freshness on a healthy snapshot should read `live`/`recent`, not `STALE` or `age unknown`; only future-skewed `asOf` should read stale.
+
 ### 0a-1ak. Option mark provenance future-skew reads as unknown — fix/largo-mark-freshness-future-skew (pending)
 
 **What was broken:** `evidenceFromContext` stamped option-mark provenance via `freshnessFromAgeMs(readMs - markMs)`. Clock-skewed future `markAsOf` returned `"unknown"` instead of fail-closed `"stale"` — same class as #4452/#4454 for GEX/fundamentals.
