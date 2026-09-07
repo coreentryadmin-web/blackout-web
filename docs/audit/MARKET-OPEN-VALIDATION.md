@@ -636,6 +636,18 @@ note "no qualifying ticker pair observed" rather than treating silence as a pass
 
 ---
 
+## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
+
+### 0a-1m. Ask Largo swing brief — CLOSED plays showed nothing but live-desk staleness noise — fix/swing-closed-play-brief-unavailable-noise — #4461 MERGED
+
+**What was broken (user-reported, live screenshot):** `collectBriefUnavailableSources()` ran every "is today's live desk data fresh" check unconditionally for every `statusBucket`. For a CLOSED play, `ctx.sessionDate` is always TODAY's ET session at request time — never the play's own historical close date — so HELIX flow freshness, GEX/Vector staleness + desk-state presence, and the prior-session discovery-scan/0DTE/Night-Hawk mismatch checks are permanently true once any time has passed since close. A CLOSED AAPL 327.5C 5DTE play's Ask Largo panel showed six stacked "Unavailable" chips and nothing else.
+
+**Fix:** Gate every live-desk-freshness/session-currency check behind `isClosed = ctx.play?.status === "CLOSED"` — HELIX flow, GEX cold-matrix/staleness, Vector desk-state/section-absences/staleness, open-book ledger failure, and the three prior-session mismatch chips (swing discovery scan, 0DTE Command, Night Hawk swings). Genuine fetch failures (`ecosystemFetchFailed`, `vectorFetchFailed`, `meridian.unavailable`) are NOT skipped — those are still true after close.
+
+**Check at the open:** Swings desk CLOSED tab → open any historical play (e.g. one closed the prior session) → Ask Largo panel's "Unavailable" chip stack must be empty (or show only genuine fetch failures if a live fetch actually broke this cycle), never a wall of stale-live-desk chips with no positive content.
+
+---
+
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
 ### 0a-1j. Swing Ask Largo OPEN brief — ticker collision picked WATCH lane row — fix/swing-play-brief-ticker-collision (pending)
