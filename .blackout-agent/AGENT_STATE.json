@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T04:02:10.079Z",
+  "updated_at": "2026-09-07T04:50:12.208Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -17,8 +17,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T04:43:52.051Z",
+      "lease_until": "2026-09-07T06:13:52.051Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -60,16 +60,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T04:43:52.052Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "178add55514d9848a81eab346baab7b722bd859b",
+    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T04:41:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
+    "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
   "events": [
     {
@@ -891,20 +891,47 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
-    }
-  ],
-  "open_prs": [
+    },
     {
-      "number": 4457,
-      "title": "fix(largo): fail-closed staleness on future-skewed scenario provenance",
-      "branch": "fix/scenario-read-future-skew-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-07T04:02:04Z"
+      "at": "2026-09-07T04:43:52.052Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T04:44:47.678Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T04:44:47.679Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cc11b94d-0aab-4e02-920d-e83fcaf8cd1e",
+      "summary": "BO-P1-0101: validate:deploy GREEN on d8a0c426; ops:collect 0 items; ECR deploy pending for latest main; 0 open PRs; synced local main to origin/main."
+    },
+    {
+      "at": "2026-09-07T04:45:06.927Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T04:50:12.207Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T04:50:12.208Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "515e9999-9b83-42bb-9603-e8f2b8d984c4",
+      "summary": "PR-event cycle complete: 0 open PRs; main@d8a0c426 (#4461 CLOSED brief unavailable-noise merged). validate:deploy + validate:platform-integrity + validate:api-auth GREEN; ops:collect 0; ask-largo-swing-brief-validate pass (CLOSED panel shows 13 sections, not Unavailable wall). ECR run 34084033101 still pending in GitHub API (3min poll) — deploy sha matches main. Off-hours: RTH skipped. Standing queue only — idle until next PR/ops item."
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
