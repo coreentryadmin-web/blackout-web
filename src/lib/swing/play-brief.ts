@@ -155,10 +155,15 @@ function fundamentalsFreshness(
   readMs: number,
 ): BieFreshness {
   if (!asOf) return "unknown";
+  // Future-skew on raw ISO first — etStamp truncates to minute and can mask clock skew.
+  const rawIsoMs = Date.parse(asOf);
+  if (Number.isFinite(rawIsoMs) && readMs - rawIsoMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) {
+    return "stale";
+  }
   const etStamp = etStampFromDateOrIso(asOf);
   const observedMs =
     (etStamp ? parseEtStamp(etStamp) : null) ??
-    (Number.isFinite(Date.parse(asOf)) ? Date.parse(asOf) : null);
+    (Number.isFinite(rawIsoMs) ? rawIsoMs : null);
   if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
   const rawAgeMs = readMs - observedMs;
   if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
