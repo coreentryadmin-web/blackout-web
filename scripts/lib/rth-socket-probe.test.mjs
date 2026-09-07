@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isSocketHealthSkipped,
+  isCronRunHealthyStatus,
   socketProbeAttemptVerdict,
   socketProbeFinalFailure,
   probeOptionsSocketWithRetries,
@@ -13,6 +14,12 @@ test("isSocketHealthSkipped: NYSE holiday skip payload passes", () => {
     true
   );
   assert.equal(isSocketHealthSkipped({ ok: true, websockets: {} }), false);
+});
+
+test("isCronRunHealthyStatus: skipped cron runs are not faults", () => {
+  assert.equal(isCronRunHealthyStatus("ok"), true);
+  assert.equal(isCronRunHealthyStatus("skipped"), true);
+  assert.equal(isCronRunHealthyStatus("failed"), false);
 });
 
 test("socketProbeAttemptVerdict: warming response retries during RTH", () => {

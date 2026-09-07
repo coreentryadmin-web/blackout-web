@@ -10,6 +10,11 @@ export function isSocketHealthSkipped(body) {
   return body?.ok === true && body?.skipped === true;
 }
 
+/** Latest cron_job_runs.status values that mean the job did its job (not a fault). */
+export function isCronRunHealthyStatus(status) {
+  return status === "ok" || status === "skipped";
+}
+
 /**
  * @param {SocketHealthOptions | null | undefined} opt
  * @param {boolean} afterMarketOpen930
