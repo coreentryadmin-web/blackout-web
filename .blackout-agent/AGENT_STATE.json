@@ -1,18 +1,31 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:18:09.688Z",
+  "updated_at": "2026-09-07T01:38:46.553Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-07T01:20:35.727Z",
+      "lease_until": "2026-09-07T02:53:45.863Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "ed6a3f3f-320c-4489-868b-2f9b80b443d8",
+      "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-07T01:31:53.905Z",
+      "lease_until": "2026-09-07T03:01:53.905Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -47,16 +60,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-07T01:31:53.905Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "7aff243d798540c7da4274886a1427cee38a91b1",
+    "last_main_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-07T01:30:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073262128",
+    "last_deploy_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e"
   },
   "events": [
     {
@@ -842,9 +856,132 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:20:20.860Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T01:20:25.921Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T01:20:26.944Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T01:20:31.407Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T01:20:35.728Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T01:23:45.862Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:23:46.945Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:23:48.093Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:23:48.394Z",
+      "type": "pr_webhook",
+      "pr": 4439,
+      "event": "sweep",
+      "head": "b12dab743dc6da191d4ea53672df3e66476a8a66",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T01:23:51.099Z",
+      "type": "pr_webhook",
+      "pr": 4437,
+      "event": "sweep",
+      "head": "2e151e5a7a04c814b913739e0277646b8bc62069",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T01:30:10.985Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:30:10.986Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "dd70238a-f7d0-41cd-b8dd-0c69fe3c4054",
+      "summary": "Session: ops:collect 0, validate:deploy GREEN, RTH lifecycle GREEN. #4437 verify GREEN (75 tests local) — awaiting Claude peer review. #4439 verify pending. #4438 cursor handoff — awaiting Claude. ECR deploy pending d73fe9bd."
+    },
+    {
+      "at": "2026-09-07T01:30:14.989Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:31:53.905Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T01:32:32.221Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:38:46.552Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:38:46.553Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "89c8258e-bfbe-457a-a643-0ca77943ce18",
+      "summary": "Cycle complete: #4437+#4439 merged (Largo Vector C3 + Vector king-node labels). 0 open PRs. ops:collect 0. validate:deploy GREEN. platform-integrity 14/14. RTH lifecycle GREEN (off-hours). ECR deploy pending d07fc4d (run 34073262128)."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4441,
+      "title": "chore(autopilot): cursor work loop handoff — Largo C3 + Vector fixes merged",
+      "branch": "cursor/autopilot-work-loop-0137",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T01:37:40Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
@@ -874,6 +1011,22 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4439": {
+      "last_event": "sweep",
+      "last_head": "b12dab743dc6da191d4ea53672df3e66476a8a66",
+      "last_feedback_at": "2026-09-07T01:23:48.394Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4437": {
+      "last_event": "sweep",
+      "last_head": "2e151e5a7a04c814b913739e0277646b8bc62069",
+      "last_feedback_at": "2026-09-07T01:23:51.099Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
