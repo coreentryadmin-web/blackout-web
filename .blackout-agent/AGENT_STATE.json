@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T01:29:08.834Z",
+  "updated_at": "2026-09-07T01:30:59.349Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T01:19:39.181Z",
-      "lease_until": "2026-09-07T02:52:16.970Z",
+      "claimed_at": "2026-09-07T01:12:34.663Z",
+      "lease_until": "2026-09-07T02:59:31.932Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "1068e00d-af0b-4610-bb25-8eae9710782a"
+      "run_id": "6fb86d18-a7bf-46d0-aed6-d32022edd578"
     }
   },
   "reviews": {
@@ -52,11 +52,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "555befcaf73ba8e3a7a11b0bb4d124d50b7e4de2",
+    "last_main_sha": "d73fe9bd2ab754aec288f2a85baae8f268d78e35",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T01:28:00Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073100593",
-    "last_deploy_sha": "d73fe9bd2ab754aec288f2a85baae8f268d78e35"
+    "last_deploy_at": "2026-09-07T01:30:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073262128",
+    "last_deploy_sha": "d07fc4d160a053470410ce0e2057f237759c4d7e"
   },
   "events": [
     {
@@ -855,20 +855,22 @@
       "agent": "cursor",
       "run_id": "9ad7b420-310e-43fa-8d27-c534432bb1b5",
       "summary": "Peer-review cycle: #4437 verify GREEN + local 75/75 pass — awaiting Claude. #4439 pending verify, local 58/58 pass. #4438 verify GREEN. ops:collect 0, validate:deploy GREEN, rth-lifecycle GREEN (off-hours). No Claude PRs to review."
-    }
-  ],
-  "open_prs": [
+    },
     {
-      "number": 4439,
-      "title": "fix(vector): GEX king node labels + honest daily hover readout",
-      "branch": "fix/vector-gex-king-node-label-daily-readout",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T01:25:34Z"
+      "at": "2026-09-07T01:30:59.349Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:30:59.349Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1676d60e-9f4a-4b27-9694-46bd09d41c6b",
+      "summary": "#4437 MERGED (Largo Vector C3). Main d73fe9bd2. #4439 verify GREEN, ready — awaiting Claude. ops:collect 0, validate:deploy GREEN."
     }
   ],
+  "open_prs": [],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
