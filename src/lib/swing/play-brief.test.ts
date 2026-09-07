@@ -912,6 +912,12 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
     brief.envelope.sections.some((s) => s.title === "Thesis health" && /score withheld/i.test(s.body)),
     "uncalibrated thesis health must not show aggregate %",
   );
+  assert.ok(
+    !brief.envelope.sections.some(
+      (s) => s.title === "Thesis health" && /Persistence.*unknown/i.test(s.body),
+    ),
+    "uncalibrated thesis health must not show misleading default pillar rows",
+  );
   const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
   assert.ok(verdict, "Verdict section expected");
   assert.ok(
