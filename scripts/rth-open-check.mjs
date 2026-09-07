@@ -14,7 +14,11 @@ import { execSync, spawnSync } from "node:child_process";
 import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
-import { socketProbeAttemptVerdict, socketProbeFinalFailure } from "./lib/rth-socket-probe.mjs";
+import {
+  isSocketHealthHolidaySkip,
+  socketProbeAttemptVerdict,
+  socketProbeFinalFailure,
+} from "./lib/rth-socket-probe.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
@@ -181,6 +185,11 @@ async function main() {
             clearTimeout(socketTimer);
           }
           const body = await res.json().catch(() => ({}));
+          if (isSocketHealthHolidaySkip(body)) {
+            ok(`options-socket: ${typeof body.reason === "string" ? body.reason : "non-trading day — skipped"}`);
+            socketProbeOk = true;
+            break;
+          }
           const opt = body.websockets?.options;
           const uw = body.websockets?.unusual_whales;
           if (opt) {
