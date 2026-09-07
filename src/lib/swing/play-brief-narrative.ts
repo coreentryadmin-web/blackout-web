@@ -62,7 +62,7 @@ function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLeve
   const out: FocalLevel[] = [];
 
   const readMs = Date.now();
-  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
 
   for (const dp of (vec?.darkPoolLevels ?? []).slice(0, 3)) {
     if (vectorStale) break;
@@ -150,7 +150,7 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
   const gex = ctx.ecosystem?.gex_positioning;
   const readMs = Date.now();
   const posture = resolveGammaPosture(ctx, vec);
-  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexMatrixStale(gex, readMs);
   const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
@@ -400,7 +400,7 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   const vp = vec?.play;
   // Same Largo C2 gap as stale GEX walls/posture (#4355/#4364): steelmanning Vector desk bias
   // off a stale snapshot reads like a live opposing read.
-  if (!vectorSnapshotStale(vec, Date.now())) {
+  if (!vectorSnapshotStale(vec, Date.now(), ctx.sessionDate)) {
     if (play.direction === "LONG" && vp?.bias === "short") {
       reasons.push(`Vector bearish (${vp.headline ?? vp.grade ?? "desk read"})`);
     } else if (play.direction === "SHORT" && vp?.bias === "long") {
@@ -410,7 +410,7 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
 
   if (spot != null) {
     const gexForWalls = eco?.gex_positioning;
-    const vectorStaleForWalls = vectorSnapshotStale(vec, Date.now());
+    const vectorStaleForWalls = vectorSnapshotStale(vec, Date.now(), ctx.sessionDate);
     const vecCallWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
     const vecPutWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
     const callWall = vecCallWall ?? gexForWalls?.call_wall ?? null;
@@ -433,7 +433,7 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
     }
   }
 
-  const vectorStale = vectorSnapshotStale(vec, Date.now());
+  const vectorStale = vectorSnapshotStale(vec, Date.now(), ctx.sessionDate);
   const ema = !vectorStale ? vec?.technicals?.emaStack ?? null : null;
   if (play.direction === "LONG" && ema === "down") reasons.push("bear EMA stack on chart");
   if (play.direction === "SHORT" && ema === "up") reasons.push("bull EMA stack on chart");
@@ -479,7 +479,7 @@ export function tradeManagerNarrativeSection(
   const { play } = ctx;
   const vec = vectorOf(ctx);
   const readMs = Date.now();
-  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gex = ctx.ecosystem?.gex_positioning;
   const gexStale = gexMatrixStale(gex, readMs);
   // Null stale GEX spot at source — same Largo C2 class as walls/flip (#4401/#4411).

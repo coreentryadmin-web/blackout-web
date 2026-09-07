@@ -130,10 +130,13 @@ export function bookContextSection(
 }
 
 /** Vector chart technicals — EMA stack, VWAP, RSI, MACD, structure. */
-export function chartTechnicalsSection(vec: VectorFullState | null): RichSection | null {
+export function chartTechnicalsSection(
+  vec: VectorFullState | null,
+  sessionDate?: string | null,
+): RichSection | null {
   if (!vec?.technicals && vec?.spot == null) return null;
   const readMs = Date.now();
-  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const t = vec.technicals;
   const lines: string[] = [];
   if (vectorStale) {
@@ -192,7 +195,7 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const eco = ctx.ecosystem;
   const gex = eco?.gex_positioning;
   const readMs = Date.now();
-  const vectorStaleForLevels = vectorSnapshotStale(vec, readMs);
+  const vectorStaleForLevels = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gexStaleForLevels = gexMatrixStale(gex, readMs);
   const spot =
     (vectorStaleForLevels ? undefined : vec?.spot) ??
@@ -372,7 +375,7 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   const { play } = ctx;
   const vec = vectorOf(ctx);
   const readMs = Date.now();
-  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gexForSpot = ctx.ecosystem?.gex_positioning;
   const gexStaleForSpot = gexMatrixStale(gexForSpot, readMs);
   const spot =
@@ -667,8 +670,11 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
 }
 
 /** Wall bead dynamics — building/fading nodes from Vector wall history. */
-export function wallDynamicsSection(vec: VectorFullState | null): RichSection | null {
-  if (vectorSnapshotStale(vec, Date.now())) return null;
+export function wallDynamicsSection(
+  vec: VectorFullState | null,
+  sessionDate?: string | null,
+): RichSection | null {
+  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
   const events = vec?.wallEvents ?? [];
   if (!events.length) return null;
   const lines = events
@@ -682,11 +688,14 @@ export function wallDynamicsSection(vec: VectorFullState | null): RichSection | 
 }
 
 /** Vector desk play read — entry zone, targets, invalidation from play engine. */
-export function vectorDeskSection(vec: VectorFullState | null): RichSection | null {
+export function vectorDeskSection(
+  vec: VectorFullState | null,
+  sessionDate?: string | null,
+): RichSection | null {
   const p = vec?.play;
   if (!p) return null;
   const readMs = Date.now();
-  const vectorStale = vectorSnapshotStale(vec, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const lines: string[] = [];
   if (vectorStale) {
     const ageMs = vec?.dataAgeMs;
@@ -774,7 +783,7 @@ export function buildIntelSections(
   const rank = laneRankSection(play, ctx.laneRows);
   if (rank) out.push(rank);
 
-  const technicals = chartTechnicalsSection(vec);
+  const technicals = chartTechnicalsSection(vec, ctx.sessionDate);
   if (technicals) out.push(technicals);
 
   const levels = chartLevelsSection(ctx);
@@ -783,10 +792,10 @@ export function buildIntelSections(
   const gex = gexPostureSection(ctx);
   if (gex) out.push(gex);
 
-  const walls = wallDynamicsSection(vec);
+  const walls = wallDynamicsSection(vec, ctx.sessionDate);
   if (walls) out.push(walls);
 
-  const vdesk = vectorDeskSection(vec);
+  const vdesk = vectorDeskSection(vec, ctx.sessionDate);
   if (vdesk) out.push(vdesk);
 
   const flow = flowIntelSection(ecosystem, play, ctx.sessionDate);

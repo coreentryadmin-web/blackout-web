@@ -4,6 +4,8 @@ import {
   collectBriefUnavailableSources,
   resolveGammaPosture,
   trustedHelixFlow,
+  vectorLiveForSession,
+  vectorSnapshotStale,
   nighthawkLiveForSession,
   zerodteLiveForSession,
 } from "./play-brief-absence";
@@ -169,6 +171,54 @@ test("collectBriefUnavailableSources: prior-session Night Hawk surfaces in unava
       (s) =>
         s.source === "Night Hawk swings" &&
         s.reason === "prior session (2026-09-05) — today's edition not yet run",
+    ),
+  );
+});
+
+test("vectorLiveForSession: null when observed_session_date lags brief sessionDate (Largo C2)", () => {
+  const vec = {
+    spot: 100,
+    observed_session_date: "2026-09-05",
+    dataAgeMs: 30_000,
+    freshness: "recent",
+  } as SwingPlayBriefContext["vector"];
+
+  assert.equal(vectorLiveForSession(vec, "2026-09-06"), null);
+  assert.equal(vectorLiveForSession(vec, "2026-09-05")?.spot, 100);
+  assert.equal(vectorLiveForSession(vec, null)?.spot, 100);
+});
+
+test("vectorSnapshotStale: fresh age but prior session counts as stale", () => {
+  const vec = {
+    spot: 100,
+    observed_session_date: "2026-09-05",
+    dataAgeMs: 30_000,
+    freshness: "recent",
+  } as SwingPlayBriefContext["vector"];
+
+  assert.equal(vectorSnapshotStale(vec, Date.now(), "2026-09-06"), true);
+  assert.equal(vectorSnapshotStale(vec, Date.now(), "2026-09-05"), false);
+});
+
+test("collectBriefUnavailableSources: prior-session Vector surfaces in unavailableSources (Largo C3)", () => {
+  const ctx = {
+    sessionDate: "2026-09-06",
+    ecosystem: {
+      vector_full_state: {
+        spot: 100,
+        observed_session_date: "2026-09-05",
+        dataAgeMs: 30_000,
+        freshness: "recent",
+      },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) =>
+        s.source === "Vector snapshot" &&
+        s.reason === "prior session (2026-09-05) — today's desk read not yet run",
     ),
   );
 });
