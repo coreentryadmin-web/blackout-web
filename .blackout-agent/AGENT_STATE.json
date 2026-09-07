@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T18:22:49.266Z",
+  "updated_at": "2026-09-07T18:42:03.520Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T18:16:43.733Z",
-      "lease_until": "2026-09-07T19:50:58.291Z",
+      "claimed_at": "2026-09-07T18:06:33.647Z",
+      "lease_until": "2026-09-07T19:46:45.567Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "73aed0d8-e770-49e6-bf00-0a331e8e192e"
+      "run_id": "587e71ac-64b2-4541-b2f2-566c2ae480f9"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -65,9 +65,9 @@
     }
   },
   "deploy": {
-    "last_main_sha": "157b8d21eb442a5e663295a037554326cd5f9624",
+    "last_main_sha": "20e6df5371b7d66123766154e271da06496f2a12",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T18:20:34Z",
+    "last_deploy_at": "2026-09-07T18:32:00Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34151236856",
     "last_deploy_sha": "7246d9ad2bc971ccdec0cb49f29844f9e43f3b64"
   },
@@ -1073,18 +1073,51 @@
       "agent": "cursor",
       "run_id": "ccdda899-80d1-4458-b459-169e97830f9c",
       "summary": "Workflow_run wake complete: #4522 CI GREEN (admin-cron-health holiday stale) — Claude review pending. #4523 canonical validate:deploy holiday fix (9/9 tests, CI pending). Closed duplicate #4524. Lifecycle GREEN on Labor Day. ops:collect 0. Dependabot majors held."
+    },
+    {
+      "at": "2026-09-07T18:42:03.517Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-07T18:42:03.520Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "872d4f52-c134-4992-b1f0-2a77f854cec4",
+      "summary": "Workflow wake post-#4520. Platform GREEN. #4521 awaiting CI+Claude review."
     }
   ],
   "open_prs": [
     {
-      "number": 4523,
-      "title": "fix(ops): pass validate:deploy on NYSE holiday socket-health skip",
-      "branch": "fix/validate-deploy-socket-health-holiday-skip",
+      "number": 4553,
+      "title": "fix(ops): skip RTH open-check session gates on NYSE holidays",
+      "branch": "fix/rth-open-check-holiday-skip",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T18:41:39Z"
+    },
+    {
+      "number": 4551,
+      "title": "fix(ops): accept skipped data-correctness status in gha-rth-audit on NYSE holidays",
+      "branch": "fix/gha-rth-audit-data-correctness-holiday-skip",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T18:22:46Z"
+      "updated_at": "2026-09-07T18:41:51Z"
+    },
+    {
+      "number": 4549,
+      "title": "fix(ops): skip RTH session gates on NYSE holidays after deploy validation",
+      "branch": "fix/rth-open-holiday-early-exit",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T18:41:58Z"
     },
     {
       "number": 4480,
