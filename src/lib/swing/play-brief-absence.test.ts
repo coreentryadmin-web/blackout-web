@@ -466,6 +466,24 @@ test("collectBriefUnavailableSources: Meridian peer cohort failure surfaces in e
   );
 });
 
+test("collectBriefUnavailableSources: aged markAsOf surfaces in envelope (live probe 2026-09-07)", () => {
+  const ctx = {
+    play: {
+      markIsSync: false,
+      markAsOf: "2026-09-04T21:45:18.000Z",
+      status: "OPEN",
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) => s.source === "option mark" && s.reason.includes("stale — last synced"),
+    ),
+    "expected stale option mark chip for aged markAsOf",
+  );
+});
+
 test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope (FINDINGS 2026-09-06 #22)", () => {
   // dataHonestyCoaching() already narrates "mark not synced to live tape" from this exact
   // boolean — this asserts the same fact reaches the structured C3 channel, not just prose.

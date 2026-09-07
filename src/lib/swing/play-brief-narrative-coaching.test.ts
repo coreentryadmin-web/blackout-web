@@ -532,11 +532,23 @@ test("vexCoaching: narrates vanna flip", () => {
   assert.match(line!, /diverge/i);
 });
 
+test("dataHonestyCoaching: aged markAsOf warns not-live-synced (Largo C2/C3)", () => {
+  const line = dataHonestyCoaching(
+    ctx(),
+    play({ markIsSync: false, markAsOf: "2026-09-04T21:45:18.731Z", status: "OPEN" }),
+  );
+  assert.match(line!, /option mark from \*\*2026-09-04/i);
+  assert.match(line!, /not live-synced/i);
+});
+
 test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf does not", () => {
   const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "OPEN" }));
   assert.match(stale!, /mark not synced to live tape/i);
 
-  const fresh = dataHonestyCoaching(ctx(), play({ markIsSync: false, markAsOf: "2026-09-04T21:45:18.731Z" }));
+  const fresh = dataHonestyCoaching(
+    ctx(),
+    play({ markIsSync: false, markAsOf: new Date().toISOString(), status: "OPEN" }),
+  );
   assert.equal(fresh, null);
 });
 

@@ -1,4 +1,7 @@
 import type { BieUnavailableSource } from "@/lib/bie/answer-envelope";
+import { freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
+import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import type {
   EcosystemContext,
   EcosystemNightHawkTake,
@@ -147,6 +150,31 @@ export function playExpectsLiveOptionMark(status: string | null | undefined): bo
   return status === "OPEN" || status === "HOLD" || status === "TRIM";
 }
 
+/** True when an OPEN/HOLD/TRIM row carries an aged markAsOf (not the markIsSync no-timestamp case). */
+export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now()): boolean {
+  if (!playExpectsLiveOptionMark(play.status)) return false;
+  if (play.markIsSync === true || !play.markAsOf) return false;
+  const markMs = Date.parse(play.markAsOf);
+  if (!Number.isFinite(markMs)) return false;
+  return freshnessFromObservedMs(markMs, readMs) === "stale";
+}
+
+/** Structured C3 absence for option marks — sync-without-timestamp OR aged markAsOf. */
+export function collectOptionMarkStalenessAbsence(
+  play: TerminalPlay | null | undefined,
+  readMs: number = Date.now(),
+): BieUnavailableSource | null {
+  if (!play || !playExpectsLiveOptionMark(play.status)) return null;
+  if (play.markIsSync === true) {
+    return { source: "option mark", reason: "sync quote without freshness timestamp" };
+  }
+  if (optionMarkIsStale(play, readMs)) {
+    const stamp = etStampFromIso(play.markAsOf!) ?? play.markAsOf!;
+    return { source: "option mark", reason: `stale — last synced ${stamp}` };
+  }
+  return null;
+}
+
 /** HELIX recent_flow is only trustworthy when the feed is fresh — stale pipeline rows are absence, not signal. */
 export function trustedHelixFlow(eco: EcosystemContext | null | undefined) {
   if (!eco?.recent_flow || eco.flow_feed_fresh === false) return null;
@@ -244,17 +272,10 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   if (!isClosed && ctx.ecosystem?.flow_feed_fresh === false) {
     out.push({ source: "HELIX flow", reason: "pipeline stale" });
   }
-  // FINDINGS 2026-09-06 (#22): dataHonestyCoaching() already narrates "mark not synced to live
-  // tape" from this exact boolean, but that prose never reached the structured C3 channel — a
-  // consumer reading unavailableSources alone (rather than scraping the narrative) saw nothing
-  // wrong. Same class of gap this file already closed for HELIX flow staleness.
-  // WATCH rows carry a static chain mid (no markAsOf) by design — not a missing source.
-  if (
-    ctx.play?.markIsSync === true &&
-    playExpectsLiveOptionMark(ctx.play?.status)
-  ) {
-    out.push({ source: "option mark", reason: "sync quote without freshness timestamp" });
-  }
+  // FINDINGS 2026-09-06 (#22) + live probe 2026-09-07: sync-without-timestamp AND aged markAsOf
+  // must both reach unavailableSources — prose in dataHonestyCoaching alone is not enough (C3).
+  const markAbsence = collectOptionMarkStalenessAbsence(ctx.play, Date.now());
+  if (markAbsence) out.push(markAbsence);
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared
   // matrix had no positioning for this ticker.
   if (!isClosed && !ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
