@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T19:58:51.560Z",
+  "updated_at": "2026-09-07T20:00:43.450Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -1002,28 +1002,57 @@
       "agent": "cursor",
       "run_id": "6f8339cf-32e4-446f-b69a-100217f5201d",
       "summary": "PR #4563 merged (desk age skew clamp). PR #4566 open awaiting Claude review (vector-walls-warm off-window cooldown, 11/11 tests). validate:deploy GREEN, ops:collect 0. Closed stale handoff #4564. Dependabot majors held."
+    },
+    {
+      "at": "2026-09-07T20:00:11.879Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-07T20:00:43.449Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-07T20:00:43.450Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4f682668-61cb-4609-b979-5920b46266ef",
+      "summary": "Cycle complete: #4563 merged, #4566 verify pending (11/11 local tests), handoff #4568 opened, closed stale #4564/#4565. validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Awaiting Claude on #4566."
     }
   ],
   "open_prs": [
+    {
+      "number": 4568,
+      "title": "chore(state): autopilot handoff after #4563 merge + #4566 review queue",
+      "branch": "cursor/autopilot-handoff-post-4563-4566",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T19:59:09Z"
+    },
+    {
+      "number": 4567,
+      "title": "fix(spx): clamp WATCH age to zero for modest future timestamp skew",
+      "branch": "fix/watch-age-future-skew-clamp",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T19:59:02Z"
+    },
     {
       "number": 4566,
       "title": "fix(perf): widen vector-walls-warm off-window force=1 cooldown",
       "branch": "fix/vector-walls-warm-off-window-cooldown",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": true,
+      "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T19:58:01Z"
-    },
-    {
-      "number": 4565,
-      "title": "chore(state): autopilot handoff after #4558-4561 merge wave",
-      "branch": "cursor/autopilot-handoff-post-4561",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T19:56:10Z"
+      "updated_at": "2026-09-07T20:00:11Z"
     },
     {
       "number": 4480,
