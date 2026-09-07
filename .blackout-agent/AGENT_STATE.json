@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T01:15:38.003Z",
+  "updated_at": "2026-09-07T01:28:36.067Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -71,11 +71,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "555befcaf73ba8e3a7a11b0bb4d124d50b7e4de2",
+    "last_main_sha": "d73fe9bd2ab754aec288f2a85baae8f268d78e35",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T01:08:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34072016510",
-    "last_deploy_sha": "555befcaf73ba8e3a7a11b0bb4d124d50b7e4de2"
+    "last_deploy_at": "2026-09-07T01:28:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073100593",
+    "last_deploy_sha": "d73fe9bd2ab754aec288f2a85baae8f268d78e35"
   },
   "events": [
     {
@@ -972,18 +972,31 @@
       "agent": "cursor",
       "run_id": "04fab3af-267c-41b7-b3c8-629b9704e435",
       "summary": "Main@555befcaf (#4434 NH C3 unavailable — reopened+merged after duplicate PR closes). #4428 CI notification was deploy ack. Queue clean."
+    },
+    {
+      "at": "2026-09-07T01:28:36.066Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:28:36.067Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "075bede8-de32-451e-a49b-8514acfadddf",
+      "summary": "Main@d73fe9bd2 (#4437 Vector prior-session C3+stale gate). #4434 deploy CI was stale ack. Open PRs: 0."
     }
   ],
   "open_prs": [
     {
-      "number": 4437,
-      "title": "fix(largo): surface prior-session Vector in unavailableSources (Largo C3)",
-      "branch": "fix/largo-vector-prior-session-absence",
+      "number": 4439,
+      "title": "fix(vector): GEX king node labels + honest daily hover readout",
+      "branch": "fix/vector-gex-king-node-label-daily-readout",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T01:15:09Z"
+      "updated_at": "2026-09-07T01:25:34Z"
     }
   ],
   "pr_activity": {
