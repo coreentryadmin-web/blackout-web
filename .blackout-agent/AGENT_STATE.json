@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T16:27:05.083Z",
+  "updated_at": "2026-09-07T16:51:00.602Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -180,26 +180,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9935d4dc56bee8a66aebf6f6e2f798f5153f0567",
+    "last_main_sha": "a8288e12c5020253f0ae5172b3e8079ca54bf554",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T16:21:20Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34142862652",
-    "last_deploy_sha": "9935d4dc56bee8a66aebf6f6e2f798f5153f0567"
+    "last_deploy_at": "2026-09-07T16:46:57Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34144821008",
+    "last_deploy_sha": "a8288e12c5020253f0ae5172b3e8079ca54bf554"
   },
   "events": [
-    {
-      "at": "2026-09-05T19:35:26.152Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
-    },
-    {
-      "at": "2026-09-05T20:41:08.341Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-05T20:41:08.976Z",
       "type": "context_sync",
@@ -1489,28 +1476,61 @@
       "agent": "cursor",
       "run_id": "2218dae9-30ad-43e3-924f-548dae5d8526",
       "summary": "Main@9935d4dc5 — discovery/grade/outcomes holiday gates (#4490-#4494). validate:deploy GREEN; 8/8 cron tests pass. Labor Day batch complete. Dependabot RED hold."
+    },
+    {
+      "at": "2026-09-07T16:51:00.601Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
+    },
+    {
+      "at": "2026-09-07T16:51:00.602Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0bdeb1ed-93d5-4f3a-bea2-b0de92a93468",
+      "summary": "Main@a8288e12c — #4498 thermal EOD recap holiday gate (isTradingDayEt). validate:deploy GREEN; 9/9 tests pass. Docs SEO wake 0a7bc9adc. Dependabot RED hold."
     }
   ],
   "open_prs": [
     {
-      "number": 4498,
-      "title": "fix(cron): gate largo-morning-brief and thermal EOD recap on isTradingDayEt",
-      "branch": "fix/cron-holiday-gates-batch3",
+      "number": 4503,
+      "title": "fix(cron): gate largo-morning-brief on isTradingDayEt for NYSE holidays",
+      "branch": "fix/largo-morning-brief-holiday-gate-v2",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T16:26:37Z"
+      "updated_at": "2026-09-07T16:49:26Z"
     },
     {
-      "number": 4495,
+      "number": 4502,
+      "title": "fix(vector): restore Sep-3 bead rail render fidelity (fill + row ladder)",
+      "branch": "cursor/bead-rail-sep3-render-fidelity",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T16:48:16Z"
+    },
+    {
+      "number": 4501,
       "title": "fix(cron): gate largo-morning-brief on isTradingDayEt for NYSE holidays",
       "branch": "fix/largo-morning-brief-holiday-gate",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T16:26:56Z"
+      "updated_at": "2026-09-07T16:49:31Z"
+    },
+    {
+      "number": 4500,
+      "title": "fix(cron): gate X marketing posts on isTradingDayEt for NYSE holidays",
+      "branch": "fix/x-marketing-holiday-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T16:47:40Z"
     },
     {
       "number": 4480,
