@@ -1,10 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  isSocketHealthSkipped,
+  isCronRunHealthyStatus,
   socketProbeAttemptVerdict,
   socketProbeFinalFailure,
   probeOptionsSocketWithRetries,
 } from "./rth-socket-probe.mjs";
+
+test("isSocketHealthSkipped: NYSE holiday skip payload passes", () => {
+  assert.equal(
+    isSocketHealthSkipped({ ok: true, skipped: true, reason: "non-trading day (2026-09-07)" }),
+    true
+  );
+  assert.equal(isSocketHealthSkipped({ ok: true, websockets: {} }), false);
+});
 
 test("socketProbeAttemptVerdict: warming response retries during RTH", () => {
   const warming = { ok: false, detail: "ingest leader lock held — marks warming" };
@@ -57,6 +67,19 @@ test("probeOptionsSocketWithRetries: warming then green passes", async () => {
   assert.equal(result.successDetail, "cluster marks fresh");
 });
 
+test("probeOptionsSocketWithRetries: NYSE holiday skip passes without websockets", async () => {
+  const result = await probeOptionsSocketWithRetries({
+    afterOpen930: true,
+    fetchSocketHealth: async () => ({
+      status: 200,
+      body: { ok: true, skipped: true, reason: "non-trading day (2026-09-07)" },
+    }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.failure, null);
+  assert.match(result.successDetail ?? "", /non-trading day/);
+});
+
 test("probeOptionsSocketWithRetries: exhausted retries fail during RTH", async () => {
   const result = await probeOptionsSocketWithRetries({
     afterOpen930: true,
@@ -68,4 +91,12 @@ test("probeOptionsSocketWithRetries: exhausted retries fail during RTH", async (
   });
   assert.equal(result.ok, false);
   assert.match(result.failure ?? "", /still warming/);
+});
+
+test("isCronRunHealthyStatus: accepts ok and skipped, rejects everything else", () => {
+  assert.equal(isCronRunHealthyStatus("ok"), true);
+  assert.equal(isCronRunHealthyStatus("skipped"), true);
+  assert.equal(isCronRunHealthyStatus("error"), false);
+  assert.equal(isCronRunHealthyStatus(undefined), false);
+  assert.equal(isCronRunHealthyStatus(null), false);
 });

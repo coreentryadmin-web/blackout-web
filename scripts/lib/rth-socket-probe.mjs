@@ -5,6 +5,17 @@
 
 /** @typedef {{ ok: boolean, detail?: string }} SocketHealthOptions */
 
+/** NYSE holiday / non-trading day — socket-health returns ok+skipped without websockets (#4517). */
+export function isSocketHealthSkipped(body) {
+  return body?.ok === true && body?.skipped === true;
+}
+
+/** Latest cron_job_runs.status values that mean the job did its job (not a fault) — a
+ *  weekdays_only/market_hours_only cron correctly logs "skipped" on a NYSE holiday. */
+export function isCronRunHealthyStatus(status) {
+  return status === "ok" || status === "skipped";
+}
+
 /**
  * @param {SocketHealthOptions | null | undefined} opt
  * @param {boolean} afterMarketOpen930
@@ -72,6 +83,10 @@ export async function probeOptionsSocketWithRetries({
             onRetry?.(attempt + 1, opt.detail ?? "warming");
           }
         }
+      } else if (isSocketHealthSkipped(body)) {
+        socketProbeOk = true;
+        successDetail =
+          typeof body.reason === "string" ? body.reason : "non-trading day (socket-health skipped)";
       } else if (status === 401) {
         socketProbeOk = true;
         preOpenWarn = "CRON_SECRET in this env may not match prod";
