@@ -139,9 +139,10 @@ without an explicit member request that names the change.
 - `WallRailPrimitive` draws the **full-session rail**; live 45m trim applies to circle markers only,
   not the ribbon rail.
 
-**Do NOT:**
-- Change `BEAD_ROW_FILL`, row ladder counts, halo gaps, or rail prominence constants to "fix" a
-  symptom without proving x-domain alignment first.
+**Sep-3 render constants (commit b2931b64b, pinned 2026-09-07):**
+- `BEAD_ROW_FILL = 0.34`, `ROW_HALO_ROW_GAP_FILL = 0.45`
+- Row ladder `8 / 11 / 13 / 16` at 1m/3m/5m/15m — NOT 10/14/16/18 (#4460 got this backwards)
+- Thickness comes from **row gap** (fewer rows → wider ribbons), not from cranking fill to 0.55
 - Switch desk open to centered-live (~48 bars) — that was the regression that broke Sep-3 ribbons.
 - Merge branches named `bead-rail-prominence-restore` or other render-only reverts without member
   sign-off (wrong fix path — #2341 render-only revert is explicitly rejected).
