@@ -169,6 +169,21 @@ test("evaluatePlayGates: desk polled_at from the future is treated as stale, not
   assert.match(result.blocks.join(" "), /Desk data stale/i);
 });
 
+test("evaluatePlayGates: modest future polled_at skew clamps age to zero not negative", () => {
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk({
+      polled_at: new Date(Date.now() + 30_000).toISOString(),
+      gex_age_ms: 1_000,
+    }),
+    baseConfluence(),
+    emptySession,
+    passingConfirmations
+  );
+  assert.doesNotMatch(result.blocks.join(" "), /Desk data stale/i);
+  assert.equal(result.passed, true);
+});
+
 // BUG FIX (2026-09-05): clock-skewed future pos.asof → negative gex_age_ms flowed into deskStaleSec
 // as a negative gexSec, so a desk with gex_stale:true (pill lit) could still pass play gates when
 // polled_at was fresh — the polled_at future guard did not cover the GEX snapshot age lane.
