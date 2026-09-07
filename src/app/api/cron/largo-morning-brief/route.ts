@@ -37,6 +37,17 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
+
+  // Holiday guard: EventBridge is weekday-only and inEtWindow only knows Sat/Sun. On NYSE holidays
+  // the dual-band schedule still fires and would push a morning brief against a closed tape.
+  // force=1 bypasses for ops recovery (same pattern as nighthawk-morning-confirm).
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun(CRON_KEY, started, payload);
+    return NextResponse.json(payload);
+  }
+
   if (!inMorningWindow(force)) {
     const payload = { ok: true, skipped: true, reason: "Outside 9:25-9:55 ET window — use ?force=1 to override" };
     await logCronRun(CRON_KEY, started, payload);
