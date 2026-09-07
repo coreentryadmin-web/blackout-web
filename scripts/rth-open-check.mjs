@@ -188,10 +188,11 @@ async function main() {
           if (isSocketHealthSkipped(body)) {
             ok(`options-socket: ${body.reason ?? "non-trading day"}`);
             socketProbeOk = true;
+            continue;
           }
           const opt = body.websockets?.options;
           const uw = body.websockets?.unusual_whales;
-          if (!socketProbeOk && opt) {
+          if (opt) {
             const verdict = socketProbeAttemptVerdict(opt, afterOpen930);
             if (verdict === "pass") {
               if (opt.ok) ok(`options-socket: ${opt.detail}`);
@@ -213,7 +214,7 @@ async function main() {
               "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
             );
             socketProbeOk = true;
-          } else {
+          } else if (!socketProbeOk) {
             socketLastDetail = `probe HTTP ${res.status}`;
             if (attempt < 2) {
               console.log(`  ⚠ options-socket (attempt ${attempt + 1}/3): HTTP ${res.status} — retrying…`);
