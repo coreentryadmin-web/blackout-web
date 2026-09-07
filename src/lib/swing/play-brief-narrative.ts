@@ -8,7 +8,6 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   trustedHelixFlow,
-  gexMatrixAgeMs,
   gexMatrixStale,
   vectorSnapshotStale,
   resolveGammaPosture,
