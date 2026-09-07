@@ -484,9 +484,13 @@ test("VectorChart: embed seed upgrade syncs wallHistoryRef when initialWallHisto
   assert.match(src, /applySessionOverviewViewport\(chart, display\)/);
 });
 
-test("VectorChart: narrowed 0DTE rail prefers denser blended fallback when bootstrap is thin", () => {
+test("VectorChart: narrowed 0DTE rail prefers denser blended fallback only during embed bootstrap window", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
-  assert.match(src, /blended\.length > narrowed\.length && narrowed\.length < 120/);
+  assert.match(src, /EMBED_BOOTSTRAP_BLEND_MS/);
+  assert.match(src, /embedBootstrapBlendUntilMsRef/);
+  assert.match(src, /bootstrapBlendWindow/);
+  assert.match(src, /blended\.length > narrowed\.length/);
+  assert.match(src, /narrowed\.length < EMBED_BOOTSTRAP_BLEND_MIN_SAMPLES/);
 });
 
 test("VectorChart: refreshTrails is a no-op during replay so applyFrame owns the bead rail", () => {
