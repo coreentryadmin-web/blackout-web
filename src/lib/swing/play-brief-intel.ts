@@ -4,13 +4,7 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
-import {
-  playExpectsLiveOptionMark,
-  gexMatrixAgeMs,
-  gexMatrixStale,
-  GEX_MATRIX_STALE_MS,
-  vectorSnapshotStale,
-} from "./play-brief-absence";
+import { playExpectsLiveOptionMark, gexMatrixAgeMs, GEX_MATRIX_STALE_MS } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 import { laneRankSection } from "./play-brief-lane-rank";
@@ -20,8 +14,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
-import { parseSwingPlayId } from "./play-brief-resolve-pure";
-import { trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
+import { trustedHelixFlow } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
@@ -66,7 +59,7 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   }
   if (play.archetype) lines.push(`**Archetype:** ${play.archetype.replace(/_/g, " ")}`);
   if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
-  if (play.regime) lines.push(`**Discovery read:** ${play.regime}`);
+  if (play.regime) lines.push(play.regime);
   // recNote is NOT repeated here — Management (open bucket, play-brief.ts) and Verdict (watch
   // bucket) already render it verbatim. Duplicating it produced the same sentence twice in one
   // brief (FINDINGS 2026-09-06, live NRG SWING_NRG_34) and crowded out this section's actual job:
@@ -101,12 +94,7 @@ export function bookContextSection(
   openBook: PortfolioPosition[] | null | undefined,
 ): RichSection | null {
   if (openBook == null || !openBook.length) return null;
-  const { positionId } = parseSwingPlayId(play.id);
-  const overlap = checkPortfolioOverlap(
-    { ticker: play.ticker, direction: play.direction },
-    openBook,
-    positionId != null ? { excludePositionId: positionId } : undefined,
-  );
+  const overlap = checkPortfolioOverlap({ ticker: play.ticker, direction: play.direction }, openBook);
   if (!overlap.hasOverlap) return null;
 
   const lines: string[] = [];
@@ -130,24 +118,10 @@ export function bookContextSection(
 }
 
 /** Vector chart technicals — EMA stack, VWAP, RSI, MACD, structure. */
-export function chartTechnicalsSection(
-  vec: VectorFullState | null,
-  sessionDate?: string | null,
-): RichSection | null {
+export function chartTechnicalsSection(vec: VectorFullState | null): RichSection | null {
   if (!vec?.technicals && vec?.spot == null) return null;
-  const readMs = Date.now();
-  const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const t = vec.technicals;
   const lines: string[] = [];
-  if (vectorStale) {
-    const ageMs = vec?.dataAgeMs;
-    lines.push(
-      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — chart read may lag spot.`,
-    );
-    if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}** (from prior snapshot)`);
-    if (!lines.length) return null;
-    return { title: "Chart technicals", body: lines.join("\n"), bias: "neutral" };
-  }
   if (vec.spot != null) lines.push(`Spot: **${vec.spot.toFixed(2)}**`);
   if (t?.emaStack) lines.push(`EMA 9/21/50 stack: **${t.emaStack}**`);
   if (t?.vwap != null) {
@@ -175,11 +149,10 @@ export function chartTechnicalsSection(
   }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
   if (!lines.length) return null;
-  const bias = t ? technicalsBias(t, vec.spot ?? null) : "neutral";
   return {
     title: "Chart technicals",
     body: lines.join("\n"),
-    bias,
+    bias: t ? technicalsBias(t, vec.spot ?? null) : "neutral",
   };
 }
 
@@ -194,61 +167,47 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const vec = vectorOf(ctx);
   const eco = ctx.ecosystem;
   const gex = eco?.gex_positioning;
-  const readMs = Date.now();
-  const vectorStaleForLevels = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
-  const gexStaleForLevels = gexMatrixStale(gex, readMs);
-  const spot =
-    (vectorStaleForLevels ? undefined : vec?.spot) ??
-    (gexStaleForLevels ? undefined : gex?.spot) ??
-    null;
+  const spot = vec?.spot ?? gex?.spot ?? null;
   const lines: string[] = [];
 
-  const vecCallWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
-  const vecPutWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecFlip = vectorStaleForLevels ? undefined : vec?.gammaFlip;
-  const callWall = vecCallWall ?? gex?.call_wall ?? null;
-  const putWall = vecPutWall ?? gex?.put_wall ?? null;
-  const flip = vecFlip ?? gex?.flip ?? null;
-  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStaleForLevels;
-  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStaleForLevels;
-  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStaleForLevels;
-  // King strike is GEX-only in this section — gate whenever the matrix is stale (Vector presence irrelevant).
-  const kingFromStaleGex = gex?.gex_king_strike != null && gexStaleForLevels;
+  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null;
+  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null;
+  const flip = vec?.gammaFlip ?? gex?.flip ?? null;
 
-  if (callWall != null && !callWallFromStaleGex) {
+  if (callWall != null) {
     lines.push(`**Call wall (GEX):** ${callWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, callWall)}` : ""}`);
   }
-  if (putWall != null && !putWallFromStaleGex) {
+  if (putWall != null) {
     lines.push(`**Put wall (GEX):** ${putWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, putWall)}` : ""}`);
   }
-  if (flip != null && !flipFromStaleGex) {
+  if (flip != null) {
     lines.push(`**Gamma flip:** ${flip.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, flip)}` : ""}`);
   }
-  if (gex?.gex_king_strike != null && !kingFromStaleGex) {
+  if (gex?.gex_king_strike != null) {
     lines.push(`GEX king strike: **${gex.gex_king_strike.toFixed(2)}**`);
   }
-  if (vec?.maxPain != null && !vectorStaleForLevels) {
+  if (vec?.maxPain != null) {
     lines.push(`Max pain: **${vec.maxPain.toFixed(2)}**`);
   }
-  if (vec?.expectedMove?.bands?.length && !vectorStaleForLevels) {
+  if (vec?.expectedMove?.bands?.length) {
     const bandStr = vec.expectedMove.bands
       .slice(0, 2)
       .map((b) => `${b.sigma}σ ${b.low.toFixed(2)}–${b.high.toFixed(2)}`)
       .join(" · ");
     lines.push(`Expected move: **${bandStr}**`);
   }
-  if (vec?.proximity?.strike != null && !vectorStaleForLevels) {
+  if (vec?.proximity?.strike != null) {
     lines.push(
       `Nearest wall: **${vec.proximity.strike.toFixed(2)}** (${vec.proximity.side}, ${vec.proximity.distancePct.toFixed(1)}% away) — ${vec.proximity.callout}`,
     );
   }
   const zones = vec?.confluenceZones ?? [];
-  if (zones.length && !vectorStaleForLevels) {
+  if (zones.length) {
     const top = [...zones].sort((a, b) => b.score - a.score).slice(0, 4);
     lines.push("**Confluence nodes:**\n" + top.map((z) => formatConfluenceZone(z, spot)).join("\n"));
   }
   const dp = vec?.darkPoolLevels ?? [];
-  if (dp.length && !vectorStaleForLevels) {
+  if (dp.length) {
     lines.push(
       "**Dark pool levels:** " +
         dp
@@ -262,11 +221,7 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
 }
 
 /** HELIX flow, anomalies, tape prints near GEX nodes. */
-export function flowIntelSection(
-  eco: EcosystemContext | null,
-  play: TerminalPlay,
-  sessionDate?: string | null,
-): RichSection | null {
+export function flowIntelSection(eco: EcosystemContext | null, play: TerminalPlay): RichSection | null {
   if (!eco) return null;
   const lines: string[] = [];
 
@@ -307,8 +262,8 @@ export function flowIntelSection(
     lines.push("**Recent prints:**\n" + prints);
   }
 
-  const z = zerodteLiveForSession(eco.zerodte_today, sessionDate);
-  if (z) {
+  if (eco.zerodte_today) {
+    const z = eco.zerodte_today;
     const aligned =
       (play.direction === "LONG" && z.direction === "long") ||
       (play.direction === "SHORT" && z.direction === "short");
@@ -374,14 +329,7 @@ export function catalystsSection(eco: EcosystemContext | null): RichSection | nu
 export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "open" | "closed"): RichSection {
   const { play } = ctx;
   const vec = vectorOf(ctx);
-  const readMs = Date.now();
-  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
-  const gexForSpot = ctx.ecosystem?.gex_positioning;
-  const gexStaleForSpot = gexMatrixStale(gexForSpot, readMs);
-  const spot =
-    (vectorStale ? undefined : vec?.spot) ??
-    (gexStaleForSpot ? undefined : gexForSpot?.spot) ??
-    null;
+  const spot = vec?.spot ?? ctx.ecosystem?.gex_positioning?.spot ?? null;
   const lines: string[] = [];
 
   if (bucket === "watch") {
@@ -402,12 +350,8 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     );
   }
 
-  const gexForLevels = ctx.ecosystem?.gex_positioning;
-  const vectorStaleForWalls = vectorStale;
-  const vecFlip = vectorStaleForWalls ? undefined : vec?.gammaFlip;
-  const flip = vecFlip ?? gexForLevels?.flip;
-  const flipFromStaleGex = vecFlip == null && gexForLevels?.flip != null && gexMatrixStale(gexForLevels, readMs);
-  if (flip != null && spot != null && !flipFromStaleGex) {
+  const flip = vec?.gammaFlip ?? ctx.ecosystem?.gex_positioning?.flip;
+  if (flip != null && spot != null) {
     const watch =
       play.direction === "LONG"
         ? `Lose gamma flip **${flip.toFixed(2)}** — dealer posture turns against longs`
@@ -415,17 +359,12 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(watch);
   }
 
-  const vecPutWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecCallWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
-  const putWall = vecPutWall ?? gexForLevels?.put_wall;
-  const callWall = vecCallWall ?? gexForLevels?.call_wall;
-  const gexStaleForLevels = gexMatrixStale(gexForLevels, readMs);
-  const putWallFromStaleGex = vecPutWall == null && gexForLevels?.put_wall != null && gexStaleForLevels;
-  const callWallFromStaleGex = vecCallWall == null && gexForLevels?.call_wall != null && gexStaleForLevels;
-  if (play.direction === "LONG" && putWall != null && !putWallFromStaleGex) {
+  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? ctx.ecosystem?.gex_positioning?.put_wall;
+  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? ctx.ecosystem?.gex_positioning?.call_wall;
+  if (play.direction === "LONG" && putWall != null) {
     lines.push(`Structural support node: put wall **${putWall.toFixed(2)}**`);
   }
-  if (play.direction === "SHORT" && callWall != null && !callWallFromStaleGex) {
+  if (play.direction === "SHORT" && callWall != null) {
     lines.push(`Structural resistance node: call wall **${callWall.toFixed(2)}**`);
   }
 
@@ -640,41 +579,28 @@ export function deskConsensusSection(eco: EcosystemContext | null, play: Termina
 export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | null {
   const gex = ctx.ecosystem?.gex_positioning;
   if (!gex) return null;
-  const readMs = Date.now();
-  const stale = gexMatrixStale(gex, readMs);
-  const ageMs = stale ? gexMatrixAgeMs(gex, readMs) : null;
   const lines: string[] = [];
-  if (stale) {
-    lines.push(
-      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — dealer posture may lag spot.`,
-    );
-  }
-  // Suppress GEX-only posture when matrix is stale — same Largo C2 class as chartLevels/watchFor/king (#4372/#4375).
-  if (gex.gamma_posture && !stale) {
+  if (gex.gamma_posture) {
     const posture =
       gex.gamma_posture === "long"
         ? "dealers **long gamma** — dips tend to get bought, range/pin behavior"
         : "dealers **short gamma** — moves can accelerate, respect walls";
     lines.push(`Gamma posture: ${posture}`);
   }
-  if (!stale && gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
-  if (!stale && gex.nearest_wall != null && gex.spot != null) {
+  if (gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
+  if (gex.nearest_wall != null && gex.spot != null) {
     const { strike, kind, distance_pts } = gex.nearest_wall;
     lines.push(
       `Nearest wall: **${strike.toFixed(2)}** (${kind}, ${distance_pts.toFixed(1)} pts from spot **${gex.spot.toFixed(2)}**)`,
     );
   }
-  if (!stale && gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
+  if (gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
   if (!lines.length) return null;
   return { title: "GEX posture", body: lines.join("\n") };
 }
 
 /** Wall bead dynamics — building/fading nodes from Vector wall history. */
-export function wallDynamicsSection(
-  vec: VectorFullState | null,
-  sessionDate?: string | null,
-): RichSection | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+export function wallDynamicsSection(vec: VectorFullState | null): RichSection | null {
   const events = vec?.wallEvents ?? [];
   if (!events.length) return null;
   const lines = events
@@ -688,24 +614,10 @@ export function wallDynamicsSection(
 }
 
 /** Vector desk play read — entry zone, targets, invalidation from play engine. */
-export function vectorDeskSection(
-  vec: VectorFullState | null,
-  sessionDate?: string | null,
-): RichSection | null {
+export function vectorDeskSection(vec: VectorFullState | null): RichSection | null {
   const p = vec?.play;
   if (!p) return null;
-  const readMs = Date.now();
-  const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const lines: string[] = [];
-  if (vectorStale) {
-    const ageMs = vec?.dataAgeMs;
-    lines.push(
-      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — Vector desk read may lag spot.`,
-    );
-    if (p.grade) lines.push(`Vector desk grade: **${p.grade}** (from prior snapshot)`);
-    if (!lines.length) return null;
-    return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
-  }
   lines.push(`**${p.headline}** · grade **${p.grade}** · conviction **${p.conviction}**`);
   if (p.thesis) lines.push(p.thesis);
   if (p.entryZone) lines.push(`Entry zone: **${p.entryZone}**`);
@@ -714,10 +626,7 @@ export function vectorDeskSection(
   if (p.starred.length) {
     lines.push("**Watch now:**\n" + p.starred.slice(0, 4).map((s) => `• ${s}`).join("\n"));
   }
-  // Largo C2 — stale Vector play.bias must not badge bullish/bearish (early return above handles stale body).
-  const bias =
-    p.bias === "short" ? "bearish" : p.bias === "long" ? "bullish" : "neutral";
-  return { title: "Vector desk", body: lines.join("\n\n"), bias };
+  return { title: "Vector desk", body: lines.join("\n\n"), bias: p.bias === "short" ? "bearish" : p.bias === "long" ? "bullish" : "neutral" };
 }
 
 /** Honest data freshness — mark age, scan age, vector staleness. */
@@ -783,7 +692,7 @@ export function buildIntelSections(
   const rank = laneRankSection(play, ctx.laneRows);
   if (rank) out.push(rank);
 
-  const technicals = chartTechnicalsSection(vec, ctx.sessionDate);
+  const technicals = chartTechnicalsSection(vec);
   if (technicals) out.push(technicals);
 
   const levels = chartLevelsSection(ctx);
@@ -792,13 +701,13 @@ export function buildIntelSections(
   const gex = gexPostureSection(ctx);
   if (gex) out.push(gex);
 
-  const walls = wallDynamicsSection(vec, ctx.sessionDate);
+  const walls = wallDynamicsSection(vec);
   if (walls) out.push(walls);
 
-  const vdesk = vectorDeskSection(vec, ctx.sessionDate);
+  const vdesk = vectorDeskSection(vec);
   if (vdesk) out.push(vdesk);
 
-  const flow = flowIntelSection(ecosystem, play, ctx.sessionDate);
+  const flow = flowIntelSection(ecosystem, play);
   if (flow) out.push(flow);
 
   const catalysts = catalystsSection(ecosystem);

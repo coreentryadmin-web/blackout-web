@@ -3,7 +3,7 @@
  * No Anthropic calls. Every claim traces to platform data with null-honesty.
  */
 import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
-import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
+import { freshnessFromAgeMs } from "@/lib/bie/answer-envelope";
 import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -14,15 +14,9 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import {
-  collectBriefUnavailableSources,
-  gexMatrixAgeMs,
-  gexMatrixStale,
-  trustedHelixFlow,
-  vectorSnapshotStale,
-} from "./play-brief-absence";
+import { collectBriefUnavailableSources, trustedHelixFlow } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
-import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
+import { briefContentKey, snapshotFromBrief } from "./play-brief-diff";
 import {
   etStampFromDateOrIso,
   etStampFromIso,
@@ -55,25 +49,20 @@ function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
 function thesisHealthSection(play: TerminalPlay): RichSection | null {
   const h = play.thesisHealth;
   if (!h) return null;
-  const uncalibrated = thesisHealthUncalibrated(h);
-  if (uncalibrated) {
-    return {
-      title: "Thesis health",
-      body:
-        "Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown.",
-      bias: "neutral",
-    };
-  }
   const rows = h.pillars
     .map((p) => {
       const deltaStr = p.deltaPts != null ? ` (Δ ${p.deltaPts >= 0 ? "+" : ""}${p.deltaPts.toFixed(1)} pts)` : "";
       return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
     })
     .join("\n");
+  const uncalibrated = thesisHealthUncalibrated(h);
+  const headline = uncalibrated
+    ? "Inputs not wired for committed positions — aggregate score withheld."
+    : `**${h.health}%** · ${h.rungLabel}`;
   return {
     title: "Thesis health",
-    body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
-    bias: h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
+    body: `${headline}\n\n${rows || "Pillars not wired on this row."}`,
+    bias: uncalibrated ? "neutral" : h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
   };
 }
 
@@ -115,11 +104,7 @@ function pnlSection(play: TerminalPlay): RichSection {
 
 function watchEntrySection(play: TerminalPlay): RichSection {
   const lines: string[] = [];
-  const label =
-    swingActionDisplay(play)?.label ??
-    play.swingEntryAction?.toUpperCase() ??
-    play.recommendation ??
-    "WAIT";
+  const label = play.swingEntryAction ? play.swingEntryAction.toUpperCase() : play.recommendation ?? "WAIT";
   lines.push(`**Entry stance:** ${label}`);
   if (play.servingSection) lines.push(`Serving section: **${play.servingSection.replace(/_/g, " ")}**`);
   if (play.setupState) lines.push(`Setup: **${play.setupState}**`);
@@ -146,21 +131,10 @@ function closedSection(play: TerminalPlay): RichSection {
 }
 
 function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): BieFreshness {
-  const ageMs = gexMatrixAgeMs(gex, readMs);
-  if (ageMs == null) return "unknown";
-  // Align with gexMatrixStale — future-skewed asof must not read as "unknown"/fresh (Largo C2).
-  if (gexMatrixStale(gex, readMs)) return "stale";
-  return freshnessFromAgeMs(ageMs);
-}
-
-function fundamentalsObservedMs(asOf: string): number | null {
-  const trimmed = asOf.trim();
-  // Date-only anchors at session close ET (Largo C1) — age uses that clock, not UTC midnight.
-  const dateOnly = /^(\d{4}-\d{2}-\d{2})$/.exec(trimmed);
-  if (dateOnly) return parseEtStamp(`${dateOnly[1]} 16:00 ET`);
-  // Full ISO / clocked stamps: preserve sub-minute precision for skew guards (ET round-trip truncates).
-  const parsed = Date.parse(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
+  if (!gex?.asof) return "unknown";
+  const observedMs = Date.parse(gex.asof);
+  if (!Number.isFinite(observedMs)) return "unknown";
+  return freshnessFromAgeMs(readMs - observedMs);
 }
 
 function fundamentalsFreshness(
@@ -168,9 +142,12 @@ function fundamentalsFreshness(
   readMs: number,
 ): BieFreshness {
   if (!asOf) return "unknown";
-  const observedMs = fundamentalsObservedMs(asOf);
+  const etStamp = etStampFromDateOrIso(asOf);
+  const observedMs =
+    (etStamp ? parseEtStamp(etStamp) : null) ??
+    (Number.isFinite(Date.parse(asOf)) ? Date.parse(asOf) : null);
   if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
-  return freshnessFromObservedMs(observedMs, readMs);
+  return freshnessFromAgeMs(readMs - observedMs);
 }
 
 function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshness {
@@ -196,21 +173,10 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   const gex = ctx.ecosystem?.gex_positioning;
   const vecFresh = vectorFreshness(vec, readMs);
   const gexFresh = gexFreshness(gex, readMs);
-  const gexStale = gexMatrixStale(gex, readMs);
-  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
-  // Null at the SOURCE when Vector is stale (not a separate suppression flag) so a live GEX
-  // value for the same level still falls through via `??` instead of the whole entry being
-  // dropped just because the Vector side happened to be present-but-stale.
-  const vecCallWall = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
-  const vecPutWall = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
-  const callWall = vecCallWall ?? gex?.call_wall;
-  const putWall = vecPutWall ?? gex?.put_wall;
-  const flip = vecFlip ?? gex?.flip;
-  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
-  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
-  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
-  if (callWall != null && !callWallFromStaleGex) {
+  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall;
+  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall;
+  const flip = vec?.gammaFlip ?? gex?.flip;
+  if (callWall != null) {
     levels.push({
       label: "call wall",
       price: callWall,
@@ -221,7 +187,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  if (putWall != null && !putWallFromStaleGex) {
+  if (putWall != null) {
     levels.push({
       label: "put wall",
       price: putWall,
@@ -232,7 +198,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  if (flip != null && !flipFromStaleGex) {
+  if (flip != null) {
     levels.push({
       label: "gamma flip",
       price: flip,
@@ -243,45 +209,41 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       },
     });
   }
-  const vecSpot = vectorStale ? undefined : vec?.spot;
-  const spot = vecSpot ?? (gexStale ? undefined : gex?.spot);
+  const spot = vec?.spot ?? gex?.spot;
   if (spot != null) {
     levels.push({
       label: "spot",
       price: spot,
       provenance: {
-        source: vecSpot != null ? "Vector" : "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, vecSpot != null ? "vector" : "gex"),
-        freshness: vecSpot != null ? vecFresh : gexFresh,
+        source: vec?.spot != null ? "Vector" : "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, vec?.spot != null ? "vector" : "gex"),
+        freshness: vec?.spot != null ? vecFresh : gexFresh,
       },
     });
   }
-  if (!vectorStale) {
-    for (const z of vec?.confluenceZones ?? []) {
-      levels.push({
-        label: `confluence (${z.kinds.join("+")})`,
-        price: z.center,
-        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
-      });
-    }
-    for (const dp of vec?.darkPoolLevels ?? []) {
-      levels.push({
-        label: "dark pool",
-        price: dp.strike,
-        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
-      });
-    }
+  for (const z of vec?.confluenceZones ?? []) {
+    levels.push({
+      label: `confluence (${z.kinds.join("+")})`,
+      price: z.center,
+      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+    });
+  }
+  for (const dp of vec?.darkPoolLevels ?? []) {
+    levels.push({
+      label: "dark pool",
+      price: dp.strike,
+      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+    });
   }
   const king = gex?.gex_king_strike;
-  const kingFromStaleGex = king != null && gexStale;
-  if (king != null && !kingFromStaleGex) {
+  if (king != null) {
     levels.push({
       label: "GEX king",
       price: king,
       provenance: { source: "GEX", asOf: levelProvenanceAsOf(gex, vec, "gex"), freshness: gexFresh },
     });
   }
-  if (vec?.maxPain != null && !vectorStale) {
+  if (vec?.maxPain != null) {
     levels.push({
       label: "max pain",
       price: vec.maxPain,
@@ -312,44 +274,31 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: {
         source: "Swing ledger",
         asOf: markEt,
-        freshness: Number.isFinite(markMs) ? freshnessFromObservedMs(markMs, readMs) : "unknown",
+        freshness: Number.isFinite(markMs) ? freshnessFromAgeMs(readMs - markMs) : "unknown",
       },
     });
   }
   const eco = ctx.ecosystem;
   const gex = eco?.gex_positioning;
-  const vec = ctx.vector ?? eco?.vector_full_state ?? null;
-  const gexStale = gexMatrixStale(gex, readMs);
-  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
-  const postureFromVec =
-    vec?.regime?.posture != null && !vectorStale ? vec.regime.posture : null;
-  const postureFromGex = gex?.gamma_posture && !gexStale ? gex.gamma_posture : null;
-  const gammaPosture = postureFromVec ?? postureFromGex;
-  if (gammaPosture) {
-    const parts: string[] = [`γ ${gammaPosture}`];
-    if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
+  if (gex?.gamma_posture) {
+    const parts: string[] = [`γ ${gex.gamma_posture}`];
+    if (Number.isFinite(gex.net_gex)) {
       const netM = gex.net_gex / 1e6;
       parts.push(`net GEX ${netM >= 0 ? "+" : ""}${netM.toFixed(1)}M`);
     }
-    if (gex && !gexStale) {
-      const wall = gex.nearest_wall;
-      if (wall) {
-        parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
-      } else if (gex.flip != null) {
-        parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
-      }
+    const wall = gex.nearest_wall;
+    if (wall) {
+      parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
+    } else if (gex.flip != null) {
+      parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
     }
     out.push({
       kind: "calc",
       text: `Dealer posture: ${parts.join(" · ")}`,
       provenance: {
-        source: postureFromVec ? "Vector" : "GEX",
-        asOf:
-          (postureFromVec ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
-          gex?.as_of_et ??
-          etStampFromIso(gex?.asof) ??
-          ctx.asOf,
-        freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+        source: "GEX",
+        asOf: gex.as_of_et ?? etStampFromIso(gex.asof) ?? ctx.asOf,
+        freshness: gexFreshness(gex, readMs),
       },
     });
   }
@@ -432,8 +381,7 @@ export function composeSwingPlayBrief(
   verdictLines.push(`**${headline}** · ${play.direction} · ${action?.label ?? play.status}`);
   if (grade) verdictLines.push(`Grade **${grade}**${quality != null ? ` · score ${quality}` : ""}`);
   if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
-  // Dossier regime (discovery-pillar read, e.g. "Breakout · regime 0.82") belongs in "Why this setup"
-  // — not Verdict. It is not Vector/SPX market regime and duplicates archetype when both are present.
+  if (play.regime) verdictLines.push(play.regime);
   if (play.archetype) verdictLines.push(`Archetype: ${play.archetype}`);
   if (play.recNote && bucket === "watch") verdictLines.push(play.recNote);
 
@@ -473,7 +421,6 @@ export function composeSwingPlayBrief(
       unavailableSources: collectBriefUnavailableSources(ctx),
     }),
     asOf: ctx.asOf,
-    session_date: ctx.sessionDate,
   };
 
   const flow = trustedHelixFlow(ctx.ecosystem);
@@ -481,14 +428,18 @@ export function composeSwingPlayBrief(
     ? { callPremium: flow.call_premium, putPremium: flow.put_premium }
     : null;
 
+  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+  const gex = ctx.ecosystem?.gex_positioning;
   const trimsFired = play.exitPolicy?.trim_levels?.filter((t) => t.fired).length ?? null;
-  // Diff snapshots must read spot/walls/flip from envelope.levels (already stale-gated in
-  // levelsFromContext) — not a parallel vec/gex fallback that bypasses freshness gates.
-  const snap = snapshotFromBrief(
-    envelope,
-    play,
-    extrasFromBriefResponse({ envelope, flowSnapshot, trimsFired }),
-  );
+  const snap = snapshotFromBrief(envelope, play, {
+    spot: vec?.spot ?? gex?.spot ?? null,
+    gammaFlip: vec?.gammaFlip ?? gex?.flip ?? null,
+    callWall: vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null,
+    putWall: vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null,
+    flowCallPremium: flow?.call_premium ?? null,
+    flowPutPremium: flow?.put_premium ?? null,
+    trimsFired,
+  });
 
   return {
     playId: play.id,
