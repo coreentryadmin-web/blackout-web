@@ -120,6 +120,13 @@ test("VectorDailyChart: shared candle spacing and borders", () => {
   assert.match(src, /adaptiveBarSpacingForZoom/);
 });
 
+test("VectorDailyChart: missing open must not fabricate flat 0% in hover readout", () => {
+  const src = read("src/features/vector/components/VectorDailyChart.tsx");
+  assert.match(src, /changePct:\s*number \| null/);
+  assert.doesNotMatch(src, /changePct:\s*d\.open \? .* : 0/);
+  assert.match(src, /hover\.changePct == null/);
+});
+
 test("VectorChart: dark-pool walls toggle wired to applyDarkPoolGuides", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   const toolbar = read("src/features/vector/components/VectorToolbar.tsx");

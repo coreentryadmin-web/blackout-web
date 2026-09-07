@@ -57,7 +57,7 @@ const ROLE_LABEL: Record<string, string> = {
   "fade-dip": "Range fade — buy dip",
   "fade-rip": "Range fade — sell rip",
   "flow-whale": "HELIX whale anchor",
-  "gex-king-pin": "GEX king pin",
+  "gex-king-pin": "GEX king node",
   "magnet-mean": "Magnet mean",
 };
 
