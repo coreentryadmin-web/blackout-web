@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T13:02:28.154Z",
+  "updated_at": "2026-09-07T13:41:09.433Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -29,12 +29,12 @@
       "task_id": "BO-P1-0102",
       "owner": "cursor",
       "claimed_at": "2026-09-07T13:02:22.209Z",
-      "lease_until": "2026-09-07T14:32:22.209Z",
+      "lease_until": "2026-09-07T15:10:17.234Z",
       "phase": "VALIDATING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "f5d7d30e-fe2f-403a-b285-b7b77bbc9776",
       "title": null
     }
   },
@@ -70,6 +70,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-07T00:22:29.531Z",
       "safe_to_merge": true
+    },
+    "pr-4481": {
+      "pr": 4481,
+      "head_sha": "ce54cd063",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T13:41:01.294Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -84,11 +92,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "efce4c95aae2c598f2d917d212bfaf54edca7714",
-    "last_deploy_status": "success",
-    "last_deploy_at": "2026-09-07T11:21:07Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34110630445",
-    "last_deploy_sha": "49204ddd68b6066534fec863982396c840982e97"
+    "last_main_sha": "6ec512ca31bf32c17647ed80839aa12c18638905",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-07T13:35:15Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34128212311",
+    "last_deploy_sha": "ce54cd063f6641739d62fd3e757ac883c245161c"
   },
   "events": [
     {
@@ -1218,6 +1226,47 @@
       "agent": "cursor",
       "run_id": "7fd8997b-fca7-49b1-952f-bff6e8e476bb",
       "summary": "Main@efce4c95a docs SEO heartbeat. RTH lifecycle GREEN — 2026-09-07 is US market holiday; writer checks skipped. validate:deploy/api-auth/platform-integrity/seo GREEN. ops:collect 0. Open PRs: Dependabot majors #4476-#4480 RED — hold."
+    },
+    {
+      "at": "2026-09-07T13:02:41.597Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T13:40:17.233Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T13:40:18.931Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T13:41:01.295Z",
+      "type": "pr_review",
+      "pr": 4481,
+      "head_sha": "ce54cd063",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-07T13:41:01.294Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-07T13:41:09.431Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-07T13:41:09.433Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9854b8a8-0087-47d4-be39-157b2584f77e",
+      "summary": "Main@6ec512ca3 (docs SEO wake) atop #4481 swing REGIME pillar wiring (ce54cd063). validate:deploy GREEN. Post-merge review #4481 APPROVED — 16/16 live-plays tests. Labor Day holiday — no live desk validation. Dependabot #4476-#4480 RED hold."
     }
   ],
   "open_prs": [
