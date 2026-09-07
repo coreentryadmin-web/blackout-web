@@ -63,6 +63,14 @@ async function main() {
     return;
   }
 
+  const sessionYmd = todayEtYmd(now);
+  if (!force && !isTradingDayEt(sessionYmd)) {
+    console.log(
+      `${sessionYmd} is a US market holiday — skipping RTH-open checks (no equity session; use --force to override).\n`
+    );
+    return;
+  }
+
   if (!force && !inRthOpenWindow(now)) {
     console.log("Pre-open warm-up window — running deploy validation only (full RTH checks after 09:30 ET).\n");
   }
