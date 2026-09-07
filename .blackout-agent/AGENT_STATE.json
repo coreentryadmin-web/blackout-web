@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:26:22.921Z",
+  "updated_at": "2026-09-07T00:55:17.859Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-06T09:32:01.539Z",
-      "lease_until": "2026-09-07T01:55:58.346Z",
+      "lease_until": "2026-09-07T02:07:59.917Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c3959ec9-a232-49d4-9efc-2054c33d79b2"
+      "run_id": "7a6b5d3f-4d6e-43a9-83ce-4fd158752f78"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-06T00:11:17.236Z",
-      "lease_until": "2026-09-07T01:55:58.346Z",
+      "lease_until": "2026-09-07T02:07:59.917Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c3959ec9-a232-49d4-9efc-2054c33d79b2"
+      "run_id": "7a6b5d3f-4d6e-43a9-83ce-4fd158752f78"
     }
   },
   "reviews": {
@@ -71,11 +71,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c69a3e80201cd49510f61ed5f6d32c552bf5ae66",
+    "last_main_sha": "b2d656f1d11d6f9c154f8fd4a747205bbc075b47",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T00:22:37Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34069617212",
-    "last_deploy_sha": "c69a3e80201cd49510f61ed5f6d32c552bf5ae66"
+    "last_deploy_at": "2026-09-07T00:54:49Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34071299733",
+    "last_deploy_sha": "b2d656f1d11d6f9c154f8fd4a747205bbc075b47"
   },
   "events": [
     {
@@ -933,6 +933,19 @@
       "agent": "cursor",
       "run_id": "b7031ea3-d709-49c1-ab84-ae9fd9846fd9",
       "summary": "Deploy CI GREEN @c69a3e802 (#4424) — already live. Queue clean: 0 open PRs, #4426 closed. validate:deploy GREEN, ops:collect 0. Next: RTH lifecycle Mon 09:00 ET."
+    },
+    {
+      "at": "2026-09-07T00:55:17.858Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T00:55:17.859Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f38a15b2-09de-4ea2-94b8-8d554d956390",
+      "summary": "Main@b2d656f1d (#4427 NH gate + #4428 0DTE C3 unavailable). #4426 docs merged. Rebased #4428 post-#4427. Open PRs: 0."
     }
   ],
   "open_prs": [],
