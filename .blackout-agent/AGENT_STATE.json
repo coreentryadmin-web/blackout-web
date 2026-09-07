@@ -1,18 +1,31 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:18:09.688Z",
+  "updated_at": "2026-09-07T01:30:58.953Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-06T15:42:29.478Z",
-      "lease_until": "2026-09-06T17:12:29.478Z",
+      "claimed_at": "2026-09-07T01:16:36.535Z",
+      "lease_until": "2026-09-07T02:47:37.399Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "33634d09-41bd-4c48-87f4-78a8c082ea5a",
+      "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-07T01:30:58.952Z",
+      "lease_until": "2026-09-07T03:00:58.952Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -47,16 +60,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-07T01:30:58.953Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "7aff243d798540c7da4274886a1427cee38a91b1",
+    "last_main_sha": "d73fe9bd2ab754aec288f2a85baae8f268d78e35",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-06T16:34:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34045863456",
-    "last_deploy_sha": "13d1155d5046f6a12f438874cc4d6112b4497cef"
+    "last_deploy_at": "2026-09-07T01:28:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34073100593",
+    "last_deploy_sha": "d73fe9bd2ab754aec288f2a85baae8f268d78e35"
   },
   "events": [
     {
@@ -842,6 +856,93 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:16:29.170Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:16:32.504Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:16:33.583Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:16:36.536Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T01:17:31.225Z",
+      "type": "pr_webhook",
+      "pr": 4438,
+      "event": "sweep",
+      "head": "95042db336ba58260fb09554a6a2ce51c0aa2280",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T01:17:33.353Z",
+      "type": "pr_webhook",
+      "pr": 4437,
+      "event": "sweep",
+      "head": "d7573a7add0ec7882342c2e33e6028b54388ee1d",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T01:17:37.399Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:17:38.478Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:17:39.792Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-07T01:30:52.113Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:30:52.114Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "76c8147d-7baa-4fe4-8943-ea550d70a171",
+      "summary": "Work loop: #4437 Largo Vector C3 merged to main. #4439 Vector king-node labels + daily chart honest readout — verify GREEN, 58/58 tests pass locally, awaiting Claude peer review (Cursor cannot self-approve). ops:collect 0, validate:deploy GREEN, RTH lifecycle GREEN (off-hours). ECR deploy run 34072016510 still in_progress."
+    },
+    {
+      "at": "2026-09-07T01:30:56.084Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T01:30:58.953Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     }
   ],
   "open_prs": [],
@@ -874,6 +975,22 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4438": {
+      "last_event": "sweep",
+      "last_head": "95042db336ba58260fb09554a6a2ce51c0aa2280",
+      "last_feedback_at": "2026-09-07T01:17:31.225Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4437": {
+      "last_event": "sweep",
+      "last_head": "d7573a7add0ec7882342c2e33e6028b54388ee1d",
+      "last_feedback_at": "2026-09-07T01:17:33.353Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
