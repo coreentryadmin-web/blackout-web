@@ -18,6 +18,9 @@ import {
   liveTrailAnchorSec,
   pickReplayTrailSource,
   mergeModeledUnderlay,
+  mergePreferDenserUnderlay,
+  isConstrainedThinRail,
+  wallNodesCount,
   mergeWallHistory,
   narrowedHorizonTrail,
   pickActiveStrikes,
@@ -389,6 +392,57 @@ test("mergeModeledUnderlay: result is sorted by time regardless of input orderin
   ];
   const merged = mergeModeledUnderlay(observed, modeled);
   assert.deepEqual(merged.map((s) => s.time), [100, 160, 220]);
+});
+
+test("mergePreferDenserUnderlay: dense modeled wins over thin observed at the same bucket", () => {
+  const thin = { time: 100, walls: walls([6800], [6700]) };
+  const dense = {
+    time: 100,
+    walls: {
+      callWalls: Array.from({ length: 12 }, (_, i) => ({ strike: 6800 + i, pct: 10 - i })),
+      putWalls: Array.from({ length: 12 }, (_, i) => ({ strike: 6700 - i, pct: 10 - i })),
+    },
+  };
+  assert.equal(wallNodesCount(thin), 2);
+  assert.ok(wallNodesCount(dense) > wallNodesCount(thin));
+  const merged = mergePreferDenserUnderlay([thin], [dense]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]!.walls.callWalls.length, 12, "modeled dense sample must win");
+  assert.equal(merged[0]!.modeled, true);
+});
+
+test("mergePreferDenserUnderlay: observed wins when it is denser than modeled", () => {
+  const denseObs = {
+    time: 100,
+    walls: {
+      callWalls: Array.from({ length: 15 }, (_, i) => ({ strike: 6800 + i, pct: 8 })),
+      putWalls: [],
+    },
+  };
+  const sparseModel = { time: 100, walls: walls([6810], [6700]) };
+  const merged = mergePreferDenserUnderlay([denseObs], [sparseModel]);
+  assert.equal(merged[0]!.walls.callWalls.length, 15);
+  assert.equal(merged[0]!.modeled, false);
+});
+
+test("isConstrainedThinRail: flags spot-constrained era samples", () => {
+  const thinObserved = Array.from({ length: 30 }, (_, i) => ({
+    time: i * 5,
+    walls: {
+      callWalls: Array.from({ length: 6 }, (_, j) => ({ strike: 6800 + j, pct: 5 })),
+      putWalls: Array.from({ length: 6 }, (_, j) => ({ strike: 6700 - j, pct: 5 })),
+    },
+  }));
+  assert.ok(isConstrainedThinRail(thinObserved), "6 nodes/side is below the Sep-3 desk median");
+
+  const denseObserved = thinObserved.map((s) => ({
+    ...s,
+    walls: {
+      callWalls: Array.from({ length: 16 }, (_, j) => ({ strike: 6800 + j, pct: 5 })),
+      putWalls: Array.from({ length: 16 }, (_, j) => ({ strike: 6700 - j, pct: 5 })),
+    },
+  }));
+  assert.equal(isConstrainedThinRail(denseObserved), false);
 });
 
 test("mergeModeledUnderlay: over the cap it thins the old end, keeping full span", () => {

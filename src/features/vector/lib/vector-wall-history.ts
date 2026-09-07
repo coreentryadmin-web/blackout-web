@@ -231,6 +231,45 @@ export const RAIL_GAP_FILL_MIN_SEC = 60;
 export const RAIL_RECONSTRUCT_MIN_UNCOVERED_SEC = 5 * 60;
 
 /**
+ * Median nodes per side below which a persisted rail is treated as the Sep-3-evening
+ * spot-constrained era (#3495–#4032): fewer ranked strikes → sparse yellow/magenta ribbons.
+ */
+export const CONSTRAINED_THIN_RAIL_MEDIAN_NODES_PER_SIDE = 10;
+
+/** Minimum observed samples before judging rail density — avoids false positives on cold starts. */
+export const CONSTRAINED_THIN_RAIL_MIN_SAMPLES = 24;
+
+function median(nums: number[]): number {
+  if (!nums.length) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/** Total GEX wall nodes in a sample (both sides). */
+export function wallNodesCount(sample: WallHistorySample): number {
+  return (sample.walls?.callWalls?.length ?? 0) + (sample.walls?.putWalls?.length ?? 0);
+}
+
+/**
+ * True when a persisted rail looks like it was recorded with spot side-filtering — both sides'
+ * median node counts sit well below the recorder cap. Used at enrich time to prefer the honest
+ * unconstrained reconstruction over thin observed rows (Sep-4 sessions recorded before #4032).
+ */
+export function isConstrainedThinRail(
+  history: WallHistorySample[],
+  opts: { minSamples?: number; medianCap?: number } = {}
+): boolean {
+  const minSamples = opts.minSamples ?? CONSTRAINED_THIN_RAIL_MIN_SAMPLES;
+  const medianCap = opts.medianCap ?? CONSTRAINED_THIN_RAIL_MEDIAN_NODES_PER_SIDE;
+  const observed = history.filter((s) => !s.modeled);
+  if (observed.length < minSamples) return false;
+  const medCall = median(observed.map((s) => s.walls?.callWalls?.length ?? 0));
+  const medPut = median(observed.map((s) => s.walls?.putWalls?.length ?? 0));
+  return medCall < medianCap && medPut < medianCap;
+}
+
+/**
  * Append a wall reading into the session's history, keyed by the trail bucket time (5s for
  * oracle tickers, 15s for others — see vector-wall-sample.ts). Replaces in place when the
  * bucket is unchanged so magnitude updates within the same window don't duplicate beads.
@@ -960,6 +999,33 @@ export function mergeModeledUnderlay(
   for (const sample of modeled ?? []) byTime.set(sample.time, { ...sample, modeled: true });
   // Observed inserted second → overwrites the modeled entry sharing its bucket time.
   for (const sample of observed ?? []) byTime.set(sample.time, { ...sample, modeled: false });
+  const merged = [...byTime.values()].sort((a, b) => a.time - b.time);
+  return compactHistoryToCap(merged);
+}
+
+/**
+ * Like {@link mergeModeledUnderlay}, but at each bucket the DENSER sample wins — used to heal
+ * spot-constrained recorder rows with the unconstrained reconstruction without discarding observed
+ * buckets that are genuinely richer than the model.
+ */
+export function mergePreferDenserUnderlay(
+  observed: WallHistorySample[],
+  modeled: WallHistorySample[]
+): WallHistorySample[] {
+  const byTime = new Map<number, WallHistorySample>();
+  for (const sample of modeled ?? []) {
+    byTime.set(sample.time, { ...sample, modeled: true });
+  }
+  for (const sample of observed ?? []) {
+    const obs = { ...sample, modeled: false };
+    const existing = byTime.get(sample.time);
+    if (!existing) {
+      byTime.set(sample.time, obs);
+      continue;
+    }
+    const pick = wallNodesCount(obs) >= wallNodesCount(existing) ? obs : existing;
+    byTime.set(sample.time, pick);
+  }
   const merged = [...byTime.values()].sort((a, b) => a.time - b.time);
   return compactHistoryToCap(merged);
 }

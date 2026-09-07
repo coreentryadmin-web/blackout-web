@@ -7,6 +7,7 @@ import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
 import { lastSessionBars } from "@/features/vector/lib/vector-key-levels";
 import {
   getVectorDarkPoolLevels,
+  getVectorBeadRailGexWalls,
   getVectorGammaFlip,
   getVectorGexWalls,
   getVectorVexFlip,
@@ -62,10 +63,11 @@ export async function loadVectorSeedProps(
 ): Promise<VectorSeedProps> {
   ensureDataSockets();
   await primeVectorWallScope(ticker);
-  const [{ bars, sessionYmd }, walls, vexWalls, gammaFlip, vexFlip, darkPoolLevels, initialWallTrailSec] =
+  const [{ bars, sessionYmd }, walls, beadRailWalls, vexWalls, gammaFlip, vexFlip, darkPoolLevels, initialWallTrailSec] =
     await Promise.all([
       fetchVectorSeedBars(ticker),
       Promise.resolve(getVectorGexWalls(ticker)),
+      Promise.resolve(getVectorBeadRailGexWalls(ticker)),
       Promise.resolve(getVectorVexWalls(ticker)),
       getVectorGammaFlip(ticker),
       Promise.resolve(getVectorVexFlip(ticker)),
@@ -104,7 +106,7 @@ export async function loadVectorSeedProps(
   const initialWallHistory = seedWallHistoryForDisplay(
     sessionScopedHistory,
     bars.map((b) => b.time),
-    walls,
+    beadRailWalls ?? walls,
     gammaFlip,
     vexWalls,
     vexFlip
