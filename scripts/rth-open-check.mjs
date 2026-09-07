@@ -208,12 +208,12 @@ async function main() {
             if (uw && !uw.ok && afterOpen930) {
               console.log(`  ⚠ unusual_whales: ${uw.detail}`);
             }
-          } else if (res.status === 401) {
+          } else if (!socketProbeOk && res.status === 401) {
             console.log(
               "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
             );
             socketProbeOk = true;
-          } else {
+          } else if (!socketProbeOk) {
             socketLastDetail = `probe HTTP ${res.status}`;
             if (attempt < 2) {
               console.log(`  ⚠ options-socket (attempt ${attempt + 1}/3): HTTP ${res.status} — retrying…`);
