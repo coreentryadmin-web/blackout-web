@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T10:37:09.916Z",
+  "updated_at": "2026-09-07T14:50:29.938Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T14:38:56.290Z",
+      "lease_until": "2026-09-07T16:08:56.290Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -65,11 +65,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "cfda1017cf14c32702cdd244333b828a638376e4",
+    "last_main_sha": "f3758e458e5ab012c8015203e3028029c377029d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T14:43:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34134508012",
+    "last_deploy_sha": "f3758e458e5ab012c8015203e3028029c377029d"
   },
   "events": [
     {
@@ -963,9 +963,93 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T14:50:29.937Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-07T14:50:29.938Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "66d42d20-7b1f-4c83-94ad-225205d144d7",
+      "summary": "workflow_run wake: state recovered. #4483 merged (flow-ingest holiday gate). Platform GREEN (validate:deploy, validate:platform-integrity 14/14, validate:api-auth, ops:collect 0). Independently verified #4484 (6/6 tests) and #4485 (1/1 tests) — both Cursor PRs, await Claude peer review before merge. Dependabot major bumps red — held. Labor Day off-hours — RTH checks skipped."
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4485,
+      "title": "fix(cron): gate legacy-live-sync on isEtCashRth for holidays",
+      "branch": "fix/legacy-live-sync-holiday-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T14:46:44Z"
+    },
+    {
+      "number": 4484,
+      "title": "fix(cron): gate swing/banger/helix crons on isEtCashRth for holidays",
+      "branch": "fix/cron-holiday-gates-batch2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T14:47:12Z"
+    },
+    {
+      "number": 4480,
+      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:24:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:11:04Z"
+    },
+    {
+      "number": 4476,
+      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
+      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-07T10:10:51Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
