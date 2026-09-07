@@ -1,3 +1,5 @@
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
+
 /**
  * RAIL LEVEL LADDER — turn four unordered price fields into a readable structural map.
  *
@@ -112,15 +114,11 @@ export function movedLevels(
 /**
  * Age of a rail read, in seconds, from its `as_of` stamp.
  *
- * Returns null for a missing or unparseable stamp rather than 0 — "we don't know how old this is"
- * must not render as "this is current", which is the single most dangerous rounding on a desk.
- * Negative skew (server clock slightly ahead) clamps to 0; it is not evidence of a future read.
+ * Returns null for a missing, unparseable, or clock-skewed-future stamp rather than 0 — "we don't
+ * know how old this is" must not render as "this is current" (Largo C2 age-0 trap).
  */
 export function readAgeSeconds(asOf: string | null | undefined, now: number): number | null {
-  if (!asOf) return null;
-  const t = Date.parse(asOf);
-  if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.round((now - t) / 1000));
+  return ageSecFromIso(asOf, now);
 }
 
 /** How old a rail read may be before it is called out. One refresh interval plus slack. */
