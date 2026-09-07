@@ -310,6 +310,26 @@ test("crossDeskCoaching: prior-session Night Hawk must not invent cross-desk fri
   assert.equal(line, null, "yesterday's Night Hawk short must not read as live cross-desk friction");
 });
 
+test("crossDeskCoaching: prior-session Vector must not invent cross-desk friction (Largo C2)", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        vector_full_state: {
+          spot: 118,
+          observed_session_date: "2026-09-05",
+          dataAgeMs: 30_000,
+          freshness: "recent",
+          play: { bias: "short", headline: "Bearish desk read" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "yesterday's Vector short must not read as live cross-desk friction");
+});
+
 test("crossDeskCoaching: desk alignment omits undefined NH conviction and junk 0DTE score", () => {
   const line = crossDeskCoaching(
     ctx({
@@ -670,4 +690,25 @@ test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => 
     },
   } as import("@/lib/bie/vector-full-state").VectorFullState;
   assert.equal(technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" })), null);
+});
+
+test("technicalsCoaching: prior-session Vector returns null even when age is fresh (Largo C2)", () => {
+  const vec = {
+    spot: 95,
+    observed_session_date: "2026-09-05",
+    dataAgeMs: 30_000,
+    freshness: "recent",
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  assert.equal(
+    technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" }), "2026-09-06"),
+    null,
+  );
 });

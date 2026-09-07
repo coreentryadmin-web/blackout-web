@@ -628,6 +628,27 @@ test("counterThesisLine: prior-session Night Hawk must not steelman desk frictio
   assert.equal(line, null, "yesterday's Night Hawk short must not appear in counter-thesis");
 });
 
+test("counterThesisLine: prior-session Vector must not steelman desk friction (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      sessionDate: "2026-09-06",
+      ecosystem: {
+        ticker: "NRG",
+        vector_full_state: {
+          spot: 118,
+          observed_session_date: "2026-09-05",
+          dataAgeMs: 30_000,
+          freshness: "recent",
+          play: { bias: "short", headline: "Bearish desk read" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    118,
+  );
+  assert.equal(line, null, "yesterday's Vector short must not appear in counter-thesis");
+});
+
 test("counterThesisLine: stale GEX-only posture must not steelman dealer gamma", () => {
   const line = counterThesisLine(
     ctx({
