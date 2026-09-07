@@ -1,29 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T04:02:10.079Z",
+  "updated_at": "2026-09-07T05:50:54.359Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:01.299Z",
-      "lease_until": "2026-09-07T05:26:01.299Z",
+      "claimed_at": "2026-09-07T05:45:08.199Z",
+      "lease_until": "2026-09-07T07:20:52.622Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "89635763-103c-43a6-b359-0e83e8eea9fa",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
+      "claimed_at": "2026-09-07T05:46:20.346Z",
+      "lease_until": "2026-09-07T07:20:52.622Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "89635763-103c-43a6-b359-0e83e8eea9fa",
       "title": null
     }
   },
@@ -60,16 +61,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T05:46:20.347Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "178add55514d9848a81eab346baab7b722bd859b",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_main_sha": "48d0bbbc81661f91db1efd377a48ddb099939369",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-07T05:49:52Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34084033101",
+    "last_deploy_sha": "d8a0c42622785118c36b6663f67833b52b23f513"
   },
   "events": [
     {
@@ -891,18 +892,177 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T05:44:57.463Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:45:01.657Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:45:02.751Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:45:03.984Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:45:08.200Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T05:45:10.887Z",
+      "type": "pr_webhook",
+      "pr": 4466,
+      "event": "sweep",
+      "head": "3bf309c9b9f61566704417c9ead6dd3db4f9d180",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T05:45:13.739Z",
+      "type": "pr_webhook",
+      "pr": 4465,
+      "event": "sweep",
+      "head": "19b6e0718862c390d9cfade6145ca11d1c27fd3a",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T05:45:16.014Z",
+      "type": "pr_webhook",
+      "pr": 4464,
+      "event": "sweep",
+      "head": "97b527c9d95ecd2ff0243cdcd8a5b8422bbf525b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T05:45:22.951Z",
+      "type": "pr_webhook",
+      "pr": 4466,
+      "event": "sweep",
+      "head": "3bf309c9b9f61566704417c9ead6dd3db4f9d180",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T05:45:25.108Z",
+      "type": "pr_webhook",
+      "pr": 4465,
+      "event": "sweep",
+      "head": "19b6e0718862c390d9cfade6145ca11d1c27fd3a",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-07T05:45:27.301Z",
+      "type": "pr_webhook",
+      "pr": 4464,
+      "event": "sweep",
+      "head": "97b527c9d95ecd2ff0243cdcd8a5b8422bbf525b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-07T05:46:14.629Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:46:20.347Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T05:50:42.642Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:50:42.643Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a4cb2fba-3fde-471b-ab9d-fdcc670d36e5",
+      "summary": "PR event wake: peer-reviewed #4464 (occ-symbol tests) — ✅ GO AHEAD MERGE pending undraft. ECR deploy d8a0c426 GREEN. Platform integrity 14/14, validate:deploy GREEN, ops:collect 0. #4465 (cursor bead-rail v2) tests 135/135 local — awaiting Claude review. #4466 docs-only state — skip merge. Main 48d0bbbc is state-only (no deploy needed)."
+    },
+    {
+      "at": "2026-09-07T05:50:47.685Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:50:52.622Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:50:53.443Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-07T05:50:54.359Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
     }
   ],
   "open_prs": [
     {
-      "number": 4457,
-      "title": "fix(largo): fail-closed staleness on future-skewed scenario provenance",
-      "branch": "fix/scenario-read-future-skew-freshness",
+      "number": 4466,
+      "title": "chore(state): cursor handoff after 48d0bbbc merge wake",
+      "branch": "chore/cursor-handoff-48d0bbbc",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "human",
       "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-07T04:02:04Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:41:42Z"
+    },
+    {
+      "number": 4465,
+      "title": "fix(vector): align bead rail x-domain with session viewport (Sep-3 restore v2)",
+      "branch": "cursor/bead-rail-sep3-restore-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-07T05:44:22Z"
+    },
+    {
+      "number": 4464,
+      "title": "test(occ-symbol): add missing direct unit coverage for buildOcc",
+      "branch": "test/occ-symbol-coverage",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-07T05:45:55Z"
     }
   ],
   "pr_activity": {
@@ -934,6 +1094,30 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4466": {
+      "last_event": "sweep",
+      "last_head": "3bf309c9b9f61566704417c9ead6dd3db4f9d180",
+      "last_feedback_at": "2026-09-07T05:45:22.951Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4465": {
+      "last_event": "sweep",
+      "last_head": "19b6e0718862c390d9cfade6145ca11d1c27fd3a",
+      "last_feedback_at": "2026-09-07T05:45:25.108Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4464": {
+      "last_event": "sweep",
+      "last_head": "97b527c9d95ecd2ff0243cdcd8a5b8422bbf525b",
+      "last_feedback_at": "2026-09-07T05:45:27.301Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
