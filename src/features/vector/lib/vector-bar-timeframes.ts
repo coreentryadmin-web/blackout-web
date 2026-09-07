@@ -64,14 +64,15 @@ export function wallCountForTimeframe(tf: VectorTimeframeMinutes): number {
   // ceiling now just hides structure a member could otherwise read at a glance.
   //
   // Manual NODES is unaffected and still overrides in both directions, up to the recorder's cap.
-  // Restored 2026-09-07: Sep-3 desk screenshots show the pre-#2341 row ladder — denser horizontal
-  // bead ribbons at SPX 3m. #2341 walked counts down to fix thickness by shrinking rows; that traded
-  // away the Skylit-style bead structure members asked to keep. Data density is also healed at
-  // enrich time for sessions recorded during the spot-constrained era (#3495–#4032).
-  if (tf <= 1) count = 10;
-  else if (tf <= 3) count = Math.max(VECTOR_0DTE_WALL_COUNT, 14);
-  else if (tf <= 5) count = 16;
-  else if (tf <= 15) count = 18;
+  // Restored 2026-09-07 (git archaeology vs Sep-3 11am reference, commit b2931b64b): the desk that
+  // day ran the #2341 PARTIAL walkback ladder (8/11/13/16), NOT the pre-#2341 10/14/16/18 ladder.
+  // #4460 mistakenly raised counts to 10/14/16/18 thinking that was Sep-3 — it compressed row gap
+  // (~17px vs ~21px on SPX 3m) and turned thick merged ribbons into dotted circles. Fewer rows +
+  // the Sep-3 fill/halo constants below is what matches the reference screenshots.
+  if (tf <= 1) count = 8;
+  else if (tf <= 3) count = Math.max(VECTOR_0DTE_WALL_COUNT, 11);
+  else if (tf <= 5) count = 13;
+  else if (tf <= 15) count = 16;
   else count = 20; // 30m+ — widest views saturate at the recorder cap
   return Math.max(1, Math.min(VECTOR_WALL_NODES_PER_SIDE, count));
 }

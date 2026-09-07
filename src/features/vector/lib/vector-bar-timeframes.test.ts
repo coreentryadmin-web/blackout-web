@@ -116,12 +116,12 @@ test("aggregateVectorBars: custom 10m interval buckets", () => {
 // denominator a weak level now recedes to a faint trace by itself, so the row count no longer has
 // to do the decluttering and a low ceiling only hides readable structure.
 test("wallCountForTimeframe: preset timeframes map to the specified shown-counts", () => {
-  // Restored 2026-09-07 to the pre-#2341 Sep-3 desk ladder (10/14/16/18) — denser horizontal
-  // bead ribbons. Data density for constrained-era sessions is healed at enrich time.
-  assert.equal(wallCountForTimeframe(1), 10, "1m shows 10 near-spot walls");
-  assert.equal(wallCountForTimeframe(3), 14, "3m shows 14");
-  assert.equal(wallCountForTimeframe(5), 16, "5m shows 16");
-  assert.equal(wallCountForTimeframe(15), 18, "15m shows 18");
+  // Sep-3 11am reference (commit b2931b64b): #2341 partial walkback ladder — fewer rows = wider
+  // row gap = thick merged ribbons on SPX 3m (~21px gap, not ~17px at 14 rows).
+  assert.equal(wallCountForTimeframe(1), 8, "1m shows 8 near-spot walls");
+  assert.equal(wallCountForTimeframe(3), 11, "3m shows 11");
+  assert.equal(wallCountForTimeframe(5), 13, "5m shows 13");
+  assert.equal(wallCountForTimeframe(15), 16, "15m shows 16");
   assert.equal(wallCountForTimeframe(30), 20, "30m saturates at the recorder cap");
   assert.equal(wallCountForTimeframe(60), 20, "60m stays at the cap");
   assert.equal(wallCountForTimeframe(120), 20, "2h stays at the cap");

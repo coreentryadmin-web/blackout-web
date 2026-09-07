@@ -717,7 +717,7 @@ test("rowSwellMul: bounded, monotonic, and floored", () => {
 // Member report during live RTH, with the strongest SPX rows circled: "dont you think it paints
 // too hard like too thick for the strong nodes".
 //
-// The core bead obeys BEAD_ROW_FILL (0.55 of the row gap). The strength halo is added ON TOP of the
+// The core bead obeys BEAD_ROW_FILL (0.34 of the row gap at Sep-3 reference). The strength halo is added ON TOP of the
 // core and was capped only against BAR SPACING — a horizontal measure — so vertically it was
 // unbounded. Measured on prod: band thickness / nearest row gap ran a median p90 of 0.64 and
 // exceeded 1.0 on 15 of 21 frames, worst 1.58 on QQQ. Above 1.0 the bead is thicker than the space
@@ -814,4 +814,12 @@ test("wallBeadColorShade: malformed input passes through rather than painting Na
     assert.equal(wallBeadColorShade(bad, 0.4), bad);
   }
   assert.equal(wallBeadColorShade("#ffd60a", Number.NaN), wallBeadColorShade("#ffd60a", 0));
+});
+
+// ── SEP-3 RENDER FIDELITY PIN (2026-09-07) ─────────────────────────────────────────────────────
+// Git archaeology at b2931b64b (Sep-3 11am ET desk reference). #4460 mistakenly raised fill/halo
+// and row counts thinking that was Sep-3; it compressed row gap and turned ribbons into dots.
+test("Sep-3 reference render constants stay pinned", () => {
+  assert.equal(BEAD_ROW_FILL_FOR_TEST, 0.34, "core bead fill matches Sep-3 reference");
+  assert.equal(ROW_HALO_ROW_GAP_FILL, 0.45, "combined halo budget matches Sep-3 reference");
 });
