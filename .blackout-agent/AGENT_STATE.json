@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T05:19:51.322Z",
+  "updated_at": "2026-09-07T06:46:21.526Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -17,9 +17,9 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-07T03:56:10.581Z",
-      "lease_until": "2026-09-07T05:26:10.581Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-07T06:25:39.352Z",
+      "lease_until": "2026-09-07T07:55:39.352Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -60,16 +60,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-07T03:56:10.581Z",
+      "last_seen": "2026-09-07T06:25:39.352Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "d8a0c42622785118c36b6663f67833b52b23f513",
+    "last_main_sha": "ba2405d2889a6695da7e1c214e1c876fdb7522ec",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T03:55:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34081274702",
-    "last_deploy_sha": "178add55514d9848a81eab346baab7b722bd859b"
+    "last_deploy_at": "2026-09-07T06:19:21Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34090304032",
+    "last_deploy_sha": "4d64adf04101db848bb8095a3d2bf25e8cc00a53"
   },
   "events": [
     {
@@ -906,6 +906,55 @@
     },
     {
       "at": "2026-09-07T05:19:51.322Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T06:25:25.756Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T06:25:30.513Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T06:25:31.448Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T06:25:35.759Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T06:25:39.352Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-07T06:46:17.326Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-07T06:46:17.326Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e5b125bc-7f05-4d41-a650-b1d29b16bc00",
+      "summary": "Merge wake @ ba2405d28: CI GREEN, deploy-smoke GREEN, platform-integrity 14/14, validate:deploy GREEN, ops:collect 0, pr-sweep empty (no open PRs). ECR queue: 8122d675 in_progress, 4d64adf pending (#4465 vector bead-rail v2). Bug-pattern scan clean. Off-hours — RTH skipped."
+    },
+    {
+      "at": "2026-09-07T06:46:21.526Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
