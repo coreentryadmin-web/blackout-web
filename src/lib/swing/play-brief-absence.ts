@@ -9,6 +9,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
@@ -53,7 +54,10 @@ export function gexMatrixStale(
   readMs: number = Date.now(),
 ): boolean {
   const ageMs = gexMatrixAgeMs(gex, readMs);
-  return ageMs != null && ageMs > GEX_MATRIX_STALE_MS;
+  if (ageMs == null) return false;
+  // Fail-closed on clock-skewed future stamps — same guard as gexStaleFromAge / FreshnessChip.
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
+  return ageMs > GEX_MATRIX_STALE_MS;
 }
 
 /** ET session the Vector snapshot was measured in — freshness block wins over persisted sessionDate. */
@@ -72,11 +76,20 @@ export function vectorAgeStale(
 ): boolean {
   if (!vec) return false;
   const ageMs = vec.dataAgeMs;
-  if (typeof ageMs === "number" && Number.isFinite(ageMs) && ageMs > VECTOR_STALE_MS) return true;
-  if (vec.freshness === "stale") return true;
+  // withReadContext() stamps POSITIVE_INFINITY on future skew — must not read as fresh.
+  if (typeof ageMs === "number" && !Number.isFinite(ageMs)) return true;
+  if (typeof ageMs === "number" && Number.isFinite(ageMs)) {
+    if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
+    if (ageMs > VECTOR_STALE_MS) return true;
+  }
+  if (vec.freshness === "stale" || vec.freshness === "unknown") return true;
   if (vec.asOf) {
     const observedMs = Date.parse(vec.asOf);
-    if (Number.isFinite(observedMs) && readMs - observedMs > VECTOR_STALE_MS) return true;
+    if (Number.isFinite(observedMs)) {
+      const rawAgeMs = readMs - observedMs;
+      if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
+      if (rawAgeMs > VECTOR_STALE_MS) return true;
+    }
   }
   return false;
 }

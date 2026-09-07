@@ -2,14 +2,60 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   collectBriefUnavailableSources,
+  gexMatrixStale,
   resolveGammaPosture,
   trustedHelixFlow,
+  vectorAgeStale,
   vectorLiveForSession,
   vectorSnapshotStale,
   nighthawkLiveForSession,
   zerodteLiveForSession,
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+
+test("gexMatrixStale: clock-skewed future asof is stale (must not read as fresh)", () => {
+  const readMs = Date.parse("2026-09-06T15:00:00.000Z");
+  const futureAsof = new Date(readMs + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 30_000).toISOString();
+  const gex = { spot: 100, asof: futureAsof, gamma_posture: "long" };
+  assert.equal(gexMatrixStale(gex, readMs), true);
+});
+
+test("gexMatrixStale: within future tolerance is not treated as skew-stale", () => {
+  const readMs = Date.parse("2026-09-06T15:00:00.000Z");
+  const nearFutureAsof = new Date(readMs + WS_TIMESTAMP_FUTURE_TOLERANCE_MS - 1_000).toISOString();
+  const gex = { spot: 100, asof: nearFutureAsof, gamma_posture: "long" };
+  assert.equal(gexMatrixStale(gex, readMs), false);
+});
+
+test("vectorAgeStale: POSITIVE_INFINITY dataAgeMs from clock skew is stale", () => {
+  const vec = {
+    spot: 100,
+    dataAgeMs: Number.POSITIVE_INFINITY,
+    freshness: "unknown",
+  } as SwingPlayBriefContext["vector"];
+  assert.equal(vectorAgeStale(vec), true);
+});
+
+test("vectorAgeStale: freshness unknown is stale for gating", () => {
+  const vec = {
+    spot: 100,
+    dataAgeMs: 30_000,
+    freshness: "unknown",
+  } as SwingPlayBriefContext["vector"];
+  assert.equal(vectorAgeStale(vec), true);
+});
+
+test("vectorAgeStale: future asOf beyond tolerance is stale", () => {
+  const readMs = Date.parse("2026-09-06T15:00:00.000Z");
+  const futureAsOf = new Date(readMs + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 60_000).toISOString();
+  const vec = {
+    spot: 100,
+    asOf: futureAsOf,
+    freshness: "recent",
+  } as SwingPlayBriefContext["vector"];
+  assert.equal(vectorAgeStale(vec, readMs), true);
+});
 
 test("resolveGammaPosture: stale Vector regime falls back to live GEX posture", () => {
   const ctx = {
