@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isSocketHealthSkipped,
+  isCronRunHealthyStatus,
   socketProbeAttemptVerdict,
   socketProbeFinalFailure,
   probeOptionsSocketWithRetries,
@@ -90,4 +91,12 @@ test("probeOptionsSocketWithRetries: exhausted retries fail during RTH", async (
   });
   assert.equal(result.ok, false);
   assert.match(result.failure ?? "", /still warming/);
+});
+
+test("isCronRunHealthyStatus: accepts ok and skipped, rejects everything else", () => {
+  assert.equal(isCronRunHealthyStatus("ok"), true);
+  assert.equal(isCronRunHealthyStatus("skipped"), true);
+  assert.equal(isCronRunHealthyStatus("error"), false);
+  assert.equal(isCronRunHealthyStatus(undefined), false);
+  assert.equal(isCronRunHealthyStatus(null), false);
 });

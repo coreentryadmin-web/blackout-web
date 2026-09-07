@@ -17,6 +17,7 @@
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
+import { isCronRunHealthyStatus } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const force = process.argv.includes("--force");
@@ -106,8 +107,11 @@ async function postgresRthChecks() {
       `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
     );
     const latest = dc[0];
-    if (latest?.status === "ok") ok("data-correctness latest run ok");
-    else fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
+    if (isCronRunHealthyStatus(latest?.status)) {
+      ok(`data-correctness latest run ${latest.status}`);
+    } else {
+      fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
+    }
 
     await c.end();
   } catch (e) {
