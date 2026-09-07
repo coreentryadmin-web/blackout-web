@@ -14,11 +14,7 @@ import { execSync, spawnSync } from "node:child_process";
 import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
-import {
-  isSocketHealthSkipped,
-  socketProbeAttemptVerdict,
-  socketProbeFinalFailure,
-} from "./lib/rth-socket-probe.mjs";
+import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
@@ -81,14 +77,17 @@ async function main() {
     process.exit(1);
   }
 
+  const ymd = todayEtYmd(now);
+  if (!force && !isTradingDayEt(ymd)) {
+    console.log(
+      `\n${ymd} is a US equity market holiday — skipping RTH session checks (no open to validate).`
+    );
+    console.log("\nGREEN — RTH-open validation passed (market holiday).\n");
+    return;
+  }
+
   if (force || inRthOpenWindow(now)) {
-    const tradingDay = isTradingDayEt(todayEtYmd(now));
     console.log("\n2. RTH session checks");
-    if (!tradingDay) {
-      console.log(
-        `  ⚠ ${todayEtYmd(now)} is not a US equity trading session (market holiday) — skipping writer/regime freshness checks`
-      );
-    }
     const dbUrl = resolveAuditDbUrl();
 
     const failures = [];
@@ -102,24 +101,22 @@ async function main() {
         const c = createAuditClient(dbUrl);
         await c.connect();
 
-        if (tradingDay) {
-          const eval15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM cron_job_runs
-               WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-            )
-          ).rows[0].n;
-          if (eval15 > 0) ok(`spx-evaluate ran in last 20m (${eval15} ok run(s))`);
-          else fail("spx-evaluate: no ok run in last 20m during RTH");
+        const eval15 = (
+          await c.query(
+            `SELECT COUNT(*)::int AS n FROM cron_job_runs
+             WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+          )
+        ).rows[0].n;
+        if (eval15 > 0) ok(`spx-evaluate ran in last 20m (${eval15} ok run(s))`);
+        else fail("spx-evaluate: no ok run in last 20m during RTH");
 
-          const regime15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
-            )
-          ).rows[0].n;
-          if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
-          else fail("market_regime: no writes in last 20m during RTH");
-        }
+        const regime15 = (
+          await c.query(
+            `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
+          )
+        ).rows[0].n;
+        if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
+        else fail("market_regime: no writes in last 20m during RTH");
 
         const dc = await c.query(
           `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
@@ -140,16 +137,14 @@ async function main() {
           fail(`provider-health-reconcile latest: ${phRow?.status ?? "never"}`);
         }
 
-        if (tradingDay) {
-          const grid15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM cron_job_runs
-               WHERE job_key = 'zerodte-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-            )
-          ).rows[0].n;
-          if (grid15 > 0) ok(`zerodte-warm ran in last 20m (${grid15} ok run(s))`);
-          else fail("zerodte-warm: no ok run in last 20m during RTH");
-        }
+        const grid15 = (
+          await c.query(
+            `SELECT COUNT(*)::int AS n FROM cron_job_runs
+             WHERE job_key = 'zerodte-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+          )
+        ).rows[0].n;
+        if (grid15 > 0) ok(`zerodte-warm ran in last 20m (${grid15} ok run(s))`);
+        else fail("zerodte-warm: no ok run in last 20m during RTH");
 
         await c.end();
       } catch (e) {
@@ -169,69 +164,32 @@ async function main() {
       const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
       const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 180_000);
       const afterOpen930 = et.mins >= 9 * 60 + 30;
-      let socketProbeOk = false;
-      let socketLastDetail = null;
-      for (let attempt = 0; attempt < 3 && !socketProbeOk; attempt++) {
-        try {
+      const socketResult = await probeOptionsSocketWithRetries({
+        afterOpen930,
+        fetchSocketHealth: async () => {
           const ac = new AbortController();
           const socketTimer = setTimeout(() => ac.abort(), socketHealthTimeoutMs);
-          let res;
           try {
-            res = await fetch(`${base}/api/cron/socket-health`, {
+            const res = await fetch(`${base}/api/cron/socket-health`, {
               headers: { Authorization: `Bearer ${cron}` },
               signal: ac.signal,
             });
+            const body = await res.json().catch(() => ({}));
+            return { status: res.status, body };
           } finally {
             clearTimeout(socketTimer);
           }
-          const body = await res.json().catch(() => ({}));
-          if (isSocketHealthSkipped(body)) {
-            ok(`options-socket: ${body.reason ?? "non-trading day"}`);
-            socketProbeOk = true;
-          }
-          const opt = body.websockets?.options;
-          const uw = body.websockets?.unusual_whales;
-          if (!socketProbeOk && opt) {
-            const verdict = socketProbeAttemptVerdict(opt, afterOpen930);
-            if (verdict === "pass") {
-              if (opt.ok) ok(`options-socket: ${opt.detail}`);
-              else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
-              socketProbeOk = true;
-            } else {
-              socketLastDetail = opt.detail ?? socketLastDetail;
-              if (attempt < 2) {
-                console.log(
-                  `  ⚠ options-socket (attempt ${attempt + 1}/3): ${opt.detail} — retrying…`
-                );
-              }
-            }
-            if (uw && !uw.ok && afterOpen930) {
-              console.log(`  ⚠ unusual_whales: ${uw.detail}`);
-            }
-          } else if (res.status === 401) {
-            console.log(
-              "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
-            );
-            socketProbeOk = true;
-          } else {
-            socketLastDetail = `probe HTTP ${res.status}`;
-            if (attempt < 2) {
-              console.log(`  ⚠ options-socket (attempt ${attempt + 1}/3): HTTP ${res.status} — retrying…`);
-            }
-          }
-        } catch (e) {
-          if (attempt < 2 && /aborted/i.test(e.message)) {
-            console.log(`  ⚠ options-socket probe slow (attempt ${attempt + 1}) — retrying…`);
-            continue;
-          }
-          socketLastDetail = e.message;
-          if (attempt < 2) {
-            console.log(`  ⚠ options-socket (attempt ${attempt + 1}/3): ${e.message} — retrying…`);
-          }
-        }
+        },
+        onRetry: (attempt, detail) => {
+          console.log(`  ⚠ options-socket (attempt ${attempt}/3): ${detail} — retrying…`);
+        },
+      });
+      if (socketResult.preOpenWarn) {
+        console.log(`  ⚠ options-socket: ${socketResult.preOpenWarn}`);
+      } else if (socketResult.successDetail) {
+        ok(`options-socket: ${socketResult.successDetail}`);
       }
-      const socketFailure = socketProbeFinalFailure(socketProbeOk, socketLastDetail, afterOpen930);
-      if (socketFailure) fail(socketFailure);
+      if (socketResult.failure) fail(socketResult.failure);
     } else {
       console.log("  ⚠ CRON_SECRET unset — skipping options-socket HTTP probe");
     }
