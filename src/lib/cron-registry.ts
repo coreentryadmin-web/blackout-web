@@ -159,12 +159,19 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Vector Bead Record",
     kind: "http",
     path: "/api/cron/vector-bead-record",
-    schedule_label: "Every 1 min backup (market hours); in-app leader at 5s",
+    // No EventBridge rule is deployed for this route (confirmed live via events.list_rules,
+    // 2026-09-01 and re-confirmed 2026-09-07 — see FINDINGS.md) despite the label this replaced
+    // implying one. The only real backup to the 5s in-app primary (vector-bead-recorder-leader.ts)
+    // is rth-warm-leader.ts's own in-process heal loop, which dispatches this route at a 10s
+    // threshold (RTH_WRITER_HEAL_AFTER_MIN["vector-bead-record"] = 10/60 in
+    // rth-warm-leader-logic.ts) — faster in practice than any EventBridge cadence, but sharing the
+    // primary's own process/Redis-leader-election failure domain rather than an independent one.
+    schedule_label: "No EventBridge rule deployed — in-app leader backup only, 10s heal threshold",
     stale_after_min: 1,
     weekdays_only: true,
     market_hours_only: true,
     description:
-      "Record wall-history bead samples every 5s for the full shared universe (~100 tickers: static ∪ dynamic), viewer-independent — primary writer is vector-bead-recorder-leader; this cron is backup + audit",
+      "Record wall-history bead samples every 5s for the full shared universe (~100 tickers: static ∪ dynamic), viewer-independent — primary writer is vector-bead-recorder-leader; this cron route exists for the in-app leader's backup dispatch + manual/admin audit, not an independent EventBridge trigger",
   },
   {
     key: "desk-warm",
