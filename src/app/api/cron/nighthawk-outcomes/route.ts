@@ -14,8 +14,10 @@ import {
   type NighthawkRejectionCfResult,
 } from "@/features/nighthawk/lib/debrief-persist";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { todayEt } from "@/lib/et-date";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -41,6 +43,17 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
+
+  // Holiday guard: EventBridge is weekday-only and inEtWindow only knows Sat/Sun. On NYSE holidays
+  // the 16:30 ET window still resolves and the route would grade/debrief against a closed tape.
+  // force=1 bypasses for ops recovery (same pattern as nighthawk-morning-confirm / swing-discovery).
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun("nighthawk-outcomes", started, payload);
+    return NextResponse.json(payload);
+  }
+
   if (!inOutcomeWindow(force)) {
     const payload = {
       ok: false,
