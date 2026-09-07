@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
 
+### 0a-1am. open-check false-fail on NYSE holidays — fix/open-check-holiday-socket-skip (pending)
+
+**What was broken:** Labor Day 2026-09-07 `rth-open-check.yml` failed with `options-socket (socket-health): probe HTTP 200`. `/api/cron/socket-health` correctly returns `{ skipped: true, reason: "non-trading day (...)" }` without `websockets.options`; probe treated bare HTTP 200 as failure.
+
+**Fix:** `isSocketHealthNonTradingSkip()` in `rth-socket-probe.mjs` — holiday skip passes in `validate:deploy` and `rth-open-check` probes.
+
+**Check at the open:** On next NYSE holiday weekday, confirm `open-check` workflow stays green at 09:40 ET (or re-run `node scripts/rth-open-check.mjs --force` against prod with CRON_SECRET).
+
 ### 0a-1al. Vector scenario provenance future-skew reads as unknown — fix/scenario-read-future-skew-freshness (pending)
 
 **What was broken:** `buildScenarioEnvelope()` stamped Vector scenario provenance via `freshnessFromAgeMs(Date.now() - Date.parse(state.asOf))` without the `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` guard already on swing brief paths (#4454/#4455). Clock-skewed future `asOf` returned `"unknown"` instead of fail-closed `"stale"`.
