@@ -370,6 +370,18 @@ test("deskConsensusSection: null when only NH direction / 0DTE stance (covered b
   assert.equal(deskConsensusSection(eco, fixturePlay()), null);
 });
 
+test("deskConsensusSection: null when edition_for lags brief sessionDate (Largo C2/C3)", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-05",
+      direction: "long",
+      conviction: "medium",
+      outcome: "target",
+    },
+  };
+  assert.equal(deskConsensusSection(eco, fixturePlay(), "2026-09-06"), null);
+});
+
 test("deskConsensusSection: narrates NH outcome history when present", () => {
   const eco: EcosystemContext = {
     nighthawk_recent: {
@@ -379,7 +391,7 @@ test("deskConsensusSection: narrates NH outcome history when present", () => {
       outcome: "WIN",
     },
   };
-  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }));
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-04");
   assert.ok(section);
   assert.equal(section?.title, "Desk context");
   assert.match(section?.body ?? "", /closed \*\*WIN\*\*/i);

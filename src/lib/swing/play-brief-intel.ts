@@ -21,7 +21,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
-import { trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
+import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
@@ -616,10 +616,14 @@ export function macroTapeSection(eco: EcosystemContext | null): RichSection | nu
  * `flowNarrative` (Trade manager read) and `flowIntelSection` — only NH outcome history
  * belongs here so members never see the same sweep twice.
  */
-export function deskConsensusSection(eco: EcosystemContext | null, play: TerminalPlay): RichSection | null {
+export function deskConsensusSection(
+  eco: EcosystemContext | null,
+  play: TerminalPlay,
+  sessionDate?: string | null,
+): RichSection | null {
   if (!eco) return null;
 
-  const nh = eco.nighthawk_recent;
+  const nh = nighthawkLiveForSession(eco.nighthawk_recent, sessionDate);
   if (!nh?.outcome || !nh.edition_for) return null;
 
   // `outcome` is "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled"
@@ -813,7 +817,7 @@ export function buildIntelSections(
   const macro = macroTapeSection(ecosystem);
   if (macro) out.push(macro);
 
-  const consensus = deskConsensusSection(ecosystem, play);
+  const consensus = deskConsensusSection(ecosystem, play, ctx.sessionDate);
   if (consensus) out.push(consensus);
 
   const fresh = dataFreshnessSection(ctx);
