@@ -1249,3 +1249,82 @@ test("flowIntelSection: prior-session 0DTE must not render desk alignment (Largo
   const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-06");
   assert.equal(section, null, "yesterday's 0DTE stance must not read as live flow intel");
 });
+
+test("watchForSection: CLOSED bucket suppresses the live ticker-level thesis note (not this trade's thesis)", () => {
+  // serving-ingest.ts computes thesisBreak from a LIVE, present-tense "is there a fresh setup on
+  // this ticker right now" read — unrelated to the specific, already-resolved CLOSED position. Live
+  // production (INTC positionId 35, 2026-09-07) rendered "Thesis **unknown** — no setup read
+  // attached to this name yet" directly under a STOPPED outcome, implying the closed trade's own
+  // thesis was still open. It must not appear for a closed play.
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "CLOSED",
+        direction: "SHORT",
+        thesisBreak: { level: "unknown", note: "no setup read attached to this name yet" },
+      }),
+      asOf: "2026-09-07 16:15 ET",
+      sessionDate: "2026-09-07",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.doesNotMatch(section.body, /Thesis \*\*/i);
+  assert.equal(section.title, "Since it closed");
+});
+
+test("watchForSection: CLOSED bucket frames gamma flip as neutral positioning, not a live invalidation trigger", () => {
+  // watch/open plays correctly get "Reclaim/Lose gamma flip ... invalidates thesis" — that IS the
+  // live trigger to act on. A CLOSED play has no thesis left to invalidate, so the same imperative
+  // phrasing misleadingly reads as guidance on a still-open position.
+  const section = watchForSection(
+    {
+      play: fixturePlay({ status: "CLOSED", direction: "SHORT" }),
+      asOf: "2026-09-07 16:15 ET",
+      sessionDate: "2026-09-07",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 95.8, flip: 99.31, freshness: "live" },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.doesNotMatch(section.body, /invalidates short thesis/i);
+  assert.doesNotMatch(section.body, /turns against longs/i);
+  assert.match(section.body, /Now trades \*\*95\.80\*\* vs gamma flip \*\*99\.31\*\*/);
+});
+
+test("watchForSection: watch/open buckets are unchanged — still show live thesis note and invalidation framing", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "WATCH",
+        direction: "SHORT",
+        thesisBreak: { level: "unknown", note: "no setup read attached to this name yet" },
+      }),
+      asOf: "2026-09-07 16:15 ET",
+      sessionDate: "2026-09-07",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 95.8, flip: 99.31, freshness: "live" },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Thesis \*\*unknown\*\*/);
+  assert.match(section.body, /Reclaim gamma flip \*\*99\.31\*\* — invalidates short thesis/);
+  assert.equal(section.title, "Watch levels");
+});

@@ -397,7 +397,14 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     }
   }
 
-  if (play.thesisBreak?.note || play.thesisBreak?.level) {
+  // The `Thesis **...**` note is a LIVE, ticker-keyed read of whether Night Hawk currently sees an
+  // active setup on this name (serving-ingest.ts `thesisLevel`/`thesisNote`) — it is NOT the thesis
+  // of the specific CLOSED position being reviewed here, which already resolved. Printed against a
+  // closed play it reads as if the (already-decided) trade's thesis were still open, which is a
+  // contract violation (identity/direction: whose thesis, and is it live) — so it's closed-bucket-
+  // only suppressed; watch/open plays are still evaluating entry, where "is there a live setup here
+  // right now" is exactly the right question.
+  if (bucket !== "closed" && (play.thesisBreak?.note || play.thesisBreak?.level)) {
     lines.push(
       `Thesis **${play.thesisBreak.level ?? "unknown"}**${play.thesisBreak.note ? ` — ${play.thesisBreak.note}` : ""}`,
     );
@@ -409,10 +416,15 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   const flip = vecFlip ?? gexForLevels?.flip;
   const flipFromStaleGex = vecFlip == null && gexForLevels?.flip != null && gexMatrixStale(gexForLevels, readMs);
   if (flip != null && spot != null && !flipFromStaleGex) {
+    // Closed plays get NEUTRAL, informational framing ("trades at X vs flip Y") rather than the
+    // "reclaim/lose ... invalidates thesis" imperative used for watch/open — that phrasing reads as
+    // guidance on a still-live position, but a CLOSED play has no thesis left to invalidate.
     const watch =
-      play.direction === "LONG"
-        ? `Lose gamma flip **${flip.toFixed(2)}** — dealer posture turns against longs`
-        : `Reclaim gamma flip **${flip.toFixed(2)}** — invalidates short thesis`;
+      bucket === "closed"
+        ? `Now trades **${spot.toFixed(2)}** vs gamma flip **${flip.toFixed(2)}** — where the dealer regime sits since this play closed`
+        : play.direction === "LONG"
+          ? `Lose gamma flip **${flip.toFixed(2)}** — dealer posture turns against longs`
+          : `Reclaim gamma flip **${flip.toFixed(2)}** — invalidates short thesis`;
     lines.push(watch);
   }
 
@@ -435,13 +447,17 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   }
 
   if (!lines.length) {
-    lines.push("Watch spot vs gamma flip and nearest GEX wall — no extra triggers wired on this row.");
+    lines.push(
+      bucket === "closed"
+        ? "No gamma flip / GEX wall read available for this name since the play closed."
+        : "Watch spot vs gamma flip and nearest GEX wall — no extra triggers wired on this row.",
+    );
   }
 
   return {
-    title: bucket === "open" ? "What to watch" : "Watch levels",
+    title: bucket === "open" ? "What to watch" : bucket === "closed" ? "Since it closed" : "Watch levels",
     body: lines.join("\n\n"),
-    bias: play.thesisBreak?.level === "break" ? "bearish" : "neutral",
+    bias: bucket === "closed" ? "neutral" : play.thesisBreak?.level === "break" ? "bearish" : "neutral",
   };
 }
 
