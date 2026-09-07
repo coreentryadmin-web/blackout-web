@@ -160,6 +160,12 @@ function fundamentalsObservedMs(asOf: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function freshnessFromObservedMs(observedMs: number, readMs: number): BieFreshness {
+  const rawAgeMs = readMs - observedMs;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
+  return freshnessFromAgeMs(rawAgeMs);
+}
+
 function fundamentalsFreshness(
   asOf: string | null | undefined,
   readMs: number,
@@ -167,9 +173,7 @@ function fundamentalsFreshness(
   if (!asOf) return "unknown";
   const observedMs = fundamentalsObservedMs(asOf);
   if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
-  const rawAgeMs = readMs - observedMs;
-  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
-  return freshnessFromAgeMs(rawAgeMs);
+  return freshnessFromObservedMs(observedMs, readMs);
 }
 
 function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshness {
@@ -311,7 +315,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: {
         source: "Swing ledger",
         asOf: markEt,
-        freshness: Number.isFinite(markMs) ? freshnessFromAgeMs(readMs - markMs) : "unknown",
+        freshness: Number.isFinite(markMs) ? freshnessFromObservedMs(markMs, readMs) : "unknown",
       },
     });
   }
