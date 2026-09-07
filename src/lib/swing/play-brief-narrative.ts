@@ -28,10 +28,26 @@ function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
+/** For FLOW/aggregate dollar amounts (HELIX premium, dark-pool notional) — these are routinely
+ *  hundreds of thousands to millions, so whole-dollar/k/M is the right precision. NEVER use this
+ *  for a per-contract option premium (mark, stop/target rails) — see fmtOptionUsd below. */
 function fmtUsd(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
   return `$${n.toFixed(0)}`;
+}
+
+/** For a PER-CONTRACT option premium (live mark, stop/target rails) — these are typically
+ *  single/low-double-digit dollars where cents are the difference between a stop and a hold.
+ *  `fmtUsd`'s whole-dollar rounding was reused here for a while and it produced literal
+ *  contradictions within one brief: the Position section's precise "Mark: +$9.70" (2-decimal,
+ *  from play-brief.ts's own fmtUsd) sat beside this file's "Break watch — lose premium stop $2"
+ *  and "Live read — mark $10" (both rounded from $1.96 / $9.70) — same underlying number,
+ *  two different values on the same page. Matches play-brief.ts's fmtUsd exactly on purpose so
+ *  the whole brief renders one number for one fact. */
+function fmtOptionUsd(n: number): string {
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}$${n.toFixed(2)}`;
 }
 
 function fmtPct(n: number, digits = 1): string {
@@ -364,8 +380,8 @@ function railsFallback(play: TerminalPlay): string | null {
   const rails: string[] = [];
   if (trims) rails.push(`trim ladder ${trims}`);
   if (ep.stop_premium != null || ep.target_premium != null) {
-    const stop = ep.stop_premium != null ? fmtUsd(ep.stop_premium) : "—";
-    const target = ep.target_premium != null ? fmtUsd(ep.target_premium) : "—";
+    const stop = ep.stop_premium != null ? fmtOptionUsd(ep.stop_premium) : "—";
+    const target = ep.target_premium != null ? fmtOptionUsd(ep.target_premium) : "—";
     rails.push(`stop **${stop}** · target **${target}**`);
   }
   if (!rails.length) return null;
@@ -474,7 +490,7 @@ function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed
   const peak = fin(play.peak);
   const giveback = pnl != null && peak != null && peak - pnl > 15 ? ` · gave back **${(peak - pnl).toFixed(0)}%** from peak` : "";
   const healthBit = health != null ? ` · thesis **${health}%**` : "";
-  const markBit = play.mark != null ? ` · mark **${fmtUsd(play.mark)}**` : "";
+  const markBit = play.mark != null ? ` · mark **${fmtOptionUsd(play.mark)}**` : "";
   return `**Live read** — Vector spot not wired on this tick; desk still says **${rec}**${healthBit}${markBit}${giveback}. Levels refresh on next poll.`;
 }
 
@@ -583,9 +599,9 @@ export function tradeManagerNarrativeSection(
   const focal = spot != null ? collectFocalLevels(ctx, spot) : [];
   let breakLine = spot != null ? breakTrigger(play, focal, flip) : null;
   if (!breakLine && play.direction === "LONG" && play.exitPolicy?.stop_premium != null) {
-    breakLine = `**Break watch** — lose premium stop **${fmtUsd(play.exitPolicy.stop_premium)}** → cut size or exit.`;
+    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(play.exitPolicy.stop_premium)}** → cut size or exit.`;
   } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.stop_premium != null) {
-    breakLine = `**Break watch** — reclaim **${fmtUsd(play.exitPolicy.stop_premium)}** → cover shorts.`;
+    breakLine = `**Break watch** — reclaim **${fmtOptionUsd(play.exitPolicy.stop_premium)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
 
