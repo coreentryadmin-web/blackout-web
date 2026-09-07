@@ -636,6 +636,40 @@ note "no qualifying ticker pair observed" rather than treating silence as a pass
 
 ---
 
+## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
+
+### #67. Largo swing brief per-contract premium rounding — fix/largo-swing-premium-format — #4556 (merged)
+
+**What was broken:** `play-brief-narrative.ts` reused the flow-scaled whole-dollar `fmtUsd` for
+per-contract option premiums (mark, stop_premium rails) — same brief showed `+$9.70` in Position
+and `$10` in the Trade Manager narrative for the same field.
+
+**Fix:** Added `fmtOptionUsd` (2-decimal signed, matching `play-brief.ts`'s formatter) and switched
+the three per-contract call sites; flow/aggregate call sites (HELIX tape, dark-pool notional)
+correctly kept the original scaled `fmtUsd`.
+
+**Check at the open:** Open Ask Largo on any live swing position with a fractional per-contract
+mark/stop — Position section and the narrated Trade Manager read must show the SAME precise value
+(e.g. `+$9.70`, not `$10`), not two different roundings of the same field.
+
+### desk-warm `?force=1` off-window hammering — fix/desk-warm-off-window-force-cooldown (pending)
+
+**What was broken:** On Labor Day (NYSE full-day closure, a weekday — market closed), CloudWatch
+showed 166 `force=1` bypasses of the desk-warm hours gate in 6h from 47+ distinct source IPs (not
+any known in-app dispatcher), 70 full runs completed, correlating with a measured ALB p99 68s /
+Max 100s spike. Root external caller not identified from repo code; fixed defensively at the route.
+
+**Fix:** `desk-warm/route.ts`'s force=1 rate-limit floor now widens from 60s to 300s when the call
+lands outside the extended warm window (`isEtExtendedWarmHours`) — a single on-demand debug hit is
+unaffected, a repeated off-window caller is throttled 5x harder.
+
+**Check at the open:** Next off-hours/holiday window, re-run the same CloudWatch query
+(`filterPattern='"force=1 bypassed" "desk-warm"'` over `/ecs/blackout-production`) — completions
+should now be capped at roughly 1 per 5 min even if the same external caller is still hammering it,
+and ALB TargetResponseTime p99/Max should no longer show the same tail-latency spike shape during
+a market-closed window. If the mystery caller is still found, identify and fix it at the source
+too — this PR only hardens the receiving end.
+
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
 ### 0a-1j. Swing Ask Largo OPEN brief — ticker collision picked WATCH lane row — fix/swing-play-brief-ticker-collision (pending)
