@@ -33,10 +33,15 @@ test("spx-play-watch: ZERODTE_MARK_FUTURE_TOLERANCE_MS is imported from marks-ma
 test("checkPromoteEligibility: a future-dated WATCH record is expired before the normal maxAge check", () => {
   const idx = src.indexOf("const ageMs = Date.now() - new Date(rec.first_at).getTime();");
   assert.ok(idx > 0, "the ageMs computation must still exist");
-  const after = src.slice(idx, idx + 700);
+  const after = src.slice(idx, idx + 900);
   assert.match(
     after,
     /ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS/,
     "a future-dated first_at must be rejected (expired) rather than silently extending eligibility"
+  );
+  assert.match(
+    after,
+    /const ageMin = Math\.max\(0, ageMs \/ 60_000\)/,
+    "modest future skew within tolerance must clamp to zero age, not negative minutes"
   );
 });
