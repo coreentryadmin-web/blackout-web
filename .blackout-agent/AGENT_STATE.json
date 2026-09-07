@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-07T00:56:07.397Z",
+  "updated_at": "2026-09-07T01:15:38.003Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -71,11 +71,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b2d656f1d11d6f9c154f8fd4a747205bbc075b47",
+    "last_main_sha": "555befcaf73ba8e3a7a11b0bb4d124d50b7e4de2",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T00:54:49Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34071299733",
-    "last_deploy_sha": "b2d656f1d11d6f9c154f8fd4a747205bbc075b47"
+    "last_deploy_at": "2026-09-07T01:08:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34072016510",
+    "last_deploy_sha": "555befcaf73ba8e3a7a11b0bb4d124d50b7e4de2"
   },
   "events": [
     {
@@ -959,18 +959,31 @@
       "agent": "cursor",
       "run_id": "58b2cb8f-bd30-4eb3-8186-762ccb69acfe",
       "summary": "#4427 deploy CI @310b97da0 — stale notification; main already @b2d656f1d (#4428 too). Queue clean. validate:deploy GREEN."
+    },
+    {
+      "at": "2026-09-07T01:15:38.002Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-07T01:15:38.003Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "04fab3af-267c-41b7-b3c8-629b9704e435",
+      "summary": "Main@555befcaf (#4434 NH C3 unavailable — reopened+merged after duplicate PR closes). #4428 CI notification was deploy ack. Queue clean."
     }
   ],
   "open_prs": [
     {
-      "number": 4432,
-      "title": "fix(largo): surface prior-session Night Hawk in unavailableSources (Largo C3)",
-      "branch": "fix/largo-nighthawk-unavailable-c3",
+      "number": 4437,
+      "title": "fix(largo): surface prior-session Vector in unavailableSources (Largo C3)",
+      "branch": "fix/largo-vector-prior-session-absence",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-07T00:55:52Z"
+      "updated_at": "2026-09-07T01:15:09Z"
     }
   ],
   "pr_activity": {
