@@ -115,7 +115,12 @@ async function buildVectorUniverseRow(
   } = opts;
   const ticker = normalizeVectorTicker(raw);
   const hm = await fetchGexHeatmap(ticker);
-  const spot = hm?.spot ?? null;
+  // `hm.spot` can come back literally 0 (a halted/delisted ticker, or a provider placeholder for
+  // "no price") rather than nullish, so a plain `?? null` lets a real zero leak into the row as
+  // `spot: 0` while every downstream computation already treats <= 0 the same as absent (the
+  // `spot != null && spot > 0` guard immediately below, gexWalls, etc.) — a member-visible field
+  // saying "0" when every other consumer of the same value already reads it as "no real spot".
+  const spot = hm?.spot != null && hm.spot > 0 ? hm.spot : null;
   // Self-heal: a dead dynamic entry (dead before touchDynamicUniverse's spot>0 write-guard
   // existed, or one whose chain stopped resolving later) never gets removed by age-based pruning
   // alone. Fire-and-forget, never blocks the row — see removeDynamicUniverseTicker's own comment.
