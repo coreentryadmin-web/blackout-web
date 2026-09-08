@@ -156,6 +156,35 @@ The certification doc (2026-08-23) referenced "G-1..G-14" as the hard gate stack
 
 **Verdict:** Exit logic is honest (always honors HIGHER of two marks). Frozen exit context (Q13) prevents mid-session mode flips. All scenarios traced.
 
+### C-Tier/Untiered Exit-Mode A/B Validation
+
+**Run:** 2026-09-08 · **Window:** 90 days · **Population:** 111 C-tier/untiered plays
+
+| Mode | n | Win Rate | Avg P&L | Key Outcomes |
+|---|---|---|---|---|
+| **RATCHET (shipped)** | 99 | 45.5% | +5.5% | 43 runner_close, 44 stopped, 8 flat_scratch, 4 ratchet |
+| **TRIM_SCALE (alternative)** | 99 | 38.4% | −7.3% | 29 doubled, 18 runner_close, 44 stopped, 8 flat_scratch |
+| **DELTA** (trim_scale − ratchet) | — | **−7.1pp** | **−12.8pp** | trim_scale loses decisively |
+
+**Verdict:** RATCHET (current policy) wins by **+12.8pp average P&L, +7.1pp win-rate**. The decision to keep C-tier/untiered conservative (no trim_scale) is evidence-backed. No policy change warranted.
+
+---
+
+## PHASE 2 COMPLETE — VALIDATION SUMMARY (2026-09-08)
+
+**All Phase 2 offline deep-dives completed 2026-09-05 through 2026-09-08:**
+- ✅ Outcome-grading audit: 373 plays, **100% agreement** (0 disagreements, improvement from 96.9% baseline)
+- ✅ Gate-logic edge-case matrix: 17+ codes, 7 edge cases resolved, fail-closed logic validated
+- ✅ Exit-engine scenario tracing: 4 rule families analyzed, frozen exit context (Q13) confirmed, trim_scale dead-zone documented (unreachable, guarded)
+- ✅ Tier exit-mode A/B: RATCHET confirmed optimal for C-tier/untiered (−12.8pp delta vs trim_scale)
+
+**Remaining RTH measurements (pending live market data):**
+- Board-build latency (p50/p95)
+- Interaction latency (<100ms DOM→visible)
+- CLS measurement (target <0.1)
+- Veto-flicker-rate (awaiting rejection data)
+- Wall temporal stability (awaiting GEX snapshot captures)
+
 ---
 
 ## EXECUTIVE SUMMARY
