@@ -10,7 +10,7 @@
  */
 
 import type { QueryResultRow } from "pg";
-import { dbQuery, toJsonbParam } from "@/lib/db";
+import { dbQuery, isoDateString, isoTimestampString, toJsonbParam } from "@/lib/db";
 
 export type BangerStatus = "OPEN" | "PARTIAL" | "CLOSED_RUNNER" | "STOPPED";
 
@@ -79,14 +79,14 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
   return {
     id: Number(r.id),
     commit_key: String(r.commit_key),
-    session_date: String(r.session_date).slice(0, 10),
+    session_date: isoDateString(r.session_date),
     ticker: String(r.ticker).toUpperCase(),
     discovery_gain: num(r.discovery_gain),
     discovery_vol: num(r.discovery_vol),
     discovery_dollar_vol: num(r.discovery_dollar_vol),
     discovery_close_strength: num(r.discovery_close_strength),
     contract_strike: Number(r.contract_strike),
-    contract_expiry: String(r.contract_expiry).slice(0, 10),
+    contract_expiry: isoDateString(r.contract_expiry),
     contract_occ: String(r.contract_occ),
     entry_premium: Number(r.entry_premium),
     last_mark: num(r.last_mark),
@@ -99,10 +99,10 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
     realized_pnl_usd: num(r.realized_pnl_usd),
     entry_context: jsonbToObject(r.entry_context),
     status: (r.status as BangerStatus) ?? "OPEN",
-    first_seen_at: String(r.first_seen_at),
-    committed_at: r.committed_at != null ? String(r.committed_at) : null,
-    closed_at: r.closed_at != null ? String(r.closed_at) : null,
-    updated_at: String(r.updated_at),
+    first_seen_at: isoTimestampString(r.first_seen_at) ?? "",
+    committed_at: isoTimestampString(r.committed_at),
+    closed_at: isoTimestampString(r.closed_at),
+    updated_at: isoTimestampString(r.updated_at) ?? "",
   };
 }
 

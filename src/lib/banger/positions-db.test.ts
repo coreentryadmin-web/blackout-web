@@ -62,6 +62,43 @@ test("mapBangerPositionRow parses a JSON-string entry_context (raw driver shape)
   assert.deepEqual(row.entry_context, { a: 1 });
 });
 
+// REGRESSION (production incident, 2026-09-08): mapBangerPositionRow's session_date/contract_expiry
+// used `String(r.field).slice(0, 10)` — correct for an already-ISO string fixture (which is all the
+// tests above ever passed) but wrong for what node-postgres ACTUALLY returns for a DATE column with
+// no setTypeParser override in this repo: a raw JS `Date`. `String(date)` runs `Date.prototype.toString()`
+// ("Wed Aug 19 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"), and slicing the first 10 chars
+// yields "Wed Aug 19" — a year-less, weekday-first label. That garbled session_date then flowed,
+// unchanged, through bangerRowToActivePlay (live-marks-active.ts) into the ~1s live-marks poller's
+// updateZeroDteLiveState($1::date, ...) call, and Postgres threw `invalid input syntax for type date`
+// on every tick for every open banger position — thousands of error_events rows in 15 minutes.
+// isoDateString (db.ts), the helper already used everywhere else in this codebase for this exact
+// class of bug (mapZeroDteLogRow, mapSwingPositionRow), handles a raw Date correctly.
+test("REGRESSION: mapBangerPositionRow normalizes a raw pg Date session_date/contract_expiry to ISO, not toString().slice(0,10)", () => {
+  const pgDate = new Date(Date.UTC(2026, 7, 19)); // "Wed Aug 19 2026" when .toString()'d
+  // Precondition: this is the garbage the old `String(date).slice(0, 10)` code produced.
+  assert.equal(String(pgDate).slice(0, 10), "Wed Aug 19");
+  const row = mapBangerPositionRow({
+    id: "1",
+    commit_key: "k",
+    session_date: pgDate,
+    ticker: "T",
+    contract_strike: "1",
+    contract_expiry: pgDate,
+    contract_occ: "occ",
+    entry_premium: "1",
+    scaled_already: false,
+    entry_context: null,
+    status: "OPEN",
+    first_seen_at: pgDate,
+    updated_at: pgDate,
+  });
+  assert.equal(row.session_date, "2026-08-19");
+  assert.equal(row.contract_expiry, "2026-08-19");
+  // The TIMESTAMPTZ twin (first_seen_at/updated_at) had the identical `String(Date)` bug.
+  assert.equal(row.first_seen_at, pgDate.toISOString());
+  assert.equal(row.updated_at, pgDate.toISOString());
+});
+
 test("mapBangerPositionRow defaults status to OPEN when the column is missing", () => {
   const row = mapBangerPositionRow({
     id: "1",
