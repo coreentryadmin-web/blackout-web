@@ -17,16 +17,13 @@ import {
   clampTuningToSpacing,
   closestRowGapPx,
   beadKey,
-  beadRenderTuning,
   fillAlpha,
   kingKey,
   kingStrikeByTime,
   maxPctByTime,
-  targetHalfPx,
   withA,
   trailingRefs,
   rowPeakRefs,
-  rowSwellMul,
   rowStrengthHaloExtraPx,
   ROW_HALO_ROW_GAP_FILL,
   BEAD_ROW_FILL_FOR_TEST,
@@ -34,7 +31,6 @@ import {
   beadCenterSpacingPx,
   ROW_HALO_BAR_SPACING_FILL,
   ROW_SWELL_FLOOR,
-  MIN_CLAMPED_HALF_RANGE_PX,
 } from "./vector-wall-rail-core";
 
 // ── withA ────────────────────────────────────────────────────────────────────
