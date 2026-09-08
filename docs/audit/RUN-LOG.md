@@ -11,6 +11,32 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-08 (13:33 UTC / Tue 2026-09-08 09:34 ET) — [SEO] RTH wake: gamma-snapshot live data + real-data CLS validated
+
+**Severity.** — (no defect found)
+
+**Checked the clock myself** — Tue 09:34 ET, market just opened, `2026-09-08` not in
+`US_MARKET_HOLIDAYS`, confirmed a real trading day. Did the RTH-specific job: public live-tape
+surface, not routine search work.
+
+**`/tools/gamma-snapshot` live data.** Traced the actual client polling target
+(`GET /api/public/gex-snapshot?ticker=SPX`, 5s interval, visibility-gated) and polled it 3x at
+~6s intervals: SPX spot ticking real values (7706.08 → 7704.87 → 7705.91), flip drifting
+(7917.44 → 7918.94 → 7920.12), `market_session: OPEN`, `degraded: false`, `snapshot_data_age_seconds`
+staying low (0/16/7) — the 5s refresh is genuinely live, not a stale snapshot. Confirmed at the
+code level (not just by inspection) that the public builder (`buildPublicGexSnapshot` in
+`src/lib/public-gex-snapshot.ts`) imports and calls the SAME `fetchGexHeatmap` the member Thermal
+desk reads — one pipeline, not a separate/potentially-stale public copy.
+
+**CLS on live-rendering pages.** Purged CF edge HTML, confirmed `MISS`, measured with real market
+data actively rendering (not a frozen off-hours page): homepage **CLS 0.0319 → GOOD** (still well
+under the 0.1 threshold, but a real, honest delta vs. the 0.0003-0.0004 off-hours readings — this
+is the exact distinction the RTH-wake mandate exists to catch). `/tools/gamma-snapshot` itself:
+**CLS 0 → GOOD** — its 5s number updates repaint in place with zero layout shift.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-08 (12:20 UTC / Tue 2026-09-08 08:21 ET) — [SEO] Lane heartbeat: CLS re-measured 0.0003 GOOD, sweep clean
 
 **Severity.** — (no defect found)
