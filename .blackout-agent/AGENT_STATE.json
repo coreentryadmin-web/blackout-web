@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-08T16:10:33.711Z",
+  "updated_at": "2026-09-08T17:54:38.238Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "aa70914b438dcf20cd8643b5a859198989a884cf",
+    "last_main_sha": "6e72cdafadbb44f48f428a5cd8f27438c0a8155b",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
@@ -1111,9 +1111,156 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-08T17:38:30.384Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-08T17:38:30.964Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-08T17:38:31.226Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-08T17:54:37.086Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-08T17:54:37.625Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-08T17:54:38.238Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4598,
+      "title": "docs(audit): correct stale HELIX conviction-label finding status",
+      "branch": "docs/helix-conviction-label-stale-status",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-08T17:52:39Z"
+    },
+    {
+      "number": 4597,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/sync-heartbeat-state-2026-09-08c",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-08T16:45:51Z"
+    },
+    {
+      "number": 4596,
+      "title": "fix(largo): disambiguate swing committed_count from open positions",
+      "branch": "docs/swing-committed-vs-open-clarification",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-08T17:06:41Z"
+    },
+    {
+      "number": 4595,
+      "title": "docs(audit): fold findings-staging backlog into FINDINGS.md",
+      "branch": "docs/fold-findings-staging-backlog",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-08T17:06:43Z"
+    },
+    {
+      "number": 4592,
+      "title": "fix(banger): normalize session_date/expiry/timestamps through isoDateString — live P0 error spike",
+      "branch": "fix/banger-position-date-bomb",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-08T16:47:55Z"
+    },
+    {
+      "number": 4569,
+      "title": "chore(state): autopilot handoff after #4561-4563 merge wave",
+      "branch": "cursor/autopilot-handoff-post-4563",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-08T06:44:37Z"
+    },
+    {
+      "number": 4480,
+      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:24:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:11:04Z"
+    },
+    {
+      "number": 4476,
+      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
+      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T19:18:12Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",

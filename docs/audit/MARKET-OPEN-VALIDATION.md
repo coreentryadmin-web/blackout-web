@@ -142,6 +142,20 @@ budget/caps/idempotency gates → real position or shadow row) is working as des
 should match the live board's Open count, and if `committed_count` is quoted at all it should be
 qualified as pre-entry+open candidates, not presented as the open-position count.
 
+---
+
+## WATCH LIST — 2026-09-08 live incident fix (read this before the routine pass)
+
+### 0a-1am. Banger position session_date/expiry served as a garbled, year-less label — live P0 error spike — fix/banger-position-date-bomb (pending)
+
+**What was broken:** `mapBangerPositionRow()` (`src/lib/banger/positions-db.ts`) built `session_date`/`contract_expiry` via `String(r.field).slice(0, 10)` on the raw pg row — correct only if the driver hands back an already-ISO string, wrong for the raw `Date` object node-postgres actually returns for `DATE` columns (no `setTypeParser` override in this repo). `String(date)` runs `.toString()` ("Wed Aug 19 2026 …") and slicing the first 10 chars gives "Wed Aug 19" — not a valid date. That garbled `session_date` flowed into the shared ~1s live-marks poller's `updateZeroDteLiveState($1::date, ...)` call for every open banger position, and Postgres rejected it every tick: **2000+ `error_events` rows per 15-minute window**, live and ongoing when caught (flagged by the ops error-spike alert). Also fixed the identical bug on the four TIMESTAMPTZ columns in the same mapper (`first_seen_at`/`committed_at`/`closed_at`/`updated_at`), which leaked the same garbled format to API responses/Discord without throwing.
+
+**Fix:** Switched to `isoDateString()`/`isoTimestampString()` — the helpers every other row mapper in this codebase already uses for exactly this bug class.
+
+**Check at the open:** `GET /api/admin/errors?limit=20` should show **zero** new `db_query` events with message `invalid input syntax for type date` after this deploys (confirm the deploy landed — check `ecr-push-production.yml` succeeded for the merge commit). `GET /api/market/banger/board` — every open banger row's `expiry` should read as a clean `YYYY-MM-DD`, matching the contract's real expiry, not a truncated weekday-first label.
+
+---
+
 ## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
 
 ### 0a-1al. Vector scenario provenance future-skew reads as unknown — fix/scenario-read-future-skew-freshness (pending)

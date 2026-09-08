@@ -11,6 +11,51 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-08 (18:16 UTC) — [SEO] Lane heartbeat: #2453/#2448 re-validated on prod, PR sweep clean, no new opportunity
+
+**Severity.** — (no defect found)
+
+STEP 1 — production behaviour, not inference. No homepage-affecting commits landed since the last
+real CLS measurement (`git log 5e63554e6..origin/main -- src/app/page.tsx src/components/home`
+empty) — that RTH-live-data reading (0.0319, GOOD) still stands, not re-purging/re-measuring
+redundantly. `/api/og?title=Test` fetched with a Googlebot UA: HTTP 200, `image/png`, 1200x630,
+44.7KB — confirmed crawlable to an unauthenticated fetch, not just "workflow green".
+
+STEP 2 — `agent-pr-sweep.mjs`: 5 open agent PRs, none SEO-lane (#4598 docs/audit, #4596 largo,
+#4595 docs/audit, #4569 autopilot-state handoff — recurring, conflict is purely
+`.blackout-agent/` state churn, correctly left alone — #4599 0dte/nighthawk, CI-running). Nothing
+to rebase.
+
+STEP 3 — `gsc-opportunities-report.mjs`: same 2 striking-distance queries as every prior cycle
+this window, unchanged (`gamma three trading` pos 18.5, `is 0dte gambling` pos 11.5) — no new
+actionable query. `dealer gamma` holds steady at pos 24.3 (deep-demand, still outside the 10-20
+on-page-reach band, not actioned). Sitemap swept: 76/76 URLs still 200.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
+## 2026-09-08 (16:33 UTC / Tue 2026-09-08 12:34 ET) — [SEO] RTH wake: final window check before 13:00 ET, gamma-snapshot liveness re-confirmed
+
+**Severity.** — (no defect found)
+
+Last RTH cycle before the trigger's 13:00 ET cutoff back to normal search/authority work. No
+homepage-affecting commits landed since the 13:33 UTC live-data CLS measurement (0.0319, GOOD) —
+`git log 5e63554e6..origin/main -- src/app/page.tsx src/components/home` still empty, so that
+measurement stands; not re-purging/re-measuring redundantly.
+
+Re-polled `/api/public/gex-snapshot?ticker=SPX` twice at ~6s spacing: `spot` still ticking
+(7688.03 → 7688.21), `session: OPEN`, `degraded: false`, low staleness both times. `put_wall`
+moved 7550 → 7675 since the last check — confirms the wall levels themselves genuinely update
+over time, not just spot, closing out the liveness cross-check. `flip` is still `null`, consistent
+with the short-gamma-everywhere regime confirmed correct last cycle (real explanatory `read`
+field, not a fabricated or stale value) — persisting, not a fluke.
+
+Everything healthy for the full RTH window observed today. Returning to normal SEO/search work on
+the next wake per the trigger's own instruction.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-08 (15:33 UTC / Tue 2026-09-08 11:34 ET) — [SEO] RTH wake: gamma-snapshot re-checked, honest-absence flip=null confirmed correct
 
 **Severity.** — (no defect found)
