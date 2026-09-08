@@ -92,6 +92,17 @@ mock.module("../../../lib/providers/polygon-options-gex", {
           vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
         };
       }
+      // 2026-09-08 audit finding (live KIAN): a halted/delisted ticker's heatmap can return spot
+      // literally 0 (not null/undefined) — `?? null` only catches nullish, so a member-visible
+      // row showed `spot: 0` while every downstream computation already treats <= 0 as absent.
+      if (ticker === "ZEROSPOT") {
+        return {
+          spot: 0,
+          asof: new Date().toISOString(),
+          gex: { flip: null, strike_totals: {} },
+          vex: { flip: null, strike_totals: {} },
+        };
+      }
       // Regression fixture for the 2026-09-04 audit finding: strike 90 (below spot) carries more
       // |gamma| than strike 108 (above spot), so the unconstrained scan used to pick 90 as the
       // "call wall" — a resistance level below current price — the exact live IBIT/SPX shape.
@@ -228,6 +239,17 @@ test("buildVectorUniverseSnapshot: GEX wall never lands on the wrong side of spo
   assert.equal(row!.topCallWall, 108, "GEX call wall must sit above spot, not the higher-|gamma| below-spot strike");
   assert.equal(row!.topPutWall, 92, "GEX put wall must sit below spot");
   assert.ok(row!.topCallPct != null && row!.topCallPct > 0, "pct must still be populated for the constrained pick");
+});
+
+test("buildVectorUniverseSnapshot: a heatmap spot of literal 0 renders as null, not 0 (2026-09-08 KIAN finding)", async () => {
+  dynamicTickers = ["ZEROSPOT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "ZEROSPOT");
+  assert.ok(row, "ZEROSPOT row must be present");
+  assert.equal(row!.spot, null, "a heatmap spot of literal 0 must render as null, matching every other absent-spot field");
 });
 
 // Bead rail (wall-history) uses unconstrained ranking — Sep 3 desk density. Scanner row
