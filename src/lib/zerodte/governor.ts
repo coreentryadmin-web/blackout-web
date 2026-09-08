@@ -56,10 +56,18 @@ function envConcurrentCap(name: string, def: number): number {
 }
 export const GOVERNOR_MAX_CONCURRENT_PLANS = envConcurrentCap("ZERODTE_MAX_CONCURRENT", 100);
 /** Stops in a session before the desk stands down for the day (Slayer's own
- *  loss-halt number). 7/13 took 7 stops — this caps that class of day at 3. */
-export const GOVERNOR_MAX_SESSION_STOPS = 3;
-/** Same-direction re-entry lock on a ticker after its stop (Slayer's 20m rule). */
-export const GOVERNOR_REENTRY_LOCK_MS = 20 * 60 * 1000;
+ *  loss-halt number). 7/13 took 7 stops — this caps that class of day at 3.
+ *  Raised to 4 on 2026-09-08 (operator directive, whole-market volume complaint) — no
+ *  specific incident ties 4 to a worse day than 3; the 7/13 evidence this number is
+ *  named after only tells us 7 stops is too many, not that 4 is. Left short of the
+ *  SESSION_LOSS_FLOOR_PCT territory below, which still catches rapid drain by magnitude
+ *  regardless of count. */
+export const GOVERNOR_MAX_SESSION_STOPS = 4;
+/** Same-direction re-entry lock on a ticker after its stop (Slayer's 20m rule).
+ *  Shortened to 10m on 2026-09-08 (operator directive) — same reasoning as above: no
+ *  measured evidence pins 20m specifically vs a shorter cooldown, just Slayer's own
+ *  convention carried over. */
+export const GOVERNOR_REENTRY_LOCK_MS = 10 * 60 * 1000;
 
 // ── AUDIT SEV-3 realized-loss halt thresholds ──────────────────────────────────────
 // CONSERVATIVE STARTING VALUES — to be tuned on the ledger (calibration-first). Both

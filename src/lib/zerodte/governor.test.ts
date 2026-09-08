@@ -64,10 +64,13 @@ function losingTimeStop(ticker: string, pnlPct = -30): GovernorLedgerRow {
 // Session-stop halt + re-entry lock stay pinned — those are the 7/13 runaway-loss brakes.
 // Concurrent open-play ceiling is a PRODUCT dial (default 100 / env ZERODTE_MAX_CONCURRENT),
 // NOT a scarcity throttle: quality gates + stop/loss floors decide how many plans are live.
-test("FIREWALL: governor risk brakes are pinned (halt after 3 stops, 20-min re-entry lock; concurrent default 100)", () => {
+test("FIREWALL: governor risk brakes are pinned (halt after 4 stops, 10-min re-entry lock; concurrent default 100)", () => {
+  // GOVERNOR_MAX_SESSION_STOPS raised 3→4 and GOVERNOR_REENTRY_LOCK_MS shortened 20m→10m on
+  // 2026-09-08 (operator directive, whole-market volume complaint) — no specific incident ties
+  // 3/20m as uniquely correct vs 4/10m, just Slayer's own convention carried over.
   assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 100);
-  assert.equal(GOVERNOR_MAX_SESSION_STOPS, 3);
-  assert.equal(GOVERNOR_REENTRY_LOCK_MS, 20 * 60 * 1000);
+  assert.equal(GOVERNOR_MAX_SESSION_STOPS, 4);
+  assert.equal(GOVERNOR_REENTRY_LOCK_MS, 10 * 60 * 1000);
 });
 
 // AUDIT SEV-3 — the realized-loss halt only ever ADDS conservatism; a silent LOOSENING
@@ -125,8 +128,8 @@ test("mergeGovernorStops: recorded (timestamped) events win over timeless ledger
 
 // ── pure rules ─────────────────────────────────────────────────────────────────────
 
-test("governor: 3 stops halt the session — single dominating block", () => {
-  const stops = ["SPY", "MU", "AMD"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
+test("governor: 4 stops halt the session — single dominating block", () => {
+  const stops = ["SPY", "MU", "AMD", "TSLA"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
   const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: [], stops }, NOW);
   assert.deepEqual(blocks.map((b) => b.code), ["governor_session_stops"]);
   assert.equal(blocks[0]!.threshold, GOVERNOR_MAX_SESSION_STOPS);
@@ -173,13 +176,13 @@ test("governor/B-3: v1 groups are the index/ETF complex only — a single name d
   assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "short" }, snap, NOW), []);
 });
 
-test("governor: 20-min same-direction re-entry lock — inside blocks, outside/opposite pass", () => {
-  const stopAt = NOW - 10 * 60_000; // 10 minutes ago
+test("governor: 10-min same-direction re-entry lock — inside blocks, outside/opposite pass", () => {
+  const stopAt = NOW - 5 * 60_000; // 5 minutes ago (lock shortened 20m→10m on 2026-09-08)
   const snap = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: stopAt }] };
 
   const locked = evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, snap, NOW);
   assert.deepEqual(locked.map((b) => b.code), ["governor_reentry_lock"]);
-  assert.match(locked[0]!.reason, /10 more minutes/);
+  assert.match(locked[0]!.reason, /5 more minutes/);
 
   // Lock expired.
   const later = NOW - GOVERNOR_REENTRY_LOCK_MS - (NOW - stopAt);
@@ -315,16 +318,17 @@ test("SEV-3: winners net against losers — a green session under the floor stay
   assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW), []);
 });
 
-test("SEV-3: the existing 3× HARD-stop halt + re-entry lock still fire unchanged", () => {
-  // Hard-stop halt: 3 graded stops → the ORIGINAL block, with the ORIGINAL threshold.
-  const stops = ["SPY", "MU", "AMD"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
+test("SEV-3: the existing hard-stop halt + re-entry lock still fire unchanged", () => {
+  // Hard-stop halt: GOVERNOR_MAX_SESSION_STOPS graded stops → the ORIGINAL block, with the
+  // ORIGINAL threshold (now 4 as of 2026-09-08, was 3).
+  const stops = ["SPY", "MU", "AMD", "TSLA"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
   const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: [], stops }, NOW);
   assert.deepEqual(halt.map((b) => b.code), ["governor_session_stops"]);
   assert.equal(halt[0]!.threshold, GOVERNOR_MAX_SESSION_STOPS, "hard-stop halt keeps its own threshold");
   assert.match(halt[0]!.reason, /stopped out today/, "hard-stop wording, not the realized-loss wording");
 
   // Re-entry lock (keyed off a hard stop's timestamp) is untouched by the loss channel.
-  const stopAt = NOW - 10 * 60_000;
+  const stopAt = NOW - 5 * 60_000;
   const lockSnap = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: stopAt }] };
   const locked = evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, lockSnap, NOW);
   assert.deepEqual(locked.map((b) => b.code), ["governor_reentry_lock"]);
@@ -384,12 +388,13 @@ test("summarizeGovernorForBoard: merges recorded stop timestamps and flips halte
       row({ ticker: "SPY", status: "CLOSED", trough_premium: 1.9 }), // trough-crossed stop, untimed
       row({ ticker: "MU", status: "CLOSED", plan_outcome: "stopped" }),
       row({ ticker: "AMD", status: "CLOSED", plan_outcome: "stopped" }),
+      row({ ticker: "TSLA", status: "CLOSED", plan_outcome: "stopped" }),
       row({ ticker: "NVDA", status: "HOLD" }),
     ],
     [{ ticker: "SPY", direction: "long", at_ms: NOW - 5 * 60_000 }]
   );
-  assert.equal(s.halted, true, "3 stops = session halt");
-  assert.equal(s.stops.length, 3);
+  assert.equal(s.halted, true, "4 stops = session halt (GOVERNOR_MAX_SESSION_STOPS raised to 4 on 2026-09-08)");
+  assert.equal(s.stops.length, 4);
   assert.equal(s.stops.find((x) => x.ticker === "SPY")!.at_ms, NOW - 5 * 60_000, "recorded timestamp wins");
   assert.equal(s.stops.find((x) => x.ticker === "MU")!.at_ms, null, "ledger-only stop stays untimed");
   assert.deepEqual(s.open_plans, [{ ticker: "NVDA", direction: "long" }]);
@@ -397,14 +402,15 @@ test("summarizeGovernorForBoard: merges recorded stop timestamps and flips halte
 
 // ── persistence round-trip (real shared-cache in-memory fallback) ──────────────────
 
-test("governor state: a simulated 3-stop session persists, reloads, and halts", async () => {
+test("governor state: a simulated 4-stop session persists, reloads, and halts", async () => {
   const day = "2099-01-02"; // unique per test — the fallback map is module-global
   await recordGovernorStops(day, [{ ticker: "SPY", direction: "long", at_ms: NOW - 30 * 60_000 }]);
   await recordGovernorStops(day, [{ ticker: "MU", direction: "long", at_ms: NOW - 20 * 60_000 }]);
   await recordGovernorStops(day, [{ ticker: "AMD", direction: "long", at_ms: NOW - 5 * 60_000 }]);
+  await recordGovernorStops(day, [{ ticker: "TSLA", direction: "long", at_ms: NOW - 2 * 60_000 }]);
 
   const recorded = await loadRecordedGovernorStops(day);
-  assert.equal(recorded.length, 3);
+  assert.equal(recorded.length, 4);
 
   const snap = { open_plans: [], stops: mergeGovernorStops([], recorded) };
   const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW);

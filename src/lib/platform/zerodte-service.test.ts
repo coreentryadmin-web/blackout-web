@@ -220,7 +220,7 @@ test("livePnlPct: board ledger and Largo plays use identical rounding", async ()
   assert.equal(board.governor!.halted, false);
   const { GOVERNOR_MAX_CONCURRENT_PLANS } = await import("../zerodte/governor");
   assert.equal(board.governor!.max_concurrent, GOVERNOR_MAX_CONCURRENT_PLANS);
-  assert.equal(board.governor!.max_session_stops, 3);
+  assert.equal(board.governor!.max_session_stops, 4); // GOVERNOR_MAX_SESSION_STOPS raised 3→4 on 2026-09-08
 });
 
 // ── P0 one-way commit door (fix/zerodte-status-latch) ─────────────────────────────

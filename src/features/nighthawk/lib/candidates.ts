@@ -439,9 +439,9 @@ export const BREAKOUT_MIN_PRICE = 5;
  * is still gated by MIN_PRICE + MIN_VOLUME.
  */
 export const BREAKOUT_MAX_PRICE = 2_500;
-export const BREAKOUT_MIN_VOLUME = 1_000_000;
-export const BREAKOUT_MIN_GAIN = 0.03; // lowered from 5% — 3% captures more momentum names while close-strength filter keeps quality
-export const BREAKOUT_MIN_CLOSE_STRENGTH = 0.5; // (c−l)/(h−l) — closed in the upper half of the range
+export const BREAKOUT_MIN_VOLUME = 750_000; // 2026-09-08: lowered from 1M (operator directive, volume complaint) — close-strength + gain filters still carry the quality signal
+export const BREAKOUT_MIN_GAIN = 0.02; // 2026-09-08: lowered from 3% (was 5%) — same reasoning; close-strength filter is the quality gate, not the gain floor
+export const BREAKOUT_MIN_CLOSE_STRENGTH = 0.5; // (c−l)/(h−l) — closed in the upper half of the range — UNCHANGED: this is the core confluence signal the banger backtest measured (91% vs 75% at 2x), not a scarcity knob
 
 /** One whole-market breakout candidate screened from a grouped-daily bar. */
 export type BreakoutMover = {
