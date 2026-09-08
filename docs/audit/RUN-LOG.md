@@ -11,6 +11,22 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-08 (12:20 UTC / Tue 2026-09-08 08:21 ET) — [SEO] Lane heartbeat: CLS re-measured 0.0003 GOOD, sweep clean
+
+**Severity.** — (no defect found)
+
+Pre-market Tuesday cycle. Refreshed the real browser CLS measurement (last one was ~18h old):
+purged CF edge HTML, confirmed `MISS`, ran `cls-measure.cjs` — **CLS 0.0003 → GOOD**, desktop
+1440×900, 68/68 assets routed. #2453 re-confirmed on production with a genuine measurement.
+`/api/og?title=Test`: `200 image/png` — #2448 holds. `agent-pr-sweep.mjs`: same #4569
+(non-SEO autopilot-state PR, conflicted purely on `.blackout-agent/*`) — not mine, already
+assessed last cycle. `gsc-opportunities-report.mjs`: same window/data as the last two cycles
+(GSC's rolling window hasn't advanced), same 2 striking-distance queries, no new opportunity.
+Sitemap re-swept: 76/76 URLs return 200.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-08 (06:19 UTC / Tue 2026-09-08 02:20 ET) — [SEO] Lane heartbeat: sweep clean, no new opportunity
 
 **Severity.** — (no defect found)
