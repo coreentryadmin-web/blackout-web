@@ -3217,3 +3217,44 @@ every touched module green on Node 20 (`board`/`pin-source`/`breakout-source`/`g
 `condor`/`strategy-version`/`skip-grading`/`plan`/`terminal-ladder`/`scan`, 415+ tests). No
 `findings-staging` entry — not a functional bug, logged here per the RUN-LOG policy for low-severity
 cleanup passes. PR #3433.
+
+## 2026-09-08 — Sustained ALB tail-latency (Max 50-120s every 15-min window, 4h+) traced to already-guarded Vector background crons — GREEN, no new fix needed
+
+DISCOVERY-cycle performance sweep per the standing STANDING PERFORMANCE/LATENCY AUDIT MANDATE
+methodology ("measure before guessing"). `AWS/ApplicationELB TargetResponseTime` on
+`blackout-production-app`'s target group showed a striking pattern across the last 4 hours: `p50`
+consistently sub-second (0.06-0.5s, excellent), but `Max` sitting at **50-120s in every single
+15-minute window** with `p99` swinging 7-50s — a classic tail-latency shape, not a fleet-capacity
+one, per this mandate's own diagnostic rule.
+
+Cross-referenced against `/ecs/blackout-production` CloudWatch Logs filtered on `elapsed=` for the
+same 2-hour window: the long tail is dominated by `vector-dark-pool-warm` (up to 270339ms/4.5min),
+`vector-pick-sweep` (up to 221704ms/3.7min), and `vector-full-state-snapshot` (up to 147620ms/2.5min,
+`budgetHit=true` on every slow completion). All three share the cluster-wide Polygon/UW rate
+limiters that real member requests also queue behind (`uw-rate-limiter.ts`/`polygon-rate-limiter.ts`,
+`GLOBAL_MAX_RPS=2`), which is exactly the mechanism the ALB Max/p99 numbers are seeing.
+
+**Checked each against its own schedule before concluding anything (the mandate's explicit
+"never add a lock to a cron that doesn't need one" rule):**
+- `vector-pick-sweep` (every 2 min, `1-59/2 11-21 * * 1-5`) — already carries the `sharedCacheSetNx`
+  overlap guard (`OVERLAP_LOCK_KEY`) from the 2026-09-01/02 fix documented in its own route
+  comment; today's 221s spikes are the guard's OWN measured worst-case, not evidence it's missing.
+- `vector-full-state-snapshot` (~every 5 min) — already carries BOTH the `TIME_BUDGET_MS=50_000`
+  partial-completion guard AND its own `sharedCacheSetNx` cross-replica overlap lock
+  (`vector:full-state-snapshot:running`, 900s TTL), added 2026-09-02 after an almost identical
+  live incident (334995ms/5m35s overlap, documented in the route's own header comment). Today's
+  147s worst-case is well inside the fix's own safety margin; `budgetHit=true` is the intended
+  partial-completion behavior (next run/reader self-warm fills the rest), not a defect.
+- `vector-dark-pool-warm` (~every 10 min, `stale_after_min: 20`) — no overlap guard, but its
+  worst measured elapsed (270339ms ≈ 4.5min) is ~45% of its 600s schedule interval — well under
+  the threshold that made `vector-pick-sweep` (250% of its own interval) genuinely at-risk on
+  2026-09-02. Per this mandate's own worked example ("five sibling ~5-min-schedule crons at 30-91s
+  runtime were NOT at risk and were correctly left untouched"), this does not meet the bar for a
+  new guard — flagging as a "revisit if its own runtime grows" watch item, not a fix.
+
+**Verdict: the sustained ALB tail latency is explained by already-mitigated, by-design background
+load sharing rate limiters with member traffic — not a new regression, and not something a lock
+would fix (the guards that exist are working; the tail is the guarded jobs' own bounded worst case,
+not an unbounded overlap).** No code change, no `findings-staging` entry per this mandate's own
+"root cause, not fix-shaped" discipline — logged here as a GREEN measurement pass. Re-check if
+`vector-dark-pool-warm`'s own elapsed trend grows toward its 600s schedule ceiling.
