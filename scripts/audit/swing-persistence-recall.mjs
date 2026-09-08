@@ -53,12 +53,14 @@ const MIN_N = Math.max(1, Number(arg("min-n", "8")) || 8);
 const JSON_OUT = process.argv.includes("--json");
 
 // ── mirrors taxonomy.ts's ARCHETYPE_PERSISTENCE + accumulation-store.ts's meetsPersistence ──
+// 2026-09-08: loosened to 1-session+corroboration on the evidence THIS SCRIPT measured (see
+// docs/audit/INTENTIONAL-DESIGN.md item #7) — kept in lockstep with taxonomy.ts's own update.
 const ARCHETYPE_PERSISTENCE = {
-  BREAKOUT: { minDistinctSessions: 2, requiresCorroboration: false },
-  PULLBACK_CONTINUATION: { minDistinctSessions: 2, requiresCorroboration: false },
-  MEAN_REVERSION: { minDistinctSessions: 2, requiresCorroboration: false },
-  FLOW_ACCUMULATION: { minDistinctSessions: 2, requiresCorroboration: false },
-  SECTOR_ROTATION: { minDistinctSessions: 2, requiresCorroboration: false },
+  BREAKOUT: { minDistinctSessions: 1, requiresCorroboration: true },
+  PULLBACK_CONTINUATION: { minDistinctSessions: 1, requiresCorroboration: true },
+  MEAN_REVERSION: { minDistinctSessions: 1, requiresCorroboration: true },
+  FLOW_ACCUMULATION: { minDistinctSessions: 1, requiresCorroboration: true },
+  SECTOR_ROTATION: { minDistinctSessions: 1, requiresCorroboration: true },
   EVENT_DRIVEN: { minDistinctSessions: 1, requiresCorroboration: true },
   POST_EARNINGS_DRIFT: { minDistinctSessions: 1, requiresCorroboration: true },
   FAILED_BREAKDOWN: { minDistinctSessions: 1, requiresCorroboration: false },

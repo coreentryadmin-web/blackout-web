@@ -42,19 +42,25 @@ test("critique #6 RESOLVED: the industry-group RS feed shipped, so NO archetype 
   assert.equal(ARCHETYPE_META.SECTOR_ROTATION.id, "SECTOR_ROTATION");
 });
 
-test("critique #3: archetype-aware persistence policy — cross-session=2, event/immediate=1+corroboration", () => {
-  // Every archetype has a rule; the default is the conservative cross-session gate.
+test("2026-09-08 loosening: every classified archetype is 1-session+corroboration except FAILED_BREAKDOWN; unclassified stays at the conservative 2-session default", () => {
+  // Unclassified (no archetype at all) has no archetype-level evidence — keeps the conservative gate.
   assert.equal(DEFAULT_PERSISTENCE_RULE.minDistinctSessions, 2);
   assert.equal(DEFAULT_PERSISTENCE_RULE.requiresCorroboration, false);
   assert.deepEqual(persistenceRuleFor(null), DEFAULT_PERSISTENCE_RULE);
 
-  const crossSession = ["FLOW_ACCUMULATION", "PULLBACK_CONTINUATION", "SECTOR_ROTATION", "BREAKOUT", "MEAN_REVERSION"] as const;
-  for (const a of crossSession) {
-    assert.equal(ARCHETYPE_PERSISTENCE[a].minDistinctSessions, 2, `${a} keeps the 2-session gate`);
-    assert.equal(ARCHETYPE_PERSISTENCE[a].requiresCorroboration, false, `${a} needs no corroboration`);
-  }
-  const eventImmediate = ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"] as const;
-  for (const a of eventImmediate) {
+  // scripts/audit/swing-persistence-recall.mjs measured (docs/audit/INTENTIONAL-DESIGN.md item #7,
+  // 90-day real accumulation data) that the extra calendar-day wait on these previously-cross-session
+  // archetypes did not improve forward outcomes — loosened to match event/immediate archetypes.
+  const oneSessionPlusCorroboration = [
+    "FLOW_ACCUMULATION",
+    "PULLBACK_CONTINUATION",
+    "SECTOR_ROTATION",
+    "BREAKOUT",
+    "MEAN_REVERSION",
+    "EVENT_DRIVEN",
+    "POST_EARNINGS_DRIFT",
+  ] as const;
+  for (const a of oneSessionPlusCorroboration) {
     assert.equal(ARCHETYPE_PERSISTENCE[a].minDistinctSessions, 1, `${a} may fire the session it triggers`);
     assert.equal(ARCHETYPE_PERSISTENCE[a].requiresCorroboration, true, `${a} still needs a 2nd independent signal`);
   }
