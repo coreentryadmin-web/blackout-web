@@ -32,7 +32,11 @@
 //        --base=<url> --min-n=<int, default 8> --json
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
 
-const POLYGON_API_BASE = (process.env.POLYGON_API_BASE ?? "https://api.polygon.io").replace(/\/$/, "");
+// This sandbox sometimes ships POLYGON_API_BASE as the literal unresolved string
+// "POLYGON_API_BASE" rather than leaving it unset — a plain `??` default doesn't catch that,
+// so this must be a real-URL guard (same pattern as every other audit script's self-default).
+const rawPolygonBase = process.env.POLYGON_API_BASE ?? "";
+const POLYGON_API_BASE = (/^https?:\/\//.test(rawPolygonBase) ? rawPolygonBase : "https://api.polygon.io").replace(/\/$/, "");
 const POLYGON_API_KEY = process.env.POLYGON_API_KEY ?? "";
 
 function arg(name, fallback) {
