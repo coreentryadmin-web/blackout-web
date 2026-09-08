@@ -15388,12 +15388,7 @@ Rationale:
 - Matches the actual use case (traders watch top-premium prints)
 
 ### Status
-**Status.** OPEN — PENDING COORDINATOR DECISION on whether to:
-1. Relabel (quick, minimal blast radius)
-2. Redesign score (larger change, requires re-audit)
-3. Deprecate score sort (removes functionality)
-
-Do not merge without resolving the label vs formula mismatch. A label-only fix is a one-line commit.
+**Status.** CONFIRMED FIXED (correction to a stale "PENDING COORDINATOR DECISION" status) — verified 2026-09-08: Option A (the recommended relabel) shipped in PR #2757 (`audit(helix): conviction score labeling vs formula mismatch`, merged). `HighScorePrints.tsx`'s kicker reads `mode === "score" ? "★ premium concentration" : "◆ size"` in current source — the dishonest "★ conviction" label is gone, replaced with exactly the second recommended phrasing from Option A above.
 
 ## 2026-08-23 — [P3, Helix] `contracts = premium ÷ (fill × 100)` was written out FIVE times, and one of them was mine — FIXED
 
