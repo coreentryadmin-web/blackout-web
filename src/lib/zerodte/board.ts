@@ -748,7 +748,7 @@ export type ZeroDteSetup = {
 
 // Exported so the audit trail (buildZeroDteAuditRow below) can cite the actual
 // live gate thresholds instead of a second, driftable copy of these numbers.
-export const SETUP_MIN_GROSS = 200_000; // lowered 750K→300K→200K — quiet tapes were starving FLOW; $200K still filters noise while catching mid-cap institutional prints
+export const SETUP_MIN_GROSS = 150_000; // 2026-09-08: lowered 750K→300K→200K→150K (operator directive — whole-market volume too thin, "only 1 play on 0DTE all session"); still well above noise-floor prints, admits more mid-cap FLOW candidates into scoring
 export const SETUP_MIN_DOMINANCE = 0.55; // lowered from 0.65 — still requires directional lean but lets mixed-tape movers through
 // Day Trade board admission ceiling — re-exported under its historical name (SETUP_MAX_DTE) so
 // existing call sites (:828, :853 below) need no edit. Sourced from horizons.ts's ZERODTE_MAX_DTE,
@@ -774,16 +774,21 @@ export const SETUP_MAX_ITM_PCT = 2;
  *  (typ. 2–5% OTM) is untouched — this only rejects the tail. Env-overridable via
  *  ZERODTE_SETUP_MAX_OTM_PCT (a number; invalid/absent → the 12 default). Set very high
  *  (e.g. 999) to effectively disable. */
+// 2026-09-08: default widened 12→16 (operator directive, volume complaint) — still a tail
+// cap, not a floor with negative-EV evidence attached (unlike G-3/G-17's score bands), so
+// widening it admits more genuine momentum entries in the 12-16% OTM range without reopening
+// a band this desk has already measured losing.
 export const SETUP_MAX_OTM_PCT = ((): number => {
   const raw = Number(process.env.ZERODTE_SETUP_MAX_OTM_PCT);
-  return Number.isFinite(raw) && raw > 0 ? raw : 12;
+  return Number.isFinite(raw) && raw > 0 ? raw : 16;
 })();
 
 /** Relaxed far-OTM cap for Vector-confirmed runner/winner attaches (100–500% geometry).
- *  Default 20% — wider than SETUP_MAX_OTM_PCT (12) but still blocks egregious lotto tails. */
+ *  Default 26% (2026-09-08, was 20) — wider than SETUP_MAX_OTM_PCT (16) but still blocks
+ *  egregious lotto tails. */
 export const RUNNER_SETUP_MAX_OTM_PCT = ((): number => {
   const raw = Number(process.env.ZERODTE_RUNNER_MAX_OTM_PCT);
-  return Number.isFinite(raw) && raw > SETUP_MAX_OTM_PCT ? raw : 20;
+  return Number.isFinite(raw) && raw > SETUP_MAX_OTM_PCT ? raw : 26;
 })();
 
 /** How much of a print's premium counts DIRECTIONALLY, by aggressor side.

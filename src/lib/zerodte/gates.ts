@@ -123,7 +123,19 @@ export const LATE_AFTERNOON_BLOCK_LABEL = "15:30 ET";
 // confirmations. A null read (not the live path — scan.ts always attaches one before this gate —
 // but true in fixture replays) is not itself a block; we never manufacture a block from an
 // unmeasured factor.
-export const ZERODTE_CONFLUENCE_MIN = envInt("ZERODTE_CONFLUENCE_MIN", 2);
+//
+// 2026-09-08 (operator directive — whole-market volume complaint, "only 1 play on 0DTE all
+// session"): pulled the standard floor to the documented release-valve value (1). The 1-conf
+// bucket itself measured 0.0% EV (not negative) in the same E3 study that found 2-conf +15.9% —
+// this trades some expected edge for volume deliberately, on operator instruction, not because
+// the 2-conf evidence was wrong. Left ZERODTE_SCORE_FLOOR/_BREAKOUT/_PIN and
+// ZERODTE_SINGLE_RAIL_PRIME_MIN untouched: those gate the 55-64 and 65-74 score bands, which have
+// their OWN direct, recently-measured negative-EV evidence (F-2: 18.8% WR; G-17 extension,
+// n=152: 35.7% WR) — reopening those specific bands isn't "unproven, ship and watch," it's
+// re-admitting a band this desk already spent real capital proving loses money. The early-window
+// floor (ZERODTE_CONFLUENCE_MIN_EARLY) is left at 2, since that window's 1-conf case was the
+// specific "hurts most" case called out below.
+export const ZERODTE_CONFLUENCE_MIN = envInt("ZERODTE_CONFLUENCE_MIN", 1);
 export const ZERODTE_CONFLUENCE_MIN_EARLY = Math.max(
   ZERODTE_CONFLUENCE_MIN,
   envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 2)
@@ -260,7 +272,7 @@ export type ZeroDteVixCalibration = {
 // META and was surfaced to members only as a whisper-echo. Slayer has an explicit
 // satellite-conflict module; this is the 0DTE analogue. Now enforced: a conflict
 // with score < 80 is a hard block. Calibration record still pins for measurement.
-export const CONFLICT_SCORE_FLOOR = 65; // lowered from 80 — old floor blocked nearly everything with any conflict; 65 still filters genuine disagreements
+export const CONFLICT_SCORE_FLOOR = 55; // 2026-09-08: lowered from 65 (was itself lowered from 80) — this floor gates CONFLICT tolerance, not the raw score-band EV G-3/G-17 already measured negative; no direct evidence ties 55-64 conflicted setups to a worse outcome than 65-74 conflicted ones, so admitting them trades scarcity for volume on operator instruction
 /** Tickers that trade the same broad-market direction as Slayer's SPX play — a
  *  0DTE short on any of these against a live Slayer long IS a desk disagreement. */
 // G-6 cross-system conflict scope: index + mega-cap tech that move in sympathy

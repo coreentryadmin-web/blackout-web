@@ -359,11 +359,12 @@ test("G-5: unreadable governor state fails closed with gate_context_unavailable"
   assert.deepEqual(v.blocks.map((b) => b.code), ["gate_context_unavailable"]);
 });
 
-test("G-5: three stopped plays halt every further commit for the session", () => {
+test("G-5: four stopped plays halt every further commit for the session (GOVERNOR_MAX_SESSION_STOPS=4 as of 2026-09-08)", () => {
   const stops = [
     { ticker: "SPY", direction: "long" as const, at_ms: null },
     { ticker: "MU", direction: "long" as const, at_ms: null },
     { ticker: "AMD", direction: "long" as const, at_ms: null },
+    { ticker: "TSLA", direction: "long" as const, at_ms: null },
   ];
   const v = evaluateZeroDteGates(input({ governor: { open_plans: [], stops } }));
   assert.equal(v.verdict, "BLOCKED");
@@ -532,12 +533,13 @@ test("G-7 fail-closed: 'fetched, zero events' (empty array, macroUnavailable NOT
 
 // ── G-6 · cross-system conflict (HARD GATE — promoted from calibration 2026-07-16) ──
 
-test("G-6: opposing Night Hawk's take with score < 65 BLOCKS (was calibration-only)", () => {
+test("G-6: opposing Night Hawk's take with score < 55 BLOCKS (was calibration-only)", () => {
+  // CONFLICT_SCORE_FLOOR lowered 65→55 on 2026-09-08.
   const v = evaluateZeroDteGates(
     input({
       ticker: "META",
       direction: "short",
-      score: 60,
+      score: 50,
       nighthawkTake: { direction: "long", edition_for: "2026-07-10" },
     })
   );
@@ -552,9 +554,10 @@ test("G-6: opposing Night Hawk's take with score < 65 BLOCKS (was calibration-on
   assert.equal(v.calibration.g6_conflict.would_block, true);
 });
 
-test("G-6: opposing the live Slayer play on an SPX-correlated ticker BLOCKS at score < 65", () => {
+test("G-6: opposing the live Slayer play on an SPX-correlated ticker BLOCKS at score < 55", () => {
+  // CONFLICT_SCORE_FLOOR lowered 65→55 on 2026-09-08.
   const slayerLive = { direction: "long" as const };
-  const spy = evaluateZeroDteGates(input({ ticker: "SPY", direction: "short", score: 60, slayerLive }));
+  const spy = evaluateZeroDteGates(input({ ticker: "SPY", direction: "short", score: 50, slayerLive }));
   assert.equal(spy.verdict, "BLOCKED");
   assert.equal(spy.blocks.some((b) => b.code === "cross_system_conflict"), true);
   assert.equal(spy.calibration.g6_conflict.conflict, true);
@@ -1136,18 +1139,23 @@ test("G-12: no confluence read attached → fails OPEN (commits, never manufactu
   assert.ok(!v.blocks.some((b) => b.code === "confluence_floor"));
 });
 
-test("G-12: 0-confluence (the −12.5% EV bucket) is BLOCKED at the precision floor of 2", () => {
-  assert.equal(ZERODTE_CONFLUENCE_MIN, 2, "test assumes the precision default floor");
+test("G-12: 0-confluence (the −12.5% EV bucket) is BLOCKED at the standard floor of 1", () => {
+  // ZERODTE_CONFLUENCE_MIN lowered 2→1 on 2026-09-08 (operator directive, whole-market volume
+  // complaint) — the release valve the original G-12 comment always documented as available.
+  // The 1-conf bucket itself measured 0.0% EV (not negative) in the same E3 study that found
+  // 2-conf +15.9%; only the 0-conf (−12.5% EV) bucket is still hard-blocked outside the early window.
+  assert.equal(ZERODTE_CONFLUENCE_MIN, 1, "test assumes the standard floor after the 2026-09-08 loosening");
   const v = evaluateZeroDteGates(input({ confluence: confluence(0) }));
   assert.equal(v.verdict, "BLOCKED");
   const b = v.blocks.find((x) => x.code === "confluence_floor");
   assert.ok(b, "expected a confluence_floor block");
-  assert.equal(b!.threshold, 2);
-  assert.match(b!.reason, /0 of the needed 2 confluence/);
+  assert.equal(b!.threshold, 1);
+  assert.match(b!.reason, /0 of the needed 1 confluence/);
 });
 
-test("G-12: 1-conf BLOCKED / 2-conf commits at mid-session (11:00, floor 2)", () => {
-  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(1) })).verdict, "BLOCKED");
+test("G-12: 0-conf BLOCKED / 1-conf commits at mid-session (11:00, floor 1)", () => {
+  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(0) })).verdict, "BLOCKED");
+  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(1) })).verdict, "COMMIT");
   assert.equal(evaluateZeroDteGates(input({ confluence: confluence(2) })).verdict, "COMMIT");
 });
 
@@ -1435,18 +1443,19 @@ test("stacked firewalls: vix + macro + earnings + halt-feed unavailable all bloc
 });
 
 // ── G-6 correlated-ticker set + conflict-score EXACT boundary ─────────────────────────
-test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflicts; score 64 blocks, 65 clears", () => {
+test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflicts; score 54 blocks, 55 clears", () => {
+  // CONFLICT_SCORE_FLOOR lowered 65→55 on 2026-09-08.
   const slayerLive = { direction: "long" as const };
   for (const ticker of ["QQQ", "NDX"]) {
-    const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 64, slayerLive }));
-    assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 64 should block`);
+    const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 54, slayerLive }));
+    assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 54 should block`);
     assert.ok(conflict.blocks.some((b) => b.code === "cross_system_conflict"));
-    // Exactly 65 overrides the conflict (CONFLICT_SCORE_FLOOR is 65, comparison is `< 65`). G-17
+    // Exactly 55 overrides the conflict (CONFLICT_SCORE_FLOOR is 55, comparison is `< 55`). G-17
     // (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also applies at this
     // score since discovery_origin isn't set here, so the overall verdict is BLOCKED overall —
     // check cross_system_conflict specifically clears rather than the full verdict.
-    const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 65, slayerLive }));
-    assert.ok(!cleared.blocks.some((b) => b.code === "cross_system_conflict"), `${ticker} at 65 should override the conflict`);
+    const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 55, slayerLive }));
+    assert.ok(!cleared.blocks.some((b) => b.code === "cross_system_conflict"), `${ticker} at 55 should override the conflict`);
     assert.equal(cleared.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
   }
 });

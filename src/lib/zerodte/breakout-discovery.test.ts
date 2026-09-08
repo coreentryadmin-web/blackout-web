@@ -303,9 +303,10 @@ test("discoverBreakoutSetups: huge-breadth day fills PAST the static floor, boun
     },
   });
   assert.equal(out.status, "ok");
-  // ceil(300 * 0.30) = 90, clamped to [BREAKOUT_MAX_CANDIDATES, BREAKOUT_MAX_CANDIDATES_CEILING].
-  const expected = Math.max(BREAKOUT_MAX_CANDIDATES, Math.min(BREAKOUT_MAX_CANDIDATES_CEILING, Math.ceil(QUALIFYING * 0.3)));
-  assert.equal(expected, 90, "sanity: this test's own math should land at 90");
+  // POOL_PCT raised 0.30→0.40 (2026-09-08): ceil(300 * 0.40) = 120, clamped to
+  // [BREAKOUT_MAX_CANDIDATES, BREAKOUT_MAX_CANDIDATES_CEILING].
+  const expected = Math.max(BREAKOUT_MAX_CANDIDATES, Math.min(BREAKOUT_MAX_CANDIDATES_CEILING, Math.ceil(QUALIFYING * 0.4)));
+  assert.equal(expected, 120, "sanity: this test's own math should land at 120");
   assert.equal(out.setups.length, expected);
   assert.ok(
     out.setups.length > BREAKOUT_MAX_CANDIDATES,

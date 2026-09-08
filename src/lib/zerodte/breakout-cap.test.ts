@@ -17,9 +17,9 @@ test("resolveBreakoutCandidateCap: zero qualifying movers stays at the floor", (
 });
 
 test("resolveBreakoutCandidateCap: mid-breadth day scales up proportionally", () => {
-  // Real 2026-07-21 evidence: qualifying=294 → ceil(294*0.30)=89, within [40,100].
-  const cap = resolveBreakoutCandidateCap({ qualifyingMovers: 294, floor: 40, ceiling: 100 });
-  assert.equal(cap, 89);
+  // POOL_PCT raised 0.30→0.40 on 2026-09-08: qualifying=200 → ceil(200*0.40)=80, within [40,100].
+  const cap = resolveBreakoutCandidateCap({ qualifyingMovers: 200, floor: 40, ceiling: 100 });
+  assert.equal(cap, 80);
 });
 
 test("resolveBreakoutCandidateCap: huge-breadth day is bounded at the ceiling, not 1:1 with the pool", () => {
@@ -35,7 +35,7 @@ test("resolveBreakoutCandidateCap: an extreme pool never exceeds the ceiling", (
 
 test("resolveBreakoutCandidateCap: default floor/ceiling apply when omitted", () => {
   const cap = resolveBreakoutCandidateCap({ qualifyingMovers: 1000 });
-  assert.equal(cap, 150); // DEFAULT_CEILING (raised 2026-08-24 from 100)
+  assert.equal(cap, 220); // DEFAULT_CEILING (raised 2026-08-24 100→150, 2026-09-08 150→220)
   const capThin = resolveBreakoutCandidateCap({ qualifyingMovers: 10 });
   assert.equal(capThin, 40); // DEFAULT_FLOOR
 });
