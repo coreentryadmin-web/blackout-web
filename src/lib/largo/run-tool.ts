@@ -1795,7 +1795,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       }
       if (!payload) {
         // C3: absence carries a reason. "No events" and "we could not look" are different facts,
-        // and only one of them means the calendar is quiet.
+        // and only one of them means the calendar is quiet. `items` stays null (not []) so the
+        // note above isn't undercut by a countable, quiet-looking list beside it.
         return {
           available: false,
           error: "timeline_unavailable",
@@ -1803,7 +1804,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           as_of: etStamp(Date.now()) ?? new Date().toISOString(),
           as_of_session: asOfSession,
           as_of_weekday: weekdayEt(asOfSession),
-          items: [],
+          items: null,
         };
       }
 
