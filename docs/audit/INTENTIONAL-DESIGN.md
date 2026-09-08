@@ -347,3 +347,63 @@ against: a plausible-looking small-sample pattern from live observation, checked
 ```
 node --import tsx scripts/audit/cortex-oppose-magnitude-ab.mjs --days=90 --min-n=10
 ```
+
+## 7. Swing cross-session persistence floor (`MIN_PERSISTENCE_SESSIONS=2`) — measured 2026-09-08, evidence is mixed, no gate changed
+
+**Why this was measured.** `accumulation-store.ts`'s cross-session persistence gate — a candidate
+must be seen on 2 distinct session days before it's WATCH/COMMIT-eligible (1 session + same-day
+corroboration for EVENT_DRIVEN/POST_EARNINGS_DRIFT, 1 session alone for FAILED_BREAKDOWN) — is
+already documented in that file as **"Provisional — never a graduated edge, just the persistence
+floor."** Live-observed 2026-09-08: several TRIGGERED+AT_TRIGGER swing setups scoring 67-85
+(HOOD, AMD, EWY, XME, CCJ) sat blocked from COMMIT purely on this gate — `sectionForSwingPlay`
+routes a persistence-blocked play to RESEARCH before it ever reaches setup-state routing. One of
+them (EWY) was already up in the underlying hours after being blocked — a real anecdote that the
+mechanism costs a winner sometimes, but one day proves the mechanism exists, not whether it nets
+positive. This mirrors the exact discipline `discovery-recall-probe.mjs` established for the
+analogous 0DTE `BREAKOUT_MAX_CANDIDATES` question.
+
+**The measurement.** `scripts/audit/swing-persistence-recall.mjs` pulls every
+`swing_candidate_accumulation` row (promoted AND still-pending) via the new admin-gated
+`GET /api/admin/swing/accumulation-export` route, splits them into CLEARED (promoted, or the
+persistence predicate says it could be) vs BLOCKED (persistence predicate fails) using a pure copy
+of `accumulation-store.ts`'s own `meetsPersistence` logic, and grades each row's underlying on REAL
+Polygon daily bars at +1/+3/+5 trading days forward (direction-adjusted, favorable = long+up or
+short+down) — a coarse underlying-only proxy, same scope discipline as `helix-score-signal.mjs`.
+
+**First real run, 90-day window (232 rows — effectively the full history; the feature has only run
+since 2026-06-10):**
+
+| Horizon | CLEARED n | CLEARED WR | CLEARED avg | BLOCKED n | BLOCKED WR | BLOCKED avg |
+|---|---|---|---|---|---|---|
+| +1d | 143 | 45.5% | -0.54% | 34 | **58.8%** | -0.32% |
+| +3d | 133 | 52.6% | -0.57% | 20 | 50.0% | -1.16% |
+| +5d | 114 | 55.3% | +0.31% | 16 | 43.8% | -2.55% |
+
+A 30-day window (170 rows) shows the same shape: CLEARED 44.6/52.4/52.4% vs BLOCKED 60/52.4/47.1%
+at +1/+3/+5d — the BLOCKED cohort barely grew between the 30- and 90-day pulls (34-35 rows either
+way), meaning it's concentrated in the last month, not evenly spread across the full history.
+
+**Verdict: MIXED, NOT DECISIVE.** The persistence-cleared cohort does **not** clearly outperform
+the blocked cohort at any horizon measured — BLOCKED is actually ahead at the shortest horizon
+(+1d, the largest BLOCKED sample at n=34) and roughly tied at +3d, the more relevant horizon for a
+days-to-weeks swing hold. CLEARED only pulls ahead at +5d, and there BLOCKED's n=16-17 is thin. A
+by-archetype breakdown found **>50% of all accumulation rows carry no archetype at all**
+(`classifyArchetype`'s deliberate "null-when-thin" honesty, not a bug) and fall through to
+`DEFAULT_PERSISTENCE_RULE` — so the archetype-specific loosening already given to
+EVENT_DRIVEN/POST_EARNINGS_DRIFT (1 session + corroboration) applies to a minority of real
+candidates; most hit the flat 2-session floor regardless of what kind of setup they actually are.
+
+**What was NOT done.** No gate changed. Same standing discipline as item #6: a real, live anecdote
+(EWY) does not become a code change on a sample this size and this mixed — the gate might be
+costing quality, might not, and this measurement cannot tell which with confidence. What it DOES
+confirm is that this floor's "provisional" label in `accumulation-store.ts` is accurate, not just
+disclaimer text — 90 days of real data (essentially this feature's whole life) never produced a
+result clearly favoring either side. A larger window isn't available yet (the feature is only ~3
+months old); the honest next step is accumulating more sessions before touching the parameter, or
+running a controlled canary (loosen for a subset of tickers/archetypes, measure the delta) rather
+than a blind global change.
+
+**Re-run:**
+```
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-persistence-recall.mjs --days=90 --horizons=1,3,5 --min-n=8
+```
