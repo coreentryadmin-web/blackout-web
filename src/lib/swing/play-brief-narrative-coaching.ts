@@ -204,7 +204,7 @@ export function confluenceCoaching(
         ? "fade rallies into this node"
         : "cover if reclaimed";
   return (
-    `**Confluence ${top.center.toFixed(2)}** (${kinds}, score ${top.score ?? "—"}) — ${fmtPct(dist)} ${side}. ${action}.`
+    `**Confluence ${top.center.toFixed(2)}** (${kinds}, score ${top.score != null ? top.score.toFixed(1) : "—"}) — ${fmtPct(dist)} ${side}. ${action}.`
   );
 }
 

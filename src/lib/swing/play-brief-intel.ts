@@ -187,7 +187,7 @@ export function chartTechnicalsSection(
 function formatConfluenceZone(z: ConfluenceZone, spot: number | null): string {
   const kinds = z.kinds.join("+");
   const dist = spot != null ? ` · ${fmtDist(spot, z.center)}` : "";
-  return `• **${z.center.toFixed(2)}** (${kinds}, score ${z.score.toFixed(0)})${dist}`;
+  return `• **${z.center.toFixed(2)}** (${kinds}, score ${z.score.toFixed(1)})${dist}`;
 }
 
 /** GEX walls, flip, max pain, expected move, confluence nodes. */

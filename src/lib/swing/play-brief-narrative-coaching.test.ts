@@ -6,6 +6,7 @@ import {
   catalystCoaching,
   closedCoaching,
   collectCoachingBullets,
+  confluenceCoaching,
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
@@ -530,6 +531,23 @@ test("vexCoaching: narrates vanna flip", () => {
   );
   assert.match(line!, /VEX lens/i);
   assert.match(line!, /diverge/i);
+});
+
+// FINDING 2026-09-08 (Ask Largo monitor cycle): confluence-zone scores are half-point weighted
+// sums (call-wall 3, gamma-flip 2.5, ...), so a real score can land on e.g. 7.5. This line used to
+// interpolate `top.score` raw (no rounding) while chartLevelsSection's "Levels on chart" section
+// rounded the SAME zone's SAME score to a whole number — a member reading both saw two different
+// numbers for one figure. Both sites now render `.toFixed(1)` so they agree.
+test("confluenceCoaching: score renders at one-decimal precision, matching Levels-on-chart", () => {
+  const line = confluenceCoaching(
+    {
+      confluenceZones: [{ center: 101, kinds: ["gamma-flip", "call-wall"], score: 7.5 }],
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.match(line!, /score 7\.5/, "must show the real half-point score");
+  assert.doesNotMatch(line!, /score 8\b/, "must not display a different rounding than Levels-on-chart");
 });
 
 test("dataHonestyCoaching: aged markAsOf warns not-live-synced (Largo C2/C3)", () => {
