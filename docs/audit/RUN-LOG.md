@@ -11,6 +11,27 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-08 (00:16 UTC / Mon 2026-09-07 20:17 ET) — [SEO] Lane heartbeat: sweep clean, no new opportunity
+
+**Severity.** — (no defect found)
+
+**STEP 1.** `/api/og?title=Test` → `200`, `image/png` — #2448 holds. CLS was measured fresh with
+the real browser tool 6 hours ago this cycle (18:16 UTC: `0.0004 GOOD`, post-purge, desktop
+1440×900) — checked all 24 commits landed since then (`git log 157b8d21e..origin/main`) and none
+touch `src/app/page.tsx`/`src/components/home` (all Vector/Largo/SPX/cron/perf work), so that
+measurement still stands; not re-purging/re-measuring redundantly this cycle.
+
+**STEP 2.** `agent-pr-sweep.mjs`: 1 open agent PR (#4569, autopilot-state handoff,
+MERGE-STATE-UNKNOWN) — not SEO-lane, not conflicted, nothing owed.
+
+**STEP 3.** `gsc-opportunities-report.mjs`: same 2 striking-distance queries, both already
+optimized — no new opportunity. Notable trend, not actionable: `dealer gamma` climbed from pos
+42.2 to 24.3 (still page-3+ deep demand, still authority-limited, not yet in the 10-20 striking-
+distance band). Sitemap re-swept: 76/76 URLs return 200.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-07 (18:16 UTC / Mon 2026-09-07 14:17 ET) — [SEO] Lane heartbeat: CLS measured 0.0004 GOOD post-purge (real browser, not inferred)
 
 **Severity.** — (no defect found)
