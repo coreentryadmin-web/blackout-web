@@ -111,3 +111,29 @@ test("countMatchingContractHits ignores tape_time_estimated ingest fallback", ()
   );
   assert.equal(hits, 0);
 });
+
+test("countMatchingContractHits rejects a future-dated print instead of counting it as a hit", () => {
+  // A garbage/skewed timestamp one year ahead of nowMs makes `nowMs - ms` negative, which the old
+  // unguarded `> windowMs` check never catches — the exact future-print bug already fixed in
+  // detectVelocitySpikes/detectSplitFlow (helix-signal-detection.ts), previously unapplied here.
+  const nowMs = Date.parse("2026-08-21T16:00:00.000Z");
+  const futureAt = "2027-08-21T15:55:00.000Z";
+  const row = {
+    ticker: "NVDA",
+    strike: 200,
+    option_type: "CALL",
+    expiry: "2026-08-21",
+    premium: 500_000,
+    event_at: futureAt,
+    alerted_at: futureAt,
+  };
+  assert.equal(
+    countMatchingContractHits(
+      [row],
+      { ticker: "NVDA", strike: 200, option_type: "CALL", expiry: "2026-08-21" },
+      HELIX_STRIKE_HITS_WINDOW_MS,
+      nowMs
+    ),
+    0
+  );
+});

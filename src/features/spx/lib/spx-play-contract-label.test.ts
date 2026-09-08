@@ -70,6 +70,7 @@ test("resolveSpxPlayContractChip: levels.entry is not used as option strike", ()
 });
 
 test("pinPlayAlignmentHint: surfaces when pin drift and play direction diverge", () => {
-  assert.match(pinPlayAlignmentHint("long", "down") ?? "", /independent of the magnet/i);
-  assert.equal(pinPlayAlignmentHint("long", "up"), null);
+  assert.match(pinPlayAlignmentHint("long", -12) ?? "", /independent of the magnet/i);
+  assert.equal(pinPlayAlignmentHint("long", 8), null);
+  assert.equal(pinPlayAlignmentHint("long", 0.2), null);
 });

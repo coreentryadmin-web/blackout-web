@@ -1,4 +1,5 @@
 import { fetchUwStockState } from "@/lib/providers/unusual-whales";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 /** Map Polygon index options roots (I:SPX) and equity roots to UW stock-state tickers. */
 export function uwTickerFromOptionsRoot(optionsRoot: string): string {
@@ -7,7 +8,7 @@ export function uwTickerFromOptionsRoot(optionsRoot: string): string {
   return root;
 }
 
-type SpotQuote = { price: number; change_pct: number };
+type SpotQuote = { price: number; change_pct: number | null };
 
 const mem = new Map<string, { at: number; quote: SpotQuote }>();
 const MEM_TTL_MS = 5_000;
@@ -46,7 +47,7 @@ export async function resolveSpotFromUwStockState(
   if (!uwTicker) return null;
 
   const hit = mem.get(uwTicker);
-  if (hit && now - hit.at < MEM_TTL_MS) return hit.quote;
+  if (hit && isWsUpdatedAtFresh(hit.at, MEM_TTL_MS, now)) return hit.quote;
 
   try {
     const raw = await fetchUwStockState(uwTicker);
@@ -59,9 +60,12 @@ export async function resolveSpotFromUwStockState(
     const price = Number(row.close ?? row.price ?? row.last ?? 0);
     if (!(price > 0)) return null;
 
-    const prev = Number(row.prev_close ?? row.previous_close ?? 0);
+    const prevRaw = row.prev_close ?? row.previous_close;
+    const prev = prevRaw != null && prevRaw !== "" ? Number(prevRaw) : NaN;
     const change_pct =
-      prev > 0 ? Number((((price - prev) / prev) * 100).toFixed(2)) : 0;
+      Number.isFinite(prev) && prev > 0
+        ? Number((((price - prev) / prev) * 100).toFixed(2))
+        : null;
 
     const quote = { price, change_pct };
     if (mem.size > 50) mem.clear();

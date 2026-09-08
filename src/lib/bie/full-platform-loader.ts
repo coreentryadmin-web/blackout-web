@@ -2,13 +2,17 @@ import "server-only";
 
 import { readBieFullState, type BieFullState } from "@/lib/bie/full-platform-cache";
 import { buildBieFullState } from "@/lib/bie/full-platform-snapshot";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 const LIVE_MAX_AGE_MS = 5 * 60 * 1000;
 
 function isFresh(state: BieFullState): boolean {
   const t = Date.parse(state.asOf);
   if (!Number.isFinite(t)) return false;
-  return Date.now() - t <= LIVE_MAX_AGE_MS;
+  const ageMs = Date.now() - t;
+  // Clock-skewed future asOf must not read as infinitely fresh (negative age always passes <= 5m).
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return false;
+  return Math.max(0, ageMs) <= LIVE_MAX_AGE_MS;
 }
 
 /** Extended snapshot includes Thermal + Vector + 0DTE (post platform-read wiring). */

@@ -11,6 +11,12 @@ import { fetchUwOptionChains } from "@/lib/providers/unusual-whales";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
 import { polygonSpotTicker } from "@/lib/zerodte/board";
 import type { PlaybookPlay } from "./types";
+import { parseOptionsContract, type ParsedOptionsContract } from "./option-contract-parse";
+// Re-exported (not just imported above) so every existing caller of `./option-chain-prompt` for
+// these two names is unaffected — see option-contract-parse.ts's own comment for why the parser
+// moved out of this (server-only-reaching) module.
+export type { ParsedOptionsContract } from "./option-contract-parse";
+export { parseOptionsContract } from "./option-contract-parse";
 
 // Widened from ±5% to ±12% — the ±5% band blocked OTM options that are cheaper (under
 // the $35/share premium cap) and common in real swing-trade options plays. For a $150 stock
@@ -405,53 +411,6 @@ export async function resolveTickerChainRows(
 
   if (!rows.length) return null;
   return { spot, rows };
-}
-
-export type ParsedOptionsContract = {
-  strike: number;
-  side: "call" | "put" | null;
-  expiryYmd: string | null;
-};
-
-export function parseOptionsContract(optionsPlay: string): ParsedOptionsContract | null {
-  const text = optionsPlay.trim();
-  if (!text || text === "—") return null;
-
-  const sideMatch = text.match(/\b(CALL|PUT|C|P)\b/i);
-  const sideRaw = sideMatch?.[1]?.toUpperCase() ?? "";
-  const side: "call" | "put" | null =
-    sideRaw.startsWith("C") ? "call" : sideRaw.startsWith("P") ? "put" : null;
-
-  const strikeMatch =
-    text.match(/\$\s*(\d+(?:\.\d+)?)\s*(?:C|P|call|put)\b/i) ??
-    text.match(/\b(?:call|put|calls|puts)\s*@?\s*\$?\s*(\d+(?:\.\d+)?)/i) ??
-    text.match(/(?:strike|@)\s*\$?\s*(\d+(?:\.\d+)?)/i) ??
-    text.match(/\b(\d+(?:\.\d+)?)\s*(?:C|P)\b/i);
-  const strike = strikeMatch?.[1] ? Number(strikeMatch[1]) : NaN;
-  if (!Number.isFinite(strike) || strike <= 0) return null;
-
-  const isoMatch = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
-  let expiryYmd = isoMatch?.[1] ?? null;
-  if (!expiryYmd) {
-    const labelMatch = text.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*(\d{1,2})\b/i);
-    if (labelMatch) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const year = today.getFullYear();
-      let parsed = new Date(`${labelMatch[1]} ${labelMatch[2]}, ${year} 12:00:00`);
-      if (!Number.isNaN(parsed.getTime())) {
-        // Roll to next year only when the date is strictly before today (expired).
-        // Do NOT subtract a buffer — that causes January expiries to be rejected
-        // as "past" when running on Dec 27-31 and rolled to the wrong year.
-        if (parsed < today) {
-          parsed = new Date(`${labelMatch[1]} ${labelMatch[2]}, ${year + 1} 12:00:00`);
-        }
-        expiryYmd = parsed.toISOString().slice(0, 10);
-      }
-    }
-  }
-
-  return { strike, side, expiryYmd };
 }
 
 /**

@@ -28,7 +28,7 @@ import { classifyRegime, type MarketRegime, type StructureRegime } from "./regim
 import type { ZeroDteRegime } from "./exit-engine";
 // Runtime import is safe here: ./tiers is pure (its only import is ./gates
 // constants), so it adds no providers to this module's load graph.
-import { tierFromEntryContext, type ZeroDteTierAssignment } from "./tiers";
+import { tierFromEntryContext, scoreFloorForOrigin, type ZeroDteTierAssignment } from "./tiers";
 // Type-only (erased): keeps this module import-light — ./cortex-gate's runtime
 // deps (the Cortex barrel) never enter this module's load graph.
 import type { ZeroDteCortexEntryContext } from "./cortex-gate";
@@ -108,6 +108,18 @@ export type ZeroDteEntryContext = {
    *  source-specific scoreFloor for tier assignment. Pre-WS-20 rows carry no origin;
    *  tierFromEntryContext defaults to the full ZERODTE_SCORE_FLOOR when absent. */
   discovery_origin?: string[];
+  /** The G-3 score floor ACTUALLY IN EFFECT at commit (scoreFloorForOrigin over
+   *  discovery_origin, evaluated NOW so it can be pinned). 2026-09-04 audit finding:
+   *  ZERODTE_SCORE_FLOOR_BREAKOUT is an env-overridable constant that has already
+   *  changed in production (WS-20 lowered it 65→50 then restored it the same day),
+   *  and tierFromEntryContext used to re-derive the floor from TODAY's constant
+   *  rather than the one a past commit actually cleared — silently flipping the
+   *  retroactively-recomputed tier for old rows while the frozen `tier` field above
+   *  stayed pinned at the ORIGINAL answer, contradicting this file's own "can never
+   *  disagree" invariant below. Pinning the floor here closes that gap; absent on
+   *  rows committed before this field existed (tierFromEntryContext falls back to
+   *  recomputing from today's constant for those, same posture as discovery_origin). */
+  score_floor?: number | null;
   /** WS-14 input-age manifest: age (ms) at decision time of each input the commit used
    *  (flow/underlying/option_quote/gex/vix/macro/spy_bias). Frozen at commit by
    *  persistZeroDteScan (buildInputAgeManifest). Optional/additive — pre-WS-14 rows and the
@@ -186,15 +198,21 @@ export function buildZeroDteEntryContext(
     tier: null,
     session_regime: session?.regime ? zeroDteRegimeFromStructure(session.regime.structure) : null,
     ...(play.discovery_origin && { discovery_origin: play.discovery_origin }),
+    // PIN the floor actually in effect at commit — see the field's own doc comment
+    // above (2026-09-04 audit finding) for why this can no longer be left to a
+    // later recompute against mutable constants.
+    score_floor: scoreFloorForOrigin(play.discovery_origin),
   };
   // Commit-time merit tier (PR-F wiring): computed by feeding the JUST-BUILT blob
   // through tierFromEntryContext — the SAME adapter the calibration/record analyses
   // use to tier past rows retroactively — so the pinned tier and a retroactive
   // re-derivation of the same row can never disagree (one blob→input mapping, one
-  // assignZeroDteTier call). tierFromEntryContext is defensive on data by design;
-  // this catch guards programmer error only, and FAIL-SOFT is the contract: a tier
-  // is an advisory ranking, so its failure must never block a commit (null tier,
-  // log-only — same posture as the Cortex outage path in cortex-gate.ts).
+  // assignZeroDteTier call, over a blob whose score_floor is now ALSO pinned rather
+  // than recomputed — see tiers.ts's tierFromEntryContext doc comment for the live
+  // drift this closes). tierFromEntryContext is defensive on data by design; this
+  // catch guards programmer error only, and FAIL-SOFT is the contract: a tier is an
+  // advisory ranking, so its failure must never block a commit (null tier, log-only
+  // — same posture as the Cortex outage path in cortex-gate.ts).
   try {
     ctx.tier = tierFromEntryContext(ctx as unknown as Record<string, unknown>);
   } catch (err) {

@@ -6,6 +6,7 @@ import { sessionStatsFromMinuteBars, todayEtYmd, priorEtYmd } from "./spx-sessio
 import { smaFromCloses, emaFromCloses } from "./ma-math";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { logToken } from "@/lib/log-token";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -80,11 +81,26 @@ type SnapshotTicker = {
   lastTrade?: { p?: number };
 };
 
+/** Session change % from a batch snapshot row — null when the provider omits change and we
+ *  cannot derive it from day close vs prior close (never fabricate flat 0%). */
+export function snapshotChangePctFromRow(row: SnapshotTicker | undefined): number | null {
+  if (!row) return null;
+  if (row.todaysChangePerc != null && Number.isFinite(row.todaysChangePerc)) {
+    return Number(row.todaysChangePerc.toFixed(2));
+  }
+  const price = row.day?.c ?? row.lastTrade?.p;
+  const prevClose = row.prevDay?.c;
+  if (price != null && prevClose != null && prevClose > 0 && Number.isFinite(price)) {
+    return Number((((price - prevClose) / prevClose) * 100).toFixed(2));
+  }
+  return null;
+}
+
 export type StockQuoteSnapshot = {
   ticker: string;
   price: number;
   prev_close: number;
-  change_pct: number;
+  change_pct: number | null;
   /** Day extremes / VWAP from the day aggregate. NULL when the aggregate is absent (pre-open /
    *  market closed / untraded) — do NOT dress the spot price up as a real HOD/LOD/VWAP
    *  (mirrors the gap #14 HOD/LOD null fix). */
@@ -108,17 +124,11 @@ function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | 
     throw new Error(`[polygon] Implausible price for ${sym}: ${price}`);
   }
   const prevClose = Number(prev.c ?? 0);
-  const changePct =
-    row.todaysChangePerc != null
-      ? Number(row.todaysChangePerc.toFixed(2))
-      : prevClose
-        ? Number((((price - prevClose) / prevClose) * 100).toFixed(2))
-        : 0;
   return {
     ticker: sym,
     price,
     prev_close: prevClose,
-    change_pct: changePct,
+    change_pct: snapshotChangePctFromRow(row),
     // Gap #14 (truth): when the day aggregate is absent (pre-open / closed / untraded) we have
     // no real HOD/LOD/VWAP — return null instead of dressing the spot price up as an extreme.
     day_high: day.h != null ? Number(day.h) : null,
@@ -182,11 +192,10 @@ async function fetchStockSnapshotPerformance(
 
   return symbols.map((symbol) => {
     const snap = byTicker.get(symbol.ticker);
-    const change = snap?.todaysChangePerc ?? 0;
     return {
       name: symbol.name,
       ticker: symbol.ticker,
-      change_pct: Number(change.toFixed(2)),
+      change_pct: snapshotChangePctFromRow(snap),
       volume: snap?.day?.v,
     };
   });
@@ -337,7 +346,7 @@ export async function fetchMarketMovers(limit = 20) {
 
   const mapMover = (t: SnapshotTicker) => ({
     ticker: String(t.ticker ?? "").replace("X:", ""),
-    change_pct: Number((t.todaysChangePerc ?? 0).toFixed(2)),
+    change_pct: snapshotChangePctFromRow(t),
     price: t.day?.c ?? t.prevDay?.c ?? 0,
     volume: t.day?.v,
   });
@@ -345,6 +354,7 @@ export async function fetchMarketMovers(limit = 20) {
   // Filter out warrants (W suffix), reverse-split artifacts (<$1), and
   // micro-cap shells with negligible volume (<100K shares) that pollute the list.
   const isClean = (m: ReturnType<typeof mapMover>) =>
+    m.change_pct != null &&
     m.price >= 1.0 &&
     !m.ticker.endsWith("W") &&
     !m.ticker.endsWith("R") &&
@@ -355,7 +365,9 @@ export async function fetchMarketMovers(limit = 20) {
     ...(losers.tickers ?? []).slice(0, limit).map(mapMover).filter(isClean),
   ];
 
-  return combined.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  return combined.sort(
+    (a, b) => Math.abs(b.change_pct ?? 0) - Math.abs(a.change_pct ?? 0)
+  );
 }
 
 type IndexResult = {
@@ -374,7 +386,8 @@ type IndexResult = {
 export type IndexQuote = {
   symbol: string;
   price: number;
-  change_pct: number;
+  /** Null when the provider omits session change — never fabricate flat 0%. */
+  change_pct: number | null;
   /** Prior-session close, when the provider gives it. Carried so a consumer overlaying a fresher
    *  WS price can re-derive `change_pct` against the SAME reference instead of passing this
    *  snapshot's percentage through beside a newer price (see lib/providers/change-pct.ts).
@@ -410,10 +423,14 @@ export async function fetchIndexSnapshots(
       continue;
     }
 
+    const sessionChg = row.session?.change_percent;
     out[ticker] = {
       symbol: ticker,
       price,
-      change_pct: Number((row.session?.change_percent ?? 0).toFixed(2)),
+      change_pct:
+        sessionChg != null && Number.isFinite(Number(sessionChg))
+          ? Number(Number(sessionChg).toFixed(2))
+          : null,
       prev_close:
         row.session?.previous_close != null && Number(row.session.previous_close) > 0
           ? Number(row.session.previous_close)
@@ -1719,7 +1736,7 @@ let cachedVixIvRank: { at: number; rank: number | null } | null = null;
 export async function fetchVixIvRankPercentile(): Promise<number | null> {
   if (!polygonConfigured()) return null;
   const now = Date.now();
-  if (cachedVixIvRank && now - cachedVixIvRank.at < 300_000) {
+  if (cachedVixIvRank && isWsUpdatedAtFresh(cachedVixIvRank.at, 300_000, now)) {
     return cachedVixIvRank.rank;
   }
 
@@ -1763,7 +1780,10 @@ const MARKET_STATUS_CACHE_MS = 60_000;
 /** GET /v1/marketstatus/now — RTH / extended / closed. Cached 60s to avoid ~23k calls/day at 1s pulse. */
 export async function fetchMarketStatusNow(): Promise<PolygonMarketNow | null> {
   if (!polygonConfigured()) return null;
-  if (Date.now() - marketStatusCache.fetchedAt < MARKET_STATUS_CACHE_MS) {
+  const now = Date.now();
+  // Same future-stamp guard as fetchVixIvRankPercentile below — a clock-skewed fetchedAt must
+  // not pin market-status as "fresh" until real time catches up.
+  if (isWsUpdatedAtFresh(marketStatusCache.fetchedAt, MARKET_STATUS_CACHE_MS, now)) {
     return marketStatusCache.data;
   }
   try {
@@ -1780,7 +1800,7 @@ export async function fetchMarketStatusNow(): Promise<PolygonMarketNow | null> {
       afterHours: Boolean(data.afterHours),
       serverTime: String(data.serverTime ?? ""),
     };
-    marketStatusCache = { data: result, fetchedAt: Date.now() };
+    marketStatusCache = { data: result, fetchedAt: now };
     return result;
   } catch {
     return marketStatusCache.data; // return last good value on error

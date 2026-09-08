@@ -56,4 +56,24 @@ export const VECTOR_FRACTION_DP = {
   p: 4,
   /** pin-forecast: driver weight 0..1 — the ordering key for the click-to-explain list. */
   weight: 3,
+  /** play-bie: historical favorable-resolution rate 0..1 — 2dp quantizes small samples to 0. */
+  favPct: 4,
+} as const;
+
+/**
+ * contract-picks/live: per-key overrides for the option-greek quote fields.
+ *
+ * Same values as `ZERODTE_MARKS_WIRE_DP` (live-marks.ts) — live SPY 0DTE gamma is routinely
+ * ~0.0008, so the 2dp default here would quantize it to 0.00 and destroy the number, exactly
+ * the hazard `round-floats.ts`'s own header describes. `bid`/`ask`/`mid` get 4dp so a sub-cent
+ * mid on a cheap 0DTE contract survives; `delta`/`theta`/`iv` get 4dp (perfectly readable there).
+ */
+export const VECTOR_PICK_LIVE_WIRE_DP = {
+  bid: 4,
+  ask: 4,
+  mid: 4,
+  delta: 4,
+  gamma: 6,
+  theta: 4,
+  iv: 4,
 } as const;

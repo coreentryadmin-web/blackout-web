@@ -123,18 +123,6 @@ function baselineWinRate(rows: CalibrationPlayRow[]): number | null {
   return round1((wins / graded.length) * 100);
 }
 
-/** Map origin label to primary rail for graduation (FLOW+BREAKOUT → max weight rail). */
-export function primaryRailFromOriginLabel(label: string): DiscoveryRail | null {
-  const u = label.toUpperCase();
-  if (u === "FLOW") return "FLOW";
-  if (u === "BREAKOUT") return "BREAKOUT";
-  if (u === "PIN") return "PIN";
-  if (u.includes("FLOW")) return "FLOW";
-  if (u.includes("BREAKOUT")) return "BREAKOUT";
-  if (u.includes("PIN")) return "PIN";
-  return null;
-}
-
 export function recommendRailGraduation(
   rail: DiscoveryRail,
   bucket: CalibrationBucket,

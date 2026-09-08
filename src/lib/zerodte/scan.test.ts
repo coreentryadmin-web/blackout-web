@@ -1,5 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { vectorPulseForDirection } from "./vector-crosslink-core";
 
 // scan.ts pulls in the FULL 0DTE provider graph (Night Hawk dossier builder, Polygon
 // bar/quote providers, the options WS socket, server-cache) to run the live scan
@@ -29,6 +30,8 @@ const state = {
   /** When true, fetchZeroDteSetupLog throws — drives the P0 ledger-read-failure tests. */
   ledgerReadFails: false,
   liveMark: null as number | null,
+  /** Per-OCC marks for multi-leg condor sync tests; falls back to liveMark when absent. */
+  liveMarksByOcc: new Map<string, number>(),
   updateCalls: [] as Array<{ session_date: string; ticker: string; patch: unknown }>,
   // gradeZeroDteLedger wiring (index-root mapping test below)
   ungradedRows: [] as LedgerRow[],
@@ -53,6 +56,7 @@ const state = {
   // D2 firewall wiring: the halt FEED's staleness (both UW + LULD halt sources cold). Distinct
   // from haltedTickers (an ACTIVE stored halt). isTradingHaltChannelStale() reads this.
   haltFeedStale: false,
+  vectorPulseByTicker: {} as Record<string, Record<string, unknown>>,
 };
 
 function resetState() {
@@ -60,6 +64,7 @@ function resetState() {
   state.flows = [];
   state.ledgerReadFails = false;
   state.liveMark = null;
+  state.liveMarksByOcc = new Map();
   state.updateCalls = [];
   state.ungradedRows = [];
   state.gradeCalls = [];
@@ -73,6 +78,7 @@ function resetState() {
   state.earningsItems = [];
   state.haltedTickers = new Set();
   state.haltFeedStale = false;
+  state.vectorPulseByTicker = {};
 }
 
 // scan.ts's exit-engine wiring (./exit-sync) imports ./live-marks, which reaches
@@ -222,8 +228,9 @@ mock.module("../providers/options-snapshot", {
     fetchOptionsUnifiedSnapshot: async (occs: string[]) => {
       const map = new Map<string, { mark: number | null; bid: number | null; ask: number | null; underlyingPrice: number | null }>();
       for (const occ of occs) {
-        if (state.liveMark != null) {
-          map.set(occ, { mark: state.liveMark, bid: state.liveMark, ask: state.liveMark, underlyingPrice: null });
+        const mark = state.liveMarksByOcc.get(occ) ?? state.liveMark;
+        if (mark != null) {
+          map.set(occ, { mark, bid: mark, ask: mark, underlyingPrice: null });
         }
       }
       return map;
@@ -259,6 +266,8 @@ mock.module("../shared-cache", {
   namedExports: {
     sharedCacheGet: async () => null,
     sharedCacheSet: async () => {},
+    sharedCacheSetNx: async () => true,
+    sharedCacheDel: async () => {},
   },
 });
 
@@ -270,6 +279,41 @@ mock.module("../providers/macro-events", {
 });
 mock.module("../bie/vector-full-state", {
   namedExports: { fetchVectorFullState: async () => null },
+});
+function vectorPulseForDirection(
+  map: Record<string, unknown>,
+  ticker: string,
+  direction: "long" | "short"
+) {
+  const tk = ticker.trim().toUpperCase();
+  const entry = map[tk] as Record<string, unknown> | undefined;
+  if (!entry) return null;
+  if ("long" in entry || "short" in entry) {
+    return (entry as Record<"long" | "short", unknown>)[direction] ?? null;
+  }
+  const legacy = entry as { direction?: string | null };
+  if (legacy.direction && legacy.direction !== direction) return null;
+  return entry;
+}
+
+mock.module("./vector-crosslink", {
+  namedExports: {
+    fetchZeroDteVectorPulseByTicker: async () => state.vectorPulseByTicker,
+    vectorPulseForDirection,
+  },
+});
+mock.module("./vector-contract-resolve", {
+  namedExports: {
+    vectorRankContractsEnabled: () => false,
+    fetchChainsForVectorRank: async () => new Map(),
+    resolveZeroDteContractAttach: () => null,
+  },
+});
+// attachContractPlans lazy-imports option-chain-prompt when liquid-strike fallback is on.
+mock.module("../../features/nighthawk/lib/option-chain-prompt", {
+  namedExports: {
+    resolveTickerChainRows: async () => null,
+  },
 });
 
 // ./rejections (left real below) imports @/lib/providers/spx-session directly (for
@@ -366,6 +410,46 @@ test("zeroDtePlaysFeed: a still-live play with no quote change stays exactly as 
 
   assert.equal(feed.plays[0]!.status, "OPEN");
   assert.equal(feed.plays[0]!.last_mark, 4.2);
+});
+
+test("zeroDtePlaysFeed: condor row syncs 4-leg net mark when plan_json.occ is absent", async () => {
+  resetState();
+  const condorLegs = [
+    { role: "short", occ: "O:SPXW260706P00545000" },
+    { role: "long", occ: "O:SPXW260706P00543000" },
+    { role: "short", occ: "O:SPXW260706C00555000" },
+    { role: "long", occ: "O:SPXW260706C00557000" },
+  ];
+  state.liveMarksByOcc = new Map([
+    ["O:SPXW260706P00545000", 1.0],
+    ["O:SPXW260706P00543000", 0.3],
+    ["O:SPXW260706C00555000", 0.8],
+    ["O:SPXW260706C00557000", 0.2],
+  ]);
+  state.ledgerRows = [
+    baseRow({
+      ticker: "SPX",
+      status: "OPEN",
+      last_mark: null,
+      entry_premium: 1.3,
+      plan_json: null,
+      entry_context: {
+        play_type: "CONDOR",
+        condor: { legs: condorLegs, breach_lower: 545, breach_upper: 555, net_credit: 130 },
+      },
+    }),
+  ];
+
+  const { zeroDtePlaysFeed } = await mod();
+  const feed = (await zeroDtePlaysFeed()) as { plays: Array<Record<string, unknown>> };
+
+  assert.equal(feed.plays[0]!.last_mark, 1.3, "shorts 1.8 − longs 0.5 = 1.3 net debit to close");
+  assert.ok(
+    state.updateCalls.some(
+      (c) => c.ticker === "SPX" && (c.patch as { mark?: number })?.mark === 1.3
+    ),
+    "sync must persist the 4-leg net mark"
+  );
 });
 
 // ── C3: absence is not emptiness ─────────────────────────────────────────────────
@@ -719,6 +803,104 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   for (const expected of ["Prime score band", "VIX calm band", "Clean Cortex support"]) {
     assert.ok(labels.includes(expected), `factor "${expected}" must argue the tier (got: ${labels.join(", ")})`);
   }
+});
+
+test("persistZeroDteScan: A-tier + Vector winner pins 400% runner profile on commit", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+  state.vectorPulseByTicker = {
+    NVDA: {
+      long: {
+        premium_pct: 85,
+        peak_premium_pct: 90,
+        action_status: "still_buy",
+        is_winner: true,
+        is_runner: false,
+        side: "call",
+        direction: "long",
+        strike: 145,
+        occ: "O:NVDA260706C00145000",
+        rank: 1,
+        role: "flow-whale",
+      },
+    },
+  };
+
+  const setup = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    top_strike: 145,
+    expiry: "2026-07-06",
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
+    score: 78,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    underlying_price: 140,
+    top_strike_avg_fill: 4.2,
+    last_seen: "2026-07-06T14:59:30.000Z",
+    intraday: { last_bar_ms: Date.parse("2026-07-06T14:59:00.000Z") },
+    discovery_origin: ["FLOW", "BREAKOUT"],
+    confluence: { confirmations: 2, vwap_side: true, market_aligned: true },
+    plan: {
+      occ: "O:NVDA260706C00145000",
+      flow_avg_fill: 4.2,
+      bid: 4.0,
+      ask: 4.4,
+      mark: 4.2,
+      entry_max: 4.2,
+      vs_flow_pct: 0,
+      entry_status: "IN_RANGE",
+      spread_pct: 9.5,
+      illiquid: false,
+      stop_premium: 2.1,
+      target_premium: 8.4,
+      time_stop_et: "15:30",
+      underlying_target: null,
+      underlying_invalid: null,
+    },
+    gamma_regime: null,
+    cortex: {
+      abstained: false as const,
+      decision: "PASS" as const,
+      verdict: {
+        ticker: "NVDA",
+        direction: "long" as const,
+        asOf: "2026-07-06T15:00:00.000Z",
+        score: 2.1,
+        conviction: "A" as const,
+        vetoes: [],
+        supports: [
+          { source: "gex-walls", stance: "supports", weight: 1.0, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "path clear" },
+        ],
+        opposes: [],
+        absent: [],
+      },
+    },
+    gate: { verdict: "COMMIT" as const, blocks: [], calibration: {} },
+    play_type: "DIRECTIONAL" as const,
+    earnings: null,
+    news_hot: null,
+    halted: false,
+    fib_note: null,
+    direction_confirmed: null,
+  };
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+  assert.equal(logged, 1);
+  const ctx = state.upsertRows[0]!.entry_context as {
+    runner_profile?: { target_pct: number; tag: string };
+    exit_policy_snapshot?: { target_pct: number; trim_levels?: unknown[] };
+  };
+  assert.equal(ctx.runner_profile?.target_pct, 400);
+  assert.equal(ctx.runner_profile?.tag, "runner_vector");
+  assert.equal(ctx.exit_policy_snapshot?.target_pct, 400);
+  const trims = ctx.exit_policy_snapshot?.trim_levels as Array<{ trigger_pct: number }>;
+  assert.ok(trims?.some((t) => t.trigger_pct >= 40), "trend runner trim ladder should use later triggers");
 });
 
 // ── Condor entry_premium persistence (bug found 2026-08-26) ────────────────────────
@@ -1279,4 +1461,50 @@ test("D3 integration: computeQuoteAgeMs(quoteUpdatedMs) drives buildContractPlan
   // MISSING: no snapshot timestamp → undefined age → predicate dormant → NOT blocked.
   const noTs = buildContractPlan({ ...base, quoteAgeMs: computeQuoteAgeMs(null, now) });
   assert.equal(noTs.quote_invalid_reason, null);
+});
+
+// Regression for a P1 finding (2026-09-02, live monitor): attachIntradayEdge adjusts a
+// BREAKOUT setup's `score` (time-of-day + market-align + intraday-VWAP nudges) AFTER
+// breakoutScoreBreakdown already pinned `factor_breakdown` to sum to the pre-adjustment score —
+// so the deck's "Why this play was picked" panel silently drifted +5/+15 off its own listed
+// factors on 50/54 live BREAKOUT setups. applyIntradayEdgeToBreakdown is the extracted, pure
+// piece of that fix: it must add the adjustment back as its own named factor ONLY for
+// breakoutScoreBreakdown's shape (detected via the `breakout_core` key), and leave any other
+// breakdown (FLOW/PIN, which reconciles to the separate `dossier_score` field, not `score`)
+// completely untouched.
+test("applyIntradayEdgeToBreakdown adds the applied delta as its own factor for a BREAKOUT breakdown", async () => {
+  const { applyIntradayEdgeToBreakdown } = await mod();
+  const breakdown = { breakout_core: 40, dollar_volume: 20, screen_base: 10 }; // sums to 70
+  const updated = applyIntradayEdgeToBreakdown(breakdown, 5);
+  assert.deepEqual(updated, { breakout_core: 40, dollar_volume: 20, screen_base: 10, intraday_edge: 5 });
+  // The invariant this fix restores: the parts sum to the post-adjustment score exactly.
+  const sum = Object.values(updated!).reduce((a, b) => a + b, 0);
+  assert.equal(sum, 75, "breakdown must reconcile to the post-adjustment score (70 + 5)");
+});
+
+test("applyIntradayEdgeToBreakdown leaves a FLOW/PIN breakdown untouched (reconciles to dossier_score, not score)", async () => {
+  const { applyIntradayEdgeToBreakdown } = await mod();
+  const flowBreakdown = { flow: 30, tech: 18, positioning: 10, news: 8, smart_money: 12 };
+  const updated = applyIntradayEdgeToBreakdown(flowBreakdown, 5);
+  assert.deepEqual(updated, flowBreakdown, "a non-BREAKOUT breakdown must never gain a stray intraday_edge entry");
+});
+
+test("applyIntradayEdgeToBreakdown is a no-op on a zero delta or a null breakdown", async () => {
+  const { applyIntradayEdgeToBreakdown } = await mod();
+  const breakdown = { breakout_core: 40, dollar_volume: 20, screen_base: 10 };
+  assert.deepEqual(applyIntradayEdgeToBreakdown(breakdown, 0), breakdown);
+  assert.equal(applyIntradayEdgeToBreakdown(null, 5), null);
+});
+
+test("applyIntradayEdgeToBreakdown uses the post-clamp applied delta, not the raw adjustment sum", async () => {
+  // If the caller passes the ACTUAL score delta (score_after - score_before, which already
+  // accounts for the Math.max(0, Math.min(100, ...)) clamp in attachIntradayEdge), the
+  // breakdown reconciles exactly even when a setup was clamped at the 0-100 boundary — e.g. a
+  // setup already at score 98 with a +7 raw adjustment sum only actually moves to 100 (+2
+  // applied), and the breakdown must show +2, not +7.
+  const { applyIntradayEdgeToBreakdown } = await mod();
+  const breakdown = { breakout_core: 88, dollar_volume: 8, screen_base: 2 }; // sums to 98
+  const updated = applyIntradayEdgeToBreakdown(breakdown, 2); // caller passes the CLAMPED delta
+  const sum = Object.values(updated!).reduce((a, b) => a + b, 0);
+  assert.equal(sum, 100, "must reconcile to the clamped score (100), not an over-counted 105");
 });

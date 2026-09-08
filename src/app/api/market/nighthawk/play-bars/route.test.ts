@@ -1,5 +1,6 @@
 import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
 
 // Auth/tool-gate faked to "cron" (always allowed) so these tests exercise the route's OWN
@@ -14,7 +15,7 @@ mock.module("../../../../../lib/tool-access-server", {
 
 const FAKE_BARS = [
   { t: Date.parse("2026-08-28T14:30:00.000Z"), o: 4.0, h: 4.1, l: 3.9, c: 4.0 }, // before entry — must be trimmed
-  { t: Date.parse("2026-08-28T14:35:00.000Z"), o: 4.2, h: 4.3, l: 4.1, c: 4.2 }, // = entry instant
+  { t: Date.parse("2026-08-28T14:35:00.000Z"), o: 4.2, h: 4.3, l: 4.1, c: 4.200000000000001 }, // = entry instant, IEEE noise
   { t: Date.parse("2026-08-28T14:36:00.000Z"), o: 4.2, h: 4.5, l: 4.2, c: 4.4 },
   { t: Date.parse("2026-08-28T14:37:00.000Z"), o: 4.4, h: 4.4, l: 4.0, c: 4.1 },
 ];
@@ -65,12 +66,19 @@ describe("/api/market/nighthawk/play-bars", () => {
     assert.deepEqual(
       body.points.map((p) => p.c),
       [4.2, 4.4, 4.1],
+      "IEEE noise on mark closes must be rounded at the API boundary"
     );
     assert.equal(body.points[0]!.t, "2026-08-28T14:35:00.000Z");
 
     // fetchOptionMinuteBars got the uppercased OCC symbol and the SAME calendar day for from/to
     // (a 0DTE contract's whole tradable life is one day — see the route's own header comment).
     assert.deepEqual(lastFetchArgs, ["O:NVDA260828C00190000", "2026-08-28", "2026-08-28"]);
+  });
+
+  test("roundFloats at the API boundary (source scan — sibling horizons/edition routes already wrap)", () => {
+    const src = readFileSync(new URL("./route.ts", import.meta.url), "utf8");
+    assert.match(src, /import \{ roundFloats \} from "@\/lib\/round-floats"/);
+    assert.match(src, /NextResponse\.json\(\s*roundFloats\(\{ occ, since: sinceIso, points \}\)/);
   });
 
   test("an upstream Polygon failure degrades to a 502, never a fabricated body", async () => {

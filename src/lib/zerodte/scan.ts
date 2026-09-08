@@ -60,12 +60,15 @@ import {
 } from "./discovery-health";
 import { pinWindowStatus } from "./pin-window";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
+import {
+  resolveTickerChainRows,
+  type ChainStrikeRow,
+} from "@/features/nighthawk/lib/option-chain-prompt";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
 import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
-import { buildOcc } from "@/lib/ws/options-socket";
 import { requireHealthySourceEnabled } from "@/lib/ws/source-health";
 import { getFlowSourceHealthState } from "@/lib/ws/uw-socket";
 import { withServerCache } from "@/lib/server-cache";
@@ -80,6 +83,8 @@ import {
   matchEarnings,
   polygonSpotTicker,
   refreshUnderlyingFromLiveSpot,
+  deriveContractHorizon,
+  gradingPolicyForHorizon,
   buildOriginMaps,
   MERGE_POLICY_VERSION,
   summarizeDiscoveryRailMix,
@@ -89,7 +94,7 @@ import {
   type SetupDossierView,
   type ZeroDteGateRejection,
 } from "./board";
-import { gradeCondorFromBars } from "./condor";
+import { condorLegOccs, condorLegRoles, condorNetMarkPerShare, gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
 import { buildMarketState, weightedScoreForMerge, type MarketStateSnapshot } from "./market-state-engine";
 import {
@@ -116,8 +121,9 @@ import {
   buildResolvedExitPolicy,
   exitPolicyGraderParams,
 } from "./strategy-version";
-import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
+import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy, playRailsFromRow } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
+import { applyCortexCommitRelief } from "./cortex-vector-relief";
 import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
 import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
@@ -133,12 +139,47 @@ import {
   evaluateZeroDteGates,
   freshCommitBlockedByPlan,
   gateRejectionFor,
+  runnerConfluenceCount,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
   refreshMoneynessGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
+  refreshGovernorCycleBlocks,
   recentNighthawkTake,
 } from "./gates";
+import {
+  fetchZeroDteVectorPulseByTicker,
+  vectorPulseForDirection,
+  type ZeroDteVectorPulse,
+  type ZeroDteVectorPulseByTicker,
+} from "./vector-crosslink";
+import {
+  fetchChainsForVectorRank,
+  rankVectorContractAlternatives,
+  resolveZeroDteContractAttach,
+  vectorRankContractsEnabled,
+} from "./vector-contract-resolve";
+import {
+  liquidStrikeFallbackEnabled,
+  planNeedsLiquidityFallback,
+  pickLiquidStrikePlan,
+  rankLiquidStrikeAlternatives,
+  ensureChainsForSetups,
+  type LiquidStrikeCandidate,
+} from "./liquid-strike-fallback";
+import { computeVectorGateBoost } from "./vector-commit-boost";
+import {
+  effectiveChasePct,
+  planChaseExempt,
+  type PlanChaseContext,
+} from "./chase-exempt";
+import {
+  effectiveIlliquidSpreadPct,
+  planChaseContextFromSetup,
+  regimeBypassesThesisBlocks,
+  regimeScoreBump,
+} from "./regime-commit-relief";
+import { resolveRunnerProfile, effectiveMaxOtmPct, vectorRunnerOtmRelax } from "./runner-profile";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
 import {
   deriveGovernorFromLedger,
@@ -175,6 +216,7 @@ import {
 import {
   executionTaxBps,
   latchPremiumBounds,
+  resolveZeroDteMark,
   zeroDteHalfSpreadFrac,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
 } from "./marks-math";
@@ -188,13 +230,16 @@ import { asManagedPnlPct, officialPlanPnlPct } from "./record";
  *  edition tickers are listed as covered_elsewhere but remain eligible for 0DTE. */
 const STATIC_EXCLUDES = new Set<string>([...LEVERAGED_ETP_SET, "VIX", "UVXY"]);
 
-/** Top finds get the full Night Hawk dossier — capped to stay inside UW budgets. */
-const ENRICH_TOP_N = 12; // raised 5→12 so ranks 6–12 get dossier/Cortex inputs (was starving mid-board commits)
+/** Top finds get the full Night Hawk dossier — aligned with FLOW maxSetups (48) so ranks
+ *  13–48 are no longer Cortex-starved. Batched (ENRICH_BATCH_SIZE) to avoid a 48-wide
+ *  UW fan-out thundering herd on the cron warm path. */
+export const ENRICH_TOP_N = 48;
+const ENRICH_BATCH_SIZE = 8;
 const DOSSIER_CACHE_TTL_MS = 10 * 60 * 1000;
 /** How long a caller waits for a COLD dossier before serving the un-enriched setup.
  *  The cache loader keeps running after we stop waiting, so the next scan (~2 min)
  *  or poll (~15s) gets the enriched row instantly — the board "heats up". */
-const ENRICH_WAIT_MS = 3_000;
+const ENRICH_WAIT_MS = 4_000;
 
 import {
   resolveFirewallEarnings,
@@ -338,26 +383,37 @@ export async function scanZeroDteBoard(flags?: {
   const candidateDerivedAt = Date.now();
 
   const buildCache = createDossierBuildCache();
-  const setups = await Promise.all(
-    rawSetups.map(async (setup, i) => {
-      const extras = {
-        earnings: flags?.earnings?.get(setup.ticker) ?? null,
-        news_hot: flags?.news?.get(setup.ticker) ?? null,
-      };
-      if (i >= ENRICH_TOP_N) return enrichSetup(setup, null, extras);
-      // Single-flight per ticker per 10-min window across all pollers AND the cron
-      // warmer (Redis-backed), so nothing multiplies dossier builds.
-      const dossier = await within(
-        withServerCache<SetupDossierView>(
-          `zerodte:dossier:${setup.ticker}:${today}`,
-          DOSSIER_CACHE_TTL_MS,
-          () => fetchTickerDossier(setup.ticker, null, buildCache)
-        ),
-        ENRICH_WAIT_MS
-      );
-      return enrichSetup(setup, dossier, extras);
-    })
-  );
+  const extrasFor = (ticker: string) => ({
+    earnings: flags?.earnings?.get(ticker) ?? null,
+    news_hot: flags?.news?.get(ticker) ?? null,
+  });
+  const enrichCap = Math.min(ENRICH_TOP_N, rawSetups.length);
+  const setups: EnrichedZeroDteSetup[] = [];
+  // Ranks beyond the cap: no dossier (batch halt/earnings still cover G-11).
+  for (let i = enrichCap; i < rawSetups.length; i++) {
+    const setup = rawSetups[i]!;
+    setups[i] = await enrichSetup(setup, null, extrasFor(setup.ticker));
+  }
+  // Top ranks: dossier in bounded parallel batches so UW budget stays predictable.
+  for (let start = 0; start < enrichCap; start += ENRICH_BATCH_SIZE) {
+    const end = Math.min(start + ENRICH_BATCH_SIZE, enrichCap);
+    const batch = await Promise.all(
+      rawSetups.slice(start, end).map(async (setup) => {
+        const dossier = await within(
+          withServerCache<SetupDossierView>(
+            `zerodte:dossier:${setup.ticker}:${today}`,
+            DOSSIER_CACHE_TTL_MS,
+            () => fetchTickerDossier(setup.ticker, null, buildCache)
+          ),
+          ENRICH_WAIT_MS
+        );
+        return enrichSetup(setup, dossier, extrasFor(setup.ticker));
+      })
+    );
+    for (let j = 0; j < batch.length; j++) {
+      setups[start + j] = batch[j]!;
+    }
+  }
 
   // ── BREAKOUT discovery origin (Phase 3a, §1a) — the SECOND, INDEPENDENT discovery source ──
   // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_BREAKOUT (default ON; set to "0" to disable). When enabled, the
@@ -534,10 +590,21 @@ export async function scanZeroDteBoard(flags?: {
   // window just leaves every context null.
   attachFlowAccumulation(setups, accumulationSignalsFromFlow(multiDayFlows, Date.now()));
 
+  const boardTickers = [...new Set(setups.map((s) => s.ticker.toUpperCase()))];
+  const vectorPulseByTicker = await fetchZeroDteVectorPulseByTicker(todayEt(), boardTickers).catch(
+    (err) => {
+      console.warn(
+        `[zerodte-scan] Vector pulse fetch failed — alignment/boost/runner rails disabled this cycle:`,
+        err
+      );
+      return {} as ZeroDteVectorPulseByTicker;
+    }
+  );
+
   const thesisEnv = thesisFirstEnv();
   const thesisLive = thesisEnv.enabled;
   if (!thesisLive) {
-    await attachContractPlans(setups);
+    await attachContractPlans(setups, vectorPulseByTicker, marketState);
   }
   const chainReceivedAt = Date.now();
   const tape = await attachIntradayEdge(setups);
@@ -568,40 +635,86 @@ export async function scanZeroDteBoard(flags?: {
         ticker: f.ticker,
         premium: f.premium,
         option_type: f.option_type,
+        ask_pct: f.ask_pct,
         alerted_at: f.alerted_at,
       }))
     );
     for (const t of tickers) {
       thesisExtras[t] = mergeLegacyBridgeExtras(thesisExtras[t] ?? {}, helixExtras[t] ?? {});
     }
-    attachThesisFirstShadow(setups, nowEtMinutes, thesisExtras);
+    attachThesisFirstShadow(setups, nowEtMinutes, thesisExtras, marketState);
   }
 
   // Hard-gate verdicts — Cortex runs inside on gate survivors.
-  const { governorPremiumAtRisk } = await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
+  const { governorPremiumAtRisk, governorSnapshot, governorShortGammaOpen } = await attachGateVerdicts(
+    setups,
+    tape.bias,
+    tape.biasAsOfMs,
+    nowEtMinutes,
+    vectorPulseByTicker,
+    marketState
+  );
 
   // Live thesis-first: contract engine picks expression AFTER thesis + gates + Cortex.
   if (thesisLive) {
     await attachThesisContractPlans(setups);
-    await attachContractPlans(setups);
+    await attachContractPlans(setups, vectorPulseByTicker, marketState);
+    const committedLedger = dbConfigured()
+      ? new Set(
+          (await fetchZeroDteSetupLog(todayEt()).catch(() => [])).map((r) => r.ticker.toUpperCase())
+        )
+      : new Set<string>();
+    const governorAccurate: GovernorOpenPlan[] = [];
+    const reconcileNowMs = Date.now();
     for (const s of setups) {
+      if (committedLedger.has(s.ticker.toUpperCase())) continue;
       if (s.gate) {
-        s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
-        // Moneyness re-check (P0 fix, 2026-08-27): attachContractPlans (just above) is what runs
-        // refreshUnderlyingFromLiveSpot in this (thesis-first) pipeline, i.e. AFTER
-        // attachGateVerdicts already evaluated the moneyness caps against the PRE-refresh
-        // otm_pct — the exact "deferred, never reconciled" shape refreshPlanQualityGateBlocks
-        // exists to fix for G-8/G-9. Re-apply the same two caps against the now-refreshed
-        // s.otm_pct so a candidate whose live moneyness drifted past a cap during this pass
-        // still gets caught (mirrors refreshGovernorPremiumBudgetBlocks below).
-        s.gate = refreshMoneynessGateBlocks(s.gate, s.otm_pct ?? null, s.play_type === "CONDOR");
-        // G-5 premium budget was computed with plan=null (entry_premium 0) above, same
-        // "deferred, never reconciled" shape as G-8/G-9 — see refreshGovernorPremiumBudgetBlocks.
+        const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+        const chaseCtx: PlanChaseContext = {
+          direction: s.direction,
+          score: s.score,
+          vector_pulse: pulse,
+          discovery_origin: s.discovery_origin,
+          gamma_regime: s.gamma_regime ?? null,
+          market_aligned: s.market_aligned ?? null,
+          regime_structure: marketState?.regime_structure ?? null,
+          market_state_confidence: marketState?.confidence,
+        };
+        const planGateOpts = { chaseExempt: planChaseExempt(chaseCtx) };
+        s.plan_chase_exempt = planGateOpts.chaseExempt;
+        s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null, planGateOpts);
+        s.gate = refreshMoneynessGateBlocks(
+          s.gate,
+          s.otm_pct ?? null,
+          s.play_type === "CONDOR",
+          {
+            maxOtmPct: effectiveMaxOtmPct(
+              vectorRunnerOtmRelax(s.direction, s.score, vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction))
+            ),
+          }
+        );
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
           governorPremiumAtRisk
         );
+        if (s.gate.verdict === "COMMIT" && governorSnapshot) {
+          s.gate = refreshGovernorCycleBlocks(s.gate, {
+            ticker: s.ticker,
+            direction: s.direction,
+            plan: s.plan ?? null,
+            gamma_regime: s.gamma_regime ?? null,
+            governor: governorSnapshot,
+            nowMs: reconcileNowMs,
+            nowEtMinutes,
+            governorPremiumAtRisk,
+            governorShortGammaOpen,
+            committedThisCycle: governorAccurate,
+          });
+        }
+        if (s.gate.verdict === "COMMIT") {
+          governorAccurate.push({ ticker: s.ticker.toUpperCase(), direction: s.direction });
+        }
       }
     }
   }
@@ -650,6 +763,28 @@ async function intradayReadFor(ticker: string, today: string): Promise<IntradayR
   );
 }
 
+/**
+ * Keeps BREAKOUT's factor_breakdown reconciling to `score` exactly after attachIntradayEdge
+ * adjusts the score, per breakoutScoreBreakdown's own invariant ("a breakdown whose parts do
+ * not add up to the headline number is worse than none"). That adjustment used to land on
+ * `score` alone, so the deck's "Why this play was picked" panel silently drifted +5/+15 off its
+ * own listed factors (measured live 2026-09-02, 50/54 BREAKOUT setups). FLOW/PIN setups'
+ * factor_breakdown reconciles to the SEPARATE `dossier_score` field instead (enrichSetup in
+ * board.ts) and must not gain a stray entry here — gate on the breakout-only `breakout_core` key
+ * so only breakoutScoreBreakdown's own shape is ever touched. `appliedDelta` must be the
+ * actually-applied score delta (post 0-100 clamp), not the raw adjustment sum, so the parts
+ * still total the displayed score exactly even when the clamp bites.
+ */
+export function applyIntradayEdgeToBreakdown(
+  factorBreakdown: Record<string, number> | null,
+  appliedDelta: number
+): Record<string, number> | null {
+  if (!factorBreakdown || appliedDelta === 0 || !("breakout_core" in factorBreakdown)) {
+    return factorBreakdown;
+  }
+  return { ...factorBreakdown, intraday_edge: appliedDelta };
+}
+
 /** The "is it working RIGHT NOW" layer: each top play's own minute-bar read
  *  (session VWAP / opening range / 5m trend), SPY as the market tape, and the
  *  time-of-day edge window — all folded into the score, with hard intraday
@@ -687,7 +822,9 @@ async function attachIntradayEdge(
     // Only null/stale bias → null (unknown, not a confirmation).
     s.market_aligned = bias == null ? null : bias === "flat" ? true : (bias === "up") === (s.direction === "long");
     s.tod_label = tod.label;
+    const preScore = s.score;
     s.score = Math.max(0, Math.min(100, s.score + adj.delta + align + tod.delta));
+    s.factor_breakdown = applyIntradayEdgeToBreakdown(s.factor_breakdown, s.score - preScore);
   });
   return { bias, biasAsOfMs: spyRead?.last_bar_ms ?? null };
 }
@@ -701,15 +838,25 @@ async function attachGateVerdicts(
   setups: EnrichedZeroDteSetup[],
   bias: MarketBias | null,
   biasAsOfMs: number | null,
-  nowEtMinutes: number
-): Promise<{ governorPremiumAtRisk: number }> {
-  if (setups.length === 0) return { governorPremiumAtRisk: 0 };
+  nowEtMinutes: number,
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker = {},
+  marketState?: MarketStateSnapshot
+): Promise<{
+  governorPremiumAtRisk: number;
+  governorSnapshot: GovernorSnapshot | null;
+  governorShortGammaOpen: number;
+}> {
+  if (setups.length === 0) {
+    return { governorPremiumAtRisk: 0, governorSnapshot: null, governorShortGammaOpen: 0 };
+  }
   const today = todayEt();
   const nowMs = Date.now();
   const ledgerRows = dbConfigured()
     ? await fetchZeroDteSetupLog(today).catch(() => null)
     : ([] as ZeroDteSetupLogRow[]);
-  if (ledgerRows == null) return { governorPremiumAtRisk: 0 }; // gates stay null → fresh commits fail closed downstream
+  if (ledgerRows == null) {
+    return { governorPremiumAtRisk: 0, governorSnapshot: null, governorShortGammaOpen: 0 };
+  }
   const committed = new Set(ledgerRows.map((r) => r.ticker.toUpperCase()));
 
   // G-5 snapshot: open/stop counts from the shared Postgres ledger (authoritative),
@@ -880,12 +1027,51 @@ async function attachGateVerdicts(
     }
   }
 
+  // Pre-warm Cortex reads for the highest-scoring fresh candidates (bounded fan-out).
+  // Populates the per-(ticker,direction) server cache so the sequential gate→cortex loop
+  // below hits warm reads instead of cold 4-6s fetches. Best-effort — failures are ignored.
+  const cortexWarm = setups
+    .filter((s) => !committed.has(s.ticker.toUpperCase()))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+  if (cortexWarm.length > 0) {
+    void Promise.allSettled(
+      cortexWarm.map((s) =>
+        evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
+          failClosedOnVetoBlind: true,
+        })
+      )
+    );
+  }
+
   // Setups arrive score-ranked, so the concurrency budget goes to the best finds:
   // committedThisCycle carries earlier accepted fresh commits within this same pass
   // (both for the cap and the correlated-conflict check).
   const committedThisCycle: Array<{ ticker: string; direction: "long" | "short" }> = [];
   for (const s of setups) {
     if (committed.has(s.ticker.toUpperCase())) continue;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const boost = computeVectorGateBoost(s.direction, s.score, pulse);
+    let gateScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
+    if (boost.score_bump > 0) s.score = gateScore;
+    const reliefCtx = planChaseContextFromSetup({
+      direction: s.direction,
+      score: gateScore,
+      discovery_origin: s.discovery_origin,
+      gamma_regime: s.gamma_regime ?? null,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence ?? null,
+      vector_pulse: pulse,
+    });
+    const regimeBump = regimeScoreBump(reliefCtx);
+    if (regimeBump > 0) {
+      gateScore = Math.min(100, Math.round(gateScore + regimeBump));
+      s.score = gateScore;
+      reliefCtx.score = gateScore;
+    }
+    const postBoost = computeVectorGateBoost(s.direction, gateScore, pulse);
+    const runnerOtmRelax = vectorRunnerOtmRelax(s.direction, gateScore, pulse);
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
       direction: s.direction,
@@ -893,7 +1079,7 @@ async function attachGateVerdicts(
       // G-12/G-6) and runs the condor liquidity + range + harder VIX/macro gates on condor_plan.
       play_type: s.play_type,
       condorPlan: s.condor_plan ?? null,
-      score: s.score,
+      score: gateScore,
       discovery_origin: s.discovery_origin,
       contractHorizon: s.contract_horizon ?? null,
       nowEtMinutes,
@@ -927,6 +1113,9 @@ async function attachGateVerdicts(
       // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
       otmPct: s.otm_pct ?? null,
       intradayConflict: s.intraday_conflict,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence,
       // G-11 for EVERY committable rank: prefer the cheap batch halt/earnings reads
       // (computed for all fresh tickers above) over the dossier-only flags that ranks
       // 6-10 never receive, so no halted / earnings-today name commits regardless of rank.
@@ -951,9 +1140,13 @@ async function attachGateVerdicts(
       flowAccumulationAligned: s.flow_accumulation?.aligned ?? null,
       regimeBlockFreshCommits: regimePlane.blockFreshCommits,
       regimeBlockReason: regimePlane.humanReason,
+      vector_pulse: pulse,
+      vector_g17_exempt: postBoost.g17_exempt,
+      vector_confluence_credit: postBoost.confluence_credit,
+      max_otm_pct: runnerOtmRelax ? effectiveMaxOtmPct(true) : null,
     });
     s.regime_plane = regimePlane;
-    if (s.thesis_gate_blocks?.length) {
+    if (s.thesis_gate_blocks?.length && !regimeBypassesThesisBlocks(reliefCtx)) {
       const tb = thesisBlocksToGateBlocks(s.thesis_gate_blocks);
       s.gate = {
         ...s.gate,
@@ -980,6 +1173,14 @@ async function attachGateVerdicts(
       failClosedOnVetoBlind: true,
     });
     s.cortex = await applyCortexVetoDwell(today, s.ticker, s.cortex);
+    s.cortex = applyCortexCommitRelief(
+      s.cortex,
+      s.direction,
+      gateScore,
+      pulse,
+      reliefCtx,
+      { failClosedOnVetoBlind: true }
+    );
     const cortexBlocks = cortexGateBlocks(s.cortex);
     if (cortexBlocks.length > 0) {
       // A Cortex veto / net-negative blocks EXACTLY like a hard-gate block:
@@ -992,7 +1193,7 @@ async function attachGateVerdicts(
     }
     committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
   }
-  return { governorPremiumAtRisk };
+  return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
 }
 
 /**
@@ -1018,7 +1219,23 @@ export function computeQuoteAgeMs(
 /** One batched quote snapshot for every find's top-strike contract, then a pure
  *  plan per find. Soft-deadlined: a slow quote provider degrades to evidence-only
  *  cards (plan stays null), never a stalled scan. */
-async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void> {
+async function attachContractPlans(
+  setups: EnrichedZeroDteSetup[],
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker = {},
+  marketState?: MarketStateSnapshot
+): Promise<void> {
+  const rankEnabled = vectorRankContractsEnabled();
+  const chains =
+    rankEnabled && setups.length > 0
+      ? ((await within(fetchChainsForVectorRank(setups, vectorPulseByTicker), 4_000).catch(
+          () => new Map<string, { spot: number; rows: ChainStrikeRow[] }>()
+        )) ?? new Map())
+      : new Map<string, { spot: number; rows: ChainStrikeRow[] }>();
+
+  if (setups.length > 0 && liquidStrikeFallbackEnabled()) {
+    await ensureChainsForSetups(setups, chains, (tk) => resolveTickerChainRows(tk));
+  }
+
   const occOf = new Map<string, string>();
   for (const s of setups) {
     // A CONDOR carries its own 4-leg priced structure (condor_plan, built at discovery); it has no
@@ -1026,8 +1243,14 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     // forcing it through buildOcc/buildContractPlan would fabricate a one-legged plan the gate stack
     // and grader must never see. Its liquidity is gated on condor_plan instead (gates.ts).
     if (s.play_type === "CONDOR") continue;
-    const occ = buildOcc(s.ticker, s.expiry, s.direction === "long" ? "call" : "put", s.top_strike);
-    if (occ) occOf.set(s.ticker, occ);
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chain = chains?.get(s.ticker.toUpperCase()) ?? null;
+    const attached = resolveZeroDteContractAttach(s, pulse, chain);
+    if (attached) {
+      s.top_strike = attached.strike;
+      occOf.set(s.ticker, attached.occ);
+      continue;
+    }
   }
   if (occOf.size === 0) return;
   const snaps = await within(
@@ -1083,29 +1306,176 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     if (refreshed) Object.assign(s, refreshed);
     // No live quote AND no real fill → no plan (evidence only) — never a guess.
     if (!snap?.mark && s.top_strike_avg_fill == null) continue;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chaseCtx: PlanChaseContext = {
+      direction: s.direction,
+      score: s.score,
+      vector_pulse: pulse,
+      discovery_origin: s.discovery_origin,
+      gamma_regime: s.gamma_regime ?? null,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence,
+    };
+    const chasePct = effectiveChasePct(chaseCtx);
+    const illiquidSpreadPct = effectiveIlliquidSpreadPct(chaseCtx);
     s.plan = buildContractPlan({
       occ,
       direction: s.direction,
-      // s.underlying_price is now the REFRESHED live mark when the batch carried one (see above),
-      // so the plan geometry is priced off the freshest underlying rather than the flow print's.
       price: s.underlying_price ?? snap?.underlyingPrice ?? null,
       flowAvgFill: s.top_strike_avg_fill,
       bid: snap?.bid ?? null,
       ask: snap?.ask ?? null,
       mark: snap?.mark ?? null,
-      // WS-04: resting quote sizes ARE available on OptionSnapshot — thread them through so the
-      // min-size predicate (conditional-on-availability) can enforce.
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
-      // G-9 freshness = observation clock first (when WE received this book), not the exchange
-      // last_quote.last_updated. Live REST often stamps prior close on last_updated while still
-      // returning a tradeable NBBO — using that alone produced false plan_quote_stale blocks
-      // (FINDINGS 2026-07-29). Fall back to quoteUpdatedMs only when observedAtMs is absent.
       quoteAgeMs: computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
       vwap: s.vwap,
+      chasePct,
+      illiquidSpreadPct,
     });
+    s.plan_chase_exempt = planChaseExempt(chaseCtx);
+  }
+
+  await applyLiquidStrikeFallback(setups, chains, vectorPulseByTicker, marketState, nowMs);
+}
+
+/** When the primary strike fails G-9 liquidity, walk the chain to the next-nearest liquid strike. */
+async function applyLiquidStrikeFallback(
+  setups: EnrichedZeroDteSetup[],
+  chains: Map<string, { spot: number; rows: ChainStrikeRow[] }>,
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker,
+  marketState: MarketStateSnapshot | undefined,
+  nowMs: number
+): Promise<void> {
+  if (!liquidStrikeFallbackEnabled()) return;
+
+  const needing = setups.filter(
+    (s) => s.play_type !== "CONDOR" && planNeedsLiquidityFallback(s.plan) && s.top_strike != null && s.expiry
+  );
+  if (needing.length === 0) return;
+
+  const today = todayEt();
+  const altByTicker = new Map<string, LiquidStrikeCandidate[]>();
+  const altOccs = new Set<string>();
+
+  for (const s of needing) {
+    const chain = chains.get(s.ticker.toUpperCase());
+    if (!chain) continue;
+    const spot = s.underlying_price ?? chain.spot;
+    if (!(spot > 0) || s.top_strike == null || !s.expiry) continue;
+
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chaseCtx: PlanChaseContext = {
+      direction: s.direction,
+      score: s.score,
+      vector_pulse: pulse,
+      discovery_origin: s.discovery_origin,
+      gamma_regime: s.gamma_regime ?? null,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence,
+    };
+    const illiquidSpreadPct = effectiveIlliquidSpreadPct(chaseCtx);
+
+    const vectorAlts: LiquidStrikeCandidate[] = rankVectorContractAlternatives(s, pulse, chain, 4)
+      .filter((v) => v.strike !== s.top_strike)
+      .map((v) => ({
+        strike: v.strike,
+        expiry: (v.expiry ?? s.expiry)!.slice(0, 10),
+        dte: v.dte ?? s.actual_dte_at_commit ?? s.dte ?? 0,
+        occ: v.occ,
+        quality: 2,
+        distFromPrimary: Math.abs(v.strike - s.top_strike!),
+      }));
+
+    const chainAlts = rankLiquidStrikeAlternatives({
+      rows: chain.rows,
+      spot,
+      todayYmd: today,
+      ticker: s.ticker,
+      expiry: s.expiry,
+      primaryStrike: s.top_strike,
+      direction: s.direction,
+      spreadCap: illiquidSpreadPct,
+    });
+
+    const seen = new Set<string>();
+    const merged: LiquidStrikeCandidate[] = [];
+    for (const c of [...vectorAlts, ...chainAlts]) {
+      if (seen.has(c.occ)) continue;
+      seen.add(c.occ);
+      merged.push(c);
+    }
+    if (merged.length === 0) continue;
+    altByTicker.set(s.ticker, merged);
+    for (const a of merged) altOccs.add(a.occ);
+  }
+
+  if (altOccs.size === 0) return;
+
+  const altSnaps = await within(
+    fetchOptionsUnifiedSnapshot([...altOccs]).catch(
+      () => new Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>()
+    ),
+    5_000
+  );
+  if (!altSnaps) return;
+
+  for (const s of needing) {
+    const alts = altByTicker.get(s.ticker);
+    if (!alts?.length) continue;
+
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chaseCtx: PlanChaseContext = {
+      direction: s.direction,
+      score: s.score,
+      vector_pulse: pulse,
+      discovery_origin: s.discovery_origin,
+      gamma_regime: s.gamma_regime ?? null,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence,
+    };
+    const chasePct = effectiveChasePct(chaseCtx);
+    const illiquidSpreadPct = effectiveIlliquidSpreadPct(chaseCtx);
+
+    const picked = pickLiquidStrikePlan(alts, altSnaps, {
+      direction: s.direction,
+      price: s.underlying_price ?? null,
+      flowAvgFill: s.top_strike_avg_fill,
+      keySupports: s.key_supports,
+      keyResistances: s.key_resistances,
+      vwap: s.vwap,
+      chasePct,
+      illiquidSpreadPct,
+      quoteAgeMsFor: (snap) => computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
+    });
+    if (!picked) continue;
+
+    const priorStrike = s.top_strike;
+    s.top_strike = picked.candidate.strike;
+    s.expiry = picked.candidate.expiry;
+    s.contract_horizon = deriveContractHorizon(picked.candidate.dte);
+    s.actual_dte_at_commit = picked.candidate.dte;
+    s.grading_policy = gradingPolicyForHorizon(s.contract_horizon);
+    s.plan = picked.plan;
+    if (priorStrike != null && priorStrike !== picked.candidate.strike) {
+      s.plan_strike_fallback_from = priorStrike;
+    }
+
+    const snap = altSnaps.get(picked.candidate.occ) ?? null;
+    const refreshed = refreshUnderlyingFromLiveSpot({
+      livePrice: snap?.underlyingPrice ?? s.underlying_price,
+      liveObservedAtMs: snap?.observedAtMs ?? nowMs,
+      direction: s.direction,
+      topStrike: picked.candidate.strike,
+      hasSingleStrikeMoneyness: s.play_type !== "CONDOR",
+    });
+    if (refreshed) Object.assign(s, refreshed);
+    s.plan_chase_exempt = planChaseExempt(chaseCtx);
   }
 }
 
@@ -1121,7 +1491,7 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
  *    unreadable) fails closed, and an unreadable committed set fails the whole
  *    persist closed (can't tell fresh from committed → nothing new may print).
  *
- *  After the 14:00 ET directional cutoff only EXISTING directional plays are refreshed —
+ *  After the 15:30 ET directional cutoff only EXISTING directional plays are refreshed —
  *  a fresh directional flag past NEW_PLAY_CUTOFF never opens. CONDOR is exempt (matches
  *  G-14 + late-theta sell design): fresh index credit seats may still commit when PIN
  *  discovery finds them in the post-cutoff window. */
@@ -1129,7 +1499,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   if (!dbConfigured() || setupsIn.length === 0) return 0;
   // HORIZON INTEGRITY fail-closed guard (PR-1, design Q2). The BREAKOUT/PIN/condor pickers are
   // already clamped to dte ≤ 1, so nothing dte≥2 should reach here — but commit is the last gate
-  // before a row is graded with the same-day 15:30 time-stop, so we assert the horizon here too.
+  // before a row is graded with the same-day 15:50 time-stop, so we assert the horizon here too.
   // Any WEEKLY_FALLBACK (dte≥2, or a fail-closed unknown horizon) is DROPPED before commit so it
   // never pollutes the 0DTE ledger/calibration with an invalid same-day-graded outcome. This keeps
   // the 0DTE feature-store population structurally HOMOGENEOUS (all rows same-day) — the precondition
@@ -1144,6 +1514,13 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   });
   if (setups.length === 0) return 0;
   const today = todayEt();
+  const vectorPulseByTicker = await fetchZeroDteVectorPulseByTicker(
+    today,
+    setups.map((s) => s.ticker.toUpperCase())
+  ).catch((err) => {
+    console.warn("[zerodte-persist] Vector pulse fetch failed:", err);
+    return {} as ZeroDteVectorPulseByTicker;
+  });
   const { hour, minute } = etNowParts();
   const pastCutoff = hour * 60 + minute >= NEW_PLAY_CUTOFF_ET_MINUTES;
 
@@ -1166,7 +1543,22 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // A CONDOR's tradeability is enforced by the condor liquidity gate INSIDE evaluateZeroDteGates
     // (s.gate already reflects it) — the directional freshCommitBlockedByPlan(s.plan) checks a
     // single-leg plan a condor never has (s.plan is null), so it must not fire on a condor.
-    const planBlocked = s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan);
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chaseExempt =
+      s.plan_chase_exempt === true ||
+      planChaseExempt({
+        direction: s.direction,
+        score: s.score,
+        vector_pulse: pulse,
+        discovery_origin: s.discovery_origin,
+        gamma_regime: s.gamma_regime ?? null,
+        market_aligned: s.market_aligned ?? null,
+        regime_structure: undefined,
+        market_state_confidence: undefined,
+      });
+    const planGateOpts = { chaseExempt };
+    const planBlocked =
+      s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan, planGateOpts);
     if (s.gate?.verdict === "COMMIT" && !planBlocked) {
       committedFresh.push(s);
       continue;
@@ -1176,7 +1568,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       verdict = {
         ...s.gate,
         verdict: "BLOCKED",
-        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null)],
+        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null, planGateOpts)],
       };
     }
     gateRejections.push(gateRejectionFor(s, verdict ?? null));
@@ -1250,11 +1642,53 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       sessionCtx,
       committedAtMs
     );
-    const playTier = baseEntryCtx.tier?.tier ?? null;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    let playTier = baseEntryCtx.tier?.tier ?? null;
+    // F-5 caps raw 85+ at B-tier; Vector winner alignment unlocks A-tier runner_vector (400%).
+    if (
+      playTier === "B" &&
+      s.score >= 85 &&
+      pulse &&
+      computeVectorGateBoost(s.direction, s.score, pulse).g17_exempt &&
+      pulse.is_winner
+    ) {
+      playTier = "A";
+    }
     const exitPolicyAtCommit = resolveExitModeForTier(playTier);
+    const vectorBoost = computeVectorGateBoost(s.direction, s.score, pulse);
+    const confluenceCount = runnerConfluenceCount(
+      s.confluence,
+      s.ticker,
+      vectorBoost.confluence_credit ?? 0
+    );
+    const runnerProfile = resolveRunnerProfile({
+      tier: playTier,
+      confluenceCount,
+      vectorPulse: pulse,
+      direction: s.direction,
+    });
     const strategyManifest = buildStrategyManifest({ exitPolicy: exitPolicyAtCommit });
     const strategyHash = strategyConfigHash(strategyManifest);
-    const exitPolicySnapshot = buildResolvedExitPolicy(exitPolicyAtCommit);
+    const exitPolicySnapshot = buildResolvedExitPolicy(exitPolicyAtCommit, {
+      target_pct: runnerProfile?.target_pct,
+      regime: runnerProfile?.regime,
+    });
+    const entryPrem =
+      s.play_type === "CONDOR"
+        ? s.condor_plan?.net_credit != null
+          ? Math.round((s.condor_plan.net_credit / 100) * 100) / 100
+          : null
+        : resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark);
+    const planJson =
+      s.plan && runnerProfile && entryPrem != null && entryPrem > 0
+        ? ({
+            ...s.plan,
+            target_premium: Math.round(entryPrem * (1 + runnerProfile.target_pct / 100) * 100) / 100,
+            runner_target_pct: runnerProfile.target_pct,
+          } as Record<string, unknown>)
+        : s.plan
+          ? ({ ...s.plan } as unknown as Record<string, unknown>)
+          : null;
     return ({
     session_date: today,
     ticker: s.ticker,
@@ -1296,9 +1730,9 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
         ? s.condor_plan?.net_credit != null
           ? Math.round((s.condor_plan.net_credit / 100) * 100) / 100
           : null
-        : resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark),
+        : entryPrem,
     flow_avg_fill: s.top_strike_avg_fill,
-    plan_json: s.plan ? ({ ...s.plan } as unknown as Record<string, unknown>) : null,
+    plan_json: planJson,
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
     // setups carry gate=null and pass null here — the upsert's COALESCE pin keeps
     // the original commit-time verdict untouched either way.
@@ -1352,7 +1786,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       ...(s.play_type === "CONDOR" && s.condor_plan ? { condor: s.condor_plan } : {}),
       // Contract HORIZON pinned at first flag (PR-1 horizon integrity). Only ZERO_DTE/ONE_DTE ever
       // reach here (the guard above dropped any weekly fallback), so grading can ASSERT same-day
-      // before applying the 15:30 time-stop instead of inferring the horizon from expiry vs date.
+      // before applying the 15:50 time-stop instead of inferring the horizon from expiry vs date.
       contract_horizon: s.contract_horizon,
       actual_dte_at_commit: s.actual_dte_at_commit,
       grading_policy: s.grading_policy,
@@ -1372,6 +1806,13 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // numbers it COMMITTED with, never whatever PLAN_RULES holds at grade time. readFrozenExitPolicy
       // reads it; null (legacy row) → graders fall back to current code, byte-for-byte prior behavior.
       exit_policy_snapshot: exitPolicySnapshot,
+      ...(runnerProfile
+        ? {
+            runner_profile: runnerProfile,
+            session_regime: runnerProfile.regime,
+          }
+        : {}),
+      ...(pulse && vectorBoost.reason ? { vector_commit_boost: vectorBoost.reason } : {}),
       // WS-05 — concentration STATE frozen at commit (MEASURE ONLY, no gating): how concentrated the
       // open book was, from the SAME inputs summarizeGovernorForBoard uses (governor.open_plans +
       // CORRELATION_GROUPS). Lets calibration ask "how concentrated was the book when this committed?"
@@ -1539,6 +1980,32 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   if (freshlyFlagged.size > 0) {
     const freshRows = eligible.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase()));
     recordZeroDteAuditTrail(freshRows, today);
+    for (const setup of freshRows) {
+      void import("./discord-trade-notify")
+        .then(({ notifyZeroDteTradeOpen }) =>
+          notifyZeroDteTradeOpen({
+            session_date: today,
+            ticker: setup.ticker,
+            direction: setup.direction,
+            top_strike: setup.top_strike ?? null,
+            expiry: setup.expiry || null,
+            entry_premium:
+              setup.play_type === "CONDOR"
+                ? setup.condor_plan?.net_credit != null
+                  ? Math.round((setup.condor_plan.net_credit / 100) * 100) / 100
+                  : null
+                : resolveLedgerEntryPremium(
+                    setup.plan?.entry_max,
+                    setup.top_strike_avg_fill,
+                    setup.plan?.mark
+                  ),
+            play_type: setup.play_type ?? null,
+          })
+        )
+        .catch((err) => {
+          console.warn(`[zerodte-discord] open notify failed for ${setup.ticker}:`, err);
+        });
+    }
     void persistDiscoveryCommitEvents(
       committedFresh.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase()))
     ).catch((err) => {
@@ -1602,11 +2069,11 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
       // columns. The directional-move grade still runs afterward (harmless provenance) and stamps
       // graded_at. Guarded strictly on play_type === "CONDOR", so a directional row is byte-identical.
       const ec = row.entry_context ?? null;
-      // HORIZON assertion (PR-1, design Q2): the plan/condor grades below apply the SAME-DAY 15:30
+      // HORIZON assertion (PR-1, design Q2): the plan/condor grades below apply the SAME-DAY 15:50
       // time-stop (plan.ts / condor.ts). That is only valid for a same-day (ZERO_DTE/ONE_DTE)
       // contract. Read the pinned horizon and, if it is KNOWN to be non-same-day (a weekly fallback
       // that somehow reached the ledger despite the commit guard), SKIP the same-day intraday grades
-      // so we never stamp an invalid 15:30 outcome. Legacy rows predate this pin (horizon absent) →
+      // so we never stamp an invalid 15:50 outcome. Legacy rows predate this pin (horizon absent) →
       // undefined, and grade unchanged. `isSameDayHorizon` fail-closes an unknown string to false,
       // so only a horizon explicitly ZERO_DTE/ONE_DTE (or a legacy null) is graded same-day.
       const pinnedHorizon = typeof ec?.contract_horizon === "string" ? ec.contract_horizon : null;
@@ -1874,9 +2341,15 @@ export function _resetZeroDteLedgerLatchForTest(): void {
 export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<ZeroDteSetupLogRow[]> {
   const live = rows.filter((r) => r.status !== "CLOSED");
   if (live.length === 0) return rows;
-  const occs = live
+  const directionalOccs = live
     .map((r) => (typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null))
     .filter((o): o is string => Boolean(o));
+  const condorOccs = live.flatMap((r) => {
+    const ec = r.entry_context as Record<string, unknown> | null;
+    if (ec?.play_type !== "CONDOR" && !ec?.condor) return [];
+    return condorLegOccs(ec?.condor);
+  });
+  const occs = Array.from(new Set([...directionalOccs, ...condorOccs]));
   const snaps = occs.length
     ? await within(
         fetchOptionsUnifiedSnapshot(occs).catch(
@@ -1897,10 +2370,21 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
   const updated = await Promise.all(
     rows.map(async (r) => {
       // CLOSED is terminal; every other row gets a state pass — rows with no plan/
-      // entry still time-stop at 15:30 (data quality never exempts the clock).
+      // entry still time-stop at 15:50 (data quality never exempts the clock).
       if (r.status === "CLOSED") return r;
       const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
-      const mark = occ ? (snaps.get(occ)?.mark ?? null) : null;
+      const ec = r.entry_context as Record<string, unknown> | null;
+      const isCondor = ec?.play_type === "CONDOR" || Boolean(ec?.condor);
+      const mark = isCondor
+        ? condorNetMarkPerShare(condorLegRoles(ec?.condor), (legOcc) => {
+            const snap = snaps.get(legOcc);
+            if (!snap) return null;
+            if (snap.mark != null) return snap.mark;
+            return resolveZeroDteMark(snap.bid ?? null, snap.ask ?? null, snap.last ?? null).mark;
+          })
+        : occ
+          ? (snaps.get(occ)?.mark ?? null)
+          : null;
       // LATCH ONLY WHAT IS ACTUALLY KNOWN — an absent premium must stay absent.
       //
       // The trough used to read
@@ -1931,6 +2415,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       );
       // Exit engine FIRST with plan-stop deferred — a latched trough at −50% must not
       // skip the ratchet floor when peak had armed breakeven (FINDINGS 2026-08-04).
+      const rails = playRailsFromRow(r);
       const preStop = derivePlayStatus({
         entryPremium: r.entry_premium,
         mark: mark ?? r.last_mark,
@@ -1938,10 +2423,31 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
         trough,
         nowEtMinutes,
         deferPlanStop: true,
+        targetPct: rails.targetPct,
+        stopPct: rails.stopPct,
+        isCondor,
       });
       const exit =
         preStop.status !== "CLOSED"
-          ? await evaluateLedgerRowExit(r, { syncMark: mark, status: preStop.status }).catch(() => null)
+          ? await evaluateLedgerRowExit(r, { syncMark: mark, status: preStop.status }, {
+              // Persist a newly-armed trim_scale tranche so the NEXT sync pass sees it
+              // via row.trims_taken. A no-op while ZERODTE_TRIM_BANK_LIVE is off.
+              onTrimBank: async (trimsTaken) => {
+                if (!dbConfigured()) return;
+                await updateZeroDteLiveState(r.session_date, r.ticker, {
+                  status: preStop.status,
+                  mark,
+                  trimsTaken,
+                }).catch(() => {});
+                void import("./discord-trade-notify")
+                  .then(({ notifyZeroDteTradeTrim }) =>
+                    notifyZeroDteTradeTrim({ ...r, trims_taken: trimsTaken }, trimsTaken, mark)
+                  )
+                  .catch((err) => {
+                    console.warn(`[zerodte-discord] trim notify failed for ${r.ticker}:`, err);
+                  });
+              },
+            }).catch(() => null)
           : null;
       const state =
         exit == null
@@ -1951,6 +2457,9 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
               peak,
               trough,
               nowEtMinutes,
+              targetPct: rails.targetPct,
+              stopPct: rails.stopPct,
+              isCondor,
             })
           : preStop;
       const status = exit ? ("CLOSED" as const) : state.status;
@@ -1960,8 +2469,9 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       // deliberately NOT counted — the governor's halt counts busted plans, and a
       // breakeven-floor scratch or a banked runner is not one.
       if (
-        (state.status === "CLOSED" && state.closed_reason === "stopped") ||
-        exit?.decision.reason === "plan_stop"
+        !isCondor &&
+        ((state.status === "CLOSED" && state.closed_reason === "stopped") ||
+          exit?.decision.reason === "plan_stop")
       ) {
         stopEvents.push({ ticker: r.ticker, direction: r.direction, at_ms: Date.now() });
       }
@@ -1977,7 +2487,33 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
         finalMark != null ? (peak != null ? Math.max(peak, finalMark) : finalMark) : peak;
       const troughOut =
         finalMark != null ? (trough != null ? Math.min(trough, finalMark) : finalMark) : trough;
-      return { ...r, status, last_mark: finalMark ?? r.last_mark, peak_premium: peakOut, trough_premium: troughOut };
+      const nextRow = {
+        ...r,
+        status,
+        last_mark: finalMark ?? r.last_mark,
+        peak_premium: peakOut,
+        trough_premium: troughOut,
+      };
+      if (r.status !== "CLOSED" && status === "CLOSED") {
+        void import("./discord-trade-notify")
+          .then(({ notifyZeroDteTradeClose }) =>
+            notifyZeroDteTradeClose({ ...nextRow, trims_taken: r.trims_taken ?? 0 }, finalMark)
+          )
+          .catch((err) => {
+            console.warn(`[zerodte-discord] close notify failed for ${r.ticker}:`, err);
+          });
+      } else if (
+        r.status !== "TRIM" &&
+        status === "TRIM" &&
+        preStop.status === "TRIM"
+      ) {
+        void import("./discord-trade-notify")
+          .then(({ notifyZeroDteTradeTrimLatch }) => notifyZeroDteTradeTrimLatch(r, finalMark))
+          .catch((err) => {
+            console.warn(`[zerodte-discord] trim-latch notify failed for ${r.ticker}:`, err);
+          });
+      }
+      return nextRow;
     })
   );
   if (stopEvents.length > 0) {

@@ -117,6 +117,41 @@ test("gexPositioningFromHeatmap: gex_king_strike is the argmax |net-gamma| strik
   assert.equal(p!.gex_king_strike, 95);
 });
 
+// Cross-product compute identity (added 2026-09-03, following an operator request for one
+// canonical payload SPX Slayer/Thermal/Vector/Largo can use to prove they're reasoning from the
+// same positioning state). gexPositioningFromHeatmap must pass calculation_id/calculated_at/
+// spot_timestamp/chain_timestamp/expires_at through from the underlying GexHeatmap VERBATIM —
+// it must never re-derive or re-stamp them, or two products reading the same matrix could get
+// different values and the whole point (provable sameness) breaks.
+test("gexPositioningFromHeatmap: passes calculation-envelope fields through verbatim from the heatmap", () => {
+  const hm = makeHeatmap({ "100": 40, "95": -70 });
+  hm.calculation_id = "TEST:1234567890";
+  hm.calculated_at = "2026-09-03T05:00:00.000Z";
+  hm.spot_timestamp = "2026-09-03T04:59:59.500Z";
+  hm.chain_timestamp = "2026-09-03T04:59:59.800Z";
+  hm.expires_at = "2026-09-03T05:00:05.000Z";
+
+  const p = gexPositioningFromHeatmap("TEST", hm);
+  assert.ok(p);
+  assert.equal(p!.calculation_id, "TEST:1234567890");
+  assert.equal(p!.calculated_at, "2026-09-03T05:00:00.000Z");
+  assert.equal(p!.spot_timestamp, "2026-09-03T04:59:59.500Z");
+  assert.equal(p!.chain_timestamp, "2026-09-03T04:59:59.800Z");
+  assert.equal(p!.expires_at, "2026-09-03T05:00:05.000Z");
+});
+
+test("gexPositioningFromHeatmap: omits calculation-envelope fields when the heatmap predates them", () => {
+  // Older cached payloads (built before this field existed) simply don't have these keys —
+  // the mapper must not fabricate them.
+  const p = gexPositioningFromHeatmap("TEST", makeHeatmap({ "100": 40, "95": -70 }));
+  assert.ok(p);
+  assert.equal(p!.calculation_id, undefined);
+  assert.equal(p!.calculated_at, undefined);
+  assert.equal(p!.spot_timestamp, undefined);
+  assert.equal(p!.chain_timestamp, undefined);
+  assert.equal(p!.expires_at, undefined);
+});
+
 test("gexPositioningFromHeatmap: gex_king_strike is null when strike_totals has no entries", () => {
   // hm.strikes must stay non-empty so gexPositioningFromHeatmap doesn't treat the whole
   // matrix as cold (that's the SEPARATE strikes.length===0 guard, tested by the cold-matrix
@@ -253,4 +288,49 @@ test("getGexPositioning: WS override off (no live channel) leaves the Polygon ba
   // makeHeatmap sets gex.call_wall/put_wall from sorted strikes (6050 high, 5950 low).
   assert.equal(p!.call_wall, 6050);
   assert.equal(p!.put_wall, 5950);
+});
+
+// ---------------------------------------------------------------------------
+// Regression (FINDINGS 2026-09-04): `nearest_wall` went STALE across the live-WS wall
+// override. gexPositioningFromHeatmap computes nearest_wall ONCE from the pre-override
+// Polygon call_wall/put_wall; getGexPositioning then overwrites base.call_wall/put_wall in
+// place from the fresher UW WS ladder but never touched nearest_wall, so the response's own
+// nearest_wall could keep naming a DIFFERENT strike / side / distance than the call_wall or
+// put_wall in the SAME payload. This fixture is built so the WS override flips which side is
+// actually nearer spot (support -> resistance), which the stale bug cannot reflect no matter
+// how the fix is checked. It FAILS on the pre-fix code (nearest_wall frozen at the pre-override
+// support level) and PASSES once nearest_wall is re-derived from the post-override levels.
+test("getGexPositioning: nearest_wall is re-derived from the POST-override call/put wall, not left stale", async () => {
+  const spot = 7750;
+
+  // Pre-override Polygon base: call_wall 7900 (dist +150), put_wall 7700 (dist -50).
+  // Nearest wall from the RAW base alone is the put wall (support), 50pts away.
+  const hm = makeHeatmap({ "7900": 500_000, "7700": -500_000 }, spot);
+  const NEAR = "2026-07-25";
+  hm.expiries = [NEAR];
+  hm.near_term_expiries = [NEAR];
+  heatmapForFetch = hm;
+
+  // Live WS ladder resolves a MATERIALLY different pair: call_wall snaps in to 7770 (dist +20,
+  // now the closer side) while put_wall drifts out to 7600 (dist -150). After the override,
+  // the call wall is nearer — the opposite side from the pre-override nearest_wall above.
+  wsCells = new Map([
+    [`${NEAR}|7770`, wsRow(NEAR, 7770, 2_000_000)],
+    [`${NEAR}|7600`, wsRow(NEAR, 7600, -3_000_000)],
+  ]);
+  wsLive = true;
+
+  const p = await getGexPositioning("SPX");
+  assert.ok(p);
+  // Sanity: the override actually took (this is the part the OLD pre-#2xxx WS-scoping bug
+  // covers — near-term scoping — already proven by the sibling test above).
+  assert.equal(p!.call_wall, 7770, "call_wall must come from the WS override");
+  assert.equal(p!.put_wall, 7600, "put_wall must come from the WS override");
+  // The actual bug under test: nearest_wall must reflect the POST-override levels, not the
+  // pre-override ones. Pre-fix this asserts strike 7700 / support / -50 (the stale base value)
+  // and fails; post-fix it correctly flips to the now-nearer call wall.
+  assert.ok(p!.nearest_wall, "nearest_wall must be present");
+  assert.equal(p!.nearest_wall!.strike, 7770, "nearest_wall must name the POST-override call wall");
+  assert.equal(p!.nearest_wall!.kind, "resistance", "nearest_wall side must flip once the call wall is nearer");
+  assert.equal(p!.nearest_wall!.distance_pts, 20, "nearest_wall distance must match the POST-override level");
 });

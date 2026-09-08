@@ -1,7 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { toPreEarningsHistoryRows, type PrintHistoryInput } from "./pre-earnings-history-rows";
+import {
+  toPreEarningsHistoryRows,
+  earningsAlreadyPrinted,
+  type PrintHistoryInput,
+} from "./pre-earnings-history-rows";
 
 /** Shaped like a real `loadMeridianEarningsPrintHistory` row, newest first. */
 const PRINTS: PrintHistoryInput[] = [
@@ -210,4 +214,49 @@ test("an unsettled reaction reaches the model flagged, not disguised as settled 
 
   // Both survive JSON — an absent key and a false one read very differently to a model.
   assert.equal(JSON.parse(JSON.stringify(rows[0])).reaction_settled, false);
+});
+
+describe("earningsAlreadyPrinted: is the pack's own print already on the history ledger?", () => {
+  test("the resolved date matching a real graded print means the print already happened", () => {
+    // Measured live 2026-09-04: LULU's pack was built for "2026-09-03" — the SAME date as the
+    // freshest row in its own print_history, carrying a real surprise_pct/beat off actual results
+    // that had already posted hours earlier. That is the exact case this must catch.
+    const history = toPreEarningsHistoryRows([
+      { report_date: "2026-09-03", surprise_pct: 16.3, beat: true },
+      { report_date: "2026-06-04", surprise_pct: 0.6, beat: true },
+    ]);
+    assert.equal(earningsAlreadyPrinted("2026-09-03", history), true);
+  });
+
+  test("a genuinely upcoming print — no history row shares its date — reads as NOT yet printed", () => {
+    // The common case: next quarter's date is still in the future, so it cannot appear among rows
+    // that only ever carry CONFIRMED actual results (see this module's own header on the upstream
+    // actual_eps/actual_revenue filter). Withholding the chain-IV move here would be wrong — this
+    // is exactly the case that number is FOR.
+    const history = toPreEarningsHistoryRows([
+      { report_date: "2026-06-04", surprise_pct: 0.6, beat: true },
+      { report_date: "2026-03-17", surprise_pct: 5, beat: true },
+    ]);
+    assert.equal(earningsAlreadyPrinted("2026-09-10", history), false);
+  });
+
+  test("an unresolved date (null) never reads as printed, regardless of history", () => {
+    const history = toPreEarningsHistoryRows([{ report_date: "2026-06-04", beat: true }]);
+    assert.equal(earningsAlreadyPrinted(null, history), false);
+  });
+
+  test("empty history — a name with nothing on file yet — never reads as printed", () => {
+    assert.equal(earningsAlreadyPrinted("2026-09-03", []), false);
+  });
+
+  test("an OLDER date matching an EARLIER row in the same history also reads as printed", () => {
+    // Not just the freshest row: browsing to any past print this ticker's history already carries
+    // must be recognized too, not only the most recent one.
+    const history = toPreEarningsHistoryRows([
+      { report_date: "2026-09-03", beat: true },
+      { report_date: "2026-06-04", beat: true },
+      { report_date: "2026-03-17", beat: true },
+    ]);
+    assert.equal(earningsAlreadyPrinted("2026-03-17", history), true);
+  });
 });

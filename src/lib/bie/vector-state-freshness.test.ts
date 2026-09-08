@@ -165,9 +165,16 @@ test("an unreadable timestamp is 'unknown', never 'live'", () => {
   }
 });
 
-test("clock skew cannot produce a negative age", () => {
-  // A snapshot stamped in the future would otherwise report "fresher than live".
+test("clock skew beyond tolerance is unknown, not live", () => {
+  // 30s ahead exceeds WS_TIMESTAMP_FUTURE_TOLERANCE_MS (5s) — must not clamp to age 0 / live.
   const f = describeVectorFreshness(new Date(T0 + 30_000).toISOString(), T0);
+  assert.equal(f.age_seconds, null);
+  assert.equal(f.freshness, "unknown");
+  assert.match(f.note!, /clock skew/);
+});
+
+test("minor clock skew within tolerance still clamps to live", () => {
+  const f = describeVectorFreshness(new Date(T0 + 2_000).toISOString(), T0);
   assert.equal(f.age_seconds, 0);
   assert.equal(f.freshness, "live");
 });
@@ -230,10 +237,20 @@ test("freshness is attached at the SHARED entry point, so every consumer gets it
   assert.match(src, /void writeVectorFullStateCache\(ticker, horizon, live\)/);
 });
 
+test("withReadContext dataAgeMs rejects clock-skewed future asOf (source scan)", () => {
+  const src = readFileSync("src/lib/bie/vector-full-state.ts", "utf8");
+  assert.match(src, /WS_TIMESTAMP_FUTURE_TOLERANCE_MS/);
+  assert.match(
+    src,
+    /rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS[\s\S]*?Number\.POSITIVE_INFINITY/,
+    "future asOf must not clamp dataAgeMs to 0",
+  );
+});
+
 test("scenario-read MEASURES provenance freshness instead of asserting it", () => {
   const src = readFileSync("src/lib/bie/scenario-read.ts", "utf8");
   assert.doesNotMatch(src, /freshness: "recent"/, "a hardcoded freshness is a claim nothing checked");
-  assert.match(src, /freshness: freshnessFromAgeMs\(/);
+  assert.match(src, /freshnessFromObservedMs\(/);
 });
 
 test("the capability registry no longer calls this surface realtime", () => {

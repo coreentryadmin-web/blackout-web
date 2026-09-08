@@ -47,6 +47,11 @@ test("countActiveHelixFilters: sums multiple simultaneous non-default filters", 
   );
 });
 
+test("countActiveHelixFilters: counts direction and opening filters", () => {
+  assert.equal(countActiveHelixFilters({ ...BASE, directionFilter: "bullish" }), 1);
+  assert.equal(countActiveHelixFilters({ ...BASE, openingOnly: true }), 1);
+});
+
 test("countActiveHelixFilters: an INERT watchlist filter counts as zero", () => {
   // The flag is on and the chip renders lit, but the list is empty so nothing is filtered. This
   // is the state the old assertion above blessed.

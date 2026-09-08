@@ -11,6 +11,7 @@ import {
 import { askPctFromRaw } from "@/lib/flow-raw-fields";
 import { pulseChangePctFromPriorClose } from "./spx-change-anchor";
 import { rebaseChangePct } from "@/lib/providers/change-pct";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { serverCache } from "@/lib/server-cache";
 // Pure numeric helpers (round + GEX staleness + pulse rounding) live in a server-only-free module
 // so they can be unit-tested in isolation. See spx-desk-numerics.ts.
@@ -70,7 +71,6 @@ import {
 } from "@/features/spx/lib/spx-market-session";
 import { isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
 import {
-  distancePct,
   inferRegime,
   priorDayFromDailyBars,
   priorEtYmd,
@@ -78,6 +78,7 @@ import {
   todayEtYmd,
   widenSessionExtremesWithSpot,
 } from "@/lib/providers/spx-session";
+import { buildLevels } from "./spx-desk-levels";
 import { fetchSpyVolumeByMinute } from "@/features/vector/lib/vector-spy-volume";
 import {
   resolveSessionVwap,
@@ -105,7 +106,7 @@ import {
   type OiChangeItem,
   type UwMacroIndicatorSnapshot,
 } from "@/lib/providers/unusual-whales";
-import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
+import { runUwPooled, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { fetchEngine } from "@/lib/engine";
 import { parseEngineIntelOverlay, type EngineIntelOverlay } from "@/lib/engine-intel-overlay";
 import { indexStore, getIndexFeedFreshness, INDEX_FEED_STALL_MS } from "@/lib/ws/polygon-socket";
@@ -163,7 +164,8 @@ let lastPulseForSignals: SpxDeskPulse | null = null;
 let lastGoodGexComputedAt = 0;
 /** Age (ms) of the freshest GEX strike ladder; null until one has ever been computed. */
 function gexDataAgeMs(now = Date.now()): number | null {
-  return lastGoodGexComputedAt > 0 ? Math.max(0, now - lastGoodGexComputedAt) : null;
+  // Raw age (may be negative on clock-skewed asof) — gexStaleFromAge fail-closes on future stamps.
+  return lastGoodGexComputedAt > 0 ? now - lastGoodGexComputedAt : null;
 }
 /**
  * Beyond this age the served GEX walls/flip/regime are treated as STALE (sticky fallback
@@ -277,22 +279,25 @@ async function fetchUwDeskRestSupplemental(opts: {
   if (!uwConfigured()) {
     return { nope: null, maxPain: null, iv: null };
   }
-  const tasks: Array<() => Promise<unknown>> = [
-    () =>
-      fetchUwNope("SPX")
-        .catch(() => null)
-        .then((r) => r ?? fetchUwNope("SPY").catch(() => null)),
-  ];
-  const maxPainSlot = opts.needMaxPain ? tasks.length : -1;
-  if (opts.needMaxPain) tasks.push(() => fetchUwMaxPain("SPX").catch(() => null));
-  const ivSlot = opts.needIv ? tasks.length : -1;
-  if (opts.needIv) tasks.push(() => fetchUwIvRank("SPX").catch(() => null));
-  const results = await runUwPooled(tasks);
-  return {
-    nope: results[0] as Awaited<ReturnType<typeof fetchUwNope>> | null,
-    maxPain: maxPainSlot >= 0 ? (results[maxPainSlot] as number | null) : null,
-    iv: ivSlot >= 0 ? (results[ivSlot] as number | null) : null,
-  };
+  // Tagged so spx-evaluate / spx-signal-observe cold rebuilds cannot consume live UW slots.
+  return runWithBackgroundUwSweep(async () => {
+    const tasks: Array<() => Promise<unknown>> = [
+      () =>
+        fetchUwNope("SPX")
+          .catch(() => null)
+          .then((r) => r ?? fetchUwNope("SPY").catch(() => null)),
+    ];
+    const maxPainSlot = opts.needMaxPain ? tasks.length : -1;
+    if (opts.needMaxPain) tasks.push(() => fetchUwMaxPain("SPX").catch(() => null));
+    const ivSlot = opts.needIv ? tasks.length : -1;
+    if (opts.needIv) tasks.push(() => fetchUwIvRank("SPX").catch(() => null));
+    const results = await runUwPooled(tasks);
+    return {
+      nope: results[0] as Awaited<ReturnType<typeof fetchUwNope>> | null,
+      maxPain: maxPainSlot >= 0 ? (results[maxPainSlot] as number | null) : null,
+      iv: ivSlot >= 0 ? (results[ivSlot] as number | null) : null,
+    };
+  });
 }
 
 /**
@@ -320,30 +325,35 @@ let lastGoodDeskEnrichment: DeskEnrichmentSticky | null = null;
 let deskEnrichmentInFlight: Promise<void> | null = null;
 
 async function fetchDeskEnrichmentFields(today: string): Promise<DeskEnrichmentSticky> {
-  const netPremTicks = await resolveNetPremTicksForDesk("SPY");
-  const [greekExpRows, flowByExpiry, netFlowByExpiry, mag7Rows, macroIndicators] =
-    uwConfigured()
-      ? await runUwPooled([
-          () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
-          () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
-          () => fetchUwNetFlowExpiry(20).catch(() => []),
-          () => fetchUwGroupGreekFlow("mag7").catch(() => []),
-          () => fetchUwMacroIndicators().catch(() => []),
-        ])
-      : [[], [], [], [], []];
+  // Tagged as a background sweep so desk-touching crons (spx-evaluate, spx-signal-observe,
+  // market-regime-detector, data-correctness) that trigger enrichment refresh on a stale sticky
+  // cannot consume the last UW concurrency slot reserved for live member traffic.
+  return runWithBackgroundUwSweep(async () => {
+    const netPremTicks = await resolveNetPremTicksForDesk("SPY");
+    const [greekExpRows, flowByExpiry, netFlowByExpiry, mag7Rows, macroIndicators] =
+      uwConfigured()
+        ? await runUwPooled([
+            () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
+            () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
+            () => fetchUwNetFlowExpiry(20).catch(() => []),
+            () => fetchUwGroupGreekFlow("mag7").catch(() => []),
+            () => fetchUwMacroIndicators().catch(() => []),
+          ])
+        : [[], [], [], [], []];
 
-  return {
-    fetchedAt: Date.now(),
-    greek_exposure: summarizeGreekExposureByExpiry(
-      greekExpRows as Record<string, unknown>[],
-      today
-    ),
-    flow_by_expiry: flowByExpiry as Record<string, unknown>[],
-    net_flow_by_expiry: netFlowByExpiry as Record<string, unknown>[],
-    net_prem_ticks: netPremTicks,
-    mag7_greek_flow: summarizeGroupGreekFlow("mag7", mag7Rows as Record<string, unknown>[]),
-    macro_indicators: macroIndicators as UwMacroIndicatorSnapshot[],
-  };
+    return {
+      fetchedAt: Date.now(),
+      greek_exposure: summarizeGreekExposureByExpiry(
+        greekExpRows as Record<string, unknown>[],
+        today
+      ),
+      flow_by_expiry: flowByExpiry as Record<string, unknown>[],
+      net_flow_by_expiry: netFlowByExpiry as Record<string, unknown>[],
+      net_prem_ticks: netPremTicks,
+      mag7_greek_flow: summarizeGroupGreekFlow("mag7", mag7Rows as Record<string, unknown>[]),
+      macro_indicators: macroIndicators as UwMacroIndicatorSnapshot[],
+    };
+  });
 }
 
 /** WS → Redis → REST for net prem ticks (net_flow channel). */
@@ -427,7 +437,7 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
   if (regime !== "unknown") lastGoodGammaRegime = regime;
 
   const asofMs = Date.parse(pos.asof);
-  const gexAgeMs = Number.isFinite(asofMs) ? Math.max(0, Date.now() - asofMs) : gexDataAgeMs();
+  const gexAgeMs = Number.isFinite(asofMs) ? Date.now() - asofMs : gexDataAgeMs();
 
   return {
     gex_net: pos.net_gex,
@@ -463,6 +473,15 @@ const INDEX_STORE_STALE_MS = (() => {
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 120_000;
 })();
 
+/** Clock-skew guard — a future `updatedAt` must not read as infinitely fresh. */
+function indexWsFresh(updatedAt: number, now = Date.now()): boolean {
+  return isWsUpdatedAtFresh(updatedAt, INDEX_STORE_STALE_MS, now);
+}
+
+function uwWsStoreFresh(updatedAt: number, staleMs: number, now = Date.now()): boolean {
+  return isWsUpdatedAtFresh(updatedAt, staleMs, now);
+}
+
 let cachedDarkPool: { data: DarkPoolSnapshot | null; fetchedAt: number; key: string } = {
   data: null,
   fetchedAt: 0,
@@ -473,7 +492,7 @@ async function resolveMarketTide(): Promise<Awaited<ReturnType<typeof fetchUwMar
   if (!uwConfigured()) return null;
   try {
     const { tideStore } = await import("@/lib/ws/uw-socket");
-    if (Date.now() - tideStore.updatedAt < TIDE_STALE_MS) {
+    if (uwWsStoreFresh(tideStore.updatedAt, TIDE_STALE_MS)) {
       return tideStore;
     }
   } catch {
@@ -497,7 +516,7 @@ async function resolveFlow0dte(ticker = "SPX"): Promise<{
   try {
     const { getIntervalFlowForTicker } = await import("@/lib/ws/uw-socket");
     const snap = getIntervalFlowForTicker(ticker);
-    if (Date.now() - snap.updatedAt < INTERVAL_FLOW_WS_STALE_MS && snap.rows.length) {
+    if (uwWsStoreFresh(snap.updatedAt, INTERVAL_FLOW_WS_STALE_MS) && snap.rows.length) {
       let calls = 0;
       let puts = 0;
       for (const row of snap.rows) {
@@ -521,7 +540,7 @@ async function resolveDarkPool(
   const now = Date.now();
   try {
     const { darkPoolStore } = await import("@/lib/ws/uw-socket");
-    if (Date.now() - darkPoolStore.updatedAt < DARK_POOL_WS_STALE_MS && darkPoolStore.data) {
+    if (uwWsStoreFresh(darkPoolStore.updatedAt, DARK_POOL_WS_STALE_MS) && darkPoolStore.data) {
       return darkPoolStore.data;
     }
   } catch {
@@ -534,7 +553,10 @@ async function resolveDarkPool(
   } catch {
     /* Redis optional */
   }
-  if (cachedDarkPool.key === key && now - cachedDarkPool.fetchedAt < DARK_POOL_CACHE_MS) {
+  if (
+    cachedDarkPool.key === key &&
+    isWsUpdatedAtFresh(cachedDarkPool.fetchedAt, DARK_POOL_CACHE_MS, now)
+  ) {
     return cachedDarkPool.data;
   }
   const tickerFresh = await fetchUwDarkPool(ticker, opts).catch(() => null);
@@ -562,7 +584,7 @@ function mergeWsIndexSnapshots(
     // Breadth indices (TICK/ADD) can be negative; price indices must stay > 0.
     if (
       ws?.updatedAt &&
-      now - ws.updatedAt < INDEX_STORE_STALE_MS &&
+      indexWsFresh(ws.updatedAt, now) &&
       (breadthIndex || ws.price > 0)
     ) {
       // FIX-A: the live WS PRICE is always preferred (sub-second fresh). For the day CHANGE%,
@@ -579,7 +601,7 @@ function mergeWsIndexSnapshots(
       // returns null only when that reference can't be recovered, where the raw REST value stands.
       const restSnap = out[sym];
       const restChangePct =
-        rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0;
+        rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? null;
       out[sym] = {
         symbol: sym,
         price: ws.price,
@@ -620,7 +642,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
         const breadthIndex = sym === TICK || sym === ADD;
         if (
           e?.updatedAt &&
-          now - e.updatedAt < INDEX_STORE_STALE_MS &&
+          indexWsFresh(e.updatedAt, now) &&
           (breadthIndex || (e.price ?? 0) > 0)
         ) {
           // FIX-A applies HERE TOO, and this is where it was being defeated.
@@ -644,7 +666,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
           base[sym] = {
             symbol: sym,
             price: e.price!,
-            change_pct: pulseChange ?? 0,
+            change_pct: pulseChange,
             // The pulse carries no prior close; the REST lane below supplies the authoritative
             // percentage for anything left in `unresolvedChange`.
             prev_close: null,
@@ -670,7 +692,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
     const ws = indexStore[sym];
     return (
       !!ws?.updatedAt &&
-      now - ws.updatedAt < INDEX_STORE_STALE_MS &&
+      indexWsFresh(ws.updatedAt, now) &&
       ws.price > 0 &&
       ws.open_source === "rest"
     );
@@ -707,8 +729,8 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
       [SPX]: {
         symbol: SPX,
         price: lastPulseForSignals.price,
-        change_pct: lastPulseForSignals.spx_change_pct ?? 0,
-        prev_close: null,
+        change_pct: lastPulseForSignals.spx_change_pct ?? null,
+        prev_close: lastPulseForSignals.prior_close ?? null,
       },
     };
   }
@@ -724,7 +746,7 @@ async function resolvePulseFeedStalled(now = Date.now()): Promise<boolean | null
     if (raw) {
       const snap = JSON.parse(raw) as Record<string, { updatedAt?: number }>;
       const at = snap["I:SPX"]?.updatedAt;
-      if (at && at > 0) return now - at > INDEX_FEED_STALL_MS;
+      if (at && at > 0) return !isWsUpdatedAtFresh(at, INDEX_FEED_STALL_MS, now);
     }
   } catch {
     /* fall through */
@@ -740,7 +762,7 @@ async function priorDayForPulseLane(): Promise<{
 }> {
   const now = Date.now();
   if (cachedPriorDay.fetchedAt > 0) {
-    if (now - cachedPriorDay.fetchedAt < 60_000) {
+    if (isWsUpdatedAtFresh(cachedPriorDay.fetchedAt, 60_000, now)) {
       return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl, pdc: cachedPriorDay.pdc };
     }
     void fetchPriorDayCached().catch(() => {});
@@ -810,8 +832,8 @@ type PulseStructureCache = {
   ema200: number | null;
   sma50: number | null;
   sma200: number | null;
-  leader_stocks: Array<{ name: string; ticker: string; change_pct: number }>;
-  breadth_samples: Array<{ change_pct: number }>;
+  leader_stocks: Array<{ name: string; ticker: string; change_pct: number | null }>;
+  breadth_samples: Array<{ change_pct: number | null }>;
 };
 
 let cachedPulseStructure: PulseStructureCache = {
@@ -852,7 +874,7 @@ function buildDeskDataQuality(
 }
 
 function leaderStocksFromBreadth(
-  samples: Array<{ name: string; ticker: string; change_pct: number }>
+  samples: Array<{ name: string; ticker: string; change_pct: number | null }>
 ) {
   return samples.filter((s) => LEADER_TICKERS.has(s.ticker));
 }
@@ -915,7 +937,7 @@ export type SpxDeskPayload = {
   as_of: string;
   source: string;
   price: number;
-  spx_change_pct: number;
+  spx_change_pct: number | null;
   vix: number | null;
   vix_change_pct: number | null;
   above_vwap: boolean;
@@ -986,8 +1008,8 @@ export type SpxDeskPayload = {
     structure: string;
     detail: string;
   };
-  sector_heat: Array<{ name: string; ticker: string; change_pct: number }>;
-  leader_stocks: Array<{ name: string; ticker: string; change_pct: number }>;
+  sector_heat: Array<{ name: string; ticker: string; change_pct: number | null }>;
+  leader_stocks: Array<{ name: string; ticker: string; change_pct: number | null }>;
   oi_changes: OiChangeItem[];
   iv_term_structure: IvTermPoint[];
   macro_events: MacroEvent[];
@@ -1131,51 +1153,6 @@ export type SpxDeskFlow = {
   /** Lit vs dark premium share from UW lit_trades + off_lit_trades WS (SPY proxy). */
   lit_dark_ratio?: SpxDeskPayload["lit_dark_ratio"];
 };
-
-function level(
-  label: string,
-  value: number | null,
-  price: number,
-  kind: "support" | "resistance" | "neutral" = "neutral"
-): SpxDeskLevel {
-  return { label, value, kind, distance_pct: distancePct(price, value) };
-}
-
-function buildLevels(input: {
-  price: number;
-  lod: number | null;
-  hod: number | null;
-  vwap: number | null;
-  pdh: number | null;
-  pdl: number | null;
-  ema20: number | null;
-  ema50: number | null;
-  ema200: number | null;
-  sma50: number | null;
-  sma200: number | null;
-  gex_king: number | null;
-  max_pain: number | null;
-  gamma_flip: number | null;
-}): SpxDeskLevel[] {
-  const p = input.price;
-  const items: SpxDeskLevel[] = [
-    level("HOD", input.hod, p, "resistance"),
-    level("PDH", input.pdh, p, "resistance"),
-    level("King node · GEX anchor", input.gex_king, p, "resistance"),
-    level("Max Pain", input.max_pain, p, "neutral"),
-    level("γ Flip", input.gamma_flip, p, "neutral"),
-    level("EMA 20", input.ema20, p, "neutral"),
-    level("VWAP", input.vwap, p, "neutral"),
-    level("EMA 50", input.ema50, p, "neutral"),
-    level("SMA 50", input.sma50, p, "neutral"),
-    level("EMA 200", input.ema200, p, "neutral"),
-    level("SMA 200", input.sma200, p, "neutral"),
-    level("PDL", input.pdl, p, "support"),
-    level("LOD", input.lod, p, "support"),
-  ].filter((l) => l.value != null);
-
-  return items.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-}
 
 function buildUnifiedTape(
   flows: SpxFlowBrief[],
@@ -1389,7 +1366,7 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     as_of: asOf,
     source: "none",
     price: 0,
-    spx_change_pct: 0,
+    spx_change_pct: null,
     vix: null,
     vix_change_pct: null,
     above_vwap: false,
@@ -1510,9 +1487,10 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const spxSnap = snaps[SPX];
   const vixSnap = snaps[VIX];
-  if (!spxSnap?.price) return empty;
-
-  const price = spxSnap.price;
+  const priorFromBars = priorDayFromDailyBars(dailyBars);
+  const price =
+    spxSnap?.price ?? lastPulseForSignals?.price ?? priorFromBars.pdc ?? 0;
+  if (!(price > 0)) return empty;
   // Gap #11: liveness of the SPX index tick backing `price`. A frozen WS feed (TCP half-open)
   // shows a non-zero-but-stale price; surface its age + stall so the UI never labels it live.
   const spxFeed = getIndexFeedFreshness(SPX);
@@ -1534,7 +1512,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
           forming: etMinsNow >= 9 * 60 + 30 && etMinsNow < 10 * 60,
         }
       : null;
-  const prior = priorDayFromDailyBars(dailyBars);
+  const prior = priorFromBars;
   const newsHeadlines: DeskNewsHeadline[] = (newsRaw ?? [])
     .map((a) => ({
       title: a.title,
@@ -1706,7 +1684,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     source: intel?.available ? "merged" : uwConfigured() ? "polygon+uw-flow" : "polygon",
     price: roundDeskNum(price)!,
     // Derived from prior_close (served two lines below as `pdc`) — see pulseChangePctFromPriorClose.
-    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap.change_pct),
+    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
     vix: roundDeskNum(vixSnap?.price ?? intel?.vix ?? null),
     vix_change_pct: vixSnap?.change_pct ?? intel?.vix_change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
@@ -1789,7 +1767,10 @@ async function fetchPriorDayCached(): Promise<{
   pdc: number | null;
 }> {
   const now = Date.now();
-  if (now - cachedPriorDay.fetchedAt < 60_000 && cachedPriorDay.pdh != null) {
+  if (
+    isWsUpdatedAtFresh(cachedPriorDay.fetchedAt, 60_000, now) &&
+    cachedPriorDay.pdh != null
+  ) {
     return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl, pdc: cachedPriorDay.pdc };
   }
   const today = todayEtYmd();
@@ -1838,7 +1819,12 @@ async function refreshPulseStructureCore(today: string): Promise<PulseStructureC
 function kickPulseStructureRefresh(today: string): void {
   const now = Date.now();
   const ttl = deskPulseStructureCacheTtlMs();
-  if (cachedPulseStructure.fetchedAt > 0 && now - cachedPulseStructure.fetchedAt < ttl) return;
+  if (
+    cachedPulseStructure.fetchedAt > 0 &&
+    isWsUpdatedAtFresh(cachedPulseStructure.fetchedAt, ttl, now)
+  ) {
+    return;
+  }
   if (pulseStructureInflight) return;
   pulseStructureInflight = refreshPulseStructureCore(today)
     .catch(() => cachedPulseStructure)
@@ -1851,7 +1837,10 @@ function kickPulseStructureRefresh(today: string): void {
 async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStructureCache> {
   const now = Date.now();
   const ttl = deskPulseStructureCacheTtlMs();
-  if (cachedPulseStructure.fetchedAt > 0 && now - cachedPulseStructure.fetchedAt < ttl) {
+  if (
+    cachedPulseStructure.fetchedAt > 0 &&
+    isWsUpdatedAtFresh(cachedPulseStructure.fetchedAt, ttl, now)
+  ) {
     return cachedPulseStructure;
   }
 
@@ -1907,7 +1896,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     available: false,
     polled_at: polledAt,
     price: 0,
-    spx_change_pct: 0,
+    spx_change_pct: null,
     vix: null,
     vix_change_pct: null,
     above_vwap: false,
@@ -1952,13 +1941,46 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   const label = marketStatusLabel(now, marketNow);
 
   if (!rthOpen && !premarketPlan) {
+    // Off-hours the fast lane has no live index tick — serve the last RTH print instead of
+    // price:0 (platform-integrity FAIL vs gex-heatmap; pin forecast "Collecting" regression).
+    if (lastPulseForSignals?.price) {
+      return {
+        ...lastPulseForSignals,
+        polled_at: polledAt,
+        market_open: false,
+        market_status: marketNow?.market ?? "closed",
+        market_label: label,
+      };
+    }
+    // Cold replica after deploy: in-process lastPulse is empty — anchor to prior session close.
+    // priorDayForPulseLane() is "never block cold": on a TRUE cold cache (fetchedAt === 0, no
+    // lastPulseForSignals either) it fires the real fetch in the background and returns pdc:null
+    // immediately, so the very first off-hours request after a rollout still fell through to
+    // price:0 below. Off-hours has no fast-lane latency budget to protect, so awaiting the real
+    // fetch here (one Polygon daily-bar read) is safe and closes that window.
+    let prior = await priorDayForPulseLane();
+    if (!(prior.pdc != null && prior.pdc > 0)) {
+      prior = await fetchPriorDayCached().catch(() => prior);
+    }
+    if (prior.pdc != null && prior.pdc > 0) {
+      return {
+        ...empty,
+        available: true,
+        price: prior.pdc,
+        prior_close: prior.pdc,
+        pdh: prior.pdh,
+        pdl: prior.pdl,
+        market_open: false,
+        market_status: marketNow?.market ?? "closed",
+        market_label: label,
+      };
+    }
     const closedPulse: SpxDeskPulse = {
       ...empty,
       market_open: false,
       market_status: marketNow?.market ?? "closed",
       market_label: label,
     };
-    lastPulseForSignals = closedPulse;
     return closedPulse;
   }
 
@@ -2040,7 +2062,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     price,
     // Derived from prior_close (served below) — see pulseChangePctFromPriorClose. This is the tile
     // the 2026-08-07 P0 was measured on.
-    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap.change_pct),
+    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
     vix: vixSnap?.price ?? null,
     vix_change_pct: vixSnap?.change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
@@ -2103,7 +2125,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     available: false,
     polled_at: polledAt,
     price: 0,
-    spx_change_pct: 0,
+    spx_change_pct: null,
     vix: null,
     vix_change_pct: null,
     above_vwap: false,
@@ -2136,17 +2158,21 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
   void warmUwClusterFreshnessFromRedis().catch(() => undefined);
   kickPulseStructureRefresh(todayEtYmd());
 
+  const prior = await priorDayForPulseLane();
+
   const raced = await Promise.race([
     (async () => {
       const snapsRaw = await fetchPulseLaneSnapshots();
       const spxSnap = snapsRaw[SPX];
-      if (!spxSnap?.price) return empty;
+      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? prior.pdc ?? 0;
+      if (!(price > 0)) return empty;
       const structure = cachedPulseStructure;
       return {
         ...empty,
         available: true,
-        price: spxSnap.price,
-        spx_change_pct: spxSnap.change_pct,
+        price,
+        prior_close: prior.pdc,
+        spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
         vix: snapsRaw[VIX]?.price ?? null,
         vix_change_pct: snapsRaw[VIX]?.change_pct ?? null,
         vwap: structure.vwap,
@@ -2237,14 +2263,16 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
   }
 
   const [darkPool, uwFlow, greekExpRows, flowByExpiry, netFlowByExpiry, netPremTicks] = uwConfigured()
-    ? await runUwPooled([
-        () => resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
-        () => resolveFlow0dte("SPX"),
-        () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
-        () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
-        () => fetchUwNetFlowExpiry(20).catch(() => []),
-        () => fetchUwNetPremTicks("SPY").catch(() => []),
-      ])
+    ? await runWithBackgroundUwSweep(() =>
+        runUwPooled([
+          () => resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
+          () => resolveFlow0dte("SPX"),
+          () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
+          () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
+          () => fetchUwNetFlowExpiry(20).catch(() => []),
+          () => fetchUwNetPremTicks("SPY").catch(() => []),
+        ]),
+      )
     : [null, null, [], [], [], []];
 
   const canonicalGex = await resolveCanonicalDeskGex(price);

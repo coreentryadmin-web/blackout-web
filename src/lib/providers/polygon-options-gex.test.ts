@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   resolveHeatmapPageGuard,
   resolveChainBandPageGuard,
+  __test_heatmapUnfilteredPageGuard,
   __test_heatmapBandPct as heatmapBandPct,
   computeGexEvents,
   computeMaxPainFromChain,
@@ -25,6 +26,9 @@ import {
   __test_resolveHeatmapDividendYieldUncached,
   trailingTwelveMonthDividendYield,
   warnChainTruncated,
+  clampedCacheAgeSec,
+  gexHeatmapCacheEntryStale,
+  gexHeatmapCacheEntryWithinTtl,
 } from "./polygon-options-gex";
 
 function contract(
@@ -69,6 +73,22 @@ test("resolveChainBandPageGuard: default 40, honors override, floors at the old 
   assert.equal(resolveChainBandPageGuard("0"), 40); // falsy → treated as unset
 });
 
+test("fetchHeatmapBandUnfiltered's page guard shares HEATMAP_PAGE_GUARD, not a flat 12 (live-caught 2026-09-05: NFLX/GOOGL truncated)", () => {
+  // Live-caught: shouldEscalateToFullChain fires for ANY thin ladder regardless of price (the
+  // ASTS fix), so the "full chain, no strike filter" fetch now also runs for megacap names with
+  // hundreds of strikes across many expiries — not just the "tiny low-priced chains (NIO-class)"
+  // its own doc comment assumed when the guard was written as a flat 12. A flat 12-page cap
+  // truncates that megacap chain every time, understating walls/OI/IV exactly like the two prior,
+  // now-fixed instances of this same bug class elsewhere in this file (fetchPolygonOiByExpiry and
+  // the OI-by-expiry term-structure loop). Asserting >= the shared guard's floor (40) — not a
+  // literal 200 — keeps this test from breaking if OPTIONS_HEATMAP_PAGE_GUARD is overridden in CI.
+  assert.ok(
+    __test_heatmapUnfilteredPageGuard >= 40,
+    `expected the unfiltered heatmap guard to share HEATMAP_PAGE_GUARD's floor (>=40), got ${__test_heatmapUnfilteredPageGuard} — the old flat 12 truncates megacap full-chain escalations`
+  );
+  assert.notEqual(__test_heatmapUnfilteredPageGuard, 12);
+});
+
 test("resolveSpotSnapshot falls back to prev-bar + SPY×10 proxy when snapshots fail", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
@@ -78,6 +98,55 @@ test("resolveSpotSnapshot falls back to prev-bar + SPY×10 proxy when snapshots 
   assert.match(src, /fetchSpotFromPrevBar\("SPY"\)/);
   assert.match(src, /const prevBar = await resolveSpotSnapshotLastResort\(root, isIndex\)/);
   assert.match(src, /resolveSpotFromUwStockState/);
+});
+
+test("fetchSpotFromPrevBar uses ISR-safe prev-bar fetch so marketing homepage revalidate is not defeated", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(
+    src,
+    /fetchPreviousDayBar\(symbol,\s*\{\s*next:\s*\{\s*revalidate:\s*3600\s*\}\s*\}\)/
+  );
+});
+
+test("resolveSpotSnapshot: never fabricates change_pct as flat 0% when unknown", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /return \{ price: bar\.c, change_pct: null \}/);
+  assert.match(src, /restSnap\?\.change_pct \?\? null/);
+  // REST branch seeds from snap?.change_pct ?? null, then index tickers may rebase via
+  // resolveIndexRestChangePct (SPX 0% after close → SPY session %). Never inline ?? 0.
+  assert.match(src, /let changePct = snap\?\.change_pct \?\? null;/);
+  assert.match(src, /change_pct: changePct, source: "rest"/);
+  assert.match(src, /resolveIndexRestChangePct/);
+  assert.match(src, /rebaseChangePct/);
+  assert.match(src, /return reported === 0 \? null : reported/);
+  assert.match(src, /change_pct: ctx\?\.changePct \?\? null/);
+  assert.doesNotMatch(
+    src,
+    /restSnap\?\.change_pct \?\? 0/,
+    "resolveSpotSnapshot must not coalesce unknown change% to 0"
+  );
+  assert.doesNotMatch(
+    src,
+    /snap\?\.change_pct \?\? 0/,
+    "REST fallback must not coalesce unknown index change% to 0"
+  );
+});
+
+test("liveWsIndexSpot/liveWsStockSpot: future WS updatedAt must not read as fresh", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /function gexWsTickFresh\(/);
+  assert.match(src, /GEX_WS_FUTURE_TOLERANCE_MS/);
+  assert.match(src, /if \(!gexWsTickFresh\(ws\.updatedAt, now\)\) return null;/);
+  assert.match(src, /if \(!snap\.updatedAt \|\| !gexWsTickFresh\(snap\.updatedAt, now\)\) return null;/);
 });
 
 test("fetchGexHeatmap keeps stale-while-revalidate during preset fast-move (no blocking guard)", () => {
@@ -112,6 +181,9 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
     /if\s*\(\s*existing\s*\)\s*return\s+existing\s*;/,
     "inflight coalesce must not return the raw promise — callers would block 20–57s"
   );
+  assert.match(src, /sharedCacheSetNx/, "CQ-112: cluster build lock for cross-replica herd");
+  assert.match(src, /gex:heatmap:build-lock:/);
+  assert.match(src, /pollPeerHeatmapCache/);
 });
 
 test("SPX matrix build applies UW 0DTE overlay before cache write (#2503)", () => {
@@ -121,6 +193,29 @@ test("SPX matrix build applies UW 0DTE overlay before cache write (#2503)", () =
   );
   assert.match(src, /if \(root === "SPX"\)[\s\S]*applySpxOdteGexUwOverlay\(heatmap\)/);
   assert.match(src, /markSpxOdteOverlayFailed\(pruned, "overlay_timeout"\)/);
+});
+
+// Cross-product compute identity (2026-09-03) — calculation_id/calculated_at/spot_timestamp/
+// chain_timestamp/expires_at must be stamped at EVERY GexHeatmap construction site (the main
+// happy-path build, the UW strike-exposure fallback, and emptyHeatmap), not just the common
+// case — a matrix that fell back to a degraded path is exactly when a consumer most needs to
+// know it's looking at a different compute than its sibling products. Source-text, matching
+// this file's existing convention for asserting internal (non-exported) build-path wiring.
+test("every GexHeatmap construction site stamps the cross-product calculation envelope", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  const matches = src.match(/calculation_id: `\$\{[a-zA-Z]+\}:\$\{[a-zA-Z.()]+\}`,/g) ?? [];
+  assert.equal(
+    matches.length,
+    3,
+    "expected calculation_id stamped at all 3 sites: main build, UW fallback, emptyHeatmap"
+  );
+  assert.match(src, /const spotTimestamp = new Date\(\)\.toISOString\(\);/);
+  assert.match(src, /const chainTimestamp = new Date\(\)\.toISOString\(\);/);
+  assert.match(src, /spot_timestamp: spotTimestamp,/);
+  assert.match(src, /chain_timestamp: chainTimestamp,/);
 });
 
 test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
@@ -224,6 +319,33 @@ test("computeGexEvents: spot breaking above a call wall produces wall_broken wit
   assert.equal(wallBroken.severity, "warn");
   assert.equal(wallBroken.from_value, 5040);
   assert.equal(wallBroken.to_value, 5060);
+});
+
+test("computeGexEvents: wall_broken uses the spot-constrained wall, not the biggest-magnitude strike anywhere", () => {
+  // Regression: wallsOf() used to pick argmax-positive/argmin-negative ANYWHERE, ignoring spot
+  // side. Here strike 500 (+50k) is the biggest-magnitude positive strike, but it sits BELOW the
+  // prior spot (501) so it cannot be a call wall (resistance) at all -- the real, side-correct
+  // call wall is 510 (+30k), the only positive strike actually above spot. Before the fix,
+  // wallsOf would have picked 500, and priorSpot(501) <= 500 is false, so wall_broken would never
+  // fire even though spot genuinely crosses the real wall at 510.
+  const strikeTotals = { "495": -80_000, "500": 50_000, "510": 30_000 };
+  const ring = [
+    snap({ ts: 1000, spot: 501, flip: null, strike_totals: strikeTotals }),
+    snap({ ts: 2000, spot: 501, flip: null, strike_totals: strikeTotals }),
+  ];
+  const events = computeGexEvents(ring, {
+    ts: 3000,
+    spot: 512,
+    flip: null,
+    call_wall: 510,
+    put_wall: 495,
+    total: 0,
+  });
+  assert.ok(events);
+  const wallBroken = events!.find((e) => e.type === "wall_broken");
+  assert.ok(wallBroken, "wall_broken must fire when spot crosses the real (spot-constrained) call wall");
+  assert.equal(wallBroken!.level, 510, "the wall must be 510 (above spot), not 500 (below spot)");
+  assert.equal(wallBroken!.direction, "above call wall");
 });
 
 test("computeGexEvents: net GEX flipping sign produces net_gex_sign_flipped with real dollar totals before/after", () => {
@@ -700,6 +822,113 @@ test("vanna/charm magnitudes shift with ETF dividend yield q", () => {
   assert.ok(Math.abs(vq) > Math.abs(v0), "typical ETF q raises |vanna| vs q=0 at ATM");
 });
 
+// CLQ-017 (BLACKOUT Claude<->Cursor cross-exam, 2026-09-05): GEX has a dedicated live
+// provider-vs-closed-form validator (gex-depth-validate.mjs); CHARM had neither that (Polygon's
+// snapshot greeks don't carry charm, so there is no provider ground truth to validate against over
+// the wire) nor even a cheaper, dependency-free numerical check — charmPerShare's own docstring
+// asserted a finite-difference match that no test ever checked. Adding one below is what surfaced
+// a real bug: the previously-shipped formula used the call-shaped expression for BOTH call and put
+// contracts ("type-independent... like gamma"), true only at q=0 — for a real dividend yield
+// (SPY/QQQ/IWM etc.) it understated call charm and used the outright wrong value for puts. Fixed in
+// the same change (see charmPerShare's docstring for the corrected derivation). Uses INDEPENDENT BS
+// delta implementations (not imported from production) so the comparison is two routes to one
+// number, not a tautology — the same principle gex-depth-validate.mjs was built on.
+function erf(x: number): number {
+  // Abramowitz & Stegun 7.1.26, |error| < 1.5e-7 — plenty for a 1e-4-tolerance derivative check.
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x);
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const t = 1 / (1 + p * ax);
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-ax * ax);
+  return sign * y;
+}
+function bsNormCdfIndependent(x: number): number {
+  return 0.5 * (1 + erf(x / Math.SQRT2));
+}
+function bsCallDeltaIndependent(spot: number, strike: number, t: number, sigma: number, q: number): number {
+  const d1 = (Math.log(spot / strike) + (-q + 0.5 * sigma * sigma) * t) / (sigma * Math.sqrt(t));
+  return Math.exp(-q * t) * bsNormCdfIndependent(d1);
+}
+function bsPutDeltaIndependent(spot: number, strike: number, t: number, sigma: number, q: number): number {
+  const d1 = (Math.log(spot / strike) + (-q + 0.5 * sigma * sigma) * t) / (sigma * Math.sqrt(t));
+  return Math.exp(-q * t) * (bsNormCdfIndependent(d1) - 1);
+}
+
+test("charmPerShare matches an independent finite-difference of BS delta w.r.t. time (q=0)", () => {
+  const spot = 450;
+  const strike = 455;
+  const sigma = 0.22;
+  const q = 0;
+  for (const t of [0.02, 0.08, 0.25, 0.6]) {
+    const h = t / 5000;
+    const deltaPlus = bsCallDeltaIndependent(spot, strike, t + h, sigma, q);
+    const deltaMinus = bsCallDeltaIndependent(spot, strike, t - h, sigma, q);
+    // charm = -dDelta/dT (delta DECAY as time passes, i.e. T shrinking) — see the production
+    // docstring's derivation. Central difference of Delta(T) w.r.t. increasing T, negated.
+    const charmFd = -(deltaPlus - deltaMinus) / (2 * h);
+    const charmClosedForm = __test_charmPerShare(spot, strike, t, sigma, q);
+    const tol = Math.max(1e-4, Math.abs(charmFd) * 0.01);
+    assert.ok(
+      Math.abs(charmClosedForm - charmFd) < tol,
+      `T=${t}: closed-form ${charmClosedForm} vs finite-difference ${charmFd} (tol ${tol})`
+    );
+  }
+});
+
+test("call charmPerShare matches an independent finite-difference of BS delta w.r.t. time (q>0, ETF dividend yield)", () => {
+  const spot = 450;
+  const strike = 445;
+  const t = 0.18;
+  const sigma = 0.28;
+  const q = 0.015;
+  const h = t / 5000;
+  const deltaPlus = bsCallDeltaIndependent(spot, strike, t + h, sigma, q);
+  const deltaMinus = bsCallDeltaIndependent(spot, strike, t - h, sigma, q);
+  const charmFd = -(deltaPlus - deltaMinus) / (2 * h);
+  const charmClosedForm = __test_charmPerShare(spot, strike, t, sigma, q, "call");
+  const tol = Math.max(1e-4, Math.abs(charmFd) * 0.01);
+  assert.ok(
+    Math.abs(charmClosedForm - charmFd) < tol,
+    `closed-form ${charmClosedForm} vs finite-difference ${charmFd} (tol ${tol})`
+  );
+});
+
+test("put charmPerShare matches an independent finite-difference of BS PUT delta w.r.t. time (q>0) — and DIFFERS from call charm", () => {
+  // The regression this guards: the formula this replaced used the call-shaped expression for puts
+  // too (documented as "type-independent... like gamma"), which is only true at q=0. At a real
+  // dividend yield, put charm must differ from call charm and must match its OWN delta's decay.
+  const spot = 450;
+  const strike = 445;
+  const t = 0.18;
+  const sigma = 0.28;
+  const q = 0.015;
+  const h = t / 5000;
+  const deltaPlus = bsPutDeltaIndependent(spot, strike, t + h, sigma, q);
+  const deltaMinus = bsPutDeltaIndependent(spot, strike, t - h, sigma, q);
+  const charmFd = -(deltaPlus - deltaMinus) / (2 * h);
+  const charmClosedFormPut = __test_charmPerShare(spot, strike, t, sigma, q, "put");
+  const charmClosedFormCall = __test_charmPerShare(spot, strike, t, sigma, q, "call");
+  const tol = Math.max(1e-4, Math.abs(charmFd) * 0.01);
+  assert.ok(
+    Math.abs(charmClosedFormPut - charmFd) < tol,
+    `put closed-form ${charmClosedFormPut} vs finite-difference ${charmFd} (tol ${tol})`
+  );
+  assert.notEqual(charmClosedFormPut, charmClosedFormCall, "put and call charm must diverge when q>0");
+});
+
+test("call and put charmPerShare are IDENTICAL at q=0 (backward-compatible with the pre-fix formula)", () => {
+  const spot = 450;
+  const strike = 455;
+  const t = 0.08;
+  const sigma = 0.22;
+  const callCharm = __test_charmPerShare(spot, strike, t, sigma, 0, "call");
+  const putCharm = __test_charmPerShare(spot, strike, t, sigma, 0, "put");
+  assert.equal(callCharm, putCharm);
+  // Locks in the exact pre-fix reference value (phi(d1)*d2/(2T) at r=q=0) so this fix cannot
+  // silently change behavior for the q=0 case the old formula was already correct for.
+  assert.ok(Math.abs(callCharm - -0.5147947317153562) < 1e-9, `unexpected drift: ${callCharm}`);
+});
+
 // The inner resolve must THROW (not return 0) when the yield is unavailable. That distinction is
 // the whole reason a transient Polygon blip cannot get pinned into the 1h TTL.REFERENCE cache:
 // server-cache's refreshCache writes the store only on a FULFILLED loader, so a rejection leaves
@@ -803,4 +1032,84 @@ test("warnChainTruncated: a newline-bearing underlying cannot forge a second log
   assert.equal(calls.length, 1, "one real call must produce exactly one log line, not two");
   assert.ok(!calls[0]!.includes("\n"), "no raw newline survives into the logged message");
   assert.match(calls[0]!, /SPY.*admin override granted/, "the token itself still renders, just flattened");
+});
+
+// peekGexHeatmapCache's age_sec (surfaced on the admin GEX health panel via AdminBieDashboard.tsx's
+// `t.age_sec`) used to be an unclamped `Date.now() - entry.at`, which reports a negative age for
+// any moment the writing replica's clock reads ahead of the reading replica's — cross-replica clock
+// skew, not staleness. `Math.round` does not save this: it rounds a small negative toward 0, not
+// away from it, so this was reachable at a single millisecond of skew (same shape as the
+// coaching-alerts age bug fixed the same day).
+test("clampedCacheAgeSec: ordinary past entry ages normally", () => {
+  const now = 1_000_000_000;
+  assert.equal(clampedCacheAgeSec(now - 5_000, now), 5);
+  assert.equal(clampedCacheAgeSec(now - 90_000, now), 90);
+});
+
+test("clampedCacheAgeSec: an entry.at from the future (cross-replica clock skew) clamps to 0, never negative", () => {
+  const now = 1_000_000_000;
+  assert.equal(clampedCacheAgeSec(now + 2_000, now), 0, "2s of skew must not read as age_sec: -2");
+  assert.equal(clampedCacheAgeSec(now + 1, now), 0, "reachable at 1ms of skew — Math.round(-0.001) would otherwise floor toward -1s");
+});
+
+test("gexHeatmapCacheEntryStale: future entry.at beyond tolerance is stale, not falsely fresh", () => {
+  const now = 1_000_000_000;
+  assert.equal(gexHeatmapCacheEntryStale(now - 5_000, now), false);
+  assert.equal(gexHeatmapCacheEntryStale(now + 2_000, now), false, "modest future skew inside 5s tolerance stays fresh");
+  assert.equal(gexHeatmapCacheEntryStale(now + 6_000, now), true, "6s ahead must not read as freshest-possible");
+});
+
+test("gexHeatmapCacheEntryWithinTtl: future entry.at beyond tolerance fails TTL check", () => {
+  const now = 1_000_000_000;
+  const ttlMs = 20_000;
+  assert.equal(gexHeatmapCacheEntryWithinTtl(now - 5_000, now, ttlMs), true);
+  assert.equal(gexHeatmapCacheEntryWithinTtl(now + 2_000, now, ttlMs), true, "modest skew inside tolerance still within TTL");
+  assert.equal(gexHeatmapCacheEntryWithinTtl(now + 6_000, now, ttlMs), false);
+  assert.equal(gexHeatmapCacheEntryWithinTtl(now - 30_000, now, ttlMs), false, "past TTL is not fresh");
+});
+
+test("readGexHeatmapCacheOnly and pickStaleHeatmapForHandoff reject future-skewed entry.at", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /gexHeatmapCacheEntryStale\(entry\.at, now\)/);
+  assert.doesNotMatch(src, /now - entry\.at > maxStaleMs/);
+  assert.match(src, /gexHeatmapCacheEntryWithinTtl\(entry\.at, now, maxStaleMs\)/);
+  assert.match(src, /entry\.at <= now \+ GEX_WS_FUTURE_TOLERANCE_MS/);
+});
+
+// ── #3834 fixed the shared heatmap fetch cache but the SAME raw `now - entry.at < ttlMs`
+// shape lived on in 4 sibling caches in this file (0DTE desk bundle mem+Redis, positioning
+// bundle, IV term structure, realized vol) — none reachable via fetchGexHeatmap's own tests.
+// A future-skewed entry.at reads as negative age there too, satisfying every one of these
+// checks trivially and serving stale-but-"fresh" GEX/positioning/IV/vol data indefinitely.
+// These functions do live network fetches + module-scoped cache Maps, impractical to unit-test
+// behaviorally without heavy mocking (same tradeoff as the HEATMAP_PAGE_GUARD test above) — so,
+// same convention, this asserts the actual source: fails against the pre-fix raw comparison and
+// passes once each site routes through the shared, already-tested gexHeatmapCacheEntryWithinTtl.
+test("fetchPolygonOdteDeskBundle + positioning/IV-term/realized-vol caches all route through gexHeatmapCacheEntryWithinTtl, not a raw comparison", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+
+  const sites: Array<{ name: string; marker: string }> = [
+    { name: "fetchPolygonOdteDeskBundle", marker: "export async function fetchPolygonOdteDeskBundle" },
+    { name: "fetchPolygonPositioningBundle", marker: "export async function fetchPolygonPositioningBundle" },
+    { name: "fetchPolygonIvTermStructure", marker: "export async function fetchPolygonIvTermStructure" },
+    { name: "fetchPolygonRealizedVol", marker: "export async function fetchPolygonRealizedVol" },
+  ];
+
+  for (const { name, marker } of sites) {
+    const fnStart = src.indexOf(marker);
+    assert.ok(fnStart >= 0, `${name} not found`);
+    const fnBody = src.slice(fnStart, fnStart + 2000);
+    assert.match(fnBody, /gexHeatmapCacheEntryWithinTtl\(/, `${name} must gate its cache hit through the shared TTL+skew helper`);
+    assert.doesNotMatch(
+      fnBody,
+      /now - \w[\w.]*\.at < \w/,
+      `${name} must not regress to a raw "now - entry.at < ttlMs" comparison`
+    );
+  }
 });

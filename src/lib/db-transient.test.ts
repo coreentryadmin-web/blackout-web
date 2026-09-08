@@ -32,3 +32,10 @@ test("isTransientPgError: non-transient constraint violation", () => {
 test("isTransientPgError: syntax error", () => {
   assert.equal(isTransientPgError(new Error('syntax error at or near "SELCT"')), false);
 });
+
+test("isTransientPgError: pool-teardown race (another caller's resetPoolForRetry ended the pool this caller was mid-flight on)", () => {
+  assert.equal(
+    isTransientPgError(new Error("Cannot use a pool after calling end on the pool")),
+    true
+  );
+});

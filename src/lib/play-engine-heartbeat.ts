@@ -2,6 +2,25 @@ import { dbConfigured, getMeta, setMeta } from "@/lib/db";
 
 export type PlayEngineTickSource = "cron" | "admin_live" | "evaluate";
 
+/**
+ * Clamps a heartbeat's age to a minimum of 0ms. `tickAtIso` is written by WHICHEVER ECS
+ * replica ticked the engine last (`recordPlayEngineTick`/`recordTick` below persist it via
+ * `setMeta` — explicitly a cross-replica read: `loadPlayEngineHeartbeat`/`load()` below
+ * hydrate it from Postgres, not from this process's own memory) — so a moment of ordinary
+ * cross-replica clock skew can make THIS replica's `Date.now()` read fractionally behind the
+ * writer's, producing a negative age for a tick that is in fact brand new. Unclamped, that age
+ * surfaces verbatim: `admin-cron-health.ts` divides it into `hbAgeMin` and interpolates it
+ * straight into the admin dashboard's status label ("Cron stale · engine tick {hbAgeMin}m ago"),
+ * so a skew of even a few hundred ms could read "engine tick -1m ago" to an admin. Same
+ * "future stamp is clock skew, not a negative age" fix shape already applied to
+ * `polygon-options-gex.ts`'s `clampedCacheAgeSec`, `et-session-facts.ts`'s
+ * `ageSecondsFromIso`, and `helix-thermal-compare.ts`'s local `ageSecondsFromIso` — this module
+ * had the same shared-state-across-replicas shape but had not yet been clamped.
+ */
+export function clampedHeartbeatAgeMs(tickAtIso: string, nowMs: number): number {
+  return Math.max(0, nowMs - new Date(tickAtIso).getTime());
+}
+
 const HEARTBEAT_META_KEY = "spx_play_engine_heartbeat";
 
 let lastTickAt: string | null = null;
@@ -27,7 +46,7 @@ type HeartbeatPayload<Source extends string> = {
 
 function buildHeartbeat() {
   const now = Date.now();
-  const ageMs = lastTickAt ? now - new Date(lastTickAt).getTime() : null;
+  const ageMs = lastTickAt ? clampedHeartbeatAgeMs(lastTickAt, now) : null;
   return {
     last_tick_at: lastTickAt,
     last_source: lastSource,
@@ -148,7 +167,7 @@ function createEngineHeartbeat<Source extends string>(metaKey: string) {
 
   function snapshot(): EngineHeartbeatSnapshot<Source> {
     const now = Date.now();
-    const ageMs = tickAt ? now - new Date(tickAt).getTime() : null;
+    const ageMs = tickAt ? clampedHeartbeatAgeMs(tickAt, now) : null;
     return {
       last_tick_at: tickAt,
       last_source: source,

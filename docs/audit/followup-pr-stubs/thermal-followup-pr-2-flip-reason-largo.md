@@ -1,5 +1,10 @@
 # PR: Add Flip Reason to Largo GEX Tools
 
+> **STATUS (2026-09-04, verified live): SHIPPED.** `flip_reason` is computed in
+> `polygon-options-gex.ts` (lines 316/1490/3718) and published through the Largo contract in
+> `src/lib/largo/gex-heatmap-for-largo.ts` (lines 25/163/224). This stub is kept for historical
+> context only — the plan below describes work that is already done, not an open item.
+
 **Issue:** `flip_reason` explains unavailable flip (insufficient data, net short everywhere) but isn't published to Largo tools `get_gex_heatmap` / `get_positioning`.
 
 **Root cause:** Server computes `flip_reason` in `buildGexRegime()` as metadata for why flip is null/unavailable, but doesn't include it in the Largo contract. Member tools that describe dealer positioning can't explain to Largo why the flip level is missing.

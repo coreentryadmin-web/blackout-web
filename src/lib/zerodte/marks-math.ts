@@ -15,6 +15,21 @@
 
 import { derivePlayStatus, PLAN_RULES, type PlayStatus } from "./plan";
 
+export type TrimScaleRegime = "trend" | "neutral" | "range";
+
+/** Mirror exit-engine TRIM_SCALE_RULES — duplicated here to avoid marks-math ↔ exit-engine cycle. */
+const TRIM_SCALE_TRANCHES: Record<TrimScaleRegime, readonly [number, number]> = {
+  trend: [40, 80],
+  neutral: [20, 50],
+  range: [15, 40],
+};
+const TRIM_SCALE_TRANCHE_FRAC = 1 / 3;
+
+/** Regime-conditioned trim-scale schedule. */
+function trimScaleThresholds(regime: TrimScaleRegime = "neutral"): readonly [number, number] {
+  return TRIM_SCALE_TRANCHES[regime];
+}
+
 /** Hard cap on contracts in the live lane — open ledger plays only, never a chain.
  *  Raised 16→100 (2026-07-29) to match the uncapped open-play desk: marks must track
  *  every committed OCC, not silently drop plays past the old 16-slot lane. */
@@ -176,13 +191,43 @@ export function executionTaxBps(midPnlPct: number | null, execPnlPct: number | n
   return Math.round((midPnlPct - execPnlPct) * 100);
 }
 
+/** A mark timestamped further ahead of `now` than this is untrustworthy, not "extra fresh" — same
+ *  shape as Helix's FUTURE_PRINT_TOLERANCE_MS (helix-signal-detection.ts). A SEPARATE, more
+ *  generous bound than `ZERODTE_MARK_STALE_MS` on purpose: ordinary clock skew between a quote
+ *  source and this server is real but small, and this codebase's own test fixtures (see
+ *  zerodte-service-marks.test.ts's TIMING DISCIPLINE comment, exit-sync.test.ts) deliberately
+ *  future-date a "definitely fresh" seed by +30s to stay immune to CI scheduler stalls between
+ *  seeding and the real-clock check — a tight bound here would flag that legitimate fixture
+ *  pattern as stale. 60s is generous enough to cover both, while a mark claiming to be minutes
+ *  ahead of `now` is still rejected as corrupted, not read as the freshest quote on the tape. */
+export const ZERODTE_MARK_FUTURE_TOLERANCE_MS = 60_000;
+
 /** Staleness predicate every renderer must apply (>ZERODTE_MARK_STALE_MS = dim). */
 export function isZeroDteMarkStale(
   asOfMs: number,
   nowMs: number,
   staleAfterMs = ZERODTE_MARK_STALE_MS
 ): boolean {
-  return !(asOfMs > 0) || nowMs - asOfMs > staleAfterMs;
+  if (!(asOfMs > 0)) return true;
+  const age = nowMs - asOfMs;
+  // A WS tick or REST snapshot timestamped AHEAD of `now` makes `age` negative. Un-guarded, that
+  // negative age never exceeds a positive `staleAfterMs`, so a garbage future-dated mark read as
+  // trustworthy/fresh instead of stale — reject it once it's further ahead than ordinary clock
+  // skew (or test-fixture headroom) can explain, same as the staleness check does for the past.
+  if (age < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return true;
+  return age > staleAfterMs;
+}
+
+/**
+ * Age of a board/snapshot `as_of` in ms for serve/SWR decisions. A timestamp more than
+ * ZERODTE_MARK_FUTURE_TOLERANCE_MS ahead of `now` returns +Infinity so callers fail closed
+ * (never treat clock-skewed future `as_of` as age 0 / freshest-possible).
+ */
+export function zeroDteSnapshotAgeMs(asOfMs: number, nowMs: number): number {
+  if (!(asOfMs > 0) || !Number.isFinite(asOfMs)) return Number.POSITIVE_INFINITY;
+  const ageMs = nowMs - asOfMs;
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return Number.POSITIVE_INFINITY;
+  return Math.max(0, ageMs);
 }
 
 /**
@@ -199,33 +244,28 @@ export function closedStopReason(row: {
   entry_premium: number | null;
   peak_premium: number | null;
   trough_premium: number | null;
+  /** Frozen runner target % — defaults to +100%. */
+  target_pct?: number | null;
 }): "stopped" | null {
   const entry = row.entry_premium;
   if (row.status !== "CLOSED" || entry == null || entry <= 0) return null;
-  const target = entry * (1 + PLAN_RULES.target_pct / 100);
+  const targetPct = row.target_pct ?? PLAN_RULES.target_pct;
+  const target = entry * (1 + targetPct / 100);
   const stop = entry * (1 + PLAN_RULES.stop_pct / 100);
   if (row.peak_premium != null && row.peak_premium >= target) return null; // TRIM was sticky first
   if (row.trough_premium != null && row.trough_premium <= stop) return "stopped";
   return null;
 }
 
-/** Neutral trim-scale schedule (mirrors TRIM_SCALE_RULES.tranches_by_regime.neutral in exit-engine.ts).
- *  Used to estimate the AS-MANAGED blended P&L when a stopped runner still banked earlier tranches. */
-const TRIM_SCALE_NEUTRAL_PCTS: readonly [number, number] = [20, 50];
-const TRIM_SCALE_TRANCHE_FRAC = 1 / 3;
-
-/**
- * Estimate trim-scale AS-MANAGED blended P&L when the runner exits at `runnerPnlPct` (default −50%
- * plan stop) but the latched peak had already armed one or both trim tranches. Returns null when
- * peak never reached the first trim (+20%) — the mechanical stop pin is then honest.
- *
- * Example: peak +87%, runner stopped at −50% → ⅓@+25 + ⅓@+50 + ⅓@(−50) ≈ +8.33%.
- */
-/** Count of neutral trim-scale tranches the latched peak had armed (+20% / +50%). */
-export function trimScaleTranchesArmed(peakPnlPct: number | null): number {
+/** Count of trim-scale tranches the latched peak had armed. */
+export function trimScaleTranchesArmed(
+  peakPnlPct: number | null,
+  regime: TrimScaleRegime = "neutral"
+): number {
   if (peakPnlPct == null || !Number.isFinite(peakPnlPct)) return 0;
+  const thresholds = trimScaleThresholds(regime);
   let armed = 0;
-  for (const t of TRIM_SCALE_NEUTRAL_PCTS) if (peakPnlPct >= t) armed += 1;
+  for (const t of thresholds) if (peakPnlPct >= t) armed += 1;
   return armed;
 }
 
@@ -249,8 +289,10 @@ export function closedPnlDisplay(row: {
   status?: string | null;
   peak_pnl_pct?: number | null;
   live_pnl_pct?: number | null;
+  trim_regime?: TrimScaleRegime | null;
 }): { pct: number | null; is_peak: boolean; tranches_armed: number; realized_pct: number | null } {
-  const armed = trimScaleTranchesArmed(row.peak_pnl_pct ?? null);
+  const regime = row.trim_regime ?? "neutral";
+  const armed = trimScaleTranchesArmed(row.peak_pnl_pct ?? null, regime);
   const isPeak = row.status === "CLOSED" && row.peak_pnl_pct != null && armed > 0;
   return {
     pct: isPeak ? (row.peak_pnl_pct ?? null) : (row.live_pnl_pct ?? null),
@@ -262,14 +304,16 @@ export function closedPnlDisplay(row: {
 
 export function trimScaleBlendedPnlAtStop(
   peakPnlPct: number | null,
-  runnerPnlPct: number = PLAN_RULES.stop_pct
+  runnerPnlPct: number = PLAN_RULES.stop_pct,
+  regime: TrimScaleRegime = "neutral"
 ): number | null {
-  if (trimScaleTranchesArmed(peakPnlPct) === 0) return null;
-  let armed = trimScaleTranchesArmed(peakPnlPct);
+  if (trimScaleTranchesArmed(peakPnlPct, regime) === 0) return null;
+  const thresholds = trimScaleThresholds(regime);
+  let armed = trimScaleTranchesArmed(peakPnlPct, regime);
   let blended = 0;
   let remaining = 1;
   for (let i = 0; i < armed; i++) {
-    blended += TRIM_SCALE_TRANCHE_FRAC * TRIM_SCALE_NEUTRAL_PCTS[i]!;
+    blended += TRIM_SCALE_TRANCHE_FRAC * thresholds[i]!;
     remaining -= TRIM_SCALE_TRANCHE_FRAC;
   }
   blended += remaining * runnerPnlPct;
@@ -317,6 +361,10 @@ export function directionalClosedDisplayPnlPct(row: {
   force_stopped?: boolean;
   /** Frozen exit policy for THIS row. Only "trim_scale" may claim banked tranches. */
   exitMode?: "ratchet" | "trim_scale" | null;
+  /** Trim-scale regime stamped at commit (trend/neutral/range). */
+  trimRegime?: TrimScaleRegime | null;
+  /** Frozen runner target % for stop-pin comparison. */
+  target_pct?: number | null;
 }): number | null {
   const isStopped =
     row.force_stopped === true ||
@@ -325,6 +373,7 @@ export function directionalClosedDisplayPnlPct(row: {
       entry_premium: row.entry_premium,
       peak_premium: row.peak_premium,
       trough_premium: row.trough_premium,
+      target_pct: row.target_pct,
     }) === "stopped";
   if (!isStopped) {
     return pinnedLivePnlPct(row.entry_premium, row.last_mark);
@@ -332,7 +381,8 @@ export function directionalClosedDisplayPnlPct(row: {
   // Only a row COMMITTED under trim_scale may be credited with banked tranches.
   if (row.exitMode !== "trim_scale") return PLAN_RULES.stop_pct;
   const peakPct = peakPnlPct(row.entry_premium, row.peak_premium);
-  const managed = trimScaleBlendedPnlAtStop(peakPct, PLAN_RULES.stop_pct);
+  const regime = row.trimRegime ?? "neutral";
+  const managed = trimScaleBlendedPnlAtStop(peakPct, PLAN_RULES.stop_pct, regime);
   return managed ?? PLAN_RULES.stop_pct;
 }
 
@@ -375,6 +425,8 @@ export function reconcileLedgerLivePnlPct(row: {
   status?: string | null;
   /** Frozen exit policy for THIS row — see directionalClosedDisplayPnlPct. */
   exit_policy_at_commit?: "ratchet" | "trim_scale" | null;
+  trim_regime?: TrimScaleRegime | null;
+  target_pct?: number | null;
 }): number | null {
   if (row.is_condor) return condorSellerPnlPct(row.entry_premium, row.last_mark);
   if (row.closed_reason === "stopped") {
@@ -385,6 +437,8 @@ export function reconcileLedgerLivePnlPct(row: {
       last_mark: row.last_mark,
       force_stopped: true,
       exitMode: row.exit_policy_at_commit ?? null,
+      trimRegime: row.trim_regime ?? null,
+      target_pct: row.target_pct ?? null,
     });
   }
   return pinnedLivePnlPct(row.entry_premium, row.last_mark);
@@ -443,16 +497,27 @@ export function latchPremiumBounds(
 }
 
 export function advancePlayLatch(
-  play: { entry_premium: number | null; peak_premium: number | null; trough_premium: number | null },
+  play: {
+    entry_premium: number | null;
+    peak_premium: number | null;
+    trough_premium: number | null;
+    is_condor?: boolean;
+  },
   prior: PlayLatch | null,
   mark: number | null,
   nowEtMinutes: number,
-  opts?: { deferPlanStop?: boolean }
+  opts?: {
+    deferPlanStop?: boolean;
+    targetPct?: number | null;
+    stopPct?: number | null;
+    isCondor?: boolean;
+  }
 ): PlayLatch {
   const entry = play.entry_premium;
   const seedPeak = prior?.peak ?? play.peak_premium ?? entry ?? null;
   const seedTrough = prior?.trough ?? play.trough_premium ?? entry ?? null;
   const { peak, trough } = latchPremiumBounds(seedPeak, seedTrough, mark);
+  const isCondor = opts?.isCondor ?? play.is_condor ?? false;
   const state = derivePlayStatus({
     entryPremium: entry,
     mark,
@@ -460,6 +525,9 @@ export function advancePlayLatch(
     trough,
     nowEtMinutes,
     deferPlanStop: opts?.deferPlanStop,
+    targetPct: opts?.targetPct,
+    stopPct: opts?.stopPct,
+    isCondor,
   });
   return { peak, trough, status: state.status };
 }

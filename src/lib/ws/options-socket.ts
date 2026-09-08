@@ -37,6 +37,7 @@ import {
   wsLeaderShouldFailOpenWithoutRedis,
 } from "./leader-lock-shared";
 import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "./leader-lock-fencing";
+import { isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "@/lib/ws/timestamp-freshness";
 
 /**
  * RTH gate for the OPTIONS feed (live finding #75). Off-hours, no option quotes flow, so the
@@ -259,14 +260,14 @@ export async function getLiveOptionMark(
 ): Promise<{ mark: number; bid: number | null; ask: number | null; ts: number } | null> {
   const now = Date.now();
   const local = optionMarks.get(occ);
-  if (local && local.mark != null && now - local.ts <= maxAgeMs) {
+  if (local && local.mark != null && isWsUpdatedAtFresh(local.ts, maxAgeMs, now)) {
     return { mark: local.mark, bid: local.bid, ask: local.ask, ts: local.ts };
   }
   // Redis fallback (cross-instance): another server process may hold the mark.
   try {
     const { sharedCacheGet } = await import("../shared-cache");
     const hit = await sharedCacheGet<OptionMark>(`${MARK_REDIS_PREFIX}${occ}`);
-    if (hit && hit.mark != null && now - hit.ts <= maxAgeMs) {
+    if (hit && hit.mark != null && isWsUpdatedAtFresh(hit.ts, maxAgeMs, now)) {
       // Re-seed the in-memory layer so subsequent reads skip Redis.
       if (!local || hit.ts > local.ts) optionMarks.set(occ, hit);
       return { mark: hit.mark, bid: hit.bid, ask: hit.ask, ts: hit.ts };
@@ -283,7 +284,7 @@ export function getLiveOptionMarkSync(
   maxAgeMs: number = OPTION_MARK_FRESH_MS
 ): { mark: number; bid: number | null; ask: number | null; ts: number } | null {
   const local = optionMarks.get(occ);
-  if (local && local.mark != null && Date.now() - local.ts <= maxAgeMs) {
+  if (local && local.mark != null && isWsUpdatedAtFresh(local.ts, maxAgeMs)) {
     return { mark: local.mark, bid: local.bid, ask: local.ask, ts: local.ts };
   }
   return null;
@@ -303,36 +304,9 @@ export function getLiveOptionMarkSync(
  * underlying yields zero contracts. Returns null when inputs can't form a valid
  * OCC (never a malformed symbol).
  */
-export function buildOcc(
-  ticker: string,
-  expiry: string, // YYYY-MM-DD
-  optionType: "call" | "put",
-  strike: number
-): string | null {
-  const rawRoot = ticker.trim().toUpperCase();
-  if (!rawRoot) return null;
-  // SPX -> SPXW (index weeklies/monthlies are listed under SPXW on Massive).
-  const root = rawRoot === "SPX" ? "SPXW" : rawRoot;
-  if (!/^[A-Z]{1,6}$/.test(root)) return null;
+import { buildOcc } from "@/lib/occ-symbol";
 
-  const ymd = expiry.slice(0, 10);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
-  if (!m) return null;
-  const yy = m[1].slice(2);
-  const date = `${yy}${m[2]}${m[3]}`;
-
-  if (optionType !== "call" && optionType !== "put") return null;
-  const cp = optionType === "call" ? "C" : "P";
-
-  if (!Number.isFinite(strike) || strike <= 0) return null;
-  // Strike is encoded as price * 1000, zero-padded to 8 digits. Round to the
-  // nearest 1/1000 to avoid float drift (e.g. 5850 -> 05850000).
-  const strikeInt = Math.round(strike * 1000);
-  if (strikeInt <= 0 || strikeInt > 99_999_999) return null;
-  const strikeStr = String(strikeInt).padStart(8, "0");
-
-  return `O:${root}${date}${cp}${strikeStr}`;
-}
+export { buildOcc };
 
 // ---------------------------------------------------------------------------
 // Sharded connection pool
@@ -729,7 +703,7 @@ class OptionsShard {
       authenticated: this.authenticated,
       auth_failed: this.authFailed,
       consecutive_failures: this.consecutiveFailures,
-      last_message_age_ms: this.lastMessageAt ? Date.now() - this.lastMessageAt : null,
+      last_message_age_ms: this.lastMessageAt ? wsUpdatedAtAgeMs(this.lastMessageAt) : null,
     };
   }
 }

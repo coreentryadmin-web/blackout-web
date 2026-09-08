@@ -45,6 +45,7 @@ import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
 import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 import { orderLedgerRowsForMarkCheck, classifyMarkEvidence } from './lib/ledger-mark-evidence.mjs';
 import { checkWallInvariants } from './lib/gex-wall-invariants.mjs';
+import { sessionExtremesFromMinuteBars } from './lib/spx-polygon-session-extremes.mjs';
 
 import { subprocessErrorMessage } from "./lib/redact.mjs";
 const SECRET = req('CLERK_SECRET_KEY');
@@ -417,6 +418,7 @@ async function main() {
     track: app('/api/public/track-record'), flow: app('/api/market/flow-brief'),
     spx_desk: app('/api/market/spx/desk'), spx_merged: app('/api/market/spx/merged'),
     spx_signals: app('/api/market/spx/signals'), platform: app('/api/market/platform/snapshot'),
+    spx_pin: app('/api/market/spx/pin'),
     // task #148: 0DTE Command board (src/app/api/market/zerodte/board/route.ts). Adding it
     // here also gets it covered for free by the generic malformed-number scan at the bottom
     // of this file — no separate wiring needed for that part.
@@ -458,6 +460,19 @@ async function main() {
   const aVIXchg = num(P.indices?.vix?.change_pct), aSPXchg = num(P.indices?.spx?.change_pct);
   if (rth && aVIXchg != null && gtVIXchg != null) rec('VIX change_pct sign matches Polygon', (aVIXchg >= 0) === (gtVIXchg >= 0) ? 'PASS' : 'FAIL', `app=${aVIXchg}% polygon=${gtVIXchg.toFixed(3)}%`);
   if (rth && aSPXchg != null && gtSPXchg != null) rec('SPX change_pct sign matches Polygon', (aSPXchg >= 0) === (gtSPXchg >= 0) ? 'PASS' : 'FAIL', `app=${aSPXchg}% polygon=${gtSPXchg.toFixed(3)}%`);
+  // Quote header % — the member-facing SPY tile (distinct from /indices which only covers I:*).
+  const aQuoteChg = num(P.quote?.change_pct), aQuotePrice = num(P.quote?.price);
+  const gtSPYchg = rth ? num(spySnap?.todaysChangePerc ?? spySnap?.day?.change_percent) : null;
+  if (rth && aQuoteChg != null && gtSPYchg != null) {
+    rec('quote SPY: change_pct sign matches Polygon', (aQuoteChg >= 0) === (gtSPYchg >= 0) ? 'PASS' : 'FAIL', `quote=${aQuoteChg}% polygon=${gtSPYchg.toFixed(3)}%`);
+    if (Math.abs(gtSPYchg) > 0.1 && Math.abs(aQuoteChg) < 0.001) {
+      rec('quote SPY: change_pct not fabricated flat 0%', 'FAIL', `quote=${aQuoteChg}% but polygon moved ${gtSPYchg.toFixed(3)}%`);
+    }
+  }
+  if (rth && aQuotePrice != null && gtSPY != null) {
+    const d = Math.abs(aQuotePrice - gtSPY) / gtSPY * 100;
+    rec('quote SPY: price vs Polygon', d <= priceTol ? 'PASS' : 'FAIL', `quote=${aQuotePrice} polygon(${gtLabel})=${gtSPY} Δ=${d.toFixed(3)}%`);
+  }
   if (aSPX != null && aSPY != null) { const r = aSPX / aSPY; rec('SPX/SPY ratio ~10', r > 9.5 && r < 10.5 ? 'PASS' : 'WARN', `ratio=${r.toFixed(3)}`); }
 
   // --- GEX / greeks consistency ---
@@ -830,10 +845,31 @@ async function main() {
       // two different days and fail a healthy desk.
       if (rth) {
         const today = todayEtYmd();
-        const bars = poly(`/v2/aggs/ticker/I:SPX/range/1/day/${today}/${today}`)?.results?.[0];
-        const gtHod = num(bars?.h), gtLod = num(bars?.l);
-        if (dHod != null && gtHod != null) rec('spx-desk: hod vs Polygon day high', Math.abs(dHod - gtHod) / gtHod * 100 <= 0.1 ? 'PASS' : 'FAIL', `desk=${dHod} polygon=${gtHod}`);
-        if (dLod != null && gtLod != null) rec('spx-desk: lod vs Polygon day low', Math.abs(dLod - gtLod) / gtLod * 100 <= 0.1 ? 'PASS' : 'FAIL', `desk=${dLod} polygon=${gtLod}`);
+        // Minute aggregates are ground truth during RTH — the daily bar's h/l can lag by
+        // several points while the session is still printing (measured 2026-09-04: desk HOD
+        // 7750.19 matched minute max; Polygon daily h was still 7742.22).
+        const minuteBars = poly(
+          `/v2/aggs/ticker/I:SPX/range/1/minute/${today}/${today}?adjusted=true&sort=asc&limit=50000`
+        )?.results;
+        const fromMinutes = sessionExtremesFromMinuteBars(minuteBars);
+        const dailyBar = poly(`/v2/aggs/ticker/I:SPX/range/1/day/${today}/${today}`)?.results?.[0];
+        const gtHod = fromMinutes.hod ?? num(dailyBar?.h);
+        const gtLod = fromMinutes.lod ?? num(dailyBar?.l);
+        const gtSource = fromMinutes.hod != null || fromMinutes.lod != null ? 'minute' : 'daily';
+        if (dHod != null && gtHod != null) {
+          rec(
+            'spx-desk: hod vs Polygon session high',
+            Math.abs(dHod - gtHod) / gtHod * 100 <= 0.1 ? 'PASS' : 'FAIL',
+            `desk=${dHod} polygon(${gtSource})=${gtHod}`
+          );
+        }
+        if (dLod != null && gtLod != null) {
+          rec(
+            'spx-desk: lod vs Polygon session low',
+            Math.abs(dLod - gtLod) / gtLod * 100 <= 0.1 ? 'PASS' : 'FAIL',
+            `desk=${dLod} polygon(${gtSource})=${gtLod}`
+          );
+        }
       } else {
         rec('spx-desk: hod/lod vs Polygon', 'INFO', 'skipped — market closed; the desk carries the last session\'s extremes while the intraday aggregate is empty, so this comparison would span two different days');
       }
@@ -859,6 +895,34 @@ async function main() {
         }
         const pct = Math.abs(served - want) / want * 100;
         rec(`spx-desk: ${label} vs recomputed from Polygon dailies`, pct <= 1 ? 'PASS' : 'FAIL', `desk=${served.toFixed(2)} recomputed=${want.toFixed(2)} Δ=${pct.toFixed(3)}% over ${closes.length} closes`);
+      }
+    }
+  }
+
+  // --- SPX PIN direction (RTH) — pinDriftPts must track projectedClose − spot -------------
+  if (rth) {
+    const pin = P.spx_pin ?? {};
+    if (!P.spx_pin || pin.available === false) {
+      rec('spx-pin: payload available', 'WARN', `pin unavailable (available=${pin.available}) — direction checks UNRUN`);
+    } else {
+      const pinSpot = num(pin.spot);
+      const proj = num(pin.projectedClose);
+      const drift = num(pin.pinDriftPts);
+      if (pinSpot != null && proj != null && drift != null) {
+        const derived = Number((proj - pinSpot).toFixed(2));
+        rec(
+          'spx-pin: pinDriftPts == projectedClose − spot',
+          Math.abs(derived - drift) <= 0.05 ? 'PASS' : 'FAIL',
+          `served=${drift} derived=${derived} spot=${pinSpot} projectedClose=${proj}`
+        );
+      }
+      // Regression guard: long-γ rally days must not always read bearish (PR #3497 class).
+      if (gtSPXchg != null && gtSPXchg > 0.15 && pin.regime === 'long_gamma' && drift != null) {
+        rec(
+          'spx-pin: long_gamma up-day pin drift not inverted',
+          drift >= -2 ? 'PASS' : 'WARN',
+          `day_chg=${gtSPXchg.toFixed(3)}% regime=${pin.regime} pinDriftPts=${drift}`
+        );
       }
     }
   }

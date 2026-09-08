@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
         THERMAL_DISCORD_DEDUP_KEY,
         { at: new Date().toISOString() },
         THERMAL_DISCORD_DEDUP_TTL_SEC
-      );
+      ).catch(() => true); // fail OPEN on a Redis error — a missed dedup window is a harmless duplicate post
       if (!claimed) {
         const payload = {
           ok: true,

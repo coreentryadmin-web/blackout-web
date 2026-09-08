@@ -6,7 +6,8 @@ import { clsx } from "clsx";
 import { useAppAuth } from "@/lib/auth-client";
 import { useMergedDesk } from "@/features/spx/hooks/useMergedDesk";
 import { useSpxPlay } from "@/features/spx/hooks/useSpxPlay";
-import { playPayloadToLevelsInput } from "@/features/vector/lib/vector-play-levels";
+import { resolveSpxChartPlayLevels } from "@/features/spx/lib/spx-chart-play-levels";
+import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import { useCompactDeskPanels } from "@/hooks/useCompactDeskPanels";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
@@ -36,8 +37,8 @@ const SpxPinForecast = dynamic(
   { loading: () => null }
 );
 
-const SpxPlayVerdictBar = dynamic(
-  () => import("./SpxPlayVerdictBar").then((m) => ({ default: m.SpxPlayVerdictBar })),
+const SpxVectorPlayRail = dynamic(
+  () => import("./SpxVectorPlayRail").then((m) => ({ default: m.SpxVectorPlayRail })),
   { loading: () => null }
 );
 
@@ -78,7 +79,7 @@ type SpxDashboardProps = {
 
 export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   const { isLoaded, tier } = useAppAuth();
-  const { desk, live, deskLoading, deskLaneFailed, sessionActive } = useMergedDesk();
+  const { desk, live, deskLoading, deskLaneFailed, sessionActive, laneFreshness } = useMergedDesk();
   const nativeShell = useIosNativeShell();
   const compactPanels = useCompactDeskPanels(nativeShell);
   const [iosPanel, setIosPanel] = useState<"vector" | "matrix" | "intel">("vector");
@@ -133,8 +134,16 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   // Brief desk-lane refresh can drop `live` for a poll while RTH is still open — gating on
   // `live && desk.available` cleared play cache and flashed CLOSED on the verdict bar while
   // /api/market/spx/play stayed SCANNING (SPX-VERDICT-CLOSED-FLICKER, 2026-08-05).
+  const [vectorDesk, setVectorDesk] = useState<VectorPlayDeskSnapshot | null>(null);
+  const handleVectorDeskSnapshot = useCallback((snapshot: VectorPlayDeskSnapshot) => {
+    setVectorDesk(snapshot);
+  }, []);
+
   const { play, playLoading } = useSpxPlay(sessionActive);
-  const playLevels = useMemo(() => playPayloadToLevelsInput(play), [play]);
+  const playLevels = useMemo(
+    () => resolveSpxChartPlayLevels(play, vectorDesk?.playEmit ?? null),
+    [play, vectorDesk?.playEmit]
+  );
 
   // FOCUS MODE (2026-07-13): `F` toggles / `Esc` exits (ignored while typing), persisted
   // per device. Hydrated after mount so SSR markup is deterministic. Compact/iOS shells
@@ -275,6 +284,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
                 sessionActive={sessionActive}
                 iosVectorFocus={iosPanel === "vector"}
                 stripOnly={iosPanel === "vector"}
+                laneFreshness={laneFreshness}
               />
             </div>
           </SpxPanelErrorBoundary>
@@ -301,6 +311,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
             nativeShell={nativeShell}
             sessionActive={sessionActive}
             iosVectorFocus={compactPanels && iosPanel === "vector"}
+            laneFreshness={laneFreshness}
           />
         </SpxPanelErrorBoundary>
       ) : null}
@@ -409,9 +420,10 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
           >
             <div className="spx-left-pin-stack">
               <SpxPinForecast sessionActive={sessionActive} />
-              <SpxPlayVerdictBar
-                play={play}
-                playLoading={playLoading}
+              <SpxVectorPlayRail
+                vectorDesk={vectorEnabled ? vectorDesk : null}
+                slayerPlay={play}
+                slayerLoading={playLoading}
                 sessionActive={sessionActive}
                 compactDefaultCollapsed={compactPanels}
               />
@@ -436,6 +448,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
                     onPriceScaleRender={setPriceScaleMap}
                     focusLevel={chartFocus}
                     playLevels={playLevels}
+                    onPlayDeskSnapshot={handleVectorDeskSnapshot}
                     toolbarPortalEl={vectorToolbarPortalEl}
                     toolbarReplayLeadSlot={
                     // Focus toggle relocated here from the removed session time bar
@@ -456,9 +469,10 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
                   />
                   {nativeShell && iosPanel === "vector" ? (
                     <div className="spx-ios-trade-setup mt-2">
-                      <SpxPlayVerdictBar
-                        play={play}
-                        playLoading={playLoading}
+                      <SpxVectorPlayRail
+                        vectorDesk={vectorDesk}
+                        slayerPlay={play}
+                        slayerLoading={playLoading}
                         sessionActive={sessionActive}
                         compactDefaultCollapsed={false}
                       />
@@ -468,8 +482,13 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
               ) : null
             ) : (
               <EmptyState
-                title="Vector chart launching soon"
-                description="The embedded SPX Vector chart is not enabled for this account yet."
+                title="Vector isn't on your plan yet"
+                description="The embedded SPX Vector chart is a Premium feature. Vector itself is fully live — upgrade to unlock it here."
+                action={
+                  <Button href="/upgrade" variant="primary" size="sm">
+                    Upgrade to Premium
+                  </Button>
+                }
                 className="m-auto max-w-md"
               />
             )}

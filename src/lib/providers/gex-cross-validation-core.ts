@@ -90,11 +90,26 @@ export function wallsFromStrikeTotals(
   return { callWall, putWall };
 }
 
-/** Argmax |net| strike — the GEX King node. */
+/**
+ * Argmax |net| strike — the GEX King node.
+ *
+ * Entries are sorted by strike ASCENDING before the argmax scan (not iterated in
+ * `Object.entries` order) so an exact tie between two strikes deterministically keeps the
+ * LOWER one, always, on every call. Without this, JS's key-enumeration order for a
+ * `Record<string, number>` is inconsistent by strike shape: integer-index-like string keys
+ * ("450") enumerate in ascending numeric order per spec, but decimal keys ("450.5" — the
+ * normal case for SPX's 0.5-wide chain) enumerate in insertion order instead, which depends
+ * on how the caller happened to build the object. A near-tied king node could then flicker
+ * between two strikes across rebuilds purely from incidental key-insertion order, not from
+ * gamma actually moving — the P3 UX defect this fixes.
+ */
 export function kingFromStrikeTotals(strikeTotals: Record<string, number>): number | null {
   let king: number | null = null;
   let maxAbs = -1;
-  for (const [s, gRaw] of Object.entries(strikeTotals)) {
+  const sortedEntries = Object.entries(strikeTotals).sort(
+    ([sa], [sb]) => Number(sa) - Number(sb)
+  );
+  for (const [s, gRaw] of sortedEntries) {
     const strike = Number(s);
     const g = Number(gRaw);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;

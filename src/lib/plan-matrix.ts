@@ -1,4 +1,5 @@
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import { PRODUCT_MANIFEST } from "@/lib/marketing/product-manifest";
 
 /** Canonical plan IDs — must match Whop product mapping in src/lib/whop.ts */
 export type PlanSku = "free" | "spx_slayer" | "premium_monthly" | "premium_yearly";
@@ -21,32 +22,32 @@ export const PLAN_MATRIX: Record<Exclude<PlanSku, "free">, PlanDefinition> = {
     priceLabel: `${usd(MEMBERSHIP_PRICING.community)}/mo`,
     headline: "Live SPX 0DTE desk — regime, GEX, graded plays",
     includes: [
-      "SPX Slayer desk (live SPX/SPXW)",
+      PRODUCT_MANIFEST.spx.planInclude,
       "Dealer gamma & GEX positioning",
       "0DTE graded plays (A–F)",
       "Strike-level heatmaps on SPX",
       "Private Discord access",
     ],
     excludes: [
-      "HELIX live flow tape",
-      "Largo AI desk analyst",
-      "Night Hawk / 0DTE Command scanners",
-      "Thermal multi-ticker heatmaps",
-      "Vector cross-ticker desk",
+      PRODUCT_MANIFEST.helix.planInclude,
+      PRODUCT_MANIFEST.largo.planInclude,
+      PRODUCT_MANIFEST.hawk.planInclude,
+      PRODUCT_MANIFEST.thermal.planInclude,
+      PRODUCT_MANIFEST.vector.planInclude,
     ],
   },
   premium_monthly: {
     sku: "premium_monthly",
     name: "Premium Monthly",
     priceLabel: `${usd(MEMBERSHIP_PRICING.monthly)}/mo`,
-    headline: "Full platform — every live module",
+    headline: "Full platform — every live product",
     includes: [
       "Everything in SPX Slayer",
-      "HELIX live options-flow tape",
-      "Largo AI desk analyst",
-      "Night Hawk evening + 0DTE Command",
-      "Thermal heatmaps (GEX/VEX/DEX/CHARM)",
-      "Vector scanner + Meridian",
+      PRODUCT_MANIFEST.helix.planInclude,
+      PRODUCT_MANIFEST.largo.planInclude,
+      PRODUCT_MANIFEST.hawk.planInclude,
+      PRODUCT_MANIFEST.thermal.planInclude,
+      `${PRODUCT_MANIFEST.vector.planInclude} + ${PRODUCT_MANIFEST.meridian.label}`,
       "Graded play log & Discord",
     ],
     excludes: [] as const,

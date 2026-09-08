@@ -5,6 +5,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { clsx } from "clsx";
 import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { SpxTerminalLine } from "@/lib/admin-spx-terminal";
+import {
+  openDurationLabelFromIso,
+  timeAgoCompactFromIso,
+} from "@/components/admin/admin-time-ago";
 
 type FeedFilter = "all" | "critical" | "warning" | "api" | "pulse" | "info";
 
@@ -23,19 +27,6 @@ function fmtClockEt(): string {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
-  });
-}
-
-function fmtRel(iso: string): string {
-  const sec = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (sec < 3) return "now";
-  if (sec < 60) return `${sec}s`;
-  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
-  return new Date(iso).toLocaleTimeString("en-US", {
-    timeZone: "America/New_York",
-    hour: "2-digit",
-    minute: "2-digit",
     hour12: false,
   });
 }
@@ -82,7 +73,7 @@ function TerminalLineRow({
             {line.kind === "api" ? "API" : line.kind.toUpperCase()}
           </span>
           <span className="admin-spx-term-cat">{line.category}</span>
-          <span className="admin-spx-term-time">{fmtRel(line.at)}</span>
+          <span className="admin-spx-term-time">{timeAgoCompactFromIso(line.at)}</span>
         </header>
         <h3 className="admin-spx-term-headline">{line.headline}</h3>
         <p className="admin-spx-term-detail">{line.detail}</p>
@@ -230,7 +221,7 @@ export function AdminSpxTerminal({
                     {inc.status.toUpperCase()}
                     {inc.mtta_ms != null
                       ? ` · MTTA ${Math.round(inc.mtta_ms / 1000)}s`
-                      : ` · open ${Math.round((Date.now() - new Date(inc.opened_at).getTime()) / 1000)}s`}
+                      : openDurationLabelFromIso(inc.opened_at)}
                   </p>
                 </div>
                 <div className="admin-spx-term-incident-actions">

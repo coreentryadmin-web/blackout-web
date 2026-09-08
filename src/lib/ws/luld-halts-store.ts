@@ -6,6 +6,7 @@ import {
 import { LULD_INDEX_PROXIES } from "@/lib/live-api-integrations";
 import type { TradingHaltEvent } from "@/lib/providers/unusual-whales";
 import { persistClusterLuldHalts, touchClusterLuldFreshness } from "@/lib/ws/halt-cluster-store";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const LULD_HALT_MAX_AGE_MS = 30 * 60_000;
 
@@ -98,5 +99,5 @@ export function getActiveLuldHalts(symbols: readonly string[]): TradingHaltEvent
 export function isLuldHaltFeedStale(maxAgeMs: number, enabled: boolean): boolean {
   if (!enabled) return true;
   const at = luldHaltsStore.last_message_at;
-  return at <= 0 || Date.now() - at > maxAgeMs;
+  return at <= 0 || !isWsUpdatedAtFresh(at, maxAgeMs);
 }

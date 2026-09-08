@@ -175,6 +175,55 @@ test("printHistoryToAnalyticsRows: a real print_history row feeds buildBeatMissS
   assert.equal(streak.graded, 2);
 });
 
+test("printHistoryToAnalyticsRows: converts print_history's display-percent surprise back to the fraction convention", () => {
+  // Regression: print_history's surprise_pct/revenue_surprise_pct are already a DISPLAY PERCENT
+  // (benzingaSurpriseToDisplayPct multiplies the raw ratio by 100 before storing), but
+  // EarningsAnalyticsRow.eps_surprise_pct is a FRACTION everywhere else in this file --
+  // fmtSurprisePct multiplies by 100 again. Copying the percent straight through used to render
+  // a real -0.7% surprise as "-70.0%" on the History tab's Beat/Miss Streak.
+  const rows = printHistoryToAnalyticsRows("DKS", [
+    {
+      report_date: "2026-05-27",
+      eps_estimate: 2.9,
+      eps_actual: 2.88,
+      surprise_pct: -0.7, // display percent: -0.7%
+      revenue_estimate: null,
+      revenue_actual: null,
+      revenue_surprise_pct: 6.25, // display percent: 6.25%
+    },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.ok(
+    Math.abs(rows[0]!.eps_surprise_pct! - -0.007) < 1e-9,
+    "must be the fraction -0.007, not the percent -0.7"
+  );
+  assert.ok(
+    Math.abs(rows[0]!.revenue_surprise_pct! - 0.0625) < 1e-9,
+    "must be the fraction 0.0625, not the percent 6.25"
+  );
+  assert.equal(
+    fmtSurprisePct(rows[0]!.eps_surprise_pct),
+    "-0.7%",
+    "formatted through the same fmtSurprisePct every other surprise display uses"
+  );
+});
+
+test("printHistoryToAnalyticsRows: null surprise stays null through the unit conversion", () => {
+  const rows = printHistoryToAnalyticsRows("DKS", [
+    {
+      report_date: "2026-05-27",
+      eps_estimate: 2.9,
+      eps_actual: 2.88,
+      surprise_pct: null,
+      revenue_estimate: null,
+      revenue_actual: null,
+      revenue_surprise_pct: null,
+    },
+  ]);
+  assert.equal(rows[0]!.eps_surprise_pct, null);
+  assert.equal(rows[0]!.revenue_surprise_pct, null);
+});
+
 test("printHistoryToAnalyticsRows: a row with no report_date is dropped, not given a fabricated date", () => {
   const rows = printHistoryToAnalyticsRows("DKS", [
     { report_date: null, eps_estimate: 1, eps_actual: 1, surprise_pct: 0 },

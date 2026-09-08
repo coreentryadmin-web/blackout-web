@@ -6,10 +6,29 @@ import {
   formatTimeEt,
   attachmentsFromCaptures,
   validateAttachmentConstraints,
+  CAPTURE_SURFACES,
   type CaptureResult,
 } from "./capture-harness";
+import { checkCaptureUrl } from "./capture-guard";
 
 describe("capture-harness validators", () => {
+  describe("CAPTURE_SURFACES routes", () => {
+    // Regression for a real defect: helix/thermal were pointed at `/terminal#tab=helix` and
+    // `/terminal#tab=thermal` (a page that gates on Largo specifically and has no such tabs), and
+    // largo was pointed at `/dashboard#tab=largo` (SPX Slayer's own route) -- so three of the
+    // seven captures would have screenshotted the WRONG product and mislabeled it in the caption
+    // and the queue row's source_surface. checkCaptureUrl is the canonical, independently-derived
+    // desk-route allowlist (capture-guard.ts) -- every configured capture URL must resolve to the
+    // surface it claims to be, so a route drifting out of sync with the canonical map cannot ship
+    // silently again.
+    for (const [source, config] of Object.entries(CAPTURE_SURFACES)) {
+      it(`${source} URL resolves to the ${source} surface per capture-guard's canonical routes`, () => {
+        const verdict = checkCaptureUrl(config.url);
+        assert.ok(verdict.ok, `expected ${config.url} to be a capturable URL, got: ${JSON.stringify(verdict)}`);
+        assert.ok(verdict.ok && verdict.surface === source, `expected ${config.url} to resolve to surface "${source}", got "${verdict.ok ? verdict.surface : ""}"`);
+      });
+    }
+  });
   describe("validateCaptureSource", () => {
     it("allows public surfaces on admin capture", () => {
       const err = validateCaptureSource("vector", true);
@@ -155,6 +174,39 @@ describe("capture-harness validators", () => {
       ];
       const result = attachmentsFromCaptures(captures, now);
       assert.equal(result.length, 3);
+    });
+
+    it("prefers one capture per distinct source over duplicating a surface (requireDiversity default)", () => {
+      // Regression: requireDiversity used to be a no-op -- fresh.slice(0, Math.min(fresh.length,
+      // maxAttachments)) and fresh.slice(0, maxAttachments) are byte-identical for every input,
+      // since Array.prototype.slice already clamps its end index. Neither branch ever looked at
+      // source. [helix, helix, thermal, vector] with maxAttachments=3 used to ship
+      // [helix, helix, thermal] -- vector silently dropped, helix duplicated.
+      const now = Date.now();
+      const freshMs = now - 30 * 60 * 1000;
+      const freshTime = formatTimeEt(freshMs);
+      const captures: CaptureResult[] = [
+        { source: "helix", success: true, imageUrl: "/h1.png", caption: "H1", capturedAtMs: freshMs, capturedAtEt: freshTime },
+        { source: "helix", success: true, imageUrl: "/h2.png", caption: "H2", capturedAtMs: freshMs, capturedAtEt: freshTime },
+        { source: "thermal", success: true, imageUrl: "/t.png", caption: "T", capturedAtMs: freshMs, capturedAtEt: freshTime },
+        { source: "vector", success: true, imageUrl: "/v.png", caption: "V", capturedAtMs: freshMs, capturedAtEt: freshTime },
+      ];
+      const result = attachmentsFromCaptures(captures, now, { maxAttachments: 3 });
+      const sources = result.map((a) => a.source_surface);
+      assert.equal(new Set(sources).size, 3, `expected 3 distinct surfaces, got: ${sources.join(", ")}`);
+      assert.deepEqual(sources.sort(), ["helix", "thermal", "vector"]);
+    });
+
+    it("falls back to duplicate-source captures only once distinct sources are exhausted", () => {
+      const now = Date.now();
+      const freshMs = now - 30 * 60 * 1000;
+      const freshTime = formatTimeEt(freshMs);
+      const captures: CaptureResult[] = [
+        { source: "helix", success: true, imageUrl: "/h1.png", caption: "H1", capturedAtMs: freshMs, capturedAtEt: freshTime },
+        { source: "helix", success: true, imageUrl: "/h2.png", caption: "H2", capturedAtMs: freshMs, capturedAtEt: freshTime },
+      ];
+      const result = attachmentsFromCaptures(captures, now, { maxAttachments: 3 });
+      assert.equal(result.length, 2, "only 2 captures existed at all -- can't invent a third");
     });
 
     it("assigns slot numbers 1, 2, 3", () => {

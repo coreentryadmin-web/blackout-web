@@ -130,10 +130,6 @@ for (const preset of THERMAL_COMPARE_PRESETS) {
 // Mag 7 lists GOOG; members often search GOOGL — same book for grid routing.
 if (!TICKER_TO_PRESET.has("GOOGL")) TICKER_TO_PRESET.set("GOOGL", "mega");
 
-export function isThermalComparePresetId(raw: string | null | undefined): raw is ThermalComparePresetId {
-  return parseThermalComparePresetId(raw) != null;
-}
-
 /**
  * Preset ids that have been RENAMED, mapped to their current id.
  *

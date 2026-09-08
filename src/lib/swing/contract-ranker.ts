@@ -326,5 +326,6 @@ export function chainContractFromSnapshot(
     bidSize: isNum(snap.bidSize) ? snap.bidSize : null,
     askSize: isNum(snap.askSize) ? snap.askSize : null,
     dayVolume: isNum(snap.dayVolume) ? snap.dayVolume : null,
+    quoteUpdatedMs: isNum(snap.observedAtMs) ? snap.observedAtMs : isNum(snap.quoteUpdatedMs) ? snap.quoteUpdatedMs : null,
   };
 }

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONVICTION_A_MIN_SCORE } from "@/lib/nighthawk/cortex/compose";
 import { capConvictionDisplay, ZERODTE_CONVICTION_DISPLAY_CAP } from "./conviction";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "./marks-math";
 import {
   evidenceRowParts,
   fmtLockRemaining,
@@ -266,6 +267,18 @@ test("readiness: marks transport down with live plays is amber; without live pla
   const base = { serverDegraded: false, asOfAgeMs: 2_000, sessionLive: true, marksTransport: null } as const;
   assert.equal(resolveZeroDteReadiness({ ...base, hasLivePlays: true }).tone, "amber");
   assert.equal(resolveZeroDteReadiness({ ...base, hasLivePlays: false }).tone, "green");
+});
+
+test("readiness: a clock-skewed future as_of beyond tolerance reads DELAYED, not falsely READY", () => {
+  const r = resolveZeroDteReadiness({
+    serverDegraded: false,
+    asOfAgeMs: -(ZERODTE_MARK_FUTURE_TOLERANCE_MS + 1),
+    sessionLive: true,
+    marksTransport: "sse",
+    hasLivePlays: true,
+  });
+  assert.equal(r.tone, "amber");
+  assert.equal(r.label, "DELAYED");
 });
 
 test("readiness: fresh board + streaming marks is green; a closed session is green OFF-HOURS", () => {

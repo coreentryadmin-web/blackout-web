@@ -8,6 +8,17 @@ import {
 } from "./playbook-data-quality";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 
+test("playbookDataQualityFlags: future polled_at treated as stale", () => {
+  const future = new Date(Date.now() + 120_000).toISOString();
+  const desk = {
+    polled_at: future,
+    gex_walls: [{}],
+    halt_channel_stale: false,
+  } as SpxDeskPayload;
+  const flags = playbookDataQualityFlags(desk);
+  assert.equal(flags.desk_stale, true);
+});
+
 test("isDegradedForLivePlaybook: blocks event PB on halt stale via capabilities", () => {
   const desk = { halt_channel_stale: true, polled_at: new Date().toISOString(), gex_walls: [{}] } as SpxDeskPayload;
   const flags = playbookDataQualityFlags(desk);

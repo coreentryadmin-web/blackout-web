@@ -32,6 +32,7 @@
 
 import type { SwingPositionRow, SwingSnapshotInsert } from "../db";
 import type { SwingLiveQuote } from "./live-plays";
+import { structuralBreakFromSpot } from "./live-plays";
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { SWING_ARCHETYPES } from "./taxonomy";
@@ -70,11 +71,22 @@ function coerceArchetype(raw: string | null | undefined): SwingArchetype | null 
 
 /**
  * Map a manage verdict onto the next live status for the latch. TRIM is sticky once a scale-out fires
- * (TAKE_PARTIAL / EXIT_RUNNER). HOLD promotes OPEN→HOLD. EXIT/STOP_OUT keep the current status —
- * terminals are written only by the roll executor. Never invents CLOSED/ROLLED here.
+ * (TAKE_PARTIAL / EXIT_RUNNER) — but ONLY when the rung that fired it is ENFORCED. TAKE_PARTIAL/
+ * EXIT_RUNNER are exclusively edge-rung actions (catalyst_shift/regime_shift/profit_ladder/flow_decay/
+ * rel_strength_loss/vol_collapse — see manage.ts's GATING_RUNGS, none of which ever return these two
+ * actions), so `verdict.enforced` is false until the PR-16 calibration ladder graduates that specific
+ * rung. An un-enforced TAKE_PARTIAL is advisory only — nothing actually sold a tranche — so latching
+ * to TRIM here would be fabricating a scale-out that never happened. That matters beyond the status
+ * label: the very next refresh tick derives `scaledAlready` from `row.status === "TRIM"` (below), and
+ * `deriveScaleOutAction` disables the −60% `premium_stop` hard-stop entirely once `scaledAlready` is
+ * true (it only re-arms the trailing-stop check for a runner that already banked a partial). Latching
+ * TRIM off an un-enforced advisory would silently and permanently disable capital-preservation on a
+ * position that is, in reality, still 100% open and exposed to the full downside that gate exists to
+ * catch. HOLD promotes OPEN→HOLD. EXIT/STOP_OUT keep the current status — terminals are written only
+ * by the roll executor. Never invents CLOSED/ROLLED here.
  */
 export function latchSwingLiveStatus(current: string, verdict: SwingManageVerdict): string {
-  if (verdict.action === "TAKE_PARTIAL" || verdict.action === "EXIT_RUNNER") return "TRIM";
+  if (verdict.enforced && (verdict.action === "TAKE_PARTIAL" || verdict.action === "EXIT_RUNNER")) return "TRIM";
   if (current === "TRIM") return "TRIM";
   if (verdict.action === "HOLD" || verdict.action === "ADD") {
     return current === "OPEN" ? "HOLD" : current;
@@ -122,6 +134,13 @@ export interface ManageSyncReads {
   addEligible?: boolean | null;
   /** Edge rungs the PR-16 ladder has graduated to enforced (gates ignore this). */
   graduatedRungs?: readonly SwingManageRung[];
+  /** Ex-dividend session — LONG structural compare uses dividend-adjusted spot (Q39). */
+  exDividendSession?: boolean;
+  exDividendCash?: number | null;
+  /** True when this cycle's ex-dividend read failed (Polygon error/timeout) — passed through to
+   *  manage.ts so a LONG structural-stop breach is skipped rather than fail-open enforced on data
+   *  we know is unreliable this cycle. See ex-dividend-reads.ts. */
+  exDividendDataUnavailable?: boolean;
 }
 
 /** The live-state latch this refresh will apply (mirrors updateSwingLiveState's arg). status NEVER terminal. */
@@ -300,6 +319,9 @@ export function planManageSync(
     thesisProgress01: numOrNull(reads.thesisProgress01),
     addEligible: reads.addEligible ?? null,
     graduatedRungs: reads.graduatedRungs,
+    exDividendSession: reads.exDividendSession === true,
+    exDividendCash: numOrNull(reads.exDividendCash),
+    exDividendDataUnavailable: reads.exDividendDataUnavailable === true,
   };
   const verdict = evaluateSwingManagement(input);
 
@@ -395,7 +417,10 @@ export interface ManageSyncRollPlan {
  *  drives the PR-15 gating execution — absent → the shell behaves exactly as PR-13 (evidence-only, HOLD). */
 export interface ManageSyncDeps extends Partial<RollLedgerDeps> {
   insertSnapshot: (s: SwingSnapshotInsert) => Promise<number>;
-  updateLiveState: (id: number, s: { status: string; mark?: number | null; underlyingMfe?: number | null; underlyingMae?: number | null }) => Promise<void>;
+  updateLiveState: (
+    id: number,
+    s: { status: string; mark?: number | null; underlyingMfe?: number | null; underlyingMae?: number | null }
+  ) => Promise<number>;
   /** Build the frozen parent grade + child leg for a gating roll/close. Null → can't execute (evidence-only). */
   buildRollPlan?: (row: SwingPositionRow, verdict: SwingManageVerdict, reads: ManageSyncReads) => Promise<ManageSyncRollPlan | null>;
   /** Execute the transactional roll/close (wraps `closeAndRollSwingPosition` with the PR-10 accessors bound).
@@ -422,6 +447,34 @@ function hasRollLedger(deps: ManageSyncDeps): deps is ManageSyncDeps & RollLedge
     typeof deps.insertChild === "function" &&
     typeof deps.insertSnapshot === "function"
   );
+}
+
+/**
+ * Q37: re-arbitrate at roll execution time. A concurrent pass or slow chain fetch can leave a ROLL plan
+ * built while the structural stop has since broken — CLOSE must win over ROLL.
+ */
+export function executionVerdictForGating(
+  row: SwingPositionRow,
+  reads: ManageSyncReads,
+  verdict: SwingManageVerdict,
+): SwingManageVerdict {
+  const direction = row.direction === "short" ? "short" : "long";
+  if (
+    !structuralBreakFromSpot(
+      direction,
+      reads.underlyingPrice ?? null,
+      row.thesis_invalidation_px,
+    )
+  ) {
+    return verdict;
+  }
+  return {
+    ...verdict,
+    action: "EXIT",
+    rung: "structural_stop",
+    reason: "structural stop at roll execution — close not roll (Q37)",
+    rollIntent: { roll: false, reason: "structural break at roll execution" },
+  };
 }
 
 /**
@@ -453,15 +506,17 @@ export async function syncSwingManagement(
       return { ...outcome, error: outcome.error ?? (err instanceof Error ? err.message : String(err)) };
     }
     if (rollPlan) {
+      const executionVerdict = executionVerdictForGating(row, reads, plan.verdict);
+      const executionDecision = decideRollAction(executionVerdict);
       const runRoll = deps.executeRoll ?? closeAndRollSwingPosition;
       try {
         // The roll executor OWNS the snapshot append for this tick (append-only, unbroken across the roll
         // boundary), so we do NOT also run the evidence-only latch — the parent is going terminal.
         const roll = await runRoll(deps, {
           parent: row,
-          verdict: plan.verdict,
+          verdict: executionVerdict,
           parentGrade: rollPlan.parentGrade,
-          childSpec: rollPlan.childSpec,
+          childSpec: executionDecision.action === "ROLL" ? rollPlan.childSpec : undefined,
           snapshot: plan.snapshot,
         });
         return {
@@ -488,15 +543,24 @@ export async function syncSwingManagement(
   return applyEvidenceOnly(deps, plan);
 }
 
-/** The PR-13 evidence-only application: append the snapshot (durable evidence first), then latch live state.
- *  NEVER writes a terminal status — the status carried on `plan.liveState` is the row's current live rung. */
+/** The PR-13 evidence-only application: latch live state, then append snapshot only when the row
+ *  is still non-terminal. Q36: a stale overlapping refresh must not mutate marks or append HOLD
+ *  snapshots onto a position already CLOSED/ROLLED by another pass. */
 async function applyEvidenceOnly(deps: ManageSyncDeps, plan: ManageSyncPlan): Promise<ManageSyncOutcome> {
   let snapshotId: number | null = null;
   let liveStateUpdated = false;
   try {
-    snapshotId = await deps.insertSnapshot(plan.snapshot);
-    await deps.updateLiveState(plan.positionId, plan.liveState);
+    const rows = await deps.updateLiveState(plan.positionId, plan.liveState);
+    if (rows === 0) {
+      return {
+        positionId: plan.positionId,
+        verdict: plan.verdict,
+        snapshotId: null,
+        liveStateUpdated: false,
+      };
+    }
     liveStateUpdated = true;
+    snapshotId = await deps.insertSnapshot(plan.snapshot);
   } catch (err) {
     return {
       positionId: plan.positionId,

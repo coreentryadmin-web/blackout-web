@@ -4,6 +4,8 @@ import { bucketForScore, gradeForward, summarizeByBucket, scoreSeparation, SCORE
   isEquityGradeable,
   partitionGradeable,
   ungradedTickers,
+  ledgerOutcomeToGraded,
+  matchFlowScoreForLedgerRow,
 } from "./helix-score-eval.mjs";
 
 test("buckets isolate the saturation point at exactly 60", () => {
@@ -180,4 +182,24 @@ test("ungradedTickers surfaces a root NON_EQUITY_ROOTS does not list", () => {
 test("ungradedTickers stays silent when every ticker graded something", () => {
   const graded = Array.from({ length: 6 }, (_, i) => ({ ticker: "NVDA", graded: i ? "win" : null }));
   assert.deepEqual(ungradedTickers(graded), []);
+});
+
+test("ledgerOutcomeToGraded maps continued/reversed; flat and pending are null", () => {
+  assert.deepEqual(ledgerOutcomeToGraded("bullish", "continued"), { changePct: 1, favorablePct: 1, win: true });
+  assert.deepEqual(ledgerOutcomeToGraded("bullish", "reversed"), { changePct: -1, favorablePct: -1, win: false });
+  assert.equal(ledgerOutcomeToGraded("bullish", "flat"), null);
+  assert.equal(ledgerOutcomeToGraded("bullish", "pending"), null);
+  assert.equal(ledgerOutcomeToGraded("undetermined", "continued"), null);
+});
+
+test("matchFlowScoreForLedgerRow picks highest score within window", () => {
+  const fired = "2026-09-04T15:00:00.000Z";
+  const flows = [
+    { ticker: "NVDA", score: 40, event_at: "2026-09-04T14:50:00.000Z" },
+    { ticker: "NVDA", score: 72, event_at: "2026-09-04T15:05:00.000Z" },
+    { ticker: "NVDA", score: 99, event_at: "2026-09-04T16:00:00.000Z" },
+    { ticker: "AMD", score: 80, event_at: "2026-09-04T15:00:00.000Z" },
+  ];
+  assert.equal(matchFlowScoreForLedgerRow({ ticker: "NVDA", fired_at: fired }, flows, 20 * 60_000), 72);
+  assert.equal(matchFlowScoreForLedgerRow({ ticker: "NVDA", fired_at: fired }, flows, 4 * 60_000), null);
 });

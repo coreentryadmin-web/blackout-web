@@ -13,17 +13,21 @@ import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/
 import { GROUNDING_MIN_OI, tieredMinOi } from "@/features/nighthawk/lib/grounding";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import type { PlayTechnicals, VectorPlay, VectorPlayStyle } from "./vector-play-engine";
 import type { PlayPlatformFlowPrint, PlayPlatformInputs } from "./vector-play-platform";
+import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
 import type { VectorContractPick } from "./vector-contract-picks";
 import type { VectorRegimePosture } from "./vector-regime";
 import type { ConfluenceZone } from "./vector-confluence";
 import { buildVectorPickEvidence, type VectorPickEvidenceSection } from "./vector-pick-evidence";
 import { rangeMeanReference } from "./vector-play-engine";
+import type { PlayTechnicals, VectorPlay, VectorPlayStyle } from "./vector-play-engine";
 import { effectivePickBias } from "./vector-pick-effective-bias";
 import type { VectorPickEnrichmentData } from "./vector-pick-types";
 import { strikeGexFromTotals, topGexPinStrikes } from "./strike-gex-lookup";
 import { vectorPickOcc } from "./vector-pick-occ";
+
+/** Sub-$0.12 premiums make %-from-entry meaningless and dominated by spread noise (2026-09-01 audit). */
+export const MIN_VECTOR_PICK_PREMIUM = 0.12;
 
 export type VectorPickActionStatus = "still_buy" | "caution" | "dont_buy";
 
@@ -205,7 +209,7 @@ export function pickContractNearTarget(
       if (row.expiry < minExpiry || row.expiry > maxExpiry) continue;
     }
     const premium = contractPremium(row, side);
-    if (premium == null) continue;
+    if (premium == null || premium < MIN_VECTOR_PICK_PREMIUM) continue;
     const oi = contractOi(row, side);
     const entry: Candidate = {
       strike: row.strike,
@@ -241,6 +245,12 @@ export function pickContractNearTarget(
   return null;
 }
 
+// A print's option TYPE matching the recommended contract's side is not confirmation on its own —
+// a SOLD call at this strike is bearish, not support for buying more calls there. Both helpers below
+// require the aggressor-aware `flowDirection` (bullish for a long/call pick, bearish for a
+// short/put pick) rather than the raw option_type, mirroring the fix already applied in HELIX
+// (helix-flow-aggression.ts) and in vector-play-platform.ts's summarizeSessionFlowBias.
+
 function flowPremiumAtStrike(
   flows: readonly PlayPlatformFlowPrint[] | null | undefined,
   strike: number,
@@ -248,9 +258,9 @@ function flowPremiumAtStrike(
 ): number {
   if (!flows?.length) return 0;
   let best = 0;
-  const want = side === "call" ? "CALL" : "PUT";
+  const wantDir = side === "call" ? "bullish" : "bearish";
   for (const f of flows) {
-    if (f.option_type?.toUpperCase() !== want) continue;
+    if (flowDirection(f) !== wantDir) continue;
     if (num(f.strike) !== strike) continue;
     const prem = num(f.premium);
     if (prem != null && prem > best) best = prem;
@@ -263,10 +273,10 @@ function largestFlowPremium(
   direction: "long" | "short"
 ): number {
   if (!flows?.length) return 0;
-  const want = direction === "long" ? "CALL" : "PUT";
+  const wantDir = direction === "long" ? "bullish" : "bearish";
   let best = 0;
   for (const f of flows) {
-    if (f.option_type?.toUpperCase() !== want) continue;
+    if (flowDirection(f) !== wantDir) continue;
     const prem = num(f.premium);
     if (prem != null && prem >= FLOW_CONFIRM && prem > best) best = prem;
   }
@@ -299,16 +309,32 @@ function specsForContext(ctx: VectorPlayPickContext): CandidateSpec[] {
   const maxPain = num(ctx.enrichment?.maxPain) ?? num(magnetStrike);
 
   if (play.bias === "long") {
-    const target = num(putWall) ?? spot;
+    const target =
+      play.setup === "momentum-long"
+        ? (num(callWall) ?? spot)
+        : (num(putWall) ?? spot);
     specs.push({ direction: "long", targetStrike: target, role: "primary-long" });
-    // GEX king as support pin when below spot — wall-aligned long leg.
-    if (king != null && king < spot && Math.abs(king - target) / spot > 0.004) {
+    // GEX king as support pin when below spot — wall-aligned long leg (fade / support geometry).
+    if (
+      play.setup !== "momentum-long" &&
+      king != null &&
+      king < spot &&
+      Math.abs(king - target) / spot > 0.004
+    ) {
       specs.push({ direction: "long", targetStrike: king, role: "gex-king-pin" });
     }
   } else if (play.bias === "short") {
-    const target = num(callWall) ?? spot;
+    const target =
+      play.setup === "momentum-short"
+        ? (num(putWall) ?? spot)
+        : (num(callWall) ?? spot);
     specs.push({ direction: "short", targetStrike: target, role: "primary-short" });
-    if (king != null && king > spot && Math.abs(king - target) / spot > 0.004) {
+    if (
+      play.setup !== "momentum-short" &&
+      king != null &&
+      king > spot &&
+      Math.abs(king - target) / spot > 0.004
+    ) {
       specs.push({ direction: "short", targetStrike: king, role: "gex-king-pin" });
     }
   } else if (play.bias === "range") {
@@ -338,8 +364,11 @@ function specsForContext(ctx: VectorPlayPickContext): CandidateSpec[] {
     const prem = num(f.premium);
     const strike = num(f.strike);
     if (prem == null || prem < FLOW_WHALE || strike == null) continue;
-    const side = f.option_type?.toUpperCase();
-    const dir = side === "CALL" ? "long" : side === "PUT" ? "short" : null;
+    // A whale print becomes a directional candidate from the aggressor-aware read, not raw option
+    // type — a sold call is a short candidate, not a "buy this call" one. Undetermined (no
+    // ask_pct, or midpoint) prints generate no candidate rather than guessing.
+    const flowDir = flowDirection(f);
+    const dir = flowDir === "bullish" ? "long" : flowDir === "bearish" ? "short" : null;
     if (!dir) continue;
     const key = `${dir}-${strike}-${f.expiry ?? ""}`;
     if (seenFlow.has(key)) continue;
@@ -459,7 +488,7 @@ function rankPick(
   if (spec.role === "fade-rip") reasons.push("Put leg — sell the rip toward range mean");
   if (spec.role === "primary-long") reasons.push("Call leg — aligned with long Suggested Play bias");
   if (spec.role === "primary-short") reasons.push("Put leg — aligned with short Suggested Play bias");
-  if (spec.role === "gex-king-pin") reasons.push("Strike at Thermal GEX king — largest net gamma node");
+  if (spec.role === "gex-king-pin") reasons.push("Strike at Thermal GEX king node — largest net gamma concentration");
   if (spec.role === "magnet-mean") reasons.push("Strike at range mean-revert anchor (magnet / max pain)");
 
   const totals = ctx.enrichment?.strikeTotals;

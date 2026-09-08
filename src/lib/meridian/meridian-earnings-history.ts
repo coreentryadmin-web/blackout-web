@@ -8,9 +8,11 @@ import {
   dualBeatRateFromPrints,
 } from "@/lib/meridian/meridian-benzinga-earnings-core";
 import { loadBenzingaTickerEarnings } from "@/lib/meridian/meridian-benzinga-earnings";
+import { settledReactions } from "@/features/meridian/lib/meridian-reaction-display";
 import type { MeridianEarningsPrint } from "@/features/meridian/lib/meridian-types";
 
-function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
+// Exported for unit testing only — not part of this module's public surface.
+export function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
   const graded = rows.filter((r) => r.beat != null);
   if (!graded.length) return null;
   const beats = graded.filter((r) => r.beat).length;
@@ -19,7 +21,16 @@ function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
   // session's open→close, which excludes the overnight gap that IS the reaction. Averaging it
   // produced a headline "avg session move" that disagreed in sign with the market on ~a third
   // of post-close prints.
-  const withMove = rows.filter((r) => r.reaction_pct != null);
+  //
+  // settledReactions() first, not a bare reaction_pct != null filter: an unsettled (still intraday
+  // -forming) print or one whose BMO/AMC timing was never resolved (reaction_basis:
+  // "assumed_report_session") is not a final measurement. Pooling either into this average
+  // "launders an unknown into a statistic" (settledReactions' own doc comment) -- the exact defect
+  // this same feature's sibling functions (summarizePeerReaction, MeridianEarningsHistoryPanel's
+  // own chart) already guard against. Without this, a same-day print still moving (e.g. -9.4% and
+  // falling) got averaged in as if final, which can flip the sign of "avg reaction" the member
+  // reads right next to the correctly-filtered chart on the same tab.
+  const withMove = settledReactions(rows).filter((r) => r.reaction_pct != null);
   const avgMove =
     withMove.length > 0
       ? withMove.reduce((s, r) => s + (r.reaction_pct ?? 0), 0) / withMove.length

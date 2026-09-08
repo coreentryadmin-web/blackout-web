@@ -151,6 +151,7 @@ test("flow evidence gates reject a bare (no-flow) ticker, but a breakout setup b
     ticker: setup.ticker,
     direction: setup.direction,
     score: setup.score,
+    discovery_origin: setup.discovery_origin,
     nowEtMinutes: 11 * 60, // after the 10:00 unlock
     nowMs: Date.parse(`${TODAY}T15:00:00Z`),
     bias: "up", // aligned with a long

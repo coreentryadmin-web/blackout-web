@@ -2,10 +2,11 @@
  * The PIN CONTEST — each expiry's share of the near-spot dealer gamma.
  *
  * Deliberately the ONLY thing in this module. Per-expiry walls / flip / net GEX are already
- * derived in GexHeatmap by `filterStrikeTotals` + `recomputeLevels` (they drive the profile and
- * curve); adding a second implementation here would have made a THIRD copy of the wall scan in a
- * codebase that already had two. Those existing helpers are now wired to the Key Levels row
- * instead, and the shared scan lives in `gexWallsFromStrikeTotals`.
+ * derived by `recompute-levels.ts`'s `recomputeLevels` (they drive the Key Levels row, profile,
+ * and curve); adding a second implementation here would have made a THIRD copy of the wall scan
+ * in a codebase that already had two. `recomputeLevels` uses the side-constrained
+ * `wallsFromStrikeTotals` (`gex-cross-validation-core.ts`), matching the server's
+ * `computeGexRegime`.
  *
  * What was genuinely missing is this: WHICH expiry owns the gamma near spot. That is the number
  * the "will today's expiry pin, or have dealers moved on to the next one" question turns on — not

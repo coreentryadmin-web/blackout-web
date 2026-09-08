@@ -29,7 +29,7 @@ export function AuthProofRail({ variant }: { variant: "auth" | "upgrade" }) {
     if (variant === "upgrade") return null;
     return (
       <ul className="flex flex-col gap-3">
-        {FEATURE_MATRIX.slice(0, 4).map((f) => {
+        {FEATURE_MATRIX.slice(0, 7).map((f) => {
           const mark = f.mark;
           return (
           <li key={f.label} className="flex items-start gap-3">

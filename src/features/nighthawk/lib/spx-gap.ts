@@ -35,10 +35,17 @@ export function computeSpxGapContext(
     pattern = "flat_open";
     detail = `Opened flat (${gap_pct >= 0 ? "+" : ""}${gap_pct.toFixed(2)}% vs prior close ${prior_close.toFixed(2)})`;
   } else if (gap_pct > 0) {
-    if (last_price >= session_open && last_price > prior_close) {
+    // Up-gap means session_open > prior_close, so the three outcomes are distinguished by WHERE
+    // last_price sits relative to BOTH reference points, not just session_open: holding above the
+    // open is a continuation; fading all the way back through the prior close is a full reversal
+    // ("trapped" the gap buyers); fading off the open but still above the prior close is only a
+    // PARTIAL fade. The old check compared last_price to session_open in both branches, which
+    // partitions the whole real line between "gap_and_go"/"gap_and_trap" and left "gap_fill"
+    // mathematically unreachable — every partial fade was mislabeled as a full reversal.
+    if (last_price >= session_open) {
       pattern = "gap_and_go";
       detail = `Gap up ${gap_pct.toFixed(2)}% to ${session_open.toFixed(2)} — held above open, last ${last_price.toFixed(2)}`;
-    } else if (last_price < session_open) {
+    } else if (last_price <= prior_close) {
       pattern = "gap_and_trap";
       detail = `Gap up ${gap_pct.toFixed(2)}% to ${session_open.toFixed(2)} — faded below open, last ${last_price.toFixed(2)}`;
     } else {
@@ -46,10 +53,11 @@ export function computeSpxGapContext(
       detail = `Gap up ${gap_pct.toFixed(2)}% — partial fade, last ${last_price.toFixed(2)} (open ${session_open.toFixed(2)})`;
     }
   } else {
-    if (last_price <= session_open && last_price < prior_close) {
+    // Mirror of the up-gap case: down-gap means session_open < prior_close.
+    if (last_price <= session_open) {
       pattern = "gap_and_go";
       detail = `Gap down ${gap_pct.toFixed(2)}% to ${session_open.toFixed(2)} — continued lower, last ${last_price.toFixed(2)}`;
-    } else if (last_price > session_open) {
+    } else if (last_price >= prior_close) {
       pattern = "gap_and_trap";
       detail = `Gap down ${gap_pct.toFixed(2)}% to ${session_open.toFixed(2)} — reclaimed open, last ${last_price.toFixed(2)}`;
     } else {

@@ -34,6 +34,18 @@ test("active:false is never active regardless of age", () => {
 
 test("NaN/missing receivedAt is treated as expired", () => {
   assert.equal(isHaltStillActive({ active: true, receivedAt: NaN }, 1_000_000, MAX), false);
+  assert.equal(isHaltStillActive({ active: true, receivedAt: 0 }, 1_000_000, MAX), false);
+});
+
+test("future receivedAt beyond tolerance is not active (clock skew cannot pin halt forever)", () => {
+  const now = 2_000_000;
+  // 10s in the future — beyond WS_TIMESTAMP_FUTURE_TOLERANCE_MS (5s).
+  assert.equal(isHaltStillActive({ active: true, receivedAt: now + 10_000 }, now, MAX), false);
+});
+
+test("future receivedAt within tolerance stays active when inside maxAge", () => {
+  const now = 2_000_000;
+  assert.equal(isHaltStillActive({ active: true, receivedAt: now + 4_000 }, now, MAX), true);
 });
 
 test("pruneExpiredHalts removes stale/inactive, keeps fresh active, returns count", () => {

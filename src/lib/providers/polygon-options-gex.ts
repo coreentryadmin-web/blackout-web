@@ -215,7 +215,7 @@ export async function fetchPolygonOdteDeskBundle(
   if (
     !skipCache &&
     cachedOdteBundle &&
-    now - cachedOdteBundle.at < polygonGexCacheMs() &&
+    gexHeatmapCacheEntryWithinTtl(cachedOdteBundle.at, now, polygonGexCacheMs()) &&
     Math.abs(cachedOdteBundle.spot - spot) < Math.max(spot * 0.003, 5)
   ) {
     return { rows: cachedOdteBundle.rows, maxPain: cachedOdteBundle.maxPain };
@@ -232,7 +232,7 @@ export async function fetchPolygonOdteDeskBundle(
     if (
       !skipCache &&
       redisHit &&
-      now - redisHit.at < polygonGexCacheMs() &&
+      gexHeatmapCacheEntryWithinTtl(redisHit.at, now, polygonGexCacheMs()) &&
       Math.abs(redisHit.spot - spot) < Math.max(spot * 0.003, 5)
     ) {
       cachedOdteBundle = redisHit;
@@ -477,9 +477,33 @@ export type GexHeatmap = {
   underlying: string;
   spot: number;
   spot_source?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic";
-  change_pct: number;
+  change_pct: number | null;
   chain_truncated?: boolean;
   asof: string;
+  /**
+   * Cross-product compute identity (added 2026-09-03). `fetchGexHeatmap` is already the ONE
+   * shared cache-reader every product (public snapshot, SPX Slayer, Vector, Thermal) sits on top
+   * of — they were never independent computations — but nothing on the payload let a consumer
+   * PROVE two reads came from the same build without diffing every field by hand. These five are
+   * additive and OPTIONAL (omitted on payloads built before this field existed, e.g. anything
+   * still sitting in a live cache entry at deploy time):
+   *  - `calculation_id`: opaque `${root}:${calculatedAtEpochMs}` — two reads with the same id are
+   *    byte-identical (the same cache entry); different ids mean a rebuild happened between reads.
+   *  - `calculated_at`: same instant as `asof` (kept for back-compat), exposed under the name the
+   *    cross-product contract asked for.
+   *  - `spot_timestamp` / `chain_timestamp`: when the spot price and the options chain were each
+   *    actually read — genuinely distinct instants (`resolveSpotSnapshot` completes before
+   *    `fetchHeatmapBand` does), so a caller doing basis/regime math off spot vs a chain-derived
+   *    wall can see the true skew between them instead of assuming both came from `asof`. Omitted
+   *    (not fabricated) on the empty/degraded builds that don't resolve a fresh spot or chain.
+   *  - `expires_at`: `calculated_at` + the TTL this build was cached under — when a consumer
+   *    should stop trusting this read as "current" without a re-fetch.
+   */
+  calculation_id?: string;
+  calculated_at?: string;
+  spot_timestamp?: string;
+  chain_timestamp?: string;
+  expires_at?: string;
   /**
    * Ascending expiry axis (SHARED by all metrics): the ~8 NEAREST expirations (dailies/weeklies)
    * FOLLOWED BY a bounded set of far-dated standard monthly / quarterly OpEx columns (3rd-Friday,
@@ -812,6 +836,20 @@ function normPdf(x: number): number {
   return INV_SQRT_2PI * Math.exp(-0.5 * x * x);
 }
 
+/**
+ * Standard normal CDF (Zelen & Severo 26.2.17 approximation, |error| < 7.5e-8). Duplicated from
+ * gex-depth.ts on purpose (same reason that file gives for its own copy): importing across
+ * modules here would be needless coupling for a five-line pure function. Needed for the
+ * dividend-yield-correct CHARM formula below (charm's q·N(d1) term).
+ */
+function normCdf(x: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const poly =
+    t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  const p = normPdf(x) * poly;
+  return x >= 0 ? 1 - p : p;
+}
+
 /** Year fraction (ACT/365) from today (ET) to an expiry YYYY-MM-DD. <=0 → not tradeable. */
 function yearsToExpiry(expiry: string, todayYmd: string): number {
   const expMs = new Date(`${expiry}T16:00:00-04:00`).getTime(); // ~US market close ET
@@ -935,32 +973,50 @@ function vannaPerShare(spot: number, strike: number, t: number, sigma: number, q
 }
 
 /**
- * Closed-form Black-Scholes CHARM per share (delta decay) for r=q=0: φ(d1)·d2 / (2T).
+ * Closed-form Black-Scholes CHARM per share (delta decay), full dividend-yield term included.
  *
- * Derivation (verified against the textbook form): the standard charm for a CALL is
- *   charm_call = −φ(d1)·(2(r−q)T − d2·σ√T) / (2T·σ√T).
- * With r=q=0 the numerator collapses to −d2·σ√T, so
- *   charm_call = −φ(d1)·(−d2·σ√T)/(2T·σ√T) = φ(d1)·d2 / (2T).
- * This is "charm" in the standard sense: the change in delta per unit of CALENDAR time passing
- * (delta DECAY), i.e. −∂Δ/∂(time-to-expiry). NUMERICALLY VERIFIED: φ(d1)·d2/(2T) matches the
- * central finite-difference −∂Δ/∂T to ~1e-7 across S/K/T/σ test points (and equals +∂Δ/∂T's
- * negative — the same magnitude with the decay sign). Because Δ_put = Δ_call − 1, the two share
- * the same time-derivative → put charm EQUALS call charm at r=q=0, so charm is type-independent
- * exactly like gamma; the caller applies the dealer call(+)/put(−) sign at accumulation, identical
- * to the gamma/vanna pattern.
+ * charm = −dDelta/dT (delta decay per unit of calendar time passing, i.e. per year of T =
+ * time-to-expiry elapsing). For a CALL, Delta(T) = e^(−qT)·N(d1(T)); differentiating w.r.t. T
+ * (chain rule through both the e^(−qT) discount factor and d1(T)) and negating gives:
+ *   charm_call = e^(−qT) · ( q·N(d1) − φ(d1)·d1' ),  d1' = (σ²/2 − q)/(σ√T) − d1/(2T)   [r=0]
+ * For a PUT, Delta_put(T) = e^(−qT)·(N(d1)−1) = Delta_call(T) − e^(−qT), so:
+ *   charm_put = charm_call − q·e^(−qT)
+ * At q=0 both collapse to the SAME value (the formula this replaced, φ(d1)·d2/(2T) at r=q=0,
+ * kept as a regression test below) — but for q>0 (any real ETF/index dividend yield — SPY/QQQ/IWM
+ * are exactly the tickers this codebase already flags as dividend-yield-material for GEX, see
+ * gex-depth-validate.mjs's 9.5–21.7% raw BS-vs-provider gaps) call and put charm genuinely
+ * DIVERGE. The formula this replaced used the call-shaped expression for BOTH types (comment:
+ * "type-independent... like gamma"), which is only true at q=0 — it silently understated call
+ * charm (measured ~11% low at q=1.5%, T=0.18y) and used the outright wrong value for puts.
  *
+ * Found via CLQ-017 (BLACKOUT Claude<->Cursor cross-exam, 2026-09-05): GEX has a dedicated live
+ * provider-vs-closed-form validator; CHARM had neither that (Polygon's greeks don't carry charm —
+ * no provider ground truth exists to check against over the wire) nor even a cheap,
+ * dependency-free numerical check. Adding the independent finite-difference check
+ * (polygon-options-gex.test.ts) is what surfaced this.
+ *
+ * NUMERICALLY VERIFIED: both charm_call and charm_put match an INDEPENDENT central
+ * finite-difference of their own Delta(T) to ~1e-6 relative, across S/K/T/σ/q test points
+ * (including q=0, where the new formula must also reproduce the old one's output exactly).
  * Units: per-share charm per UNIT of time in YEARS (ACT/365), matching the year-fraction `t`
  * from yearsToExpiry → reads as delta decay per year. Returns 0 (skip) on non-finite inputs,
  * T<=0, or σ<=0 — SAME guard as vannaPerShare — never fabricated.
  */
-function charmPerShare(spot: number, strike: number, t: number, sigma: number, q = 0): number {
+function charmPerShare(
+  spot: number,
+  strike: number,
+  t: number,
+  sigma: number,
+  q = 0,
+  type: "call" | "put" = "call"
+): number {
   if (!(spot > 0) || !(strike > 0) || !(t > 0) || !(sigma > 0)) return 0;
   const sqrtT = Math.sqrt(t);
-  const r = 0;
-  const d1 = (Math.log(spot / strike) + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrtT);
-  const d2 = d1 - sigma * sqrtT;
-  // Full BS call charm at r=0: −φ(d1)·(−2qT − d2·σ√T) / (2T·σ√T). Collapses to φ(d1)·d2/(2T) when q=0.
-  const c = (-normPdf(d1) * (2 * (r - q) * t - d2 * sigma * sqrtT)) / (2 * t * sigma * sqrtT);
+  const d1 = (Math.log(spot / strike) + (0 - q + 0.5 * sigma * sigma) * t) / (sigma * sqrtT);
+  const d1prime = (0.5 * sigma * sigma - q) / (sigma * sqrtT) - d1 / (2 * t);
+  const discount = Math.exp(-q * t);
+  const callCharm = discount * (q * normCdf(d1) - normPdf(d1) * d1prime);
+  const c = type === "put" ? callCharm - q * discount : callCharm;
   return Number.isFinite(c) ? c : 0;
 }
 
@@ -1147,6 +1203,14 @@ const GEX_INDEX_WS_STALE_MS = (() => {
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 120_000;
 })();
 
+/** Ordinary clock skew — a future WS `updatedAt` must not read as infinitely fresh. */
+const GEX_WS_FUTURE_TOLERANCE_MS = 5_000;
+
+function gexWsTickFresh(updatedAt: number, now = Date.now()): boolean {
+  const ageMs = now - updatedAt;
+  return ageMs >= -GEX_WS_FUTURE_TOLERANCE_MS && Math.max(0, ageMs) < GEX_INDEX_WS_STALE_MS;
+}
+
 /**
  * Best-effort live WS spot for an index options root (only I:SPX / I:VIX are on the indices socket).
  *
@@ -1171,7 +1235,7 @@ async function liveWsIndexSpot(
     const { indexStore } = await import("../ws/polygon-socket");
     const ws = indexStore[root];
     if (!ws || !(ws.price > 0) || !ws.updatedAt) return null;
-    if (now - ws.updatedAt >= GEX_INDEX_WS_STALE_MS) return null;
+    if (!gexWsTickFresh(ws.updatedAt, now)) return null;
     const changeAuthoritative = ws.open_source === "rest";
     return {
       price: ws.price,
@@ -1194,7 +1258,7 @@ async function liveWsStockSpot(
     const { getStockLiveCandle } = await import("../ws/stock-candle-store");
     const snap = getStockLiveCandle(ticker);
     if (!snap.current || !(snap.current.close > 0)) return null;
-    if (now - snap.updatedAt >= GEX_INDEX_WS_STALE_MS) return null;
+    if (!snap.updatedAt || !gexWsTickFresh(snap.updatedAt, now)) return null;
     return { price: snap.current.close };
   } catch {
     return null;
@@ -1220,12 +1284,16 @@ async function liveWsStockSpot(
  */
 async function fetchSpotFromPrevBar(
   symbol: string
-): Promise<{ price: number; change_pct: number } | null> {
+): Promise<{ price: number; change_pct: null } | null> {
   try {
     const { fetchPreviousDayBar } = await import("./polygon-largo");
-    const bar = await fetchPreviousDayBar(symbol);
+    // Last-resort previous-session close — not a live quote. Allow ISR on routes (homepage
+    // `revalidate = 3600`) that hit this path when WS + snapshot are down; `no-store` here
+    // was forcing fully dynamic renders (FINDINGS 2026-08-30 homepage ISR).
+    const bar = await fetchPreviousDayBar(symbol, { next: { revalidate: 3600 } });
     if (!bar || !(bar.c > 0)) return null;
-    return { price: bar.c, change_pct: 0 };
+    // Prior close is not today's session change — never fabricate 0%.
+    return { price: bar.c, change_pct: null };
   } catch {
     return null;
   }
@@ -1239,7 +1307,7 @@ async function fetchSpotFromPrevBar(
 async function resolveSpotSnapshotLastResort(
   optionsRoot: string,
   isIndex: boolean
-): Promise<{ price: number; change_pct: number; source: "prev_bar" | "synthetic" } | null> {
+): Promise<{ price: number; change_pct: number | null; source: "prev_bar" | "synthetic" } | null> {
   if (isIndex) {
     // I:SPX prev is often plan-gated; SPY prev × 10 tracks within ~0.4% (data-integrity C4).
     if (optionsRoot === "I:SPX") {
@@ -1255,9 +1323,42 @@ async function resolveSpotSnapshotLastResort(
   return null;
 }
 
+/**
+ * Index REST snapshots roll `previous_close` forward to equal `close` after the cash session,
+ * so `session.change_percent` reads 0% while SPY/QQQ still carry the last session's move.
+ * Rebase from an explicit prev_close when possible; for I:SPX fall back to SPY's session %.
+ */
+async function resolveIndexRestChangePct(
+  optionsRoot: string,
+  price: number,
+  snap: { price?: number; prev_close?: number | null; change_pct?: number | null } | null,
+  reported: number | null,
+): Promise<number | null> {
+  if (reported != null && Number.isFinite(reported) && reported !== 0) return reported;
+
+  const rebased = rebaseChangePct(price, snap);
+  if (rebased != null && rebased !== 0) return rebased;
+
+  const root = optionsRoot.toUpperCase();
+  if (root === "I:SPX" || root === "SPX") {
+    const spy = await fetchStockSnapshot("SPY").catch(() => null);
+    if (spy?.change_pct != null && Number.isFinite(spy.change_pct) && spy.change_pct !== 0) {
+      return spy.change_pct;
+    }
+  }
+
+  const prevBar = await fetchSpotFromPrevBar(root.startsWith("I:") ? root : optionsRoot);
+  if (prevBar?.change_pct != null && Number.isFinite(prevBar.change_pct) && prevBar.change_pct !== 0) {
+    return prevBar.change_pct;
+  }
+
+  // Index REST often reports 0% after the close when prev_close rolled forward — treat as unknown.
+  return reported === 0 ? null : reported;
+}
+
 async function resolveSpotSnapshot(
   optionsRoot: string
-): Promise<{ price: number; change_pct: number; source: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" } | null> {
+): Promise<{ price: number; change_pct: number | null; source: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" } | null> {
   const root = optionsRoot.toUpperCase();
   const isIndex = root.startsWith("I:") || Object.values(INDEX_ROOTS).includes(root);
 
@@ -1277,7 +1378,7 @@ async function resolveSpotSnapshot(
       const restSnap = await fetchIndexSnapshot(root).catch(() => null);
       return {
         price: ws.price,
-        change_pct: ws.change_pct ?? rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0,
+        change_pct: ws.change_pct ?? rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? null,
         source: "ws",
       };
     }
@@ -1300,7 +1401,7 @@ async function resolveSpotSnapshot(
       const restSnap = await fetchStockSnapshot(root).catch(() => null);
       return {
         price: ws.price,
-        change_pct: rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0,
+        change_pct: rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? null,
         source: "ws",
       };
     }
@@ -1312,7 +1413,11 @@ async function resolveSpotSnapshot(
     : await fetchStockSnapshot(root).catch(() => null);
   const restPrice = snap && snap.price > 0 ? snap.price : 0;
   if (restPrice > 0) {
-    return { price: restPrice, change_pct: snap?.change_pct ?? 0, source: "rest" };
+    let changePct = snap?.change_pct ?? null;
+    if (isIndex) {
+      changePct = await resolveIndexRestChangePct(root, restPrice, snap, changePct);
+    }
+    return { price: restPrice, change_pct: changePct, source: "rest" };
   }
   const prevBar = await resolveSpotSnapshotLastResort(root, isIndex);
   if (prevBar && prevBar.price > 0) return prevBar;
@@ -1346,6 +1451,36 @@ const cachedHeatmaps = new Map<string, { at: number; data: GexHeatmap }>();
  * the same key DO share one build.
  */
 const heatmapInflight = new Map<string, Promise<GexHeatmap | null>>();
+/** Cross-replica build lock TTL — bounds herd when N ECS tasks miss cache together (CQ-112). */
+const HEATMAP_CLUSTER_BUILD_LOCK_SEC = 180;
+
+/** When another replica holds the cluster build lock, poll shared cache for its result. */
+async function pollPeerHeatmapCache(
+  cacheKey: string,
+  now: number,
+  ttlMs: number,
+  budgetMs: number
+): Promise<GexHeatmap | null> {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    const mem = cachedHeatmaps.get(cacheKey);
+    if (mem && gexHeatmapCacheEntryWithinTtl(mem.at, now, ttlMs)) {
+      return mem.data;
+    }
+    try {
+      const { sharedCacheGet } = await import("../shared-cache");
+      const redisHit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
+      if (redisHit && gexHeatmapCacheEntryWithinTtl(redisHit.at, now, ttlMs)) {
+        setCachedHeatmap(cacheKey, redisHit);
+        return redisHit.data;
+      }
+    } catch {
+      /* redis optional */
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return null;
+}
 
 /** Per-replica last usable matrix — handoff when Redis + inflight are both cold. */
 const lastGoodHeatmapLocal = new Map<string, GexHeatmap>();
@@ -1702,9 +1837,10 @@ function pickStaleHeatmapForHandoff(
   let any: { at: number; data: GexHeatmap } | null = null;
   for (const entry of [mem, redisHit]) {
     if (!entry) continue;
-    const age = now - entry.at;
-    if (age < maxStaleMs && (!withinStale || entry.at > withinStale.at)) withinStale = entry;
-    if (!any || entry.at > any.at) any = entry;
+    if (gexHeatmapCacheEntryWithinTtl(entry.at, now, maxStaleMs) && (!withinStale || entry.at > withinStale.at)) {
+      withinStale = entry;
+    }
+    if (entry.at <= now + GEX_WS_FUTURE_TOLERANCE_MS && (!any || entry.at > any.at)) any = entry;
   }
   return (withinStale ?? any)?.data ?? null;
 }
@@ -1984,8 +2120,8 @@ const LOW_PRICE_MIN_STRIKES_BEFORE_FULL = 12;
  *
  * 45 is chosen from measured ladders: ASTS 30 escalates, SOFI 41 escalates, NVDA 78 and SPY 266 do
  * not. SPX is dense by construction and never comes near it. The unfiltered fetch is page-bounded
- * (HEATMAP_UNFILTERED_PAGE_GUARD), and the result is only adopted when it is strictly richer, so
- * the worst case is a bounded extra fetch that changes nothing.
+ * (shares HEATMAP_PAGE_GUARD — see below), and the result is only adopted when it is strictly
+ * richer, so the worst case is a bounded extra fetch that changes nothing.
  */
 const THIN_LADDER_STRIKES_BEFORE_FULL = 45;
 
@@ -2001,7 +2137,22 @@ export function shouldEscalateToFullChain(strikesInBand: number, spot: number): 
   if (spot <= LOW_PRICE_FULL_CHAIN_SPOT_MAX && strikesInBand < LOW_PRICE_MIN_STRIKES_BEFORE_FULL) return true;
   return strikesInBand < THIN_LADDER_STRIKES_BEFORE_FULL;
 }
-const HEATMAP_UNFILTERED_PAGE_GUARD = 12;
+
+/**
+ * Live-caught (2026-09-05): NFLX and GOOGL both hit this guard mid-session ("hit 12-page guard
+ * with next_url still set — chain incomplete, walls/OI/IV understated"). This is the SAME
+ * "chasing the live chain size with a static number" bug class already fixed twice elsewhere in
+ * this file for fetchPolygonOiByExpiry (see its own doc comment above) and for the OI-by-expiry
+ * term-structure loop — except this instance was never migrated. It was written as a flat 12
+ * assuming escalation only ever fires for "tiny low-priced chains (NIO-class)" (see this
+ * function's own doc comment above), but shouldEscalateToFullChain fires for ANY thin ladder
+ * regardless of price (the ASTS fix), so it now also escalates megacap names with hundreds of
+ * strikes across many expiries — exactly what NFLX/GOOGL are. Shares HEATMAP_PAGE_GUARD directly
+ * (env-overridable, floored at 40) rather than inventing a fourth bound, same precedent as the
+ * OI-by-expiry term-structure loop above.
+ */
+const HEATMAP_UNFILTERED_PAGE_GUARD = HEATMAP_PAGE_GUARD;
+export const __test_heatmapUnfilteredPageGuard = HEATMAP_UNFILTERED_PAGE_GUARD;
 
 /**
  * Depth-ladder geometry: +/-8% of spot in 0.5% steps -> 32 bands plus spot.
@@ -2095,7 +2246,12 @@ async function fetchHeatmapBandLoHi(
   return { contracts: out, truncated };
 }
 
-/** Full chain snapshot (no strike filter) — only for tiny low-priced chains (NIO-class). */
+/**
+ * Full chain snapshot (no strike filter) — used on ANY thin-ladder escalation
+ * (shouldEscalateToFullChain fires regardless of spot price, the ASTS fix), not just
+ * tiny low-priced chains. Megacap names (NFLX, GOOGL) escalate here too when their
+ * banded pull returns a sparse ladder — see HEATMAP_UNFILTERED_PAGE_GUARD below.
+ */
 async function fetchHeatmapBandUnfiltered(underlying: string): Promise<{ contracts: ChainContract[]; truncated: boolean }> {
   const params = new URLSearchParams({ limit: "250", apiKey: KEY });
   const out: ChainContract[] = [];
@@ -2363,28 +2519,25 @@ function fmtElapsed(ms: number): string {
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
-/** Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals. */
-function wallsOf(strikeTotals: Record<string, number>): {
+/**
+ * Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals.
+ *
+ * Delegates to `wallsFromStrikeTotals` (gex-cross-validation-core.ts) rather than reimplementing
+ * the scan — this was a fourth independent copy of the same unconstrained "argmax anywhere" bug
+ * already found and fixed in `gex-intraday-adjust-core.ts` and in that shared helper itself
+ * (measured live: a "call wall" landing below spot, a "put wall" above it). Pass `spot` so the
+ * wall used for `wall_changes` narration AND the `wall_broken` alert (WALL_BROKEN_TICKERS =
+ * SPY/SPX) is side-constrained — without it, a bigger-magnitude strike on the wrong side of spot
+ * silently defeats the alert or mislabels the shift text.
+ */
+function wallsOf(
+  strikeTotals: Record<string, number>,
+  spot?: number
+): {
   callWall: number | null;
   putWall: number | null;
 } {
-  let callWall: number | null = null;
-  let putWall: number | null = null;
-  let maxPos = 0;
-  let maxNeg = 0;
-  for (const [s, g] of Object.entries(strikeTotals)) {
-    const strike = Number(s);
-    if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) {
-      maxPos = g;
-      callWall = strike;
-    }
-    if (g < maxNeg) {
-      maxNeg = g;
-      putWall = strike;
-    }
-  }
-  return { callWall, putWall };
+  return wallsFromStrikeTotals(strikeTotals, spot);
 }
 
 /**
@@ -2481,7 +2634,10 @@ const CHARM_SHIFT_SPEC: ShiftMetricSpec = {
  */
 function computeMetricShift(
   ring: GexHistorySnapshot[],
-  current: { ts: number; flip: number | null; strike_totals: Record<string, number> },
+  // `spot` only carried by the GEX-metric caller (computeGexShift) — VEX/DEX/CHARM shifts have no
+  // spot-relative "resistance/support" concept, so their wall picks stay unconstrained (spot
+  // undefined) exactly as before.
+  current: { ts: number; spot?: number; flip: number | null; strike_totals: Record<string, number> },
   pick: (s: GexHistorySnapshot) => {
     strike_totals: Record<string, number>;
     flip: number | null;
@@ -2530,8 +2686,11 @@ function computeMetricShift(
   };
 
   // Wall changes (current walls recomputed from totals; earlier from the snapshot's totals).
-  const curWalls = wallsOf(now);
-  const earWalls = wallsOf(earlier);
+  // Each side is constrained against ITS OWN spot at that moment — the current wall against
+  // current.spot, the earlier wall against the baseline snapshot's own spot — not a shared spot,
+  // since spot has moved between the two snapshots being diffed.
+  const curWalls = wallsOf(now, current.spot);
+  const earWalls = wallsOf(earlier, baselineSnap.spot);
   const wall_changes = {
     call_wall: wallChange(curWalls.callWall, earWalls.callWall, now, earlier),
     put_wall: wallChange(curWalls.putWall, earWalls.putWall, now, earlier),
@@ -2697,7 +2856,7 @@ export function computeGexEvents(
     n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 
   // Recompute the prior's walls + net total from its stored per-strike totals (no extra calls).
-  const priorWalls = wallsOf(prior.strike_totals);
+  const priorWalls = wallsOf(prior.strike_totals, prior.spot);
   let priorTotal = 0;
   for (const v of Object.values(prior.strike_totals)) {
     const n = Number(v);
@@ -2848,7 +3007,7 @@ export async function fetchGexHeatmap(
     // Serve within TTL even when the matrix was built before the ET date rollover — finalize
     // prunes past expiry columns instead of forcing a cold rebuild (which can hand off unpruned
     // stale data via awaitHeatmapBuildWithBlockCap and trip data-correctness at midnight).
-    if (mem && now - mem.at < ttlMs) {
+    if (mem && gexHeatmapCacheEntryWithinTtl(mem.at, now, ttlMs)) {
       return finalizeHeatmapForServe(cacheKey, mem.data);
     }
 
@@ -2856,7 +3015,7 @@ export async function fetchGexHeatmap(
     try {
       const { sharedCacheGet } = await import("../shared-cache");
       redisHit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
-      if (redisHit && now - redisHit.at < ttlMs) {
+      if (redisHit && gexHeatmapCacheEntryWithinTtl(redisHit.at, now, ttlMs)) {
         setCachedHeatmap(cacheKey, redisHit);
         return finalizeHeatmapForServe(cacheKey, redisHit.data);
       }
@@ -2903,9 +3062,33 @@ export async function fetchGexHeatmap(
     });
   }
 
+  let clusterBuildLockKey: string | null = null;
+  let clusterBuildLockAcquired = true;
+  try {
+    const { sharedCacheSetNx } = await import("../shared-cache");
+    clusterBuildLockKey = `gex:heatmap:build-lock:${inflightKey}`;
+    clusterBuildLockAcquired = await sharedCacheSetNx(
+      clusterBuildLockKey,
+      { at: now },
+      HEATMAP_CLUSTER_BUILD_LOCK_SEC
+    );
+  } catch {
+    clusterBuildLockAcquired = true;
+  }
+
+  if (!clusterBuildLockAcquired) {
+    const peer = await pollPeerHeatmapCache(cacheKey, now, ttlMs, gexHeatmapMaxBlockMs());
+    if (peer) return finalizeHeatmapForServe(cacheKey, peer);
+  }
+
   const build = buildGexHeatmapUncached(root, optionsRoot, cacheKey, now, baseTtlMs).finally(
     () => {
       heatmapInflight.delete(inflightKey);
+      if (clusterBuildLockKey) {
+        void import("../shared-cache").then(({ sharedCacheDel }) =>
+          sharedCacheDel(clusterBuildLockKey!).catch(() => undefined)
+        );
+      }
     }
   );
   heatmapInflight.set(inflightKey, build);
@@ -2922,7 +3105,7 @@ export async function fetchGexHeatmap(
 async function buildGexHeatmapFromUwStrikeExposures(
   root: string,
   spot: number,
-  changePct: number,
+  changePct: number | null,
   now: number,
   cacheKey: string,
   ttlMs: number
@@ -2998,11 +3181,20 @@ async function buildGexHeatmapFromUwStrikeExposures(
     const charmZero = computeZeroGammaFlip(charmStrikeTotals, spot);
     const charmRegime = computeCharmRegime(totalCharm);
 
+    const calculatedAt = new Date(now).toISOString();
     const heatmap: GexHeatmap = {
       underlying: root,
       spot,
       change_pct: changePct,
-      asof: new Date(now).toISOString(),
+      asof: calculatedAt,
+      calculation_id: `${root}:${now}`,
+      calculated_at: calculatedAt,
+      // spot was resolved by the caller just before this fallback ran — `now` is the closest
+      // instant this function has to it. chain_timestamp is this fallback's OWN read (the UW
+      // strike-exposures fetch above), a genuinely later instant.
+      spot_timestamp: calculatedAt,
+      chain_timestamp: new Date().toISOString(),
+      expires_at: new Date(now + ttlMs).toISOString(),
       expiries: [today],
       near_term_expiries: [today],
       strikes,
@@ -3099,6 +3291,10 @@ async function buildGexHeatmapUncached(
   const snap = await resolveSpotSnapshot(optionsRoot);
   const spot = snap?.price ?? 0;
   const spotSource = snap?.source;
+  // Captured the instant the spot read actually completed — genuinely earlier than the chain
+  // read below, and both earlier than `asof`/`calculated_at` (stamped once the whole build
+  // finishes). See the calculation-envelope comment on GexHeatmap for why these are separate.
+  const spotTimestamp = new Date().toISOString();
   // Graceful empty: no spot (thin / unknown / dead name) → valid empty payload, NOT a throw.
   // CRITICAL: cache this empty result with the SAME ctx the sibling empty paths pass (below),
   // otherwise a dead/unknown ticker re-runs resolveSpotSnapshot — a fresh Polygon spot fetch —
@@ -3108,14 +3304,14 @@ async function buildGexHeatmapUncached(
   if (!(spot > 0)) {
     return emptyHeatmap(root, {
       spot: 0,
-      changePct: 0,
+      changePct: null,
       now,
       cacheKey,
       ttlMs: Math.min(ttlMs, EMPTY_SPOT_NEGATIVE_TTL_MS),
       spotSource: undefined,
     });
   }
-  const changePct = snap?.change_pct ?? 0;
+  const changePct = snap?.change_pct ?? null;
 
   // Feed the per-ticker fast-move ring on every fresh PRESET compute so isHeatmapFastMove can
   // actually fire on the next cache-read; without this the ring stays empty and the bypass above
@@ -3130,6 +3326,7 @@ async function buildGexHeatmapUncached(
   ]);
   const contracts = chainResult.contracts;
   const chainTruncated = chainResult.truncated;
+  const chainTimestamp = new Date().toISOString();
   if (!contracts.length) {
     console.warn(
       `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — trying UW strike-exposure fallback.`
@@ -3257,10 +3454,12 @@ async function buildGexHeatmapUncached(
     // CHARM: closed-form charm × oi × 100 × spot, call +/put −. SAME guard as vanna (skip when
     // T<=0 or σ<=0 → charmPerShare returns 0). dollar-charm scaling MIRRORS dollar-vanna (the
     // notional `× 100 × spot` convention, per-year — DISTINCT from GEX's per-1%-move × spot² × 0.01
-    // scale above); the per-unit-time is YEARS of time-to-expiry (ACT/365), so
-    // it reads as net dealer delta decay per year. Charm is type-independent (put charm = call
-    // charm at r=q=0, like gamma); the dealer call(+)/put(−) sign is applied here at accumulation.
-    const cps = charmPerShare(spot, strike, t, iv, dividendYieldQ);
+    // scale above); the per-unit-time is YEARS of time-to-expiry (ACT/365), so it reads as net
+    // dealer delta decay per year. Charm is type-independent ONLY at q=0 — with a real dividend
+    // yield (SPY/QQQ/IWM etc.) call and put charm diverge, so the contract's own `type` is passed
+    // through to get the correct per-type value (see charmPerShare's docstring); the dealer
+    // call(+)/put(−) sign is still applied here at accumulation.
+    const cps = charmPerShare(spot, strike, t, iv, dividendYieldQ, type === "put" ? "put" : "call");
     if (cps !== 0) {
       const signedCharm = sign * cps * oi * sharesPerContract * spot;
       if (signedCharm !== 0 && Number.isFinite(signedCharm)) {
@@ -3647,11 +3846,18 @@ async function buildGexHeatmapUncached(
     historyContext = undefined;
   }
 
+  const calculatedAtDate = new Date();
+  const calculatedAt = calculatedAtDate.toISOString();
   const heatmap: GexHeatmap = {
     underlying: root,
     spot,
     change_pct: changePct,
-    asof: new Date().toISOString(),
+    asof: calculatedAt,
+    calculation_id: `${root}:${calculatedAtDate.getTime()}`,
+    calculated_at: calculatedAt,
+    spot_timestamp: spotTimestamp,
+    chain_timestamp: chainTimestamp,
+    expires_at: new Date(calculatedAtDate.getTime() + ttlMs).toISOString(),
     expiries,
     near_term_expiries: nearKeep,
     strikes: finalStrikes,
@@ -3749,13 +3955,19 @@ async function buildGexHeatmapUncached(
  */
 function emptyHeatmap(
   underlying: string,
-  ctx?: { spot?: number; changePct?: number; now?: number; cacheKey?: string; ttlMs?: number; spotSource?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" }
+  ctx?: { spot?: number; changePct?: number | null; now?: number; cacheKey?: string; ttlMs?: number; spotSource?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" }
 ): GexHeatmap {
+  const calculatedAtMs = ctx?.now ?? Date.now();
+  const calculatedAt = new Date(calculatedAtMs).toISOString();
   const heatmap: GexHeatmap = {
     underlying,
     spot: ctx?.spot ?? 0,
-    change_pct: ctx?.changePct ?? 0,
-    asof: new Date().toISOString(),
+    change_pct: ctx?.changePct ?? null,
+    asof: calculatedAt,
+    calculation_id: `${underlying}:${calculatedAtMs}`,
+    calculated_at: calculatedAt,
+    // No real spot/chain read backs this empty payload — omitted rather than fabricated.
+    expires_at: ctx?.ttlMs != null ? new Date(calculatedAtMs + ctx.ttlMs).toISOString() : undefined,
     expiries: [],
     near_term_expiries: [],
     strikes: [],
@@ -3840,7 +4052,7 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
   const ttlMs = fastMove ? Math.min(baseTtlMs, GEX_HEATMAP_FAST_MOVE_TTL_MS) : baseTtlMs;
 
   const mem = cachedHeatmaps.get(cacheKey);
-  if (mem && now - mem.at < ttlMs) return finalizeHeatmapForServe(cacheKey, mem.data);
+  if (mem && gexHeatmapCacheEntryWithinTtl(mem.at, now, ttlMs)) return finalizeHeatmapForServe(cacheKey, mem.data);
 
   let redisHit: { at: number; data: GexHeatmap } | null = null;
   try {
@@ -3849,7 +4061,7 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
       sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
     ]);
-    if (redisHit && now - redisHit.at < ttlMs) {
+    if (redisHit && gexHeatmapCacheEntryWithinTtl(redisHit.at, now, ttlMs)) {
       setCachedHeatmap(cacheKey, redisHit);
       return finalizeHeatmapForServe(cacheKey, redisHit.data);
     }
@@ -3886,7 +4098,6 @@ export async function readGexHeatmapCacheOnly(underlying: string): Promise<GexHe
   if (!root) return null;
   const cacheKey = `${GEX_HEATMAP_CACHE_PREFIX}:${root}`;
   const now = Date.now();
-  const maxStaleMs = gexHeatmapMaxStaleMs();
 
   let entry = cachedHeatmaps.get(cacheKey) ?? null;
   if (!entry) {
@@ -3902,7 +4113,7 @@ export async function readGexHeatmapCacheOnly(underlying: string): Promise<GexHe
     }
   }
 
-  if (!entry || now - entry.at > maxStaleMs) return null;
+  if (!entry || gexHeatmapCacheEntryStale(entry.at, now)) return null;
   return finalizeHeatmapForServe(cacheKey, entry.data);
 }
 
@@ -3930,6 +4141,42 @@ export type GexHeatmapCachePeek = {
    *  ≥2 positioning-history snapshots when that entry was built) — never conflated. */
   events_count: number | null;
 };
+
+/**
+ * Clamps a shared-cache entry's age to a minimum of 0 seconds. `entry.at` is a `Date.now()`
+ * stamp written by WHICHEVER ECS replica built the cache entry (in-memory write, or the shared
+ * Redis fallback another replica populated) — so a moment of ordinary cross-replica clock skew
+ * can make THIS replica's `Date.now()` read fractionally behind the writer's, producing a
+ * negative age for an entry that is in fact brand new. `Math.round` does not fix this (it
+ * rounds a small negative toward 0, not away from it), so an unclamped caller can still surface
+ * e.g. `age_sec: -1` on the admin GEX health panel (`AdminBieDashboard.tsx`'s `t.age_sec`) for a
+ * cache entry built moments ago. Same "future stamp is clock skew, not a negative age" fix shape
+ * already applied to `et-session-facts.ts`'s `ageSecondsFromIso` and
+ * `helix-thermal-compare.ts`'s local `ageSecondsFromIso` — this is the one age-computation call
+ * site in this file that had not yet been clamped.
+ */
+export function clampedCacheAgeSec(entryAtMs: number, nowMs: number): number {
+  return Math.max(0, Math.round((nowMs - entryAtMs) / 1000));
+}
+
+/** True when a shared heatmap cache entry is too old or untrustably future-dated to treat as fresh. */
+export function gexHeatmapCacheEntryStale(entryAtMs: number, nowMs: number): boolean {
+  const ageMs = nowMs - entryAtMs;
+  if (ageMs < -GEX_WS_FUTURE_TOLERANCE_MS) return true;
+  return Math.max(0, ageMs) > gexHeatmapMaxStaleMs();
+}
+
+/** True when a cache entry.at is within `ttlMs` of `nowMs` and not clock-skewed into the future
+ *  beyond `GEX_WS_FUTURE_TOLERANCE_MS`. Despite the name (kept for #3834's git blame), this is a
+ *  generic TTL-freshness check shared by every in-memory/Redis cache-hit gate in this module
+ *  (heatmap fetch, 0DTE bundle, positioning bundle, IV term structure, realized vol) — they all
+ *  had the identical `now - entry.at < ttlMs` shape, which reads a future-skewed `at` as age 0
+ *  and serves stale-but-"fresh" data indefinitely. See findings-staging 2026-09-05 for both PRs. */
+export function gexHeatmapCacheEntryWithinTtl(entryAtMs: number, nowMs: number, ttlMs: number): boolean {
+  const ageMs = nowMs - entryAtMs;
+  if (ageMs < -GEX_WS_FUTURE_TOLERANCE_MS) return false;
+  return Math.max(0, ageMs) < ttlMs;
+}
 
 /**
  * Admin-health PEEK at the shared `gex-heatmap:{ticker}` cache entry — READ-ONLY, and
@@ -3971,14 +4218,14 @@ export async function peekGexHeatmapCache(ticker: string): Promise<GexHeatmapCac
     };
   }
 
-  const ageMs = Date.now() - entry.at;
+  const now = Date.now();
   return {
     ticker: root,
     cached: true,
     last_compute_at: new Date(entry.at).toISOString(),
-    age_sec: Math.round(ageMs / 1000),
+    age_sec: clampedCacheAgeSec(entry.at, now),
     ttl_sec: Math.round(ttlMs / 1000),
-    stale: ageMs > gexHeatmapMaxStaleMs(),
+    stale: gexHeatmapCacheEntryStale(entry.at, now),
     spot: entry.data.spot > 0 ? entry.data.spot : null,
     events_count: entry.data.events ? entry.data.events.length : null,
   };
@@ -4411,7 +4658,7 @@ export async function fetchPolygonPositioningBundle(
   const cacheKey = `${sym}:${expiry}`;
   const now = Date.now();
   const cached = positioningCache.get(cacheKey);
-  if (cached && now - cached.at < positioningCacheMs()) {
+  if (cached && gexHeatmapCacheEntryWithinTtl(cached.at, now, positioningCacheMs())) {
     return cached.bundle;
   }
 
@@ -4556,7 +4803,7 @@ export async function fetchPolygonIvTermStructure(
   const root = ticker.toUpperCase();
   const now = Date.now();
   const cached = ivTermCache.get(root);
-  if (cached && now - cached.at < IV_TERM_CACHE_MS) return cached.data;
+  if (cached && gexHeatmapCacheEntryWithinTtl(cached.at, now, IV_TERM_CACHE_MS)) return cached.data;
 
   const today = todayEtYmd();
   const todayMs = new Date(today).getTime();
@@ -4671,7 +4918,7 @@ export async function fetchPolygonRealizedVol(
   const root = ticker.toUpperCase();
   const now = Date.now();
   const cached = realizedVolCache.get(root);
-  if (cached && now - cached.at < REALIZED_VOL_CACHE_MS) return cached.data;
+  if (cached && gexHeatmapCacheEntryWithinTtl(cached.at, now, REALIZED_VOL_CACHE_MS)) return cached.data;
 
   // Import fetchAggBars from polygon-largo to avoid duplicating the bar-fetch logic.
   const { fetchAggBars } = await import("./polygon-largo");

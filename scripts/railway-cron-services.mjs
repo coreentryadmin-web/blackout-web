@@ -49,6 +49,7 @@ export const CRON_SERVICE_NAMES = {
   // entry is what blackout-infra sync-cron-schedules.mjs needs to provision EventBridge rules.
   "swing-discovery": "Swing-Discovery",
   "swing-active-refresh": "Swing-Active-Refresh",
+  "legacy-live-sync": "Legacy-Live-Sync",
 };
 
 /** All cron job keys that have a cron config railway.<key>.toml in the repo. */

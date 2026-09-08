@@ -41,7 +41,15 @@ export function earningsReportTimeEt(time: string | null): string | null {
 }
 
 export function impactFromEarningsImportance(importance: number | null | undefined): MeridianImpact {
-  if (importance == null || !Number.isFinite(importance)) return "high";
+  // An unrated print (Benzinga leaves `importance` null for a large share of names — see
+  // meridian-earnings-data-inventory.mjs's --min-importance cohort guard) is an ABSENCE of
+  // evidence, not evidence of high importance. This mirrors the rule meridian-em-priority.ts
+  // already states explicitly: "unknown ranks BELOW a real 0 — 'we do not know how important
+  // this is' is weaker evidence than 'we know it is unimportant'". MeridianImpact has no
+  // separate "unknown" tier, so an unrated print maps to the WEAKEST bucket ("low"), never the
+  // strongest — the opposite of what this returned before, which let every unrated name crowd
+  // the "High Impact" strip/count indistinguishably from a confirmed importance>=4 mega-cap print.
+  if (importance == null || !Number.isFinite(importance)) return "low";
   if (importance >= 4) return "high";
   if (importance >= 2) return "medium";
   return "low";
@@ -123,10 +131,6 @@ export function benzingaRowToTimelineInput(row: BenzingaStructuredEarnings): Ear
   };
 }
 
-function earningsTimelineKey(ticker: string, date: string): string {
-  return `${ticker.toUpperCase()}:${date.slice(0, 10)}`;
-}
-
 /**
  * Benzinga calendar rows → timeline inputs (sorted by report date).
  */
@@ -138,12 +142,27 @@ export function benzingaRowsToTimelineInputs(
     .sort((a, b) => (a.report_date ?? "").localeCompare(b.report_date ?? ""));
 }
 
-/** Overlay Polygon chain-IV expected move onto timeline rows (keyed by ticker). */
+/**
+ * Overlay Polygon chain-IV expected move onto timeline rows (keyed by ticker).
+ *
+ * WITHHELD once the row's own print has already landed (`row.is_printed`, set upstream from
+ * Benzinga's `actual_eps`/`actual_revenue` presence on THIS row — see `benzingaToCalendarRow`).
+ * Same defect shape as #3482 (`meridian-earnings-intel.ts`'s live chain-IV re-derivation for an
+ * already-printed name), found independently here: `loadMeridianEarningsTimeline` only keeps rows
+ * with `report_date >= todayYmd`, so a same-day BMO print that has already reported by the time a
+ * member loads the page mid-session still passes that filter and reaches this overlay. The live
+ * Polygon chain fetched afterward prices the POST-print regime (the very move this is supposed to
+ * be a pre-print expectation OF), and `meridian-timeline.ts` concatenates the two into one string
+ * a member actually reads: `"NVDA earnings ~7.7% implied move · printed"` — asserting a
+ * forward-looking expected move for an event the same label says has already happened. Withholding
+ * (not just relabeling) matches this repo's established fix for this exact bug shape.
+ */
 export function overlayTimelineExpectedMoves(
   rows: EarningsTimelineInput[],
   emByTicker: Map<string, number | null>
 ): EarningsTimelineInput[] {
   return rows.map((row) => {
+    if (row.is_printed) return row;
     const em = emByTicker.get(row.ticker.trim().toUpperCase());
     if (em == null) return row;
     return { ...row, expected_move_pct: em, source: row.source ?? "earnings_calendar" };
@@ -173,66 +192,6 @@ export function parseNextEarningsFromBenzinga(
     is_confirmed:
       row.date_status === "confirmed" ? true : row.date_status === "projected" ? false : null,
   };
-}
-
-/**
- * @deprecated UW grid removed — use benzingaRowsToTimelineInputs + overlayTimelineExpectedMoves.
- * Kept for tests migrating off the old merge shape.
- */
-export function mergeEarningsTimelineSources(
-  benzingaRows: BenzingaStructuredEarnings[],
-  gridRows: EarningsTimelineInput[]
-): EarningsTimelineInput[] {
-  const byKey = new Map<string, EarningsTimelineInput>();
-  const benzingaByTicker = new Map<string, BenzingaStructuredEarnings>();
-
-  for (const row of benzingaRows) {
-    byKey.set(earningsTimelineKey(row.ticker, row.date), benzingaRowToTimelineInput(row));
-    const prev = benzingaByTicker.get(row.ticker);
-    if (!prev || row.date < prev.date) benzingaByTicker.set(row.ticker, row);
-  }
-
-  for (const grid of gridRows) {
-    const ticker = grid.ticker.trim().toUpperCase();
-    const date = grid.report_date?.slice(0, 10);
-    if (!ticker || !date) continue;
-    const key = earningsTimelineKey(ticker, date);
-    const existing = byKey.get(key);
-    if (existing) {
-      byKey.set(key, {
-        ...existing,
-        expected_move_pct: grid.expected_move_pct ?? existing.expected_move_pct,
-        when: existing.when ?? grid.when,
-        source: existing.source ?? "earnings_calendar",
-      });
-      continue;
-    }
-
-    const bz = benzingaByTicker.get(ticker);
-    if (bz && bz.date !== date && bz.date_status === "confirmed") {
-      continue;
-    }
-    byKey.set(key, {
-      ...grid,
-      ticker,
-      report_date: date,
-      source: "chain_iv",
-    });
-  }
-
-  return [...byKey.values()].sort((a, b) => (a.report_date ?? "").localeCompare(b.report_date ?? ""));
-}
-
-/** @deprecated Use mergeEarningsTimelineSources */
-export function mergeBenzingaTimelineRows(
-  existing: Map<string, EarningsTimelineInput>,
-  benzingaRows: BenzingaStructuredEarnings[]
-): Map<string, EarningsTimelineInput> {
-  const grid = [...existing.values()];
-  const merged = mergeEarningsTimelineSources(benzingaRows, grid);
-  const out = new Map<string, EarningsTimelineInput>();
-  for (const row of merged) out.set(row.ticker.toUpperCase(), row);
-  return out;
 }
 
 export function mergeStreetEstimates(

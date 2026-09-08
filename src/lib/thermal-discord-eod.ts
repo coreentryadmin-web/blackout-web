@@ -3,11 +3,14 @@
  */
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { sharedCacheSetNx } from "@/lib/shared-cache";
 
 /** After cash close until 4:30 PM ET — wide enough for 4:00 / 4:15 EventBridge ticks. */
 export function isThermalEodRecapDue(now = new Date()): boolean {
   if (isEtCashRth(now)) return false;
+  const sessionDay = todayEt(now);
+  if (!isTradingDayEt(sessionDay)) return false;
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     hour: "numeric",
@@ -25,9 +28,10 @@ export function thermalEodRecapDedupKey(sessionDate: string = todayEt()): string
 
 export async function claimThermalEodRecap(sessionDate: string, bypass = false): Promise<boolean> {
   if (bypass) return true;
+  // fail OPEN on a Redis error — a missed dedup window is a harmless duplicate post
   return sharedCacheSetNx(
     thermalEodRecapDedupKey(sessionDate),
     { at: new Date().toISOString() },
     20 * 60 * 60
-  );
+  ).catch(() => true);
 }

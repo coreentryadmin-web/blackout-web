@@ -2,6 +2,7 @@ import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import type { VectorUniverseSnapshot } from "./vector-universe";
+import { todayEtYmd } from "@/lib/providers/spx-session";
 
 mock.module("server-only", { namedExports: {} });
 
@@ -10,7 +11,14 @@ let dynamicTickers: string[] = [];
 let cacheStore: VectorUniverseSnapshot | null = null;
 let genericCache = new Map<string, unknown>();
 let fetchCalls: string[] = [];
+let fetchInFlight = 0;
+let maxFetchInFlight = 0;
 let wallSampleCalls: string[] = [];
+let wallSampleWrites: Array<{
+  ticker: string;
+  horizon?: string;
+  sample: { walls?: { callWalls?: { strike: number }[]; putWalls?: { strike: number }[] } };
+}> = [];
 
 mock.module("../../../lib/heatmap-allowlist", {
   namedExports: {
@@ -31,6 +39,7 @@ mock.module("./vector-dynamic-universe", {
       const t = String(raw).toUpperCase();
       if (!dynamicTickers.includes(t)) dynamicTickers.push(t);
     },
+    removeDynamicUniverseTicker: async () => {},
   },
 });
 
@@ -54,6 +63,76 @@ mock.module("../../../lib/providers/polygon-options-gex", {
   namedExports: {
     fetchGexHeatmap: async (ticker: string) => {
       fetchCalls.push(ticker);
+      // Concurrency-bound regression fixture (2026-09-04 audit finding, unbounded fan-out): a
+      // "CONC*" ticker holds briefly so a concurrency-tracking test can observe how many calls
+      // are in flight together, without slowing down every other test in this file.
+      if (ticker.startsWith("CONC")) {
+        fetchInFlight += 1;
+        maxFetchInFlight = Math.max(maxFetchInFlight, fetchInFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        fetchInFlight -= 1;
+        return {
+          spot: 100,
+          asof: new Date().toISOString(),
+          gex: { flip: 101, strike_totals: { "100": 1, "105": 2 } },
+          vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
+        };
+      }
+      // Cold-cache contention shape (2026-09-04 audit): heatmap returns strike_totals but spot is
+      // still null — the old `spot ? spot : undefined` path still ran computeGexWalls unconstrained
+      // and picked strike 90 (below where spot would land) as the call wall.
+      if (ticker === "NOSPOT") {
+        return {
+          spot: null,
+          asof: new Date().toISOString(),
+          gex: {
+            flip: 101,
+            strike_totals: { "90": 5e9, "108": 1e9, "92": -1e9 },
+          },
+          vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
+        };
+      }
+      // 2026-09-08 audit finding (live KIAN): a halted/delisted ticker's heatmap can return spot
+      // literally 0 (not null/undefined) — `?? null` only catches nullish, so a member-visible
+      // row showed `spot: 0` while every downstream computation already treats <= 0 as absent.
+      if (ticker === "ZEROSPOT") {
+        return {
+          spot: 0,
+          asof: new Date().toISOString(),
+          gex: { flip: null, strike_totals: {} },
+          vex: { flip: null, strike_totals: {} },
+        };
+      }
+      // Regression fixture for the 2026-09-04 audit finding: strike 90 (below spot) carries more
+      // |gamma| than strike 108 (above spot), so the unconstrained scan used to pick 90 as the
+      // "call wall" — a resistance level below current price — the exact live IBIT/SPX shape.
+      if (ticker === "INVERT") {
+        // Also carries `expiries`/`gex.cells` (2026-09-04 audit follow-up to #3495) — same
+        // "wrong side of spot" shape reproduced through the narrowed-horizon path
+        // (`strikeTotalsForHorizonFromCells`, which sums `cells` rather than reading the
+        // already-summed `strike_totals` the main gexWalls computation uses).
+        const todayYmd = todayEtYmd();
+        return {
+          spot: 100,
+          asof: new Date().toISOString(),
+          expiries: [todayYmd],
+          gex: {
+            flip: 101,
+            strike_totals: { "90": 5e9, "108": 1e9, "92": -1e9 },
+            cells: {
+              "90": { [todayYmd]: 5e9 },
+              "108": { [todayYmd]: 1e9 },
+              "92": { [todayYmd]: -1e9 },
+            },
+          },
+          vex: {
+            // VEX is deliberately left unconstrained (no above/below-spot geometry) — the fixture
+            // reuses the same shape so a regression here would be caught the same way.
+            flip: 99,
+            strike_totals: { "90": 5e9, "108": 1e9 },
+          },
+        };
+      }
       return {
         spot: 100,
         asof: new Date().toISOString(),
@@ -72,8 +151,14 @@ mock.module("../../../lib/providers/polygon-options-gex", {
 
 mock.module("./vector-wall-write", {
   namedExports: {
-    writeWallHistorySample: async (opts: { sessionYmd: string; ticker: string }) => {
+    writeWallHistorySample: async (opts: {
+      sessionYmd: string;
+      ticker: string;
+      horizon?: string;
+      sample: { walls?: { callWalls?: { strike: number }[]; putWalls?: { strike: number }[] } };
+    }) => {
       wallSampleCalls.push(`${opts.sessionYmd}:${opts.ticker}`);
+      wallSampleWrites.push({ ticker: opts.ticker, horizon: opts.horizon, sample: opts.sample });
       return { written: true };
     },
   },
@@ -89,6 +174,7 @@ let buildVectorUniverseSnapshot: typeof import("./vector-universe").buildVectorU
 let ensureTickerInUniverseSnapshot: typeof import("./vector-universe").ensureTickerInUniverseSnapshot;
 let loadVectorUniverseSnapshot: typeof import("./vector-universe").loadVectorUniverseSnapshot;
 let warmDynamicTickerSessionWall: typeof import("./vector-universe").warmDynamicTickerSessionWall;
+let recordVectorUniverseWallSample: typeof import("./vector-universe").recordVectorUniverseWallSample;
 
 before(async () => {
   const mod = await import("./vector-universe");
@@ -96,6 +182,7 @@ before(async () => {
   ensureTickerInUniverseSnapshot = mod.ensureTickerInUniverseSnapshot;
   loadVectorUniverseSnapshot = mod.loadVectorUniverseSnapshot;
   warmDynamicTickerSessionWall = mod.warmDynamicTickerSessionWall;
+  recordVectorUniverseWallSample = mod.recordVectorUniverseWallSample;
 });
 
 test("buildVectorUniverseSnapshot: plain build unions dynamic tickers", async () => {
@@ -110,6 +197,83 @@ test("buildVectorUniverseSnapshot: plain build unions dynamic tickers", async ()
   );
   assert.ok(fetchCalls.includes("HOOD"));
   assert.ok(fetchCalls.includes("PLTR"));
+});
+
+// Regression for the 2026-09-04 audit finding: buildVectorUniverseSnapshot fired every universe
+// ticker's fetchGexHeatmap via a raw Promise.allSettled (no concurrency bound), which shares the
+// app-wide Polygon admission limiter with live desk/GEX/pulse traffic and a fixed 3s per-ticker
+// serve cap — reproduced live as several genuinely-available tickers (DIA/AAOI/DRAM/ZS/NOK) coming
+// back fully null from GET /api/market/vector/universe while a solo, uncontended
+// GET /api/market/gex-heatmap for each succeeded. Fixed by routing the fan-out through
+// runPolygonPool (polygon-rate-limiter.ts); this proves the SNAPSHOT BUILDER actually uses the
+// bounded pool (not just that the pool primitive itself is bounded — see runPolygonPool's own
+// coverage in polygon-rate-limiter.test.ts).
+test("buildVectorUniverseSnapshot: bounds concurrent fetchGexHeatmap calls via runPolygonPool", async () => {
+  dynamicTickers = Array.from({ length: 20 }, (_, i) => `CONC${i}`);
+  fetchCalls = [];
+  fetchInFlight = 0;
+  maxFetchInFlight = 0;
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+
+  assert.equal(snap.rows.length, 23, "all 20 CONC tickers plus the 3 static tickers must still produce rows");
+  assert.ok(maxFetchInFlight <= 8, `expected at most 8 concurrent fetchGexHeatmap calls (POOL_MAX_CONCURRENCY default), saw ${maxFetchInFlight}`);
+  assert.ok(maxFetchInFlight > 1, "sanity: the pool should actually overlap work, not degrade to fully sequential");
+});
+
+// Regression for the 2026-09-04 audit finding: buildVectorUniverseRow's GEX (gamma) wall
+// computation didn't pass spot into computeGexWalls, so a call wall could serve BELOW spot (or a
+// put wall ABOVE it) — reproduced live on SPX (spot 7747.71, topPutWall 8000) and 17-18 other
+// tickers via GET /api/market/vector/universe.
+test("buildVectorUniverseSnapshot: GEX wall never lands on the wrong side of spot", async () => {
+  dynamicTickers = ["INVERT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "INVERT");
+  assert.ok(row, "INVERT row must be present");
+  // Fixture: strike 90 (below spot 100) carries 5e9 |gamma|, strike 108 (above spot) carries 1e9 —
+  // unconstrained picks 90 as "the call wall" (resistance below spot); constrained must pick 108.
+  assert.equal(row!.topCallWall, 108, "GEX call wall must sit above spot, not the higher-|gamma| below-spot strike");
+  assert.equal(row!.topPutWall, 92, "GEX put wall must sit below spot");
+  assert.ok(row!.topCallPct != null && row!.topCallPct > 0, "pct must still be populated for the constrained pick");
+});
+
+test("buildVectorUniverseSnapshot: a heatmap spot of literal 0 renders as null, not 0 (2026-09-08 KIAN finding)", async () => {
+  dynamicTickers = ["ZEROSPOT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "ZEROSPOT");
+  assert.ok(row, "ZEROSPOT row must be present");
+  assert.equal(row!.spot, null, "a heatmap spot of literal 0 must render as null, matching every other absent-spot field");
+});
+
+// Bead rail (wall-history) uses unconstrained ranking — Sep 3 desk density. Scanner row
+// (topCallWall) stays spot-constrained; only durable bead samples use the below-spot strike.
+test("recordVectorUniverseWallSample: narrowed-horizon bead rail keeps unconstrained Sep-3 ranking", async () => {
+  wallSampleWrites = [];
+  wallSampleCalls = [];
+
+  await recordVectorUniverseWallSample("INVERT", { sessionYmd: "2026-09-04" });
+
+  const zeroDte = wallSampleWrites.find((w) => w.ticker === "INVERT" && w.horizon === "0dte");
+  assert.ok(zeroDte, "0dte narrowed-horizon sample must be written");
+  const callWalls = zeroDte!.sample.walls?.callWalls ?? [];
+  const putWalls = zeroDte!.sample.walls?.putWalls ?? [];
+  assert.deepEqual(
+    callWalls.map((w) => w.strike).slice(0, 2),
+    [90, 108],
+    "bead rail ranks by |gamma| — strike 90 below spot leads, 108 above spot still included"
+  );
+  assert.deepEqual(
+    putWalls.map((w) => w.strike),
+    [92],
+    "put side unchanged — strike 92 is the strongest negative below spot"
+  );
 });
 
 test("ensureTickerInUniverseSnapshot: appends missing ticker to warmed snapshot", async () => {
@@ -189,4 +353,48 @@ test("warmDynamicTickerSessionWall: skips static allowlist tickers", async () =>
   await warmDynamicTickerSessionWall("SPY");
   assert.deepEqual(fetchCalls, []);
   assert.deepEqual(wallSampleCalls, []);
+});
+
+test("buildVectorUniverseSnapshot: null spot fail-closes GEX walls (no unconstrained pick)", async () => {
+  dynamicTickers = ["NOSPOT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "NOSPOT");
+  assert.ok(row, "NOSPOT row must be present");
+  assert.equal(row!.spot, null);
+  assert.equal(row!.topCallWall, null, "must not pick strike 90 as call wall when spot is unknown");
+  assert.equal(row!.topPutWall, null, "must not pick strike 92 as put wall when spot is unknown");
+});
+
+test("recordVectorUniverseWallSample: null spot still records bead rail (unconstrained)", async () => {
+  wallSampleWrites = [];
+  wallSampleCalls = [];
+
+  await recordVectorUniverseWallSample("NOSPOT", { sessionYmd: "2026-09-04" });
+
+  const blended = wallSampleWrites.find((w) => w.ticker === "NOSPOT" && !w.horizon);
+  assert.ok(blended, "blended bead sample must be written even when spot is unknown");
+  assert.equal(blended!.sample.walls?.callWalls[0]?.strike, 90);
+});
+
+test("vector-universe: scanner row stays spot-constrained; bead rail uses computeBeadRailGexWalls", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./vector-universe.ts", import.meta.url), "utf8");
+  assert.match(
+    src,
+    /hm\?\.gex\?\.strike_totals && spot != null && spot > 0/,
+    "scanner gexWalls must fail-closed when spot is unknown"
+  );
+  assert.match(
+    src,
+    /computeBeadRailGexWalls\(mapFromStrikeTotalsRecord\(hm\.gex\.strike_totals\)/,
+    "bead rail blended sample must use unconstrained computeBeadRailGexWalls"
+  );
+  assert.match(
+    src,
+    /computeBeadRailGexWalls\(totals/,
+    "narrowed-horizon bead samples must use computeBeadRailGexWalls"
+  );
 });

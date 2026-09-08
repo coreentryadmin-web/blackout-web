@@ -141,6 +141,16 @@ export { zeroGammaFlip as computeZeroGammaFlip } from "@/lib/providers/gex-cross
 /**
  * Walls + flip + king from a scoped strike-total map (0DTE column or near-term aggregate).
  * Uses the same rules as the heatmap server + GexHeatmap client.
+ *
+ * SIDE-CONSTRAINED by spot, same as `wallsFromStrikeTotals` (gex-cross-validation-core.ts,
+ * PR #2417) and `computeGexWalls` (gex-wall-levels.ts, #3495) — a callWall must sit above spot,
+ * a putWall below it. This function was the one wall producer PR #2417 named but never migrated
+ * (2026-09-04 audit follow-up): its only production consumer, `buildOdteMatrixRows`
+ * (vector-odte-matrix-rows.ts), flags `isCallWall`/`isPutWall` on Vector's 0DTE matrix rail
+ * straight off this result, so an unconstrained pick rendered the same "resistance below price /
+ * support above price" inversion the other five producers were fixed for. `spot<=0` (the
+ * `spot ?? 0` fallback callers use when spot is unknown) leaves the pick unconstrained rather
+ * than silently nulling every wall.
  */
 export function recomputeScopedGexLevels(
   strikeTotals: Record<string, number>,
@@ -151,16 +161,17 @@ export function recomputeScopedGexLevels(
     .filter((e) => Number.isFinite(e.strike) && e.value !== 0)
     .sort((a, b) => a.strike - b.strike);
 
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   let callWall: number | null = null;
   let putWall: number | null = null;
   let posMax = -Infinity;
   let negMin = Infinity;
   for (const e of entries) {
-    if (e.value > posMax) {
+    if (e.value > posMax && (!constrained || e.strike > spot)) {
       posMax = e.value;
       callWall = e.strike;
     }
-    if (e.value < negMin) {
+    if (e.value < negMin && (!constrained || e.strike < spot)) {
       negMin = e.value;
       putWall = e.strike;
     }

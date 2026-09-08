@@ -182,20 +182,3 @@ export async function persistDiscoveryCommitEvents(
   if (written > 0) await writeCursor(today, cursor);
   return written;
 }
-
-/** Cron-only entry — never throws to caller. */
-export async function persistDiscoveryEventsFromScan(input: {
-  setups: readonly EnrichedZeroDteSetup[];
-  marketState: MarketStateSnapshot | null;
-  gateRejections: readonly ZeroDteGateRejection[];
-  committedFresh: readonly EnrichedZeroDteSetup[];
-}): Promise<void> {
-  if (!dbConfigured()) return;
-  try {
-    await persistDiscoveryDetectedEvents(input.setups, input.marketState);
-    await persistDiscoveryGateBlockedEvents(input.gateRejections);
-    await persistDiscoveryCommitEvents(input.committedFresh);
-  } catch (err) {
-    console.warn("[zerodte-discovery-events] persist failed (best-effort):", err);
-  }
-}

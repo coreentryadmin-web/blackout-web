@@ -2,12 +2,18 @@
 
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
-import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
+import { dayChangeBorderClass, dayChangeTextClass, fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { SpxLiveSpotPrice, priceVsLevel, PriceLevelIndicator } from "./SpxLiveSpotPrice";
 import { SpxIosMarketStrip } from "./ios/SpxIosMarketStrip";
 import { SpxIosMetricGroups } from "./ios/SpxIosMetricGroups";
+import { SpxDeskLaneFreshness } from "./SpxDeskLaneFreshness";
 import { SPX_DESK_MAX_PAIN_LABEL } from "@/features/spx/lib/spx-metric-labels";
+import {
+  deskInternalsEstimated,
+  formatInternalReading,
+  internalEstimatedTip,
+} from "@/features/spx/lib/spx-internals-display";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -19,6 +25,16 @@ type Props = {
   iosVectorFocus?: boolean;
   /** Strip-only mode — price + live chips, no metric cards. */
   stripOnly?: boolean;
+  laneFreshness?: {
+    pulsePolledAt?: string | null;
+    deskPolledAt?: string | null;
+    flowPolledAt?: string | null;
+    pulseValidating?: boolean;
+    deskValidating?: boolean;
+    flowValidating?: boolean;
+    pulseSseConnected?: boolean;
+    feedStalled?: boolean;
+  };
 };
 
 export function SpxSniperHeader({
@@ -28,6 +44,7 @@ export function SpxSniperHeader({
   sessionActive = false,
   iosVectorFocus = false,
   stripOnly = false,
+  laneFreshness,
 }: Props) {
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   const showValues = Boolean(live || hasQuote);
@@ -43,6 +60,13 @@ export function SpxSniperHeader({
         )}
       >
         <SpxIosMarketStrip desk={desk} live={live} sessionActive={sessionActive} />
+        {laneFreshness ? (
+          <SpxDeskLaneFreshness
+            sessionActive={sessionActive}
+            className="px-1 pb-1"
+            {...laneFreshness}
+          />
+        ) : null}
         {!metricsOnly ? (
           <details className="spx-ios-metrics-details" open={!iosVectorFocus}>
             <summary className="spx-ios-metrics-summary">Market context</summary>
@@ -83,6 +107,13 @@ export function SpxSniperHeader({
           </div>
         </div>
         <div className="spx-sniper-command-stats w-full min-w-0">{topStatsRow}</div>
+        {laneFreshness ? (
+          <SpxDeskLaneFreshness
+            sessionActive={sessionActive}
+            className="mt-1.5"
+            {...laneFreshness}
+          />
+        ) : null}
       </div>
     </header>
   );
@@ -111,6 +142,9 @@ const METRIC_TIPS = {
   pdl: "Prior-day low",
   gexStale: "Dealer positioning feed is stale — walls/flip are last-good, not live.",
   stalled: "Index feed stalled — values shown are the last live prints, dimmed until the feed recovers.",
+  tick: "NYSE TICK — uptick/downtick volume imbalance across NYSE issues.",
+  trin: "TRIN — ratio of advancing to declining volume; below 1 often reads bullish breadth.",
+  add: "NYSE advance/decline line — net advancing minus declining issues.",
 } as const;
 
 function DeskTopStatsRow({
@@ -127,6 +161,7 @@ function DeskTopStatsRow({
   // Stale-honesty: a frozen tape (feed_stalled) dims every value tone — CSS-only, no
   // layout shift — so last-good numbers are never presented with live-confidence color.
   const stalled = Boolean(live && desk?.feed_stalled);
+  const internalsEst = deskInternalsEstimated(desk);
   return (
     <div
       className={clsx("spx-desk-top-stats-stack", stalled && "spx-hero-stats-stale")}
@@ -172,6 +207,39 @@ function DeskTopStatsRow({
             { label: "PDH", value: showValues ? fmtPrice(desk?.pdh ?? null) : "—", tone: "resistance", level: desk?.pdh ?? null, tip: METRIC_TIPS.pdh },
             { label: "PDL", value: showValues ? fmtPrice(desk?.pdl ?? null) : "—", tone: "support", level: desk?.pdl ?? null, tip: METRIC_TIPS.pdl },
           ]}
+        />
+        <StatPill
+          label="TICK"
+          value={showValues ? formatInternalReading(desk?.tick, internalsEst.tick, 0) : "—"}
+          tone={(desk?.tick ?? 0) >= 0 ? "bull" : "bear"}
+          title={
+            internalsEst.tick
+              ? `${METRIC_TIPS.tick} ${internalEstimatedTip("tick")}`
+              : METRIC_TIPS.tick
+          }
+          estimated={internalsEst.tick}
+        />
+        <StatPill
+          label="TRIN"
+          value={showValues ? formatInternalReading(desk?.trin, internalsEst.trin, 2) : "—"}
+          tone="orange"
+          title={
+            internalsEst.trin
+              ? `${METRIC_TIPS.trin} ${internalEstimatedTip("trin")}`
+              : METRIC_TIPS.trin
+          }
+          estimated={internalsEst.trin}
+        />
+        <StatPill
+          label="ADD"
+          value={showValues ? formatInternalReading(desk?.add, internalsEst.add, 0) : "—"}
+          tone={(desk?.add ?? 0) >= 0 ? "bull" : "bear"}
+          title={
+            internalsEst.add
+              ? `${METRIC_TIPS.add} ${internalEstimatedTip("add")}`
+              : METRIC_TIPS.add
+          }
+          estimated={internalsEst.add}
         />
         <StatPill
           label="VIX"
@@ -300,19 +368,19 @@ type InlineMetric = {
  *  Deliberately caption-free ("last session snapshot" line removed, user-directed 2026-07-14);
  *  the strip-level stale dimming already communicates a frozen tape. */
 function StripSpot({ desk, showValues }: { desk?: SpxDeskPayload; showValues: boolean }) {
-  const bull = (desk?.spx_change_pct ?? 0) >= 0;
+  const changeTone = dayChangeTextClass(desk?.spx_change_pct ?? null);
   return (
     <div
-      className={clsx("spx-hero-stat-pill spx-strip-spot", bull ? "border-emerald-500/40" : "border-rose-500/40")}
+      className={clsx("spx-hero-stat-pill spx-strip-spot", dayChangeBorderClass(desk?.spx_change_pct ?? null))}
       title="Live SPX spot — index level and day change"
       aria-label="SPX spot price"
     >
       <p className="spx-hero-stat-label">SPX</p>
       <div className="spx-hero-stat-value-row">
-        <p className={clsx("spx-strip-spot-price t-num", bull ? "text-bull" : "text-bear-text")}>
+        <p className={clsx("spx-strip-spot-price t-num", changeTone)}>
           {showValues ? fmtPrice(desk?.price ?? null, 2) : "—"}
         </p>
-        <p className={clsx("spx-strip-spot-pct t-num", bull ? "text-bull" : "text-bear-text")}>
+        <p className={clsx("spx-strip-spot-pct t-num", changeTone)}>
           {showValues ? fmtPct(desk?.spx_change_pct ?? null) : ""}
         </p>
       </div>
@@ -372,6 +440,7 @@ function StatPill({
   level,
   title,
   vw,
+  estimated,
 }: {
   label: string;
   value: string;
@@ -383,6 +452,8 @@ function StatPill({
   title?: string;
   /** True volume-weighted VWAP affordance (staging SPY-volume proxy). */
   vw?: boolean;
+  /** Breadth-derived proxy — not a live Polygon I:TICK/I:TRIN/I:ADD print (CQ-095 / CLQ-012). */
+  estimated?: boolean;
 }) {
   const direction = priceVsLevel(spot, level);
   return (
@@ -392,6 +463,11 @@ function StatPill({
         {vw && (
           <span className="spx-hero-vw-badge" title="true volume-weighted via SPY minute volume">
             VW
+          </span>
+        )}
+        {estimated && (
+          <span className="spx-hero-est-badge" title="Breadth-derived estimate — not a live index print">
+            est
           </span>
         )}
       </p>

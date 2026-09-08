@@ -21,7 +21,9 @@ import {
   VECTOR_BEAD_RECORD_TICK_MS,
   VECTOR_BEAD_RECORD_ACTIVE_TICK_MS,
   evaluateSweepBudget,
+  shouldLogZeroSamples,
   type SweepBudgetState,
+  type ZeroSamplesLogState,
 } from "@/features/vector/lib/vector-bead-recorder-logic";
 import {
   alertWsLeaderFailClosedOnce,
@@ -80,6 +82,8 @@ let concurrentSweeps = 0;
 const tickerFailureStreaks = new Map<string, number>();
 /** Rate-limit state for the sweep-overrun alarm — see evaluateSweepBudget. */
 const sweepBudget: SweepBudgetState = { lastLoggedAt: 0 };
+/** Rate-limit state for the all-busy zero-samples line — see shouldLogZeroSamples. */
+const zeroSamplesLog: ZeroSamplesLogState = { lastLoggedAt: 0 };
 let activeRecordInFlight = false;
 /**
  * Overlap bound for the ACTIVE (viewer-driven, 15s) lane — the same rule as the universe sweep.
@@ -95,16 +99,31 @@ let concurrentActiveSweeps = 0;
 const activeTickerFailureStreaks = new Map<string, number>();
 /** Rate-limit state for the active lane's overrun alarm. */
 const activeSweepBudget: SweepBudgetState = { lastLoggedAt: 0 };
+/** Rate-limit state for the active lane's all-busy zero-samples line, kept separate from the
+ *  universe lane's for the same reason activeTickerFailureStreaks is. */
+const activeZeroSamplesLog: ZeroSamplesLogState = { lastLoggedAt: 0 };
 let lastHeartbeatAt = 0;
 let heartbeatInFlight = false;
 
+/** Cached lock connection, reused across calls. Before this cache existed, getLockRedis()
+ *  opened a brand-new never-closed ioredis connection on EVERY call — and readHeldSlots()
+ *  (below) calls it on every 5s universe tick plus the 15s leader-refresh timer, per replica.
+ *  Measured live 2026-09-01: pegged ElastiCache CurrConnections at its 65,000 ceiling for
+ *  30+ minutes during RTH (13:33-14:03 UTC), flooding this module + rth-warm-leader.ts (the
+ *  same copy-pasted pattern, fixed alongside) with ETIMEDOUT/ECONNRESET/EPIPE, and starving
+ *  every OTHER Redis consumer on the shared cluster (uw-rate-limiter, bie-redis-probe) of a
+ *  connection slot even though those modules already cache/close correctly. */
+let cachedLockRedis: IoredisLockExtra | null = null;
+
 async function getLockRedis(): Promise<IoredisLockExtra | null> {
+  if (cachedLockRedis) return cachedLockRedis;
   const url = process.env.REDIS_URL?.trim();
   if (!url) return null;
   try {
     const { makeRedis } = await import("./make-redis");
     const client = await makeRedis("vector-bead-recorder", url, { maxRetriesPerRequest: 1 });
-    return client as unknown as IoredisLockExtra;
+    cachedLockRedis = client as unknown as IoredisLockExtra;
+    return cachedLockRedis;
   } catch {
     return null;
   }
@@ -252,7 +271,11 @@ async function tick(): Promise<void> {
     // so a single surviving task still covers the whole universe.
     const shards = beadShardsForReplica(mySlot, await readHeldSlots());
     const result = await recordSharedUniverseWallSamples({ shards });
-    if (result.total > 0 && result.recorded === 0) {
+    if (
+      result.total > 0 &&
+      result.recorded === 0 &&
+      shouldLogZeroSamples(result.failed, Date.now(), zeroSamplesLog)
+    ) {
       console.warn(
         `[vector-bead-recorder] zero samples recorded (${result.failed}/${result.total} failed, ${result.elapsedMs}ms)`
       );
@@ -319,7 +342,11 @@ async function activeTick(): Promise<void> {
   activeRecordInFlight = true;
   try {
     const result = await recordActiveNonUniverseWallSamples();
-    if (result.total > 0 && result.recorded === 0) {
+    if (
+      result.total > 0 &&
+      result.recorded === 0 &&
+      shouldLogZeroSamples(result.failed, Date.now(), activeZeroSamplesLog)
+    ) {
       console.warn(
         `[vector-bead-recorder] active non-universe: zero samples (${result.failed}/${result.total} failed, ${result.elapsedMs}ms)`
       );

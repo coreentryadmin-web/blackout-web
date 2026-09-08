@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { authorizeMarketDeskApi, isCronAuthorized } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { coachingAlertAgeFields } from "@/lib/coaching-alert-age";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,15 +18,17 @@ export async function GET(req: NextRequest) {
       []
     );
     const now = Date.now();
-    return NextResponse.json({
+    return NextResponse.json(roundFloats({
       alerts: result.rows.map(r => {
         const generatedAt = r.generated_at;
-        const ageMs = generatedAt ? now - new Date(generatedAt).getTime() : null;
+        // coachingAlertAgeFields clamps a future-dated generated_at (RDS-vs-app clock skew)
+        // at zero instead of letting Math.floor turn it into a negative "-N minutes ago".
+        const { ageMinutes, stale } = coachingAlertAgeFields(generatedAt, now);
         return {
           id: r.id,
           generatedAt,
-          age_minutes: ageMs != null ? Math.floor(ageMs / 60_000) : null,
-          stale: ageMs != null ? ageMs > 60 * 60 * 1000 : false,
+          age_minutes: ageMinutes,
+          stale,
           trigger: r.trigger_type,
           alert: r.alert_text,
           urgency: r.urgency,
@@ -36,7 +40,7 @@ export async function GET(req: NextRequest) {
           forShorts: r.for_shorts,
         };
       })
-    }, { status: 200, headers: NO_STORE_HEADERS });
+    }), { status: 200, headers: NO_STORE_HEADERS });
   } catch {
     return NextResponse.json({ alerts: [] }, { status: 200, headers: NO_STORE_HEADERS });
   }

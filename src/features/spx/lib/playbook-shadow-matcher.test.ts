@@ -482,6 +482,38 @@ test("PB-08: no trigger outside power hour even with dominant flow + break", () 
 });
 
 // ---------------------------------------------------------------------------
+// PB-09 Flow Surge
+// ---------------------------------------------------------------------------
+
+test("PB-09: rejects a future-dated flow alert instead of counting it as a fresh surge", () => {
+  // Same future-print bug shape already fixed in Helix's contractStackHitsFromFlows/
+  // selectHelixDiscordDigest et al.: an alerted_at ahead of `now` makes `nowMs - alertedAt`
+  // negative, which trivially satisfies `<= 120_000` and would count a clock-skewed/mis-stamped
+  // UW flow alert as PB-09's qualifying surge.
+  const future = new Date(MID_MORNING_UTC + 5 * 60_000).toISOString(); // 5 min ahead of `now`
+  const desk = deskStub({
+    spx_flows: [
+      {
+        ticker: "SPX",
+        premium: 1_500_000,
+        option_type: "CALL",
+        strike: 7390,
+        expiry: "2026-07-09",
+        direction: "bullish",
+        alerted_at: future,
+        alert_rule: null,
+        trade_count: null,
+        has_sweep: true,
+      },
+    ],
+  });
+  const technicals = technicalsStub();
+  const result = matchPlaybooksShadow(desk, technicals, MID_MORNING_UTC);
+  const pb09 = result.verdicts.find((v) => v.playbook_id === "PB-09")!;
+  assert.equal(pb09.precondition_match, false);
+});
+
+// ---------------------------------------------------------------------------
 // Registry coverage
 // ---------------------------------------------------------------------------
 

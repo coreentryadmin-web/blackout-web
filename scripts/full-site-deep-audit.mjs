@@ -6,6 +6,7 @@
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
@@ -254,27 +255,6 @@ function sumTotals(st) {
   }
   return t;
 }
-function deriveWalls(st) {
-  let callWall = null,
-    putWall = null;
-  let maxPos = 0,
-    maxNeg = 0;
-  for (const [s, gRaw] of Object.entries(st ?? {})) {
-    const strike = Number(s),
-      g = Number(gRaw);
-    if (!finite(strike) || !finite(g)) continue;
-    if (g > maxPos) {
-      maxPos = g;
-      callWall = strike;
-    }
-    if (g < maxNeg) {
-      maxNeg = g;
-      putWall = strike;
-    }
-  }
-  return { callWall, putWall };
-}
-
 async function auditHeatmapMatrix() {
   if (!CRON) return;
   const tickers = ["SPX", "SPY", "QQQ", "NVDA", "AAPL", "TSLA", "AMD", "MSFT", "META", "IWM"];
@@ -305,7 +285,8 @@ async function auditHeatmapMatrix() {
         flags++;
       }
       if (name === "gex") {
-        const { callWall, putWall } = deriveWalls(block.strike_totals);
+        // Side-constrained — must match production wallsFromStrikeTotals (gex-cross-validation-core.ts).
+        const { callWall, putWall } = wallsFromStrikeTotals(block.strike_totals, hm.spot);
         if (callWall != null && block.call_wall != null && Math.abs(callWall - block.call_wall) > 0.01) {
           fail("heatmap", `${ticker}.call_wall`, `reported ${block.call_wall} != ${callWall}`, "P0");
           flags++;

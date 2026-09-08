@@ -10,6 +10,7 @@
  * subscription, not a broadcast-to-everyone-of-all-8000-tickers model) —
  * see docs/audit/FINDINGS.md for why a full-universe broadcast was rejected.
  */
+import { roundFloats } from "@/lib/round-floats";
 import { getStockLiveCandle } from "./stock-candle-store";
 
 const TICKER_RE = /^[A-Z0-9.\-]{1,8}$/;
@@ -41,7 +42,7 @@ export function parseTickerList(raw: string | null, max: number = MAX_TICKERS_PE
   return { tickers };
 }
 
-export type SpotQuote = { price: number; changePct: number; asof: string };
+export type SpotQuote = { price: number; changePct: number | null; asof: string };
 export type SpotFrame = { type: "quotes"; quotes: Record<string, SpotQuote>; ts: number };
 
 /**
@@ -50,7 +51,8 @@ export type SpotFrame = { type: "quotes"; quotes: Record<string, SpotQuote>; ts:
  * source of truth for WS-fed spot prices — see quote/route.ts). A ticker
  * with no live candle yet (freshly demanded, REST seed still in flight, or
  * genuinely untraded) is simply omitted from `quotes` for this frame; the
- * client keeps its last-known value until the ticker appears.
+ * client keeps its last-known value until the ticker appears. changePct is
+ * null until the store's openSource is "rest" (prior-close anchor landed).
  */
 export function buildSpotFrame(tickers: string[], now: number = Date.now()): SpotFrame {
   const quotes: Record<string, SpotQuote> = {};
@@ -69,7 +71,9 @@ export function buildSpotFrame(tickers: string[], now: number = Date.now()): Spo
 
 /** Encode a frame as an SSE `data: ...\n\n` message. */
 export function encodeSpotFrame(frame: SpotFrame): string {
-  return `data: ${JSON.stringify(frame)}\n\n`;
+  // Match /api/market/quote — the REST path already roundFloats at the boundary; the SSE
+  // lane was the one member-facing path still shipping raw IEEE tails on price/changePct.
+  return `data: ${JSON.stringify(roundFloats(frame))}\n\n`;
 }
 
 // --- Connection cap (same atomic claim-before-construct pattern as Vector) ---

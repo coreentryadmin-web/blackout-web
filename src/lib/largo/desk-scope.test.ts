@@ -42,6 +42,7 @@ describe("formatDeskScopeBlock", () => {
     assert.match(block, /Macro\/events/);
     assert.match(block, /3DTE\/7DTE/);
     assert.match(block, /get_spx_play/);
+    assert.match(block, /get_spx_desk_convergence/);
   });
 
   it("includes scoped answer contract with submodule lens", () => {

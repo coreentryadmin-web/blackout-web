@@ -341,10 +341,23 @@ function decideTrimScale(
   //    the coarse floor dump everything — banking also flips `input.trimmed` for the
   //    next tick, which raises the shared floor to the +50% runner floor for the
   //    remainder (strictly better protection than riding the breakeven floor to the
-  //    finish). Only suppresses the floor EXIT action below; it does not change
-  //    `floorMark`/the plan-stop comparison, so a real stop breach still outranks a
-  //    pending trim exactly as before.
-  const trimAvailable = armed > taken;
+  //    finish). Only suppresses the floor EXIT action below.
+  //
+  //    STOP-BREACH CARVE-OUT (2026-09-04, live-again per resolveTrimBankLive defaulting
+  //    ON 2026-09-03 — see docs/audit/findings-staging/2026-09-04-trim-scale-stop-fallthrough.md):
+  //    the comment above used to claim this guard "does not change the plan-stop
+  //    comparison, so a real stop breach still outranks a pending trim exactly as
+  //    before" — that was false. In the normal configuration the shared floor sits well
+  //    ABOVE the plan stop, so `stopIsHigher` below is already false and the plan-stop
+  //    branch (block 1) never fires; the ONLY thing that protects a genuine stop breach
+  //    in that configuration is the floor-EXIT branch (block 2) — exactly the branch this
+  //    guard suppresses when a tranche is available. So once price has fallen to/through
+  //    the RAW plan stop, `trimAvailable` must be false: the position is no longer merely
+  //    "past the shared floor with a tranche pending", it has already blown through the
+  //    hard risk limit, and banking a tranche while leaving the rest open uncontrolled is
+  //    strictly worse than the pre-2026-08-27 dump-to-floor behavior it replaced.
+  const stopAlreadyBreached = input.planStop != null && currentMark <= input.planStop;
+  const trimAvailable = armed > taken && !stopAlreadyBreached;
   const sharedFloor = ratchetFloorPct(peakPnlPct, input.trimmed);
   const floorBreached = sharedFloor != null && pnlPct <= sharedFloor && !trimAvailable;
   if (input.planStop != null && currentMark <= input.planStop) {
@@ -667,16 +680,33 @@ export function buildExitContext(
     entryPremium != null && entryPremium > 0
       ? resolveExitMark(decision, entryPremium, observedMark)
       : markObserved;
+  // Provenance: `mark` differs from the observed print ONLY when resolveExitMark honored a
+  // protective floor/stop. Compare the two resolved values directly rather than re-deriving the
+  // floor condition, so this flag cannot drift from what resolveExitMark actually did.
+  const markHonored = mark !== markObserved;
   return {
     reason: decision.reason,
     detail: decision.detail,
     mark,
-    // Provenance: `mark` differs from the observed print ONLY when resolveExitMark honored a
-    // protective floor/stop. Compare the two resolved values directly rather than re-deriving the
-    // floor condition, so this flag cannot drift from what resolveExitMark actually did.
     mark_observed: markObserved,
-    mark_honored: mark !== markObserved,
-    pnl_pct: pinnedLivePnlPct(entryPremium, mark),
+    mark_honored: markHonored,
+    // BUG FIX (2026-09-04): pnl_pct must NOT be computed from the cent-rounded `mark` on a
+    // non-honored (thesis/plan_stop/flat) exit. `observedMark` is a raw mid ((bid+ask)/2 kept
+    // to 4dp by zeroDteMidOf) and routinely lands on a half-cent (e.g. bid 2.26/ask 2.27 → mid
+    // 2.265) — legitimate live-quote precision, the exact input `evaluateExitState` used a few
+    // lines up to compute the `pnlPct` baked verbatim into `decision.detail`. Rounding that mid
+    // to the nearest cent BEFORE the percentage division (what `mark` does here for the
+    // non-honored branch, via resolveExitMark's `round2(observedMark)`) can erase up to
+    // `0.5¢ / entryPremium` of real P&L — on a $2.27 0DTE premium that's up to ±0.22 points, and
+    // on a sub-$1 lotto premium it can be several points. Measured live 2026-09-04: a CRCL
+    // thesis-break stamped `exit_detail: "Thesis broken (veto) at -0.22%"` (the honest,
+    // full-precision figure) right beside `exit_pnl_pct: 0` (recomputed from the rounded mark,
+    // which happened to round back up to the pinned entry premium) — two numbers for the same
+    // exit event disagreeing inside the same payload. A floor/stop-HONORED exit is unaffected
+    // and keeps using `mark` (the constructed floor/stop price IS the assumed fill, so its
+    // percentage is supposed to reflect that synthetic price, not the raw print it improved on
+    // — see the floor-breach test above, which relies on exactly that behavior).
+    pnl_pct: pinnedLivePnlPct(entryPremium, markHonored ? mark : observedMark),
     peak_pnl_pct: pinnedLivePnlPct(entryPremium, peakPremium),
     at: new Date(nowMs).toISOString(),
   };

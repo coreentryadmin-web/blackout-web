@@ -10,6 +10,11 @@
 //   - no veto, score < 0         → BLOCKED with `cortex_net_negative` — the
 //                                  design's "a G-3-passing setup with net-negative
 //                                  Cortex evidence still doesn't print";
+//   - no veto, score ≥ 0 but < THIN_EVIDENCE_MIN_SOURCES answered AND score <
+//     THIN_EVIDENCE_SCORE_FLOOR → BLOCKED with `cortex_thin_evidence` — a distinct
+//                                  decision from NET_NEGATIVE (fixed 2026-09-01): the
+//                                  score here is never negative, just too thinly
+//                                  corroborated to trust;
 //   - no veto, score ≥ 0, no active gex-walls oppose (or score ≥ CONVICTION_A_MIN_SCORE) →
 //                                  PASS (commit proceeds; the full evidence vector is
 //                                  pinned on the ledger row via entry_context);
@@ -49,6 +54,7 @@
 import {
   composeCortexEvidence,
   fetchCortexInputs,
+  vectorHorizonForCortexCommit,
   CORTEX_SOURCES,
   CONVICTION_A_MIN_SCORE,
   VETO_CAPABLE_SOURCES,
@@ -59,6 +65,7 @@ import {
   type CortexVerdict,
   type EvidenceItem,
 } from "@/lib/nighthawk/cortex";
+import type { CortexCommitHorizon } from "@/lib/nighthawk/cortex/fetch";
 import type { ZeroDteGateBlock } from "./gates";
 
 /** When most sources are absent (fewer than this many answered), require a
@@ -96,6 +103,7 @@ export type ZeroDteCortexDecision =
   | "VETO"
   | "VETO_BLIND"
   | "NET_NEGATIVE"
+  | "THIN_EVIDENCE"
   | "CONTESTED"
   | "OPPOSE_UNRESOLVED"
   | "ABSTAIN";
@@ -114,7 +122,7 @@ export type ZeroDteCortexAssessment =
   | { decision: "ABSTAIN"; abstained: true; reason: string }
   | { decision: "VETO_BLIND"; abstained: false; verdict: CortexVerdict; reason: string }
   | {
-      decision: "PASS" | "VETO" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
+      decision: "PASS" | "VETO" | "NET_NEGATIVE" | "THIN_EVIDENCE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
       abstained: false;
       verdict: CortexVerdict;
     };
@@ -240,9 +248,19 @@ export function assessCortexVerdict(
   // Thin-evidence gate: few sources answered → require a meaningful positive
   // score, not just a bare non-negative. The number of answering sources is
   // total minus absent (each absent source is listed by ID in verdict.absent).
+  //
+  // THIN_EVIDENCE is its OWN decision, not NET_NEGATIVE (fixed 2026-09-01) — the
+  // `verdict.score < 0` check above already returns NET_NEGATIVE for every genuinely
+  // negative score, so by construction this branch only ever runs with `score >= 0`.
+  // Labeling it NET_NEGATIVE therefore described a non-negative (sometimes clearly
+  // positive) score as "against" the direction — cortexGateBlocks's reason text
+  // literally read "Cortex evidence nets +0.1 against this short", which is false:
+  // +0.1 supports the direction, it just isn't enough support from enough sources to
+  // trust. The block is correct (thin evidence should not clear the bar); the label
+  // describing WHY was not.
   const answering = CORTEX_SOURCES.length - verdict.absent.length;
   if (answering < THIN_EVIDENCE_MIN_SOURCES && verdict.score < THIN_EVIDENCE_SCORE_FLOOR) {
-    return { decision: "NET_NEGATIVE", abstained: false, verdict };
+    return { decision: "THIN_EVIDENCE", abstained: false, verdict };
   }
 
   return { decision: "PASS", abstained: false, verdict };
@@ -322,6 +340,27 @@ export function cortexGateBlocks(assessment: ZeroDteCortexAssessment | null): Ze
     ];
   }
 
+  if (assessment.decision === "THIN_EVIDENCE") {
+    // Too few sources answered to trust the (non-negative) score they produced — see
+    // assessCortexVerdict's THIN_EVIDENCE comment. Cites SUPPORTS, not opposes: unlike
+    // NET_NEGATIVE, the evidence that exists here favors the direction, it just isn't
+    // corroborated by enough sources to clear the higher bar thin evidence requires.
+    const answering = CORTEX_SOURCES.length - assessment.verdict.absent.length;
+    const supportLines = topEvidenceLines(assessment.verdict.supports, 3);
+    return [
+      {
+        code: "cortex_thin_evidence",
+        reason:
+          `Only ${answering} of ${CORTEX_SOURCES.length} Cortex sources answered (need ` +
+          `${THIN_EVIDENCE_MIN_SOURCES}+) — net ${fmtSigned(assessment.verdict.score)} does not clear the ` +
+          `${THIN_EVIDENCE_SCORE_FLOOR} floor required with this little corroboration, even though the ` +
+          `score itself is not negative. ${supportLines.join(" ")}`,
+        threshold: THIN_EVIDENCE_SCORE_FLOOR,
+        unlock_et: null,
+      },
+    ];
+  }
+
   // NET_NEGATIVE — one block; the threshold is the 0 floor the score was judged
   // against, and the reason carries the top opposing evidence so the SKIP card
   // argues the block instead of just asserting it.
@@ -346,7 +385,7 @@ export type ZeroDteCortexSummary =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "THIN_EVIDENCE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
       score: number;
       conviction: CortexConviction;
       /** Every veto as a "[source] detail" line (empty when clear). */
@@ -383,7 +422,7 @@ export type ZeroDteCortexEntryContext =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "THIN_EVIDENCE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
       as_of: string;
       score: number;
       conviction: CortexConviction;
@@ -420,7 +459,7 @@ export type CortexCommitDeps = {
   fetchInputs?: (
     ticker: string,
     direction: CortexDirection,
-    opts: { now: Date }
+    opts: { now: Date; horizon?: CortexCommitHorizon }
   ) => Promise<CortexInputs>;
   compose?: (inputs: CortexInputs) => CortexVerdict;
 };
@@ -447,10 +486,13 @@ export async function evaluateCortexForCommit(
   direction: CortexDirection,
   now: Date,
   deps: CortexCommitDeps = {},
-  opts?: { failClosedOnVetoBlind?: boolean }
+  opts?: { failClosedOnVetoBlind?: boolean; horizon?: CortexCommitHorizon }
 ): Promise<ZeroDteCortexAssessment> {
   try {
-    const inputs = await (deps.fetchInputs ?? fetchCortexInputs)(ticker, direction, { now });
+    const inputs = await (deps.fetchInputs ?? fetchCortexInputs)(ticker, direction, {
+      now,
+      horizon: opts?.horizon,
+    });
     const verdict = (deps.compose ?? composeCortexEvidence)(inputs);
     return assessCortexVerdict(verdict, opts);
   } catch (err) {

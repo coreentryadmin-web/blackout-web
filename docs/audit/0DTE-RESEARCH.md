@@ -158,6 +158,47 @@ make up the difference even with 29 `doubled` hits. See
 **No gate changed** — `resolveExitModeForTier`'s C-tier/untiered→ratchet default is now empirically
 supported rather than merely inherited, and a single 90-day sample argues to LEAVE IT, not flip it.
 
+**Follow-up (2026-09-04): the regime-conditioned trend dead-zone — MEASURED, INSUFFICIENT DATA, no
+gate changed.** `decideTrimScale`'s own dead-zone-guard comment (`exit-engine.ts`, ~line 300) names a
+residual gap its 2026-08-27 fix (`trimAvailable = armed > taken`) does not close: the shared
+`ratchetFloorPct` breakeven arm is a FIXED peak +20% while `TRIM_SCALE_RULES.tranches_by_regime` is
+regime-conditioned (neutral +20, range +15, trend +40). For neutral/range the two tables coincide or
+cross before +20%, so the 2026-08-27 guard suppresses the floor-dump whenever a tranche is armed or
+about to arm. `trend` cannot benefit — its first tranche is +40%, so a peak in **[20%, 40%)** arms the
+shared breakeven floor while `trimTranchesArmed` is still 0, and the floor dumps the WHOLE position to
+~0%. A same-session sweep of `GET /api/market/zerodte/record?days=90` found exactly this signature
+live: 37/372 graded 0DTE plays (9.9%) exited via `ratchet_breakeven_floor` after a median +26.67% peak
+(up to +48.56%), two concrete examples 2026-09-03 (`BULL` +20.45%→0%, `CLS` +31.18%→0%).
+
+Built `scripts/audit/regime-dead-zone-ab.mjs` (`npm run ab:regime-dead-zone`), same harness pattern as
+`tier-exit-mode-ab.mjs`: real `GET /api/admin/zerodte/tier-export` rows (session_regime + entry
+premium/strike/expiry), real Polygon minute bars, re-graded through the SAME shipped
+`evaluateExitState`/`TRIM_SCALE_RULES` for CURRENT and FIX A (mutates
+`tranches_by_regime.trend[0]` down to +20% in-process, restored after — a real engine run, just a
+different threshold); FIX B (replace the hard 0% breakeven floor with a partial `peak * 0.5` floor
+specifically inside the dead zone) needed a decision-logic change `decideTrimScale` does not expose, so
+it is a clearly-labeled script-local re-implementation (bar-replay harness copied, decision logic
+re-derived from the shipped thresholds/comments — same REAL-vs-RE-IMPLEMENTED honesty split
+`tier-exit-mode-ab.mjs` already documents).
+
+**First live run, 90-day window: INSUFFICIENT DATA, and for a specific, checkable reason.** Only 19 of
+372 rows in the export even carry a `session_regime` at all (`entry-context.ts`'s stamping is real but
+recent), and of those only **3 are `trend`** — the regime the dead zone actually lives in (`range`: 12,
+`neutral`: 4). Of the 15 rows that fetched real bars and graded, **zero** landed in trend's own [20%,
+40%) dead-zone-with-zero-tranches-armed window. This is not a null result about the bug — the bug's own
+live evidence (37 breakeven-floor dumps above) is unambiguous — it is a null result about whether
+*trend-regime, trim_scale-eligible* plays are common enough yet to backtest the fix's own tradeoffs
+(FIX A trims earlier and gives up trend-day runway; FIX B still gives back half the peak). `exit-sync.ts`
+confirms why: `ZERODTE_TRIM_BANK_LIVE`/regime-conditioning only flipped ON by default 2026-09-03, one day
+before this run — the population needed to measure this fix has barely started accumulating.
+
+**No gate changed.** `TRIM_SCALE_RULES.tranches_by_regime.trend` and `decideTrimScale`'s floor
+computation are untouched; a change here is real risk-management surgery (same caution the TRIM-badge
+item above already establishes for this exact file) and per this repo's own evidence bar deserves more
+than 0-3 real trend samples. **Re-run `npm run ab:regime-dead-zone -- --days=90` in 2-3 weeks** once
+`session_regime`-stamped trend rows have accumulated — the script is built, live-auth-tested, and ready;
+it just needs a population that doesn't exist yet.
+
 ---
 
 ### Board status badge: the TRIM threshold bug is real, and the earlier deferral was correct (2026-08-28)

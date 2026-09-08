@@ -4,6 +4,7 @@
 // never crash on a cold lane.
 
 import { roundFloats } from "@/lib/round-floats";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-rounding";
 // Session phase comes from the ONE canonical helper (largo/core), not a local re-derivation —
 // a second copy of the RTH boundaries is how two surfaces end up disagreeing about the session.
@@ -192,8 +193,25 @@ export async function swingHorizonForLargo() {
       fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
       spotsByTicker: snap?.spotsByTicker,
     });
+    const nowMs = Date.now();
     return roundFloats({
       available: true,
+      // The Largo product contract's "time"/"freshness" points require every product read to
+      // carry when it was measured. This tool omitted both entirely — a model reading
+      // `sample_plays`/`section_counts` had no way to tell a live-scan lane from one whose
+      // discovery run is hours or days stale. Two different clocks matter here and must not be
+      // conflated: `as_of`/`as_of_et`/`session_date` are THIS read's own clock (matches every
+      // sibling tool's convention, e.g. bangerBoardForLargo above); `scan_as_of`/
+      // `scan_session_day` are the PERSISTED discovery snapshot's own stamp
+      // (SwingServingSnapshot.asOf/sessionDay, already fetched above for spotsByTicker and
+      // silently discarded before this fix) — the actual freshness evidence for the lane
+      // contents. `null` when no scan has ever been persisted (discovery-gated empty lane),
+      // never fabricated as "now".
+      as_of: new Date(nowMs).toISOString(),
+      as_of_et: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
+      scan_as_of: snap?.asOf ?? null,
+      scan_session_day: snap?.sessionDay ?? null,
       ...(openPositionsRead
         ? {}
         : {
@@ -752,8 +770,9 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
     const state = await fetchVectorFullState(ticker, h);
     if (!state) {
       // No live spot is not an empty pulse — it is no read at all. Saying so stops "no signals"
-      // from being reported as a quiet tape.
-      return { available: false, reason: "no_live_vector_state", ticker: ticker.toUpperCase(), signals: [] };
+      // from being reported as a quiet tape. `signals` itself must stay null, not [], for the
+      // same reason the comment states — an empty array here is still a countable answer.
+      return { available: false, reason: "no_live_vector_state", ticker: ticker.toUpperCase(), signals: null };
     }
 
     // The OBSERVATION clock (`nowMs`) stays keyed to the snapshot, because every signal age and
@@ -854,7 +873,7 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
   } catch (e) {
     return {
       available: false,
-      signals: [],
+      signals: null,
       error: e instanceof Error ? e.message : "vector_pulse_failed",
     };
   }
@@ -1320,18 +1339,15 @@ export function etSessionNow(now = new Date()): { phase: string; et_time: string
   };
 }
 
-/** Whole seconds between an ISO timestamp and now, or null when the stamp is unusable. */
+/** Whole seconds between an ISO timestamp and now, or null when unusable or clock-skewed future (Largo C2). */
 export function ageSecondsFrom(iso: string | null | undefined, now = Date.now()): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.round((now - t) / 1000));
+  return ageSecFromIso(iso, now);
 }
 
 /** The subset of `GexPositioning` the compare strip serves. Structural so this stays pure. */
 export type ThermalComparePositioning = {
   spot: number;
-  change_pct: number;
+  change_pct: number | null;
   asof: string;
   flip: number | null;
   call_wall: number | null;

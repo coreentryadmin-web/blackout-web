@@ -1,6 +1,24 @@
 import type { IChartApi, UTCTimestamp } from "lightweight-charts";
 import { lastSessionBars } from "@/features/vector/lib/vector-key-levels";
-import { centeredLiveVisibleLogicalRange } from "@/features/vector/lib/vector-candle-render";
+import {
+  aggregateVectorBars,
+  type VectorTimeframeMinutes,
+} from "@/features/vector/lib/vector-bar-timeframes";
+import {
+  centeredLiveVisibleLogicalRange,
+  normalizeLogicalRange,
+} from "@/features/vector/lib/vector-candle-render";
+
+/** Apply a logical range only when lightweight-charts will accept it. */
+export function applyVisibleLogicalRange(
+  chart: IChartApi,
+  range: { from: number; to: number } | null | undefined
+): boolean {
+  const safe = normalizeLogicalRange(range);
+  if (!safe) return false;
+  chart.timeScale().setVisibleLogicalRange(safe);
+  return true;
+}
 
 /** Right-edge breathing room (in bar slots) so the latest bead cluster is not glued to the axis. */
 const SESSION_VIEWPORT_RIGHT_PAD = 2;
@@ -40,9 +58,7 @@ export function sessionVisibleTimeRange(
 /** Frame ~48 bars with the latest candle near center — default live desk load. */
 export function applyCenteredLiveViewport(chart: IChartApi, barCount: number): boolean {
   const range = centeredLiveVisibleLogicalRange(barCount);
-  if (!range) return false;
-  chart.timeScale().setVisibleLogicalRange(range);
-  return true;
+  return applyVisibleLogicalRange(chart, range);
 }
 
 /**
@@ -74,9 +90,7 @@ export function applySessionOverviewViewport(
     return true;
   }
   const range = sessionVisibleLogicalRange(bars);
-  if (!range) return false;
-  chart.timeScale().setVisibleLogicalRange(range);
-  return true;
+  return applyVisibleLogicalRange(chart, range);
 }
 
 /**
@@ -99,4 +113,19 @@ export function wantsSessionOverviewViewport(
   liveFollowEnabled: boolean
 ): boolean {
   return viewport === "session" && !liveFollowEnabled;
+}
+
+/**
+ * Bar times the bead rail projects against — always the NEWEST ET session only.
+ *
+ * Seed bars carry multiple sessions while `trimHistoryToSession` cuts wall history to one; feeding
+ * the full multi-day grid makes every bucket land on the right sliver of the chart (beads look like
+ * sparse dots clustered on the right ~10%). Session-scoped times restore the Sep-3 full-width ribbons.
+ */
+export function sessionBarTimesFromMinuteBars(
+  minuteBars: readonly { time: number }[],
+  intervalMinutes: VectorTimeframeMinutes
+): number[] {
+  const session = lastSessionBars(minuteBars) as import("@/features/vector/lib/vector-bar-timeframes").VectorOhlcBar[];
+  return aggregateVectorBars(session, intervalMinutes).map((b) => b.time);
 }

@@ -1,5 +1,6 @@
 import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 
 /**
@@ -22,10 +23,42 @@ import path from "node:path";
  * test here, invoked exactly as Next invokes them.
  */
 
-const CSS_MOCKS = [
-  path.join(process.cwd(), "src/app/styles/admin-console.css"),
-  path.join(process.cwd(), "src/app/nighthawk-v2.css"),
+// Every gated layout this file imports below (see the `before()` block, which keeps its own
+// copy for per-layout type safety — `let AdminLayout: typeof import(...)` etc.). This list
+// exists so CSS-import discovery (next) doesn't need its own third copy of the same paths.
+const GATED_LAYOUT_RELATIVE_PATHS = [
+  "../admin/layout.tsx",
+  "../dashboard/layout.tsx",
+  "../flows/layout.tsx",
+  "../heatmap/layout.tsx",
+  "../meridian/layout.tsx",
+  "../nighthawk/layout.tsx",
+  "../terminal/layout.tsx",
+  "../vector/layout.tsx",
+  "../../embed/track-record/layout.tsx",
 ];
+
+/**
+ * Auto-discover every side-effect `.css` import a gated layout makes, by reading its source text
+ * rather than hand-maintaining a static path list (the CSS_MOCKS array this replaced went stale
+ * three times as nighthawk's own CSS imports grew from 1 to 3 in one afternoon — each time
+ * silently turning every subtest under this layout into a `cancelledByParent` cascade instead of
+ * a clear failure, because tsx's plain CJS transform has no CSS loader and tries to parse the raw
+ * CSS file as JS, throwing on the first class-selector `.`). Regex, not a real parser: these are
+ * plain `import "./x.css";` side-effect statements, not dynamic or templated paths.
+ */
+function discoverCssImportPaths(layoutRelPath: string): string[] {
+  const layoutAbsPath = path.join(process.cwd(), "src/app/(site)/__tests__", layoutRelPath);
+  const source = fs.readFileSync(layoutAbsPath, "utf8");
+  const importRe = /^\s*import\s+["'](\.[^"']+\.css)["'];?\s*$/gm;
+  const found: string[] = [];
+  for (const match of source.matchAll(importRe)) {
+    found.push(path.resolve(path.dirname(layoutAbsPath), match[1]!));
+  }
+  return found;
+}
+
+const CSS_MOCKS = [...new Set(GATED_LAYOUT_RELATIVE_PATHS.flatMap(discoverCssImportPaths))];
 for (const cssPath of CSS_MOCKS) {
   mock.module(cssPath, { namedExports: {} });
 }
@@ -66,6 +99,53 @@ mock.module("@clerk/nextjs/server", {
     clerkClient: async () => ({
       users: { getUser: async (_id: string) => mockClerkUser },
     }),
+  },
+});
+
+// Layout gates call getSession() from auth-server (not clerk auth() directly). Mock the same
+// module specifier the app uses so tsx --test resolves the mock (CQ-113 page-gate path).
+const AUTH_SERVER = path.join(process.cwd(), "src/lib/auth-server.ts");
+const TIER_CACHE = path.join(process.cwd(), "src/lib/tier-cache.ts");
+const CLERK_USER_CACHE = path.join(process.cwd(), "src/lib/clerk-user-cache.ts");
+const USER_DIRECTORY = path.join(process.cwd(), "src/lib/user-directory.ts");
+
+mock.module(AUTH_SERVER, {
+  namedExports: {
+    getSession: async () => ({
+      userId: mockUserId,
+      email: mockClerkUser.emailAddresses[0]?.emailAddress ?? null,
+      sessionClaims: mockSessionClaims,
+    }),
+    auth: async () => ({ userId: mockUserId, sessionClaims: mockSessionClaims }),
+  },
+});
+
+mock.module(TIER_CACHE, {
+  namedExports: {
+    resolveUserTier: async () => {
+      const tier = String(mockClerkUser.publicMetadata?.tier ?? "free");
+      return tier as "free" | "community" | "premium";
+    },
+    TierUnavailableError: class TierUnavailableError extends Error {
+      name = "TierUnavailableError";
+    },
+    publishTierChanged: () => {},
+  },
+});
+
+mock.module(CLERK_USER_CACHE, {
+  namedExports: {
+    getClerkUserCached: async () => mockClerkUser,
+  },
+});
+
+mock.module(USER_DIRECTORY, {
+  namedExports: {
+    getUserProfile: async () => ({
+      email: mockClerkUser.emailAddresses[0]?.emailAddress ?? null,
+      tier: mockClerkUser.publicMetadata.tier as string,
+    }),
+    isUserAdmin: async () => mockClerkUser.publicMetadata.role === "admin",
   },
 });
 
@@ -200,13 +280,13 @@ describe("gated route layouts redirect non-qualifying sessions (integration, not
     );
   });
 
-  test("premium session passes the /flows tier gate (JWT fast path — no redirect thrown)", async () => {
+  test("premium session passes the /flows tier gate (resolveUserTier — no redirect thrown)", async () => {
     setSession({ tier: "premium" });
     const result = await FlowsLayout({ children: "ok" as unknown as React.ReactNode });
     assert.equal(result, "ok");
   });
 
-  test("admin session passes the /admin role gate (JWT fast path — no redirect thrown)", async () => {
+  test("admin session passes the /admin role gate (JWT role claim — no redirect thrown)", async () => {
     setSession({ role: "admin", tier: "free" });
     const result = await AdminLayout({ children: "ok" as unknown as React.ReactNode });
     assert.equal(result, "ok");

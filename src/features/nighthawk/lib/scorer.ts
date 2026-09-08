@@ -1,4 +1,5 @@
 import type { FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 import type { BenzingaCatalyst, BenzingaPriceTarget, FundamentalSignals, PolygonFinancialRatios } from "@/lib/providers/polygon";
 import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
 import type { TickerGreekFlowSummary } from "./dossier";
@@ -56,6 +57,15 @@ export type ScoredCandidate = {
   sector?: string;
   /** Cross-edition governor penalty (points subtracted for repeat/loss-streak/sector-cap). */
   govPenalty?: number;
+  /** IV-rank options-pricing penalty (elevated IV → wider spreads, faster decay). Folded into `score`. */
+  iv_adjustment?: number;
+  /** Flow-anomaly demotion (-10) when the ticker was flagged critical in the last 60m. Folded into `score`. */
+  anomaly_penalty?: number;
+  /** +4 bonus when flow.score >= 25/38 (very strong directional flow). Folded into `score`. */
+  flow_conviction_bonus?: number;
+  /** Net point delta from the regime multiplier (dampened 0.6-1.3x) applied to the pre-regime sum.
+   *  Lets a consumer's factor breakdown reconcile to `score` without re-deriving the multiplier. */
+  regime_adjustment?: number;
 };
 
 export function regimeContextFromMarket(ctx: MarketWideContext): NightHawkRegimeContext {
@@ -445,14 +455,25 @@ export function scoreFlowQuality(
     else if (dom >= 0.7) score += 1;
   }
 
-  if (flowStreak?.streak_days) {
+  // Raw flow-implied direction, computed BEFORE the streak bonus below (not after, as it used to
+  // be) — the streak bonus must be checked against it. `flowStreak.direction` comes from a
+  // DIFFERENT population than `flows` (a 10-day DB rollup of net daily premium, not tonight's
+  // live UW batch) and used to be added to `score` unconditionally, regardless of which way it
+  // pointed relative to tonight's flow. A 5-day PUT-dominated streak could still hand its full
+  // +12×weight "sustained conviction" bonus to a candidate whose LIVE flow tonight leans call —
+  // rewarding a LONG candidate with historical SHORT evidence as if it corroborated the play.
+  // `directionFlippedBySkew` below can still move `direction` a second time (a distinct, later
+  // evidence source, options-implied skew) — the streak check intentionally compares against the
+  // raw premium-based direction, since `flowStreak.direction` is also premium-based.
+  let direction: "long" | "short" =
+    callWeightedPrem >= putWeightedPrem ? "long" : "short";
+
+  if (flowStreak?.streak_days && flowStreak.direction === direction) {
     const streakWeight = opts?.streakWeight ?? 1;
     score += streakBonusPoints(flowStreak.streak_days, streakWeight);
   }
 
   score = Math.min(38, score);
-  let direction: "long" | "short" =
-    callWeightedPrem >= putWeightedPrem ? "long" : "short";
   let directionFlippedBySkew = false;
 
   const weightedTotal = callWeightedPrem + putWeightedPrem;
@@ -758,7 +779,13 @@ function congressTradeDecayMultiplier(row: Record<string, unknown>, nowMs: numbe
   if (raw == null || raw === "") return 0.4;
   const d = new Date(String(raw));
   if (Number.isNaN(d.getTime())) return 0.4;
-  const ageDays = (nowMs - d.getTime()) / 86_400_000;
+  const ageMs = nowMs - d.getTime();
+  // BUG FIX (2026-09-03): a filed_at/disclosure date from the FUTURE (external congressional-trade
+  // disclosure feeds are known to carry messy/malformed dates) used to produce a negative ageDays
+  // that trivially satisfied `<= 7`, handing a bad date the MAXIMUM 1.0x recency multiplier instead
+  // of being discounted like any other date whose real age cannot be verified.
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return 0.4;
+  const ageDays = ageMs / 86_400_000;
   if (ageDays <= 7) return 1.0;
   if (ageDays <= 14) return 0.7;
   return 0.4;
@@ -862,22 +889,7 @@ export function scoreNewsCatalyst(
   return Math.max(-6, Math.min(8, score));
 }
 
-export function convictionFromScore(score: number): string {
-  if (score >= 70) return "A+";
-  if (score >= 55) return "A";
-  if (score >= 40) return "B";
-  return "C";
-}
-
-/** Ordinal rank for conviction letters (higher = stronger). Unknown letters read as B. */
-export function convictionRank(conviction: string): number {
-  const c = conviction.trim().toUpperCase();
-  if (c === "A+") return 4;
-  if (c === "A") return 3;
-  if (c === "B") return 2;
-  if (c === "C") return 1;
-  return 2;
-}
+export { convictionFromScore, convictionRank } from "./conviction";
 
 /**
  * UW's `risk_reversal` field (the source of `dossierExtras.risk_reversal_skew`, parsed by
@@ -1095,29 +1107,34 @@ export function scoreCandidate(
   // the composite gets +4 outside the flow component. Lifts high-flow names that
   // might be borderline on tech/positioning into the publish band.
   const flowConvictionBonus = flow.score >= 25 ? 4 : 0;
-  const total = Math.min(
-    100,
-    Math.max(
-      0,
-      Math.round(
-        (flow.score +
-          techScore +
-          posScore +
-          newsScore +
-          smartMoneyScore +
-          skewAdj +
-          fundamentalScore +
-          shortInterestScore +
-          wallProxScore +
-          vexScore +
-          totalCatalystScore +
-          ivAdjustment +
-          anomalyPenalty +
-          flowConvictionBonus) *
-          dampenedRegime
-      )
-    )
-  );
+  const preRegimeSum =
+    flow.score +
+    techScore +
+    posScore +
+    newsScore +
+    smartMoneyScore +
+    skewAdj +
+    fundamentalScore +
+    shortInterestScore +
+    wallProxScore +
+    vexScore +
+    totalCatalystScore +
+    ivAdjustment +
+    anomalyPenalty +
+    flowConvictionBonus;
+  const total = Math.min(100, Math.max(0, Math.round(preRegimeSum * dampenedRegime)));
+  // 9-9: dossier_score folds ivAdjustment/anomalyPenalty/flowConvictionBonus and the regime
+  // multiplier into `total`, but board.ts's `factor_breakdown` (the member-facing "why this play
+  // was picked" panel) only ever rendered the 11 named component scores above — these three extra
+  // terms plus the multiplier's own effect were real contributors to dossier_score that never had
+  // a rendered line item, so factor_breakdown's sum still silently under/over-counted dossier_score
+  // whenever any of them was non-zero (measured live 2026-09-03: an NVDA case with a nonzero
+  // flowConvictionBonus showed dossier_score=81 vs a factor_breakdown sum of 77). Exposing them
+  // here (conditional, same "absent vs real zero" convention as every other optional field in this
+  // type) lets board.ts add matching line items instead of only widening the same five-year-old gap
+  // by three more untracked terms. `regime_adjustment` captures the multiplier's net point delta so
+  // the breakdown's own sum reconciles to `total` even when regime is not neutral.
+  const regimeAdjustment = total - Math.round(preRegimeSum);
 
   const fundCheck = passesFundamentalSanity(
     dossierExtras.fundamental_ratios ?? null,
@@ -1167,6 +1184,10 @@ export function scoreCandidate(
     fundamental_block: !fundCheck.ok,
     fundamental_flags: fundCheck.reasons,
     trading_halt: false,
+    ...(ivAdjustment !== 0 ? { iv_adjustment: ivAdjustment } : {}),
+    ...(anomalyPenalty !== 0 ? { anomaly_penalty: anomalyPenalty } : {}),
+    ...(flowConvictionBonus !== 0 ? { flow_conviction_bonus: flowConvictionBonus } : {}),
+    ...(regimeAdjustment !== 0 ? { regime_adjustment: regimeAdjustment } : {}),
   };
 }
 
@@ -1182,6 +1203,26 @@ const FUNDAMENTAL_BLOCK_PENALTY = 10;
 const CONFIRMING_SIGNAL_BONUS = 2;
 /** Minimum confirming signals before the bonus kicks in (avoid rewarding noise). */
 const CONFIRMING_SIGNAL_FLOOR = 3;
+/** Overnight measured prime band (40–55) — best historical avg return. */
+const NH_RANK_PRIME_MIN = 40;
+const NH_RANK_PRIME_MAX = 55;
+/** Top band (70+) — measured inversion; demote in synthesis ordering. */
+const NH_RANK_TOP_MIN = 70;
+const NH_PRIME_BAND_BONUS = 8;
+const NH_MID_BAND_PENALTY = 2;
+const NH_TOP_BAND_PENALTY = 6;
+
+/**
+ * Overnight score-band adjustment for synthesis ranking — aligns sort order with the
+ * tier engine's measured inversion (prime 40–55 outperforms 55–69 and 70+).
+ */
+export function overnightRankingBandAdjust(score: number): number {
+  if (!Number.isFinite(score)) return 0;
+  if (score >= NH_RANK_PRIME_MIN && score <= NH_RANK_PRIME_MAX) return NH_PRIME_BAND_BONUS;
+  if (score >= NH_RANK_TOP_MIN) return -NH_TOP_BAND_PENALTY;
+  if (score > NH_RANK_PRIME_MAX) return -NH_MID_BAND_PENALTY;
+  return 0;
+}
 
 /**
  * Effective ranking score: base score + confluence bonus − fundamental penalty.
@@ -1196,6 +1237,7 @@ export function rankingScore(c: ScoredCandidate): number {
   if (signals >= CONFIRMING_SIGNAL_FLOOR) {
     effective += (signals - CONFIRMING_SIGNAL_FLOOR + 1) * CONFIRMING_SIGNAL_BONUS;
   }
+  effective += overnightRankingBandAdjust(c.score);
   return effective;
 }
 

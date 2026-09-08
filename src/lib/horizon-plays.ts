@@ -104,6 +104,8 @@ export interface HorizonPlay {
   livePnlPct?: number | null;
   peakPremium?: number | null;
   troughPremium?: number | null;
+  /** ISO instant the ledger last observed a real option quote (last_mark_at). */
+  markAsOf?: string | null;
   /** ISO instant capital was committed (live ledger). */
   committedAt?: string;
   /** Discovery provenance kinds (FLOW / STRUCTURE / CATALYST). */
@@ -121,6 +123,8 @@ export interface HorizonPlay {
   /** Thesis-health level for the desk — "unknown" when no setup read (never a fabricated intact). */
   thesisLevel?: "intact" | "warn" | "break" | "unknown";
   thesisNote?: string | null;
+  /** Open ledger row id when this play is live capital — disambiguates ticker collisions in briefs. */
+  positionId?: number;
   /** Live-position status when this play is an OPEN swing (OPEN/HOLD/TRIM) — drives live sections. */
   liveStatus?: "OPEN" | "HOLD" | "TRIM";
   /** Management action for a live position (manage.ts) — drives MANAGING/SCALING_OUT/EXITING. */
@@ -129,6 +133,8 @@ export interface HorizonPlay {
   persistenceObserved?: boolean;
   /** Honest reason the persistence gate has not promoted this name to WATCH yet. */
   persistenceGapReason?: string | null;
+  /** V2 commit gates (G-S6/G-S14) that would block an open — stamped at discovery for honest BUY/WAIT UI. */
+  commitGateBlockedBy?: string[];
 }
 
 /** The three lanes a candidate pool fans out into. */

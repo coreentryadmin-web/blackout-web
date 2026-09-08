@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { dbConfigured, fetchLatestCronJobRun, fetchRecentHelixSignalOutcomes } from "@/lib/db";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -14,9 +14,16 @@ export const runtime = "nodejs";
 
 /** Helix Tier 2 item #10 — follow-through tracker. Read-only over the ledger
  *  helix-signal-outcomes-job.ts (Tier 2 item #9) writes; see that file and
- *  docs/audit/FINDINGS.md for the full root-cause writeup. */
+ *  docs/audit/FINDINGS.md for the full root-cause writeup.
+ *
+ *  Gated at PREMIUM — this is a /flows (HELIX) desk API, same tier as every other
+ *  HELIX/flows route (authorizePremiumDeskApi's own doc names "HELIX flows (/flows)"
+ *  explicitly). Was wired to the weaker community-tier gate until 2026-09-04, letting
+ *  a $49 community subscriber pull $199 premium HELIX data by hitting this endpoint
+ *  directly (CWE-863) — see
+ *  docs/audit/findings-staging/2026-09-04-helix-signal-outcomes-community-gate.md. */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   if (!dbConfigured()) {

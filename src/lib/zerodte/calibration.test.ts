@@ -97,6 +97,20 @@ test("gateVerdictOf: pinned verdicts read back; unknown-VIX and missing blobs ar
   assert.equal(gateVerdictOf(malformed, "g4_vix"), null);
 });
 
+test("gateVerdictOf: a CONDOR's G-6 (applicable:false) is a non-observation, not a pass vote", () => {
+  // gates.ts pins applicable:false + would_block:false for a delta-neutral CONDOR (it never
+  // evaluates G-6 for one). If gateVerdictOf read would_block literally here, every such row
+  // would silently dilute recommendGate("g6_conflict", ...)'s would-pass cohort.
+  const condorRow = play({});
+  (condorRow.gate_calibration_json as Record<string, unknown>).g6_conflict = {
+    conflict: false,
+    against: [],
+    would_block: false,
+    applicable: false,
+  };
+  assert.equal(gateVerdictOf(condorRow, "g6_conflict"), null);
+});
+
 // ── Phase 3a: discovery-origin band ─────────────────────────────────────────────────
 function originPlay(origin: string[] | undefined, win: boolean): CalibrationPlayRow {
   const ec: Record<string, unknown> = {};

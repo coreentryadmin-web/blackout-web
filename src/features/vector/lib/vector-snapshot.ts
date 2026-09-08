@@ -5,6 +5,7 @@ import {
   type VectorDarkPoolLevel,
 } from "./vector-dark-pool-levels";
 import {
+  computeBeadRailGexWalls,
   computeGexWalls,
   mapFromStrikeTotalsRecord,
   nextWallScope,
@@ -27,6 +28,9 @@ import {
 import { recordWallSample, type WallHistorySample } from "./vector-wall-history";
 import { roundFloats } from "@/lib/round-floats";
 import { getCachedVectorDarkPool, getCachedVectorDarkPoolWithAge, type VectorDarkPoolRead } from "./vector-dark-pool-cache";
+import { getCurrentSpxCandle } from "@/lib/ws/spx-candle-store";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { getVectorLiveCandle } from "./vector-live-candle";
 import { spyVolumeForMinuteBar } from "./vector-spy-volume";
 import {
@@ -58,10 +62,21 @@ type TickerState = {
   fallbackStrikeTotals: Record<string, number> | null;
   /** When the heatmap data behind the fallbacks was actually fetched — drives honest gexAsOf/vexAsOf during outages. */
   fallbackFetchedAt: number;
+  /**
+   * Spot from the same heatmap fetch that populated fallbackStrikeTotals — used ONLY to
+   * side-constrain the GAMMA-lens computeGexWalls() calls below (call wall above spot, put wall
+   * below it), never the VEX lens (see gex-wall-levels.ts's NAMING doc). A few seconds/minutes
+   * stale on the same tolerance as fallbackStrikeTotals itself — directionally correct is what
+   * the constraint needs, not tick-fresh.
+   */
+  fallbackSpot: number | null;
   fallbackVexStrikeTotals: Record<string, number> | null;
   cachedVexFlip: number | null;
   cachedWalls: GexWalls | null;
   cachedWallsAt: number;
+  /** Unconstrained GEX walls for bead-rail recording — see computeBeadRailGexWalls. */
+  cachedBeadRailWalls: GexWalls | null;
+  cachedBeadRailWallsAt: number;
   cachedVexWalls: GexWalls | null;
   cachedVexWallsAt: number;
   cachedFlip: number | null;
@@ -90,10 +105,13 @@ function freshState(): TickerState {
     wallScopeInFlight: null,
     fallbackStrikeTotals: null,
     fallbackFetchedAt: 0,
+    fallbackSpot: null,
     fallbackVexStrikeTotals: null,
     cachedVexFlip: null,
     cachedWalls: null,
     cachedWallsAt: 0,
+    cachedBeadRailWalls: null,
+    cachedBeadRailWallsAt: 0,
     cachedVexWalls: null,
     cachedVexWallsAt: 0,
     cachedFlip: null,
@@ -142,6 +160,26 @@ function state(ticker: string): TickerState {
   return s;
 }
 
+/**
+ * Spot for GAMMA-lens wall side-constraint (call above spot, put below). Prefer the heatmap
+ * spot that populated fallbackStrikeTotals; fall back to the live candle close the chart already
+ * shows. Fail closed when neither is available — unconstrained walls invert call/put geometry.
+ */
+function resolveVectorWallSpot(s: TickerState, ticker: string): number | undefined {
+  if (typeof s.fallbackSpot === "number" && Number.isFinite(s.fallbackSpot) && s.fallbackSpot > 0) {
+    return s.fallbackSpot;
+  }
+  const t = normalizeVectorTicker(ticker);
+  if (t === "SPX") {
+    const close = getCurrentSpxCandle().current?.close;
+    if (typeof close === "number" && Number.isFinite(close) && close > 0) return close;
+    return undefined;
+  }
+  const close = getStockLiveCandle(t).current?.close;
+  if (typeof close === "number" && Number.isFinite(close) && close > 0) return close;
+  return undefined;
+}
+
 function wallScopeRefreshMs(ticker: string): number {
   const t = normalizeVectorTicker(ticker);
   return VECTOR_ORACLE_TICKERS.has(t)
@@ -153,7 +191,7 @@ function refreshWallScope(ticker: string): void {
   const s = state(ticker);
   const now = Date.now();
   const refreshMs = wallScopeRefreshMs(ticker);
-  if (now - s.wallScope.fetchedAt < refreshMs || s.wallScopeInFlight) return;
+  if (isWsUpdatedAtFresh(s.wallScope.fetchedAt, refreshMs, now) || s.wallScopeInFlight) return;
   s.wallScopeInFlight = runWallScopeFetch(ticker);
 }
 
@@ -163,6 +201,9 @@ function runWallScopeFetch(ticker: string): Promise<void> {
   return fetchGexHeatmap(t)
     .then((hm) => {
       s.wallScope = nextWallScope(s.wallScope, Date.now(), hm);
+      if (typeof hm?.spot === "number" && Number.isFinite(hm.spot) && hm.spot > 0) {
+        s.fallbackSpot = hm.spot;
+      }
       if (hm?.gex?.strike_totals && Object.keys(hm.gex.strike_totals).length > 0) {
         s.fallbackStrikeTotals = hm.gex.strike_totals;
         s.fallbackFetchedAt = Date.now();
@@ -191,7 +232,7 @@ export async function primeVectorWallScope(ticker: string = VECTOR_DEFAULT_TICKE
   const now = Date.now();
   const refreshMs = wallScopeRefreshMs(t);
   if (
-    now - s.wallScope.fetchedAt < refreshMs &&
+    isWsUpdatedAtFresh(s.wallScope.fetchedAt, refreshMs, now) &&
     (s.fallbackStrikeTotals || s.fallbackVexStrikeTotals)
   ) {
     return;
@@ -206,15 +247,25 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   const s = state(t);
   refreshWallScope(t);
   const now = Date.now();
-  if (now - s.cachedWallsAt < WALLS_CACHE_MS) return s.cachedWalls;
+  if (isWsUpdatedAtFresh(s.cachedWallsAt, WALLS_CACHE_MS, now)) return s.cachedWalls;
 
   // Dynamic WS subscription: ANY ticker with a live gex_strike_expiry feed gets
   // the WS ladder path (5s real-time walls). The static oracle set is no longer
   // the gate — hasLiveGexStrikeExpiry checks actual in-memory data freshness.
+  const spot = resolveVectorWallSpot(s, t);
+  if (!spot) {
+    s.cachedWalls = null;
+    s.cachedWallsAt = now;
+    return null;
+  }
+
   if (hasLiveGexStrikeExpiry(t)) {
     const ws = getGexStrikeExpiryLadder(t, s.wallScope.expiries);
     if (ws) {
-      s.cachedWalls = computeGexWalls(ws.ladder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+      s.cachedWalls = computeGexWalls(ws.ladder, {
+        maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+        spot,
+      });
       s.cachedWallsAt = now;
       return s.cachedWalls;
     }
@@ -223,6 +274,7 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   if (s.fallbackStrikeTotals) {
     s.cachedWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+      spot,
     });
     // gexAsOf must report DATA age, not compute time: during a provider outage
     // the fallback never refreshes, and stamping "now" here made members see
@@ -235,13 +287,48 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   return s.cachedWalls;
 }
 
+/**
+ * GEX walls for bead-rail recording — unconstrained by spot (Sep 3 desk behavior).
+ * Overlay/scanner reads use {@link getVectorGexWalls} with side-constraint; only the
+ * wall-history trail that feeds WallRailPrimitive uses this path.
+ */
+export function getVectorBeadRailGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWalls | null {
+  const t = normalizeVectorTicker(ticker);
+  const s = state(t);
+  refreshWallScope(t);
+  const now = Date.now();
+  if (isWsUpdatedAtFresh(s.cachedBeadRailWallsAt, WALLS_CACHE_MS, now)) return s.cachedBeadRailWalls;
+
+  if (hasLiveGexStrikeExpiry(t)) {
+    const ws = getGexStrikeExpiryLadder(t, s.wallScope.expiries);
+    if (ws) {
+      s.cachedBeadRailWalls = computeBeadRailGexWalls(ws.ladder, {
+        maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+      });
+      s.cachedBeadRailWallsAt = now;
+      return s.cachedBeadRailWalls;
+    }
+  }
+
+  if (s.fallbackStrikeTotals) {
+    s.cachedBeadRailWalls = computeBeadRailGexWalls(mapFromStrikeTotalsRecord(s.fallbackStrikeTotals), {
+      maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+    });
+    s.cachedBeadRailWallsAt = s.fallbackFetchedAt;
+  } else {
+    s.cachedBeadRailWalls = null;
+    s.cachedBeadRailWallsAt = now;
+  }
+  return s.cachedBeadRailWalls;
+}
+
 /** Vanna walls from the shared heatmap cache (Polygon-derived, ~8s). */
 export function getVectorVexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWalls | null {
   const t = normalizeVectorTicker(ticker);
   const s = state(t);
   refreshWallScope(t);
   const now = Date.now();
-  if (now - s.cachedVexWallsAt < VEX_WALLS_CACHE_MS) return s.cachedVexWalls;
+  if (isWsUpdatedAtFresh(s.cachedVexWallsAt, VEX_WALLS_CACHE_MS, now)) return s.cachedVexWalls;
   if (s.fallbackVexStrikeTotals && Object.keys(s.fallbackVexStrikeTotals).length > 0) {
     s.cachedVexWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackVexStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
@@ -352,7 +439,12 @@ export async function getVectorGexWallsForHorizon(
     if (scoped.length) {
       const ws = getGexStrikeExpiryLadder(t, scoped);
       if (ws && ws.ladder.size > 0) {
-        const wsWalls = computeGexWalls(ws.ladder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+        const spot = resolveVectorWallSpot(s, t);
+        if (!spot) return getVectorGexWalls(t);
+        const wsWalls = computeGexWalls(ws.ladder, {
+          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+          spot,
+        });
         const blended = getVectorGexWalls(t);
         return mergeWallSides(wsWalls, wallsHaveNodes(blended) ? blended : null);
       }
@@ -392,7 +484,7 @@ export async function getVectorGammaFlip(ticker: string = VECTOR_DEFAULT_TICKER)
   const t = normalizeVectorTicker(ticker);
   const s = state(t);
   const now = Date.now();
-  if (now - s.cachedFlipAt < FLIP_CACHE_MS) return s.cachedFlip;
+  if (isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS, now)) return s.cachedFlip;
   try {
     const pos = await getGexPositioning(t);
     s.cachedFlip = pos?.flip ?? null;
@@ -551,15 +643,16 @@ export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<b
     s.lastNarrowedWallBucket = 0;
   }
 
-  const walls = getVectorGexWalls(t);
+  const walls = getVectorBeadRailGexWalls(t);
   const vexWalls = getVectorVexWalls(t);
   const gammaFlip = s.cachedFlip;
   const vexFlip = getVectorVexFlip(t);
   const nowMs = Date.now();
   // RTH gate BEFORE freshness: an always-on oracle subscription keeps the cache fresh overnight.
   if (!wallRailRecordingOpen()) return false;
-  const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
-  const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
+  const gexRecordable =
+    walls != null && isWsUpdatedAtFresh(s.cachedBeadRailWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
+  const vexRecordable = vexWalls != null && isWsUpdatedAtFresh(s.cachedVexWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
   if (!gexRecordable && !vexRecordable) return false;
 
   const tickerBucketSec = await resolveWallTrailSampleSec(t);
@@ -617,13 +710,14 @@ export async function buildVectorStreamPayload(
   const s = state(t);
   const { current, updatedAt } = await getVectorLiveCandle(t);
   const walls = getVectorGexWalls(t);
+  const beadRailWalls = getVectorBeadRailGexWalls(t);
   const vexWalls = getVectorVexWalls(t);
   // Stale-while-revalidate: use cached flip/darkPool, refresh in the background.
   // Awaiting these inline (Polygon+UW HTTP every 5s, Redis every tick) regularly
   // exceeded the 1s hub tick budget, tripping the refreshInFlight guard in
   // vector-stream-hub and freezing the entire SSE frame — including spot price.
   const gammaFlip = s.cachedFlip;
-  if (Date.now() - s.cachedFlipAt >= FLIP_CACHE_MS && !s.flipRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS) && !s.flipRefreshInFlight) {
     s.flipRefreshInFlight = true;
     getGexPositioning(t)
       .then(pos => { s.cachedFlip = pos?.flip ?? null; })
@@ -632,7 +726,7 @@ export async function buildVectorStreamPayload(
   }
   const vexFlip = getVectorVexFlip(t);
   const darkPool = s.cachedDarkPool;
-  if (Date.now() - s.cachedDarkPoolAt >= DARK_POOL_LOCAL_CACHE_MS && !s.darkPoolRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedDarkPoolAt, DARK_POOL_LOCAL_CACHE_MS) && !s.darkPoolRefreshInFlight) {
     s.darkPoolRefreshInFlight = true;
     getCachedVectorDarkPoolWithAge(t)
       .then(dp => { s.cachedDarkPool = dp; })
@@ -656,8 +750,9 @@ export async function buildVectorStreamPayload(
   // refreshing, and re-recording the same stale walls under fresh bucket times
   // fabricates a flat trail that was never observed (and persists it).
   const nowMs = Date.now();
-  const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
-  const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
+  const gexRecordable =
+    beadRailWalls != null && isWsUpdatedAtFresh(s.cachedBeadRailWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
+  const vexRecordable = vexWalls != null && isWsUpdatedAtFresh(s.cachedVexWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
 
   // RTH gate BEFORE freshness — see wallRailRecordingOpen. This is the writer that produced the
   // 00:00-09:30 ET segment of SPX's rail: the SPX desk stream is always-on, so every poll of it
@@ -672,7 +767,7 @@ export async function buildVectorStreamPayload(
     const tickerBucketSec = wallTrailSec;
     const sample = buildWallHistorySample({
       time: bucketWallSampleTime(Math.floor(nowMs / 1000), tickerBucketSec),
-      gexWalls: gexRecordable ? walls : null,
+      gexWalls: gexRecordable ? beadRailWalls : null,
       gammaFlip: gexRecordable ? gammaFlip : null,
       vexWalls: vexRecordable ? vexWalls : null,
       vexFlip: vexRecordable ? vexFlip : null,
@@ -687,7 +782,7 @@ export async function buildVectorStreamPayload(
     const narrowedBucket = bucketWallSampleTime(Math.floor(nowMs / 1000), tickerBucketSec);
     if (gexRecordable && s.lastNarrowedWallBucket !== narrowedBucket) {
       s.lastNarrowedWallBucket = narrowedBucket;
-      void buildNarrowedHorizonWallSamples(t, narrowedBucket, { walls, flip: gammaFlip })
+      void buildNarrowedHorizonWallSamples(t, narrowedBucket, { walls: beadRailWalls, flip: gammaFlip })
         .then((rows) => {
           for (const r of rows) {
             if (r.sample) persistWallSampleDebounced(sessionYmd, r.sample, t, r.horizon);

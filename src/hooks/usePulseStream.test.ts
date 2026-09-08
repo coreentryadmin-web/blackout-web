@@ -87,11 +87,22 @@ test("overlayFromStream returns nothing when the stream has no usable price", ()
   assert.deepEqual(overlay, {});
 });
 
-test("overlayFromStream leaves vix_change_pct transported (no VIX prior close to derive from)", () => {
-  // Documented limitation, not an oversight — SpxDeskPulse carries no vix prior close.
-  const overlay = overlayFromStream(
-    { spx: { price: LIVE_PRICE, change_pct: 0.1 }, vix: { price: 14.9, change_pct: 4.9 } } as never,
+test("overlayFromStream gates vix_change_pct on REST anchor (no VIX prior close to derive from)", () => {
+  const overlayRest = overlayFromStream(
+    {
+      spx: { price: LIVE_PRICE, change_pct: 0.1 },
+      vix: { price: 14.9, change_pct: 4.9, open_source: "rest" },
+    } as never,
     basePulse()
   );
-  assert.equal(overlay.vix_change_pct, 4.9);
+  assert.equal(overlayRest.vix_change_pct, 4.9);
+
+  const overlayWsBar = overlayFromStream(
+    {
+      spx: { price: LIVE_PRICE, change_pct: 0.1 },
+      vix: { price: 14.9, change_pct: 4.9, open_source: "ws-bar" },
+    } as never,
+    basePulse({ vix_change_pct: -1.1 })
+  );
+  assert.equal(overlayWsBar.vix_change_pct, -1.1, "must keep REST value when SSE anchor is ws-bar");
 });

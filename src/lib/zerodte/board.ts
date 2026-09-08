@@ -115,14 +115,16 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
 export function resolveFreshFindStatus(
   heatState: SessionHeatState | undefined,
   moved: boolean,
-  illiquid: boolean
+  illiquid: boolean,
+  chaseExempt = false
 ): "WATCH" | "SKIP" {
   const pastCutoff =
     heatState === "POST_COMMIT" ||
     heatState === "LATE_SESSION" ||
     heatState === "CLOSED" ||
     heatState === undefined;
-  return moved || pastCutoff || illiquid ? "SKIP" : "WATCH";
+  const chased = moved && !chaseExempt;
+  return chased || pastCutoff || illiquid ? "SKIP" : "WATCH";
 }
 
 // ── Polygon symbol mapping for index option roots ─────────────────────────────────
@@ -234,7 +236,7 @@ export const SAME_DAY_GRADING_POLICY = "same_day_1530_close";
 /** Derive the horizon from the SELECTED contract's real dte (0→ZERO_DTE, 1..SETUP_MAX_DTE→
  *  ONE_DTE, else→WEEKLY_FALLBACK). Fail-closed: a non-finite/negative dte is treated as
  *  WEEKLY_FALLBACK so an unknown horizon can never be mistaken for same-day and graded with the
- *  15:30 time-stop. Pure. */
+ *  15:50 time-stop. Pure. */
 export function deriveContractHorizon(dte: number): ContractHorizon {
   if (Number.isFinite(dte)) {
     if (dte === 0) return "ZERO_DTE";
@@ -777,6 +779,13 @@ export const SETUP_MAX_OTM_PCT = ((): number => {
   return Number.isFinite(raw) && raw > 0 ? raw : 12;
 })();
 
+/** Relaxed far-OTM cap for Vector-confirmed runner/winner attaches (100–500% geometry).
+ *  Default 20% — wider than SETUP_MAX_OTM_PCT (12) but still blocks egregious lotto tails. */
+export const RUNNER_SETUP_MAX_OTM_PCT = ((): number => {
+  const raw = Number(process.env.ZERODTE_RUNNER_MAX_OTM_PCT);
+  return Number.isFinite(raw) && raw > SETUP_MAX_OTM_PCT ? raw : 20;
+})();
+
 /** How much of a print's premium counts DIRECTIONALLY, by aggressor side.
  *  At/near the ask = conviction buying; bid-side = sold premium (opposite intent);
  *  unknown = partial credit so thin metadata doesn't zero the board. */
@@ -846,7 +855,10 @@ export type ZeroDteGateFailure =
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
-  | "score_floor" // G-3: post-edge-layer score below 65
+  | "horizon_weekly_fallback" // G-15: WEEKLY_FALLBACK excluded — not same-day gradable on 0DTE ledger
+  | "score_floor" // G-3: post-edge-layer score below origin-aware floor (65 FLOW / looser BREAKOUT·PIN)
+  | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse)
+  | "early_window_prime_score" // G-18: sub-prime scores in early window
   | "single_rail_corroboration" // G-17: the 65-74 band needs the prime floor (≥75), any origin combo
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open
@@ -889,6 +901,7 @@ export type ZeroDteGateFailure =
   | `cortex_veto:${string}` // a Cortex source hard-vetoed the entry
   | "cortex_veto_blind" // Cortex blind to BOTH veto-capable sources on a fresh commit → HOLD
   | "cortex_net_negative" // no veto, but the evidence score nets < 0 — doesn't print
+  | "cortex_thin_evidence" // 2026-09-01: no veto, score >= 0 but too few sources answered to trust it — distinct from cortex_net_negative, whose score is always negative
   | "cortex_contested" // NH-R9: both a real support case and a real oppose case, net score below the A floor — unresolved internal fight, doesn't print
   | "cortex_gex_walls_oppose_unresolved" // 2026-08-28: a real, active gex-walls oppose below the A floor — evidenced (90-day + same-week live) to grade worse even at net score >= 0
   // ── CONDOR play-type gates (Phase 4, gates.ts) — replace the DIRECTIONAL plan-quality /
@@ -1283,13 +1296,14 @@ export function deriveZeroDteSetups(
     // Far-OTM lotto cap (Phase 0 firewall): mirror of the ITM gate on the OTM side. The
     // ITM gate catches stock-replacement; this catches the egregious-lotto tail (a huge
     // far-OTM 0DTE stack that clears the premium/dominance gates on size alone but whose
-    // strike is nowhere near a same-day move). Same rejection plumbing, its own code.
-    // Generous default (SETUP_MAX_OTM_PCT) so ordinary slightly-OTM momentum is untouched.
-    if (otmPct > SETUP_MAX_OTM_PCT) {
+    // strike is nowhere near a same-day move). Discovery uses RUNNER_SETUP_MAX_OTM_PCT
+    // (20%) so 12–20% OTM names can reach commit gates; moneynessGateBlocks applies the
+    // tighter SETUP_MAX_OTM_PCT (12%) unless Vector runner relax is active.
+    if (otmPct > RUNNER_SETUP_MAX_OTM_PCT) {
       opts?.rejections?.push({
         ticker,
         gate_failed: "max_otm_pct",
-        threshold: SETUP_MAX_OTM_PCT,
+        threshold: RUNNER_SETUP_MAX_OTM_PCT,
         gross_premium: agg.gross,
         aggression: Math.round(aggression * 100) / 100,
         side_dominance: Math.round(dominance * 100) / 100,
@@ -1384,41 +1398,6 @@ export function deriveZeroDteSetups(
   return setups.sort((a, b) => b.score - a.score).slice(0, maxSetups);
 }
 
-// ── Engine card ranking ───────────────────────────────────────────────────────────
-
-export type EngineCard = {
-  kind: "spx_play" | "lotto" | "power_hour";
-  /** ACTIVE = live managed play; ARMED = ready/near-trigger; SCANNING = watching; DONE/OFF. */
-  state: "ACTIVE" | "ARMED" | "SCANNING" | "DONE" | "OFF";
-  rank: number;
-};
-
-/**
- * Deterministic ordering for the engine cards: an ACTIVE managed play always leads,
- * ARMED engines next (lotto before power-hour outside 15:00-15:30, reversed inside
- * the window), then scanning states.
- */
-export function rankEngineCards(
-  cards: Array<Omit<EngineCard, "rank">>,
-  inPowerHourWindow: boolean
-): EngineCard[] {
-  const stateOrder: Record<EngineCard["state"], number> = {
-    ACTIVE: 0,
-    ARMED: 1,
-    SCANNING: 2,
-    DONE: 3,
-    OFF: 4,
-  };
-  const kindOrder = (k: EngineCard["kind"]): number => {
-    if (k === "spx_play") return 0;
-    if (inPowerHourWindow) return k === "power_hour" ? 1 : 2;
-    return k === "lotto" ? 1 : 2;
-  };
-  return [...cards]
-    .sort((a, b) => stateOrder[a.state] - stateOrder[b.state] || kindOrder(a.kind) - kindOrder(b.kind))
-    .map((c, i) => ({ ...c, rank: i + 1 }));
-}
-
 // ── Dossier enrichment (the "very strong" layer) ─────────────────────────────────
 // The top setups get the FULL Night Hawk dossier treatment — the same enrichment +
 // direction-correct deterministic scorer the evening edition uses: flow streaks,
@@ -1474,6 +1453,23 @@ export type SetupDossierView = {
     news_score: number;
     smart_money_score: number;
     catalyst_flags?: string[];
+    // 9-8: fetchTickerDossier (dossier.ts) always assigns the FULL ScoredCandidate
+    // (scorer.ts) here — this local view type had only ever declared the five fields above,
+    // so these six real, always-populated components had no typed path into factor_breakdown
+    // even though the runtime object carried them. Kept optional (matching ScoredCandidate's
+    // own optionality) rather than widened to the full ScoredCandidate type, since this view
+    // is deliberately narrower than the scorer's internal shape (e.g. no regime_multiplier,
+    // no fundamental_block/flags) — only what a consumer here actually needs.
+    fundamental_score?: number;
+    catalyst_score?: number;
+    short_interest_score?: number;
+    wall_proximity_score?: number;
+    vex_alignment_score?: number;
+    skew_score?: number;
+    iv_adjustment?: number;
+    anomaly_penalty?: number;
+    flow_conviction_bonus?: number;
+    regime_adjustment?: number;
   } | null;
   /** Benzinga analyst price-target one-liner (e.g. "PT raised to $210 at MS"). */
   price_target?: string | null;
@@ -1600,6 +1596,10 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   origin_contributions?: Partial<Record<DiscoveryOrigin, OriginContribution>>;
   /** Regime Plane snapshot at gate time (Wave A) — pinned onto committed rows via entry_context. */
   regime_plane?: import("./regime-plane").RegimePlaneSnapshot | null;
+  /** Stamped at plan attach — G-8 chase exempt (Vector and/or amplify regime). UI + persist. */
+  plan_chase_exempt?: boolean;
+  /** Primary strike before liquid-strike fallback walked the chain (telemetry). */
+  plan_strike_fallback_from?: number | null;
   /** NH-R4 (weekend/holiday gap risk): count of non-trading calendar days the selected contract's
    *  hold spans between today and expiry (0 = normal overnight, 2 = plain weekend, 3+ = holiday
    *  weekend) — see `tradingSessionGapDays` above. EVIDENCE ONLY (calibration-first, same role as
@@ -1778,6 +1778,20 @@ export function enrichSetup(
     dossier_score: scored?.score ?? null,
     conviction: scored?.conviction ?? null,
     direction_confirmed: scored ? scored.direction === setup.direction : null,
+    // 9-8: scoreCandidate (scorer.ts) always folds ALL of flow/tech/pos/news/smart_money PLUS
+    // fundamental/catalyst/short_interest/wall_proximity/vex_alignment/skew into `score`/
+    // `dossier_score` — this file only ever surfaced the first five, so the "Why this play was
+    // picked" panel for every FLOW/PIN setup silently omitted up to 6 of 11 real scoring inputs
+    // (measured live 2026-09-02: NVDA showed 5 factors summing to 22.4 against a dossier_score of
+    // 35 and a displayed score of 69 — the missing 6 accounted for more of the score than what was
+    // shown). Mirrors the identical, already-shipped mapping in deterministic-edition.ts (Night
+    // Hawk Edition's two `factor_breakdown` builders) so the same `ScoredCandidate` renders the
+    // same breakdown on both surfaces — this file had simply drifted out of sync with that
+    // established pattern, not implemented a different one on purpose. Conditional spreads (not a
+    // flat 0 fallback) keep an inapplicable dimension OUT of the breakdown entirely, exactly as
+    // deterministic-edition.ts already does — a real 0 (dimension scored, contributed nothing) and
+    // an absent input (dimension never scored) are different facts and must not collapse into the
+    // same rendered "0" bar.
     factor_breakdown: scored
       ? {
           flow: scored.flow_score,
@@ -1785,6 +1799,18 @@ export function enrichSetup(
           positioning: scored.pos_score,
           news: scored.news_score,
           smart_money: scored.smart_money_score,
+          ...(scored.fundamental_score != null ? { fundamental: scored.fundamental_score } : {}),
+          ...(scored.catalyst_score != null ? { catalyst: scored.catalyst_score } : {}),
+          ...(scored.short_interest_score != null ? { short_interest: scored.short_interest_score } : {}),
+          ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
+          ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
+          ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
+          ...(scored.iv_adjustment != null ? { iv_adjustment: scored.iv_adjustment } : {}),
+          ...(scored.anomaly_penalty != null ? { anomaly_penalty: scored.anomaly_penalty } : {}),
+          ...(scored.flow_conviction_bonus != null
+            ? { flow_conviction_bonus: scored.flow_conviction_bonus }
+            : {}),
+          ...(scored.regime_adjustment != null ? { regime_adjustment: scored.regime_adjustment } : {}),
         }
       : null,
     trend: tech?.trend ?? null,

@@ -16,3 +16,14 @@ test("shouldPersistVectorPickClosure: only first dont_buy per key", () => {
   assert.equal(shouldPersistVectorPickClosure("still_buy", false), false);
   assert.equal(shouldPersistVectorPickClosure("caution", false), false);
 });
+
+test("shouldPersistVectorPickClosure: chase-risk dont_buy is not archived as a closure", () => {
+  assert.equal(
+    shouldPersistVectorPickClosure("dont_buy", false, "Premium extended +122% since pick — chase risk"),
+    false
+  );
+  assert.equal(
+    shouldPersistVectorPickClosure("dont_buy", false, "Setup invalidated — spot 568.00 vs 570.00"),
+    true
+  );
+});

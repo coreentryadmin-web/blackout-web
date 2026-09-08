@@ -10,8 +10,12 @@ export type LargoPeerCohortMember = {
   report_date: string | null;
   expected_move_pct: number | null;
   avg_reaction_pct: number | null;
-  beat_rate: number | null;
   reaction_sample_n: number;
+  beat_rate: number | null;
+  /** Sample size for `beat_rate` — a DIFFERENT cohort from `reaction_sample_n` (EPS-graded vs
+   *  reaction-settled are independent conditions on the same print). See PeerReactionSummary's
+   *  `beatRateN` doc comment. */
+  beat_rate_n: number;
   is_subject: boolean;
 };
 
@@ -53,8 +57,9 @@ export function shapeMeridianPeerCohortForLargo(input: {
       report_date: m.date ?? null,
       expected_move_pct: m.value,
       avg_reaction_pct: reaction?.avgReactionPct ?? null,
-      beat_rate: reaction?.beatRate ?? null,
       reaction_sample_n: reaction?.n ?? 0,
+      beat_rate: reaction?.beatRate ?? null,
+      beat_rate_n: reaction?.beatRateN ?? 0,
       is_subject: m.ticker === subject,
     };
   });
@@ -72,7 +77,10 @@ export function shapeMeridianPeerCohortForLargo(input: {
     members,
     interpretation:
       "Sector peers are same-SIC-major-group earnings names in the loaded Meridian timeline window. " +
-      "expected_move_pct ranks forward implied moves; avg_reaction_pct and beat_rate come from each peer's " +
-      "own settled print history (same engine as the desk History tab). Omitted fields mean unknown, not zero.",
+      "expected_move_pct ranks forward implied moves; avg_reaction_pct (with reaction_sample_n) and " +
+      "beat_rate (with beat_rate_n) come from each peer's own print history (same engine as the desk " +
+      "History tab) but are DIFFERENT cohorts — a print can be EPS-graded without its reaction having " +
+      "settled yet, or vice versa, so the two sample sizes can differ for the same peer. Omitted fields " +
+      "mean unknown, not zero.",
   };
 }

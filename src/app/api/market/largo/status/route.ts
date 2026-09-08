@@ -42,7 +42,12 @@ export async function GET() {
   const [flows, gex, vector, swing, spxPlay, zerodte, banger] = await Promise.all([
     settle(marketPlatform.flows.getFlowTapeSummary({ limit: 20 })),
     settle(import("@/lib/largo/gex-heatmap-for-largo").then((m) => m.gexHeatmapForLargo("SPX"))),
-    settle(fetchVectorFullState("SPX")),
+    // Explicit "all": every other lane's health check here reads the canonical all-expiry
+    // picture (gexHeatmapForLargo has no horizon concept at all). fetchVectorFullState's OWN
+    // default param is "0dte" (Vector's chart opens on 0DTE by product design), so omitting
+    // horizon here would silently scope this specific health probe to today's 0DTE expiries
+    // only — a mismatch with what THERMAL's row on the same strip checks.
+    settle(fetchVectorFullState("SPX", "all")),
     settle(productReads.swingHorizonForLargo()),
     settle(marketPlatform.spx.getSpxPlayState()),
     settle(import("@/lib/platform/zerodte-service").then((m) => m.zeroDtePlaysForLargo())),

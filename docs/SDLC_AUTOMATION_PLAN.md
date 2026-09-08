@@ -1,5 +1,13 @@
 # BlackOut — Autonomous SDLC Automation Plan
 
+> **DEPRECATED** — this plan describes a local-Windows-machine cron scheme (`C:/Users/raidu/blackout-cron`
+> pushing to `origin/main`, with Railway named as the deploy target) that predates the move to
+> AWS ECS-only production (Railway decommissioned 2026-07-25) and predates the cloud-based
+> scheduled-trigger lanes (e.g. this repo's own `DISCOVERY lane — 24/7 new-work sweep`, and
+> workflow-based automation like `.github/workflows/spx-platform-backlog-agent.yml`) that now do
+> this work instead. Retained for historical reference — do not stand up the local machine/cron
+> described below; the schedule and `railway-deploy-monitor` job it lists no longer apply.
+
 Turns idle compute (weeknights + weekends, when the RTH market-data audit is dormant) into a 24/7 SDLC engine: build/test health, UI rendering, E2E interactions, error triage, security, performance, a11y, UI enhancements, backlog grooming. Each scheduled task runs FRESH (no memory) — it reads its section here and executes autonomously.
 
 ## ⚡ AGGRESSIVE MODE — ACTIVE (set 2026-06-25)

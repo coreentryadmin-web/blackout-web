@@ -20,6 +20,7 @@
 // The pure core (`assembleSwingDossierInput`) is IO-free and deterministic over fetched arrays; the thin
 // `ingestSwingReads` shell fetches the name's daily closes via an INJECTED fetcher (testable without live
 // providers). The discovery shell fetches SPY once and passes its closes in, so we never re-fetch the index.
+// Canonical Tier-1 fusion path (deep-dive Q6): abandoned v2/data-fusion.ts — extend HERE, not a dead module.
 
 import type { SwingDossierInput } from "./dossier";
 import type { SwingReads } from "../swing-signals";
@@ -312,6 +313,12 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
     regime01,
     // DATA_QUALITY (pillar G) stays absent: it is an honesty meta-pillar the dossier already tracks via
     // `dataQuality.degraded`/`missing`; grounding it as a real 0–1 feed-agreement read is a follow-up (TODO).
+    // Pin catalyst derive inputs so discovery can re-align earningsInWindow after archetype classification (Q12).
+    catalystDerive: {
+      signedReturnPct10d: signed.returnPct10d,
+      freshCatalystAgeDays: args.catalyst?.freshCatalystAgeDays ?? null,
+      earnings: args.catalyst?.earnings ?? { nextEarnings: null, lastEarnings: null },
+    },
   };
 }
 

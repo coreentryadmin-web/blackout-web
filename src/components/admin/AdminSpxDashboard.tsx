@@ -7,6 +7,7 @@ import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { PlayOutcomeRow } from "@/features/spx/lib/spx-play-outcomes";
 import type { JournalEntry } from "@/lib/journal/journal-core";
 import { JournalEditor } from "@/components/admin/JournalEditor";
+import { adminAgeMsFromIso } from "@/components/admin/admin-time-ago";
 import { SignalAnalyticsPanel } from "@/features/spx/components/SignalAnalyticsPanel";
 import { AdminSpxTerminal } from "@/components/admin/AdminSpxTerminal";
 import {
@@ -942,8 +943,8 @@ export function AdminSpxDashboard() {
   const wr = stats?.outcome_stats.overall.win_rate ?? 0;
   const cold = stats?.outcome_stats.cold_buy.win_rate ?? 0;
   const promote = stats?.outcome_stats.watch_promote.win_rate ?? 0;
-  const staleMs = data ? Date.now() - new Date(data.generated_at).getTime() : 0;
-  const isStale = staleMs > 90_000;
+  const ageMs = data?.generated_at ? adminAgeMsFromIso(data.generated_at) : null;
+  const isStale = ageMs === null || ageMs > 90_000;
 
   return (
     <div className="admin-spx-dashboard admin-deck-root">
@@ -1060,7 +1061,7 @@ export function AdminSpxDashboard() {
       {error && <p className="admin-error">{error}</p>}
       {isStale && (
         <p className="admin-warn admin-stale-banner">
-          Desk data is stale ({Math.round(staleMs / 1000)}s old) — last refresh may have failed silently.
+          Desk data is stale ({ageMs == null ? "?" : Math.round(ageMs / 1000)}s old) — last refresh may have failed silently.
         </p>
       )}
       {!data?.analytics.db_configured && (

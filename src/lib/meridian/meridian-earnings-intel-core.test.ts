@@ -8,6 +8,7 @@ import {
   coerceMeridianWallLevels,
   flowWindowHours,
   moveArrow,
+  resolveIntelExpectedMove,
   shapeMeridianDarkPool,
 } from "./meridian-earnings-intel-core";
 import { buildMeridianFinancialsContext } from "./meridian-financials-context";
@@ -168,12 +169,57 @@ test("buildMeridianFinancialsContext maps fundamentals bundle", () => {
       eps_trajectory: "up",
       net_cash_positive: true,
     },
-    price_target: { price_target: 550, upside_pct: 12.5 },
+    // `BenzingaPriceTarget` (the REAL type of this field) carries only the raw dollar target —
+    // no upside — which is exactly the defect below: there was never a percentage to forward.
+    price_target: { price_target: 550 },
   } as Parameters<typeof buildMeridianFinancialsContext>[0]);
   assert.ok(ctx?.available);
   assert.match(ctx?.headline ?? "", /P\/E 28\.5/);
   assert.match(ctx?.headline ?? "", /Rev \+18% YoY/);
   assert.equal(ctx?.price_target, 550);
+});
+
+/**
+ * REGRESSION (found 2026-08-30): `price_target_upside_pct` was hardcoded `null` in
+ * `buildMeridianFinancialsContext` no matter what was fed in, because the function never received
+ * a current price to compare the target against. `MeridianEarningsIntelPanel.tsx` gates its whole
+ * "Street PT $X (Y% upside)" line on BOTH `price_target` and `price_target_upside_pct` being
+ * non-null, so the line silently never rendered — even for a ticker with a real, live analyst
+ * target. Confirmed with `git blame`/`git log` on this file: the field was `null` unconditionally
+ * since the earnings-intel financials context was introduced (#2253) and nothing since had ever
+ * threaded a price in. The fix passes `spot` (already resolved at both real call sites in
+ * `meridian-earnings-intel.ts`) as a second argument and derives the percentage from it.
+ */
+test("buildMeridianFinancialsContext computes price_target_upside_pct from spot (regression: was always null)", () => {
+  const bundle = {
+    as_of: "2026-08-01",
+    ratios: { pe_ratio: 28.5 },
+    signals: null,
+    price_target: { price_target: 550 },
+  } as Parameters<typeof buildMeridianFinancialsContext>[0];
+
+  // Analyst target $550 vs a $500 spot is +10% upside.
+  const withSpot = buildMeridianFinancialsContext(bundle, 500);
+  assert.equal(withSpot?.price_target, 550);
+  assert.equal(withSpot?.price_target_upside_pct, 10);
+
+  // No spot supplied (the old call-site shape) — honestly absent, not fabricated as 0 or dropped.
+  const noSpot = buildMeridianFinancialsContext(bundle, null);
+  assert.equal(noSpot?.price_target_upside_pct, null);
+
+  // A non-finite/zero/negative spot cannot express a percentage — must stay null, never Infinity/NaN.
+  assert.equal(buildMeridianFinancialsContext(bundle, 0)?.price_target_upside_pct, null);
+  assert.equal(buildMeridianFinancialsContext(bundle, Number.NaN)?.price_target_upside_pct, null);
+  assert.equal(buildMeridianFinancialsContext(bundle, -100)?.price_target_upside_pct, null);
+
+  // No price target at all — still nothing to compute, regardless of spot.
+  const noTarget = {
+    as_of: "2026-08-01",
+    ratios: { pe_ratio: 28.5 },
+    signals: null,
+    price_target: null,
+  } as Parameters<typeof buildMeridianFinancialsContext>[0];
+  assert.equal(buildMeridianFinancialsContext(noTarget, 500)?.price_target_upside_pct, null);
 });
 
 test("the play-read rationale states the beat rate's COHORT, not just the rate", () => {
@@ -298,4 +344,73 @@ test("buildErPlayRead: an upcoming print still leans INTO earnings", () => {
   });
   assert.match(upcoming.headline, /into earnings/i);
   assert.doesNotMatch(upcoming.headline, /since the print/i);
+});
+
+// Regression for the intel-layer bypass flagged in cursor's peer review of merged PR #3474
+// (fix(meridian): withhold expected_move_pct once the print already happened). That PR correctly
+// nulled `pack.expected_move_pct` for an already-printed event, but `loadMeridianEarningsIntel`
+// independently re-derived the SAME field from a live chain fetch (`earningsEm`) AND a live
+// Vector weekly quote (`vectorCoversPrint`) whenever the pack value came back null — which is
+// EXACTLY the already-printed case — silently reintroducing the LULU-style stale-IV defect on
+// every consumer of `intel.expected_move_pct` (Summary/Positioning panels, the derived price
+// band) even though the pack-only card was fixed. `resolveIntelExpectedMove` is the fix: withhold
+// unconditionally once `alreadyPrinted` is true, regardless of what either live source resolved.
+test("resolveIntelExpectedMove withholds once already printed, even if BOTH live sources resolved a value", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: true,
+    earningsEm: 50.3, // the exact LULU live defect value
+    vectorCoversPrint: true,
+    vectorMovePct: 12.4,
+    packExpectedMovePct: null,
+  });
+  assert.equal(result.expected_move_pct, null, "must WITHHOLD, not relabel, once the print already happened");
+  assert.equal(result.expected_move_source, null);
+});
+
+test("resolveIntelExpectedMove serves the chain-IV read for a genuinely upcoming print", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: false,
+    earningsEm: 7.6,
+    vectorCoversPrint: false,
+    vectorMovePct: null,
+    packExpectedMovePct: null,
+  });
+  assert.equal(result.expected_move_pct, 7.6);
+  assert.equal(result.expected_move_source, "chain_iv");
+});
+
+test("resolveIntelExpectedMove falls through to the Vector weekly quote when chain IV is unavailable", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: false,
+    earningsEm: null,
+    vectorCoversPrint: true,
+    vectorMovePct: 6.7,
+    packExpectedMovePct: null,
+  });
+  assert.equal(result.expected_move_pct, 6.7);
+  assert.equal(result.expected_move_source, "chain_iv");
+});
+
+test("resolveIntelExpectedMove falls through to the coarser calendar figure, honestly labelled", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: false,
+    earningsEm: null,
+    vectorCoversPrint: false,
+    vectorMovePct: null,
+    packExpectedMovePct: 5.1,
+  });
+  assert.equal(result.expected_move_pct, 5.1);
+  assert.equal(result.expected_move_source, "calendar");
+});
+
+test("resolveIntelExpectedMove returns null/null when no source is available and the print hasn't happened", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: false,
+    earningsEm: null,
+    vectorCoversPrint: false,
+    vectorMovePct: null,
+    packExpectedMovePct: null,
+  });
+  assert.equal(result.expected_move_pct, null);
+  assert.equal(result.expected_move_source, null);
 });

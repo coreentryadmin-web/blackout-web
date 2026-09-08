@@ -60,6 +60,22 @@ test("reconstructGexRail: the top call wall's WEIGHT shifts as spot moves toward
   assert.ok(high > low, "7600 call GEX grows as spot approaches it");
 });
 
+test("reconstructGexRail: bead reconstruction uses unconstrained wall ranking (Sep-3 desk)", () => {
+  const spot = 7580;
+  const contracts: ReconstructContract[] = [
+    { strike: 7500, expiry: "2026-07-13", openInterest: 100000, iv: 0.15, type: "call" },
+    { strike: 7620, expiry: "2026-07-13", openInterest: 5000, iv: 0.15, type: "call" },
+    { strike: 7450, expiry: "2026-07-13", openInterest: 9000, iv: 0.15, type: "put" },
+  ];
+  const [sample] = reconstructGexRail(contracts, [{ time: 1000, spot }], "2026-07-10");
+  assert.ok(sample, "sample must be produced");
+  assert.equal(
+    sample!.walls.callWalls[0]?.strike,
+    7500,
+    "bead rail ranks by |gamma| — deep ITM 7500 wins over modest 7620 above spot"
+  );
+});
+
 test("empty/invalid inputs → empty rail, never throws or fabricates", () => {
   assert.deepEqual(reconstructGexRail([], [{ time: 1, spot: 7500 }], "2026-07-10"), []);
   assert.deepEqual(reconstructGexRail(chain, [], "2026-07-10"), []);

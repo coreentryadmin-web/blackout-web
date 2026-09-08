@@ -10,6 +10,16 @@ const INTEL = readFileSync(
   join(process.cwd(), "src/lib/meridian/meridian-earnings-intel.ts"),
   "utf8"
 );
+// `expected_move_pct`/`expected_move_source`'s derivation itself now lives in
+// `resolveIntelExpectedMove` (meridian-earnings-intel-core.ts) — extracted so the already-printed
+// withhold gate (PR #3474 follow-up) is directly testable, since meridian-earnings-intel.ts is
+// `server-only` and can't be exercised in a test. The SOURCE-label assertion below reads THAT
+// file now; everything else in this suite still reads the unmoved `vectorCoversPrint`/`vectorEm`
+// wiring inside meridian-earnings-intel.ts itself.
+const INTEL_CORE = readFileSync(
+  join(process.cwd(), "src/lib/meridian/meridian-earnings-intel-core.ts"),
+  "utf8"
+);
 
 /**
  * A HEADLINE NUMBER WRONG BY ~90x, LABELLED `chain_iv`.
@@ -113,10 +123,11 @@ describe("the resolver is wired to the guard, and stops claiming chain_iv when i
 
   test("the SOURCE label follows the same gate — it cannot say chain_iv for a calendar figure", () => {
     // The old label said `chain_iv` whenever a vector quote merely EXISTED, even when the value
-    // published came from the calendar. Provenance has to track what was actually used.
-    const at = INTEL.indexOf("const expected_move_source");
-    const block = INTEL.slice(at, INTEL.indexOf(";", INTEL.indexOf("calendar", at)));
-    assert.match(block, /earningsEm != null \|\| vectorCoversPrint/);
+    // published came from the calendar. Provenance has to track what was actually used. This
+    // derivation now lives in `resolveIntelExpectedMove` (see the header comment above).
+    const at = INTEL_CORE.indexOf("const expected_move_source");
+    const block = INTEL_CORE.slice(at, INTEL_CORE.indexOf(";", INTEL_CORE.indexOf("calendar", at)));
+    assert.match(block, /earningsEm != null \|\| input\.vectorCoversPrint/);
     assert.equal(block.includes("vectorEm?.movePct != null"), false);
   });
 });

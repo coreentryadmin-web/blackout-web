@@ -27,7 +27,7 @@
  */
 
 import { aggregateVectorBars } from "@/features/vector/lib/vector-bar-timeframes";
-import { computeVolumeProfile, type VolumeProfileBar } from "@/features/vector/lib/vector-volume-profile";
+import { computeVolumeProfile, sessionRthVolumeProfileBars } from "@/features/vector/lib/vector-volume-profile";
 import {
   labelPivots,
   detectStructureEvents,
@@ -170,7 +170,7 @@ export function computeVectorBarAnalytics(
   const ref = opts.spot ?? minuteBars[minuteBars.length - 1]!.close;
 
   // ── VOLUME PROFILE ──────────────────────────────────────────────────────────────────────────
-  const profile = computeVolumeProfile(minuteBars as readonly VolumeProfileBar[]);
+  const profile = computeVolumeProfile(sessionRthVolumeProfileBars(minuteBars));
   const topBuckets = [...profile.buckets]
     .sort((a, b) => b.volume - a.volume)
     .slice(0, MAX_BUCKETS)

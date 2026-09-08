@@ -8,6 +8,7 @@ import {
   backfillRailPrefix,
   compactHistoryToCap,
   backfillRailGaps,
+  beadRailHistoryForHorizon,
   railCoverageGaps,
   railUncoveredSec,
   decimateSeedHistory,
@@ -18,6 +19,9 @@ import {
   liveTrailAnchorSec,
   pickReplayTrailSource,
   mergeModeledUnderlay,
+  mergePreferDenserUnderlay,
+  isConstrainedThinRail,
+  wallNodesCount,
   mergeWallHistory,
   narrowedHorizonTrail,
   pickActiveStrikes,
@@ -389,6 +393,57 @@ test("mergeModeledUnderlay: result is sorted by time regardless of input orderin
   ];
   const merged = mergeModeledUnderlay(observed, modeled);
   assert.deepEqual(merged.map((s) => s.time), [100, 160, 220]);
+});
+
+test("mergePreferDenserUnderlay: dense modeled wins over thin observed at the same bucket", () => {
+  const thin = { time: 100, walls: walls([6800], [6700]) };
+  const dense = {
+    time: 100,
+    walls: {
+      callWalls: Array.from({ length: 12 }, (_, i) => ({ strike: 6800 + i, pct: 10 - i })),
+      putWalls: Array.from({ length: 12 }, (_, i) => ({ strike: 6700 - i, pct: 10 - i })),
+    },
+  };
+  assert.equal(wallNodesCount(thin), 2);
+  assert.ok(wallNodesCount(dense) > wallNodesCount(thin));
+  const merged = mergePreferDenserUnderlay([thin], [dense]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]!.walls.callWalls.length, 12, "modeled dense sample must win");
+  assert.equal(merged[0]!.modeled, true);
+});
+
+test("mergePreferDenserUnderlay: observed wins when it is denser than modeled", () => {
+  const denseObs = {
+    time: 100,
+    walls: {
+      callWalls: Array.from({ length: 15 }, (_, i) => ({ strike: 6800 + i, pct: 8 })),
+      putWalls: [],
+    },
+  };
+  const sparseModel = { time: 100, walls: walls([6810], [6700]) };
+  const merged = mergePreferDenserUnderlay([denseObs], [sparseModel]);
+  assert.equal(merged[0]!.walls.callWalls.length, 15);
+  assert.equal(merged[0]!.modeled, false);
+});
+
+test("isConstrainedThinRail: flags spot-constrained era samples", () => {
+  const thinObserved = Array.from({ length: 30 }, (_, i) => ({
+    time: i * 5,
+    walls: {
+      callWalls: Array.from({ length: 6 }, (_, j) => ({ strike: 6800 + j, pct: 5 })),
+      putWalls: Array.from({ length: 6 }, (_, j) => ({ strike: 6700 - j, pct: 5 })),
+    },
+  }));
+  assert.ok(isConstrainedThinRail(thinObserved), "6 nodes/side is below the Sep-3 desk median");
+
+  const denseObserved = thinObserved.map((s) => ({
+    ...s,
+    walls: {
+      callWalls: Array.from({ length: 16 }, (_, j) => ({ strike: 6800 + j, pct: 5 })),
+      putWalls: Array.from({ length: 16 }, (_, j) => ({ strike: 6700 - j, pct: 5 })),
+    },
+  }));
+  assert.equal(isConstrainedThinRail(denseObserved), false);
 });
 
 test("mergeModeledUnderlay: over the cap it thins the old end, keeping full span", () => {
@@ -810,6 +865,34 @@ test("backfillRailGaps: fills every hole, and NEVER displaces an observed sample
     "the 14:45→15:15 hole must carry ghost beads"
   );
   assert.ok(merged.every((s, i) => i === 0 || s.time > merged[i - 1]!.time), "strictly ordered");
+});
+
+test("beadRailHistoryForHorizon: fills narrowed gaps from blended without displacing observed buckets", () => {
+  const H = (h: number, m = 0) => Math.floor(Date.UTC(2026, 8, 7, 13 + h, m) / 1000);
+  const sample = (t: number): WallHistorySample => ({
+    time: t,
+    callWalls: [{ strike: 7700, pct: 1 }],
+    putWalls: [],
+    modeled: false,
+  });
+  const modeledSample = (t: number): WallHistorySample => ({
+    time: t,
+    callWalls: [{ strike: 7700, pct: 0.5 }],
+    putWalls: [],
+    modeled: true,
+  });
+  // Narrowed starts at 15:30 — the Sep-7 prod gap symptom.
+  const narrowed = [sample(H(1, 30)), sample(H(2)), sample(H(3))];
+  const blended: WallHistorySample[] = [];
+  for (let t = H(0); t <= H(3); t += 300) blended.push(modeledSample(t));
+
+  const merged = beadRailHistoryForHorizon(narrowed, blended, H(0), H(3));
+  assert.ok(merged.some((s) => s.time < H(1, 30) && s.modeled), "prefix gap filled from blended");
+  assert.equal(
+    merged.find((s) => s.time === H(1, 30))?.modeled,
+    false,
+    "observed narrowed bucket stays solid"
+  );
 });
 
 test("backfillRailGaps: no modeled sample lands where the rail already has coverage", () => {

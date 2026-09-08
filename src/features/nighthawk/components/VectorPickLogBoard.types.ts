@@ -57,6 +57,3 @@ export type VectorPickBoardResponse = {
   winners?: VectorLeaderPlay[];
   closed?: VectorClosurePlay[];
 };
-
-/** @deprecated use VectorPickBoardResponse */
-export type VectorPickClosuresResponse = VectorPickBoardResponse;

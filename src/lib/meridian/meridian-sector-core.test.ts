@@ -283,6 +283,24 @@ test("summarizePeerReaction: a still-forming reaction is excluded from the avera
   assert.equal(s.n, 1);
 });
 
+test("summarizePeerReaction: n and beatRateN are INDEPENDENT cohorts — a graded-but-unsettled print counts toward beatRateN, not n", () => {
+  // BUG (fixed 2026-09-06): reaction-settlement and EPS-gradability are unrelated conditions on
+  // the same print. A same-day print can already report actual EPS (gradable) while the session
+  // is still intraday (reaction not settled) — or, less obviously, an OLDER print's reaction_basis
+  // can be "assumed_report_session" (settledReactions excludes it) while its EPS surprise is real.
+  const s = summarizePeerReaction("X", [
+    // Settled reaction AND graded EPS — counts toward both cohorts.
+    print({ report_date: "2026-02-19", reaction_pct: 4, reaction_settled: true, surprise_pct: 1, beat: true }),
+    // Graded EPS but reaction still forming — counts toward beatRateN only.
+    print({ report_date: "2026-05-20", reaction_pct: 5, reaction_settled: false, surprise_pct: -2, beat: false }),
+    // Graded EPS but assumed-session reaction — counts toward beatRateN only.
+    print({ report_date: "2026-08-01", reaction_pct: 2, reaction_basis: "assumed_report_session", surprise_pct: 3, beat: true }),
+  ]);
+  assert.equal(s.n, 1, "only the one settled print backs avgReactionPct");
+  assert.equal(s.beatRateN, 3, "all three prints have a graded EPS surprise, independent of settlement");
+  assert.equal(s.beatRate, 0.6667, "2 of 3 graded prints beat");
+});
+
 test("summarizePeerReaction: no prints at all → nulls, not zeros", () => {
   const s = summarizePeerReaction("X", []);
   assert.equal(s.avgReactionPct, null);

@@ -33,6 +33,25 @@ import {
 import type { ChainContract } from "../horizon-fanout";
 import { livePlaysFromOpenPositions } from "./live-plays";
 import type { SwingPositionRow } from "../db";
+import type { BangerPositionRow } from "../banger/positions-db";
+import { mergeBangerPositionsIntoSwingPlays } from "./banger-lane-merge";
+import { enrichSwingPlaysWithVectorLeaders, type VectorLeaderHint } from "./vector-lane-enrich";
+
+/** Add pre-entry banger WATCH rows when the ticker is not already live capital. */
+export function mergeBangerWatchPlays(
+  plays: readonly HorizonPlay[],
+  watch: readonly HorizonPlay[],
+): HorizonPlay[] {
+  if (watch.length === 0) return [...plays];
+  const liveTickers = new Set(
+    plays.filter((p) => p.liveStatus || p.status === "COMMIT").map((p) => p.ticker.toUpperCase()),
+  );
+  const additions = watch.filter((p) => !liveTickers.has(p.ticker.toUpperCase()));
+  if (additions.length === 0) return [...plays];
+  const existing = new Set(plays.map((p) => p.ticker.toUpperCase()));
+  const novel = additions.filter((p) => !existing.has(p.ticker.toUpperCase()));
+  return [...plays, ...novel];
+}
 
 /** What an injected discovery run must hand back: the scored dossiers + the SWING plays produced from them.
  *  (Matches the relevant slice of PR-11's `SwingDiscoveryResult` — `dossiers` + `playSet.SWING`.)
@@ -57,10 +76,16 @@ export interface SwingServingLaneDeps {
   spotsByTicker?: Record<string, number>;
   /** Latest manage snapshot event_json per position id — authoritative EXITING/MANAGING state (#38). */
   fetchLatestManageEvents?: (positionIds: number[]) => Promise<Map<number, Record<string, unknown>>>;
+  /** Engine B open-book rows folded into MANAGING/SCALING_OUT (Swing Command unification). */
+  fetchBangerPositions?: () => Promise<BangerPositionRow[]>;
+  /** Recent Vector pick leaders — corroboration only (signalKinds), not a second ledger. */
+  vectorLeaders?: VectorLeaderHint[];
+  /** Pre-entry banger WATCH rows from the post-close screen cache. */
+  bangerWatchPlays?: HorizonPlay[];
 }
 
 /** Index the scored dossiers by ticker (uppercased) so each play can find the thesis it was produced from. */
-function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDossier> {
+export function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDossier> {
   const idx = new Map<string, SwingDossier>();
   for (const d of dossiers) idx.set(d.ticker.toUpperCase(), d);
   return idx;
@@ -120,7 +145,7 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
  * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) leaves the row
  * untouched and the honest placeholder stands — a committed play never gets an invented explanation.
  */
-function attachThesisExplanation(
+export function attachThesisExplanation(
   play: HorizonPlay,
   dossier: SwingDossier | undefined,
   reads?: SwingServingReads,
@@ -142,7 +167,16 @@ function attachThesisExplanation(
  * failure (no discover, null result, thrown error) degrades to an empty structured lane — never a throw.
  */
 export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Promise<SwingServingLane> {
-  if (!deps.discover && !deps.fetchOpenPositions) return emptySwingServingLane();
+  const snap = await readSwingServingSnapshot().catch(() => null);
+  const stampScan = (lane: SwingServingLane): SwingServingLane => ({
+    ...lane,
+    scanAsOf: snap?.asOf ?? null,
+    scanSessionDay: snap?.sessionDay ?? null,
+  });
+
+  if (!deps.discover && !deps.fetchOpenPositions && !deps.fetchBangerPositions) {
+    return stampScan(emptySwingServingLane());
+  }
   try {
     const result = deps.discover ? await deps.discover() : null;
     const discoveryPlays = result && Array.isArray(result.plays) ? result.plays : [];
@@ -178,16 +212,29 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
       const preEntryOnly = enrichedDiscovery.filter(
         (p) => !liveKeys.has(swingThesisKey(p.ticker, p.direction, p.archetype ?? null)),
       );
-      const merged = [...livePlays, ...preEntryOnly];
-      if (merged.length === 0) return emptySwingServingLane();
-      return assembleSwingServingLane(merged);
+      let merged = [...livePlays, ...preEntryOnly];
+      if (deps.fetchBangerPositions) {
+        const bangerRows = await deps.fetchBangerPositions().catch(() => []);
+        merged = mergeBangerPositionsIntoSwingPlays(merged, bangerRows);
+      }
+      merged = enrichSwingPlaysWithVectorLeaders(merged, deps.vectorLeaders ?? []);
+      merged = mergeBangerWatchPlays(merged, deps.bangerWatchPlays ?? []);
+      if (merged.length === 0) return stampScan(emptySwingServingLane());
+      return stampScan(assembleSwingServingLane(merged));
     }
 
-    if (enrichedDiscovery.length === 0) return emptySwingServingLane();
-    return assembleSwingServingLane(enrichedDiscovery);
+    let merged = enrichedDiscovery;
+    if (deps.fetchBangerPositions) {
+      const bangerRows = await deps.fetchBangerPositions().catch(() => []);
+      merged = mergeBangerPositionsIntoSwingPlays(merged, bangerRows);
+    }
+    merged = enrichSwingPlaysWithVectorLeaders(merged, deps.vectorLeaders ?? []);
+    merged = mergeBangerWatchPlays(merged, deps.bangerWatchPlays ?? []);
+    if (merged.length === 0) return stampScan(emptySwingServingLane());
+    return stampScan(assembleSwingServingLane(merged));
   } catch {
     // MEMBER-SAFE: a discovery/DB hiccup must not throw the route or fabricate plays — serve an empty lane.
-    return emptySwingServingLane();
+    return stampScan(emptySwingServingLane());
   }
 }
 
@@ -230,10 +277,37 @@ export interface SwingServingSnapshot {
   flagAnchorsByThesisKey?: Record<string, number>;
 }
 
-/** Shared-cache key + TTL. TTL outlives a full session day so the latest scan serves until the next scan
- *  refreshes it (discovery fires per phase per day; a stale-but-present blob still degrades to gated plays). */
+/**
+ * Shared-cache key + TTL. TTL is meant to outlive a full session day so the latest scan serves
+ * until the next scan refreshes it (discovery fires per phase per day; a stale-but-present blob
+ * still degrades to gated plays) — but `swing-discovery` is `weekdays_only` (cron-registry.ts), so
+ * "the next scan" is not always the next calendar day.
+ *
+ * MEASURED LIVE 2026-09-06 (Sunday): the previous 26h TTL is shorter than the ORDINARY Friday-close
+ * -> Monday-open gap, not just a rare edge case. Confirmed via CloudWatch: the last `swing-discovery`
+ * write of the week landed 2026-09-04 20:35 UTC (Friday POST_CLOSE); 26h later (2026-09-05 22:35 UTC,
+ * Saturday evening) the Redis key expired and stayed gone through all of Saturday, Sunday, and Monday
+ * morning until the next weekday scan — confirmed live via `GET /horizons?view=swings` reporting
+ * `scanAsOf: null` mid-window. Because both `getSwingServingLane`'s board-level enrichment (long
+ * shipped) and the swing play-brief's `attachThesisExplanation` call (PR #4182) key off this exact
+ * same snapshot via `discoverSwingFromPersisted()`, an expired key doesn't just mean "no WATCH rows"
+ * — it silently zeroes out thesis-health explanation (factors/regime) for every LIVE COMMITTED swing
+ * position too, reverting Ask Largo's "Thesis health" panel to its generic unknown/n/a/no-signals/
+ * unread defaults for the whole weekend, with no disclosure that enrichment was attempted and failed
+ * (confidence.level still reads "high" — see CTO-AUDIT-2026-09-06 finding #20). That is not the
+ * intended "serve stale-but-present" degradation the comment above describes; it is a full outage of
+ * this cache, recurring every week, that the intended behavior never accounted for.
+ *
+ * Sized off `SWING_SCAN_PHASES` (scan-cadence.ts): the worst ORDINARY case is the day's last phase
+ * (OVERNIGHT, ends ET midnight) never firing that Friday, so the freshest write is POST_CLOSE's own
+ * end (20:00 ET) — see the regression test below, which computes this gap (~58h) from the phase table
+ * rather than a hardcoded number so it can't silently drift from `scan-cadence.ts` again. 120h (5
+ * days) is chosen with headroom past that for a Monday market holiday (Fri close -> Tue PRE_OPEN,
+ * ~82h) — a margin, not a precisely-derived bound, since this module has no holiday calendar to
+ * compute one from.
+ */
 export const SWING_SERVING_CACHE_KEY = "swing:serving:latest:v1";
-export const SWING_SERVING_TTL_SEC = 26 * 60 * 60;
+export const SWING_SERVING_TTL_SEC = 120 * 60 * 60;
 
 /** Persist one scan's scored output for the member route to read. Returns true on success so the cron can
  *  refuse to upgrade the phase claim to DONE when the member-facing snapshot never landed. */

@@ -163,7 +163,7 @@ Don't add a parallel GEX computation — converge on the shared reader.
 | Group | Routes | What's there |
 |---|---|---|
 | `market/` | 34+ | The live data readers — `spx/pulse`, `spx/desk`, `spx/signals`, `flows`, `gex-positioning`, `gex-heatmap`, `nighthawk/edition`, `zerodte/board`, `vector/*`, `news`, `dark-pool`, `regime`, `indices`, `quote`, `largo` |
-| `cron/` | 21 | Background jobs (see §10) — hit by Railway cron services via Bearer `CRON_SECRET` |
+| `cron/` | 21 | Background jobs (see §10) — hit by the AWS EventBridge → Lambda (`blackout-production-hit-cron`) dispatcher via Bearer `CRON_SECRET` |
 | `admin/` | 20 | Admin dashboard data (health, cron-health, spx-analytics, route-errors, incidents) — admin-gated |
 | `account/` | 5 | User account |
 | `signals/` | 3 | SPX signal feed |
@@ -303,13 +303,13 @@ an enabled EventBridge rule after `terraform apply`. Verify via `/admin` cron he
 | Make a feature live for users | wire it to the **cache-reader** (`api/market/*`), respect §4a |
 | Touch GEX/walls | `providers/gex-positioning.ts` + `getGexPositioning()` (single source) |
 | Change the app shell/nav | `src/app/(site)/layout.tsx` (NOT `PlatformShell.tsx` — dead) |
-| Add a cron | new `api/cron/<x>` route + `railway.<x>.toml` + sync to `blackout-infra` EventBridge |
+| Add a cron | new `api/cron/<x>` route + register in `src/lib/cron-registry.ts` + `railway.<x>.toml` at repo root (still the schedule-definition source-of-truth synced into `blackout-infra`'s EventBridge terraform, despite the filename — Railway itself no longer hosts anything) |
 | Debug a slow/red deploy | ECS service events + CloudWatch `/ecs/blackout-production` before app logic |
 | Gate a tool behind launch | `tool-access.ts` + `LAUNCHED_TOOLS` env |
 | Change UI without breaking the bar | `DESIGN_BENCHMARK.md` + `.cursor/rules/institutional-design.mdc` + use `FreshnessChip` |
 | Find DB/Redis client setup | `src/lib/db.ts` / `src/lib/make-redis.ts` (don't remove the error handlers) |
 | See all API integrations | `docs/API_INTEGRATION_MAP.md`, `docs/BLACKOUT_API_REFERENCE.md` |
-| Full system audit | `docs/BLACKOUT_FULL_AUDIT.md` |
+| Full system audit | `docs/audit/FINDINGS.md` (the living issue log) — `docs/BLACKOUT_FULL_AUDIT.md` was archived/deleted in the AWS-migration doc cleanup (#680) and has no direct successor |
 
 ---
 
@@ -339,8 +339,9 @@ npx tsc --noEmit       # typecheck (should be 0 errors)
 npm test               # tsx --test src/**/*.test.ts
 npm run lint:brand     # brand/tech-stack-disclosure linter (scripts/check-brand.mjs)
 ```
-You need a `.env.local` with provider keys, Clerk keys, `DATABASE_URL`/`REDIS_URL` (or the public
-Railway proxy URLs), and `RAILWAY_TOKEN` for prod inspection. Never commit secrets.
+You need a `.env.local` with provider keys, Clerk keys, and local-dev `DATABASE_URL`/`REDIS_URL`
+values (ask a teammate). Prod inspection goes through AWS — CloudWatch `/ecs/blackout-production`
+and the ECS console (see §9/§11) — not Railway. Never commit secrets.
 
 ---
 
@@ -348,11 +349,11 @@ Railway proxy URLs), and `RAILWAY_TOKEN` for prod inspection. Never commit secre
 
 Single source of truth — don't scatter `.md` elsewhere.
 
-- **Architecture/integration:** `API_INTEGRATION_MAP.md`, `BLACKOUT_API_REFERENCE.md`, `BLACKOUT_FULL_AUDIT.md`
-- **Per-tool:** `HEATMAP_DATA_CONTRACT.md`, `NIGHTHAWK_GROUNDING.md`, `NIGHTS_WATCH.md`, `NIGHT_HAWK_AUDIT_*.md`
+- **Architecture/integration:** `API_INTEGRATION_MAP.md`, `BLACKOUT_API_REFERENCE.md`
+- **Per-tool:** `HEATMAP_DATA_CONTRACT.md`, `NIGHTHAWK_GROUNDING.md`, `docs/audit/NIGHTHAWK-*.md` (`NIGHTS_WATCH.md` no longer exists — that product was absorbed into Night Hawk and removed, see #680/#1fd2224a2)
 - **Data integrity:** `DATA_CORRECTNESS.md`
 - **Infra:** `CLOUDFLARE_CONFIG.md`/`CLOUDFLARE_SETUP.md`, `CLERK_WEBHOOK_CONFIG.md`, `PGBOUNCER-SETUP.md`, `SDLC_AUTOMATION_PLAN.md`
-- **Live health:** `docs/api-audit/OPEN-ISSUES.md` (current findings), `docs/api-audit/deep-audit-*.md`
+- **Live health:** `docs/api-audit/OPEN-ISSUES.md` (current findings), `docs/api-audit/PLATFORM-INTELLIGENCE.md`, `docs/api-audit/SYNTHESIS.md`
 
 ---
 

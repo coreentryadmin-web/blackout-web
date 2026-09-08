@@ -6,6 +6,7 @@ import {
   HELIX_STRIKE_HITS_WINDOW_MIN,
   flowStackAlertTimeMs,
 } from "@/features/helix/lib/helix-strike-leaders";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 
 export { fmtFlowPremShort };
 
@@ -229,7 +230,11 @@ export function computeFlowStrikeStacks(
 
     const recentRows = sorted.filter((r) => {
       const ms = flowStackAlertTimeMs(r);
-      return ms != null && nowMs - ms <= windowMs;
+      // Same future-print guard as the sibling Helix/Discord digest filters: a future-dated or
+      // clock-skewed alert makes nowMs - ms negative, trivially satisfying <= windowMs and
+      // inflating recent_hit_count / recent_hits — which Largo reads directly before Claude writes.
+      const age = signalWindowAgeMs(ms, nowMs);
+      return age != null && age <= windowMs;
     });
     const recentPremiums = recentRows.map((r) => r.premium);
     const recent_hits = recentRows
@@ -292,23 +297,6 @@ export function formatFlowStrikeStackLine(stack: FlowStrikeStack): string {
     `${fmtFlowPremShort(stack.total_premium)} total (${premParts}) · ` +
     `${kind} · rules: ${rules}${trades}`
   );
-}
-
-export function formatFlowStrikeStacksSection(stacks: FlowStrikeStack[]): string[] {
-  if (!stacks.length) return [];
-  return [
-    "**Strike stacks / Repeated Hits (UW — call these out in Flow when relevant):**",
-    ...stacks.slice(0, 8).map((s) => `- ${formatFlowStrikeStackLine(s)}`),
-  ];
-}
-
-export function flowStackSignature(stacks: FlowStrikeStack[] | undefined): string {
-  return (stacks ?? [])
-    .map(
-      (s) =>
-        `${s.strike}|${s.option_type}|${s.expiry}|${s.alert_count}|${Math.round(s.total_premium)}`
-    )
-    .join(";");
 }
 
 export function withStrikeStacks<T extends Record<string, unknown>>(

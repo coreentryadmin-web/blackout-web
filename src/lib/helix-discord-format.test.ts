@@ -182,6 +182,23 @@ test("contractStackHitsFromFlows returns oldest-first timeline", () => {
   assert.match(timeline, /ET ·/);
 });
 
+test("contractStackHitsFromFlows rejects a future-dated print instead of counting it as a fresh hit", () => {
+  // Same future-print bug already fixed in detectVelocitySpikes/countMatchingContractHits: an
+  // event_at ahead of `now` makes `nowMs - ms` negative, which trivially satisfies `<= windowMs`
+  // under a naive check and gets counted as the freshest hit on the tape.
+  const now = new Date("2026-08-04T14:32:00.000Z");
+  const target = {
+    ...base,
+    fill_price: 5,
+    dte: 8,
+    event_at: "2026-08-04T14:30:00.000Z",
+  };
+  const future = { ...target, premium: 900_000, event_at: "2026-08-04T15:00:00.000Z", fill_price: 5.1 };
+  const hits = contractStackHitsFromFlows(target, [target, future], { now });
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]!.at, target.event_at);
+});
+
 test("contractStackHitsFromFlows excludes the neighbouring half-dollar strike", () => {
   // Same root cause as the Top Prints hit count, but this timeline ALSO produces the hit count fed
   // to the milestone gate — so an inflated count here posts a Repeat Hits embed describing prints
@@ -242,6 +259,24 @@ test("selectHelixDiscordDigest prefers in-window score then premium", () => {
   assert.equal(picked.sessionFallback, false);
   assert.equal(picked.inWindowCount, 1);
   assert.equal(picked.rows[0]?.ticker, "HOT");
+});
+
+test("selectHelixDiscordDigest rejects a future-dated print instead of picking it as freshest", () => {
+  // Same future-print bug already fixed in contractStackHitsFromFlows: an event_at ahead of `now`
+  // makes `nowMs - ms` negative, which trivially satisfies `<= windowMs` and would let a
+  // clock-skewed print win the digest pick on score alone.
+  const now = new Date("2026-08-04T14:32:00.000Z");
+  const recent = now.toISOString();
+  const future = new Date(now.getTime() + 10 * 60_000).toISOString();
+  const picked = selectHelixDiscordDigest(
+    [
+      { ...base, ticker: "REAL", premium: 700_000, score: 6, fill_price: 4, dte: 5, event_at: recent },
+      { ...base, ticker: "FUTURE", premium: 5_000_000, score: 9, fill_price: 5, dte: 5, event_at: future },
+    ],
+    { windowMin: 15, now, limit: 3 }
+  );
+  assert.equal(picked.inWindowCount, 1);
+  assert.equal(picked.rows[0]?.ticker, "REAL");
 });
 
 test("buildHelixBurstEmbed collapses multiple prints on one ticker", () => {

@@ -284,8 +284,22 @@ export function evaluatePlayConfirmations(
     direction === "long"
       ? // Require a GEX support wall within 10 pts below price — a wall at SPX 4000 while
         // price is at 5600 is irrelevant and should not satisfy the GEX confirmation.
+        //
+        // BUG (fixed 2026-08-30): this only bounded the LOWER side (`strike >= price - 10`),
+        // with no upper bound at all. `kind` is assigned once, at wall-build time, from
+        // `strike > spot ? "resistance" : "support"` (spx-desk-merge.ts / gamma-desk.ts) — it
+        // is a snapshot, not re-evaluated against the live tick this check runs against. Once
+        // price drifts DOWN after that snapshot, a wall that was genuinely below spot when
+        // classified is still tagged "support" while sitting far ABOVE the desk's current
+        // price — exactly the same staleness the short branch below already guards against
+        // with its own `<= price + 12` bound. Unbounded above, `strike >= price - 10` passed
+        // for ANY support-tagged wall regardless of distance, so a support wall 600 points
+        // above spot satisfied a "Long at GEX support" confirmation for a play whose actual
+        // dealer-gamma floor was nowhere near its entry.
         (desk.gamma_regime !== "amplification" || desk.above_gamma_flip) &&
-        (desk.gex_walls?.some((w) => w.kind === "support" && w.strike >= price - 10) ?? false)
+        (desk.gex_walls?.some(
+          (w) => w.kind === "support" && w.strike >= price - 10 && w.strike <= price + 2
+        ) ?? false)
       : // Resistance within 10 pts above price caps upside for shorts (symmetric to long support).
         (desk.gamma_regime !== "amplification" || !desk.above_gamma_flip) &&
         (desk.gex_walls?.some(

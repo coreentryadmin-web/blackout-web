@@ -24,11 +24,51 @@ import { logCronRun } from "@/lib/cron-run";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
-import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
+import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+/**
+ * Cross-replica overlap guard. Measured live on prod 2026-09-02: two "[cron/zerodte-warm]
+ * background done" completions logged 2.171s apart (15:28:37.606 and 15:28:39.777 UTC) with
+ * elapsed=168371ms and elapsed=123934ms — their runtimes overlapped for 100+ seconds of
+ * concurrent execution on shared web-tier ECS compute. This route has TWO independent,
+ * uncoordinated trigger sources — EventBridge's own ~5min schedule AND the in-app
+ * rth-warm-leader (rth-warm-leader.ts), which re-dispatches this key the instant its last
+ * recorded run is more than 4 minutes stale (RTH_WRITER_HEAL_AFTER_MIN["zerodte-warm"]) — with
+ * no lock between them, so a fast EventBridge fire and a leader-triggered heal-fire can land
+ * within seconds of each other while the prior run's scanner tick + board-snapshot rebuild is
+ * still in flight, doubling load on the same rate-limited HELIX/UW upstreams and DB writes real
+ * member requests also depend on. Same `sharedCacheSetNx` idempotent-skip pattern already used
+ * by vector-pick-sweep and desk-warm for this exact problem shape. TTL (900s) matches this
+ * cron's own `stale_after_min: 15` alerting threshold (cron-registry.ts) as the safety-net
+ * ceiling if a release is ever missed.
+ */
+const OVERLAP_LOCK_KEY = "zerodte-warm:running";
+const OVERLAP_LOCK_TTL_SEC = 900;
+
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate below.
+ *
+ * Same structural gap fixed for desk-warm (#3540) and heatmap-warm (#3542): `force=1`
+ * completely bypasses `shouldRunCacheWarmer`'s hours check, and OVERLAP_LOCK above guards only
+ * against a SECOND run starting while the FIRST is still in flight — released the instant the
+ * background promise chain settles, which on an already-warm board can finish far faster than a
+ * cold scanner tick + snapshot rebuild. Nothing capped how OFTEN `?force=1` could be replayed.
+ *
+ * 60s sits safely BELOW every legitimate cadence: rth-warm-leader's heal threshold for this key
+ * is 4 min (RTH_WRITER_HEAL_AFTER_MIN["zerodte-warm"], rth-warm-leader-logic.ts) and EventBridge's
+ * own schedule is ~5 min — neither path re-requests this key sooner than 60s ever would allow.
+ */
+const RERUN_COOLDOWN_KEY = "zerodte-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 60;
+/** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558 fixed on desk-warm. */
+const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -37,12 +77,45 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!shouldRunCacheWarmer(force)) {
+  if (!shouldRunCacheWarmer(force, undefined, "zerodte-warm", callerInfoFromRequest(req))) {
     const payload = {
       ok: true,
       skipped: true,
       reason:
-        "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1 or set CACHE_WARM_ALWAYS=1",
+        "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1",
+    };
+    await logCronRun("zerodte-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const effectiveCooldownSec = isEtExtendedWarmHours()
+    ? RERUN_COOLDOWN_SEC
+    : OFF_WINDOW_FORCE_COOLDOWN_SEC;
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    effectiveCooldownSec
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
+    };
+    await logCronRun("zerodte-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous zerodte warm still in flight (idempotent skip)",
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
@@ -57,8 +130,24 @@ export async function GET(req: NextRequest) {
   // awaited (RTH finding 2026-07-30: HTTP 504 on every probe). Mirror nighthawk-edition: dispatch
   // the heavy work in after() and return 202 in seconds. The ECS worker is long-lived — the build
   // still completes and publishes the shared snapshot; only the HTTP handshake must be short.
+  //
+  // UW sweep tag: WAS "intentionally not wrapped" (claimed platform-local, not a UW REST
+  // fan-out) — that premise was wrong. `warmZeroDteBoard` calls `scanZeroDteBoard` internally,
+  // and `scanZeroDteBoard`'s own top-rank enrichment loop calls `fetchTickerDossier`
+  // (nighthawk/lib/dossier.ts, `runUwPooled` from uw-rate-limiter) in bounded parallel batches —
+  // its own comment says so ("UW budget stays predictable"). `refreshZeroDteBoardSnapshot` ->
+  // `buildZeroDteBoardPayload` -> `scanZeroDteBoard` hits the same path. So this cron's tick was
+  // racing live member requests for the SAME UW rate-limiter ceiling with none of the "leave one
+  // slot for live traffic" protection the four Vector-family crons already have (found live
+  // 2026-09-04: PR #3759's queue-wait instrumentation showed a 30s window of near-continuous
+  // UNTAGGED 10-19s admissions correlating with `[zerodte-scan]` log lines on the same ECS task).
+  // `getZeroDteBoardPayload` (the live read path — `/api/market/zerodte/board`,
+  // `/api/market/nighthawk/horizons`) is a SEPARATE call site and stays untagged, exactly like
+  // the existing four crons: only the CRON'S OWN dispatch is wrapped, never the shared function.
   const dispatchWarm = () => {
-    void Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])
+    void runWithBackgroundUwSweep(() =>
+      Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])
+    )
       .then((results) => {
         let warmed = earningsWarmed;
         for (const r of results) {
@@ -74,6 +163,9 @@ export async function GET(req: NextRequest) {
       })
       .catch((err) => {
         console.error("[cron/zerodte-warm] background warm REJECTED:", err);
+      })
+      .finally(() => {
+        void sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
       });
   };
 

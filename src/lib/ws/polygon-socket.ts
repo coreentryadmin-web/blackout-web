@@ -17,6 +17,11 @@ import {
 } from "./leader-lock-shared";
 import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "./leader-lock-fencing";
 import { recordSpxTick } from "./spx-candle-store";
+import {
+  isWsUpdatedAtFresh,
+  WS_TIMESTAMP_FUTURE_TOLERANCE_MS,
+  wsUpdatedAtAgeMs,
+} from "./timestamp-freshness";
 export type PolygonAgg = {
   ev: "A" | "AM";
   sym: string;
@@ -98,7 +103,8 @@ async function seedSessionOpenFromRest(): Promise<void> {
       if (prev.open_source === "rest" && prev.session_date === todayET && prev.session_open > 0) {
         continue;
       }
-      const changePct = Number.isFinite(snap.change_pct) ? snap.change_pct : 0;
+      const changePct = snap.change_pct;
+      if (changePct == null || !Number.isFinite(changePct)) continue;
       // true session open = price discounted by the day's % change (vs official prevClose / open).
       const sessionOpen = changePct !== 0 ? snap.price / (1 + changePct / 100) : snap.price;
       if (!(sessionOpen > 0)) continue;
@@ -313,10 +319,11 @@ function startIndicesWatchdog() {
     }
 
     // Detect stalled feed: if connected but no messages in >25s, reconnect.
+    const now = Date.now();
     if (
       indicesWs?.readyState === WebSocket.OPEN &&
       lastIndicesMessageAt > 0 &&
-      Date.now() - lastIndicesMessageAt > INDICES_STALL_MS
+      !isWsUpdatedAtFresh(lastIndicesMessageAt, INDICES_STALL_MS, now)
     ) {
       console.warn(
         `[polygon-socket] indices feed STALLED — no frame in ${Math.round(
@@ -486,11 +493,14 @@ async function connectIndices() {
               (breadthIndex ? true : val > 0)
             ) {
               const prev = indexStore[sym];
+              // Only recompute day-change on V ticks when the anchor is REST-seeded. ws-bar anchors
+              // measure from a mid-session bar open — same failure class as liveWsIndexSpot's guard.
+              const changeAuthoritative = prev.open_source === "rest";
               indexStore[sym] = {
                 ...prev,
                 price: val,
                 change_pct:
-                  prev.session_open > 0
+                  changeAuthoritative && prev.session_open > 0
                     ? computeSessionChangePct(val, prev.session_open)
                     : prev.change_pct,
                 updatedAt: Date.now(),
@@ -618,7 +628,11 @@ export function getIndexFeedFreshness(
   const entry = indexStore[sym];
   const updatedAt = entry?.updatedAt ?? 0;
   if (!updatedAt) return { ageMs: null, stalled: null, updatedAt: 0 };
-  const ageMs = Math.max(0, now - updatedAt);
+  const rawAgeMs = now - updatedAt;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) {
+    return { ageMs: null, stalled: true, updatedAt };
+  }
+  const ageMs = wsUpdatedAtAgeMs(updatedAt, now);
   return { ageMs, stalled: ageMs > INDEX_FEED_STALL_MS, updatedAt };
 }
 
@@ -635,7 +649,7 @@ export function getIndexStoreStatus() {
       // null when the symbol has never ticked — Date.now() - 0 would report the epoch
       // (~56 years) as an "age" in the admin/health status endpoints. Mirrors the
       // never-ticked guard in getIndexFeedFreshness above.
-      ageMs: indexStore[sym].updatedAt > 0 ? Date.now() - indexStore[sym].updatedAt : null,
+      ageMs: indexStore[sym].updatedAt > 0 ? wsUpdatedAtAgeMs(indexStore[sym].updatedAt) : null,
     })),
   };
 }

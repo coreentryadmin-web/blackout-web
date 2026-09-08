@@ -15,11 +15,17 @@
  * absent tick data). A single-price bar (high===low) contributes its whole volume to one bucket.
  */
 
+import { lastSessionBars } from "./vector-key-levels";
+import { filterRthBarsSec } from "./vector-session-hours";
+
 export type VolumeProfileBar = {
   high: number;
   low: number;
   volume?: number | null;
 };
+
+/** Bar shape when scoping to the last session's RTH window (09:30–16:00 ET). */
+export type VolumeProfileTimedBar = VolumeProfileBar & { time: number };
 
 export type VolumeProfileBucket = {
   /** Bucket midpoint price. */
@@ -52,6 +58,13 @@ const EMPTY_PROFILE: VolumeProfile = {
   maxVolume: 0,
   totalVolume: 0,
 };
+
+/** Last session's RTH-only bars — same gate as session HOD/LOD and VWAP (2026-08-05 audit). */
+export function sessionRthVolumeProfileBars<T extends VolumeProfileTimedBar>(
+  bars: readonly T[]
+): T[] {
+  return filterRthBarsSec(lastSessionBars(bars));
+}
 
 /** Bucket ascending/unordered bars into a price-keyed volume profile. Bars with no/zero volume or a
  *  non-finite high/low are dropped rather than fabricating a contribution. */

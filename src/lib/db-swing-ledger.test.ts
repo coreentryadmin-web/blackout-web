@@ -23,7 +23,7 @@ import {
 test("mapSwingPositionRow: NUMERIC columns arriving as strings (node-pg) become real numbers", () => {
   const row = mapSwingPositionRow({
     id: "17",
-    commit_key: "2026-07-24:NVDA:STANDARD:long",
+    commit_key: "2026-07-24:NVDA:BREAKOUT:STANDARD:long",
     root_position_id: null,
     parent_position_id: null,
     roll_seq: "0",
@@ -340,6 +340,8 @@ test("updateSwingLiveState: SQL status CASE is monotonic — terminal frozen, TR
   const body = src.slice(start, src.indexOf("export async function gradeSwingPosition"));
   // Terminal states are frozen (mirror of the pure validator).
   assert.match(body, /WHEN status IN \('CLOSED','ROLLED'\) THEN status/);
+  // Q36: evidence-only latch must not touch graded/terminal rows at all.
+  assert.match(body, /WHERE id = \$1 AND status NOT IN \('CLOSED','ROLLED'\)/);
   // TRIM never demotes back to a live/pending rung.
   assert.match(body, /WHEN status = 'TRIM' AND \$2 IN \('PENDING','OPEN','HOLD'\) THEN status/);
   // OPEN/HOLD never regress to PENDING.

@@ -7,7 +7,6 @@ import {
   resolveFreshFindStatus,
   deriveZeroDteSetups,
   calibrateFlowEvidenceScore,
-  rankEngineCards,
   enrichSetup,
   noteOriginDirectionConflict,
   mergeSameTickerDiscovery,
@@ -23,6 +22,7 @@ import {
   SETUP_MIN_DOMINANCE,
   SETUP_MAX_ITM_PCT,
   SETUP_MAX_OTM_PCT,
+  RUNNER_SETUP_MAX_OTM_PCT,
   type FlowSetupInput,
   type SetupDossierView,
   type ZeroDteGateRejection,
@@ -90,6 +90,10 @@ test("resolveFreshFindStatus: undefined heat state is treated as closed, not ope
 test("resolveFreshFindStatus: MOVED or illiquid always SKIP, even during RTH", () => {
   assert.equal(resolveFreshFindStatus("RTH", true, false), "SKIP");
   assert.equal(resolveFreshFindStatus("RTH", false, true), "SKIP");
+});
+
+test("resolveFreshFindStatus: MOVED with chaseExempt stays WATCH during RTH", () => {
+  assert.equal(resolveFreshFindStatus("RTH", true, false, true), "WATCH");
 });
 
 // ── setup derivation ─────────────────────────────────────────────────────────────
@@ -665,6 +669,101 @@ test("enrich: full dossier merges score, factors, technicals, streak, dark pool"
   assert.equal(e.news_hot, null);
 });
 
+// 9-8: scoreCandidate (scorer.ts) always folds fundamental/catalyst/short_interest/
+// wall_proximity/vex_alignment/skew into `score` alongside the original five — enrichSetup
+// dropped all six when building factor_breakdown, so the "Why this play was picked" panel
+// for every FLOW/PIN 0DTE setup silently under-represented the real score (live 2026-09-02:
+// NVDA showed 5 factors summing to 22.4 against a dossier_score of 35). Mirrors
+// deterministic-edition.ts's own (already-correct) mapping from the same ScoredCandidate shape.
+test("enrich: factor_breakdown carries the six named subscores scoreCandidate also folds into score", () => {
+  const dossier = fakeDossier({
+    scored: {
+      score: 78,
+      direction: "long",
+      conviction: "HIGH",
+      flow_score: 30,
+      tech_score: 18,
+      pos_score: 10,
+      news_score: 8,
+      smart_money_score: 12,
+      fundamental_score: 4,
+      catalyst_score: -3,
+      short_interest_score: 2,
+      wall_proximity_score: 5,
+      vex_alignment_score: 1,
+      skew_score: -2,
+      catalyst_flags: ["analyst PT raise"],
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.factor_breakdown, {
+    flow: 30,
+    tech: 18,
+    positioning: 10,
+    news: 8,
+    smart_money: 12,
+    fundamental: 4,
+    catalyst: -3,
+    short_interest: 2,
+    wall_proximity: 5,
+    vex: 1,
+    skew: -2,
+  });
+});
+
+// 9-9: scoreCandidate also folds ivAdjustment/anomalyPenalty/flowConvictionBonus and the regime
+// multiplier's own net effect into `score`/dossier_score, and until now none of those four had a
+// rendered line item either (live 2026-09-03: an NVDA case with a nonzero flowConvictionBonus
+// showed dossier_score=81 vs a factor_breakdown sum of 77). Same fix shape as the six-subscore gap
+// above: scorer.ts now exposes them on ScoredCandidate, this test proves board.ts carries them
+// through and that the breakdown's own sum reconciles exactly to dossier_score.
+test("enrich: factor_breakdown carries iv/anomaly/flow-conviction/regime adjustments and sums to dossier_score", () => {
+  const dossier = fakeDossier({
+    scored: {
+      score: 81,
+      direction: "long",
+      conviction: "HIGH",
+      flow_score: 30,
+      tech_score: 18,
+      pos_score: 10,
+      news_score: 8,
+      smart_money_score: 12,
+      iv_adjustment: -3,
+      flow_conviction_bonus: 4,
+      regime_adjustment: 2,
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.factor_breakdown, {
+    flow: 30,
+    tech: 18,
+    positioning: 10,
+    news: 8,
+    smart_money: 12,
+    iv_adjustment: -3,
+    flow_conviction_bonus: 4,
+    regime_adjustment: 2,
+  });
+  assert.ok(!("anomaly_penalty" in (e.factor_breakdown ?? {})), "a real zero must be omitted like every other dimension");
+  const sum = Object.values(e.factor_breakdown ?? {}).reduce((a, b) => a + b, 0);
+  assert.equal(sum, e.dossier_score, "factor_breakdown must now reconcile to dossier_score");
+});
+
+// A dimension the scorer never evaluated (field absent, not zero) must stay OUT of the
+// breakdown entirely — a real 0 (scored, contributed nothing) and an absent input (never
+// scored) are different facts and must not render as the same "0" bar. Covers the base
+// fakeDossier() fixture, which omits these six fields exactly as older `scored` payloads do.
+test("enrich: factor_breakdown omits (not zero-fills) subscores the scorer never returned", () => {
+  const e = enrichSetup(baseSetup(), fakeDossier());
+  assert.deepEqual(e.factor_breakdown, { flow: 30, tech: 18, positioning: 10, news: 8, smart_money: 12 });
+  assert.ok(!("fundamental" in (e.factor_breakdown ?? {})));
+  assert.ok(!("catalyst" in (e.factor_breakdown ?? {})));
+  assert.ok(!("short_interest" in (e.factor_breakdown ?? {})));
+  assert.ok(!("wall_proximity" in (e.factor_breakdown ?? {})));
+  assert.ok(!("vex" in (e.factor_breakdown ?? {})));
+  assert.ok(!("skew" in (e.factor_breakdown ?? {})));
+});
+
 test("enrich: earnings + hot-news extras pass through", () => {
   const e = enrichSetup(baseSetup(), null, {
     earnings: { when: "afterhours", report_date: "2026-07-06", expected_move_pct: 8.2 },
@@ -742,20 +841,6 @@ test("enrich: with no chart walls the condor falls back to the target-width floo
 test("enrich: condor is null when spot is unknown (no fabricated geometry)", () => {
   const e = enrichSetup(baseSetup({ underlying_price: null }), null);
   assert.equal(e.condor, null);
-});
-
-// ── engine ranking ───────────────────────────────────────────────────────────────
-
-test("ranking: ACTIVE play leads; power hour outranks lotto only inside its window", () => {
-  const cards = [
-    { kind: "lotto" as const, state: "ARMED" as const },
-    { kind: "power_hour" as const, state: "ARMED" as const },
-    { kind: "spx_play" as const, state: "ACTIVE" as const },
-  ];
-  const normal = rankEngineCards(cards, false);
-  assert.deepEqual(normal.map((c) => c.kind), ["spx_play", "lotto", "power_hour"]);
-  const ph = rankEngineCards(cards, true);
-  assert.deepEqual(ph.map((c) => c.kind), ["spx_play", "power_hour", "lotto"]);
 });
 
 // ── contract plans ───────────────────────────────────────────────────────────────
@@ -1109,6 +1194,39 @@ test("lifecycle: the hard exit closes rows with NO entry premium too (data quali
   assert.equal(intraday.status, "HOLD");
 });
 
+// P1 regression (2026-09-06): condor entry_premium is net CREDIT and mark is debit-to-close.
+// A falling mark is the WINNING direction — directional trough≤stop must not latch CLOSED.
+test("lifecycle: condor with falling mark (winning) does NOT stop out on trough latch", () => {
+  const credit = 0.6;
+  const mark = 0.25;
+  const trough = 0.25;
+  const s = derivePlayStatus({
+    entryPremium: credit,
+    mark,
+    peak: credit,
+    trough,
+    nowEtMinutes: 13 * 60,
+    isCondor: true,
+  });
+  assert.notEqual(s.status, "CLOSED", "a winning condor must not be latched stopped");
+  assert.notEqual(s.closed_reason, "stopped");
+  assert.ok(s.live_pnl_pct! > 0, `expected positive condor P&L, got ${s.live_pnl_pct}`);
+  assert.equal(s.live_pnl_pct, 58.33);
+});
+
+test("lifecycle: condor still time-stops at the hard exit", () => {
+  const s = derivePlayStatus({
+    entryPremium: 0.6,
+    mark: 0.25,
+    peak: 0.6,
+    trough: 0.25,
+    nowEtMinutes: 15 * 60 + 51,
+    isCondor: true,
+  });
+  assert.equal(s.status, "CLOSED");
+  assert.equal(s.closed_reason, "time_stop");
+});
+
 // ── conviction gates (money-printing filter) ─────────────────────────────────────
 
 test("gates: SOLD premium (bid-side prints) does not create a directional setup", () => {
@@ -1160,17 +1278,27 @@ test("gates: deep-ITM top strike (stock replacement) is excluded", () => {
   assert.ok(deriveZeroDteSetups(otm)[0]!.otm_pct! > 0);
 });
 
-test("gates: far-OTM lotto stack is excluded by the SETUP_MAX_OTM_PCT cap (Phase-0 firewall)", () => {
-  // A big CALL stack whose strike sits ~16% OTM (220 vs stock 190): clears premium +
+test("gates: far-OTM lotto stack is excluded by the RUNNER_SETUP_MAX_OTM_PCT cap at discovery", () => {
+  // A big CALL stack whose strike sits ~24% OTM (235 vs stock 190): clears premium +
   // dominance on size alone but is an egregious 0DTE lottery ticket, not a momentum play.
   const rejections: ZeroDteGateRejection[] = [];
-  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 220, underlying_price: 190 })];
+  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 235, underlying_price: 190 })];
   const out = deriveZeroDteSetups(lotto, { rejections });
   assert.equal(out.length, 0, "a far-OTM lotto stack must not reach the board");
   assert.equal(rejections.length, 1);
   assert.equal(rejections[0]!.gate_failed, "max_otm_pct");
-  assert.equal(rejections[0]!.threshold, SETUP_MAX_OTM_PCT);
-  assert.ok(rejections[0]!.otm_pct! > SETUP_MAX_OTM_PCT, `otm_pct ${rejections[0]!.otm_pct} should exceed the cap`);
+  assert.equal(rejections[0]!.threshold, RUNNER_SETUP_MAX_OTM_PCT);
+  assert.ok(
+    rejections[0]!.otm_pct! > RUNNER_SETUP_MAX_OTM_PCT,
+    `otm_pct ${rejections[0]!.otm_pct} should exceed the discovery cap`
+  );
+
+  // 13–20% OTM can reach commit gates (tighter SETUP_MAX_OTM_PCT applies unless Vector runner relax).
+  const runnerZone = [row({ premium: 3_000_000, option_type: "call", strike: 215, underlying_price: 190 })];
+  const runnerOut = deriveZeroDteSetups(runnerZone);
+  assert.equal(runnerOut.length, 1);
+  assert.ok(runnerOut[0]!.otm_pct! > SETUP_MAX_OTM_PCT);
+  assert.ok(runnerOut[0]!.otm_pct! <= RUNNER_SETUP_MAX_OTM_PCT);
 
   // A normal slightly-OTM momentum call (~2.7% OTM: 195 vs 190) is untouched by the cap.
   const normal = [row({ premium: 3_000_000, option_type: "call", strike: 195, underlying_price: 190 })];

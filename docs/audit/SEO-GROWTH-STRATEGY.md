@@ -62,7 +62,7 @@ violate the "don't change stable pages to look productive" rule.
 | **Backlinks / digital PR / authority** | **High — the actual traffic lever** | **OUT OF LANE → coordinator** | ⚠️ delegated (see §5) |
 | **Programmatic ticker landing pages** (GEX/flow per ticker) | **High — largest content opportunity** | Blocked | ⛔ **licensing** (vendor redistribution terms) — see §5 |
 | Google Ads receiving GA4 conversions | High for paid, not organic | Out of lane (ads/analytics) | ⚠️ flagged — GA4 events never reach Ads as conversions |
-| GSC Removals for dead `staging.*` URLs (8) + Bing residue | Cleanup | Dashboard (human) | ⚠️ delegated (removal API doesn't exist) |
+| Dead `staging.*` subdomain — 530s real search clicks, not just indexed | Real user-facing traffic loss | Cloudflare (human, or wider CF token scope) | ⚠️ delegated (see §5 — root cause + exact fix identified 2026-09-02, `CF_API_TOKEN` lacks DNS/redirect-rule write) |
 
 ## 4. Prioritized roadmap (in-lane, defensible, non-thin)
 
@@ -93,8 +93,26 @@ violate the "don't change stable pages to look productive" rule.
   publishing derived Polygon/Unusual Whales data until the operator answers the redistribution
   question. `/tools/gamma-snapshot` already publishes live derived values and predates this audit —
   flagged separately for a posture decision.
-- **`staging.blackouttrades.com` — 8 dead URLs indexed.** Removal is dashboard-only (no Removals
-  API); list handed to the coordinator. Bing residue is unmeasurable from here (no Webmaster API).
+- **`staging.blackouttrades.com` — 8 dead URLs indexed, and it's worse than an indexation nuisance
+  (sharpened 2026-09-02).** Every path on the subdomain — `/`, `/terminal`, `/nighthawk`, `/vector`,
+  `/flows`, `/heatmap` — returns Cloudflare **HTTP 530** (origin unreachable), consistent with the
+  staging AWS stack's full decommission on 2026-07-25 leaving the DNS record pointed at nothing.
+  This is not merely "indexed and stale": `gsc-search-analytics.mjs --days=28` (2026-09-02 pull)
+  shows **2 real clicks, 4 impressions** in the last 28 days on `staging.blackouttrades.com/terminal`
+  alone — actual users following a Google result to a page that errors, not just a crawl-budget
+  cost. **The fix is a Cloudflare redirect (`staging.blackouttrades.com/* → blackouttrades.com/*`,
+  308) or removing the dead DNS record — either would resolve real clicks correctly AND signal
+  Google to drop the URLs naturally, which is a cleaner mechanism than the manual Removals dashboard
+  tool.** Checked and it is genuinely credential-blocked, not effort-blocked: the zone's
+  `http_request_dynamic_redirect` ruleset exists and is listed, but `CF_API_TOKEN` returns
+  `request is not authorized` reading or writing it, and `GET .../dns_records` returns an
+  authentication error — the token is scoped to `http_request_cache_settings` only (matches
+  CLAUDE.md's documented "does NOT have legacy Page Rules scope", now confirmed to also exclude
+  DNS and the modern redirect-rules ruleset). **Needed: either the CF token's scope widened to
+  include DNS write or the redirect-rules ruleset, or a human adds one redirect rule in the
+  Cloudflare dashboard** (Rules → Redirect Rules → `staging.blackouttrades.com/*` → 308 →
+  `https://blackouttrades.com/$1`). Bing residue is still unmeasurable from here (no Webmaster
+  API).
 - **GA4 → Google Ads conversions** never wired (analytics/ads lane).
 
 ## 6. What shipped this cycle (2026-08-21)

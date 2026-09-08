@@ -6,6 +6,30 @@ export type DeskProduct = "HELIX" | "THERMAL" | "VECTOR" | "NIGHTHAWK" | "MERIDI
 
 export type DeskEvidenceStatus = "aligned" | "neutral" | "opposed" | "unavailable";
 
+/**
+ * Display label for a desk's evidence chip. `"neutral"` covers several real, distinct causes
+ * here (an explicit upstream "mixed" bias reading, a below-threshold-but-not-opposing rail
+ * score, a structurally-non-confirming-non-opposing read) — none of which is "the desk saw
+ * conflicting bullish and bearish evidence." Labeling it "mixed" overstates the one case that
+ * actually is a mixed reading and mislabels the other two, which is exactly the NO DATA /
+ * NEUTRAL / OPPOSED conflation `docs/audit/NIGHTHAWK-3RAIL-REDESIGN.md` §1 explicitly calls out
+ * as a fabricated distinction the desk-evidence display must not make (found 2026-08-31: two
+ * components, `DeskEvidenceStack.tsx` and `ThesisRankCard.tsx`, both independently mapped
+ * `"neutral"` → the string `"mixed"`).
+ */
+export function deskEvidenceStatusLabel(status: DeskEvidenceStatus): string {
+  switch (status) {
+    case "aligned":
+      return "aligned";
+    case "opposed":
+      return "opp";
+    case "neutral":
+      return "neutral";
+    default:
+      return "—";
+  }
+}
+
 export type DeskEvidenceLine = {
   desk: DeskProduct;
   status: DeskEvidenceStatus;

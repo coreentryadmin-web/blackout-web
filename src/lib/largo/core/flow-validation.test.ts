@@ -92,6 +92,24 @@ test("expired and malformed rows are excluded; a missing expiry is only a note",
   assert.equal(noExpiry.issues.some((i) => i.code === "expiry_missing"), true);
 });
 
+test("a future-dated alerted_at is flagged as untrustworthy, not silently read as fresh", () => {
+  // A negative `nowMs - t` (alerted_at ahead of NOW — clock skew or a mis-stamped print) used to
+  // never exceed the positive STALE_PRINT_MS threshold, so the print silently carried NO timing
+  // note at all — read as fresher than a genuinely current print rather than flagged.
+  const futureDated = { ...SPX_7800_CALL, alerted_at: new Date(NOW + 5 * 60_000).toISOString() };
+  const v = validatePrint(futureDated, SPOT, NOW);
+  assert.equal(v.usable, true, "a future-dated timestamp is a note, not an exclusion");
+  const flag = v.issues.find((i) => i.code === "future_dated");
+  assert.ok(flag, "must be flagged, not silently passed");
+  assert.equal(flag!.severity, "note");
+});
+
+test("an unparseable alerted_at is silently skipped, not misread as future-dated", () => {
+  const garbled = { ...SPX_7800_CALL, alerted_at: "not-a-real-timestamp" };
+  const v = validatePrint(garbled, SPOT, NOW);
+  assert.equal(v.issues.some((i) => i.code === "future_dated" || i.code === "stale"), false);
+});
+
 test("the sign inversion is detected and BOTH nets are reported", () => {
   // Reproduces the measured shape: a few huge deep-ITM calls outweighing genuinely bearish flow.
   const tape = [

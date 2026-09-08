@@ -22,7 +22,7 @@ import type { RelatedCompanies } from "@/lib/providers/polygon-related";
 import type { NewsResult } from "@/lib/providers/polygon-news";
 import type { PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import type { MarketBreadthBundle } from "@/lib/bie/market-breadth";
-import { SPX_CONFIDENCE_OMITTED } from "@/lib/largo/spx-confidence-boundary";
+import { SPX_CONFIDENCE_OMITTED, SPX_SCORE_CLAMP_NOTE } from "@/lib/largo/spx-confidence-boundary";
 
 // mock.module() must be registered before ecosystem-context.ts (and therefore
 // its "@/lib/db" import) is ever loaded — an ordinary top-level `import` of
@@ -48,6 +48,9 @@ let closedPlayCalls = 0;
 // like fetchSpxPlaySummary above it.
 let mockFullState: SpxPlayPayload | null = null;
 let fullStateCalls = 0;
+
+let mockDeskConvergence: Record<string, unknown> | null = null;
+let deskConvergenceCalls = 0;
 
 mock.module("../db", {
   namedExports: {
@@ -97,6 +100,7 @@ mock.module("../../features/spx/lib/spx-service", {
 // /flows member route applies — src/lib/flow-gex-enrichment.ts). Neither
 // mock ever touches a real DB row or a real GEX/upstream call.
 let mockFlowTapeSummary: FlowTapeSummary = {
+  as_of: "2026-01-01T12:00:00.000Z",
   count: 0,
   total_premium: 0,
   top_tickers: [],
@@ -195,6 +199,14 @@ mock.module("./ticker-fundamentals", {
       fundamentalsCalls.push(ticker);
       return mockFundamentals;
     },
+    // assembleEcosystemArsenal imports this alongside fetchTickerFundamentalsBundle;
+    // the mock must re-export it or every assembleEcosystemArsenal test throws
+    // "normalizeShortVolumeRatio is not a function" (Cursor peer-review #4248).
+    normalizeShortVolumeRatio: (raw: number) => {
+      if (!Number.isFinite(raw) || raw <= 0) return null;
+      const fraction = raw > 1 ? raw / 100 : raw;
+      return fraction > 1 ? null : fraction;
+    },
   },
 });
 mock.module("../providers/polygon-related", {
@@ -234,6 +246,18 @@ mock.module("./market-breadth", {
   },
 });
 
+// Relative specifier, not "@/..." — matches the production dynamic import() in ecosystem-context.ts
+// (also fixed to a relative specifier), since tsx does not rewrite "@/..." aliases for either
+// mock.module()'s specifier or a dynamic import() call, only statically-parsed top-level imports.
+mock.module("../largo/spx-desk-convergence", {
+  namedExports: {
+    spxDeskConvergenceForLargo: async () => {
+      deskConvergenceCalls++;
+      return mockDeskConvergence;
+    },
+  },
+});
+
 let fetchEcosystemContext: typeof import("./ecosystem-context").fetchEcosystemContext;
 let ECOSYSTEM_CONTEXT_FIELDS: typeof import("./ecosystem-context").ECOSYSTEM_CONTEXT_FIELDS;
 let mapNighthawkEchoRows: typeof import("./ecosystem-context").mapNighthawkEchoRows;
@@ -255,6 +279,7 @@ test("ECOSYSTEM_CONTEXT_FIELDS: covers every real field with a non-empty descrip
     "recent_anomalies",
     "spx_play",
     "spx_full_state",
+    "spx_desk_convergence",
     "flow_feed_fresh",
     "gex_positioning",
     "vector_full_state",
@@ -390,10 +415,29 @@ test("fetchEcosystemContext: spx_play is null for a non-SPX ticker, and the SPX-
 
 
 /** The fixture as it should arrive at the model: everything verbatim, minus the uncalibrated
- *  `confidence`, plus the named absence that replaces it. */
+ *  `confidence`, plus the named absence that replaces it — and, when the fixture's `factors[]`
+ *  don't sum to its `score` (this hand-typed fixture only carries one representative factor, so
+ *  they don't), the honest clamp note `omitUncalibratedSpxConfidence` also attaches for that same
+ *  reason. Derived here rather than hand-asserted so this stays a byte-for-byte full-fidelity
+ *  guard against the REAL sanitizer, not a copy of its logic that could silently drift from it. */
 function withConfidenceOmitted(payload: Record<string, unknown>): Record<string, unknown> {
   const { rawScore: _omitted, ...rest } = payload;
-  return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
+  const out: Record<string, unknown> = { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
+  const { score, factors } = payload as { score?: unknown; factors?: unknown };
+  if (typeof score === "number" && Array.isArray(factors)) {
+    const rawSum = factors.reduce(
+      (s: number, f) =>
+        s + (f && typeof f === "object" && typeof (f as { weight?: unknown }).weight === "number"
+          ? (f as { weight: number }).weight
+          : 0),
+      0
+    );
+    if (rawSum !== score) {
+      out.factor_sum_pre_clamp = rawSum;
+      out.score_clamp_note = SPX_SCORE_CLAMP_NOTE;
+    }
+  }
+  return out;
 }
 
 // Regression: Largo's own get_spx_play tool (src/lib/largo/run-tool.ts ->
@@ -454,13 +498,27 @@ test('fetchEcosystemContext("SPXW"): spx_full_state also populates (same single-
 
 test("fetchEcosystemContext: spx_full_state is null for a non-SPX ticker, and getSpxPlayState never runs", async () => {
   fullStateCalls = 0;
-  // Deliberately leave a full-state fixture mocked to prove the ticker gate —
-  // not the data — is what keeps a non-SPX ticker's spx_full_state null.
+  deskConvergenceCalls = 0;
   mockFullState = SPX_FULL_STATE_FIXTURE;
+  mockDeskConvergence = { alignment: "aligned" };
 
   const ctx = await fetchEcosystemContext("AAPL");
   assert.equal(ctx.spx_full_state, null);
+  assert.equal(ctx.spx_desk_convergence, null);
   assert.equal(fullStateCalls, 0, "getSpxPlayState must not run for a non-SPX ticker");
+  assert.equal(deskConvergenceCalls, 0, "spxDeskConvergenceForLargo must not run for a non-SPX ticker");
+});
+
+test('fetchEcosystemContext("SPX"): spx_desk_convergence reuses spxDeskConvergenceForLargo() verbatim', async () => {
+  deskConvergenceCalls = 0;
+  mockDeskConvergence = {
+    alignment: "aligned",
+    matrix_ui: { default_lens: "gex", available_lenses: ["gex", "vex"] },
+  };
+
+  const ctx = await fetchEcosystemContext("SPX");
+  assert.equal(deskConvergenceCalls, 1);
+  assert.deepEqual(ctx.spx_desk_convergence, mockDeskConvergence);
 });
 
 // Regression: fetchEcosystemContext()'s recent_flow hand-rolled its own raw
@@ -492,6 +550,7 @@ test('fetchEcosystemContext("NVDA"): flow_full_state reuses getFlowTapeSummary()
   const rowA = makeFlowRow({ strike: 130 });
   const rowB = makeFlowRow({ strike: 140, premium: 90000 });
   mockFlowTapeSummary = {
+    as_of: "2026-01-01T12:00:00.000Z",
     count: 2,
     total_premium: 340000,
     top_tickers: [{ ticker: "NVDA", premium: 340000, count: 2 }],
@@ -519,7 +578,7 @@ test('fetchEcosystemContext("NVDA"): flow_full_state reuses getFlowTapeSummary()
 test("fetchEcosystemContext: flow_full_state is null (not an all-zero object) when getFlowTapeSummary finds no prints, mirroring recent_flow's null-when-quiet convention", async () => {
   flowTapeCalls = [];
   enrichCalls = [];
-  mockFlowTapeSummary = { count: 0, total_premium: 0, top_tickers: [], recent: [], strike_stacks: [] };
+  mockFlowTapeSummary = { as_of: "2026-01-01T12:00:00.000Z", count: 0, total_premium: 0, top_tickers: [], recent: [], strike_stacks: [] };
   mockEnrichedRecent = null;
 
   const ctx = await fetchEcosystemContext("XYZ");
@@ -535,6 +594,7 @@ test('fetchEcosystemContext("SPX"): flow_full_state is NOT gated by isSpxSlayerT
   mockFullState = SPX_FULL_STATE_FIXTURE;
   const row = makeFlowRow({ ticker: "SPX" });
   mockFlowTapeSummary = {
+    as_of: "2026-01-01T12:00:00.000Z",
     count: 1,
     total_premium: 250000,
     top_tickers: [{ ticker: "SPX", premium: 250000, count: 1 }],
@@ -783,6 +843,50 @@ test("assembleEcosystemArsenal(single_name): earnings/fundamentals/peers/news po
   assert.equal(ars.macro, null);
   assert.equal(ars.breadth, null);
   assert.deepEqual(ars.unavailable_sources, []);
+});
+
+test("assembleEcosystemArsenal: Benzinga headline HTML entities are decoded for display (live prod repro, NN 2026-09-06)", () => {
+  // Live reproduction: swing play-brief's Catalysts & news section rendered these Benzinga
+  // headlines literally, entity and all — the same class of bug meridian-feed-text.ts fixed for
+  // the Meridian desk on 2026-08-21, missed here because this call site feeds the swing brief.
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: {
+      items: [
+        { headline: "12 Information Technology Stocks Moving In Tuesday&#39;s Intraday Session" },
+        { headline: "Safran Electronics &amp; Defense agreement" },
+      ],
+      asOf: "2026-09-06T00:00:00Z",
+      newest: "2026-09-06T00:00:00Z",
+    } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, [
+    "12 Information Technology Stocks Moving In Tuesday's Intraday Session",
+    "Safran Electronics & Defense agreement",
+  ]);
+});
+
+test("assembleEcosystemArsenal(single_name): percent-scale short_volume_ratio normalizes to 0–1 fraction (audit #12)", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: {
+      as_of: "2026-07-10",
+      short_interest: { days_to_cover: 3.4 },
+      short_volume_ratio: 69.13,
+      price_target: null,
+    } as unknown as TickerFundamentalsBundle,
+    related: null,
+    news: null,
+    macro: null,
+    breadth: null,
+  });
+  assert.ok(Math.abs(ars.fundamentals!.short_volume_ratio! - 0.6913) < 1e-9);
 });
 
 test("assembleEcosystemArsenal(index): macro/breadth/catalysts populate; single-name legs null", () => {

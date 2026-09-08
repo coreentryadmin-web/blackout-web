@@ -17,6 +17,8 @@ import {
   insertWeightReport,
   type SignalWeightReport,
 } from "@/features/spx/lib/spx-signal-db";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
+import { todayEt } from "@/lib/et-date";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,12 +36,36 @@ export async function GET(req: NextRequest) {
   const dbDenied = requireDatabaseInProduction();
   if (dbDenied) return dbDenied;
 
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
+
+  // Holiday guard: EventBridge is weekday-only (Mon–Fri). On NYSE holidays the 6 PM ET
+  // post-close fire still runs and would write a weight report from a closed tape.
+  // force=1 bypasses for ops recovery (same pattern as nighthawk-outcomes / zerodte-grade).
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun("spx-signal-weight-optimize", started, payload);
+    return NextResponse.json(payload);
+  }
+
   await initSpxSignalTables();
 
-  const lookbackDays = parseInt(
+  // Guard against a missing/empty/non-numeric ?days override. URLSearchParams.get()
+  // returns "" (not null) for `?days=` or a bare `?days`, so `?? String(DEFAULT_LOOKBACK_DAYS)`
+  // never falls back (`??` only fires on null/undefined) and `parseInt("", 10)` is NaN — the
+  // same NaN results from any non-numeric value, e.g. `?days=abc`. That NaN used to flow
+  // straight into `Date.now() - NaN * 24*60*60*1000` -> `new Date(NaN)` -> `.toISOString()`,
+  // which THROWS RangeError("Invalid time value") — and this computation sits ABOVE the
+  // try/catch below, so the throw escaped uncaught, logCronRun never ran, and the failure
+  // was invisible to cron_job_runs/cron-staleness-watchdog. Same guard idiom as the identical
+  // kind of override in nighthawk-outcomes/route.ts (Number.isFinite(...) && ... > 0, else default).
+  const rawLookbackDays = parseInt(
     req.nextUrl.searchParams.get("days") ?? String(DEFAULT_LOOKBACK_DAYS),
     10
   );
+  const lookbackDays = Number.isFinite(rawLookbackDays) && rawLookbackDays > 0
+    ? rawLookbackDays
+    : DEFAULT_LOOKBACK_DAYS;
   const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
 
   try {

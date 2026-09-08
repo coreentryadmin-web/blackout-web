@@ -65,32 +65,28 @@ test("critique #3: archetype-aware persistence policy — cross-session=2, event
   for (const a of SWING_ARCHETYPES) assert.ok(ARCHETYPE_PERSISTENCE[a], `persistence rule for ${a}`);
 });
 
-test("subLaneForDte: boundaries — outside [5,30] is null, each lane owns its inclusive range (floor widened 2026-08-06)", () => {
-  assert.equal(subLaneForDte(4), null); // now owned by the 0DTE board's widened dte 0-4 window
+test("subLaneForDte: boundaries — outside [5,15] is null, each lane owns its inclusive range", () => {
+  assert.equal(subLaneForDte(4), null);
   assert.equal(subLaneForDte(5), "TACTICAL");
   assert.equal(subLaneForDte(7), "TACTICAL");
   assert.equal(subLaneForDte(8), "STANDARD");
-  assert.equal(subLaneForDte(21), "STANDARD");
-  assert.equal(subLaneForDte(22), "EXTENDED");
-  assert.equal(subLaneForDte(30), "EXTENDED");
-  assert.equal(subLaneForDte(31), null);
+  assert.equal(subLaneForDte(15), "STANDARD");
+  assert.equal(subLaneForDte(16), null);
   assert.equal(subLaneForDte(0), null);
   assert.equal(subLaneForDte(NaN), null);
 });
 
-test("sub-lanes: ranges are contiguous, non-overlapping, cover exactly [5,30] (HORIZONS.SWING.dteMin)", () => {
+test("sub-lanes: ranges are contiguous, non-overlapping, cover exactly [5,15] (HORIZONS.SWING.dteMin)", () => {
   const lanes = allSwingSubLanes();
-  assert.equal(lanes.length, 3);
-  // contiguous + non-overlapping in fast→slow order, covering [5,30]
+  assert.equal(lanes.length, 2);
   assert.equal(lanes[0]!.dteMin, 5);
-  assert.equal(lanes[lanes.length - 1]!.dteMax, 30);
+  assert.equal(lanes[lanes.length - 1]!.dteMax, 15);
   for (let i = 1; i < lanes.length; i++) {
     assert.equal(lanes[i]!.dteMin, lanes[i - 1]!.dteMax + 1, `lane ${i} starts right after prior`);
   }
-  // every DTE in [5,30] maps to exactly one lane; every DTE outside maps to none
-  for (let dte = 0; dte <= 35; dte++) {
+  for (let dte = 0; dte <= 20; dte++) {
     const lane = subLaneForDte(dte);
-    const inWindow = dte >= 5 && dte <= 30;
+    const inWindow = dte >= 5 && dte <= 15;
     assert.equal(lane != null, inWindow, `dte ${dte} in-window=${inWindow}`);
   }
 });

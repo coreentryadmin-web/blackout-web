@@ -12,6 +12,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
+import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { gradeZeroDteLedger } from "@/lib/zerodte/scan";
 import { refreshShadowRailPriors } from "@/lib/zerodte/calibration-rail-priors";
 import { refreshRailGraduation } from "@/lib/zerodte/calibration-rail-graduation";
@@ -24,6 +26,17 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
+
+  // Holiday guard: schedule is weekday-only with no NYSE calendar. On holidays the post-close
+  // grading fires would re-grade ledger rows against a closed tape and refresh calibration rails.
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun("zerodte-grade", started, payload);
+    return NextResponse.json(payload);
   }
 
   try {

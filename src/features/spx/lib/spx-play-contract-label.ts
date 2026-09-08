@@ -189,15 +189,16 @@ export function resolveSpxPlayContractHumanLabel(play: SpxPlayPayload): string {
   return "—";
 }
 
-/** Pin magnet drift vs structure play direction — independent systems; surface when they diverge. */
+/** Pin drift vs structure play direction — independent systems; surface when they diverge. */
 export function pinPlayAlignmentHint(
   playDirection: "long" | "short" | null,
-  pinMagnetDirection: "up" | "down" | "flat" | null | undefined
+  pinDriftPts: number | null | undefined
 ): string | null {
-  if (!playDirection || !pinMagnetDirection || pinMagnetDirection === "flat") return null;
-  const pinImplies = pinMagnetDirection === "up" ? "long" : "short";
+  if (!playDirection || pinDriftPts == null || !Number.isFinite(pinDriftPts)) return null;
+  if (Math.abs(pinDriftPts) <= 0.5) return null;
+  const pinImplies = pinDriftPts > 0 ? "long" : "short";
   if (pinImplies === playDirection) return null;
-  const pinSide = pinMagnetDirection === "up" ? "upward pin drift" : "downward pin drift";
+  const pinSide = pinDriftPts > 0 ? "upward pin drift" : "downward pin drift";
   const playSide = playDirection === "long" ? "bullish structure" : "bearish structure";
   return `Pin forecaster shows ${pinSide}; play engine is ${playSide} — thesis is independent of the magnet.`;
 }

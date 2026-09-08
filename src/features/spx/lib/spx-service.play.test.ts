@@ -26,6 +26,14 @@ test("getSpxPlayState owns the shared play-read cache (member + BIE + Largo)", (
   assert.match(service, /degradedPlayPayload/);
 });
 
+test("getSpxPlayState and getSpxDeskSummary round at derivation (BIE/Largo parity)", () => {
+  const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+  const evalBlock = service.match(/async function evaluateSpxPlayState\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(evalBlock, "evaluateSpxPlayState block present");
+  assert.match(evalBlock![0], /return roundFloats\(\{/);
+  assert.match(service, /return roundFloats\(summarizeSpxDesk\(merged\)\)/);
+});
+
 test("member /api/market/spx/play catch returns degradedPlayPayload shape", () => {
   const route = readFileSync(join(ROOT, "src/app/api/market/spx/play/route.ts"), "utf8");
   assert.match(route, /degradedPlayPayload/);

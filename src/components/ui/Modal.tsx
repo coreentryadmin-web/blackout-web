@@ -120,7 +120,7 @@ export function Modal({
             initial={panelInitial}
             animate={panelAnimate}
             exit={panelExit}
-            transition={{ duration: reduce ? 0 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: reduce ? 0 : 0.22, ease: [0.4, 0, 0.2, 1] as const }}
             className={clsx(
               "relative z-10 flex w-full flex-col border border-white/12 bg-[rgba(8,9,14,0.92)] backdrop-blur-xl outline-none",
               "shadow-[0_30px_90px_-30px_rgba(0,0,0,0.85)]",

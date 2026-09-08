@@ -5,6 +5,7 @@ import { MAX_TOOL_RESULT_CHARS } from "@/lib/providers/anthropic";
 import {
   LARGO_RESULT_CHAR_BUDGET,
   fitRowsToBudget,
+  fitEnvelopeToBudget,
   sampleNote,
 } from "@/lib/largo/fit-tool-result";
 
@@ -74,4 +75,22 @@ test("an empty list reads as a real state, not a broken sentence", () => {
   assert.match(note, /^No committed 0DTE plays in the window\./);
   assert.doesNotMatch(note, /All 0/);
   assert.doesNotMatch(note, /SAMPLE/i);
+});
+
+test("fitEnvelopeToBudget measures metadata fields, not just the row array", () => {
+  const rows = Array.from({ length: 20 }, (_, i) => ({ ticker: `T${i}`, pad: "x".repeat(400) }));
+  const { envelope, chars } = fitEnvelopeToBudget(
+    rows,
+    (kept, total) => ({
+      candidates: kept,
+      shown: kept.length,
+      truncated: total > kept.length,
+      max_shown: 15,
+      note: "y".repeat(200),
+    }),
+    { maxRows: 15, budget: 5000 }
+  );
+  assert.ok(chars <= 5000);
+  assert.equal(JSON.stringify(envelope).length, chars);
+  assert.ok((envelope.shown as number) > 0);
 });

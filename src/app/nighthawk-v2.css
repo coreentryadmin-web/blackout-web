@@ -113,6 +113,87 @@
     background: rgba(12, 12, 14, 0.85);
   }
 
+  /* Vector board — same viewport lock as command deck: shell fills single-view,
+     toolbar + calendar pinned, table + detail scroll internally. */
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-shell {
+    flex: 1 1 0%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-toolbar,
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-cal-wrap,
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-scorecard {
+    flex-shrink: 0;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-body {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-table-pane,
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-detail {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-tablewrap,
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-detail:not(.vector-board-detail--empty) {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  @media (max-width: 820px) {
+    html:not(.ios-native-shell) .nh-v2-page .vector-board-body,
+    html.ios-native-shell .nh-v2-page .vector-board-body {
+      flex-direction: column;
+    }
+
+    html:not(.ios-native-shell) .nh-v2-page .vector-board-detail,
+    html.ios-native-shell .nh-v2-page .vector-board-detail {
+      width: 100%;
+      max-height: 42vh;
+      border-left: 0;
+      border-top: 1px solid var(--nh-desk-border, rgba(255, 255, 255, 0.08));
+    }
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-shell {
+    flex: 1 1 0%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-toolbar,
+  html.ios-native-shell .nh-v2-page .vector-board-cal-wrap,
+  html.ios-native-shell .nh-v2-page .vector-board-scorecard {
+    flex-shrink: 0;
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-body {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-table-pane,
+  html.ios-native-shell .nh-v2-page .vector-board-detail {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-tablewrap,
+  html.ios-native-shell .nh-v2-page .vector-board-detail:not(.vector-board-detail--empty) {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* Right detail panel — header/tabs/footer pinned; only .nh-deck-body scrolls.
      Without this the viewport lock (shell-fill) clips thesis/management content that
      previously scrolled via the page — left rail got .nh-deck-rows rules in #1596 but
@@ -197,6 +278,20 @@
    from a full-button pill fill to a bottom-edge bar) and a real weight/color jump between active
    and inactive rather than an inverted-background pill. No box, no border, no background — flat,
    like the reference. */
+/* Mobile overlap fix (2026-09-04): VECTOR made this a 5-tab row, and .ios-native-segment-btn
+ * below is flex:0 0 auto (content-width, non-shrinking) by design — flat tabs shouldn't squash
+ * into unreadable slivers. NightHawkFeed.tsx's header row gives THIS container `min-w-0 flex-1
+ * shrink` so it yields width to the sibling theme-toggle pill; combined with non-shrinking
+ * children, that let the container's assigned box go narrower than its five buttons' combined
+ * width. With no overflow-x here, that excess content stayed `visible` (the CSS default) and
+ * painted past the container's right edge, directly on top of the theme toggle — the toggle is
+ * the next flex sibling and paints after this container in DOM order, so it always won on the
+ * overlap. `overflow-x: auto` (mirroring globals.css's `.nh-history-tablewrap` scroll pattern)
+ * turns that overflow into a horizontal scroll/swipe inside the tab row instead of a paint-order
+ * collision; the theme toggle keeps its own full width untouched (it was never the one being
+ * squeezed — `flex-basis: 0%` on this container already gives it grow priority over the toggle's
+ * content-width, auto-shrink item).
+ */
 .nh-v2-page .ios-native-segment {
   display: flex;
   align-items: stretch;
@@ -207,6 +302,15 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: transparent;
   box-shadow: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.nh-v2-page .ios-native-segment::-webkit-scrollbar {
+  display: none;
 }
 
 .nh-v2-page .ios-native-segment-btn {

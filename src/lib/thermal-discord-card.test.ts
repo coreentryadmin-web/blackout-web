@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import test from "node:test";
 import {
   THERMAL_DISCORD_CARD_W,
   THERMAL_DISCORD_MAX_EXPIRIES,
+  __resetFontconfigCacheDirForTest,
   bandStrikesAroundSpot,
   buildThermalDiscordCardSvg,
   discordDriftPct,
   discordPerExpiryExtremes,
+  ensureFontconfigCacheDir,
   fmtCompactExpiry,
   fmtCompactHeatMoney,
   fmtDeskExpiry,
@@ -271,4 +274,73 @@ test("settled empty 0DTE multi-expiry SVG paints next days with money labels", (
   assert.match(caption, /GEX · NEAR/);
   assert.match(caption, /Near `/);
   assert.match(caption, new RegExp(fmtCompactExpiry(nextYmd).replace("/", "\\/")));
+});
+
+/**
+ * Regression for the "Fontconfig error: No writable cache directories" recurrence (72
+ * occurrences/24h, 4-per-firing, RTH-only — matches this file's own `sharp(svg)` render inside the
+ * `thermal-discord` cron). Before the fix, sharp's librsvg SVG backend had nowhere writable to
+ * park fontconfig's cache in the ECS runtime container (root-owned build-time `/var/cache/fontconfig`
+ * + no `$HOME` for the unprivileged `nextjs` user's XDG fallback), so it rebuilt its font cache
+ * from scratch on every render — silent, but a real per-invocation latency tax. This asserts the
+ * code-level mitigation actually runs: an `XDG_CACHE_HOME` fontconfig can use is set and exists
+ * BEFORE sharp ever touches the SVG, so the cache can persist warm across renders within one task.
+ */
+test("ensureFontconfigCacheDir points fontconfig at a writable, existing cache dir", () => {
+  const prior = process.env.XDG_CACHE_HOME;
+  delete process.env.XDG_CACHE_HOME;
+  __resetFontconfigCacheDirForTest();
+  try {
+    ensureFontconfigCacheDir();
+    assert.ok(
+      process.env.XDG_CACHE_HOME,
+      "XDG_CACHE_HOME must be set so fontconfig has a per-user cache dir to fall back to"
+    );
+    assert.ok(
+      existsSync(process.env.XDG_CACHE_HOME!),
+      "the directory fontconfig is pointed at must actually exist, not just be a path"
+    );
+  } finally {
+    if (prior === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = prior;
+    __resetFontconfigCacheDirForTest();
+  }
+});
+
+test("ensureFontconfigCacheDir never overrides an operator-supplied XDG_CACHE_HOME", () => {
+  const prior = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = "/some/operator/chosen/dir";
+  __resetFontconfigCacheDirForTest();
+  try {
+    ensureFontconfigCacheDir();
+    assert.equal(process.env.XDG_CACHE_HOME, "/some/operator/chosen/dir");
+  } finally {
+    if (prior === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = prior;
+    __resetFontconfigCacheDirForTest();
+  }
+});
+
+test("renderThermalDiscordCardPng sets up the fontconfig cache dir before rendering", async () => {
+  const prior = process.env.XDG_CACHE_HOME;
+  delete process.env.XDG_CACHE_HOME;
+  __resetFontconfigCacheDirForTest();
+  try {
+    const { renderThermalDiscordCardPng } = await import("./thermal-discord-card.ts");
+    const columns: ThermalCardColumn[] = [
+      { ticker: "SPY", heatmap: null },
+      { ticker: "SPX", heatmap: null },
+      { ticker: "QQQ", heatmap: null },
+    ];
+    const png = await renderThermalDiscordCardPng(columns);
+    assert.ok(Buffer.isBuffer(png) && png.length > 0, "must still produce a real PNG buffer");
+    assert.ok(
+      process.env.XDG_CACHE_HOME && existsSync(process.env.XDG_CACHE_HOME),
+      "rendering must leave a real, existing fontconfig cache dir behind for the next invocation"
+    );
+  } finally {
+    if (prior === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = prior;
+    __resetFontconfigCacheDirForTest();
+  }
 });

@@ -88,7 +88,7 @@ test("global-strongest book floor defaults: 3–5 target, rescue paths ON, merit
     assert.equal(effectiveTargetPlays(), 5);
     assert.equal(gatePromoteEnabled(), true);
     assert.equal(thinEditionBackfillEnabled(), true);
-    assert.equal(gatePromoteMinScore(), 55);
+    assert.equal(gatePromoteMinScore(), 40);
   } finally {
     for (const k of keys) {
       if (prev[k] === undefined) delete process.env[k];

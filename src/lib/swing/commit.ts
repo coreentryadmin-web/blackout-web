@@ -13,8 +13,9 @@
 //   2. BOOK-PERCENT CAPS (swing-allocation.ts). Orthogonal %-of-member-book concentration: per-position 5% /
 //      per-theme 20% / total-in-swings 40% / max-3-same-week-expiry. A candidate whose inclusion breaches a
 //      cap is skipped.
-//   3. IDEMPOTENCY (commit_key). A stable `${session}:${TICKER}:${SUBLANE}:${dir}` key — a name already open
-//      on the book under that key is NEVER re-opened (and `insertSwingPosition` upserts on it as a DB backstop).
+//   3. IDEMPOTENCY (commit_key). A stable `${session}:${TICKER}:${ARCHETYPE}:${SUBLANE}:${dir}` key — a name
+//      already open on the book under that key is NEVER re-opened (deep-dive Q20: archetype in key so two
+//      theses on the same name+side+lane cannot upsert over each other). `insertSwingPosition` upserts on it.
 //
 // GRADUATION IS EVIDENCE-ONLY, NOT A GATE (2026-08-06, member-authorized — matches the 0DTE calibration
 // philosophy in zerodte/calibration.ts: "CALIBRATION mode: they never block, they only pin a would-block
@@ -43,8 +44,9 @@
 // that writes the cleared rows through injected accessors (no live DB in tests).
 //
 // SHADOW POSITIONS (2026-08-06, member-authorized): a candidate that clears every open-ability check
-// (direction/contract/premium/sub-lane) but is blocked ONLY by budget:*/cap:* — a real signal the RISK
-// CONTROLS turned away, never idempotency (an already-open name is already being traded for real, so
+// (direction/contract/premium/sub-lane) but is blocked ONLY by budget:*/cap:* OR V2 commit gates
+// (gate:G-S* — confluence/Cortex/etc.) — a real signal the RISK/EVIDENCE CONTROLS turned away, never
+// idempotency (an already-open name is already being traded for real, so shadow-tracking a duplicate adds
 // shadow-tracking a duplicate adds noise, not evidence) — gets a `shadowInsert` built alongside its
 // (blocked) real decision. `executeSwingCommits` writes these to the SEPARATE `swing_shadow_positions`
 // table (db.ts) when `insertShadowPosition` is wired: zero real capital, never read by the real book /
@@ -55,7 +57,7 @@ import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { occFromChainContract } from "./occ-from-row";
-import { swingThesisKey } from "./accumulation-store";
+import { normalizeSwingAccumArchetype, swingThesisKey } from "./accumulation-store";
 import type { SwingCalibrationReport } from "./calibration";
 import type { SwingPillarSignals } from "./swing-pillars";
 import { buildSwingFeatureVector } from "./feature-vector";
@@ -73,6 +75,10 @@ import {
   type ExistingSwingPosition,
 } from "./swing-allocation";
 import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
+import type { SwingDiscoveryPath } from "./discovery";
+import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
+import { cortexEntryContextFor } from "@/lib/zerodte/cortex-gate";
+import type { ZeroDteCortexAssessment } from "@/lib/zerodte/cortex-gate";
 
 /** Shares per option contract — the standard US equity-option multiplier. */
 export const OPTION_CONTRACT_MULTIPLIER = 100;
@@ -85,6 +91,22 @@ export const OPTION_CONTRACT_MULTIPLIER = 100;
 export const EVENT_EXPOSURE_ARCHETYPES: readonly SwingArchetype[] = ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"];
 export function isEventArchetype(a: SwingArchetype | null | undefined): boolean {
   return a != null && (EVENT_EXPOSURE_ARCHETYPES as readonly string[]).includes(a);
+}
+
+/** A blockedBy token that qualifies for shadow tracking (deep-dive Q30). */
+export function isShadowEligibleBlockReason(reason: string): boolean {
+  return (
+    reason.startsWith("budget:") ||
+    reason.startsWith("cap:") ||
+    reason.startsWith("gate:G-S") ||
+    reason === "gate:quote_stale" ||
+    reason === "gate:daily_bar_incomplete"
+  );
+}
+
+/** Candidate blocked ONLY by shadow-eligible reasons (budget/caps/V2 commit gates). */
+export function isShadowEligibleBlockedBy(blockedBy: readonly string[]): boolean {
+  return blockedBy.length > 0 && blockedBy.every(isShadowEligibleBlockReason);
 }
 
 /** Max-loss debit of ONE reference long-option contract = premium/share × 100, rounded to cents (a dollar risk
@@ -152,6 +174,20 @@ export interface SwingCommitCandidate {
   classificationMargin?: number | null;
   /** UW IV rank (0–100) when known at commit — honest null otherwise; first refresh tick can fill it. */
   ivRank?: number | null;
+  /** Tier-0 discovery provenance — used by V2 G-S6 confluence gate when enforced. */
+  discoveryPaths?: readonly SwingDiscoveryPath[];
+  /** Catalyst read — G-S3 earnings binary when enforced. */
+  earningsInWindow?: boolean;
+  /** Halt/LULD read — G-S12 when enforced. */
+  halted?: boolean;
+  /** Quote age in ms at commit time — quote_stale gate when enforced. */
+  quoteAgeMs?: number | null;
+  /** False when grouped-daily reference feed is empty — daily_bar_incomplete gate when enforced. */
+  dailyBarComplete?: boolean | null;
+  /** V2 async preflight blocks (G-S14 Cortex) evaluated before computeSwingCommitPlan. */
+  preflightV2BlockedBy?: string[];
+  /** G-S14 Cortex assessment when preflight ran — pinned into entry_context at commit (Q29). */
+  cortexAssessment?: ZeroDteCortexAssessment | null;
 }
 
 /** A live-book position the commit gate reads for budget + caps + idempotency. */
@@ -214,9 +250,16 @@ export interface SwingCommitPlan {
 
 const isFin = (x: number | null | undefined): x is number => x != null && Number.isFinite(x);
 
-/** Stable idempotency key: one per (session, name, sub-lane, side). Matches the ledger's commit_key format. */
-export function swingCommitKey(sessionDate: string, ticker: string, subLane: SwingSubLane, dir: "long" | "short"): string {
-  return `${sessionDate}:${ticker.trim().toUpperCase()}:${subLane}:${dir}`;
+/** Stable idempotency key: one per (session, name, archetype, sub-lane, side). Matches ledger commit_key (Q20). */
+export function swingCommitKey(
+  sessionDate: string,
+  ticker: string,
+  subLane: SwingSubLane,
+  dir: "long" | "short",
+  archetype: SwingArchetype | string | null | undefined = null,
+): string {
+  const arch = normalizeSwingAccumArchetype(archetype);
+  return `${sessionDate}:${ticker.trim().toUpperCase()}:${arch}:${subLane}:${dir}`;
 }
 
 /** Idempotency key for a ROLL child — the base key plus the roll generation (`:r{seq}`), so a child NEVER
@@ -228,8 +271,9 @@ export function swingRollCommitKey(
   subLane: SwingSubLane,
   dir: "long" | "short",
   rollSeq: number,
+  archetype: SwingArchetype | string | null | undefined = null,
 ): string {
-  return `${swingCommitKey(sessionDate, ticker, subLane, dir)}:r${Math.max(1, Math.floor(rollSeq))}`;
+  return `${swingCommitKey(sessionDate, ticker, subLane, dir, archetype)}:r${Math.max(1, Math.floor(rollSeq))}`;
 }
 
 /**
@@ -245,6 +289,16 @@ export function computeSwingCommitPlan(args: {
   book: CommitBookPosition[];
   budget?: PortfolioBudget;
   caps?: SwingCaps;
+  /** V2 commit gates (P3/P4) — off unless caller passes enforce* flags. */
+  v2?: {
+    enforceConfluence?: boolean;
+    enforceEarnings?: boolean;
+    enforceHalt?: boolean;
+    enforceRegime?: boolean;
+    enforceQuoteStale?: boolean;
+    enforceDailyBar?: boolean;
+    haltFeedStale?: boolean;
+  };
 }): SwingCommitPlan {
   const budget = args.budget ?? DEFAULT_PORTFOLIO_BUDGET;
   const caps = args.caps ?? DEFAULT_SWING_CAPS;
@@ -275,7 +329,10 @@ export function computeSwingCommitPlan(args: {
     // so a graduated name with no liquid contract is still counted eligible (then blocked by no_contract).
     const subLane: SwingSubLane | null = cand.contract ? subLaneForDte(cand.contract.dte) : null;
     const gradeSubLane: SwingSubLane | null = subLane ?? cand.subLane;
-    const commitKey = subLane && dirLc ? swingCommitKey(cand.sessionDate, ticker, subLane, dirLc) : `${cand.sessionDate}:${ticker}:_:_`;
+    const commitKey =
+      subLane && dirLc
+        ? swingCommitKey(cand.sessionDate, ticker, subLane, dirLc, cand.archetype)
+        : `${cand.sessionDate}:${ticker}:_:_`;
 
     const grad = isCommitGraduated(report, cand.archetype, gradeSubLane);
     const blockedBy: string[] = [];
@@ -291,6 +348,86 @@ export function computeSwingCommitPlan(args: {
     if (!cand.contract) blockedBy.push("no_contract");
     else if (!isFin(riskUsd)) blockedBy.push("unknown_premium");
     if (subLane == null) blockedBy.push("no_sub_lane");
+
+    // Gate 0.55 — V2 earnings binary (G-S3), LIVE when Swing Engine V2 earnings enforcement is on.
+    if (args.v2?.enforceEarnings) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          earningsInWindow: cand.earningsInWindow,
+        },
+        { enforceEarnings: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.56 — V2 halt/LULD (G-S12), LIVE when Swing Engine V2 halt enforcement is on.
+    if (args.v2?.enforceHalt) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          halted: cand.halted,
+          haltFeedStale: args.v2.haltFeedStale,
+        },
+        { enforceHalt: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.57 — V2 regime blind (G-S4), LIVE when Swing Engine V2 regime enforcement is on.
+    if (args.v2?.enforceRegime) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          regime01: cand.pillars?.REGIME ?? null,
+        },
+        { enforceRegime: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.6 — V2 confluence (G-S6), LIVE when Swing Engine V2 is on.
+    if (args.v2?.enforceConfluence) {
+      const gateFails = failingSwingCommitGates(
+        { discoveryPaths: cand.discoveryPaths ?? [], archetype: cand.archetype },
+        { enforceConfluence: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.61 — quote freshness (legacy quote_stale), LIVE when V2 quote gate is on.
+    if (args.v2?.enforceQuoteStale) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          quoteAgeMs: cand.quoteAgeMs,
+        },
+        { enforceQuoteStale: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.62 — daily bar completeness (legacy daily_bar_incomplete), LIVE when V2 daily-bar gate is on.
+    if (args.v2?.enforceDailyBar) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          dailyBarComplete: cand.dailyBarComplete,
+        },
+        { enforceDailyBar: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.7 — V2 Cortex preflight (G-S14), evaluated async in discovery when enforced.
+    if (cand.preflightV2BlockedBy?.length) {
+      blockedBy.push(...cand.preflightV2BlockedBy);
+    }
 
     // Gate 3 — IDEMPOTENCY: never double-open a thesis that already has a live root on the book.
     const thesisKey = swingThesisKey(ticker, cand.direction as PlayDirection, cand.archetype);
@@ -340,11 +477,11 @@ export function computeSwingCommitPlan(args: {
     }
 
     // SHADOW: a candidate that's otherwise fully open-able (direction/contract/premium/sub-lane all clear)
-    // but blocked ONLY by a risk-control gate (budget/caps — never idempotency/no_contract/etc, see the file
-    // header for why) gets a shadow row instead of a real one. Zero real capital; graded on the same pipeline.
+    // but blocked ONLY by a shadow-eligible gate (budget/caps/V2 commit gates — never idempotency/etc.)
+    // gets a shadow row instead of a real one. Zero real capital; graded on the same pipeline (Q30).
     let shadowInsert: SwingShadowPositionInsert | undefined;
-    const isRiskGateOnly = blockedBy.length > 0 && blockedBy.every((b) => b.startsWith("budget:") || b.startsWith("cap:"));
-    if (!committable && isRiskGateOnly && cand.contract && dirLc && subLane && isFin(riskUsd)) {
+    const shadowEligibleOnly = isShadowEligibleBlockedBy(blockedBy);
+    if (!committable && shadowEligibleOnly && cand.contract && dirLc && subLane && isFin(riskUsd)) {
       shadowInsert = buildShadowInsert(cand, subLane, dirLc, commitKey, riskUsd, grad, blockedBy);
       shadowEligibleCount += 1;
     }
@@ -355,7 +492,7 @@ export function computeSwingCommitPlan(args: {
       reason: committable
         ? `COMMIT: ${grad.graduated ? grad.reason : "not yet graduated — evidence-only, real-time gates cleared"}; risk $${(riskUsd as number).toFixed(0)} cleared budget + caps`
         : shadowInsert
-          ? `SHADOW: real signal, blocked by risk gate(s) ${blockedBy.join(", ")} — tracked without real capital`
+          ? `SHADOW: real signal, blocked by ${blockedBy.join(", ")} — tracked without real capital`
           : `blocked by ${blockedBy.join(", ")}`,
       budget: budgetVerdict,
       insert,
@@ -421,6 +558,7 @@ function buildCommitInsert(
         enforce: budget.enforce,
       },
       budget_verdict: budgetVerdict ? { blocked: budgetVerdict.blocked, blockedDimensions: budgetVerdict.blockedDimensions } : null,
+      cortex: cortexEntryContextFor(cand.cortexAssessment ?? null),
     },
     gate_calibration_json: {
       methodology: "swing.commit.graduation.v1",
@@ -586,6 +724,11 @@ export async function executeSwingCommits(deps: SwingCommitDeps, plan: SwingComm
           }
         }
         committed.push({ ticker: d.ticker, direction: d.direction, commitKey: d.commitKey, positionId });
+        void import("./discord-trade-notify")
+          .then(({ notifySwingTradeOpenFromInsert }) => notifySwingTradeOpenFromInsert(positionId, d.insert!))
+          .catch((err) => {
+            console.warn(`[swing-discord] open notify failed for ${d.ticker}:`, err);
+          });
       } catch (err) {
         errors += 1;
         committed.push({

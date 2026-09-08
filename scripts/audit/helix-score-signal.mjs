@@ -36,6 +36,9 @@
  * Usage:
  *   env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
  *     node --import tsx scripts/audit/helix-score-signal.mjs [--horizon=30] [--max=800] [--json]
+ *   # Real signal-outcome ledger (writer live since 2026-09-03) — outcomes from the job, scores from
+ *   # the flow tape matched by ticker + fired_at window (not a Polygon replay):
+ *     node --import tsx scripts/audit/helix-score-signal.mjs --source=ledger [--json]
  */
 // SELF-DEFAULT THE PROVIDER BASE, with the /^https?:/ guard every other harness here carries.
 // This sandbox ships `POLYGON_API_BASE` as the literal, unresolved string "POLYGON_API_BASE" — a
@@ -49,8 +52,9 @@ const SRC = new URL("../../src/", import.meta.url).pathname;
 
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
 const { flowDirection } = await import(`${SRC}features/helix/lib/helix-flow-aggression.ts`);
-const { gradeForward, summarizeByBucket, scoreSeparation, partitionGradeable, ungradedTickers } =
-  await import("./lib/helix-score-eval.mjs");
+const { gradeForward, summarizeByBucket, scoreSeparation, partitionGradeable, ungradedTickers,
+  ledgerOutcomeToGraded, matchFlowScoreForLedgerRow,
+} = await import("./lib/helix-score-eval.mjs");
 const { mintClerkPremiumSession } = await import("./lib/prod-clerk-session.mjs");
 
 const args = new Map(process.argv.slice(2).map((a) => {
@@ -60,6 +64,7 @@ const args = new Map(process.argv.slice(2).map((a) => {
 const HORIZON_MIN = Number(args.get("horizon") ?? 30);
 const MAX_ROWS = Number(args.get("max") ?? 800);
 const AS_JSON = args.get("json") === "true";
+const SOURCE = (args.get("source") ?? "flows").toLowerCase();
 const BASE = args.get("base") ?? "https://blackouttrades.com";
 const CONCURRENCY = 8;
 
@@ -128,6 +133,80 @@ async function mapLimit(items, limit, fn) {
 (async () => {
   const session = await mintClerkPremiumSession({ appUrl: BASE });
   try {
+    if (SOURCE === "ledger") {
+      const [ledgerRes, flowsRes] = await Promise.all([
+        fetch(`${BASE}/api/market/helix/signal-outcomes`, { headers: { Cookie: session.cookieHeader } }),
+        fetch(`${BASE}/api/market/flows?limit=5000&hours=168`, { headers: { Cookie: session.cookieHeader } }),
+      ]);
+      const ledgerBody = await ledgerRes.json();
+      const flowsBody = await flowsRes.json();
+      const ledgerRows = Array.isArray(ledgerBody?.rows) ? ledgerBody.rows : [];
+      const allFlows = Array.isArray(flowsBody) ? flowsBody : (flowsBody.flows ?? flowsBody.alerts ?? flowsBody.data ?? []);
+
+      const candidates = ledgerRows.filter((r) => {
+        if (r.outcome === "pending") return false;
+        return r.direction === "bullish" || r.direction === "bearish";
+      });
+
+      const part = partitionGradeable(candidates);
+      const sample = part.gradeable.slice(0, MAX_ROWS);
+      const graded = sample.map((r) => {
+        const score = matchFlowScoreForLedgerRow(r, allFlows);
+        const outcomeGraded = ledgerOutcomeToGraded(r.direction, r.outcome);
+        return {
+          ticker: r.ticker,
+          score,
+          premium: null,
+          direction: r.direction,
+          signal_type: r.signal_type,
+          graded: score != null ? outcomeGraded : null,
+        };
+      });
+
+      const gradedCount = graded.filter((g) => g.graded).length;
+      const scoreMatched = graded.filter((g) => g.score != null).length;
+      const summary = summarizeByBucket(graded);
+      const sep = scoreSeparation(summary);
+
+      if (AS_JSON) {
+        console.log(JSON.stringify({
+          source: "ledger",
+          ledger_rows: ledgerRows.length,
+          flows_tape: allFlows.length,
+          candidates: candidates.length,
+          excluded_non_equity: part.excludedCount,
+          excluded_by_ticker: part.excludedByTicker,
+          gradeable: part.gradeable.length,
+          sampled: sample.length,
+          score_matched: scoreMatched,
+          graded: gradedCount,
+          summary,
+          separation: sep,
+          ledger_status: ledgerBody?.ledger ?? null,
+        }, null, 2));
+      } else {
+        console.log(`\n=== HELIX SCORE vs SIGNAL-OUTCOME LEDGER — §9.7 (real instrument) ===`);
+        console.log(`ledger ${ledgerRows.length} rows · flows tape ${allFlows.length} (score match window ±30m)`);
+        console.log(`directional graded candidates: ${candidates.length}`);
+        if (part.excludedCount > 0) {
+          const names = part.excludedByTicker.map(([t, n]) => `${t} ${n}`).join(", ");
+          console.log(`  minus ${part.excludedCount} on non-equity roots (${names})`);
+        }
+        console.log(`gradeable: ${part.gradeable.length} · sampled ${sample.length} · score matched ${scoreMatched} · outcome graded ${gradedCount}`);
+        console.log(`\n  bucket             n     win%`);
+        for (const b of summary) {
+          console.log(`  ${b.bucket.padEnd(16)} ${String(b.n).padStart(4)}   ${b.winRate != null ? b.winRate.toFixed(1).padStart(5) + "%" : "  —"}`);
+        }
+        console.log(`\nVERDICT: ${sep.verdict}` + (sep.spreadPp != null
+          ? ` — spread ${sep.spreadPp.toFixed(1)}pp, rho=${sep.rho.toFixed(2)}`
+          : ""));
+        if (sep.excluded?.length) console.log(`buckets excluded as too thin (n<30): ${sep.excluded.join(", ")}`);
+        console.log(`\nScope: outcomes from helix-signal-outcomes job (continued/reversed); scores from flow tape.`);
+        console.log(`Cap: API returns ≤50 ledger rows — accumulate via repeated polls for larger samples.`);
+      }
+      return;
+    }
+
     const res = await fetch(`${BASE}/api/market/flows?limit=5000&hours=168`, {
       headers: { Cookie: session.cookieHeader },
     });

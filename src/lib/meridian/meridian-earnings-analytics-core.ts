@@ -111,8 +111,18 @@ export function printHistoryToAnalyticsRows(
       actual_eps: p.eps_actual,
       estimated_revenue: p.revenue_estimate ?? null,
       actual_revenue: p.revenue_actual ?? null,
-      eps_surprise_pct: p.surprise_pct,
-      revenue_surprise_pct: p.revenue_surprise_pct ?? null,
+      // `EarningsAnalyticsRow.eps_surprise_pct`/`revenue_surprise_pct` are a FRACTION (0.0447 =
+      // 4.47%) everywhere else in this file -- `fmtSurprisePct` multiplies by 100, and the
+      // Beat/Miss Streak bar height multiplies by 200 -- but `print_history`'s `surprise_pct`/
+      // `revenue_surprise_pct` are already a DISPLAY PERCENT (`benzingaSurpriseToDisplayPct` in
+      // meridian-benzinga-earnings-core.ts multiplies the raw ratio by 100 before storing it
+      // there). Copying them straight through used to feed an already-scaled value into a
+      // formatter that scales again -- a real -0.7% surprise rendered as "-70.0%" on the History
+      // tab's Beat/Miss Streak "avg" stat, every per-entry tooltip, and the streak-bar heights
+      // (which all clamped to max height, losing the intended visual scale). Divide back down to
+      // the fraction convention this whole file uses.
+      eps_surprise_pct: p.surprise_pct == null ? null : p.surprise_pct / 100,
+      revenue_surprise_pct: p.revenue_surprise_pct == null ? null : p.revenue_surprise_pct / 100,
     }));
 }
 

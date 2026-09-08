@@ -8,6 +8,8 @@ export const HELIX_FILTER_BACKFILL_MAX_PAGES = 15;
 
 type TypeFilter = "ALL" | "CALL" | "PUT";
 
+import type { HelixDirectionFilter } from "@/features/helix/lib/helix-filter-presets";
+
 export type HelixTapeFilterSnapshot = {
   dteFilter: HelixDteFilter;
   typeFilter: TypeFilter;
@@ -15,6 +17,8 @@ export type HelixTapeFilterSnapshot = {
   indicesOnly: boolean;
   watchlistOnly: boolean;
   tickerFilter: string;
+  directionFilter?: HelixDirectionFilter;
+  openingOnly?: boolean;
 };
 
 /** Map DTE pill → Postgres max_dte (ET calendar). month+ has no server scope. */
@@ -37,6 +41,8 @@ export function isRestrictiveTapeFilter(f: HelixTapeFilterSnapshot): boolean {
   if (f.indicesOnly) return true;
   if (f.watchlistOnly) return true;
   if (f.tickerFilter.trim().length > 0) return true;
+  if (f.directionFilter && f.directionFilter !== "all") return true;
+  if (f.openingOnly) return true;
   return false;
 }
 

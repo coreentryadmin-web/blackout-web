@@ -22,3 +22,31 @@ test("swing-active-refresh dispatches refresh in after() and returns 202", () =>
     "logCronRun must not await the heavy refresh inline"
   );
 });
+
+test("swing-active-refresh background dispatch is wrapped in runWithBackgroundUwSweep", () => {
+  assert.match(
+    routeSrc,
+    /import \{[^}]*\brunWithBackgroundUwSweep\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/
+  );
+  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runSwingActiveRefreshCron\(started\)\)/);
+});
+
+test("swing-active-refresh acquires singleton claim before work (Q37)", () => {
+  assert.match(routeSrc, /SWING_ACTIVE_REFRESH_CLAIM_KEY/);
+  assert.match(routeSrc, /sharedCacheSetNx\(/);
+  assert.match(routeSrc, /another refresh pass is still running/);
+});
+
+test("swing-active-refresh gates on isEtCashRth before dispatching Polygon/UW refresh", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isEtCashRth \} from "@\/lib\/et-market-hours"/,
+    "must import the holiday-aware RTH gate"
+  );
+  const authAt = routeSrc.indexOf("isCronAuthorized(req)");
+  const gateAt = routeSrc.indexOf("isEtCashRth()");
+  const dispatchAt = routeSrc.indexOf("const dispatchRefresh");
+  assert.ok(authAt >= 0 && gateAt >= 0 && dispatchAt >= 0);
+  assert.ok(gateAt > authAt, "RTH gate must run after auth");
+  assert.ok(gateAt < dispatchAt, "RTH gate must run before after() dispatch");
+});

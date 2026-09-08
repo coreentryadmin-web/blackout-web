@@ -1,10 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  assessPrintWindow,
-  etMinutesFromTime,
-  tallyPrintWindows,
-} from "./earnings-print-window";
+import { assessPrintWindow, etMinutesFromTime } from "./earnings-print-window";
 
 const TODAY = "2026-08-20";
 const NOON = 12 * 60;
@@ -118,26 +114,6 @@ test("ANOTHER DAY: settled by the date alone, with or without a time", () => {
   assert.equal(a.verdict, "after_close");
   assert.equal(a.threatensToday, false);
   assert.match(a.reason, /not today/);
-});
-
-test("tallyPrintWindows: counts every verdict and reports the exemptible total", () => {
-  const t = tallyPrintWindows(
-    [
-      { date: TODAY, time: "16:20:00", dateStatus: "confirmed" }, // after_close  -> exempt
-      { date: TODAY, time: "07:00:00", dateStatus: "confirmed" }, // pre_open_landed -> exempt
-      { date: TODAY, time: "13:00:00", dateStatus: "confirmed" }, // intraday
-      { date: TODAY, time: "16:20:00", dateStatus: "projected" }, // unknown (fail-closed)
-      { date: TODAY, time: null, dateStatus: "confirmed" }, // unknown
-    ],
-    TODAY,
-    NOON
-  );
-  assert.equal(t.total, 5);
-  assert.equal(t.after_close, 1);
-  assert.equal(t.pre_open_landed, 1);
-  assert.equal(t.intraday, 1);
-  assert.equal(t.unknown, 2);
-  assert.equal(t.exemptible, 2, "only the two provably-safe cases count as over-blocked");
 });
 
 test("the classifier is PURE — same inputs, same verdict, no clock reads", () => {

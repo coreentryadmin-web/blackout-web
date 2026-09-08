@@ -13,6 +13,7 @@ import {
   type BieLevel,
   type BieScenario,
   type BieSection,
+  type BieUnavailableSource,
 } from "@/lib/bie/answer-envelope";
 
 export type RichSection = {
@@ -33,6 +34,15 @@ export type BuildRichEnvelopeInput = {
   confidence?: BieConfidence;
   invalidation?: string | null;
   followups?: string[];
+  /**
+   * Sources requested but unavailable this turn (BIE §4: absence is surfaced, never silently
+   * dropped). `BieAnswerEnvelope` has carried this field since the envelope contract shipped, but
+   * this builder never forwarded it to `makeEnvelope` — every rich composer routed through here
+   * (concept answers, the swing play brief) silently lost the field even when its own upstream
+   * context had one to report. `BieAnswer.tsx` already renders it via `UnavailableChip`; this is
+   * the missing wire, not a new UI concept.
+   */
+  unavailableSources?: BieUnavailableSource[];
 };
 
 /**
@@ -53,12 +63,10 @@ export function buildRichEnvelope(input: BuildRichEnvelopeInput): BieAnswerEnvel
     evidence: input.evidence ?? [],
     levels: input.levels,
     scenarios: input.scenarios,
-    confidence:
-      input.confidence ?? {
-        level: "high",
-        why: "Deterministic answer grounded in the platform's own code, data, and docs — no LLM.",
-      },
+    // Largo C6: omit confidence when the composer has no calibrated score — never fabricate.
+    ...(input.confidence ? { confidence: input.confidence } : {}),
     invalidation: input.invalidation ?? null,
     followups: input.followups,
+    unavailableSources: input.unavailableSources,
   });
 }

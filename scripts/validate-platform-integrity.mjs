@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
- * Cross-surface platform data integrity probe (prod-safe, no auth for public reads).
+ * Cross-surface platform data integrity probe (prod-safe).
+ *
+ * Public routes (/api/health, /api/ready, /api/market/regime) stay unauthenticated.
+ * Tier-gated desk routes mint a temp admin+premium Clerk session (deleted in finally)
+ * so RTH lifecycle does not WARN on empty matrices that are merely auth-blocked.
  *
  *   npm run validate:platform-integrity
- *   VALIDATE_BASE_URL=https://staging.blackouttrades.com npm run validate:platform-integrity
+ *   VALIDATE_BASE_URL=https://blackouttrades.com npm run validate:platform-integrity
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { mintClerkPremiumSession } from "./audit/lib/prod-clerk-session.mjs";
 
 const BASE = (process.env.VALIDATE_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const OUT = join(process.cwd(), "audit-output");
@@ -20,26 +25,46 @@ function rec(name, status, detail, extra = {}) {
   console.log(`  ${icon} [${status}] ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
-async function fetchJson(path, opts = {}) {
-  const res = await fetch(`${BASE}${path}`, { cache: "no-store", ...opts });
-  const body = await res.json().catch(() => ({}));
-  return { status: res.status, body };
+function fetchJson(path, authHeaders = {}, opts = {}) {
+  const headers = { ...authHeaders, ...(opts.headers ?? {}) };
+  return fetch(`${BASE}${path}`, { cache: "no-store", ...opts, headers }).then(async (res) => ({
+    status: res.status,
+    body: await res.json().catch(() => ({})),
+  }));
 }
 
 function spotOk(n) {
   return typeof n === "number" && Number.isFinite(n) && n > 0;
 }
 
+/** Tier-gated market routes return 401 without a session — SKIP, not WARN. */
+function tierGatedStatus(httpStatus, passStatus, passDetail, gatedDetail = "tier-gated") {
+  if (httpStatus === 401) return { status: "SKIP", detail: gatedDetail };
+  return { status: passStatus, detail: passDetail };
+}
+
 async function main() {
   console.log(`\n=== Platform data integrity @ ${BASE} ===\n`);
 
+  const session = await mintClerkPremiumSession({ appUrl: BASE });
+  const authHeaders =
+    session.skip || !session.cookieHeader
+      ? {}
+      : { Cookie: session.cookieHeader };
+  if (session.skip) {
+    rec("auth", "SKIP", session.reason ?? "Clerk keys absent");
+  } else {
+    rec("auth", "PASS", "temp admin+premium session");
+  }
+
+  try {
   const health = await fetchJson("/api/health");
   rec("health", health.status === 200 ? "PASS" : "FAIL", `status=${health.status}`);
 
   const ready = await fetchJson("/api/ready");
   rec("ready", ready.status === 200 ? "PASS" : "FAIL", `status=${ready.status}`);
 
-  const desk = await fetchJson("/api/market/spx/desk");
+  const desk = await fetchJson("/api/market/spx/desk", authHeaders);
   const deskSpot = desk.body?.price ?? desk.body?.spx?.price;
   rec(
     "spx-desk-spot",
@@ -51,7 +76,7 @@ async function main() {
     desk.status === 401 ? "tier-gated" : deskSpot != null ? `SPX ${deskSpot}` : `status=${desk.status}`
   );
 
-  const matrix = await fetchJson("/api/market/gex-heatmap?ticker=SPX");
+  const matrix = await fetchJson("/api/market/gex-heatmap?ticker=SPX", authHeaders);
   const matrixSpot = matrix.body?.spot;
   const flip = matrix.body?.gex?.flip;
   const strikeCount = Object.keys(matrix.body?.gex?.strike_totals ?? {}).length;
@@ -80,41 +105,51 @@ async function main() {
     rec("desk-matrix-spot-divergence", "SKIP", "missing spot on one surface");
   }
 
-  const pos = await fetchJson("/api/market/gex-positioning?ticker=SPX");
-  rec(
-    "gex-positioning-spx",
-    pos.status === 200 && pos.body?.available !== false ? "PASS" : "WARN",
-    `flip=${pos.body?.flip ?? pos.body?.gamma_flip ?? "—"} king=${pos.body?.gex_king_strike ?? "—"}`
-  );
+  const pos = await fetchJson("/api/market/gex-positioning?ticker=SPX", authHeaders);
+  {
+    const gated = tierGatedStatus(
+      pos.status,
+      pos.status === 200 && pos.body?.available !== false ? "PASS" : "WARN",
+      `flip=${pos.body?.flip ?? pos.body?.gamma_flip ?? "—"} king=${pos.body?.gex_king_strike ?? "—"}`
+    );
+    rec("gex-positioning-spx", gated.status, gated.detail);
+  }
 
   for (const t of ["SPY", "QQQ"]) {
-    const hm = await fetchJson(`/api/market/gex-heatmap?ticker=${t}`);
+    const hm = await fetchJson(`/api/market/gex-heatmap?ticker=${t}`, authHeaders);
     const n = Object.keys(hm.body?.gex?.strike_totals ?? {}).length;
-    rec(
-      `thermal-matrix-${t}`,
+    const gated = tierGatedStatus(
+      hm.status,
       hm.status === 200 && n > 0 ? "PASS" : "WARN",
       `strikes=${n} spot=${hm.body?.spot ?? "—"}`
     );
+    rec(`thermal-matrix-${t}`, gated.status, gated.detail);
   }
 
-  const vec = await fetchJson("/api/market/vector/walls?ticker=SPX&dte=0dte");
-  rec(
-    "vector-spx-0dte-walls",
-    vec.status === 200 && spotOk(vec.body?.spot) ? "PASS" : "WARN",
-    `spot=${vec.body?.spot ?? "—"} flip=${vec.body?.gamma_flip ?? "—"}`
-  );
+  const vec = await fetchJson("/api/market/vector/walls?ticker=SPX&dte=0dte", authHeaders);
+  const vecWalls = vec.body?.walls;
+  const vecCallCount = vecWalls?.callWalls?.length ?? 0;
+  const vecPutCount = vecWalls?.putWalls?.length ?? 0;
+  {
+    const gated = tierGatedStatus(
+      vec.status,
+      vec.status === 200 && vecCallCount > 0 && vecPutCount > 0 ? "PASS" : "WARN",
+      `flip=${vec.body?.flip ?? "—"} callWalls=${vecCallCount} putWalls=${vecPutCount}`
+    );
+    rec("vector-spx-0dte-walls", gated.status, gated.detail);
+  }
 
   const regime = await fetchJson("/api/market/regime");
   rec("helix-regime", regime.status === 200 ? "PASS" : "WARN", regime.body?.regime_label ?? regime.body?.label ?? "—");
 
-  const flows = await fetchJson("/api/market/flows?limit=5");
+  const flows = await fetchJson("/api/market/flows?limit=5", authHeaders);
   rec(
     "helix-flows",
     flows.status === 401 ? "SKIP" : flows.status === 200 ? "PASS" : "WARN",
     flows.status === 401 ? "tier-gated" : `count=${flows.body?.count ?? flows.body?.flows?.length ?? "—"}`
   );
 
-  const nh = await fetchJson("/api/market/nighthawk/edition");
+  const nh = await fetchJson("/api/market/nighthawk/edition", authHeaders);
   rec(
     "nighthawk-edition",
     nh.status === 401 ? "SKIP" : nh.status === 200 ? "PASS" : "WARN",
@@ -125,7 +160,7 @@ async function main() {
         : "no edition"
   );
 
-  const zd = await fetchJson("/api/market/zerodte/board");
+  const zd = await fetchJson("/api/market/zerodte/board", authHeaders);
   rec(
     "zerodte-board",
     zd.status === 401 ? "SKIP" : zd.status === 200 ? "PASS" : "WARN",
@@ -152,6 +187,9 @@ async function main() {
   console.log(`\nSummary: ${pass} pass, ${warn} warn, ${fail} fail, ${skip} skip`);
   console.log(`Report: ${outPath}\n`);
   process.exit(fail > 0 ? 1 : 0);
+  } finally {
+    if (!session.skip && session.cleanup) await session.cleanup();
+  }
 }
 
 main().catch((e) => {

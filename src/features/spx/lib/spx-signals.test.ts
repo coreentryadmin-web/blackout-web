@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
-import { computeSpxConfluence } from "./spx-signals";
+import { computeSpxConfluence, matchingHelixSweepFlows } from "./spx-signals";
 
 // PROOF THIS PR DOES NOT CHANGE LIVE SIGNALS
 // ───────────────────────────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ const GOLDEN = {
     {
       label: "HELIX sweeps",
       weight: 15,
-      detail: "0DTE call sweeps dominant — $1.2M vs $0.1M puts (30min)",
+      detail: "0DTE bullish sweeps dominant — $1.2M vs $0.1M bearish (30min)",
     },
     { label: "0DTE flow", weight: 14, detail: "Call premium leading 0DTE tape" },
     { label: "VWAP", weight: 12, detail: "Above VWAP 7400.00 — buyers in control" },
@@ -229,4 +229,78 @@ test("computeSpxConfluence: calling it twice in a row (as the shadow wiring's fi
   const first = computeSpxConfluence(desk);
   const second = computeSpxConfluence(desk);
   assert.deepEqual(JSON.parse(JSON.stringify(first)), JSON.parse(JSON.stringify(second)));
+});
+
+test("HELIX sweeps factor: aggressively SOLD calls read BEARISH, not bullish (regression for the option-type-only bug)", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  // $1.5M of 0DTE SPX calls, 80% sold at the bid (ask_pct: 20) — the pre-fix code bucketed this
+  // purely by option_type and scored it as the strongest possible BULLISH sweep read (+15). The
+  // aggressor-aware rule already shipped for the tape factor (spxTapeSkew/spxFlowSkew) says a sold
+  // call is bearish, so this must now score -15, not +15.
+  desk.spx_flows = [
+    {
+      ticker: "SPX",
+      premium: 1_500_000,
+      option_type: "CALL",
+      strike: 7425,
+      expiry: "2026-07-04",
+      ask_pct: 20,
+      direction: "bullish",
+      alerted_at: "2026-07-04T17:50:00.000Z",
+      alert_rule: null,
+      trade_count: 10,
+      has_sweep: true,
+    },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const sweepFactor = result.factors.find((f) => f.label === "HELIX sweeps");
+  assert.ok(sweepFactor, "HELIX sweeps factor must fire on $1.5M of qualifying sweep premium");
+  assert.equal(sweepFactor!.weight, -15, "sold calls must score as a BEARISH sweep, not bullish");
+  assert.match(sweepFactor!.detail, /bearish sweeps dominant/);
+});
+
+test("HELIX sweeps factor: a future-dated flow alert is rejected, not counted as fresh sweep premium", (t) => {
+  // Same future-print bug shape already fixed in Helix's contractStackHitsFromFlows/
+  // selectHelixDiscordDigest et al.: an alerted_at ahead of `now` made `nowMs - alertedAt`
+  // negative, which trivially satisfied `<= thirtyMinMs` and would count a clock-skewed/
+  // mis-stamped UW flow alert toward this factor's bull/bear premium skew.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.spx_flows = [
+    {
+      ticker: "SPX",
+      premium: 1_500_000,
+      option_type: "CALL",
+      strike: 7425,
+      expiry: "2026-07-04",
+      ask_pct: 75,
+      direction: "bullish",
+      alerted_at: "2026-07-04T18:05:00.000Z", // 5 min AHEAD of the mocked `now`
+      alert_rule: null,
+      trade_count: 10,
+      has_sweep: true,
+    },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const sweepFactor = result.factors.find((f) => f.label === "HELIX sweeps");
+  assert.equal(sweepFactor, undefined, "a future-dated print must not count toward the sweep factor");
+});
+
+test("matchingHelixSweepFlows: excludes a future-dated flow directly — the shared filter spx-signal-observe/route.ts now also calls", () => {
+  // This is the extracted, shared implementation behind the test above — exercised directly so a
+  // future change to spx-signal-observe/route.ts (which imports this same function) is covered
+  // without needing its own DB/auth-mocked route test.
+  const now = Date.parse("2026-07-04T18:00:00.000Z");
+  const fresh = {
+    ticker: "SPX", premium: 500_000, option_type: "CALL", strike: 7425, expiry: "2026-07-04",
+    direction: "bullish", alerted_at: "2026-07-04T17:50:00.000Z", alert_rule: null,
+    trade_count: 1, has_sweep: true,
+  };
+  const future = { ...fresh, alerted_at: "2026-07-04T18:05:00.000Z" };
+  const matching = matchingHelixSweepFlows([fresh, future], "2026-07-04", now, 30 * 60_000);
+  assert.equal(matching.length, 1);
+  assert.equal(matching[0], fresh);
 });

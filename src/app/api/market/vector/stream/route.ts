@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { recheckSseUserEntitlement } from "@/lib/sse-stream-entitlement";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import {
@@ -45,6 +46,7 @@ export async function GET(req: NextRequest) {
 
   ensureDataSockets();
   const encoder = new TextEncoder();
+  const streamUserId = auth.via === "user" && auth.userId ? auth.userId : null;
   let interval: ReturnType<typeof setInterval> | null = null;
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   let closed = false;
@@ -68,8 +70,24 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       let lastSentFrame: string | null = null;
-      const send = () => {
+      const send = async () => {
         if (closed) return;
+        if (streamUserId) {
+          const verdict = await recheckSseUserEntitlement(streamUserId, "premium", "vector");
+          if (verdict === "forbidden") {
+            cleanup();
+            try {
+              controller.enqueue(
+                encoder.encode(`event: error\ndata: ${JSON.stringify({ error: "Forbidden — upgrade required" })}\n\n`)
+              );
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
+          if (verdict === "unavailable") return;
+        }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
           try {
@@ -110,8 +128,10 @@ export async function GET(req: NextRequest) {
       registerVectorUniverseView(ticker);
       req.signal.addEventListener("abort", cleanup);
 
-      interval = setInterval(send, TICK_MS);
-      send();
+      interval = setInterval(() => {
+        void send();
+      }, TICK_MS);
+      void send();
 
       heartbeatInterval = setInterval(() => {
         if (closed) return;

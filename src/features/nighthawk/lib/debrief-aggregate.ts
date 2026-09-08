@@ -16,6 +16,7 @@
 //    never grades anything itself, so the report is a pure read.
 
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
+import type { NighthawkTierAssignment, NighthawkTierFactor } from "./nighthawk-tiers";
 // The one platform-wide LOW-N disclosure threshold (zerodte/record.ts) — same flag the
 // 0DTE calibration report and the NH record cuts already use.
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
@@ -83,16 +84,42 @@ export function readPinnedDebriefTag(raw: unknown): DebriefFailureMode | null {
     : null;
 }
 
-/** Pinned publish-context tier, when one exists. The tier engine (PR-N7) pins
+/** Pinned publish-context tier assignment, when one exists. The tier engine (PR-N7) pins
  *  `tier: { tier: NighthawkTier, factors: [...] }` (publish-context.ts), NOT a bare
- *  string — this used to check `typeof t === "string"` against that object and always
- *  returned null, silently keeping `by_tier` empty since the tier engine shipped. */
-export function readPinnedTier(publishContext: unknown): string | null {
+ *  string — malformed blobs are "no tier on record", never a guess. */
+export function readPinnedTierAssignment(publishContext: unknown): NighthawkTierAssignment | null {
   if (publishContext == null || typeof publishContext !== "object" || Array.isArray(publishContext)) return null;
   const t = (publishContext as Record<string, unknown>).tier;
   if (t == null || typeof t !== "object" || Array.isArray(t)) return null;
   const letter = (t as Record<string, unknown>).tier;
-  return typeof letter === "string" && letter.length > 0 ? letter.toUpperCase() : null;
+  if (typeof letter !== "string" || letter.length === 0) return null;
+  const factorsRaw = (t as Record<string, unknown>).factors;
+  const factors: NighthawkTierFactor[] = [];
+  if (Array.isArray(factorsRaw)) {
+    for (const f of factorsRaw) {
+      if (f == null || typeof f !== "object" || Array.isArray(f)) continue;
+      const rec = f as Record<string, unknown>;
+      const label = rec.label;
+      const direction = rec.direction;
+      const detail = rec.detail;
+      if (
+        typeof label === "string"
+        && (direction === "up" || direction === "down")
+        && typeof detail === "string"
+      ) {
+        factors.push({ label, direction, detail });
+      }
+    }
+  }
+  return {
+    tier: letter.toUpperCase() as NighthawkTierAssignment["tier"],
+    factors,
+  };
+}
+
+/** Pinned publish-context tier letter only — convenience for aggregation buckets. */
+export function readPinnedTier(publishContext: unknown): string | null {
+  return readPinnedTierAssignment(publishContext)?.tier ?? null;
 }
 
 // ── Summary (also served on the member record route — compact, segments-aware) ──────

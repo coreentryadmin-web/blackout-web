@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import {
@@ -9,8 +10,16 @@ import {
   playSymbolLine,
   playTimeRangeCompact,
   zeroDteActionDisplay,
+  swingActionDisplay,
+  legacyActionDisplay,
 } from "./play-card-lifecycle";
-import { formatReturnPct, playEntryDisplay, playGradeLabel } from "./play-card-display";
+import {
+  formatReturnPct,
+  playEntryDisplay as formatPlayEntry,
+  playEntryInGradeColumn,
+  playGradeLabel,
+  primaryReturnLabel,
+} from "./play-card-display";
 import { StatusPill } from "./DeckStatusBadges";
 
 /** L/S direction chip — omitted on a condor row, where "direction" doesn't apply (a credit
@@ -60,11 +69,15 @@ export function PlayLifecycleCardBody({
   // RUNNER on OPEN 0DTE rows, TARGET/STOPPED/EOD EXIT on CLOSED ones — else the honest coarse
   // ACTIVE/WATCH/CLOSED/PASSED lifecycle pill (see zeroDteActionDisplay's own doc for why WATCH
   // and 3 of the 6 CLOSED labels are deliberately never fabricated here).
-  const status = zeroDteActionDisplay(play) ?? playStatusDisplay(play.status);
+  const status =
+    legacyActionDisplay(play) ??
+    swingActionDisplay(play) ??
+    zeroDteActionDisplay(play) ??
+    playStatusDisplay(play.status);
   const ret = playListReturnPct(play);
   const times = playTimeRangeCompact(play);
   const grade = playGradeLabel(play);
-  const entryDisplay = playEntryDisplay(play);
+  const entryDisplay = playEntryInGradeColumn(play) ? formatPlayEntry(play) : null;
 
   const signClass = (n: number | null | undefined) =>
     n != null && n > 0 ? "nh-deck-pos" : n != null && n < 0 ? "nh-deck-neg" : undefined;
@@ -84,6 +97,26 @@ export function PlayLifecycleCardBody({
         <DirectionChip play={play} />
         {playSymbolLine(play)}
         <OriginDot play={play} />
+        {play.vectorPulse?.isWinner && (
+          <Link
+            href={`/vector?ticker=${encodeURIComponent(play.ticker)}`}
+            className="nh-deck-vector-dot is-winner"
+            title={`Vector winner — open ${play.ticker} in Vector`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            V+
+          </Link>
+        )}
+        {!play.vectorPulse?.isWinner && play.vectorPulse?.isRunner && (
+          <Link
+            href={`/vector?ticker=${encodeURIComponent(play.ticker)}`}
+            className="nh-deck-vector-dot is-runner"
+            title={`Vector runner — open ${play.ticker} in Vector`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            V
+          </Link>
+        )}
       </span>
       <span className="nh-deck-play-cell nh-deck-play-cell--rating" role="cell">
         {grade != null && (
@@ -108,6 +141,9 @@ export function PlayLifecycleCardBody({
         <span className={clsx("nh-deck-play-pnl", markFlash && ret != null && "neon")}>
           {ret != null ? formatReturnPct(ret) : "—"}
         </span>
+        {ret != null && (
+          <span className="nh-deck-premlab">{primaryReturnLabel(play)}</span>
+        )}
       </span>
     </div>
   );

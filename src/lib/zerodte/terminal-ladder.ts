@@ -48,7 +48,7 @@ export type TerminalExitLadder = {
   /** Absolute premium levels of the runner's rails (entry × (1 ± pct/100)); null without entry. */
   stop_premium: number | null;
   target_premium: number | null;
-  /** ET "H:MM" hard time-stop (15:30). */
+  /** ET "H:MM" hard time-stop (15:50). */
   time_stop_et: string;
 };
 

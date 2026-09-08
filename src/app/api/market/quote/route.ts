@@ -5,10 +5,14 @@ import { shouldBootDataSockets } from "@/lib/process-role";
 import { indexStore } from "@/lib/ws/polygon-socket";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { resolveOptionsRoot } from "@/lib/providers/polygon-options-gex";
-import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
+import { fetchStockSnapshot, fetchIndexSnapshot, type IndexQuote } from "@/lib/providers/polygon";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { resolveSpotFromUwStockState } from "@/lib/providers/spot-fallback";
+import { withFreshPrice } from "@/lib/providers/change-pct";
+import { overlayRestIndexWithWs } from "@/lib/providers/index-snapshot-overlay";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +41,7 @@ type QuotePayload = {
   available: true;
   ticker: string;
   price: number;
-  change_pct: number;
+  change_pct: number | null;
   source: "ws" | "rest";
   asof: string;
 };
@@ -58,6 +62,12 @@ const QUOTE_REDIS_TTL_SEC = 3;
  * refresh (a real recovery should be picked up quickly once the vendor is back).
  */
 const QUOTE_FAILURE_CACHE_MS = 3_000;
+
+/** True when a cache `at` stamp is within [−futureTolerance, ttlMs) of `now`. */
+function isQuoteCacheAtFresh(at: number, now: number, ttlMs: number): boolean {
+  const ageMs = now - at;
+  return ageMs >= -WS_TIMESTAMP_FUTURE_TOLERANCE_MS && ageMs < ttlMs;
+}
 
 /** Per-process REST cache (in-memory L1), shared across all concurrent requests. */
 const quoteMem = new Map<string, { at: number; payload: QuotePayload }>();
@@ -105,16 +115,16 @@ async function getRestQuote(
   // Negative cache — a recent failure for this ticker skips straight to { available:false }
   // instead of re-hitting a possibly-still-down upstream on every poll.
   const failedAt = quoteFailureMem.get(ticker);
-  if (failedAt != null && now - failedAt < QUOTE_FAILURE_CACHE_MS) return null;
+  if (failedAt != null && isQuoteCacheAtFresh(failedAt, now, QUOTE_FAILURE_CACHE_MS)) return null;
 
   // L1 — in-memory, fresh within the ~1.5s window.
   const mem = quoteMem.get(ticker);
-  if (mem && now - mem.at < QUOTE_CACHE_MS) return mem.payload;
+  if (mem && isQuoteCacheAtFresh(mem.at, now, QUOTE_CACHE_MS)) return mem.payload;
 
   // L2 — Redis (cross-replica), so staggered polls across instances also collapse.
   try {
     const hit = await sharedCacheGet<{ at: number; payload: QuotePayload }>(`quote:${ticker}`);
-    if (hit && now - hit.at < QUOTE_CACHE_MS) {
+    if (hit && isQuoteCacheAtFresh(hit.at, now, QUOTE_CACHE_MS)) {
       quoteMem.set(ticker, hit);
       return hit.payload;
     }
@@ -166,6 +176,82 @@ async function getRestQuote(
   return task;
 }
 
+/**
+ * Index WS ticks carry `open_source` provenance (see polygon-socket). A ws-bar anchor measures
+ * change% from the first bar seen at boot — wrong on a mid-session cold start. Overlay the live
+ * WS price on a REST baseline (shared quote cache when hot, else one coalesced fetch) so the
+ * Thermal header tape matches indices/route and spx-desk.
+ */
+async function buildIndexWsQuote(
+  ticker: string,
+  optionsRoot: string,
+  entry: {
+    price: number;
+    change_pct: number;
+    open_source: string;
+    updatedAt: number;
+  }
+): Promise<QuotePayload> {
+  let restSnap: IndexQuote | null = null;
+  const mem = quoteMem.get(ticker);
+  const now = Date.now();
+  if (mem && isQuoteCacheAtFresh(mem.at, now, QUOTE_CACHE_MS)) {
+    restSnap = {
+      symbol: optionsRoot,
+      price: mem.payload.price,
+      change_pct: mem.payload.change_pct,
+      prev_close: null,
+    };
+  } else {
+    const rest = await getRestQuote(ticker, optionsRoot, true);
+    if (rest) {
+      restSnap = {
+        symbol: optionsRoot,
+        price: rest.price,
+        change_pct: rest.change_pct,
+        prev_close: null,
+      };
+    }
+  }
+
+  if (restSnap) {
+    const overlaid = overlayRestIndexWithWs(
+      restSnap,
+      {
+        price: entry.price,
+        change_pct: entry.change_pct,
+        open_source: entry.open_source,
+        updatedAt: entry.updatedAt,
+      },
+      Date.now(),
+      WS_STALE_MS
+    );
+    return {
+      available: true,
+      ticker,
+      price: overlaid.price,
+      change_pct: overlaid.change_pct,
+      source: "ws",
+      asof: new Date(entry.updatedAt).toISOString(),
+    };
+  }
+
+  // No REST baseline — only trust WS change when the anchor is authoritative.
+  const changePct =
+    entry.open_source === "rest" && Number.isFinite(entry.change_pct)
+      ? entry.change_pct
+      : null;
+
+  return {
+    available: true,
+    ticker,
+    price: entry.price,
+    change_pct: changePct,
+    source: "ws",
+    asof: new Date(entry.updatedAt).toISOString(),
+  };
+}
+
 export async function GET(req: NextRequest) {
   const authResult = await authorizeMarketDeskApi(req);
   if (authResult instanceof Response) return authResult;
@@ -190,16 +276,10 @@ export async function GET(req: NextRequest) {
     if (isIndex && WS_INDEX_KEYS.has(optionsRoot)) {
       const entry = indexStore[optionsRoot];
       const ageMs = Date.now() - entry.updatedAt;
-      if (entry.price > 0 && ageMs < WS_STALE_MS) {
-        const payload: QuotePayload = {
-          available: true,
-          ticker,
-          price: entry.price,
-          change_pct: entry.change_pct,
-          source: "ws",
-          asof: new Date(entry.updatedAt).toISOString(),
-        };
-        return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+      // Future timestamps (clock skew) must not read as infinitely fresh.
+      if (entry.price > 0 && ageMs >= -WS_STALE_MS && Math.max(0, ageMs) < WS_STALE_MS) {
+        const payload = await buildIndexWsQuote(ticker, optionsRoot, entry);
+        return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
       }
       // else: store cold/stale → fall through to the shared-cached index REST snapshot.
     }
@@ -210,23 +290,42 @@ export async function GET(req: NextRequest) {
     // fall through to REST because wsSpotPrice is local-memory-only.
     if (!isIndex) {
       const candle = getStockLiveCandle(ticker);
-      if (candle.current && candle.current.close > 0) {
+      const ageMs = Date.now() - (candle.updatedAt ?? 0);
+      if (
+        candle.current &&
+        candle.current.close > 0 &&
+        ageMs >= -WS_STALE_MS &&
+        Math.max(0, ageMs) < WS_STALE_MS
+      ) {
+        // WS price is live; rebase change_pct off the shared REST cache when available so the
+        // header doesn't show session-open–anchored drift before the REST seed lands.
+        const mem = quoteMem.get(ticker);
+        let changePct = candle.changePct;
+        if (mem && isQuoteCacheAtFresh(mem.at, Date.now(), QUOTE_CACHE_MS)) {
+          const rebased = withFreshPrice(
+            { price: mem.payload.price, change_pct: mem.payload.change_pct },
+            candle.current.close
+          );
+          if (typeof rebased.change_pct === "number" && Number.isFinite(rebased.change_pct)) {
+            changePct = rebased.change_pct;
+          }
+        }
         const payload: QuotePayload = {
           available: true,
           ticker,
           price: candle.current.close,
-          change_pct: candle.changePct,
+          change_pct: changePct,
           source: "ws",
           asof: new Date(candle.updatedAt).toISOString(),
         };
-        return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+        return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
       }
     }
 
     // ── REST path: stocks/ETFs without a live WS tick, plus index roots without
     //    a live WS feed (NDX/RUT) or a cold index store. ──
     const payload = await getRestQuote(ticker, optionsRoot, isIndex);
-    if (payload) return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+    if (payload) return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
 
     const uw = await resolveSpotFromUwStockState(optionsRoot);
     if (uw && uw.price > 0) {
@@ -238,7 +337,7 @@ export async function GET(req: NextRequest) {
         source: "rest",
         asof: new Date().toISOString(),
       };
-      return NextResponse.json(uwPayload, { headers: NO_STORE_HEADERS });
+      return NextResponse.json(roundFloats(uwPayload), { headers: NO_STORE_HEADERS });
     }
 
     return NextResponse.json({ available: false, ticker }, { status: 200, headers: NO_STORE_HEADERS });

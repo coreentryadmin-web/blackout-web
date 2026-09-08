@@ -68,6 +68,7 @@ export function useVectorContractPicks(
           premium: f.premium,
           strike: f.strike,
           expiry: f.expiry,
+          ask_pct: f.ask_pct,
         })),
       })
         .then((res) => {

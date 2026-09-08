@@ -12,6 +12,7 @@ import {
   type XTweet,
   type XTweetSearchHit,
 } from "@/lib/x-api";
+import { ageHoursFromIso } from "@/lib/ws/timestamp-freshness";
 import {
   ENGAGEMENT_TARGETS,
   SEARCH_QUERIES,
@@ -77,8 +78,7 @@ function sleep(ms: number) {
 }
 
 function tweetAgeHours(createdAt?: string): number {
-  if (!createdAt) return 999;
-  return (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
+  return ageHoursFromIso(createdAt);
 }
 
 function isSelfServeApiBlock(msg: string): boolean {

@@ -65,6 +65,29 @@ test("a carried subject is declared as an assumption, not applied silently", () 
   assert.match(block, /previous question was: "how is NVDA flow today"/);
 });
 
+test("triple-hop carry (META -> NVDA -> \"its flip\") inherits from the IMMEDIATE previous turn, not the session opener", () => {
+  // buildConversationContext only ever sees ONE previousQuestion (the caller's own history stack
+  // decides what that is — this module has no multi-turn memory of its own), so this test locks
+  // in the module's actual scope: the second turn's own text is what a third-turn pronoun
+  // resolves against, matching ordinary antecedent resolution (most recent noun wins, not the
+  // session's first-mentioned one). Turn 1 names META; turn 2 names NVDA (its own subject, so it
+  // carries nothing itself); turn 3 is a bare "its flip" — the caller passes turn 2's text as
+  // previousQuestion, and the carried ticker must be NVDA, never META. Getting this backwards
+  // would silently answer a member's NVDA question with META's numbers.
+  const turn2 = ctxOf("what about NVDA", "how is META flow today");
+  assert.deepEqual(turn2.carried, [], "turn 2 names its own subject — nothing to carry from turn 1");
+  assert.deepEqual(turn2.entities.map((e) => e.key), ["NVDA"]);
+
+  const turn3 = ctxOf("what's its gamma flip", "what about NVDA");
+  assert.equal(turn3.isFollowUp, true);
+  assert.deepEqual(
+    turn3.carried.map((e) => e.key),
+    ["NVDA"],
+    "the pronoun must resolve to turn 2's subject (NVDA), not turn 1's (META)"
+  );
+  assert.deepEqual(effectiveEntities(turn3).map((e) => e.key), ["NVDA"]);
+});
+
 test("referencesLastExchange catches the phrasings members actually use", () => {
   for (const q of [
     "what changed since I last asked",

@@ -7,6 +7,8 @@ import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 import { enforceFlowsSseRateLimit } from "@/lib/market-user-rate-limit";
+import { recheckSseUserEntitlement } from "@/lib/sse-stream-entitlement";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
 
   await initFlowEventBridge();
 
+  const streamUserId = auth.via === "user" && auth.userId ? auth.userId : null;
   const encoder = new TextEncoder();
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let unsubscribe: (() => void) | undefined;
@@ -56,8 +59,24 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = (payload: unknown) => {
+      const send = async (payload: unknown) => {
         if (closed) return;
+        if (streamUserId) {
+          const verdict = await recheckSseUserEntitlement(streamUserId, "premium");
+          if (verdict === "forbidden") {
+            cleanup();
+            try {
+              controller.enqueue(
+                encoder.encode(`event: error\ndata: ${JSON.stringify({ error: "Forbidden — upgrade required" })}\n\n`)
+              );
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
+          if (verdict === "unavailable") return;
+        }
         // Backpressure: a slow client lets the controller's internal queue grow
         // (desiredSize goes increasingly negative). Drop the lagging client rather
         // than buffer unbounded. Healthy clients keep desiredSize >= 0, so this never trips for them.
@@ -71,7 +90,8 @@ export async function GET(req: NextRequest) {
           return;
         }
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+          // Same boundary rounding as /flows REST — SSE clients must not see IEEE float tails.
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(roundFloats(payload))}\n\n`));
         } catch {
           cleanup();
         }
@@ -79,19 +99,19 @@ export async function GET(req: NextRequest) {
 
       activeStreams++;
       counted = true;
-      send({ type: "connected", ts: Date.now() });
+      void send({ type: "connected", ts: Date.now() });
 
       unsubscribe = subscribeFlowEvents((flow) => {
         if (tickerFilter && flow.ticker?.toUpperCase() !== tickerFilter) return;
         void (async () => {
           const gex = await getGexLevelsForTicker(flow.ticker);
           const enriched = gex ? enrichFlowWithGex(flow, gex) : flow;
-          send({ type: "flow", ...enriched });
+          void send({ type: "flow", ...enriched });
         })();
       });
 
       heartbeat = setInterval(() => {
-        send({ type: "heartbeat", ts: Date.now() });
+        void send({ type: "heartbeat", ts: Date.now() });
       }, 25_000);
     },
     cancel() {

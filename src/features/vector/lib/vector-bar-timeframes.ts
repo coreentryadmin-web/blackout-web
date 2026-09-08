@@ -64,21 +64,11 @@ export function wallCountForTimeframe(tf: VectorTimeframeMinutes): number {
   // ceiling now just hides structure a member could otherwise read at a glance.
   //
   // Manual NODES is unaffected and still overrides in both directions, up to the recorder's cap.
-  // PARTIALLY WALKED BACK (2026-08-19, same day): 1m 10->8, 3m 14->11, 5m 16->13, 15m 18->16.
-  //
-  // The step-up earlier today was justified — a weak level now recedes to a faint trace, so rows
-  // cost less than they used to. But it was sized without checking what it does to ROW SPACING, and
-  // on a tight strike ladder that is the variable that matters: 14 rows per side put 22 rows on an
-  // SPX 3m pane and took the median row gap from 26px to 17px.
-  //
-  // At 17px the geometry stops cooperating. BEAD_READABLE_MIN_HALF_PX floors every bead at 6.4px
-  // thick, which is already 38% of the slot before the strength halo adds anything — so no amount
-  // of thinning can make a 22-row SPX pane read cleanly, and trying is fighting the wrong variable.
-  // Member: "I think the size needs to be reduced ?? its too thick imo".
-  //
-  // These counts keep most of the gain (still well above the pre-2026-08-19 6/10/10/12) while
-  // returning ~21px of row gap on SPX 3m, which is where the thickness budget below can actually
-  // bind instead of being pre-empted by the readability floor.
+  // Restored 2026-09-07 (git archaeology vs Sep-3 11am reference, commit b2931b64b): the desk that
+  // day ran the #2341 PARTIAL walkback ladder (8/11/13/16), NOT the pre-#2341 10/14/16/18 ladder.
+  // #4460 mistakenly raised counts to 10/14/16/18 thinking that was Sep-3 — it compressed row gap
+  // (~17px vs ~21px on SPX 3m) and turned thick merged ribbons into dotted circles. Fewer rows +
+  // the Sep-3 fill/halo constants below is what matches the reference screenshots.
   if (tf <= 1) count = 8;
   else if (tf <= 3) count = Math.max(VECTOR_0DTE_WALL_COUNT, 11);
   else if (tf <= 5) count = 13;

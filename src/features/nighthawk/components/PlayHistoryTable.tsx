@@ -330,9 +330,16 @@ export function PlayHistoryTable({
                   Date {sortKey === "date" && (sortDir === "asc" ? "▲" : "▼")}
                 </th>
                 <th>Ticker</th>
-                <th>Dir</th>
-                <th>Tier</th>
-                <th>Outcome</th>
+                {/* P&L sits third — right after Date/Ticker, BEFORE Dir/Tier/Outcome — so it
+                    lands inside the first ~3 columns a narrow viewport renders without any
+                    horizontal scroll. It used to be last (6th of 6): .nh-history-tablewrap is
+                    overflow-x-auto around a min-w-[440px] table, which is wider than a 430px
+                    phone's card content width, and the overflow always eats the RIGHTMOST
+                    column first — which was P&L, the exact value this component's own
+                    tone/weight styling below calls "the single most-scanned value in this
+                    table". Dir/Tier/Outcome are lower-scan-priority and already have a
+                    full-detail escape hatch via the row's tap-to-expand drawer, so they're the
+                    ones that now absorb the swipe instead. */}
                 <th
                   className="nh-history-col-num nh-history-th-sortable"
                   onClick={() => toggleSort("pnl")}
@@ -340,6 +347,9 @@ export function PlayHistoryTable({
                 >
                   P&amp;L {sortKey === "pnl" && (sortDir === "asc" ? "▲" : "▼")}
                 </th>
+                <th>Dir</th>
+                <th>Tier</th>
+                <th>Outcome</th>
               </tr>
             </thead>
             <tbody>
@@ -360,6 +370,9 @@ export function PlayHistoryTable({
                         {p.session_date}
                       </td>
                       <td className="nh-history-ticker">{p.ticker}</td>
+                      <td className={clsx("nh-history-col-num tabular-nums nh-history-pnl", pnlTone(p.managed_pnl_pct))}>
+                        {fmtSignedPct(p.managed_pnl_pct)}
+                      </td>
                       <td>
                         <span className={clsx("nh-history-dir", p.direction === "long" ? "is-long" : "is-short")}>
                           {p.direction === "long" ? "L" : "S"}
@@ -367,9 +380,6 @@ export function PlayHistoryTable({
                       </td>
                       <td>{p.tier ?? EM_DASH}</td>
                       <td>{humanizeOutcome(p.managed_outcome)}</td>
-                      <td className={clsx("nh-history-col-num tabular-nums nh-history-pnl", pnlTone(p.managed_pnl_pct))}>
-                        {fmtSignedPct(p.managed_pnl_pct)}
-                      </td>
                     </tr>
                     {isOpen && (
                       <tr className="nh-history-detail-row">

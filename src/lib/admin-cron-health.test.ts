@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-import { evaluateJob, expectedNighthawkEdition, nighthawkEditionCoversExpected } from "./admin-cron-health";
+import {
+  effectiveStaleMinutes,
+  evaluateJob,
+  expectedNighthawkEdition,
+  nighthawkEditionCoversExpected,
+  nighthawkJobAgeMin,
+} from "./admin-cron-health";
 import type { CronJobDefinition } from "./cron-registry";
 
 function withDefaultNighthawkWindow(fn: () => void) {
@@ -120,6 +128,18 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   assert.equal(health.market_hours_stale, false);
 });
 
+test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {
+  const now = Date.parse("2026-09-04T12:00:00Z");
+  const future = new Date(now + 60_000).toISOString();
+  assert.equal(nighthawkJobAgeMin(future, 60, now), 61);
+});
+
+test("nighthawkJobAgeMin: past updated_at returns clamped minutes", () => {
+  const now = Date.parse("2026-09-04T12:00:00Z");
+  const past = new Date(now - 90_000).toISOString();
+  assert.equal(nighthawkJobAgeMin(past, 60, now), 2);
+});
+
 test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", () => {
   const health = evaluateJob(
     jobDef(),
@@ -138,4 +158,79 @@ test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", 
   );
   assert.equal(health.status, "healthy");
   assert.equal(health.market_hours_stale, false);
+});
+
+test("evaluateJob: clock-skewed future started_at does not read as fresh", () => {
+  const now = RTH_WEDNESDAY;
+  const futureStarted = new Date(now.getTime() + 120_000).toISOString();
+  const health = evaluateJob(
+    jobDef({ stale_after_min: 60 }),
+    {
+      id: 1,
+      job_key: "test-job",
+      status: "ok",
+      started_at: futureStarted,
+      duration_ms: 120,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+  assert.ok(health.age_min != null && health.age_min > 0);
+});
+
+/** Labor Day 2026-09-07 — weekday NYSE holiday. Warmers gate via shouldRunCacheWarmer. */
+const LABOR_DAY_MIDDAY = new Date("2026-09-07T16:00:00Z"); // 12:00 ET Monday holiday
+
+test("effectiveStaleMinutes: NYSE holiday uses relaxed multiplier for market_hours_only jobs", () => {
+  const job = jobDef({ market_hours_only: true, stale_after_min: 15 });
+  const { multiplier, effective } = effectiveStaleMinutes(job, LABOR_DAY_MIDDAY);
+  assert.equal(multiplier, 6);
+  assert.equal(effective, 90);
+});
+
+test("NYSE holiday silence on gated warmers does not false-flag market_hours_stale", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "platform-warm",
+      market_hours_only: true,
+      weekdays_only: true,
+      stale_after_min: 15,
+    }),
+    {
+      id: 1,
+      job_key: "platform-warm",
+      status: "skipped",
+      started_at: new Date(LABOR_DAY_MIDDAY.getTime() - 20 * 60_000).toISOString(),
+      duration_ms: 5,
+      message: "off-hours gate",
+      meta_json: null,
+    },
+    [],
+    LABOR_DAY_MIDDAY
+  );
+  assert.equal(health.market_hours_stale, false);
+});
+
+// BUG FIX (2026-09-08) — companion to the db.ts fix. buildCronHealthSnapshot's `runs_24h` aggregate
+// used to be built from `fetchCronJobRecentRuns(48)` (the last 48 cron_job_runs rows GLOBALLY, no
+// per-job or time bound), which starves any moderately-frequent job's 24h count once its faster
+// neighbors fill the 48-row window — `desk-warm` (a ~5min-schedule cron) read
+// `runs_24h: {ok:0,failed:0,skipped:2}` live in production despite running normally all morning.
+// Fixed by switching to `fetchCronJobRunsLast24h()`, which bounds by `WHERE started_at > NOW() -
+// INTERVAL '24 hours'` per job instead of by an arbitrary row count fleet-wide.
+test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bounded fetch, not the old row-capped one", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /fetchCronJobRunsLast24h\(\)/,
+    "buildCronHealthSnapshot must call the time-bounded fetch for its 24h aggregate"
+  );
+  assert.doesNotMatch(
+    src,
+    /fetchCronJobRecentRuns/,
+    "must not still reference the deleted row-capped fetch (starves low-frequency jobs' 24h counts)"
+  );
 });

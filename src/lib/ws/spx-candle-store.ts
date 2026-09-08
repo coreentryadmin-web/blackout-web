@@ -26,6 +26,7 @@
 // in CI (see spx-candle-store.test.ts).
 import { todayEtYmd } from "../providers/spx-session";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
+import { isWsUpdatedAtFresh } from "./timestamp-freshness";
 
 export type SpxCandle = {
   /** Bar start, epoch SECONDS (lightweight-charts' UTCTimestamp unit). */
@@ -165,7 +166,7 @@ export function getCurrentSpxCandle(): CandleSnapshot {
     ? { current: state.current, updatedAt: state.updatedAt }
     : null;
 
-  const localFresh = local != null && Date.now() - local.updatedAt <= LOCAL_STALE_MS;
+  const localFresh = local != null && isWsUpdatedAtFresh(local.updatedAt, LOCAL_STALE_MS);
   if (localFresh) return local;
 
   refreshFallbackFromRedis();
@@ -174,7 +175,7 @@ export function getCurrentSpxCandle(): CandleSnapshot {
     local && fallbackCandle && fallbackCandle.updatedAt > local.updatedAt ? fallbackCandle : local ?? fallbackCandle;
 
   if (!best) return { current: null, updatedAt: 0 };
-  if (Date.now() - best.updatedAt > MAX_CANDLE_AGE_MS) {
+  if (!isWsUpdatedAtFresh(best.updatedAt, MAX_CANDLE_AGE_MS)) {
     // Best available candle (local or fallback) is still too old to trust — refuse to
     // present it as live. Keep updatedAt so a caller can tell "no live data" from
     // "genuinely never ticked" if that's ever useful for diagnostics.

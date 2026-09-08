@@ -1,4 +1,5 @@
 ﻿import { todayEt as todayEtYmdClient } from "@/lib/et-date";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const PREFIX = "blackout:";
 
@@ -58,7 +59,7 @@ export function readSessionCache<T>(key: string, maxAgeMs?: number): T | undefin
 
     if (parsed.sessionDate && parsed.sessionDate !== today) return undefined;
 
-    if (maxAgeMs != null && Date.now() - parsed.at > maxAgeMs) return undefined;
+    if (maxAgeMs != null && !isWsUpdatedAtFresh(parsed.at, maxAgeMs)) return undefined;
 
     return parsed.data;
 

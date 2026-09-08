@@ -7,13 +7,13 @@
 // Pure functions over already-fetched ledger rows (the route does the fetching), so the
 // aggregation math is unit-tested against fixture ledgers — including the real 7/13 session
 // (1W/7L) whose shape motivated the whole audit. Methodology discipline (hard rule from the
-// decision doc §3): these are PLAN-OUTCOME grades on option premium (−50%/+100%/15:30 plan) —
+// decision doc §3): these are PLAN-OUTCOME grades on option premium (−50%/+100%/15:50 plan) —
 // NEVER blend them with SPX Slayer's pnl-points or Night Hawk's stock-move percentages.
 
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import { buildCondorRecord, isCondorRow, type CondorRecord } from "./condor-record";
 import { categorizeExitReason } from "./exit-engine";
-import { etMinutesOf } from "./plan";
+import { etMinutesOf, PLAN_RULES, PLAN_RULES_TIME_STOP_ET_LABEL } from "./plan";
 import { tierFromEntryContext, type ZeroDteTier } from "./tiers";
 
 /** Methodology label served with every payload built here — the honest-record rule.
@@ -21,13 +21,18 @@ import { tierFromEntryContext, type ZeroDteTier } from "./tiers";
  *  live-guided to take (the exit engine's realized ratchet / thesis-break / flat-timeout
  *  / plan stop-or-target exit, stamped at entry_context.exit), falling back to the fixed
  *  mechanical plan grade only when no engine exit fired (the play rode the plan's own
- *  stop/target/time-stop). The fixed −50/+100/15:30 plan grade is kept alongside as a
- *  labeled comparison (`mechanical`), never as the member-facing number. */
+ *  stop/target/time-stop). The fixed -50/+100/time-stop plan grade is kept alongside as a
+ *  labeled comparison (`mechanical`), never as the member-facing number — the time-stop
+ *  digits below are interpolated from PLAN_RULES, never hardcoded: a hardcoded "15:30"
+ *  copy of this string (stale since the engine's time stop moved to 15:50) shipped on the
+ *  public /methodology page while other copy on the SAME page correctly said 15:50, an
+ *  unreproducible contradiction on the page that exists specifically to let members
+ *  reproduce the ledger. See FINDINGS 2026-09-02. */
 export const ZERODTE_RECORD_METHODOLOGY =
   "0DTE Command results are AS-MANAGED grades: the exit the member was live-guided to " +
   "take (profit-ratchet, thesis-break, flat-timeout, or the printed plan's stop/target), " +
   "on the option's own premium, from the scanner ledger (every committed setup, no " +
-  "cherry-picking). A win is positive realized P&L. The fixed -50%/+100%/15:30-ET plan " +
+  `cherry-picking). A win is positive realized P&L. The fixed ${PLAN_RULES.stop_pct}%/+${PLAN_RULES.target_pct}%/${PLAN_RULES_TIME_STOP_ET_LABEL}-ET plan ` +
   "grade is reported beside it as a labeled hold-to-stop/target comparison, never blended " +
   "in. These are option-premium returns — not SPX Slayer point results and not Night Hawk " +
   "stock-move returns; the three methodologies are never blended.";
@@ -47,7 +52,7 @@ export type ZeroDteRecordPlay = {
    *  row carries entry_context, lives in entry_context.score. */
   score: number;
   conviction: string | null;
-  /** MECHANICAL plan grade (fixed -50/+100/15:30) — the labeled comparison, not the
+  /** MECHANICAL plan grade (fixed -50/+100/15:50) — the labeled comparison, not the
    *  headline. Kept per-play so the desk can show "managed vs held" side by side. */
   plan_outcome: string | null;
   plan_pnl_pct: number | null;
@@ -122,7 +127,7 @@ export type ZeroDteRecord = {
   by_time_of_day: ZeroDteRecordBucket[];
   by_direction: ZeroDteRecordBucket[];
   by_score_band: ZeroDteRecordBucket[];
-  /** The fixed -50/+100/15:30 plan grade over the SAME rows — labeled comparison only,
+  /** The fixed -50/+100/15:50 plan grade over the SAME rows — labeled comparison only,
    *  never the member-facing headline (see ZERODTE_RECORD_METHODOLOGY). Identical to the
    *  headline whenever no engine exit fired on any row (the clean hold-to-plan path). */
   mechanical: ZeroDteRecordRollup;
@@ -270,7 +275,7 @@ export function isZeroDteWin(row: OfficialGradableRow): boolean {
 }
 
 // ── Grade views: one normalized W/L/BE + outcome-label per row, per track ────────────
-// A row is graded twice: MECHANICAL (the fixed -50/+100/15:30 plan grade, from
+// A row is graded twice: MECHANICAL (the fixed -50/+100/15:50 plan grade, from
 // plan_outcome/plan_pnl_pct) and AS-MANAGED (the exit the member was actually guided to
 // — the exit engine's realized exit stamped at entry_context.exit, falling back to the
 // mechanical grade when no engine exit fired). Both reduce to this shape so the headline
@@ -316,7 +321,7 @@ function managedOutcomeLabel(reason: string | null, pnl: number): string {
   return bySign;
 }
 
-/** MECHANICAL grade view — the fixed -50/+100/15:30 plan grade, on the OFFICIAL
+/** MECHANICAL grade view — the fixed -50/+100/15:50 plan grade, on the OFFICIAL
  *  (conservative-executable, WS-10) lane with a mid fallback for legacy rows. This is the
  *  simulated plan P&L the directive switches to the executable frame; the AS-MANAGED headline
  *  (the engine's realized exit) moves to the executable side separately in WS-11. */

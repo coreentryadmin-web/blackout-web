@@ -277,6 +277,8 @@ async function main() {
 
   // 5. Dashboard E2E (clicks + cross-tool) when Clerk keys present
   if (process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    // Release the audit-fetch Clerk temp user before E2E mints its own — avoids FAPI collisions.
+    await releaseAuditClerkSession();
     // Largo query + Playwright UI can exceed 300s after upstream suite burst (SPX-RTH-2026-08-04).
     run("npm run validate:spx-e2e", "spx:dashboard-e2e", { timeoutMs: 600_000 });
   } else {

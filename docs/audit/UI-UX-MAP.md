@@ -371,7 +371,7 @@ PAGE /heatmap
    ├─ regime dot + label            ● SHORT GAMMA
    ├─ inline stat row                NET GEX -$778.7M ↑$397.3M · MAGNET 765 · FLIP 767 · CALL WALL 772 · PUT WALL 765 · MAX PAIN 768 · VOL EXPANDED
    ├─ CARD cross-product strip       "[HELIX] FLOW UNAVAILABLE" (CORRECTED — see below; the original wrong-UA shot showed a populated "+$403.8K" bar here, which does not reproduce with the correct UA)
-   └─ 2-line plain-English narrative  "Dealers are amplifying moves below 767. 765 is the dominant pin..."
+   └─ 2-line plain-English narrative  "Dealers are amplifying moves below 767. 765 is the king node (max |net γ|)..."
 └─ FILTER expiry chip row (horizontal scroll)  ALL · 0DTE · NEAR · MONTHLY (active=AUG 24) · [15 more dated chips through JAN 15]
 └─ BAR key-levels strip             "SPY · GEX  Shift  C 770 +0% 768 -0% | P 771 -0% 759 -0% 765 +0% 766 +0%"
 └─ TABLE strike ladder               STRIKE | AUG 24 | NET FLOW columns, one row per strike, $ flow annotations on non-zero rows

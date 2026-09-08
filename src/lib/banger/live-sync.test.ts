@@ -5,7 +5,10 @@ import { runBangerLiveSync, type BangerLiveSyncRow } from "./live-sync.ts";
 function baseRow(overrides: Partial<BangerLiveSyncRow> = {}): BangerLiveSyncRow {
   return {
     id: 1,
+    session_date: "2026-08-04",
     ticker: "ANET",
+    contract_strike: 105,
+    contract_expiry: "2026-08-14",
     contract_occ: "O:ANET260814C00105000",
     entry_premium: 1.5,
     peak_premium: null,

@@ -28,7 +28,11 @@ export async function composeTechnicalsRead(ticker: string, question?: string): 
   }
 
   lines.push(
-    `- **Spot:** ${fmt(tech.price, 2)} (${tech.change_pct >= 0 ? "+" : ""}${fmt(tech.change_pct, 2)}%)`,
+    `- **Spot:** ${fmt(tech.price, 2)}${
+      tech.change_pct != null
+        ? ` (${tech.change_pct >= 0 ? "+" : ""}${fmt(tech.change_pct, 2)}%)`
+        : ""
+    }`,
     `- **Trend (EMA stack):** ${tech.trend}`,
     `- **EMA20 / 50 / 200:** ${fmt(tech.emas.ema20, 2)} / ${fmt(tech.emas.ema50, 2)} / ${fmt(tech.emas.ema200, 2)}`,
     `- **RSI(14):** ${fmt(tech.rsi14, 1)}`,

@@ -11,10 +11,8 @@ import {
   GEX_BEAD_CALL_HEX,
   GEX_BEAD_PUT_HEX,
   shouldShowMatrixDriftPct,
-  shouldShowStrikeDistancePct,
   strikeDistancePct,
   STRIKE_DRIFT_PCT_NEAR_SPOT,
-  STRIKE_DISTANCE_PCT_NEAR_SPOT,
   resolveHeatmapTopHighlightCellStyle,
   isHeatmapTopHighlightRank,
 } from "./gex-heatmap-display";
@@ -174,7 +172,6 @@ describe("strike distance from spot", () => {
     assert.equal(shouldShowMatrixDriftPct(spot - 4, spot), false);
     assert.equal(shouldShowMatrixDriftPct(spot + 4, spot), false);
     assert.equal(shouldShowMatrixDriftPct(0, -1), false);
-    assert.equal(shouldShowStrikeDistancePct(spot - 2, spot), true);
   });
 });
 

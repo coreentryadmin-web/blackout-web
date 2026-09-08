@@ -1,14 +1,11 @@
 // Presentation-only upsell data. Pure, alias-free, no React, no env reads.
-// Sourced from the ACTUAL gated routes (requireTier/requireTierApi grep):
-//   premium pages : dashboard, terminal, flows, heatmap, nighthawk, docs/*
-//   premium APIs  : spx/commentary, largo/session, largo/query, docs/spx-playbook
-//   free APIs     : market/ticker-search
-// This file describes value framing ONLY. It creates no tiers and touches no
-// billing — the real entitlement check stays in src/lib/auth-access.ts.
+// Capability copy sourced from src/lib/marketing/product-manifest.ts.
 
-// Type-only import: MarkProduct is erased at compile time, so this pure,
-// server-safe module pulls no client/runtime code from ProductMark.
 import type { MarkProduct } from "@/components/marks/ProductMark";
+import { PRODUCT_MANIFEST } from "@/lib/marketing/product-manifest";
+import { DESK_TIER_REQUIREMENTS } from "@/lib/desk-tier-requirements";
+import { tierAtLeast } from "@/lib/tiers";
+import type { ToolKey } from "@/lib/tool-access";
 
 export type FeatureRow = {
   /** Short feature name shown in the left column. */
@@ -17,6 +14,8 @@ export type FeatureRow = {
   detail: string;
   /** Whether the Free tier includes this. */
   free: boolean;
+  /** Whether SPX Slayer ($49/mo, "community" tier) includes this. */
+  community: boolean;
   /** Whether Premium includes this (all current premium gates => true). */
   premium: boolean;
   /**
@@ -27,8 +26,19 @@ export type FeatureRow = {
   mark?: MarkProduct;
 };
 
+/** Derives community/premium access for a desk row from the same manifest the desk's own
+ *  layout.tsx gate is verified against (desk-tier-requirements.test.ts) — a row can't silently
+ *  say "included" for a tier the desk itself would redirect that tier away from. */
+function deskAccess(key: ToolKey): Pick<FeatureRow, "community" | "premium"> {
+  const minTier = DESK_TIER_REQUIREMENTS[key];
+  return {
+    community: tierAtLeast("community", minTier),
+    premium: tierAtLeast("premium", minTier),
+  };
+}
+
 /**
- * Free-vs-Premium feature matrix. Order = perceived value, high to low.
+ * Free / SPX Slayer / Premium feature matrix. Order = perceived value, high to low.
  * Edit copy here; the component renders it verbatim.
  */
 export const FEATURE_MATRIX: FeatureRow[] = [
@@ -36,59 +46,94 @@ export const FEATURE_MATRIX: FeatureRow[] = [
     label: "HELIX live flow feed",
     detail: "Real-time options-flow tape, sorted and tagged",
     free: false,
-    premium: true,
+    ...deskAccess("flows"),
     mark: "helix",
   },
   {
     label: "SPX Slayer desk",
     detail: "Confluence, GEX walls, dealer gamma — live",
     free: false,
-    premium: true,
+    ...deskAccess("spx"),
     mark: "spx",
   },
   {
     label: "Largo AI desk analyst",
     detail: "Plain-English answers grounded in every tool's live data",
     free: false,
-    premium: true,
+    ...deskAccess("largo"),
     mark: "largo",
   },
   {
-    label: "Night Hawk evening playbook",
-    detail: "Overnight scan of the session, ranked setups",
+    label: "Night Hawk 0DTE Command",
+    detail: PRODUCT_MANIFEST.hawk.positioning,
     free: false,
-    premium: true,
+    ...deskAccess("nighthawk"),
     mark: "nighthawk",
   },
   {
-    label: "Strike-level heatmaps",
-    detail: "Dealer positioning mapped across the full chain",
+    label: "Thermal dealer-gamma heatmaps",
+    detail: PRODUCT_MANIFEST.thermal.positioning,
     free: false,
-    premium: true,
+    ...deskAccess("heatmap"),
     mark: "heatmap",
+  },
+  {
+    label: "Vector universe scanner",
+    detail: PRODUCT_MANIFEST.vector.positioning,
+    free: false,
+    ...deskAccess("vector"),
+    mark: "vector",
+  },
+  {
+    label: "Meridian catalyst desk",
+    detail: PRODUCT_MANIFEST.meridian.positioning,
+    free: false,
+    ...deskAccess("meridian"),
   },
   {
     label: "SPX AI commentary",
     detail: "Generated read on the current tape",
     free: false,
-    premium: true,
+    // Part of the SPX dashboard itself (src/features/spx/), gated the same as the desk it lives on.
+    ...deskAccess("spx"),
   },
   {
     label: "Playbook & docs",
     detail: "SPX Slayer playbook and method docs",
     free: false,
+    ...deskAccess("spx"),
+  },
+  {
+    label: "0DTE graded plays",
+    detail: "SPX Slayer: SPX 0DTE grades. Premium: every desk's graded play log.",
+    free: false,
+    // Scope differs by tier (see detail) but both paid tiers get a graded log — the exact scope
+    // difference is prose, not a boolean this table can express; cross-checked against
+    // PLAN_MATRIX.spx_slayer's own "0DTE graded plays (A–F)" include line in upsell-features.test.ts.
+    community: true,
+    premium: true,
+  },
+  {
+    label: "Private Discord access",
+    detail: "Member-only trade discussion",
+    free: false,
+    // Not a code-level gate (external Discord invite) — cross-checked against
+    // PLAN_MATRIX.spx_slayer's own "Private Discord access" include line in upsell-features.test.ts.
+    community: true,
     premium: true,
   },
   {
     label: "Ticker search",
     detail: "Look up any symbol",
     free: true,
+    community: true,
     premium: true,
   },
   {
     label: "Account & updates",
     detail: "Sign in, profile, product updates",
     free: true,
+    community: true,
     premium: true,
   },
 ];

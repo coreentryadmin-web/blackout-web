@@ -1,15 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { clsx } from "clsx";
-import type { HelixDteFilter } from "@/features/helix/lib/helix-table-columns";
+import type { HelixDteFilter, HelixTableDensity } from "@/features/helix/lib/helix-table-columns";
 import {
   HELIX_DEFAULT_MIN_PREMIUM,
   HELIX_PREMIUM_PRESETS,
 } from "@/features/helix/lib/helix-flow-limits";
 import { watchlistFilterActive } from "@/features/helix/lib/helix-watchlist-filter";
+import {
+  HELIX_FILTER_PRESETS,
+  helixPresetMatches,
+  type HelixDirectionFilter,
+} from "@/features/helix/lib/helix-filter-presets";
 
 const DTE_OPTIONS: { id: HelixDteFilter; label: string }[] = [
   { id: "all", label: "All DTE" },
@@ -32,6 +37,8 @@ export function countActiveHelixFilters(f: {
    *  narrows anything — with an empty list it is inert, and counting it claimed otherwise. */
   watchlistCount: number;
   tickerFilter: string;
+  directionFilter?: HelixDirectionFilter;
+  openingOnly?: boolean;
 }): number {
   return (
     (f.minPremium !== HELIX_DEFAULT_MIN_PREMIUM ? 1 : 0) +
@@ -40,9 +47,17 @@ export function countActiveHelixFilters(f: {
     (f.dteFilter !== "all" ? 1 : 0) +
     (f.indicesOnly ? 1 : 0) +
     (watchlistFilterActive(f.watchlistOnly, f.watchlistCount) ? 1 : 0) +
-    (f.tickerFilter ? 1 : 0)
+    (f.tickerFilter ? 1 : 0) +
+    (f.directionFilter && f.directionFilter !== "all" ? 1 : 0) +
+    (f.openingOnly ? 1 : 0)
   );
 }
+
+const DENSITY_OPTIONS: { id: HelixTableDensity; label: string }[] = [
+  { id: "essential", label: "Lean" },
+  { id: "standard", label: "Std" },
+  { id: "full", label: "Full" },
+];
 
 function ChipToggle({
   active,
@@ -55,7 +70,7 @@ function ChipToggle({
   onClick: () => void;
   disabled?: boolean;
   children: ReactNode;
-  tone?: "gold" | "ember" | "sky" | "purple";
+  tone?: "gold" | "ember" | "sky" | "purple" | "green";
 }) {
   return (
     <button
@@ -108,6 +123,14 @@ export function HelixCommandBar({
   displayCount,
   newestAgeLabel,
   replayDisabled,
+  directionFilter,
+  onDirectionFilterChange,
+  openingOnly,
+  onOpeningOnlyChange,
+  density,
+  onDensityChange,
+  onApplyPreset,
+  onResetFilters,
 }: {
   minPremium: number;
   onMinPremiumChange: (v: number) => void;
@@ -127,6 +150,14 @@ export function HelixCommandBar({
   watchlistOnly: boolean;
   onWatchlistOnlyChange: (v: boolean) => void;
   watchlistCount: number;
+  directionFilter: HelixDirectionFilter;
+  onDirectionFilterChange: (v: HelixDirectionFilter) => void;
+  openingOnly: boolean;
+  onOpeningOnlyChange: (v: boolean) => void;
+  density: HelixTableDensity;
+  onDensityChange: (v: HelixTableDensity) => void;
+  onApplyPreset: (presetId: string) => void;
+  onResetFilters: () => void;
   analyticsOpen: boolean;
   onAnalyticsOpenChange: (v: boolean) => void;
   replayMode: boolean;
@@ -145,6 +176,7 @@ export function HelixCommandBar({
   replayDisabled: boolean;
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
+  const tickerInputRef = useRef<HTMLInputElement>(null);
   // Mobile web (not the native app) has no room for this desktop filter row — it was
   // rendering as-is, cramped, with no responsive fallback (2026-08-01 Helix audit,
   // ChatGPT Problem 8 / Tier 1 item #7). Below 640px (globals.css, this repo's phone
@@ -160,7 +192,32 @@ export function HelixCommandBar({
     watchlistOnly,
     watchlistCount,
     tickerFilter,
+    directionFilter,
+    openingOnly,
   });
+
+  const presetState = {
+    minPremium,
+    typeFilter,
+    whalesOnly,
+    dteFilter,
+    indicesOnly,
+    directionFilter,
+    openingOnly,
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault();
+      tickerInputRef.current?.focus();
+      tickerInputRef.current?.select();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="helix-tape-bar">
@@ -263,6 +320,7 @@ export function HelixCommandBar({
           </label>
           <div className="helix-tape-input-wrap">
             <input
+              ref={tickerInputRef}
               id="helix-ticker-search"
               value={tickerFilter}
               onChange={(e) => {
@@ -274,6 +332,9 @@ export function HelixCommandBar({
               maxLength={6}
               className="helix-tape-input"
             />
+            <span className="helix-tape-search-hint" aria-hidden="true">
+              /
+            </span>
             {tickerFilter ? (
               <button
                 type="button"
@@ -311,6 +372,29 @@ export function HelixCommandBar({
             >
               Watch{watchlistCount > 0 ? ` ${watchlistCount}` : ""}
             </ChipToggle>
+            <ChipToggle
+              active={openingOnly}
+              onClick={() => onOpeningOnlyChange(!openingOnly)}
+              tone="gold"
+            >
+              New OI
+            </ChipToggle>
+          </div>
+        </div>
+
+        <div className="helix-tape-bar-block helix-tape-bar-chips">
+          <span className="helix-tape-bar-label helix-tape-bar-label--green">Read</span>
+          <div className="helix-tape-chips">
+            {(["all", "bullish", "bearish"] as HelixDirectionFilter[]).map((d) => (
+              <ChipToggle
+                key={d}
+                active={directionFilter === d}
+                onClick={() => onDirectionFilterChange(d)}
+                tone={d === "bullish" ? "green" : d === "bearish" ? "ember" : undefined}
+              >
+                {d === "all" ? "Any dir" : d === "bullish" ? "Bull" : "Bear"}
+              </ChipToggle>
+            ))}
           </div>
         </div>
 
@@ -327,6 +411,25 @@ export function HelixCommandBar({
                 className={clsx(
                   "helix-tape-seg-btn helix-tape-seg-btn--compact",
                   dteFilter === o.id && "helix-tape-seg-btn--active"
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="helix-tape-bar-block">
+          <span className="helix-tape-bar-label">Cols</span>
+          <div className="helix-tape-seg helix-tape-seg--compact">
+            {DENSITY_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => onDensityChange(o.id)}
+                className={clsx(
+                  "helix-tape-seg-btn helix-tape-seg-btn--compact",
+                  density === o.id && "helix-tape-seg-btn--active"
                 )}
               >
                 {o.label}
@@ -370,6 +473,27 @@ export function HelixCommandBar({
               {loading ? "Scanning…" : `${displayCount.toLocaleString()} · ${newestAgeLabel}`}
             </span>
           </div>
+        </div>
+      </div>
+
+      <div className="helix-tape-presets">
+        <span className="helix-tape-bar-label">Presets</span>
+        <div className="helix-tape-chips">
+          {HELIX_FILTER_PRESETS.map((preset) => (
+            <ChipToggle
+              key={preset.id}
+              active={helixPresetMatches(preset, presetState)}
+              onClick={() => onApplyPreset(preset.id)}
+              tone={preset.tone}
+            >
+              {preset.label}
+            </ChipToggle>
+          ))}
+          {activeFilterCount > 0 ? (
+            <button type="button" onClick={onResetFilters} className="helix-tape-preset-reset">
+              Reset
+            </button>
+          ) : null}
         </div>
       </div>
 

@@ -33,7 +33,7 @@ function etYmdPlus(days: number): string {
 function row(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
   return {
     id: 1,
-    commit_key: "2026-07-24:NVDA:STANDARD:long",
+    commit_key: "2026-07-24:NVDA:BREAKOUT:STANDARD:long",
     root_position_id: null,
     parent_position_id: null,
     roll_seq: 0,
@@ -96,6 +96,12 @@ test("livePlayFromSwingPosition: OPEN → MANAGING observables; TRIM → TAKE_PA
   assert.equal(trim.manageAction, "TAKE_PARTIAL");
 });
 
+test("livePlayFromSwingPosition: TRIM + HOLD snapshot clears stale TAKE_PARTIAL fallback", () => {
+  const trim = livePlayFromSwingPosition(row({ status: "TRIM" }), 178, { action: "HOLD", rung: "hold" })!;
+  assert.equal(trim.liveStatus, "TRIM");
+  assert.equal(trim.manageAction, undefined);
+});
+
 test("livePlayFromSwingPosition: structural break stamps EXIT + thesis break", () => {
   const play = livePlayFromSwingPosition(row(), 160)!; // below 165 invalidation
   assert.equal(play.manageAction, "EXIT");
@@ -119,6 +125,28 @@ test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledge
   assert.equal(play.entryPremium, 5.1);
   assert.equal(play.livePnlPct, 7.8); // (5.5/5.1 - 1)*100 ≈ 7.8
   assert.equal(play.peakPremium, 5.5);
+});
+
+// CORRECTED 2026-09-07: an earlier version of this fix (see #4481 finding doc) fell back to
+// `row.archetype ?? "regime read"` when the dossier's REGIME pillar was scored — that shipped the
+// literal placeholder string "regime read" into the live Ask Largo narrative (play-brief.ts pushes
+// `play.regime` verbatim, unlabeled, into the Verdict section) and would have duplicated the
+// archetype text when archetype WAS present (already shown on its own "Archetype: X" line). `regime`
+// is a genuine market-regime descriptor (Vector posture / SPX desk regime), a different concept from
+// the swing setup archetype — no such value exists on the committed position row today, so it must
+// stay honestly null in every case, never synthesized from archetype or a placeholder string.
+test("livePlayFromSwingPosition: regime is always null — no genuine market-regime descriptor exists on the committed position row", () => {
+  const play = livePlayFromSwingPosition(row())!;
+  assert.equal(play.regime, null);
+
+  const withDossierRegime = livePlayFromSwingPosition(
+    row({ archetype: "BREAKOUT", feature_vector: { evidence_score: 82, pil_regime: 0.71 } })
+  )!;
+  assert.equal(
+    withDossierRegime.regime,
+    null,
+    "must not synthesize regime from archetype — that duplicates the separate 'Archetype: X' verdict line and is a different concept from market regime"
+  );
 });
 
 test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {
@@ -232,4 +260,22 @@ test("liveQuoteFromEvent: malformed / empty / absent quote blobs all degrade to 
     iv: null,
     asOf: null,
   });
+});
+
+test("Q40: markAsOf prefers ledger last_mark_at over manage snapshot quote.asOf", () => {
+  const play = livePlayFromSwingPosition(
+    row({ last_mark_at: "2026-09-05T14:00:00.000Z" }),
+    178,
+    { quote: { bid: 5.4, ask: 5.6, asOf: "2026-09-05T13:00:00.000Z" } },
+  )!;
+  assert.equal(play.markAsOf, "2026-09-05T14:00:00.000Z");
+});
+
+test("Q40: markAsOf falls back to manage snapshot quote.asOf when last_mark_at is null", () => {
+  const play = livePlayFromSwingPosition(
+    row({ last_mark_at: null }),
+    178,
+    { quote: { bid: 5.4, ask: 5.6, asOf: "2026-09-05T13:00:00.000Z" } },
+  )!;
+  assert.equal(play.markAsOf, "2026-09-05T13:00:00.000Z");
 });

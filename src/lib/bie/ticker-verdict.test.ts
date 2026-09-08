@@ -44,6 +44,7 @@ function ctx(over: Partial<EcosystemContext> = {}, ars?: Partial<EcosystemArsena
     recent_anomalies: [],
     spx_play: null,
     spx_full_state: null,
+    spx_desk_convergence: null,
     flow_feed_fresh: true,
     gex_positioning: null,
     vector_full_state: null,

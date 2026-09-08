@@ -1,5 +1,6 @@
 /** UW API throttle — token bucket, min spacing, in-flight dedup, circuit breaker. */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { tryClaimHuntUwCall, UwHuntBudgetExhaustedError } from "./uw-hunt-budget";
 import {
   rateLimiterEnvNumber,
@@ -36,6 +37,9 @@ const GLOBAL_MAX_RPS = envNumber("UW_GLOBAL_MAX_RPS", 2);
 /** Live replica count of this service — divides the global budget across replicas on Redis loss. */
 const REPLICA_COUNT = Math.max(1, Math.floor(envNumber("REPLICA_COUNT", 1)));
 
+/** Below this, admission was effectively uncontended — not worth a log line. */
+const QUEUE_WAIT_LOG_THRESHOLD_MS = 500;
+
 /**
  * Per-replica RPS the local bucket may sustain when the Redis global ceiling is UNAVAILABLE.
  * With Redis up, the atomic Lua ceiling is the real cluster cap and the local bucket is just a
@@ -66,6 +70,70 @@ let lastRefillMs = Date.now();
 let lastStartMs = 0;
 let inFlight = 0;
 let redisConcurrencyHeld = false;
+
+/**
+ * Background-sweep concurrency reservation.
+ *
+ * THE PROBLEM (measured live 2026-09-03, RTH). vector-full-state-snapshot,
+ * vector-dark-pool-warm, bie-full-state-snapshot and vector-pick-sweep each already carry an
+ * overlap guard (sharedCacheSetNx) that stops a SECOND instance of the SAME cron from running
+ * concurrently — but a single, non-overlapping run of any one of them still fans out across the
+ * whole universe (55-84 tickers) and can occupy the shared cluster-wide UW concurrency ceiling
+ * (GLOBAL_MAX_CONCURRENCY, as few as 2 slots total) continuously for 90-286s
+ * (`elapsed=` in CloudWatch: vector-dark-pool-warm 286328ms/160405ms, vector-pick-sweep
+ * 169393ms/150666ms, vector-full-state-snapshot 133578ms/116319ms/90026ms, all with
+ * budgetHit=true, i.e. no overlap). With only 2 global slots and a background sweep racing a
+ * live member's dark-pool/flow fetch for the SAME slots, the live request can queue for the
+ * whole `queueBudgetMs` window or lose the race outright. Same-window ALB TargetResponseTime
+ * (blackout-production-app target group) read Max ~115-119s (near the ALB's 120s idle timeout)
+ * and p99 11-39s, repeatedly, across 8+ separate 5-minute windows in one RTH session
+ * (2026-09-03) — this is the SAME symptom three separate prior fixes in this file's history
+ * already diagnosed and treated with an overlap guard (see vector-pick-sweep/route.ts's own
+ * 2026-09-01/09-03 comments), but the overlap guard only prevents a SECOND instance of the SAME
+ * cron — it does nothing for a single run's own multi-minute hold on the shared ceiling.
+ *
+ * THE FIX. A caller running inside `runWithBackgroundUwSweep` has its view of the UW
+ * concurrency ceiling reduced by exactly one slot (floor 1) — on BOTH paths: the cluster-wide
+ * Redis semaphore (`acquireGlobalRedisConcurrencySlot`, the real ceiling whenever Redis is up)
+ * and the per-replica local fallback (`effectiveMaxConcurrency`, the only ceiling when Redis is
+ * down). Both callers still increment/decrement the SAME shared counter — this only changes the
+ * LIMIT a background-tagged caller compares its own admission against, so live/foreground
+ * traffic (which always checks against the FULL ceiling) is completely unaffected and can still
+ * fill every slot; a bulk sweep simply can never claim the LAST slot for itself, guaranteeing at
+ * least one slot stays reachable for live traffic even while a multi-minute sweep is mid-run.
+ * AsyncLocalStorage (not a threaded parameter) because these sweeps call many layers deep into
+ * shared library code (computeVectorFullState, buildBieFullState, warmVectorDarkPool, ...) that
+ * cannot practically be threaded with an explicit flag — mirrors the existing hunt-budget
+ * pattern in ./uw-hunt-budget.ts, which solved the analogous problem for Night Hawk hunts via
+ * the same mechanism (that module's own header explains why crons were deliberately EXEMPTED
+ * from ITS gate: "off-peak, trusted, they ARE the warmers" — an assumption that does not hold
+ * for these four crons, which run continuously THROUGHOUT RTH by design, not off-peak).
+ */
+const backgroundUwSweepStore = new AsyncLocalStorage<true>();
+
+/**
+ * Run `fn` tagged as a bulk background sweep rather than live/foreground member traffic — see
+ * the block comment above. Use for whole-universe cron sweeps (vector-full-state-snapshot,
+ * vector-dark-pool-warm, bie-full-state-snapshot, vector-pick-sweep); do NOT use for a live
+ * per-request code path, which must always compete for the full ceiling.
+ */
+export function runWithBackgroundUwSweep<T>(fn: () => Promise<T>): Promise<T> {
+  return backgroundUwSweepStore.run(true, fn);
+}
+
+/** True while executing inside `runWithBackgroundUwSweep`. */
+function isBackgroundUwSweep(): boolean {
+  return backgroundUwSweepStore.getStore() === true;
+}
+
+/**
+ * Reserve one concurrency slot for live traffic when the caller is a tagged background sweep
+ * (exported so the reservation math + AsyncLocalStorage isolation are unit-testable directly,
+ * without needing to mock Redis or the local token bucket).
+ */
+export function reserveForLiveTraffic(ceiling: number): number {
+  return isBackgroundUwSweep() ? Math.max(1, ceiling - 1) : ceiling;
+}
 
 let circuitOpenUntil = 0;
 let recent429Timestamps: number[] = [];
@@ -203,7 +271,8 @@ function effectiveMaxRps(): number {
 
 /** Per-replica in-flight cap — Redis semaphore is the cluster gate when healthy. */
 function effectiveMaxConcurrency(): number {
-  return redisGlobalActive() ? MAX_CONCURRENCY : DEGRADED_LOCAL_CONCURRENCY;
+  const cap = redisGlobalActive() ? MAX_CONCURRENCY : DEGRADED_LOCAL_CONCURRENCY;
+  return reserveForLiveTraffic(cap);
 }
 
 function refillTokens(): void {
@@ -234,7 +303,7 @@ async function acquireGlobalRedisConcurrencySlot(): Promise<boolean> {
     return await acquireRedisConcurrencySlot(
       client,
       UW_CONCURRENCY_REDIS_KEY,
-      GLOBAL_MAX_CONCURRENCY
+      reserveForLiveTraffic(GLOBAL_MAX_CONCURRENCY)
     );
   } catch {
     sharedRedisFailedAt = Date.now();
@@ -344,9 +413,21 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
  *
  * On the uncontended path this adds one Date.now() and changes nothing.
  *
+ * Returns the total ms spent waiting to be admitted (0 on the uncontended path) --
+ * `throttleUw` logs this when it crosses `QUEUE_WAIT_LOG_THRESHOLD_MS`, tagged with
+ * whether the caller was a background sweep. Before this, a request that queued for
+ * 15s and then SUCCEEDED left no trace anywhere: `RateLimiterQueueTimeoutError` is
+ * only thrown once the budget is fully EXHAUSTED, so the entire admitted-but-slow
+ * middle of the distribution was invisible to CloudWatch Logs -- the only observable
+ * signal was `maybeFlushRateLimitSummary`'s 429 count, which says nothing about how
+ * long a caller waited for a slot. Found investigating a live `/vector` contract-picks
+ * timeout (RUN-LOG.md, 2026-09-04 19:19 UTC entry) traced to this same limiter with no
+ * way to confirm from logs alone whether queueing (this) or the upstream fetch itself
+ * was the slow part.
+ *
  * @throws {RateLimiterQueueTimeoutError} when the queue budget is exhausted.
  */
-async function acquireSlot(): Promise<void> {
+async function acquireSlot(): Promise<number> {
   ensureBreakerSubscription();
   const budget = new QueueBudget("unusual_whales", queueBudgetMs());
   await waitForCircuit(budget);
@@ -375,10 +456,11 @@ async function acquireSlot(): Promise<void> {
         releaseGlobalConcurrencyOnly();
         throw err;
       }
-      return;
+      return budget.waitedMs();
     }
   }
   await acquireLocalSlot(budget);
+  return budget.waitedMs();
 }
 
 /**
@@ -463,6 +545,21 @@ export function resetUwCircuitForTest(): void {
   breakerSubState.subscribed = false;
 }
 
+/**
+ * Pure formatter for the queue-wait log line — separated from `throttleUw` so the threshold
+ * and tagging logic are unit-testable without simulating real rate-limiter contention. Returns
+ * `null` when the wait was under threshold (the common, uncontended case — not worth a log line).
+ */
+export function formatQueueWaitLog(waitedMs: number, isBackgroundSweep: boolean): string | null {
+  if (waitedMs < QUEUE_WAIT_LOG_THRESHOLD_MS) return null;
+  // Background-tagged sweeps (vector-pick-sweep, vector-dark-pool-warm, etc.) are EXPECTED to
+  // queue behind live traffic by design (runWithBackgroundUwSweep reserves them the smaller
+  // ceiling) — tagging which side of that split a slow admission fell on is the whole point of
+  // this log line, so a live-traffic wait and a background-sweep wait are never conflated when
+  // reading it back.
+  return `[uw] queue wait ${waitedMs}ms${isBackgroundSweep ? " (background sweep)" : ""}`;
+}
+
 /** Pace a single UW HTTP call through local + optional Redis-global buckets. */
 export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   // Hunt-budget gate (cache-reader rule): when a Night Hawk hunt is running, a GENUINE
@@ -474,7 +571,9 @@ export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   if (!tryClaimHuntUwCall()) {
     throw new UwHuntBudgetExhaustedError();
   }
-  await acquireSlot();
+  const waitedMs = await acquireSlot();
+  const logLine = formatQueueWaitLog(waitedMs, isBackgroundUwSweep());
+  if (logLine) console.warn(logLine);
   try {
     return await fn();
   } finally {

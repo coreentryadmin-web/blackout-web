@@ -22,11 +22,12 @@
 //    same skip-grading philosophy as the 0DTE rejection funnel.
 
 import { MIN_PUBLISH_SCORE } from "./constants";
-import { gatePromoteMinScore } from "./edition-quality";
+import { gatePromoteMinScore, legacyMinPublishTier } from "./edition-quality";
 import { publishGateBlockedRecapReason } from "./edition-funnel";
 import type { PlaybookPlay } from "./types";
 import type { TickerDossier } from "./dossier";
 import type { ScoredCandidate } from "./scorer";
+import { nhConvictionRank } from "./nighthawk-tiers";
 import {
   computeNighthawkPublishGeometry,
   type NighthawkPublishGeometry,
@@ -56,17 +57,18 @@ export const GATE_BAND_MAX_DISTANCE_PCT = 3.5;
  * K × ATR14. Measured from the FILL EDGE, not spot, because that is the entry the play
  * grades from (and G-N1 already pins the edge near spot for anything that publishes).
  *
- * WHY 3.5 (Phase 5 / Jul-27 zero-play fix): 2.5× was blocking ALL plays on the Jul 27
- * edition — catalyst/momentum names routinely move 3–4× ATR in a single session,
- * especially post-earnings or on a gap open. ATR14 is also estimated from prior-day
- * range which can be narrower than the true 14-day average on a compressed-vol day,
- * making the effective gate even tighter. 3.5× allows strong-expansion targets built
- * from real S/R levels while still catching the catastrophic class (+8.6%..+106.6%
- * targets ≈ 5×–20×+ ATR). The gate is now also PROMOTABLE (removed from
- * NON_PROMOTABLE_GATE_CODES) so even a 4× target publishes with a warning rather than
- * killing the entire edition.
+ * WHY 2.0 (2026-09 calibration): measured one-session touch rate falls off a cliff above
+ * 1.0× ATR (see target-reachability.ts). 3.5× allowed targets with ~0.1% touch odds —
+ * the dominant debrief failure mode. 2.0× still permits catalyst expansion (~0.9% touch)
+ * while blocking the catastrophic +5×–20× class. Gate-promote rescue caps even lower
+ * (GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE) so thin editions cannot resurrect unreachable
+ * targets.
  */
-export const GATE_TARGET_MAX_ATR_MULTIPLE = 3.5;
+export const GATE_TARGET_MAX_ATR_MULTIPLE = 2.0;
+
+/** Gate-promote rescue may not admit a play whose ONLY soft failure is a target beyond
+ *  this multiple — measured touch rate is already sub-1% at 2.0×. */
+export const GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE = 2.0;
 
 /**
  * G-N4 book-vs-tape alignment (`book_tape_conflict`) — the gate named but never built in
@@ -383,7 +385,14 @@ export function publishGateRecapReason(blocked: NighthawkGateBlockedPlay[]): str
  *  failures (band/target/unknown) stay blocked — only softer failures (e.g.
  *  stale_quote_basis alone) may promote with warnings. */
 export function isPromotableBlockedPlay(b: NighthawkGateBlockedPlay): boolean {
-  return b.result.blocks.every((block) => !NON_PROMOTABLE_GATE_CODES.has(block.code));
+  return b.result.blocks.every((block) => {
+    if (NON_PROMOTABLE_GATE_CODES.has(block.code)) return false;
+    if (block.code === "target_unreachable") {
+      const v = Number(block.value);
+      if (Number.isFinite(v) && v > GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE) return false;
+    }
+    return true;
+  });
 }
 
 /** gate_promoted plays are best-available rescues — cap displayed conviction at B
@@ -426,9 +435,14 @@ export function promoteTopBlocked(
   if (!blocked.length || count <= 0) return [];
 
   const minScore = gatePromoteMinScore();
-  const promotable = blocked.filter(
-    (b) => isPromotableBlockedPlay(b) && (b.play.score ?? 0) >= minScore,
-  );
+  const minTierRank = nhConvictionRank(legacyMinPublishTier());
+  const promotable = blocked.filter((b) => {
+    if (!isPromotableBlockedPlay(b)) return false;
+    if ((b.play.score ?? 0) < minScore) return false;
+    const conv = String(b.play.conviction ?? "").trim().toUpperCase();
+    if (nhConvictionRank(conv) < minTierRank) return false;
+    return true;
+  });
   if (!promotable.length) return [];
 
   const sorted = [...promotable].sort((a, b) => promotionBadness(a) - promotionBadness(b));

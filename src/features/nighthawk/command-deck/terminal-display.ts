@@ -6,7 +6,9 @@ import type { ThesisHealthPayload, ThesisPillarState } from "@/lib/zerodte/thesi
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { DeckStatus, ExitModel, Recommendation, TerminalPlay } from "./types";
 import { playQualityPct } from "./play-card-display";
+import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 import { ARCHETYPE_META, SWING_SUB_LANES, type SwingArchetype, type SwingSubLane } from "@/lib/swing/taxonomy";
+import { thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
 
 export type ChecklistItem = { label: string; ok: boolean | null };
 
@@ -25,11 +27,29 @@ export type ManagementActionDisplay = {
   probabilityPct: number | null;
 };
 
+// SWING committed positions can carry an aggregate `health` computed from generic
+// uncalibrated pillar defaults (setup/entry/signal inputs not wired) — same gap
+// `thesisHealthSection`/`holdPlanSection` withhold on the Ask Largo brief. 0DTE thesis
+// health is always computed from live entry_context cortex reads, so it never trips this
+// check (a genuinely partial 0DTE pillar is a single-pillar `na`, not the whole-payload
+// swing-default pattern `thesisHealthUncalibrated` looks for) — scope the guard to SWING
+// so a real 0DTE score/label is never withheld by mistake.
+function healthIsCalibrated(play: TerminalPlay): boolean {
+  return !(play.horizon === "SWING" && thesisHealthUncalibrated(play.thesisHealth));
+}
+
 /** Thesis strength 0–100 — thesis health when wired, else null (never fabricated). */
 export function thesisStrengthPct(play: TerminalPlay): number | null {
-  if (play.thesisHealth?.health != null && Number.isFinite(play.thesisHealth.health)) {
+  if (
+    play.thesisHealth?.health != null &&
+    Number.isFinite(play.thesisHealth.health) &&
+    healthIsCalibrated(play)
+  ) {
     return Math.round(Math.max(0, Math.min(100, play.thesisHealth.health)));
   }
+  // Committed SWING rows can carry thesisBreak warn/break derived from the same
+  // uncalibrated health — never fabricate 45%/15% substitutes when inputs aren't wired.
+  if (!healthIsCalibrated(play)) return null;
   if (play.thesisBreak?.level === "intact") return null;
   if (play.thesisBreak?.level === "warn") return 45;
   if (play.thesisBreak?.level === "break") return 15;
@@ -99,7 +119,10 @@ export function unifiedChecklist(play: TerminalPlay): ChecklistItem[] {
 }
 
 export function convictionDisplay(play: TerminalPlay): ConvictionDisplay {
-  const grade = play.tierLabel?.trim() || null;
+  let grade = play.tierLabel?.trim() || null;
+  if (!grade && (play.horizon === "SWING" || play.horizon === "LEAPS") && play.score > 0) {
+    grade = convictionFromScore(Math.round(play.score));
+  }
   const q = playQualityPct(play);
   const score =
     q ??
@@ -124,7 +147,9 @@ function managementReason(
   if (recommendation === "TRIM") {
     return exitModel === "SCALE_OUT" ? "Trim ladder" : "Ratchet target";
   }
-  if (play.thesisHealth && play.thesisHealth.health < 60) return "Thesis fading";
+  if (play.thesisHealth && play.thesisHealth.health < 60 && healthIsCalibrated(play)) {
+    return "Thesis fading";
+  }
   return "Hold plan";
 }
 
@@ -135,7 +160,11 @@ function actionProbability(
 ): number | null {
   // WATCH/SKIP rows have no committed position — never paint score-as-confidence on candidates.
   if (play.status === "WATCH" || play.status === "SKIP") return null;
-  if (play.thesisHealth?.health != null && Number.isFinite(play.thesisHealth.health)) {
+  if (
+    play.thesisHealth?.health != null &&
+    Number.isFinite(play.thesisHealth.health) &&
+    healthIsCalibrated(play)
+  ) {
     if (recommendation === "SELL") {
       return Math.round(Math.max(0, Math.min(99, 100 - play.thesisHealth.health)));
     }
@@ -156,8 +185,19 @@ export function managementActionDisplay(
   let verb = recommendation;
   let sizePct: number | null = null;
   if (recommendation === "TRIM" && play.exitPolicy?.trim_levels) {
+    // Only size the action off a REAL, still-pending trim tranche. SWING's exit policy
+    // (SWING_SCALE_OUT_POLICY, src/lib/swing/exit-policy.ts) is a single-tranche ladder — one
+    // level banking 50% at 2x, then a runner. Once that one level fires (true for essentially
+    // every SWING play whose recommendation reaches TRIM), `find` returns undefined and there
+    // is no scripted "next" size — only the runner remains. This USED to fall back to a
+    // hardcoded `33`, a magic constant that only matches 0DTE's unrelated 3-tranche (⅓ each)
+    // trim_scale ladder — fabricating a "TRIM 33%" that contradicts the same panel's own
+    // narrative text ("all trims banked — runner only"). Render a bare "TRIM" (sizePct null)
+    // instead, matching play-card-lifecycle.ts's swingActionDisplay, which already handles
+    // this exact all-fired case honestly. Both render call sites (ManagementActionCard,
+    // SwingBriefActionStrip) already null-guard sizePct before appending "%".
     const next = play.exitPolicy.trim_levels.find((t) => !t.fired);
-    sizePct = next ? Math.round(next.fraction * 100) : 33;
+    sizePct = next ? Math.round(next.fraction * 100) : null;
     verb = "TRIM";
   } else if (recommendation === "SELL") {
     sizePct = 100;
@@ -190,7 +230,10 @@ export type TrimLadderVisual = {
 };
 
 /** Visual trim ladder segments for the management tab. */
-export function trimLadderVisual(exitPolicy: TerminalExitLadder | null | undefined): TrimLadderVisual[] {
+export function trimLadderVisual(
+  exitPolicy: TerminalExitLadder | null | undefined,
+  runnerTargetPct?: number | null
+): TrimLadderVisual[] {
   if (!exitPolicy || exitPolicy.policy !== "trim_scale") return [];
   const rows: TrimLadderVisual[] = exitPolicy.trim_levels.map((t, i) => ({
     label: `Target ${i + 1}`,
@@ -199,11 +242,13 @@ export function trimLadderVisual(exitPolicy: TerminalExitLadder | null | undefin
     triggerPct: t.trigger_pct,
   }));
   const anyFired = exitPolicy.trim_levels.some((t) => t.fired);
+  const runnerLabel =
+    runnerTargetPct != null && runnerTargetPct > 100 ? `Runner ${Math.round(runnerTargetPct)}%` : "Runner";
   rows.push({
-    label: "Runner",
+    label: runnerLabel,
     fill: anyFired ? 0.55 : 0.2,
     state: anyFired ? "live" : "pending",
-    triggerPct: null,
+    triggerPct: runnerTargetPct != null && runnerTargetPct > 100 ? runnerTargetPct : null,
   });
   return rows;
 }
@@ -213,14 +258,16 @@ export type TradeOutcomeDisplay = {
   closePct: number | null;
   bestPct: number | null;
   worstPct: number | null;
+  mfeCapturePct: number | null;
 };
 
 export function tradeOutcomeDisplay(play: TerminalPlay): TradeOutcomeDisplay {
   const closePct = play.status === "CLOSED" ? play.pnlPct : play.pnlPct;
   const bestPct = play.peak ?? null;
   const worstPct = play.trough ?? null;
+  const mfeCapturePct = play.mfeCapturePct ?? null;
   if (play.status !== "CLOSED") {
-    return { verdict: "OPEN", closePct: closePct ?? null, bestPct, worstPct };
+    return { verdict: "OPEN", closePct: closePct ?? null, bestPct, worstPct, mfeCapturePct: null };
   }
   const p = closePct ?? 0;
   return {
@@ -228,6 +275,7 @@ export function tradeOutcomeDisplay(play: TerminalPlay): TradeOutcomeDisplay {
     closePct: closePct ?? null,
     bestPct,
     worstPct,
+    mfeCapturePct,
   };
 }
 

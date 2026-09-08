@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildDeskEvidenceLines,
   countDeskAlignment,
+  deskEvidenceStatusLabel,
 } from "./desk-evidence-lines";
 import type { MergedThesis } from "./types";
 
@@ -105,4 +106,11 @@ test("countDeskAlignment excludes unavailable desks", () => {
   const { aligned, available } = countDeskAlignment(lines);
   assert.ok(aligned >= 3);
   assert.ok(available >= 4);
+});
+
+test("deskEvidenceStatusLabel: neutral reads 'neutral', not 'mixed' — a below-threshold or non-confirming read is not the same claim as conflicting evidence", () => {
+  assert.equal(deskEvidenceStatusLabel("neutral"), "neutral");
+  assert.equal(deskEvidenceStatusLabel("aligned"), "aligned");
+  assert.equal(deskEvidenceStatusLabel("opposed"), "opp");
+  assert.equal(deskEvidenceStatusLabel("unavailable"), "—");
 });

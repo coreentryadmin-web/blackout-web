@@ -111,3 +111,7 @@ test("isThermalEodRecapDue — after close window", () => {
   assert.equal(isThermalEodRecapDue(new Date("2026-08-05T20:10:00.000Z")), true); // 4:10 PM ET (EDT)
   assert.equal(isThermalEodRecapDue(new Date("2026-08-05T13:30:00.000Z")), false); // 9:30 AM ET RTH
 });
+
+test("isThermalEodRecapDue — false on NYSE holiday even in 4:00-4:30 ET band", () => {
+  assert.equal(isThermalEodRecapDue(new Date("2026-09-07T20:10:00.000Z")), false); // Labor Day 4:10 PM ET
+});

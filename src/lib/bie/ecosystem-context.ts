@@ -11,9 +11,14 @@ import { fitVectorFullStateForModel } from "@/lib/bie/vector-full-state-fit";
 // ticker class below) so EVERY composer that reads fetchEcosystemContext (the ecosystem narrative,
 // the ticker verdict, …) can cite macro/earnings/fundamentals/peers/news, not just the #59 verdict.
 import { fetchNextEarningsDate, type NextEarnings } from "@/lib/providers/uw-earnings";
-import { fetchTickerFundamentalsBundle, type TickerFundamentalsBundle } from "@/lib/bie/ticker-fundamentals";
+import {
+  fetchTickerFundamentalsBundle,
+  normalizeShortVolumeRatio,
+  type TickerFundamentalsBundle,
+} from "@/lib/bie/ticker-fundamentals";
 import { fetchRelatedCompanies, type RelatedCompanies } from "@/lib/providers/polygon-related";
 import { fetchTickerNews, fetchMarketCatalysts, type NewsResult } from "@/lib/providers/polygon-news";
+import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { fetchPolygonMacroBackdrop, type PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import { fetchMarketBreadthBundle, type MarketBreadthBundle } from "@/lib/bie/market-breadth";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-payload";
@@ -164,7 +169,7 @@ export type EcosystemSpxPlay = {
 // type without a second import from spx-play-payload.ts.
 export type { SpxPlayPayload };
 
-import { omitUncalibratedSpxConfidence } from "@/lib/largo/spx-confidence-boundary";
+import { sanitizeSpxPlayPayloadForLargo } from "@/lib/largo/spx-confidence-boundary";
 
 // Re-exported so a consumer of EcosystemContext can name the gex_positioning
 // type without a second import from gex-positioning.ts.
@@ -262,7 +267,9 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
     ? reads.fundamentals && (reads.fundamentals.short_interest?.days_to_cover != null || reads.fundamentals.short_volume_ratio != null)
       ? {
           days_to_cover: reads.fundamentals.short_interest?.days_to_cover ?? null,
-          short_volume_ratio: reads.fundamentals.short_volume_ratio ?? null,
+          short_volume_ratio: reads.fundamentals.short_volume_ratio != null
+            ? normalizeShortVolumeRatio(reads.fundamentals.short_volume_ratio)
+            : null,
           // Benzinga PT is a structured object, not a clean scalar — left out of the numeric slice
           // for now (same call the verdict engine makes); the short-interest read still lands.
           price_target: null,
@@ -301,7 +308,16 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
   const news: EcosystemArsenalNews | null = reads.news
     ? reads.news.unavailable
       ? (unavailable.push({ source: "news", reason: reads.news.unavailable }), null)
-      : { count: reads.news.items.length, newest: reads.news.newest, headlines: reads.news.items.slice(0, 4).map((i) => i.headline) }
+      : {
+          count: reads.news.items.length,
+          newest: reads.news.newest,
+          // Benzinga headlines arrive HTML-entity-encoded (e.g. "&amp;", "&#39;") — the provider
+          // layer keeps them raw by design ("HONESTY" note in polygon-news.ts), and this is a
+          // display consumer, so decode before it reaches a member's screen. Same root cause and
+          // fix as meridian-feed-text.ts's 2026-08-21 correction; this call site was missed then
+          // because it feeds the swing play-brief, not the Meridian desk.
+          headlines: reads.news.items.slice(0, 4).map((i) => sanitizeFeedText(i.headline)),
+        }
     : (unavailable.push({ source: "news", reason: "read failed" }), null);
 
   return { scope: reads.scope, earnings, fundamentals, related, news, macro, breadth, unavailable_sources: unavailable };
@@ -414,6 +430,14 @@ export type EcosystemContext = {
    * every nightly ingest cycle.
    */
   spx_full_state: SpxPlayPayload | null;
+  /**
+   * SPX desk convergence — Vector suggested play vs Slayer execution alignment, gate_rules,
+   * and `matrix_ui` (GEX/VEX lens availability + client-only UI notes). The exact same object
+   * Largo's `get_spx_desk_convergence` tool returns. SPX/SPXW only; null elsewhere.
+   */
+  spx_desk_convergence: Awaited<
+    ReturnType<typeof import("@/lib/largo/spx-desk-convergence").spxDeskConvergenceForLargo>
+  > | null;
   /**
    * Is the live HELIX flow pipeline actually delivering frames right now,
    * cluster-wide (isFlowFrameFreshAnywhere, src/lib/flow-liveness.ts — a
@@ -539,6 +563,7 @@ const ECOSYSTEM_CONTEXT_FIELD_DESCRIPTIONS: Record<Exclude<keyof EcosystemContex
   recent_anomalies: "Pattern-detected flow anomalies (concentration, coordinated sweep, premium spike, put surge) from the last 24h.",
   spx_play: "SPX Slayer's own play-engine state — the current open play (if any) and the most recently closed play. Only populated for ticker SPX/SPXW (spx_open_play/spx_play_outcomes have no ticker column, single-instrument engine); null for every other ticker.",
   spx_full_state: "SPX Slayer's FULL play-engine snapshot — the exact same object Largo's get_spx_play tool returns (phase, every confluence factor, full gate pass/fail state, the 10-item confirmation checklist, MTF/RSI/EMA technicals, adaptive-gate telemetry, watch state, the AI arbiter's verdict, the option ticket). Only populated for ticker SPX/SPXW; null for every other ticker. Sourced from the SAME getSpxPlayState() Largo's tool calls — one derivation, not two.",
+  spx_desk_convergence: "SPX desk convergence — Vector vs Slayer alignment verdict, summarized vector/slayer layers, live gate_rules, matrix_ui (GEX/VEX lens availability; active lens toggle is client-only), and lane_freshness (Pulse/Desk/Flow status per lane). The exact same object Largo's get_spx_desk_convergence tool returns. SPX/SPXW only.",
   flow_feed_fresh: "Whether the live HELIX flow pipeline is actually delivering frames right now, cluster-wide — disambiguates a null/empty recent_flow or recent_anomalies as 'unknown' rather than 'genuinely quiet'.",
   gex_positioning: "BlackOut Thermal's canonical dealer gamma/vanna/delta/charm positioning for this ticker — the exact same object getGexPositioning() returns for the Heat Maps UI, the SPX rail, and Night Hawk's positioning read (spot, flip, call/put wall, max pain, gex_king_strike, net GEX/VEX/DEX/CHARM with posture + regime-read one-liners, nearest_wall, distance_to_flip_pct, optional UW cross-validation). Runs for EVERY ticker, not gated to SPX/SPXW like spx_full_state — GEX positioning isn't a single-instrument product. Distinct from get_positioning (a reshaped, DEX/CHARM-less summary) and get_gex (the raw per-strike chain) — this is the full canonical light contract, in between the two. Null when the shared GEX matrix is cold for this ticker.",
   arsenal: "The #60 data arsenal — Track-B provider readers summarized + relevance-gated by ticker class so any composer can cite them (not just the verdict). Index/ETF tickers get macro backdrop (10y yield, 10y-1y curve, CPI) + market breadth + market catalysts; single names get next-earnings date + short interest (days-to-cover, short-volume ratio) + peers + ticker news. Requested-but-thin legs are surfaced in arsenal.unavailable_sources; irrelevant-for-scope legs are null. Fails open to an empty arsenal — never blanks the rest of the context. Dark-pool levels are NOT duplicated here (already on vector_full_state).",
@@ -560,6 +585,7 @@ function emptyContext(ticker: string): EcosystemContext {
     recent_anomalies: [],
     spx_play: null,
     spx_full_state: null,
+    spx_desk_convergence: null,
     flow_feed_fresh: false,
     gex_positioning: null,
     vector_full_state: null,
@@ -713,7 +739,7 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
     // The arsenal fan-out runs CONCURRENTLY with the existing platform fan-out (not serially after
     // it) — one extra Promise in the outer Promise.all, so it adds no latency beyond its own slowest
     // reader, and its internal fail-open keeps an arsenal hiccup from blanking the rest of the context.
-    const [[zerodteRes, nighthawkRes, auditRes, flowRes, flowFullState, anomalyRes, flowFeedFresh, spxPlay, spxFullState, gexPositioning, vectorFullState], arsenal] = await Promise.all([
+    const [[zerodteRes, nighthawkRes, auditRes, flowRes, flowFullState, anomalyRes, flowFeedFresh, spxPlay, spxFullState, spxDeskConvergence, gexPositioning, vectorFullState], arsenal] = await Promise.all([
       Promise.all([
       dbQuery<{
         session_date: string;
@@ -778,6 +804,16 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
       isFlowFrameFreshAnywhere(),
       isSpxSlayerTicker(upper) ? fetchSpxPlaySummary() : Promise.resolve(null),
       isSpxSlayerTicker(upper) ? fetchSpxFullState() : Promise.resolve(null),
+      isSpxSlayerTicker(upper)
+        ? // Relative specifier, not "@/..." — tsx's alias rewrite only applies to statically-parsed
+          // top-level `import ... from` statements, not a dynamic import() call (confirmed the hard
+          // way: see flow-gex-enrichment.test.ts). An "@/..." specifier here resolves fine under
+          // Next.js's webpack/turbopack bundler at runtime but fails under the test-runner's tsx,
+          // which is exactly the failure this line produced in CI.
+          import("../largo/spx-desk-convergence")
+            .then((m) => m.spxDeskConvergenceForLargo())
+            .catch(() => null)
+        : Promise.resolve(null),
       // Unconditional, unlike the two SPX-only fetches above — GEX positioning
       // isn't a single-instrument product. Called directly (no wrapper): see
       // gex_positioning's doc on EcosystemContext for why getGexPositioning()
@@ -850,7 +886,8 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
       // Uncalibrated `confidence` is stripped at the Largo boundary, exactly as get_spx_play
       // does — this field is documented as "the exact same object", and that must stay true for
       // the omission too or the model gets the fabricated number by taking the other door.
-      spx_full_state: omitUncalibratedSpxConfidence(spxFullState),
+      spx_full_state: sanitizeSpxPlayPayloadForLargo(spxFullState),
+      spx_desk_convergence: spxDeskConvergence,
       flow_feed_fresh: flowFeedFresh,
       gex_positioning: gexPositioning,
       // FITTED for the model, exactly as `get_vector_full_state` fits it. The raw state carries the

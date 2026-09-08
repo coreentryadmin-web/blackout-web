@@ -12,6 +12,8 @@
 //     via the now-exported `correlationGroupOf`, so the index complex has ONE definition across surfaces.
 //   • `sectorFor` (portfolio/sector-map) — the theme-grained ticker→sector map ("semis", "crypto-equity",
 //     "china-adr", …) that already clusters the way a trader's risk does. `null` there ⇒ its own cluster.
+// Cross-desk combined exposure (Q25) uses `portfolio/cross-desk-theme.ts` (`sectorFor` canonical) — NOT this
+// resolver and NOT governor's sector-specific groups directly. SEV-9 unification is intra-swing only.
 // On top of those, `ETF_PROXY_THEMES` reassigns the handful of ETFs whose REAL risk driver is not their index
 // label: QQQ / NDX / SMH / SOXX are dominated by semis + mega-cap tech, so for swing concentration they cluster
 // with NVDA, not with IWM. That override is what makes `sameThesis("QQQ","NVDA") === true` (the SEV-9 invariant).

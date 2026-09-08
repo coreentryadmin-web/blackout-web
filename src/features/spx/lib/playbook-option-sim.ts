@@ -58,10 +58,10 @@ export function simulateOptionEntry(input: OptionSimInput): OptionSimResult {
   const halfSpread = Math.max(0, input.spread_width) / 2;
   const slip = (input.option_mid * playbookOptionSlippageBps()) / 10_000;
   const slippagePts = halfSpread + slip;
-  const assumedFill =
-    input.direction === "long"
-      ? input.option_mid + slippagePts
-      : Math.max(0.01, input.option_mid - slippagePts);
+  // `input.direction` is the play's underlying stance (long calls a rally, short calls a drop),
+  // not buy/sell — SPX Slayer always OPENS by buying an option regardless of direction (a long
+  // play buys a call, a short play buys a put), so the adverse fill is always above mid here.
+  const assumedFill = input.option_mid + slippagePts;
 
   return {
     assumed_fill: assumedFill,
@@ -71,15 +71,17 @@ export function simulateOptionEntry(input: OptionSimInput): OptionSimResult {
   };
 }
 
-/** Exit fill model — same adverse half-spread + bps (conservative research default). */
+/**
+ * Exit fill model — same adverse half-spread + bps (conservative research default).
+ * Same reasoning as `simulateOptionEntry`: every SPX Slayer play CLOSES by selling the option it
+ * bought to enter, regardless of the play's long/short direction, so the adverse fill is always
+ * below mid here.
+ */
 export function simulateOptionExit(input: OptionSimInput): OptionSimResult {
   const halfSpread = Math.max(0, input.spread_width) / 2;
   const slip = (input.option_mid * playbookOptionSlippageBps()) / 10_000;
   const slippagePts = halfSpread + slip;
-  const assumedFill =
-    input.direction === "long"
-      ? Math.max(0.01, input.option_mid - slippagePts)
-      : input.option_mid + slippagePts;
+  const assumedFill = Math.max(0.01, input.option_mid - slippagePts);
 
   return {
     assumed_fill: assumedFill,

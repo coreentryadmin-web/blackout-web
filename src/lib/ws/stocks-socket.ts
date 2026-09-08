@@ -24,6 +24,7 @@ import {
 } from "@/lib/ws/leader-lock-shared";
 import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "@/lib/ws/leader-lock-fencing";
 import { recordStockTick, getStockCandleStoreStats } from "@/lib/ws/stock-candle-store";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const STOCKS_WS_URL = process.env.STOCKS_WS_URL ?? MASSIVE_WS_STOCKS;
 const POLYGON_API_KEY = process.env.POLYGON_API_KEY ?? process.env.MASSIVE_API_KEY ?? "";
@@ -157,7 +158,8 @@ function startStocksWatchdog() {
     if (!inOptionsMarketHours()) return;
     // Stall detection: use the most recent of ANY message (agg or LULD)
     const at = Math.max(lastStocksMessageAt, luldHaltsStore.last_message_at);
-    if (stocksWs?.readyState === WebSocket.OPEN && at > 0 && Date.now() - at > STOCKS_STALL_MS) {
+    const now = Date.now();
+    if (stocksWs?.readyState === WebSocket.OPEN && at > 0 && !isWsUpdatedAtFresh(at, STOCKS_STALL_MS, now)) {
       console.warn("[stocks-socket] feed stalled — forcing reconnect");
       lastStocksMessageAt = 0;
       touchLuldMessageAt(0);
@@ -337,14 +339,47 @@ export function getStocksSocketStatus() {
   };
 }
 
+/**
+ * Pure decision core for isLuldHaltSourceStale, extracted so it is unit-testable without opening
+ * a real WebSocket or Redis connection (mirrors uw-socket-stall.ts's relationship to uw-socket.ts).
+ *
+ * `connectionOpen` (readyState OPEN + authenticated) is NOT itself proof of freshness — a
+ * half-open TCP socket keeps reporting OPEN while silently delivering nothing, which is exactly
+ * the failure mode startStocksWatchdog above exists to detect and reconnect from (it uses this
+ * same `Math.max(lastStocksMessageAt, luldHaltsStore.last_message_at)` pattern). So an OPEN
+ * connection is only treated as fresh when it can show an actual recent delivery: either an A/AM
+ * aggregate (streaming ~430/sec during RTH) or a LULD frame. A/AM freshness is a valid proxy for
+ * "the LULD subscription itself is alive" because LULD.* is EVENT-ONLY — like uw-socket.ts's
+ * trading_halts, it can be legitimately silent for an entire halt-free session, so keying
+ * liveness off LULD's own last message alone would flag almost every normal session stale.
+ */
+export function isLuldHaltSourceStaleForState(
+  connectionOpen: boolean,
+  localFreshestAt: number,
+  clusterMessageAt: number | null,
+  ownLastMessageAt: number,
+  maxAgeMs: number,
+  now = Date.now()
+): boolean {
+  if (connectionOpen && localFreshestAt > 0 && isWsUpdatedAtFresh(localFreshestAt, maxAgeMs, now)) {
+    return false;
+  }
+  if (clusterMessageAt != null && isWsUpdatedAtFresh(clusterMessageAt, maxAgeMs, now)) return false;
+  return ownLastMessageAt <= 0 || !isWsUpdatedAtFresh(ownLastMessageAt, maxAgeMs, now);
+}
+
 /** False when the LULD feed is unavailable (local ingest socket OR cluster heartbeat). */
 export function isLuldHaltSourceStale(maxAgeMs: number): boolean {
   if (!luldWsEnabled()) return true;
-  if (stocksAuthenticated && stocksWs?.readyState === WebSocket.OPEN) return false;
-  const clusterAt = getClusterLuldLastMessageAt();
-  if (clusterAt != null && Date.now() - clusterAt <= maxAgeMs) return false;
-  const at = luldHaltsStore.last_message_at;
-  return at <= 0 || Date.now() - at > maxAgeMs;
+  const connectionOpen = stocksAuthenticated && stocksWs?.readyState === WebSocket.OPEN;
+  const localFreshestAt = Math.max(lastStocksMessageAt, luldHaltsStore.last_message_at);
+  return isLuldHaltSourceStaleForState(
+    Boolean(connectionOpen),
+    localFreshestAt,
+    getClusterLuldLastMessageAt(),
+    luldHaltsStore.last_message_at,
+    maxAgeMs
+  );
 }
 
 export { hasActiveLuldHalt, getActiveLuldHalts } from "@/lib/ws/luld-halts-store";

@@ -8,6 +8,8 @@ import {
   vectorPlayBieBucketKey,
 } from "@/lib/bie/vector-play-bie";
 import type { VectorPlayInput } from "@/features/vector/lib/vector-play-engine";
+import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-rounding";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -75,11 +77,15 @@ export async function POST(req: NextRequest) {
   const bie = await resolveVectorPlayBieContext(snapshot);
 
   return NextResponse.json(
-    {
-      bucketKey,
-      bie,
-      insufficientSample: bie == null,
-    },
+    roundFloats(
+      {
+        bucketKey,
+        bie,
+        insufficientSample: bie == null,
+      },
+      2,
+      VECTOR_FRACTION_DP
+    ),
     { headers: NO_STORE_HEADERS }
   );
 }

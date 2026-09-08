@@ -19,6 +19,7 @@ test("llms.txt links every canonical top-level marketing page", async () => {
     "/why-blackout",
     "/vs/others",
     "/tools/gamma-snapshot",
+    "/methodology",
     "/about",
     "/contact",
     "/learn",

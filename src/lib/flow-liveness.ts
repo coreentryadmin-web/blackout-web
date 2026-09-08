@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 
 /**
@@ -39,6 +40,14 @@ const INSTANCE_ID = randomUUID();
 
 type HeartbeatRecord = { at: number; instance: string };
 
+/** Shared future-timestamp guard for every cluster heartbeat freshness read. */
+export function flowHeartbeatAgeMs(
+  recordAt: number,
+  nowMs = Date.now()
+): number | null {
+  return signalWindowAgeMs(recordAt, nowMs);
+}
+
 let lastWriteAt = 0;
 // Throttle writes: WS can deliver many frames/sec; one Redis SET per frame is
 // wasteful. One write per 5s keeps the heartbeat fresh without hammering Redis.
@@ -77,7 +86,8 @@ export async function isFlowFrameFreshFromCluster(maxAgeMs = 120_000): Promise<b
     if (!record || typeof record.at !== "number") return false;
     // A heartbeat written by THIS process must not let it skip its own REST work.
     if (record.instance === INSTANCE_ID) return false;
-    return Date.now() - record.at <= maxAgeMs;
+    const ageMs = flowHeartbeatAgeMs(record.at);
+    return ageMs != null && ageMs <= maxAgeMs;
   } catch {
     return false;
   }
@@ -105,7 +115,8 @@ export async function isFlowFrameFreshAnywhere(maxAgeMs = 120_000): Promise<bool
   try {
     const record = await sharedCacheGet<HeartbeatRecord>(HEARTBEAT_KEY);
     if (!record || typeof record.at !== "number") return false;
-    return Date.now() - record.at <= maxAgeMs;
+    const ageMs = flowHeartbeatAgeMs(record.at);
+    return ageMs != null && ageMs <= maxAgeMs;
   } catch {
     return false;
   }
@@ -145,12 +156,12 @@ export async function peekFlowLivenessHeartbeat(maxAgeMs = 120_000): Promise<Flo
     if (!record || typeof record.at !== "number") {
       return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };
     }
-    const ageMs = Date.now() - record.at;
+    const ageMs = flowHeartbeatAgeMs(record.at);
     return {
       heartbeat_present: true,
       last_frame_at: new Date(record.at).toISOString(),
-      age_sec: Math.max(0, Math.round(ageMs / 1000)),
-      fresh: ageMs <= maxAgeMs,
+      age_sec: ageMs != null ? Math.max(0, Math.round(ageMs / 1000)) : null,
+      fresh: ageMs != null && ageMs <= maxAgeMs,
     };
   } catch {
     return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };

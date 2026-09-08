@@ -2,7 +2,7 @@
 
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
-import { fmtPct, fmtPrice } from "@/lib/api";
+import { dayChangeTextClass, fmtPct, fmtPrice } from "@/lib/api";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -29,7 +29,7 @@ function localRegimeChip(desk?: SpxDeskPayload): string | null {
 export function SpxIosMarketStrip({ desk, live, sessionActive }: Props) {
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   const showValues = Boolean(live || hasQuote);
-  const bull = (desk?.spx_change_pct ?? 0) >= 0;
+  const changeTone = dayChangeTextClass(desk?.spx_change_pct ?? null);
   const aboveVwap =
     desk?.vwap != null && desk?.price != null
       ? desk.price >= desk.vwap
@@ -41,10 +41,10 @@ export function SpxIosMarketStrip({ desk, live, sessionActive }: Props) {
     <div className="spx-ios-market-strip" aria-label="Live market summary">
       <div className="spx-ios-market-strip-main">
         <span className="spx-ios-market-strip-ticker">SPX</span>
-        <span className={clsx("spx-ios-market-strip-price t-num", bull ? "text-bull" : "text-bear-text")}>
+        <span className={clsx("spx-ios-market-strip-price t-num", changeTone)}>
           {showValues ? fmtPrice(desk?.price ?? null, 2) : "—"}
         </span>
-        <span className={clsx("spx-ios-market-strip-pct t-num", bull ? "text-bull" : "text-bear-text")}>
+        <span className={clsx("spx-ios-market-strip-pct t-num", changeTone)}>
           {showValues ? fmtPct(desk?.spx_change_pct ?? null) : "—"}
         </span>
       </div>

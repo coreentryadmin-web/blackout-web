@@ -43,11 +43,11 @@ export const GUIDE_SEO: Record<LearnSlug, GuideSeo> = {
     breadcrumb: "Largo",
   },
   "night-hawk": {
-    metaTitle: "Night Hawk Guide — Swing Trading Setups Explained",
+    metaTitle: "Night Hawk Guide — 0DTE Command & Evening Edition",
     metaDescription:
-      "Learn how Night Hawk grades swing trading setups and runs its evening scanner to surface the next day's best opportunities after the market closes.",
+      "Learn how Night Hawk works: 0DTE Command scans the market intraday with graded plays, then Evening Edition preps the next session after the close.",
     datePublished: "2026-04-01",
-    dateModified: "2026-08-01",
+    dateModified: "2026-09-04",
     breadcrumb: "Night Hawk",
   },
   "heat-maps": {
@@ -57,6 +57,22 @@ export const GUIDE_SEO: Record<LearnSlug, GuideSeo> = {
     datePublished: "2026-01-15",
     dateModified: "2026-08-01",
     breadcrumb: "Thermal",
+  },
+  vector: {
+    metaTitle: "Vector Guide — Cross-Ticker Gamma & Flow Screener",
+    metaDescription:
+      "Learn how Vector screens the whole universe: nearest-flip, most-pinned, most-explosive presets, GEX ladders, wall integrity, and ranked contract picks.",
+    datePublished: "2026-09-04",
+    dateModified: "2026-09-04",
+    breadcrumb: "Vector",
+  },
+  meridian: {
+    metaTitle: "Meridian Guide — Catalyst Timeline & Earnings Desk",
+    metaDescription:
+      "Learn how Meridian tracks earnings, macro, OpEx, and FDA catalysts on one timeline, with a five-tab earnings desk for estimates, positioning, and history.",
+    datePublished: "2026-09-04",
+    dateModified: "2026-09-04",
+    breadcrumb: "Meridian",
   },
   glossary: {
     metaTitle: "Options Trading Glossary — Gamma, 0DTE, Flow Terms",

@@ -11,10 +11,24 @@ import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
 import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
+import { occFromChainContract } from "@/lib/swing/occ-from-row";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
-import { thesisManagementOverlay } from "@/lib/zerodte/thesis-health";
+import { thesisManagementOverlay, formatComputedEt } from "@/lib/zerodte/thesis-health";
+import { buildTerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
+import { SWING_SCALE_OUT_POLICY } from "@/lib/swing/exit-policy";
+import { swingEntryVerdict } from "@/lib/swing/entry-verdict";
+import {
+  evaluateSwingEntryEnterability,
+  type SwingEntryAction,
+} from "@/lib/swing/entry-enterability";
+import type { SwingSubLane } from "@/lib/swing/taxonomy";
+import { computeSwingThesisHealth, thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
+import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
+import type { SwingManageAction } from "@/lib/swing/manage";
+import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
+import { resolveLegacyPlayOcc } from "@/features/nighthawk/lib/legacy-play-contract";
 import type {
   DeckCondor,
   DeckDirection,
@@ -28,6 +42,9 @@ import type {
 } from "./types";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
+import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
+import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
+import { vectorSideToDirection } from "@/lib/zerodte/vector-commit-boost";
 
 const asDir = (d: unknown): DeckDirection =>
   String(d ?? "").toLowerCase().startsWith("s") || String(d ?? "") === "SHORT" ? "SHORT" : "LONG";
@@ -36,6 +53,50 @@ const asStatus = (s: unknown): DeckStatus => {
   return (["OPEN", "HOLD", "TRIM", "CLOSED", "WATCH", "SKIP"].includes(u) ? u : "WATCH") as DeckStatus;
 };
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
+
+function cortexPreviewMetrics(cortex: unknown): {
+  cortexScore: number | null;
+  cortexVetoCount: number | null;
+  cortexSupportCount: number | null;
+  cortexAbsentCount: number | null;
+} {
+  if (!cortex || typeof cortex !== "object") {
+    return { cortexScore: null, cortexVetoCount: null, cortexSupportCount: null, cortexAbsentCount: null };
+  }
+  const c = cortex as Record<string, unknown>;
+  if (c.abstained === true) {
+    return { cortexScore: null, cortexVetoCount: null, cortexSupportCount: null, cortexAbsentCount: null };
+  }
+  const verdict =
+    c.verdict && typeof c.verdict === "object" ? (c.verdict as Record<string, unknown>) : c;
+  return {
+    cortexScore: fin(verdict.score),
+    cortexVetoCount: Array.isArray(verdict.vetoes) ? verdict.vetoes.length : null,
+    cortexSupportCount: Array.isArray(verdict.supports) ? verdict.supports.length : null,
+    cortexAbsentCount: Array.isArray(verdict.absent) ? verdict.absent.length : null,
+  };
+}
+
+function vectorPulseForPreview(
+  pulse: ZeroDteDeckSource["vector_pulse"],
+  setupDirection: "long" | "short"
+): ZeroDteVectorPulse | null {
+  if (!pulse) return null;
+  const direction = pulse.direction ?? vectorSideToDirection(pulse.side) ?? setupDirection;
+  return {
+    premium_pct: pulse.premium_pct,
+    peak_premium_pct: pulse.peak_premium_pct,
+    action_status: pulse.action_status,
+    is_winner: pulse.is_winner,
+    is_runner: pulse.is_runner,
+    side: pulse.side ?? (setupDirection === "long" ? "call" : "put"),
+    direction,
+    strike: null,
+    occ: null,
+    rank: null,
+    role: null,
+  };
+}
 
 /** R:R from the plan's target/stop premiums (reward ÷ risk, relative to a hypothetical entry at the mid). */
 function rrFromPlan(plan: { stop_premium?: number | null; target_premium?: number | null } | null | undefined): number | null {
@@ -110,6 +171,56 @@ export function managementFor(
   return { recommendation, recNote, progress };
 }
 
+function recommendationFromManageAction(action: SwingManageAction | null | undefined): Recommendation | null {
+  if (!action) return null;
+  switch (action) {
+    case "EXIT":
+    case "STOP_OUT":
+      return "SELL";
+    case "TAKE_PARTIAL":
+    case "EXIT_RUNNER":
+      return "TRIM";
+    case "ADD":
+      return "BUY";
+    default:
+      return "HOLD";
+  }
+}
+
+/** Shared swing verdict: thesis overlay first, then manage-engine action wins (matches board adapter). */
+function swingManagementVerdict(
+  play: Pick<TerminalPlay, "exitModel" | "status" | "pnlPct" | "recNote" | "thesisHealth" | "manageAction">,
+  reasonFallback?: string | null,
+): { recommendation: Recommendation; recNote: string; progress: number | null } {
+  const mgmtBase = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
+  const working = play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
+  const note = play.recNote ?? reasonFallback ?? mgmtBase.recNote;
+  // An uncalibrated swing health (setup/entry/signal inputs not wired for committed
+  // positions — same gap the Ask Largo brief withholds on) still carries a numeric
+  // `health` computed from generic pillar defaults. Folding that into the recNote here
+  // leaked the withheld % right back into Management/Verdict — skip the overlay entirely
+  // when uncalibrated so recNote/recommendation stay grounded in price/manage-action only.
+  const withThesis =
+    play.thesisHealth != null && !thesisHealthUncalibrated(play.thesisHealth)
+      ? thesisManagementOverlay(mgmtBase.recommendation, note, play.thesisHealth, play.pnlPct ?? null)
+      : { recommendation: mgmtBase.recommendation, recNote: note };
+  const fromAction = working ? recommendationFromManageAction(play.manageAction) : null;
+  if (fromAction) withThesis.recommendation = fromAction;
+  return { ...withThesis, progress: mgmtBase.progress };
+}
+
+/** Recompute swing management advisory @ 1 Hz — scale-out ladder + thesis health overlay. */
+export function refreshSwingManagement(play: TerminalPlay): TerminalPlay {
+  if (play.horizon !== "SWING") return play;
+  const mgmt = swingManagementVerdict(play);
+  return {
+    ...play,
+    recommendation: mgmt.recommendation,
+    recNote: mgmt.recNote,
+    progress: mgmt.progress,
+  };
+}
+
 /** Recompute management advisory from live P&L + thesis health (called every ~1s on SSE mark tick). */
 export function refreshZeroDteManagement(play: TerminalPlay): TerminalPlay {
   if (play.horizon !== "ZERO_DTE") return play;
@@ -144,6 +255,8 @@ export interface ZeroDteDeckSource {
   setup?: {
     direction?: "long" | "short";
     dte?: number | null;
+    actual_dte_at_commit?: number | null;
+    contract_horizon?: string | null;
     top_strike?: number | null;
     gamma_regime?: string | null;
     flow_quality?: { components?: Record<string, number> } | null;
@@ -166,6 +279,8 @@ export interface ZeroDteDeckSource {
     first_seen?: string | null;
     /** Thesis-first pipeline snapshot when ZERODTE_THESIS_FIRST is armed. */
     thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
+    discovery_origin?: string[] | null;
+    cortex?: unknown;
   } | null;
   /** Bare board setups carry thesis_first at the top level (same shape as nested setup). */
   thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
@@ -223,6 +338,22 @@ export interface ZeroDteDeckSource {
   underlying_price?: number | null;
   /** Thesis Health payload from the board ledger row (server-computed each board build). */
   thesis_health?: import("@/lib/zerodte/thesis-health").ThesisHealthPayload | null;
+  /** Hard-gate block sentences for SKIP/WATCH rows (setup.gate.blocks). */
+  gate_blocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;
+  /** Vector desk pulse for this ticker today — cross-desk link only. */
+  vector_pulse?: {
+    premium_pct: number | null;
+    peak_premium_pct: number | null;
+    action_status: string | null;
+    is_winner: boolean;
+    is_runner: boolean;
+    side?: "call" | "put" | null;
+    direction?: "long" | "short" | null;
+  } | null;
+  peak_pnl_pct?: number | null;
+  mfe_capture_pct?: number | null;
+  runner_profile?: { target_pct: number; tag: string; regime: string } | null;
+  target_pct?: number | null;
   closed_reason?: string | null;
   exit_reason?: string | null;
   exit_detail?: string | null;
@@ -262,7 +393,7 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const status = asStatus(src.status);
   const strike = fin(src.strike) ?? fin(setup?.top_strike);
   const right = direction === "LONG" ? "C" : "P";
-  const dte = fin(setup?.dte);
+  const dte = fin(setup?.actual_dte_at_commit) ?? fin(setup?.dte);
 
   const factors: DeckFactor[] = setup?.flow_quality?.components
     ? factorsFromFlowQuality(setup.flow_quality.components)
@@ -271,6 +402,23 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         .map(([k, v]) => ({ label: FB_LABELS[k] ?? k, points: v as number }));
 
   const gate = setup?.gate ?? null;
+  const gateBlocksFromGate =
+    gate?.verdict === "BLOCKED" && Array.isArray(gate.blocks) ? gate.blocks : [];
+  const gateBlocksRaw =
+    Array.isArray(src.gate_blocks) && src.gate_blocks.length > 0 ? src.gate_blocks : gateBlocksFromGate;
+  const gateBlocks = gateBlocksRaw
+    .map((b) => {
+      const row = b as { code?: string; reason?: string; unlock_et?: string | null; threshold?: number | null };
+      const code = String(row.code ?? "").trim();
+      if (!code) return null;
+      return {
+        code,
+        reason: String(row.reason ?? "").trim() || code,
+        unlock_et: row.unlock_et ?? null,
+        threshold: row.threshold ?? null,
+      };
+    })
+    .filter((b): b is NonNullable<typeof b> => b != null);
   const isWorking = status === "OPEN" || status === "HOLD" || status === "TRIM";
   // CLOSED = already committed and finished. The live setup's current gate (often BLOCKED after
   // the session heat flips) must NOT paint a red "✗ Hard gate" on a play that cleared entry —
@@ -332,11 +480,38 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         : null;
 
   const mgmtBase = managementFor(exitModel, status, pnlDisplay);
+  const frozenRunner = src.runner_profile;
+  const setupDir = setup?.direction === "short" ? ("short" as const) : ("long" as const);
+  const projectedRunner =
+    !frozenRunner && (status === "WATCH" || status === "SKIP")
+      ? projectRunnerProfileForCandidate({
+          score: fin(src.score),
+          direction: setupDir,
+          confluenceCount: fin(src.confluence) ?? 0,
+          vectorPulse: vectorPulseForPreview(src.vector_pulse, setupDir),
+          tier: (src.tier?.tier === "A" || src.tier?.tier === "B" || src.tier?.tier === "C"
+            ? src.tier.tier
+            : null) as "A" | "B" | "C" | null,
+          discoveryOrigin: src.discovery_origin ?? setup?.discovery_origin ?? null,
+          ...cortexPreviewMetrics(setup?.cortex),
+        })
+      : null;
+  const runnerProfileResolved = frozenRunner ?? projectedRunner;
+  const runnerProjected = !frozenRunner && projectedRunner != null;
+  const runnerTag = runnerProfileResolved?.tag;
+  const runnerTarget = fin(runnerProfileResolved?.target_pct ?? src.target_pct);
+  const mgmtWithRunner =
+    runnerTarget != null && runnerTarget > 100
+      ? {
+          ...mgmtBase,
+          recNote: `${mgmtBase.recNote ? `${mgmtBase.recNote} · ` : ""}Runner ${runnerTarget}% target${runnerTag ? ` (${runnerTag})` : ""}${runnerProjected ? " if committed" : ""}`,
+        }
+      : mgmtBase;
   const thesisHealth = src.thesis_health ?? null;
   const mgmt =
     thesisHealth != null
-      ? thesisManagementOverlay(mgmtBase.recommendation, mgmtBase.recNote, thesisHealth, pnlDisplay)
-      : mgmtBase;
+      ? thesisManagementOverlay(mgmtWithRunner.recommendation, mgmtWithRunner.recNote, thesisHealth, pnlDisplay)
+      : mgmtWithRunner;
   const thesisBreak = thesisHealth
     ? { level: thesisHealth.thesisBreakLevel as ThesisLevel, note: thesisHealth.thesisBreakNote }
     : setup?.market_aligned === false
@@ -380,7 +555,6 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const trackReference = watchTrack ? watchReferencePremium(setup?.plan ?? null) : null;
   const trackPct = watchTrack ? watchTrackPct(trackReference, markNum) : null;
 
-  const setupDir = setup?.direction === "short" ? ("short" as const) : ("long" as const);
   const thesisFirstResolved =
     setup?.thesis_first ??
     src.thesis_first ??
@@ -419,6 +593,15 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     trackReferencePremium: trackReference,
     peak: peakDisplay,
     trough: troughDisplay,
+    mfeCapturePct: fin(src.mfe_capture_pct),
+    runnerProfile: runnerProfileResolved
+      ? {
+          targetPct: runnerProfileResolved.target_pct,
+          tag: runnerProfileResolved.tag,
+          regime: runnerProfileResolved.regime,
+        }
+      : null,
+    runnerProjected,
     // Executable fill (sell-into-the-BID) is a directional LONG framing — inverted for a credit
     // condor, so it is suppressed (null) on condor rows; the condor's honest number is its decay P&L.
     execMark: isCondor === true ? null : exec.fill,
@@ -444,6 +627,16 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     exitAt: src.exit_at ?? null,
     exitPnlPct: fin(src.exit_pnl_pct),
     timelineTranches: src.timeline_tranches ?? null,
+    gateBlocks: gateBlocks.length > 0 ? gateBlocks : null,
+    vectorPulse: src.vector_pulse
+      ? {
+          premiumPct: src.vector_pulse.premium_pct,
+          peakPremiumPct: src.vector_pulse.peak_premium_pct,
+          actionStatus: src.vector_pulse.action_status,
+          isWinner: src.vector_pulse.is_winner,
+          isRunner: src.vector_pulse.is_runner,
+        }
+      : null,
   };
 }
 
@@ -466,6 +659,8 @@ export interface HorizonDeckSource {
     expiry: string;
     dte: number;
     mid?: number | null;
+    bid?: number | null;
+    ask?: number | null;
     delta?: number | null;
     gamma?: number | null;
     theta?: number | null;
@@ -489,12 +684,17 @@ export interface HorizonDeckSource {
   archetype?: string | null;
   subLane?: string | null;
   servingSection?: SwingServingSection | null;
+  /** True when seen but below cross-session persistence — routes to RESEARCH / SKIP. */
+  persistenceObserved?: boolean | null;
+  persistenceGapReason?: string | null;
   /** ISO instant the thesis was first observed. */
   firstSeenAt?: string | null;
   /** ISO instant capital was committed. */
   committedAt?: string | null;
   /** Discovery provenance kinds. */
   signalKinds?: string[] | null;
+  /** V2 commit gate blocks stamped at discovery — gates BUY when G-S6/G-S14 would refuse open. */
+  commitGateBlockedBy?: string[] | null;
   /** Live-position status when this play is an OPEN swing (OPEN/HOLD/TRIM). */
   liveStatus?: "OPEN" | "HOLD" | "TRIM" | null;
   /** Underlying price when the thesis was first flagged — WATCH track anchor. */
@@ -506,6 +706,17 @@ export interface HorizonDeckSource {
   livePnlPct?: number | null;
   peakPremium?: number | null;
   troughPremium?: number | null;
+  /** OCC for live marks overlay — when absent the adapter derives from contract legs. */
+  occ?: string | null;
+  /** ISO instant of the last manage-snapshot quote (live positions). */
+  markAsOf?: string | null;
+  /** Management engine action for live rows (manage.ts). */
+  manageAction?: SwingManageAction | null;
+  /** Ledger position id — disambiguates multiple closed rows on the same ticker. */
+  positionId?: number | null;
+  exitAt?: string | null;
+  exitPnlPct?: number | null;
+  closedReason?: string | null;
 }
 
 /**
@@ -568,11 +779,109 @@ export function greeksFromContract(contract: HorizonDeckSource["contract"]): Dec
 }
 
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
-  const status = horizonDeckStatus(src);
+  const baseStatus = horizonDeckStatus(src);
+  const deskCommitted = Boolean(src.liveStatus || src.committedAt);
+  const swingEnterability =
+    src.horizon === "SWING"
+      ? evaluateSwingEntryEnterability({
+          setupState: src.setupState,
+          entryStatus: src.entryStatus,
+          aboveFloor: String(src.status ?? "").toUpperCase() === "COMMIT",
+          persistenceObserved: src.persistenceObserved,
+          commitGateBlockedBy: src.commitGateBlockedBy,
+          signalKinds: src.signalKinds,
+          archetype: src.archetype,
+          subLane: (src.subLane as SwingSubLane) ?? null,
+          anchoredAt: src.committedAt ?? src.firstSeenAt ?? null,
+          deskCommitted,
+        })
+      : null;
+  const swingEntryAction: SwingEntryAction | null =
+    swingEnterability?.enterable &&
+    (swingEnterability.action === "buy" || swingEnterability.action === "still_buy")
+      ? swingEnterability.action
+      : null;
+  const swingPreEntry =
+    src.horizon === "SWING" &&
+    !src.liveStatus &&
+    (baseStatus === "WATCH" || baseStatus === "SKIP" || String(src.status ?? "").toUpperCase() === "COMMIT");
+  const entryVerdict = swingPreEntry
+    ? swingEntryVerdict({
+        servingSection: src.servingSection,
+        setupState: src.setupState,
+        entryStatus: src.entryStatus,
+        aboveFloor: String(src.status ?? "").toUpperCase() === "COMMIT",
+        persistenceObserved: src.persistenceObserved,
+        persistenceGapReason: src.persistenceGapReason,
+        commitGateBlockedBy: src.commitGateBlockedBy,
+        signalKinds: src.signalKinds,
+        archetype: src.archetype,
+        subLane: src.subLane,
+        anchoredAt: src.committedAt ?? src.firstSeenAt ?? null,
+        deskCommitted,
+      })
+    : null;
+  const status = entryVerdict?.deckStatus ?? baseStatus;
   const entry = fin(src.entryPremium);
+  const bid = fin(src.contract.bid);
+  const ask = fin(src.contract.ask);
   const markMid = fin(src.contract.mid);
   const livePnl = fin(src.livePnlPct);
+  const exec = executableFill(bid, ask, entry);
+  const occ =
+    src.occ?.trim() ||
+    occFromChainContract({
+      ticker: src.ticker,
+      expiry: src.contract.expiry,
+      right: src.contract.right,
+      strike: src.contract.strike,
+    });
+  const occPrefixed = occ ? (occ.startsWith("O:") ? occ : `O:${occ}`) : null;
+  const working = status === "OPEN" || status === "HOLD" || status === "TRIM";
   const mgmt = managementFor("SCALE_OUT", status, status === "WATCH" || status === "SKIP" ? null : livePnl);
+  const exitPolicy = buildTerminalExitLadder(
+    SWING_SCALE_OUT_POLICY,
+    entry,
+    fin(src.peakPremium) ?? (entry != null && markMid != null ? Math.max(entry, markMid) : null),
+  );
+  const thesisBreakResolved = src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon);
+  const thesisHealth = working
+    ? computeSwingThesisHealth({
+        direction: src.direction,
+        status,
+        setupState: src.setupState,
+        entryStatus: src.entryStatus,
+        factors: src.factors,
+        regime: src.regime,
+        signalKinds: src.signalKinds,
+        thesisBreak: thesisBreakResolved,
+        servingSection: src.servingSection,
+        manageAction: src.manageAction,
+        pnlPct: livePnl,
+        dte: src.contract.dte,
+        subLane: src.subLane,
+        committedAtEt: src.committedAt ?? null,
+        computedAtEt: formatComputedEt(Date.now()),
+      })
+    : null;
+  const mgmtWithThesis = swingManagementVerdict(
+    {
+      exitModel: "SCALE_OUT",
+      status,
+      pnlPct: livePnl,
+      recNote: undefined,
+      thesisHealth,
+      manageAction: src.manageAction ?? null,
+    },
+    src.reason || mgmt.recNote,
+  );
+  const preEntrySwingMgmt =
+    entryVerdict != null
+      ? {
+          recommendation: entryVerdict.recommendation,
+          recNote: entryVerdict.recNote,
+        }
+      : null;
   const flagPx = fin(src.flagUnderlyingPx);
   const watchTrack = status === "WATCH" || status === "SKIP";
   const trackPct = watchTrack
@@ -587,7 +896,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
       ? Math.round(((src.troughPremium! / entry - 1) * 100) * 10) / 10
       : null;
   return {
-    id: `${src.horizon}:${src.ticker}`,
+    id: `${src.horizon}:${src.ticker.toUpperCase()}${src.positionId != null ? `:${src.positionId}` : ""}`,
     ticker: src.ticker.toUpperCase(),
     direction: src.direction,
     contract: `${src.contract.strike}${src.contract.right} · ${src.contract.dte}DTE`,
@@ -595,18 +904,33 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     status,
     horizon: src.horizon,
     exitModel: "SCALE_OUT",
+    exitPolicy,
+    thesisHealth,
+    manageAction: src.manageAction ?? null,
     // De-hardcoded (PR-12): the swing serving meta feeds the REAL factors/regime/thesis. Each falls back to
     // the exact pre-PR-12 literal ([] / null / {intact}) when the caller supplies nothing, so LEAPS and any
     // un-enriched caller render identically — the change is additive, never a regression to those lanes.
     factors: src.factors ?? [],
     gates: [],
     regime: src.regime ?? null,
-    thesisBreak: src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon),
-    ...mgmt,
-    recNote: src.reason || mgmt.recNote,
+    thesisBreak: thesisBreakResolved,
+    ...mgmtWithThesis,
+    ...(preEntrySwingMgmt ?? {}),
+    gateBlocks: entryVerdict?.gateBlocks ?? null,
+    progress: mgmt.progress,
     entry,
     mark: markMid,
-    pnlPct: status === "WATCH" || status === "SKIP" ? null : livePnl,
+    pnlPct:
+      status === "WATCH" || status === "SKIP"
+        ? null
+        : status === "CLOSED"
+          ? fin(src.exitPnlPct)
+          : livePnl ?? exec.pnl_pct,
+    execMark: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.fill,
+    execPnlPct: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.pnl_pct,
+    occ: occPrefixed,
+    markAsOf: src.markAsOf ?? null,
+    markIsSync: src.markAsOf == null,
     trackPct,
     flagUnderlyingPx: flagPx,
     peak: peakDisplay,
@@ -623,11 +947,16 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     setupState: src.setupState ?? null,
     entryStatus: src.entryStatus ?? null,
     servingSection: src.servingSection ?? null,
+    swingEntryAction,
     detectedAt: src.firstSeenAt ?? null,
     firstFlaggedAt: src.committedAt ?? null,
     committedAt: src.committedAt ?? null,
     discoveryOrigin:
       Array.isArray(src.signalKinds) && src.signalKinds.length > 0 ? src.signalKinds : null,
+    closedReason: src.closedReason ?? null,
+    exitAt: src.exitAt ?? null,
+    exitPnlPct: fin(src.exitPnlPct),
+    tierLabel: convictionFromScore(Math.round(src.score)),
   };
 }
 
@@ -677,6 +1006,7 @@ export interface EditionDeckSource {
   published_at?: string | null;
   /** Morning confirm snapshot instant — OPEN "Confirmed" clock when verified. */
   confirmed_at?: string | null;
+  play_type?: "stock" | "index" | "etf" | null;
 }
 
 /** Parse a dollar-level string ("$205", "$205.50") to a numeric value. Used for target/stop
@@ -714,7 +1044,10 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
 
   // Morning confirmation drives the status + regime display.
   const ms = src.morning_status;
-  const status: DeckStatus = pulled ? "CLOSED" : ms === "INVALIDATED" ? "SKIP" : ms === "CONFIRMED" ? "OPEN" : "WATCH";
+  const status: DeckStatus =
+    ms === "INVALIDATED" || pulled ? "SKIP"
+    : ms === "CONFIRMED" ? "OPEN"
+    : "WATCH";
   const regime = ms
     ? ms === "CONFIRMED"
       ? "pre-market CONFIRMED"
@@ -820,6 +1153,8 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     ticker: src.ticker.toUpperCase(),
     direction,
     contract: contractLabel,
+    occ: resolveLegacyPlayOcc(src.ticker, src.options_play ?? null),
+    rank: src.rank ?? null,
     score: rawScore != null ? Math.round(rawScore) : 0,
     status,
     horizon: "LEGACY",
@@ -852,6 +1187,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     premiumCapOk: src.premium_cap_ok ?? null,
     sector: src.sector?.toLowerCase() ?? null,
     morningStatus: ms ?? null,
+    pulled: pulled || ms === "INVALIDATED",
     confluence,
     discoveryOrigin: discoveryOrigin.length > 0 ? discoveryOrigin : undefined,
     whyNow: whyNow ?? undefined,
@@ -861,5 +1197,36 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
       ms === "CONFIRMED" && typeof src.confirmed_at === "string" && src.confirmed_at.length > 0
         ? src.confirmed_at
         : null,
+    playType: src.play_type ?? null,
+    flowStreakDays: src.flow_streak_days ?? null,
+    gatePromoted: src.gate_promoted === true,
+    riskNote: src.risk_note ?? null,
+    pulledReason: src.pulled_reason ?? null,
+    morningReason: src.morning_reason ?? null,
   };
+}
+
+/** Map a graded CLOSED swing ledger row onto TerminalPlay (CLOSED tab parity). */
+export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): TerminalPlay {
+  return terminalPlayFromHorizon({
+    ticker: src.ticker,
+    direction: src.direction,
+    horizon: src.horizon,
+    score: src.score,
+    status: src.status,
+    reason: src.reason,
+    contract: src.contract,
+    archetype: src.archetype ?? null,
+    subLane: src.subLane ?? null,
+    firstSeenAt: src.firstSeenAt ?? null,
+    committedAt: src.committedAt ?? null,
+    entryPremium: src.entryPremium ?? null,
+    peakPremium: src.peakPremium ?? null,
+    troughPremium: src.troughPremium ?? null,
+    occ: src.occ ?? null,
+    positionId: src.positionId,
+    exitAt: src.exitAt ?? null,
+    exitPnlPct: src.exitPnlPct ?? null,
+    closedReason: src.closedReason ?? null,
+  });
 }

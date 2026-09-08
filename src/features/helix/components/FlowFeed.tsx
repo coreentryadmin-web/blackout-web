@@ -19,6 +19,8 @@ import {
 import { HelixFlowTable } from "@/features/helix/components/HelixFlowTable";
 import { HelixMobileFlowTape } from "@/features/helix/components/HelixMobileFlowTape";
 import { HelixCommandBar } from "@/features/helix/components/HelixCommandBar";
+import { HelixSessionPulseBar } from "@/features/helix/components/HelixSessionPulseBar";
+import { HelixHotTickersRail } from "@/features/helix/components/HelixHotTickersRail";
 import {
   HELIX_INDEX_TICKERS,
   matchesDteFilter,
@@ -52,6 +54,14 @@ import {
   HELIX_PREMIUM_PRESETS,
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
+import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
+import { positionIntent } from "@/features/helix/lib/helix-position-intent";
+import {
+  applyHelixFilterPreset,
+  HELIX_DEFAULT_TAPE_FILTERS,
+  HELIX_FILTER_PRESETS,
+  type HelixDirectionFilter,
+} from "@/features/helix/lib/helix-filter-presets";
 import { hasCoincidentBlock } from "@/features/helix/lib/helix-coord-window";
 import {
   watchlistFilterActive,
@@ -88,10 +98,16 @@ import {
   VELOCITY_RADAR_DISPLAY_LIMIT,
   VelocityRadar,
 } from "@/features/helix/components/VelocityRadar";
-import { detectSplitFlow, detectVelocitySpikes, signalEligibility } from "@/features/helix/lib/helix-signal-detection";
+import {
+  detectSplitFlow,
+  detectVelocitySpikes,
+  signalEligibility,
+  signalWindowAgeMs,
+} from "@/features/helix/lib/helix-signal-detection";
 import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/components/SectorFlowPanel";
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
+import { StrikeVolumeProfile } from "@/features/helix/components/StrikeVolumeProfile";
 import { RouteBreakdown } from "@/features/helix/components/RouteBreakdown";
 import { ExecutionAnalysisPanel } from "@/features/helix/components/ExecutionAnalysisPanel";
 import { SessionCorrelationMatrix } from "@/features/helix/components/SessionCorrelationMatrix";
@@ -147,6 +163,75 @@ function flowAlertId(a: { alert_id?: string }): string | null {
   return a.alert_id ? `id:${a.alert_id}` : null;
 }
 
+/**
+ * Trading-day diff between `now` and a `"YYYY-MM-DD"` ET report date from `earningsMap`
+ * (`fetchEarningsCalendar()`), anchored to US/Eastern rather than the runtime's own zone.
+ * Exported for testing.
+ *
+ * BUG FIX (2026-09-04): the caller used to build both endpoints via `new Date()`/
+ * `new Date(dateStr + "T00:00:00")` + `.setHours(0,0,0,0)` — per ECMA-262, a date-time string
+ * with no offset (and the Date object `setHours` mutates) resolves in the BROWSER'S LOCAL
+ * timezone, not America/New_York. `earningsMap`'s report dates are ET trading-calendar dates
+ * (same convention as Meridian's `report_date`), so for a member off ET the local-midnight
+ * boundary and the ET-midnight boundary don't coincide, and the integer day-diff feeding the
+ * EARN/E{n}D badge (`flowSignals` → `ctx.earnIn`, helix-flow-format.ts) can be off by exactly
+ * one for several hours around either midnight, in either direction (ahead of ET, e.g. Europe,
+ * or behind it, e.g. US West Coast).
+ *
+ * VERIFIED (2026-09-04, `TZ=America/Los_Angeles`): at 2026-09-04T22:00:00-07:00 (already
+ * 2026-09-05 01:00 ET — the ET trading day has rolled) the old code diffed against
+ * "2026-09-05" as 1 day away when it is actually today in ET terms; this helper returns 0.
+ *
+ * Fixed by anchoring both endpoints to literal UTC midnight of their ET/report calendar date —
+ * the same DST-safe technique `daysToExpiry` (helix-flow-format.ts) already uses for the DTE
+ * column — rather than constructing local-zone Date objects. Because both timestamps are
+ * `Date.parse` of an explicit `...T00:00:00Z` calendar string, their difference is always an
+ * exact multiple of 86_400_000 (no real-world DST offset is ever applied), so this needs no
+ * DST special-casing despite being pure arithmetic — unlike a hand-appended `-04:00`/`-05:00`
+ * offset, which the task deliberately warns against for exactly that reason.
+ *
+ * Deliberately does NOT clamp to `Math.max(0, …)` the way `daysToExpiry` does — a report date
+ * that has already passed (relative to `now`) must return a negative diff so the caller's
+ * `diff >= 0` filter can still exclude it, rather than a clamped 0 misreading a past print as
+ * "today".
+ */
+export function earningsDayDiffEt(dateStr: string, now: Date = new Date()): number {
+  const todayEt  = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
+  const todayMs  = Date.parse(`${todayEt}T00:00:00Z`);
+  const targetMs = Date.parse(`${dateStr.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(todayMs) || !Number.isFinite(targetMs)) return NaN;
+  return Math.round((targetMs - todayMs) / 86_400_000);
+}
+
+/**
+ * Null-safe ASCENDING (oldest-first) time comparator for `FlowAlert` rows, keyed on
+ * `flowTimeMs` (the same `alerted_at`-derived helper `displayAlerts` below already sorts with).
+ * Exported for `startReplay()` and for testing.
+ *
+ * BUG FIX (2026-09-04): `startReplay()` used to sort with raw
+ * `new Date(a.alerted_at).getTime() - new Date(b.alerted_at).getTime()`. `flow-persist.ts`
+ * documents that a freshly-streamed SSE row can carry `alerted_at: ""` when the real UW print
+ * time is unknown (`event.alerted_at = realCreatedAt ?? ""`), and the merge path
+ * (`helix-flow-tape-merge.ts`) deliberately keeps such rows in `alerts` rather than dropping
+ * them. `new Date("").getTime()` is `NaN`, so any comparison involving that row returned NaN —
+ * an `Array.prototype.sort` comparator contract violation (the spec leaves the resulting order
+ * unspecified/engine-dependent), unlike every other place in this file that reads this same
+ * field (`displayAlerts`'s sort a few lines below, `flowFreshnessAtMs`'s callers) which already
+ * treat a missing time as "sorts last", never as "compares as zero".
+ *
+ * Undated rows sort AFTER every dated row here, regardless of which side of the pairwise
+ * comparison they land on — matching the convention `displayAlerts` already established for
+ * this exact field, just for the opposite (ascending vs its descending) direction.
+ */
+export function compareFlowAlertsByTimeAsc(a: FlowAlert, b: FlowAlert): number {
+  const am = flowTimeMs(a);
+  const bm = flowTimeMs(b);
+  if (am == null && bm == null) return 0;
+  if (am == null) return 1;
+  if (bm == null) return -1;
+  return am - bm;
+}
+
 // Bug 14: synthetic beep for whale prints (>$1M) using Web Audio API
 function playWhaleBeep() {
   if (typeof AudioContext === "undefined") return;
@@ -171,6 +256,8 @@ function helixFilterSummary(f: {
   dteFilter: string;
   tickerFilter: string;
   whalesOnly: boolean;
+  directionFilter?: string;
+  openingOnly?: boolean;
 }): string {
   const parts: string[] = [];
   if (f.minPremium !== HELIX_DEFAULT_MIN_PREMIUM) parts.push(`minPremium=${f.minPremium}`);
@@ -178,6 +265,8 @@ function helixFilterSummary(f: {
   if (f.dteFilter !== "all") parts.push(`dte=${f.dteFilter}`);
   if (f.tickerFilter) parts.push(`ticker=${f.tickerFilter}`);
   if (f.whalesOnly) parts.push("whalesOnly");
+  if (f.directionFilter && f.directionFilter !== "all") parts.push(`dir=${f.directionFilter}`);
+  if (f.openingOnly) parts.push("openingOnly");
   return parts.join("; ") || "default";
 }
 
@@ -215,7 +304,9 @@ export function FlowFeed() {
   const [whalesOnly, setWhalesOnly]         = useState(false);
   const [dteFilter, setDteFilter]           = useState<HelixDteFilter>("all");
   const [indicesOnly, setIndicesOnly]       = useState(false);
-  const density: HelixTableDensity = "full";
+  const [density, setDensity] = useState<HelixTableDensity>("full");
+  const [directionFilter, setDirectionFilter] = useState<HelixDirectionFilter>("all");
+  const [openingOnly, setOpeningOnly] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
   const [tickerFilter, setTickerFilter]   = useState("");
 
@@ -332,6 +423,14 @@ export function FlowFeed() {
       if (includeType && typeFilter !== "ALL") {
         rows = rows.filter((a) => a.option_type === typeFilter);
       }
+      if (directionFilter === "bullish") {
+        rows = rows.filter((a) => flowDirection(a) === "bullish");
+      } else if (directionFilter === "bearish") {
+        rows = rows.filter((a) => flowDirection(a) === "bearish");
+      }
+      if (openingOnly) {
+        rows = rows.filter((a) => positionIntent(a).intent === "opening");
+      }
       return rows;
     },
     [
@@ -343,6 +442,8 @@ export function FlowFeed() {
       indicesOnly,
       dteFilter,
       typeFilter,
+      directionFilter,
+      openingOnly,
     ]
   );
 
@@ -415,13 +516,10 @@ export function FlowFeed() {
 
   // Feature 7: earnings days until event (ticker → days, only ≤ 30d shown)
   const earningsDays = useMemo<Record<string, number>>(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const out: Record<string, number> = {};
     for (const [ticker, dateStr] of Object.entries(earningsMap)) {
-      const d    = new Date(dateStr + "T00:00:00");
-      const diff = Math.floor((d.getTime() - today.getTime()) / 86_400_000);
-      if (diff >= 0 && diff <= 30) out[ticker] = diff;
+      const diff = earningsDayDiffEt(dateStr);
+      if (Number.isFinite(diff) && diff >= 0 && diff <= 30) out[ticker] = diff;
     }
     return out;
   }, [earningsMap]);
@@ -639,9 +737,36 @@ export function FlowFeed() {
       indicesOnly,
       watchlistOnly,
       tickerFilter,
+      directionFilter,
+      openingOnly,
     }),
-    [dteFilter, typeFilter, whalesOnly, indicesOnly, watchlistOnly, tickerFilter]
+    [dteFilter, typeFilter, whalesOnly, indicesOnly, watchlistOnly, tickerFilter, directionFilter, openingOnly]
   );
+
+  const applyHelixPreset = useCallback((presetId: string) => {
+    const preset = HELIX_FILTER_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    const next = applyHelixFilterPreset(preset);
+    setMinPremium(next.minPremium);
+    setTypeFilter(next.typeFilter);
+    setWhalesOnly(next.whalesOnly);
+    setDteFilter(next.dteFilter);
+    setIndicesOnly(next.indicesOnly);
+    setDirectionFilter(next.directionFilter);
+    setOpeningOnly(next.openingOnly);
+  }, []);
+
+  const resetHelixFilters = useCallback(() => {
+    setMinPremium(HELIX_DEFAULT_TAPE_FILTERS.minPremium);
+    setTypeFilter(HELIX_DEFAULT_TAPE_FILTERS.typeFilter);
+    setWhalesOnly(HELIX_DEFAULT_TAPE_FILTERS.whalesOnly);
+    setDteFilter(HELIX_DEFAULT_TAPE_FILTERS.dteFilter);
+    setIndicesOnly(HELIX_DEFAULT_TAPE_FILTERS.indicesOnly);
+    setDirectionFilter(HELIX_DEFAULT_TAPE_FILTERS.directionFilter);
+    setOpeningOnly(HELIX_DEFAULT_TAPE_FILTERS.openingOnly);
+    setTickerFilter("");
+    setWatchlistOnly(false);
+  }, []);
 
   useEffect(() => {
     filterBackfillPagesRef.current = 0;
@@ -725,7 +850,7 @@ export function FlowFeed() {
   // ── Replay ────────────────────────────────────────────────────────────────
   const startReplay = useCallback(() => {
     if (!alerts.length) return;
-    const sorted = [...alerts].sort((a, b) => new Date(a.alerted_at).getTime() - new Date(b.alerted_at).getTime());
+    const sorted = [...alerts].sort(compareFlowAlertsByTimeAsc);
     replaySourceRef.current = sorted;
     replayIdxRef.current    = 0;
     setReplayAlerts([]);
@@ -779,11 +904,18 @@ export function FlowFeed() {
   // Gap #6: derive "newest" from the freshest row with a TRUSTWORTHY alerted_at —
   // never from a row whose time UW omitted (those would otherwise read as epoch 0 /
   // NaN and either falsely age the tape or mask a genuinely stale one).
+  // BUG FIX (2026-09-03): also exclude a print dated beyond FUTURE_PRINT_TOLERANCE_MS into
+  // the future (UW clock skew / bad alerted_at) — using it as "newest" made dataAgeMs
+  // negative below, which trivially passed `dataAgeMs > 5min` as false and painted the
+  // badge green LIVE for a tape that could actually be dead. signalWindowAgeMs is the same
+  // future-timestamp guard the split/velocity detectors already apply to this exact field.
   const newestAt = useMemo(() => {
     let max = 0;
+    const nowMs = Date.now();
     for (const a of displayAlerts) {
       const ms = flowFreshnessAtMs(a);
-      if (ms != null && ms > max) max = ms;
+      if (ms == null || signalWindowAgeMs(ms, nowMs) == null) continue;
+      if (ms > max) max = ms;
     }
     return max;
   }, [displayAlerts]);
@@ -799,7 +931,7 @@ export function FlowFeed() {
     return () => clearInterval(id);
   }, []);
   const dataAgeMs = useMemo(
-    () => (newestAt ? Date.now() - newestAt : null),
+    () => (newestAt ? Math.max(0, Date.now() - newestAt) : null),
     // ageTick is intentional: it is the heartbeat that re-evaluates Date.now().
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [newestAt, ageTick],
@@ -837,6 +969,8 @@ export function FlowFeed() {
     dteFilter,
     tickerFilter,
     whalesOnly,
+    directionFilter,
+    openingOnly,
   });
 
   const flowTapeProps = {
@@ -934,6 +1068,10 @@ export function FlowFeed() {
         onTickerClick={setSelectedTicker}
       />
       <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} eligibility={signalCoverage} />
+      {/* Strike price is only a shared axis for ONE underlying — $150 on AAPL and $150 on GME
+          are unrelated levels — so this only renders once the tape is scoped to a single name
+          (the same condition ExpiryConcentration's sibling market-wide panels below invert). */}
+      {!marketWidePanels && <StrikeVolumeProfile alerts={displayAlerts} loading={loading} />}
       <ExecutionAnalysisPanel alerts={displayAlerts} loading={loading} />
       <RouteBreakdown alerts={displayAlerts} loading={loading} />
       {marketWidePanels && (
@@ -1138,6 +1276,14 @@ export function FlowFeed() {
           watchlistOnly={watchlistOnly}
           onWatchlistOnlyChange={setWatchlistOnly}
           watchlistCount={watchlist.watchlist.length}
+          directionFilter={directionFilter}
+          onDirectionFilterChange={setDirectionFilter}
+          openingOnly={openingOnly}
+          onOpeningOnlyChange={setOpeningOnly}
+          density={density}
+          onDensityChange={setDensity}
+          onApplyPreset={applyHelixPreset}
+          onResetFilters={resetHelixFilters}
           analyticsOpen={analyticsOpen}
           onAnalyticsOpenChange={setAnalyticsOpen}
           replayMode={replayMode}
@@ -1155,6 +1301,17 @@ export function FlowFeed() {
           newestAgeLabel={newestAgeLabel}
           replayDisabled={!replayMode && alerts.length === 0}
         />
+      )}
+
+      {!nativeShell && (
+        <>
+          <HelixSessionPulseBar flows={displayAlerts} scopeLabel={analyticsScopeLabel} />
+          <HelixHotTickersRail
+            flows={filteredTapeBuffer}
+            activeTicker={tickerFilter}
+            onSelect={setTickerFilter}
+          />
+        </>
       )}
 
       {/* ── Main grid — table-first; analytics optional ─────────────────── */}

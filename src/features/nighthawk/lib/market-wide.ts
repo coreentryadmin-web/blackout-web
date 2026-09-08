@@ -64,7 +64,7 @@ export type MarketWideContext = {
   tomorrow_earnings: Record<string, unknown>[];
   sector_tides: Array<{ sector: string; tide: Record<string, unknown> | null }>;
   etf_tides: Record<string, Record<string, unknown> | null>;
-  sector_performance: Array<{ name: string; change_pct: number }>;
+  sector_performance: Array<{ name: string; change_pct: number | null }>;
   top_net_impact: Record<string, unknown>[];
   vix_term: Record<string, unknown>[];
   vix_iv_rank: number | null;
@@ -83,7 +83,7 @@ export type MarketWideContext = {
   /** UW market-wide unusual trades — flagged by UW's internal algo as abnormal activity. */
   unusual_trades: Record<string, unknown>[];
   /** Polygon gainers/losers — today's biggest % movers (momentum candidates). */
-  market_movers: Array<{ ticker: string; change_pct: number; price: number; volume?: number }>;
+  market_movers: Array<{ ticker: string; change_pct: number | null; price: number; volume?: number }>;
   /** Whole-market breakout screen (P2b) — closed-strong, high-volume movers from the grouped-daily
    *  summary already fetched for breadth (no extra API call). Feeds the discovery `breakout` lane. */
   breakout_movers: import("./candidates").BreakoutMover[];

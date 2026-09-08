@@ -94,9 +94,3 @@ export function thermalScopes(
     structure_scope_label: `whole-book aggregate across ${count} near-term expiries`,
   };
 }
-
-/** True when a panel mixes scopes and therefore must label its levels individually. */
-export function scopesAreMixed(scopes: ThermalScopes): boolean {
-  const seen = new Set(Object.values(scopes.level_scopes));
-  return seen.size > 1;
-}

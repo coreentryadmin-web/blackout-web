@@ -2,7 +2,7 @@
 
 import { Drawer } from "@/components/ui";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
-import type { VectorRegime } from "@/features/vector/lib/vector-regime";
+import { hasReadableRegime, type VectorRegime } from "@/features/vector/lib/vector-regime";
 import type { GammaMagnet } from "@/features/vector/lib/vector-gamma-magnet";
 import type { WallProximity } from "@/features/vector/lib/vector-wall-proximity";
 import type { WallIntegrity } from "@/features/vector/lib/vector-wall-integrity";
@@ -93,8 +93,12 @@ export function VectorPlayAnalyticsDrawer({
           <StatTile label="Magnet" value={fmtLevel(playEmit?.magnetStrike ?? magnet?.strike)} />
           <StatTile
             label="Regime"
-            value={regime?.headline ?? "—"}
-            detail={regime?.read}
+            // The old `regime?.headline ?? "—"` fallback was dead code: `deriveVectorRegime`
+            // never returns null, so `regime` is always truthy whenever it exists at all, and its
+            // "unavailable" case's own headline is the literal string "REGIME —" — rendering
+            // "Regime" / "REGIME —" stacked on top of each other instead of a clean "—".
+            value={hasReadableRegime(regime) ? regime.headline : "—"}
+            detail={hasReadableRegime(regime) ? regime.read : undefined}
           />
         </div>
 

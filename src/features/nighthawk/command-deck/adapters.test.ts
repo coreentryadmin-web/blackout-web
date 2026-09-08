@@ -5,10 +5,12 @@ import {
   terminalPlayFromHorizon,
   terminalPlayFromEdition,
   managementFor,
+  refreshSwingManagement,
   parseLevelNum,
   firstSeenIso,
 } from "./adapters.ts";
 import { overlayLegacyQuotes } from "./use-legacy-quotes.ts";
+import { swingActionDisplay } from "./play-card-lifecycle.ts";
 
 test("managementFor: RATCHET progress maps -50→0, +100→1; recommendations by P&L", () => {
   assert.equal(managementFor("RATCHET", "OPEN", -50).progress, 0);
@@ -79,7 +81,7 @@ test("0DTE adapter: lost tape alignment surfaces a thesis-break warning", () => 
 
 test("horizon adapter: SCALE_OUT model, reason as note, mid as mark", () => {
   const play = terminalPlayFromHorizon({
-    ticker: "pltr", direction: "LONG", horizon: "SWING", score: 77, reason: "momentum 90%, accumulation 88%",
+    ticker: "pltr", direction: "LONG", horizon: "SWING", score: 77, status: "WATCH", reason: "momentum 90%, accumulation 88%",
     contract: { strike: 52, right: "C", expiry: "2026-08-07", dte: 14, mid: 2.32 },
   });
   assert.equal(play.horizon, "SWING");
@@ -206,13 +208,14 @@ test("edition adapter: morning DEGRADED → status WATCH, thesis warn", () => {
   assert.match(play.recNote!, /DEGRADED/);
 });
 
-test("edition adapter: pulled play → status CLOSED, thesis break, recommendation SELL", () => {
+test("edition adapter: pulled play → status SKIP (PULLED pill), thesis break, recommendation SELL", () => {
   const play = terminalPlayFromEdition({
     ticker: "BABA", direction: "long", rank: 4, score: 50,
     pulled: true,
     pulled_reason: "earnings pre-announcement risk",
   });
-  assert.equal(play.status, "CLOSED");
+  assert.equal(play.status, "SKIP");
+  assert.equal(play.pulled, true);
   assert.equal(play.thesisBreak!.level, "break");
   assert.match(play.thesisBreak!.note!, /earnings/);
   assert.equal(play.recommendation, "SELL");
@@ -392,6 +395,15 @@ test("0DTE adapter: SHORT put uses P and the setup top_strike when src.strike is
   const p = terminalPlayFromZeroDte({ ticker: "spx", status: "OPEN", setup: { direction: "short", dte: 0, top_strike: 6300 } });
   assert.equal(p.direction, "SHORT");
   assert.equal(p.contract, "6300P · 0DTE"); // strike from setup.top_strike, right P
+});
+
+test("0DTE adapter: actual_dte_at_commit overrides setup.dte in contract label", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "WATCH",
+    setup: { direction: "long", dte: 0, actual_dte_at_commit: 2, top_strike: 180 },
+  });
+  assert.equal(p.contract, "180C · 2DTE");
 });
 
 test("0DTE adapter: missing strike → '?', non-zero dte → 'NDTE', null dte → '?DTE'", () => {
@@ -1016,6 +1028,146 @@ test("horizon adapter: pre-entry COMMIT maps to WATCH; live OPEN maps to OPEN", 
   assert.equal(open.trackPct, null);
 });
 
+test("horizon adapter: COMMIT_NOW pre-entry → WATCH + BUY recommendation + BUY action path", () => {
+  const buy = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 88,
+    status: "COMMIT",
+    servingSection: "COMMIT_NOW",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    contract: { strike: 180, right: "C", expiry: "2026-09-19", dte: 14, mid: 5.2 },
+  });
+  assert.equal(buy.status, "WATCH");
+  assert.equal(buy.recommendation, "BUY");
+  assert.equal(buy.gateBlocks, null);
+});
+
+test("horizon adapter: COMMIT_NOW + commit gate block → WATCH/WAIT with gate blocks, not BUY", () => {
+  const gated = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 88,
+    status: "COMMIT",
+    servingSection: "COMMIT_NOW",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    commitGateBlockedBy: ["gate:G-S6:confluence"],
+    contract: { strike: 180, right: "C", expiry: "2026-09-19", dte: 14, mid: 5.2 },
+  });
+  assert.equal(gated.status, "WATCH");
+  assert.equal(gated.recommendation, "HOLD");
+  assert.equal(gated.gateBlocks?.[0]?.code, "g_s6_confluence");
+});
+
+test("horizon adapter: live OPEN + enterable geometry → STILL BUY action + swingEntryAction", () => {
+  // committedAt must stay inside the 3-day DEFAULT_ENTRY_VALIDITY_DAYS window
+  // (entry-enterability.ts) relative to whenever this test actually runs — a
+  // hardcoded absolute timestamp is a date-bomb that silently ages past the
+  // window and starts failing (`swingEntryAction` degrades from 'still_buy' to
+  // null once past the deadline).
+  const committedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const live = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 88,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    committedAt,
+    servingSection: "MANAGING",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    contract: { strike: 180, right: "C", expiry: "2026-09-19", dte: 14, mid: 5.2 },
+    entryPremium: 5.2,
+    livePnlPct: 4.5,
+  });
+  assert.equal(live.status, "OPEN");
+  assert.equal(live.swingEntryAction, "still_buy");
+  assert.equal(swingActionDisplay(live)?.label, "STILL BUY");
+});
+
+test("horizon adapter: rolled child at AT_TRIGGER → still_buy (fresh child commit, deskCommitted)", () => {
+  // Same date-bomb risk as the test above: committedAt must stay inside the
+  // 3-day entry-validity window relative to actual run time, not a fixed date.
+  const rolledChild = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 88,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    committedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    firstSeenAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    positionId: 99,
+    servingSection: "MANAGING",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    contract: { strike: 185, right: "C", expiry: "2026-09-26", dte: 21, mid: 4.8 },
+    entryPremium: 4.8,
+    livePnlPct: 0.5,
+  });
+  assert.equal(rolledChild.status, "OPEN");
+  assert.equal(rolledChild.swingEntryAction, "still_buy");
+});
+
+test("horizon adapter: WAITING_FOR_ENTRY → WATCH + HOLD (WAIT action)", () => {
+  const wait = terminalPlayFromHorizon({
+    ticker: "amd",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 75,
+    status: "COMMIT",
+    servingSection: "WAITING_FOR_ENTRY",
+    setupState: "TRIGGERED",
+    entryStatus: "PRE_TRIGGER",
+    contract: { strike: 160, right: "C", expiry: "2026-09-19", dte: 14, mid: 4.1 },
+  });
+  assert.equal(wait.status, "WATCH");
+  assert.equal(wait.recommendation, "HOLD");
+  assert.match(wait.recNote, /trigger/i);
+});
+
+test("horizon adapter: RESEARCH + INVALIDATED → SKIP with gate blocks", () => {
+  const skip = terminalPlayFromHorizon({
+    ticker: "tsla",
+    direction: "SHORT",
+    horizon: "SWING",
+    score: 70,
+    status: "COMMIT",
+    servingSection: "RESEARCH",
+    setupState: "INVALIDATED",
+    contract: { strike: 250, right: "P", expiry: "2026-09-19", dte: 14, mid: 6.0 },
+  });
+  assert.equal(skip.status, "SKIP");
+  assert.equal(skip.gateBlocks?.[0]?.code, "thesis_invalidated");
+});
+
+test("horizon adapter: graded CLOSED swing row wires exit fields + position-scoped id", () => {
+  const closed = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 80,
+    status: "CLOSED",
+    positionId: 42,
+    exitAt: "2026-08-10T16:00:00Z",
+    exitPnlPct: 28.5,
+    closedReason: "target",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 0, mid: 6.4 },
+    entryPremium: 5.0,
+    peakPremium: 7.0,
+  });
+  assert.equal(closed.id, "SWING:NVDA:42");
+  assert.equal(closed.status, "CLOSED");
+  assert.equal(closed.pnlPct, 28.5);
+  assert.equal(closed.exitPnlPct, 28.5);
+  assert.equal(closed.closedReason, "target");
+});
+
 test("horizon adapter: live OPEN row wires entry/mark/pnl from live book fields", () => {
   const open = terminalPlayFromHorizon({
     ticker: "nvda",
@@ -1035,6 +1187,76 @@ test("horizon adapter: live OPEN row wires entry/mark/pnl from live book fields"
   assert.equal(open.mark, 5.5);
   assert.equal(open.pnlPct, 10);
   assert.equal(open.peak, 10);
+  assert.equal(open.exitModel, "SCALE_OUT");
+  assert.equal(open.exitPolicy?.policy, "trim_scale");
+  assert.ok(open.thesisHealth);
+  assert.equal(open.thesisHealth!.health > 0, true);
+});
+
+test("refreshSwingManagement maps EXIT manage action to SELL", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 8.0 },
+    entryPremium: 5.0,
+    livePnlPct: 60,
+    peakPremium: 8.0,
+    setupState: "INVALIDATED",
+    manageAction: "EXIT",
+  });
+  const refreshed = refreshSwingManagement(play);
+  assert.equal(refreshed.recommendation, "SELL");
+});
+
+test("refreshSwingManagement: manage engine wins over thesis overlay (1 Hz parity with board adapter)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 8.0 },
+    entryPremium: 5.0,
+    livePnlPct: 60,
+    peakPremium: 8.0,
+    manageAction: "TAKE_PARTIAL",
+  });
+  const boardRec = play.recommendation;
+  const refreshed = refreshSwingManagement(play);
+  assert.equal(refreshed.recommendation, boardRec);
+  assert.equal(refreshed.recommendation, "TRIM");
+});
+
+test("refreshSwingManagement: uncalibrated thesis health (committed-position inputs unwired) never leaks its % into recNote", () => {
+  // Same fixture shape as the "live OPEN row" test above — no setupState/entryStatus/signalKinds
+  // wired, so thesisHealth.health is computed from generic pillar defaults (a real, non-zero
+  // number) rather than a calibrated read. Production case (2026-09-06, NN SWING:NN): status
+  // HOLD, pnlPct 0 — thesisHealthSection()/holdPlanSection() correctly withhold this same health%
+  // on the Ask Largo brief, but this shared overlay (also used by the live command-deck panels)
+  // embedded the raw health% into recNote regardless, leaking the withheld number right back out
+  // through Management/Verdict.
+  const play = terminalPlayFromHorizon({
+    ticker: "nn",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 23,
+    status: "COMMIT",
+    liveStatus: "HOLD",
+    contract: { strike: 15, right: "C", expiry: "2026-09-25", dte: 19, mid: 1.95 },
+    entryPremium: 1.95,
+    livePnlPct: 0,
+    peakPremium: 2.42,
+    troughPremium: 1.75,
+  });
+  assert.ok(play.thesisHealth, "fixture must produce an uncalibrated-but-non-null thesisHealth");
+  const refreshed = refreshSwingManagement(play);
+  assert.ok(
+    !refreshed.recNote.includes("Thesis health") && !/\d+%/.test(refreshed.recNote),
+    `recNote must not surface an uncalibrated health%, got: ${refreshed.recNote}`,
+  );
 });
 
 test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {
@@ -1097,7 +1319,7 @@ test("overlayLegacyQuotes: computes LONG progress toward target", () => {
   // progress = (190 - 170) / (200 - 170) = 20/30 ≈ 0.667
   assert.ok(result.progress != null);
   assert.ok(Math.abs(result.progress! - 0.667) < 0.01);
-  assert.ok(result.recNote?.includes("NVDA $190.00"));
+  assert.equal(result.stockPrice, 190);
   assert.equal(result.markAsOf, "2026-07-28T14:00:00Z");
 });
 
@@ -1302,6 +1524,38 @@ test("overlayLegacyQuotes: stock move lands on stockMovePct, NOT pnlPct (SHORT)"
     `expected ~4.95%, got ${result.stockMovePct}`,
   );
   assert.equal(result.pnlPct, null, "an underlying move must never be published as the option's P&L");
+});
+
+test("Legacy adapter: resolves OCC from options_play for live mark subscription", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA",
+    direction: "long",
+    rank: 1,
+    score: 70,
+    options_play: "NVDA $500 CALL @ $3.33 — Aug 10",
+    entry_premium: 3.33,
+  });
+  assert.ok(play.occ, "parseable options_play should yield an OCC");
+  assert.match(play.occ!, /^NVDA/);
+});
+
+test("overlayLegacyOptionMarks: populates option pnlPct from live mark", () => {
+  const { overlayLegacyOptionMarks } = require("./use-legacy-option-marks.ts") as typeof import("./use-legacy-option-marks");
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA",
+    direction: "long",
+    rank: 1,
+    score: 70,
+    options_play: "NVDA $500 CALL @ $3.33 — Aug 10",
+    entry_premium: 2.0,
+  });
+  const marks = new Map([
+    [play.occ!, { occ: play.occ!, mark: 3.0, bid: 2.9, ask: 3.1, asof: "2026-09-01T15:00:00.000Z", stale: false }],
+  ]);
+  const [result] = overlayLegacyOptionMarks([play], marks);
+  assert.equal(result.mark, 3.0);
+  assert.equal(result.pnlPct, 50, "entry $2 → mark $3 = +50%");
+  assert.equal(result.execPnlPct, 45, "entry $2 → bid $2.9 = +45%");
 });
 
 test("Legacy adapter: confirming_signals → confluence badge, not a factor", () => {
@@ -1509,4 +1763,58 @@ test("firstSeenIso: returns null — never a fabricated time — when neither sh
   assert.equal(firstSeenIso(null, null), null);
   assert.equal(firstSeenIso({}, {}), null);
   assert.equal(firstSeenIso({ first_seen: "" }, { first_seen: "" }), null);
+});
+
+test("0DTE adapter: WATCH row projects runner target from Vector + confluence", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "AMD",
+    status: "WATCH",
+    score: 76,
+    confluence: 2,
+    discovery_origin: ["FLOW"],
+    vector_pulse: {
+      premium_pct: 35,
+      peak_premium_pct: 42,
+      action_status: "still_buy",
+      is_winner: false,
+      is_runner: true,
+      side: "call",
+      direction: "long",
+    },
+    setup: {
+      direction: "long",
+      dte: 0,
+      discovery_origin: ["FLOW"],
+      confluence: { confirmations: 2 },
+      cortex: {
+        abstained: false,
+        verdict: { score: 1.2, vetoes: [], supports: [{ source: "x", detail: "y", weight: 1 }], opposes: [], absent: [] },
+      },
+      plan: { mark: 1.2, entry_max: 1.25 },
+    },
+  });
+  assert.equal(play.runnerProjected, true);
+  assert.ok(play.runnerProfile);
+  assert.ok((play.runnerProfile?.targetPct ?? 0) > 100);
+  assert.match(play.recNote ?? "", /if committed/);
+});
+
+test("0DTE adapter: closed row surfaces mfeCapturePct and frozen runner profile", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "CRCL",
+    status: "CLOSED",
+    score: 70,
+    live_pnl_pct: 80,
+    exit_pnl_pct: 80,
+    mfe_capture_pct: 53,
+    peak_pnl_pct: 150,
+    entry_premium: 1.1,
+    last_mark: 1.98,
+    peak_premium: 2.75,
+    runner_profile: { target_pct: 300, tag: "runner_a", regime: "trend" },
+    setup: { direction: "long", dte: 0 },
+  });
+  assert.equal(play.mfeCapturePct, 53);
+  assert.equal(play.runnerProfile?.targetPct, 300);
+  assert.equal(play.runnerProjected, false);
 });

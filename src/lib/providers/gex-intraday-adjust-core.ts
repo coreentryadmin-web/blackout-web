@@ -103,31 +103,25 @@ export const GEX_INTRADAY_TOOLTIP =
   "front-expiry (0DTE) intraday net dealer positioning, signed buy-vs-sell from the trade tape " +
   "via the quote rule, to capture same-day gamma that settled OI misses. Front expiry only.";
 
-import { cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+import { cumulativeGammaFlip, wallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
 // Re-exported from the canonical shared location (independent of the import above).
 export { zeroGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
-/** Largest-positive (call) and largest-negative (put) net-gamma strikes from per-strike totals. */
+/**
+ * Largest-positive (call) and largest-negative (put) net-gamma strikes from per-strike totals,
+ * SIDE-CONSTRAINED to spot (call wall above spot, put wall below) via the canonical
+ * `wallsFromStrikeTotals` — this file used to reimplement an unconstrained scan, which is the
+ * exact bug `wallsFromStrikeTotals`'s own doc comment describes: a "call wall" or "put wall" can
+ * land on the wrong side of spot (inverted resistance/support) whenever the largest-magnitude
+ * strike on the front-expiry-adjusted book happens to sit past spot. Reusing the already-fixed
+ * shared function instead of a third local reimplementation.
+ */
 export function walls(
-  strikeTotals: Record<string, number>
+  strikeTotals: Record<string, number>,
+  spot: number
 ): { call: number | null; put: number | null } {
-  let call: number | null = null;
-  let put: number | null = null;
-  let maxPos = 0;
-  let maxNeg = 0;
-  for (const [s, g] of Object.entries(strikeTotals)) {
-    const strike = Number(s);
-    if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) {
-      maxPos = g;
-      call = strike;
-    }
-    if (g < maxNeg) {
-      maxNeg = g;
-      put = strike;
-    }
-  }
-  return { call, put };
+  const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals, spot);
+  return { call: callWall, put: putWall };
 }
 
 /**
@@ -185,7 +179,7 @@ export function gexIntradayAdjustedFrom(
   const netGexAdjusted = netGexOi + netAdjustment;
   // Gamma flip → cumulative zero-gamma boundary (matches the base/heatmap flip definition).
   const flipAdjusted = cumulativeGammaFlip(adjusted, spot);
-  const w = walls(adjusted);
+  const w = walls(adjusted, spot);
   const coverage = totalPrints > 0 ? Number((sideClassifiedPrints / totalPrints).toFixed(3)) : 0;
   // 'thin' when the estimate is weak (no classified prints / no net adjustment) → view ≈ OI base.
   const model: "signed-flow" | "thin" =

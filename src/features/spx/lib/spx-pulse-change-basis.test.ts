@@ -16,9 +16,14 @@ test("pulse lane trusts change_pct ONLY on a REST-seeded anchor", () => {
   assert.match(src, /anchorAuthoritative && Number\.isFinite\(e\.change_pct\)/);
 });
 
-test("an untrusted pulse change is marked unresolved rather than published", () => {
-  assert.match(src, /unresolvedChange\.add\(sym\)/);
-  assert.match(src, /const unresolvedChange = new Set<string>\(\)/);
+test("an untrusted pulse change is marked unresolved rather than published as flat 0%", () => {
+  const pulseLaneStart = src.indexOf("const pulseChange =");
+  assert.ok(pulseLaneStart > 0, "pulse lane assignment exists");
+  const pulseLaneEnd = src.indexOf("if (pulseChange == null) unresolvedChange.add(sym);", pulseLaneStart);
+  const body = src.slice(pulseLaneStart, pulseLaneEnd + 60);
+  assert.match(body, /unresolvedChange\.add\(sym\)/);
+  assert.match(body, /change_pct: pulseChange,/);
+  assert.doesNotMatch(body, /change_pct: pulseChange \?\? 0/);
 });
 
 test("the fast path is NOT taken on an unresolved SPX change", () => {
@@ -29,7 +34,7 @@ test("the fast path is NOT taken on an unresolved SPX change", () => {
 });
 
 test("VIX is gated alongside SPX, not left behind it", () => {
-  // An unresolved entry is written `change_pct: pulseChange ?? 0` — a FABRICATED FLAT ZERO. While
+  // An unresolved entry used to be written `change_pct: pulseChange ?? 0` — a FABRICATED FLAT ZERO.
   // the gate named only SPX, a poll where SPX resolved and VIX did not returned early and served
   // `vix_change_pct: 0`, i.e. the desk asserting VIX is unchanged on the day when it is not. The
   // 2026-08-07 measurement found VIX affected identically to SPX (pulse -1.51 / -0.79 / -1.64
@@ -49,5 +54,23 @@ test("the header day-change is DERIVED from prior close, not transported", () =>
   // anchor, so session-open-anchored and prior-close-anchored values are indistinguishable. The tile
   // already shows price and prior_close, so computing the third number from those two makes the
   // header self-consistent by construction. See spx-change-anchor.test.ts for the arithmetic.
-  assert.match(src, /pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\.change_pct\)/);
+  assert.match(src, /pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\?\.change_pct\)/);
+});
+
+test("cold-replica pulse minimal fallback derives change from prior close, not raw transport", () => {
+  // buildSpxDeskPulseMinimal is the deskPulseCacheOpts fallback on cold replicas — it used to
+  // publish spxSnap.change_pct verbatim with prior_close:null, reintroducing the open-anchored
+  // oscillation the full pulse path fixed.
+  assert.match(src, /export async function buildSpxDeskPulseMinimal/);
+  assert.match(
+    src,
+    /buildSpxDeskPulseMinimal[\s\S]*priorDayForPulseLane[\s\S]*pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\?\.change_pct\)/
+  );
+});
+
+test("last-resort pulse fallback carries prior_close so consumers never invert change_pct", () => {
+  assert.match(
+    src,
+    /lastPulseForSignals\.prior_close \?\? null/
+  );
 });

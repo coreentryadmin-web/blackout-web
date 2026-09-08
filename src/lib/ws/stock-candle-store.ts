@@ -14,6 +14,7 @@
 import { todayEtYmd } from "../providers/spx-session";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
 import { fetchStockSnapshot } from "../providers/polygon";
+import { isWsUpdatedAtFresh } from "./timestamp-freshness";
 
 export type StockCandle = {
   time: number;
@@ -24,10 +25,14 @@ export type StockCandle = {
   volume?: number;
 };
 
-type CandleSnapshot = {
+export type StockOpenSource = "rest" | "ws-bar" | "";
+
+export type CandleSnapshot = {
   current: StockCandle | null;
   updatedAt: number;
-  changePct: number;
+  /** Null until openSource === "rest" (true prior-close anchor). ws-bar is provisional only. */
+  changePct: number | null;
+  openSource?: StockOpenSource;
 };
 
 type TickerState = {
@@ -90,8 +95,23 @@ function getOrCreateState(ticker: string): TickerState {
   return s;
 }
 
-export function computeChangePct(close: number, sessionOpen: number): number {
-  return sessionOpen > 0 ? Number((((close - sessionOpen) / sessionOpen) * 100).toFixed(2)) : 0;
+export function computeChangePct(close: number, sessionOpen: number): number | null {
+  if (!(sessionOpen > 0)) return null;
+  return Number((((close - sessionOpen) / sessionOpen) * 100).toFixed(2));
+}
+
+/**
+ * Day-change % is only member-facing when anchored to an authoritative prior close
+ * (openSource === "rest"). A ws-bar anchor measures from the first bar seen at boot —
+ * wrong on a mid-session reconnect — same guard as indexStore / spx-desk FIX-A.
+ */
+export function authoritativeStockChangePct(
+  close: number,
+  sessionOpen: number,
+  openSource: StockOpenSource
+): number | null {
+  if (openSource !== "rest" || !(sessionOpen > 0) || !(close > 0)) return null;
+  return computeChangePct(close, sessionOpen);
 }
 
 /**
@@ -128,12 +148,24 @@ function seedSessionOpenIfNeeded(ticker: string, s: TickerState): void {
   if (s.openSource === "rest" || s.seedInflight) return;
   if (s.lastSeedAttemptAt > 0 && Date.now() - s.lastSeedAttemptAt < SEED_RETRY_COOLDOWN_MS) return;
   s.lastSeedAttemptAt = Date.now();
+  // Capture which session this seed is being fired FOR. The `s.openSource === "rest"`
+  // check in the .then() below only catches a CONCURRENT seed that has already landed
+  // for the SAME session — it says nothing about whether the session itself has since
+  // rolled over. recordStockTick's day-rollover branch resets openSource back to ""
+  // (not "rest") on a new ET session day, so a REST fetch that was fired just before
+  // midnight ET and resolves just after would sail past that guard and stamp the NEW
+  // session with an anchor (prev_close) that was fetched for the OLD one — and because
+  // "rest" is never downgraded back to "ws-bar" (see the field comment above), that
+  // wrong anchor then becomes PERMANENTLY authoritative for the rest of the new
+  // session's change_pct. Comparing the CURRENT s.sessionDate at resolution time
+  // against the sessionDate captured HERE at fire time closes that gap.
+  const firedForSessionDate = s.sessionDate;
   s.seedInflight = snapshotFetcher(ticker)
     .then((snap) => {
       // A reconnect/new-day race could have already reset sessionDate; only apply
       // if this ticker is still on the session we seeded for and hasn't since
       // gotten a "rest" anchor from a concurrent caller.
-      if (!snap || s.openSource === "rest" || !(snap.prev_close > 0)) return;
+      if (!snap || s.openSource === "rest" || s.sessionDate !== firedForSessionDate || !(snap.prev_close > 0)) return;
       s.sessionOpen = snap.prev_close;
       s.openSource = "rest";
     })
@@ -183,7 +215,7 @@ export function recordStockTick(ticker: string, price: number, volume?: number, 
   }
   s.updatedAt = Date.now();
 
-  const changePct = computeChangePct(s.current.close, s.sessionOpen);
+  const changePct = authoritativeStockChangePct(s.current.close, s.sessionOpen, s.openSource);
 
   // On-demand Redis write: only push to Redis for tickers someone is actively
   // reading (getStockLiveCandle sets demanded=true). With A.* we get ~8K tickers;
@@ -193,7 +225,12 @@ export function recordStockTick(ticker: string, price: number, volume?: number, 
     s.lastRedisWriteAt = s.updatedAt;
     void sharedCacheSet(
       redisKey(sym),
-      { current: s.current, updatedAt: s.updatedAt, changePct } satisfies CandleSnapshot,
+      {
+        current: s.current,
+        updatedAt: s.updatedAt,
+        changePct,
+        openSource: s.openSource,
+      } satisfies CandleSnapshot,
       REDIS_TTL_SEC,
     ).catch(() => {});
   }
@@ -216,7 +253,7 @@ function getFallback(ticker: string): FallbackEntry {
 function refreshFallback(ticker: string): void {
   const f = getFallback(ticker);
   const now = Date.now();
-  if (now - f.fetchedAt < REDIS_READ_REFRESH_MS || f.inflight) return;
+  if (isWsUpdatedAtFresh(f.fetchedAt, REDIS_READ_REFRESH_MS, now) || f.inflight) return;
   f.inflight = sharedCacheGet<CandleSnapshot>(redisKey(ticker))
     .then((snap) => { if (snap) f.snap = snap; f.fetchedAt = Date.now(); })
     .catch(() => { f.fetchedAt = Date.now(); })
@@ -239,10 +276,15 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
   //    follower's own (permanently-null) sessionOpen is never read by anything.
   if (s.current) seedSessionOpenIfNeeded(sym, s);
   const local: CandleSnapshot | null = s.current
-    ? { current: s.current, updatedAt: s.updatedAt, changePct: computeChangePct(s.current.close, s.sessionOpen) }
+    ? {
+        current: s.current,
+        updatedAt: s.updatedAt,
+        changePct: authoritativeStockChangePct(s.current.close, s.sessionOpen, s.openSource),
+        openSource: s.openSource,
+      }
     : null;
 
-  const localFresh = local != null && Date.now() - local.updatedAt <= LOCAL_STALE_MS;
+  const localFresh = local != null && isWsUpdatedAtFresh(local.updatedAt, LOCAL_STALE_MS);
   if (localFresh) return local;
 
   refreshFallback(sym);
@@ -251,11 +293,16 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
   const best: CandleSnapshot | null =
     local && fb.snap && fb.snap.updatedAt > local.updatedAt ? fb.snap : local ?? fb.snap;
 
-  if (!best) return { current: null, updatedAt: 0, changePct: 0 };
-  if (Date.now() - best.updatedAt > MAX_CANDLE_AGE_MS) {
-    return { current: null, updatedAt: best.updatedAt, changePct: 0 };
+  if (!best) return { current: null, updatedAt: 0, changePct: null };
+  if (!isWsUpdatedAtFresh(best.updatedAt, MAX_CANDLE_AGE_MS)) {
+    return { current: null, updatedAt: best.updatedAt, changePct: null };
   }
-  return best;
+  const src = best.openSource ?? "";
+  const changePct =
+    src === "rest" && best.changePct != null && Number.isFinite(best.changePct)
+      ? best.changePct
+      : null;
+  return { current: best.current, updatedAt: best.updatedAt, changePct, openSource: src };
 }
 
 /**
@@ -269,7 +316,7 @@ export function wsSpotPrice(ticker: string, maxAgeMs = 60_000): number | null {
   const sym = ticker.toUpperCase();
   const s = stores.get(sym);
   if (!s?.current || !(s.current.close > 0)) return null;
-  if (Date.now() - s.updatedAt >= maxAgeMs) return null;
+  if (!isWsUpdatedAtFresh(s.updatedAt, maxAgeMs)) return null;
   s.demanded = true;
   return s.current.close;
 }
@@ -285,4 +332,10 @@ export function getStockCandleStoreStats(): { total: number; demanded: number } 
 export function _resetStockCandleStoreForTest(): void {
   stores.clear();
   fallbacks.clear();
+}
+
+/** Test-only: skew local `updatedAt` to simulate clock skew or a stale replica. */
+export function _skewLocalUpdatedAtForTest(ticker: string, offsetMs: number): void {
+  const s = stores.get(ticker.toUpperCase());
+  if (s) s.updatedAt += offsetMs;
 }

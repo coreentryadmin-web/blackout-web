@@ -74,10 +74,14 @@ export function gexProximityLabel(proximity: string | null | undefined): string 
  * aggressor read; returns "neutral" when the aggressor is unknown/midpoint.
  */
 export function printBias(flow: Pick<FlowAlert, "option_type" | "ask_pct">): "bullish" | "bearish" | "neutral" {
-  const isCall = flow.option_type?.toUpperCase() === "CALL";
+  const type = flow.option_type?.toUpperCase();
+  // A typeless/malformed print (HELIX-MAP §6) is neither CALL nor PUT — `isCall === false` would
+  // silently fall through to the PUT branch and fabricate a bias for a print with no readable
+  // side. Mirrors the undetermined check `flowDirection` already applies in helix-flow-aggression.ts.
+  if (type !== "CALL" && type !== "PUT") return "neutral";
   const aggr = aggressorRead(flow.ask_pct);
   if (!aggr || aggr.tone === "neutral") return "neutral";
   const bought = aggr.tone === "bull";
-  if (isCall) return bought ? "bullish" : "bearish";
+  if (type === "CALL") return bought ? "bullish" : "bearish";
   return bought ? "bearish" : "bullish";
 }

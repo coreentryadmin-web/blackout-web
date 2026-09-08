@@ -1,12 +1,13 @@
 import { polygonConfigured } from "@/lib/providers/config";
 import { fetchIndexMinuteBars, fetchIndexRsi } from "@/lib/providers/polygon";
-import { todayEtYmd } from "@/lib/providers/spx-session";
+import { filterRthBars, todayEtYmd } from "@/lib/providers/spx-session";
 import {
   playMtfBufferPts,
   playOpeningRangeMinutes,
   playTechnicalsCacheSec,
 } from "@/features/spx/lib/spx-play-config";
 import { etClock, etMinutes } from "@/features/spx/lib/spx-play-session-time";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 type Bar = { t: number; o: number; h: number; l: number; c: number; v?: number };
 
@@ -233,10 +234,13 @@ function ema9CurlingTowardVwap(m3: Bar[], vwap: number | null, ema9Now: number |
  */
 export function sessionBreakoutExtremesFromBars(bars: Bar[]): { hod: number | null; lod: number | null } {
   if (!bars.length) return { hod: null, lod: null };
-  const completed = bars.length > 1 ? bars.slice(0, -1) : [];
+  // RTH-only — premarket/after-hours prints must not inflate session HOD/LOD for breakout gates.
+  const rth = filterRthBars(bars);
+  const completed = rth.length > 1 ? rth.slice(0, -1) : [];
   if (!completed.length) {
-    const open = bars[0]!.o;
-    const ref = Number.isFinite(open) ? open : null;
+    const refBar = rth[0] ?? bars[0];
+    const open = refBar?.o;
+    const ref = open != null && Number.isFinite(open) ? open : null;
     return { hod: ref, lod: ref };
   }
   let hod = -Infinity;
@@ -308,7 +312,7 @@ export async function buildPlayTechnicals(
   const cacheMs = playTechnicalsCacheSec() * 1000;
   // 1.5-pt price step is tight enough to catch gap-open moves (which can gap 10+ pts
   // between minutes) while avoiding needless Polygon refetches on sub-tick noise.
-  if (cached && now - cached.at < cacheMs && Math.abs(cached.data.price - price) < 1.5) {
+  if (cached && isWsUpdatedAtFresh(cached.at, cacheMs, now) && Math.abs(cached.data.price - price) < 1.5) {
     return { ...cached.data, price };
   }
 

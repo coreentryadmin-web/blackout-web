@@ -1,12 +1,18 @@
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { runPolygonPool } from "@/lib/providers/polygon-rate-limiter";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import {
+  computeBeadRailGexWalls,
   computeGexWalls,
   mapFromStrikeTotalsRecord,
 } from "@/lib/providers/gex-wall-levels";
-import { listSharedUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
+import {
+  listSharedUniverseTickers,
+  removeDynamicUniverseTicker,
+  touchDynamicUniverse,
+} from "./vector-dynamic-universe";
 import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
 import { strikeTotalsForHorizonFromCells } from "./vector-narrowed-walls-from-cells";
@@ -109,9 +115,32 @@ async function buildVectorUniverseRow(
   } = opts;
   const ticker = normalizeVectorTicker(raw);
   const hm = await fetchGexHeatmap(ticker);
-  const spot = hm?.spot ?? null;
-  const gexWalls = hm?.gex?.strike_totals
-    ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
+  // `hm.spot` can come back literally 0 (a halted/delisted ticker, or a provider placeholder for
+  // "no price") rather than nullish, so a plain `?? null` lets a real zero leak into the row as
+  // `spot: 0` while every downstream computation already treats <= 0 the same as absent (the
+  // `spot != null && spot > 0` guard immediately below, gexWalls, etc.) — a member-visible field
+  // saying "0" when every other consumer of the same value already reads it as "no real spot".
+  const spot = hm?.spot != null && hm.spot > 0 ? hm.spot : null;
+  // Self-heal: a dead dynamic entry (dead before touchDynamicUniverse's spot>0 write-guard
+  // existed, or one whose chain stopped resolving later) never gets removed by age-based pruning
+  // alone. Fire-and-forget, never blocks the row — see removeDynamicUniverseTicker's own comment.
+  if (!(spot != null && spot > 0)) {
+    void removeDynamicUniverseTicker(ticker);
+  }
+  // GEX (gamma) lens is side-constrained by spot — a call wall below spot or a put wall above it
+  // is not a real resistance/support read, the exact "wrong side of spot" bug PR #2417 fixed for
+  // the canonical gex-heatmap route but not here (2026-09-04 audit finding). VEX (vanna) has no
+  // inherent above/below-spot geometry (see gex-wall-levels.ts's NAMING doc) and stays unconstrained.
+  const gexWalls =
+    hm?.gex?.strike_totals && spot != null && spot > 0
+      ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
+          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+          spot,
+        })
+      : { callWalls: [], putWalls: [] };
+  // Bead rail: unconstrained Sep-3 ranking — overlay/scanner use gexWalls above.
+  const beadRailGexWalls = hm?.gex?.strike_totals
+    ? computeBeadRailGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
       })
     : { callWalls: [], putWalls: [] };
@@ -127,7 +156,7 @@ async function buildVectorUniverseRow(
     const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker, bucketScope));
     const sample = buildWallHistorySample({
       time: sampleTime,
-      gexWalls,
+      gexWalls: beadRailGexWalls,
       gammaFlip: hm?.gex?.flip ?? null,
       vexWalls,
       vexFlip: hm?.vex?.flip ?? null,
@@ -170,7 +199,14 @@ async function buildVectorUniverseRow(
         // No expiry column in range is a real answer for this horizon on this chain — record
         // nothing rather than a zeroed wall set, which would render as "no gamma anywhere".
         if (!totals) continue;
-        const horizonWalls = computeGexWalls(totals, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+        // Same spot-constraint as the main gexWalls computation above (2026-09-04 audit
+        // follow-up to #3495) — this narrowed-horizon reduction feeds the durable
+        // 0dte/weekly/monthly wall-history rails via writeWallHistorySample below, so an
+        // unconstrained call here persisted "wrong side of spot" walls into history even
+        // after the live rail was fixed.
+        const horizonWalls = computeBeadRailGexWalls(totals, {
+          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+        });
         const horizonSample = buildWallHistorySample({
           time: sampleTime,
           gexWalls: horizonWalls,
@@ -266,16 +302,32 @@ export async function buildVectorUniverseSnapshot(
   const rows: VectorUniverseRow[] = [];
   const nowSec = Math.floor(Date.now() / 1000);
 
-  const results = await Promise.allSettled(
-    tickers.map((raw) =>
-      buildVectorUniverseRow(raw, {
-        recordWallHistory,
-        sessionYmd,
-        nowSec,
-        recordNarrowedHorizons: true,
-        wallWriteSource,
-      })
-    )
+  // Bounded fan-out (2026-09-04 audit finding): the raw Promise.allSettled this replaced fired
+  // every universe ticker's fetchGexHeatmap at once (~85-100 tickers). Each cold ticker's chain
+  // build shares the SAME app-wide Polygon admission limiter as live desk/GEX/pulse traffic, and
+  // fetchGexHeatmap caps how long ONE caller blocks on a cold/inflight build at 3s
+  // (gexHeatmapMaxBlockMs) before falling back to stale-or-null — so a ticker with no recent
+  // cache entry that gets stuck queuing behind dozens of concurrent siblings silently serves
+  // null instead of its real (available) data. Reproduced live: the snapshot served
+  // spot:null/gammaFlip:null for DIA/AAOI/DRAM/ZS/NOK while a solo GET
+  // /api/market/gex-heatmap?ticker=<T> for each (no contention) returned available:true with a
+  // real spot price seconds later. Same root-cause shape, same fix, as the already-fixed
+  // vector-dark-pool-warm incident (FINDINGS.md 2026-09-02) on the UW side.
+  const results = await runPolygonPool(
+    tickers.map((raw) => async () => {
+      try {
+        const value = await buildVectorUniverseRow(raw, {
+          recordWallHistory,
+          sessionYmd,
+          nowSec,
+          recordNarrowedHorizons: true,
+          wallWriteSource,
+        });
+        return { status: "fulfilled" as const, value };
+      } catch (reason) {
+        return { status: "rejected" as const, reason };
+      }
+    })
   );
 
   for (const r of results) {

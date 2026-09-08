@@ -48,40 +48,9 @@ import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { DOSSIER_BATCH_SIZE, DOSSIER_FETCH_TIMEOUT_MS, DOSSIER_INTER_BATCH_MS, DOSSIER_TICKER_WALL_MS } from "./constants";
 import { dossierFetch } from "./fetch-timeout";
 import { parseLatestRealizedVol, parseLatestRiskReversalSkew } from "./vol-metrics";
-
-export type TickerGreekFlowSummary = {
-  net_delta: number;
-  net_gamma: number;
-  bias: "bullish" | "bearish" | "neutral";
-  row_count: number;
-};
-
-function gfNum(row: Record<string, unknown>, ...keys: string[]): number {
-  for (const k of keys) {
-    const v = row[k];
-    if (v != null && Number.isFinite(Number(v))) return Number(v);
-  }
-  return 0;
-}
-
-export function summarizeTickerGreekFlow(
-  rows: Record<string, unknown>[]
-): TickerGreekFlowSummary | null {
-  if (!rows.length) return null;
-  let netDelta = 0;
-  let netGamma = 0;
-  for (const r of rows) {
-    const d = gfNum(r, "net_delta", "delta", "net_deltas");
-    const cd = gfNum(r, "call_delta", "call_deltas");
-    const pd = gfNum(r, "put_delta", "put_deltas");
-    netDelta += d !== 0 ? d : cd + pd;
-    netGamma += gfNum(r, "net_gamma", "gamma", "net_gex", "gex");
-  }
-  if (netDelta === 0 && netGamma === 0) return null;
-  const bias: TickerGreekFlowSummary["bias"] =
-    netDelta > 10_000 ? "bullish" : netDelta < -10_000 ? "bearish" : "neutral";
-  return { net_delta: netDelta, net_gamma: netGamma, bias, row_count: rows.length };
-}
+import { summarizeTickerGreekFlow, type TickerGreekFlowSummary } from "./ticker-greek-flow-summary";
+export type { TickerGreekFlowSummary } from "./ticker-greek-flow-summary";
+export { summarizeTickerGreekFlow } from "./ticker-greek-flow-summary";
 
 export type TickerDossier = {
   ticker: string;

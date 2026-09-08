@@ -49,16 +49,6 @@ export type VectorContractPick = {
 
 export type { VectorPlayPickContext, VectorRankedPick };
 
-/**
- * @deprecated Range bias used to emit call+put at the SAME conviction — use `rankVectorPlayCandidates`.
- * Kept for minimal GET callers; maps to a single-direction stub only.
- */
-export function legsForBias(bias: VectorPlayBias): Array<"long" | "short"> {
-  if (bias === "long") return ["long"];
-  if (bias === "short") return ["short"];
-  return [];
-}
-
 /** Primary entry — ranks strong picks with per-contract scoring. */
 export function buildRankedVectorPicks(
   ctx: VectorPlayPickContext | null,

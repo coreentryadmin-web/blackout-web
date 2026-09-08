@@ -50,11 +50,20 @@ export const VP_LABEL_COLOR = "rgba(250, 250, 250, 0.92)";
 
 const RIGHT_PAD_PX = 2;
 const LABEL_FONT = "600 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+/** Small inset from the profile band's left edge — keeps labels inside the bar gutter, away from axis badges. */
+const LABEL_INSET_PX = 4;
+
+/** POC/VAH/VAL label anchor — left-aligned at the profile gutter, not the price axis. */
+export function volumeProfileLabelX(gutterLeft: number, insetPx = LABEL_INSET_PX): number {
+  return gutterLeft + insetPx;
+}
 
 type ProjectedLevel = { y: number; label: string; color: string; dash: number[] };
 type ProjectedBucket = { yTop: number; yBottom: number; xLeft: number; isPoc: boolean; inValueArea: boolean };
 type Projected = {
   rightX: number;
+  /** Left edge of the profile bar band — POC/VAH/VAL labels anchor here so they never sit under native price-line axis badges at rightX. */
+  labelX: number;
   bars: ProjectedBucket[];
   levels: ProjectedLevel[];
 };
@@ -70,7 +79,7 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       ctx.save();
       ctx.globalAlpha = this._overlayDim;
-      const { rightX, bars, levels } = this._p;
+      const { rightX, labelX, bars, levels } = this._p;
       const paneW = scope.mediaSize.width;
 
       for (const b of bars) {
@@ -92,9 +101,9 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
 
         ctx.font = LABEL_FONT;
         ctx.fillStyle = VP_LABEL_COLOR;
-        ctx.textAlign = "right";
+        ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(lvl.label, rightX - 6, lvl.y);
+        ctx.fillText(lvl.label, labelX, lvl.y);
       }
 
       ctx.restore();
@@ -202,6 +211,6 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     addLevel(profile.valueAreaHigh, "VAH", VP_VA_LINE, [6, 4]);
     addLevel(profile.valueAreaLow, "VAL", VP_VA_LINE, [6, 4]);
 
-    return { rightX: gutter.rightX, bars, levels };
+    return { rightX: gutter.rightX, labelX: volumeProfileLabelX(gutter.gutterLeft), bars, levels };
   }
 }

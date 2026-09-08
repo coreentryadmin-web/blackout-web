@@ -22,14 +22,60 @@ import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { comparePresetWarmTickers } from "@/features/thermal/lib/thermal-compare-presets";
-import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { calculateMatrixDelta, type GexMatrix } from "@/lib/gex-matrix-delta";
 import { broadcastMatrixDelta } from "@/lib/gex-matrix-broadcast";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+/**
+ * Cross-replica overlap guard. This route runs synchronously (no background dispatch) and had
+ * NO overlap guard despite being one of the RTH-leader-watched warmers (rth-warm-leader-logic.ts
+ * sets its heal-after threshold to a tight 20s — "in-app leader fills the gap so Thermal
+ * SPY/QQQ don't sit on minute-old asof"). Measured live 2026-09-03 (48h, /ecs/blackout-production,
+ * n=1000 runs): p50=46.5s, p90=81.1s, p99=181.1s, max=209.2s — every run finishes well past the
+ * 20s heal threshold, so the leader (rth-warm-leader.ts's `dispatchCronWarm`, which invokes this
+ * exact GET handler in-process) treats it as perpetually overdue and re-dispatches on almost every
+ * cycle, landing a second full warm pass on top of one already in flight. Both instances then
+ * sweep the shared ≤100-ticker universe concurrently through the same Polygon chain fetches and
+ * SSE delta broadcasts real member requests also depend on — same "no lock, schedule tighter than
+ * runtime" shape already fixed for vector-pick-sweep/desk-warm/zerodte-warm/vector-dark-pool-warm.
+ * TTL (240s) comfortably covers the measured max (209.2s) as the safety-net ceiling if a release
+ * is ever missed (crash mid-warm).
+ */
+const OVERLAP_LOCK_KEY = "heatmap-warm:running";
+const OVERLAP_LOCK_TTL_SEC = 240;
+
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate above.
+ *
+ * Same structural gap fixed for desk-warm (#3540): `force=1` completely bypasses
+ * `shouldRunCacheWarmer`'s hours check, and OVERLAP_LOCK above guards only against a SECOND run
+ * starting while the FIRST is still in flight — it is released the instant the run completes,
+ * which on an already-warm universe (this route's own header comment: "warm names are
+ * Redis-cache-first (near-free)") can be well under the p50=46.5s measured for a cold sweep. A
+ * caller replaying `?force=1` in a tight loop while the shared universe is already warm could
+ * therefore re-trigger the full Polygon fan-out across the shared ≤100-ticker universe far faster
+ * than any legitimate trigger ever would, with nothing capping the rate — the exact pattern #3540
+ * measured live on desk-warm (314 replays overnight, median 40s apart, some under 15s, with
+ * EventBridge, rth-warm-leader and the staleness watchdog all positively ruled out as the source).
+ *
+ * 10s sits safely BELOW every legitimate cadence for this specific cron so it never blocks real
+ * traffic: rth-warm-leader's own heal threshold here is 20s (RTH_WRITER_HEAL_AFTER_MIN
+ * ["heatmap-warm"], the TIGHTEST of any watched key — see rth-warm-leader-logic.ts) and its own
+ * tick loop runs every 15s (TICK_MS, rth-warm-leader.ts); EventBridge's own schedule is ~30-45s
+ * (this file's header comment). None of those legitimate paths re-requests this key sooner than
+ * 10s ever would allow, so only an out-of-band replay loop tighter than the leader's own tick can
+ * ever observe this floor.
+ */
+const RERUN_COOLDOWN_KEY = "heatmap-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 10;
+/** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558 fixed on desk-warm. */
+const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -38,17 +84,62 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!shouldRunCacheWarmer(force)) {
+  if (!shouldRunCacheWarmer(force, undefined, "heatmap-warm", callerInfoFromRequest(req))) {
     const payload = {
       ok: true,
       skipped: true,
       reason:
-        "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1 or set CACHE_WARM_ALWAYS=1",
+        "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1",
     };
     await logCronRun("heatmap-warm", started, payload);
     return NextResponse.json(payload);
   }
 
+  // Rate floor — checked even when force=1 legitimately cleared the hours gate above (see
+  // RERUN_COOLDOWN_KEY doc comment). Not deleted on completion like OVERLAP_LOCK below — it is
+  // meant to persist for its full TTL so the cadence floor holds regardless of how fast an
+  // individual run finishes.
+  const effectiveCooldownSec = isEtExtendedWarmHours()
+    ? RERUN_COOLDOWN_SEC
+    : OFF_WINDOW_FORCE_COOLDOWN_SEC;
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    effectiveCooldownSec
+  ).catch(() => true)); // fail OPEN on a Redis error — same posture as OVERLAP_LOCK below
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — heatmap-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
+    };
+    await logCronRun("heatmap-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous warm still in flight (idempotent skip)",
+    };
+    await logCronRun("heatmap-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  try {
+    return await runHeatmapWarm(req, started);
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+  }
+}
+
+async function runHeatmapWarm(req: NextRequest, started: number): Promise<NextResponse> {
   // Shared with Vector bead recording: static allowlist ∪ dynamic (≤100, 14d retention).
   const tickers = await listSharedUniverseTickers();
   // Every Thermal compare-preset name — cache-first warm so opening Mag7/Semis paints instantly.

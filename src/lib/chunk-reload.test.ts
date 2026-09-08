@@ -20,6 +20,11 @@ test("isChunkLoadErrorMessage: matches the real deploy-race errors, ignores app 
     )
   );
   assert.ok(isChunkLoadErrorMessage("Failed to fetch dynamically imported module: https://.../x.js"));
+  assert.ok(
+    isChunkLoadErrorMessage(
+      'UnrecognizedActionError: Server Action "7f02ce53d9352dc8f2217b6634a044e18e7bdefaa7" was not found on the server.'
+    )
+  );
   // An Error-like object (has .message) works too.
   assert.ok(isChunkLoadErrorMessage(new Error("ChunkLoadError: Loading chunk 3 failed")));
   // App/logic errors must NOT trigger a reload.

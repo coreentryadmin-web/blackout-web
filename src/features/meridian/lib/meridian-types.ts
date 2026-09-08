@@ -885,6 +885,8 @@ export type MeridianTimelinePayload = {
   board_tickers: string[];
   earnings_week: MeridianEarningsWeekRow[];
   earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
+  /** Non-null when the mega-cap week historical-print fetch failed for beat-rate rollups. */
+  earnings_week_analytics_error?: string | null;
   earnings_analytics_rows: MeridianEarningsAnalyticsRow[];
   recent_earnings_revisions: MeridianEarningsRevision[];
   estimate_revision_timeline: MeridianEstimateRevisionEntry[];

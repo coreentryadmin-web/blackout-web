@@ -52,3 +52,18 @@ test("buildAdminUserFilterSql maps tier and role filters", () => {
   assert.match(accessFree.whereSql, /tier = 'free'/);
   assert.match(accessFree.whereSql, /NOT IN \('community', 'premium'\)/);
 });
+
+test("buildAdminUserFilterSql community clauses exclude premium-tier users, matching classifyAdminUserAccess's priority order", () => {
+  // classifyAdminUserAccess (admin-user-access.ts) classifies a user with
+  // membership_kind='community' AND tier='premium' as "premium" — tier wins. Both community
+  // SQL clauses here must apply the same exclusion, or access=community/tier=community
+  // filtering returns a different set than the row's own accessLabel badge claims, and the
+  // premium+community stat buckets double-count that user (sum exceeds total).
+  const accessCommunity = buildAdminUserFilterSql({ access: "community" });
+  assert.match(accessCommunity.whereSql, /membership_kind = 'community'/);
+  assert.match(accessCommunity.whereSql, /COALESCE\(tier, 'free'\) <> 'premium'/);
+
+  const tierCommunity = buildAdminUserFilterSql({ tier: "community" });
+  assert.match(tierCommunity.whereSql, /membership_kind = 'community'/);
+  assert.match(tierCommunity.whereSql, /COALESCE\(tier, 'free'\) <> 'premium'/);
+});

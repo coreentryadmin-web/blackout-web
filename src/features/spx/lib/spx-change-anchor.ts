@@ -27,13 +27,27 @@
 export function pulseChangePctFromPriorClose(
   price: number | null | undefined,
   priorClose: number | null | undefined,
-  transported: number
-): number {
+  transported: number | null | undefined
+): number | null {
   if (
     typeof price === "number" && Number.isFinite(price) && price > 0 &&
     typeof priorClose === "number" && Number.isFinite(priorClose) && priorClose > 0
   ) {
     return ((price - priorClose) / priorClose) * 100;
   }
-  return transported;
+  return transported != null && Number.isFinite(transported) ? transported : null;
+}
+
+/**
+ * Trust a transported index `change_pct` only when the upstream entry declares a REST-seeded
+ * anchor (`open_source === "rest"`). ws-bar anchors measure from session open, not prior close —
+ * same failure class as pulseChangePctFromPriorClose, but VIX carries no prior close to derive from.
+ */
+export function restAnchoredIndexChangePct(
+  entry?: { change_pct?: number | null; open_source?: string } | null,
+  fallback?: number | null
+): number | null {
+  if (!entry || entry.open_source !== "rest") return fallback ?? null;
+  const pct = Number(entry.change_pct);
+  return Number.isFinite(pct) ? pct : (fallback ?? null);
 }

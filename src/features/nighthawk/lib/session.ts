@@ -47,8 +47,8 @@ const US_MARKET_HOLIDAYS = new Set([
   "2029-12-25",
 ]);
 
-export function todayEt(): string {
-  return todayEtYmd();
+export function todayEt(now: Date = new Date()): string {
+  return formatEtDate(now);
 }
 
 export function priorEt(): string {
@@ -111,14 +111,14 @@ export function mostRecentTradingDayEt(now: Date = new Date()): string {
   return ymd;
 }
 
-export function etNowParts(): { hour: number; minute: number; weekday: string } {
+export function etNowParts(now: Date = new Date()): { hour: number; minute: number; weekday: string } {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: ET,
     hour: "numeric",
     minute: "numeric",
     weekday: "short",
     hour12: false,
-  }).formatToParts(new Date());
+  }).formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   return {
     hour: Number(get("hour")),

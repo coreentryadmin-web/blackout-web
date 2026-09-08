@@ -3,6 +3,7 @@ import { dbQuery } from "@/lib/db";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { isPremarketBriefFresh, todayEtYmd } from "@/lib/providers/spx-session";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
         { headers: NO_STORE_HEADERS }
       );
     }
-    return NextResponse.json({
+    return NextResponse.json(roundFloats({
       available: true,
       date: b.brief_date,
       content: b.content,
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
       netGex: b.net_gex,
       gexBias: b.gex_bias,
       publishedAt: b.published_at,
-    }, { headers: NO_STORE_HEADERS });
+    }), { headers: NO_STORE_HEADERS });
   } catch {
     return NextResponse.json({ available: false }, { headers: NO_STORE_HEADERS });
   }

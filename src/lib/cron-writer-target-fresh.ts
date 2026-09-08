@@ -1,3 +1,5 @@
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
+
 /** REST flow-ingest skip reasons that mean an alternate live writer path is active. */
 export const FLOW_INGEST_ALT_SKIP_REASONS = new Set(["ws_active", "ws_active_cluster", "bot_primary"]);
 
@@ -20,18 +22,26 @@ export async function probePgFlowAlertsFresh(
     );
     const ms = res.rows[0]?.latest_ms != null ? Number(res.rows[0].latest_ms) : NaN;
     if (!Number.isFinite(ms)) return { fresh: false, ageMin: null };
-    const ageMin = (Date.now() - ms) / 60_000;
-    return { fresh: ageMin <= maxAgeMin, ageMin };
+    // signalWindowAgeMs rejects a future-dated row (clock skew / bad write) instead of letting
+    // a negative age trivially pass `<= maxAgeMin` — this probe's `fresh: true` result overrides a
+    // genuinely stale cron job to "healthy" on the admin dashboard (admin-cron-health.ts), so a
+    // corrupted future timestamp would mask a real dead-writer incident, not just misreport an age.
+    const ageMs = signalWindowAgeMs(ms, Date.now());
+    const ageMin = ageMs != null ? ageMs / 60_000 : null;
+    return { fresh: ageMin != null && ageMin <= maxAgeMin, ageMin };
   } catch {
     return { fresh: false, ageMin: null };
   }
 }
 
-function ageMinFromIso(iso: string | null | undefined, now = Date.now()): number | null {
+/** Same future-dated-timestamp guard as probePgFlowAlertsFresh, shared across every `fresh =
+ *  ageMin != null && ageMin <= N` check below — exported for a direct unit test. */
+export function ageMinFromIso(iso: string | null | undefined, now = Date.now()): number | null {
   if (!iso) return null;
   const ms = new Date(iso).getTime();
   if (!Number.isFinite(ms)) return null;
-  return (now - ms) / 60_000;
+  const ageMs = signalWindowAgeMs(ms, now);
+  return ageMs != null ? ageMs / 60_000 : null;
 }
 
 async function uwCacheRemainingTtlSec(logicalKey: string): Promise<number | null> {
@@ -162,10 +172,11 @@ export async function probeWriterTargetFresh(jobKey: string): Promise<WriterTarg
         return { fresh: false, detail: "SPY wall-history rail empty today" };
       }
       const tail = history[history.length - 1];
-      const ageSec =
+      const tailAgeMs =
         tail?.time != null && Number.isFinite(tail.time)
-          ? Date.now() / 1000 - tail.time
+          ? signalWindowAgeMs(tail.time * 1000, Date.now())
           : null;
+      const ageSec = tailAgeMs != null ? tailAgeMs / 1000 : null;
       const fresh = ageSec != null && ageSec <= 30;
       return {
         fresh,

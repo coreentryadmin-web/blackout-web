@@ -1,12 +1,14 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+import { auth } from "@/lib/auth-server";
+import { getUserProfile } from "@/lib/user-directory";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { acquireMembershipSyncSlot } from "@/lib/membership-sync-limit";
 import { publishTierChanged } from "@/lib/tier-cache";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { isInternalAuditEmail } from "@/lib/internal-audit-email";
 
 export async function POST() {
   const { userId } = await auth();
@@ -23,12 +25,20 @@ export async function POST() {
     );
   }
 
-  const user = await currentUser();
-  const email = user?.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
-    ?.emailAddress;
+  const profile = await getUserProfile(userId);
+  const email = profile?.email ?? null;
 
   if (!email) {
     return NextResponse.json({ error: "No email on account" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
+
+  // AuthSignedInRedirect.tsx fires this on EVERY authenticated sign-in paint, including every
+  // temp/audit Clerk account scripts/audit/*.mjs mints against production every day — none of
+  // them can ever have a real Whop membership, so this was a wasted outbound Whop API call on
+  // every single one. Same isInternalAuditEmail() skip already applied to the Clerk webhook's
+  // equivalent Whop sync call (docs/audit/findings-staging — 2026-08-30 cycle).
+  if (isInternalAuditEmail(email)) {
+    return NextResponse.json({ ok: true, tier: "free", updated: 0 }, { headers: NO_STORE_HEADERS });
   }
 
   try {

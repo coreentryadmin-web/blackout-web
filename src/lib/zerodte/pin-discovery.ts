@@ -216,7 +216,7 @@ export async function discoverPinSetups(opts: {
 
         // Wall DOMINANCE from the SAME near-term-scoped ladder (computeGexWalls agrees with pos on
         // the top-wall strikes; we take the pct/share for the score's bracket-strength term).
-        const walls = computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals));
+        const walls = computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), { spot: pos.spot });
         const callWallPct =
           pos.call_wall != null ? walls.callWalls.find((w) => w.strike === pos.call_wall)?.pct ?? null : null;
         const putWallPct =

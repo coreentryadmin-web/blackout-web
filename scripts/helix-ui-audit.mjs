@@ -1,17 +1,25 @@
 #!/usr/bin/env node
 /**
- * HELIX /flows layout audit — viewport metrics + screenshots on staging.
+ * HELIX /flows layout audit — viewport metrics + screenshots.
+ *
+ * Was "on staging" — the whole `blackout-staging-*` stack (ECS, Secrets Manager's
+ * `blackout-staging/app/env`, `staging.blackouttrades.com` DNS) was decommissioned 2026-07-25
+ * (see CLAUDE.md). `loadSecret()` was called unconditionally in `main()` with no try/catch, so
+ * every invocation of `npm run validate:helix-ui` threw `ResourceNotFoundException` from AWS
+ * Secrets Manager before minting a session or opening a browser — the secret it loaded wasn't
+ * even used afterward (`mintAppSession({ appUrl })` takes no secret param; the loaded value was
+ * a dead local). Production is the only environment now, and `mintAppSession` (see
+ * `scripts/audit/lib/app-session.mjs`) already authenticates via the real prod Clerk FAPI host
+ * regardless of `appUrl`, so no secret load is needed at all.
  */
-import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { mintAppSession } from "./audit/lib/app-session.mjs";
 import { onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 
-const BASE = (process.env.STAGING_BASE_URL ?? "https://staging.blackouttrades.com").replace(/\/$/, "");
+const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const OUT = process.env.HELIX_UI_AUDIT_DIR ?? join(process.cwd(), "audit-output/helix-ui-audit");
-const SECRET_NAME = process.env.STAGING_SECRET_NAME ?? "blackout-staging/app/env";
 
 mkdirSync(OUT, { recursive: true });
 
@@ -21,14 +29,6 @@ const rec = (name, status, detail = "") => {
   const icon = status === "PASS" ? "✓" : status === "WARN" ? "⚠" : "✗";
   console.log(`  ${icon} [${status}] ${name}${detail ? ` — ${detail}` : ""}`);
 };
-
-function loadSecret() {
-  const raw = execSync(
-    `aws secretsmanager get-secret-value --secret-id "${SECRET_NAME}" --query SecretString --output text`,
-    { encoding: "utf8" }
-  );
-  return JSON.parse(raw);
-}
 
 function playwrightCookiesFromHeader(header, domain) {
   return header.split(";").map((part) => {
@@ -137,8 +137,6 @@ async function auditViewport(browser, session, { width, height, label }) {
 
 async function main() {
   console.log(`\n=== HELIX UI audit ===\nTarget: ${BASE}\nArtifacts: ${OUT}\n`);
-
-  const secret = loadSecret();
 
   const session = await mintAppSession({ appUrl: BASE });
   if (session.skip) {

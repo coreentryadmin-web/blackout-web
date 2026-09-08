@@ -1,8 +1,10 @@
 import type { SpxConfluence } from "@/features/spx/lib/spx-signals";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { PlayConfirmationResult } from "@/features/spx/lib/spx-play-confirmations";
 import { buildPlayIdeaIntel } from "@/features/spx/lib/spx-play-intel";
 import { shouldBlockForTradingHalt } from "@/lib/ws/uw-socket";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isStagingDeploy } from "@/lib/clerk-env";
 import {
@@ -283,10 +285,26 @@ export function evaluatePlayGates(
   const polledAt = desk.polled_at ?? desk.as_of;
   let deskStaleSec: number | null = null;
   if (polledAt) {
-    deskStaleSec = (Date.now() - new Date(polledAt).getTime()) / 1000;
+    const polledAgeMs = Date.now() - new Date(polledAt).getTime();
+    // BUG FIX (2026-09-03): reject a desk snapshot timestamped in the future (polled_at/as_of is
+    // written by a separate warm cron, so cross-process clock skew is real) rather than letting the
+    // negative age silently pass the `> playGexStaleMaxSec()` block below as "not stale" — the same
+    // future-timestamp guard marks-math.ts's isZeroDteMarkStale already applies to option marks.
+    // Reported as exactly one second past the threshold rather than the true (untrustworthy)
+    // negative duration, so the block message still shows a sane, always-over-threshold number.
+    deskStaleSec =
+      polledAgeMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS
+        ? playGexStaleMaxSec() + 1
+        : Math.max(0, polledAgeMs / 1000);
   }
   if (desk.gex_age_ms != null) {
-    const gexSec = desk.gex_age_ms / 1000;
+    // Same future-skew guard as gexStaleFromAge (WS_TIMESTAMP_FUTURE_TOLERANCE_MS): a negative
+    // gex_age_ms used to flow through as a negative gexSec, never exceeding playGexStaleMaxSec()
+    // even when the desk GEX stale pill was already lit.
+    const gexSec =
+      desk.gex_age_ms < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS
+        ? playGexStaleMaxSec() + 1
+        : Math.max(0, desk.gex_age_ms / 1000);
     deskStaleSec = deskStaleSec != null ? Math.max(deskStaleSec, gexSec) : gexSec;
   }
   if (deskStaleSec != null && deskStaleSec > playGexStaleMaxSec()) {

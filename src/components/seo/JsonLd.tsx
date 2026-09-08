@@ -1,6 +1,7 @@
 import { SITE } from "@/lib/site";
 import { IMAGES } from "@/lib/images";
 import { MEMBERSHIP_PRICING } from "@/lib/pricing";
+import { manifestSchemaFeatureList } from "@/lib/marketing/product-manifest";
 
 type JsonLdProps = { data: Record<string, unknown> };
 
@@ -149,6 +150,7 @@ export function SoftwareApplicationJsonLd() {
         operatingSystem: "Web, iOS",
         url: SITE.url,
         description: SITE.description,
+        featureList: manifestSchemaFeatureList(),
         offers: [
           {
             "@type": "Offer",

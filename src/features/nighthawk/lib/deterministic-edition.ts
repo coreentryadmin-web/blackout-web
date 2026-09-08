@@ -349,12 +349,13 @@ function resolveLevels(
   }
 
   // PR-N21/N22: push the target-side S/R out so overnight plays have meaningful reward.
-  // 1.5× ATR ensures a full average day's range of upside minimum.
+  // 1.0× ATR is the measured sweet spot for one-session reachability (~11% touch rate);
+  // the old 1.5× floor pushed most targets to ~3% — see target-reachability.ts.
   if (px != null && support != null && resistance != null && resistance > support) {
     const atr = tech?.atr14;
     const minTargetDist = atr != null && Number.isFinite(atr) && atr > 0
-      ? atr * 1.5
-      : px * 0.025;
+      ? atr * 1.0
+      : px * 0.02;
     if (direction === "long" && (resistance - px) < minTargetDist) {
       resistance = px + minTargetDist;
     } else if (direction === "short" && (px - support) < minTargetDist) {
@@ -574,6 +575,10 @@ function buildPlay(
       ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
       ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
       ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
+      ...(scored.iv_adjustment != null ? { iv_adjustment: scored.iv_adjustment } : {}),
+      ...(scored.anomaly_penalty != null ? { anomaly_penalty: scored.anomaly_penalty } : {}),
+      ...(scored.flow_conviction_bonus != null ? { flow_conviction_bonus: scored.flow_conviction_bonus } : {}),
+      ...(scored.regime_adjustment != null ? { regime_adjustment: scored.regime_adjustment } : {}),
     },
     confirming_signals: scored.confirming_signals ?? undefined,
     earnings_risk: scored.earnings_risk === true ? true : undefined,
@@ -858,13 +863,13 @@ export function buildRescuePlays(params: {
     const { thesis, key_signal } = buildDeterministicThesis(scored, dossier, levels);
 
     const warnings: string[] = [];
+    const direction = scored.direction === "short" ? "SHORT" : "LONG";
+    const geom = validatePlayGeometry({ ...levels, direction } as Parameters<typeof validatePlayGeometry>[0]);
+    if (!geom.ok) continue;
+
     const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
     const options_play = formatOptionsPlay(ticker, contract);
-    if (contract) {
-      if (!validatePlayGeometry({ ...levels, direction: scored.direction === "short" ? "SHORT" : "LONG" } as any).ok) {
-        warnings.push("Entry/target geometry did not pass normal validation — verify levels before trading");
-      }
-    } else {
+    if (!contract) {
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
     }
 
@@ -896,6 +901,10 @@ export function buildRescuePlays(params: {
         ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
         ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
         ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
+        ...(scored.iv_adjustment != null ? { iv_adjustment: scored.iv_adjustment } : {}),
+        ...(scored.anomaly_penalty != null ? { anomaly_penalty: scored.anomaly_penalty } : {}),
+        ...(scored.flow_conviction_bonus != null ? { flow_conviction_bonus: scored.flow_conviction_bonus } : {}),
+        ...(scored.regime_adjustment != null ? { regime_adjustment: scored.regime_adjustment } : {}),
       },
       sector: scored.sector?.toLowerCase() || undefined,
       confirming_signals: scored.confirming_signals ?? undefined,

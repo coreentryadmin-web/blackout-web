@@ -83,6 +83,24 @@ test("selectDarkpoolDigestPrints ranks in-window by premium", () => {
   assert.equal(rows[0]?.ticker, "NVDA");
 });
 
+test("selectDarkpoolDigestPrints rejects a future-dated block instead of counting it in-window", () => {
+  // Same future-print bug already fixed in Helix's Repeat Hits/digest filters: an executed_at
+  // ahead of `now` makes `nowMs - ms` negative, which trivially satisfies `<= windowMs` and would
+  // let a clock-skewed block win the digest pick on premium alone.
+  const now = new Date("2026-08-04T14:32:00.000Z");
+  const recent = "2026-08-04T14:28:00.000Z";
+  const future = new Date(now.getTime() + 10 * 60_000).toISOString();
+  const { rows, inWindowCount } = selectDarkpoolDigestPrints(
+    [
+      { ticker: "AAPL", premium: 6_000_000, side: "buy", executed_at: recent },
+      { ticker: "FUTURE", premium: 20_000_000, side: "buy", executed_at: future },
+    ],
+    { now, limit: 2 }
+  );
+  assert.equal(inWindowCount, 1);
+  assert.equal(rows[0]?.ticker, "AAPL");
+});
+
 test("dedup key is stable for same print", () => {
   const p = {
     ticker: "SPY",

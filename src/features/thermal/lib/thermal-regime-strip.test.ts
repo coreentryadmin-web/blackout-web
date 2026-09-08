@@ -14,7 +14,7 @@ describe("buildGexRegimeInterpretation", () => {
       callWall: 780,
     });
     assert.match(read!, /stabilizing above 773/);
-    assert.match(read!, /780 is the dominant pin/);
+    assert.match(read!, /780 is the king node \(max \|net γ\|\)/);
     assert.match(read!, /loss of 773 changes the regime/);
   });
 
@@ -55,7 +55,8 @@ describe("buildThermalRegimeStrip", () => {
     assert.ok(model.segments.some((s) => s.key === "netGex" && s.value.includes("12.3B")));
     assert.ok(model.segments.some((s) => s.key === "maxPain" && s.value === "763"));
     assert.ok(model.segments.some((s) => s.key === "vol" && s.value === "SUPPRESSED"));
-    assert.ok(model.interpretation?.includes("dominant pin"));
+    assert.ok(model.interpretation?.includes("king node"));
+    assert.ok(model.segments.some((s) => s.key === "anchor" && s.label === "King node"));
   });
 
   test("missing posture omits vol segment and uses server read fallback", () => {

@@ -241,7 +241,7 @@ function sideHasLiquidity(row: PinChainRow, side: "call" | "put"): boolean {
  * from horizons.ts rather than a hardcoded copy — the picker still deliberately never reaches a
  * dte≥5 weekly. A pin whose only liquid contract on `side` is a farther-out weekly returns null
  * here → the candidate is DROPPED (never committed to the 0DTE ledger, never graded with the
- * same-day 15:30 time-stop that would be structurally wrong for a multi-day weekly). ATM = strike
+ * same-day 15:50 time-stop that would be structurally wrong for a multi-day weekly). ATM = strike
  * closest to spot NET OF liquidity quality among liquid rows on the chosen expiry (nearest-expiry
  * wins over ATM-ness, then closest-to-spot net of quality, then lower strike — deterministic).
  * Returns null when no liquid contract sits inside the window (→ dropped).

@@ -1,15 +1,18 @@
-// Cron: phase-anchored whole-market SWING discovery (PR-13, HOLD / evidence-only).
+// Cron: phase-anchored whole-market SWING discovery (live commits since 2026-07-24).
 //
 // WHY: the swing lane discovers multi-session theses on a phase-anchored cadence (scan-cadence.ts) rather than
 // a fixed heartbeat. EventBridge fires this route across a WIDE UTC band; the route resolves which discovery
 // PHASE the firing belongs to and runs ONE whole-market scan per (session day, phase). The scan advances the
-// cross-session accumulation memory (WATCH-only) — it COMMITS NOTHING (`commitEligibleCount` is a literal 0).
+// cross-session accumulation memory (WATCH rail) and, via the LIVE COMMIT seam wired in buildDiscoveryDeps(),
+// can open REAL leveraged option positions when a WATCH candidate clears the armed portfolio budget, book-percent
+// caps, and idempotency gates (commit.ts). `commitEligibleCount` is derived from the scan — not a hardcoded 0.
 //
 // IDEMPOTENT PER (date, phase): a redis marker is CLAIMED before scanning, so a re-fire inside the same phase
 // window on the same day is a no-op — it must not re-increment the accumulation memory. CRITICAL: on scan
 // FAILURE the claim is RELEASED — otherwise an ALB/Lambda 60s abort burns the phase for 22h and Swing stays
 // dark (prod 2026-07-29: 38/38 EventBridge FailedInvocations, zero successful swing-discovery hits).
-// `?force=1` clears any prior claim and re-runs. FAIL-SOFT throughout: provider/DB errors are caught,
+// `?force=1` clears a prior claim and re-runs ONLY when safe (done/absent/stale-running) — never
+// deletes a LIVE in-flight `running` claim (deep-dive Q1). FAIL-SOFT throughout: provider/DB errors are caught,
 // logged via logCronRun, and returned — never thrown out of the cron.
 //
 // THIN HANDLER: the phase decision (scan-cadence) and the scan core (discovery.ts) are pure/injected and unit-
@@ -18,8 +21,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
-import { sharedCacheDel, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { decideSwingScan, phaseRunKey } from "@/lib/swing/scan-cadence";
 import {
   runSwingDiscoveryScan,
@@ -27,6 +31,12 @@ import {
   type SwingDiscoveryDeps,
 } from "@/lib/swing/discovery";
 import { ingestSwingReads } from "@/lib/swing/swing-ingest";
+import { persistSwingCapRejections } from "@/lib/swing/v2/rejections";
+import { positioningHitsFromVectorLeaders, positioningTickersFromVectorLeaders } from "@/lib/swing/v2/origins/positioning-screen";
+import { catalystTickersFromBenzingaBundle } from "@/lib/swing/v2/origins/catalyst-screen";
+import { bangerTickersFromGroupedDaily } from "@/lib/swing/v2/origins/banger-screen";
+import { vectorTickersFromPickLeaders } from "@/lib/swing/v2/origins/vector-screen-fetch";
+import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
 import { swingThesisKey } from "@/lib/swing/accumulation-store";
@@ -65,7 +75,13 @@ import {
   fetchUwIvRank,
   fetchUwIvRankSeries,
 } from "@/lib/providers/unusual-whales";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
+import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
+import {
+  shouldRefuseForceClearRunningClaim,
+  type SwingDiscoveryPhaseClaim,
+} from "@/lib/swing/discovery-claim";
 import {
   MULTI_DAY_FLOW_HOURS,
   MULTI_DAY_MIN_PREMIUM,
@@ -148,6 +164,34 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
         }
       : {}),
     fetchSpyCloses: async () => closesFor("SPY"),
+    // V2 POSITIONING origin — GEX/walls screen on Vector leader tickers (fail-soft).
+    fetchPositioningTickers: async () => {
+      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
+      return positioningTickersFromVectorLeaders(tickers);
+    },
+    fetchPositioningHits: async () => {
+      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
+      return positioningHitsFromVectorLeaders(tickers);
+    },
+    // V2 CATALYST origin — Benzinga earnings window (fail-soft).
+    fetchCatalystTickers: async () => catalystTickersFromBenzingaBundle(sessionDay),
+    fetchBangerTickers: async () => {
+      const summary = await fetchDailyMarketSummary(to);
+      const rows = summary.results ?? [];
+      return bangerTickersFromGroupedDaily(
+        rows.map((r) => ({
+          T: r.T,
+          o: r.o,
+          h: r.h,
+          l: r.l,
+          c: r.c,
+          v: r.v,
+        })),
+      );
+    },
+    fetchVectorTickers: async () => vectorTickersFromPickLeaders({ sessionDate: sessionDay, limit: 80 }),
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
         {
@@ -258,6 +302,15 @@ export async function GET(req: NextRequest) {
   // without waiting for the next EventBridge window.
   const force = req.nextUrl.searchParams.get("force") === "1";
 
+  // Holiday guard: EventBridge is weekday-only (no NYSE calendar). On holidays (e.g. Labor Day),
+  // phase windows like PRE_OPEN/POST_CLOSE still resolve and the route would fan out Polygon+UW
+  // whole-market discovery against a closed tape. force=1 bypasses for ops recovery.
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun("swing-discovery", started, payload);
+    return NextResponse.json(payload);
+  }
+
   // Resolve the active phase (pure). The idempotency dedup is now the ATOMIC claim below, so the
   // decision runs with an empty ranKeys — it only tells us whether the ET clock is inside a phase window.
   let decision = decideSwingScan({ nowMs, sessionDay, ranKeys: new Set() });
@@ -291,8 +344,26 @@ export async function GET(req: NextRequest) {
   // full-day "done" TTL. On throw, delete. If the HTTP client aborts (ALB 60s / Lambda AbortError) and
   // the handler never reaches catch, the running key still expires in ~3m so the next :00/:30 fire retries
   // instead of burning the phase for 22h.
-  // force=1: delete any prior claim first so a timed-out prior attempt cannot block recovery.
+  // force=1: delete a prior claim ONLY when recovery is safe — never yank a LIVE `running` claim
+  // from under a healthy in-flight scan (deep-dive Q1 double-open). Done/absent/stale-running OK.
   if (force && decision.key) {
+    const prior = await sharedCacheGetWithTtl<SwingDiscoveryPhaseClaim>(decision.key).catch(() => null);
+    if (
+      prior &&
+      shouldRefuseForceClearRunningClaim(prior.value, nowMs, prior.remainingTtlSec)
+    ) {
+      const payload = {
+        ok: true,
+        skipped: true,
+        phase: decision.phase,
+        reason:
+          `force=1 refused — ${decision.phase} scan still in flight for ${sessionDay} ` +
+          `(running claim ${prior.remainingTtlSec}s TTL remaining; wait for completion or TTL expiry)`,
+        force_refused: true,
+      };
+      await logCronRun("swing-discovery", started, payload);
+      return NextResponse.json(payload);
+    }
     await sharedCacheDel(decision.key).catch(() => undefined);
   }
   const acquired = decision.key
@@ -315,7 +386,23 @@ export async function GET(req: NextRequest) {
 
   try {
     const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!);
-    const result = await runSwingDiscoveryScan(deps);
+    // Runs inline (not after()) so phase-claim release on failure is synchronous — an ALB abort
+    // that never reaches catch must not leave a DONE marker without a snapshot (prod 2026-07-29).
+    // UW REST (IV rank / earnings history) is tagged as a background sweep so live traffic keeps
+    // a reserved slot while the once-per-phase whole-market scan fans out.
+    const result = await runWithBackgroundUwSweep(() => runSwingDiscoveryScan(deps));
+
+    if (result.engineV2 && result.recall.cappedOut.length > 0) {
+      await persistSwingCapRejections({
+        sessionDay,
+        scanPhase: decision.phase ?? null,
+        cappedOut: result.recall.cappedOut,
+        tier0PoolSize: result.mergedCount,
+        tier1Cap: result.tier1CapApplied,
+      }).catch((err) => {
+        console.warn("[swing-discovery] cap rejection persist failed:", err);
+      });
+    }
 
     // Persist the scored output so the member horizons route can serve it. If the write fails, RELEASE the
     // phase claim so the next EventBridge fire can retry — upgrading to DONE without a snapshot locks the
@@ -333,8 +420,8 @@ export async function GET(req: NextRequest) {
       watchTickers.map(async (ticker) => {
         try {
           const trade = await fetchStockLastTrade(ticker);
-          const p = trade && typeof trade === "object" ? Number((trade as Record<string, unknown>).p) : NaN;
-          if (Number.isFinite(p) && p > 0) spotsByTicker[ticker] = p;
+          const p = spotFromLastTradeResult(trade);
+          if (p != null) spotsByTicker[ticker] = p;
         } catch {
           // fail-soft: keep the plan-entry fallback
         }

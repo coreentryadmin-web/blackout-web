@@ -45,18 +45,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 20
-
-      - name: Launch seven tool Cloud Agents + site-wide fixer
-        env:
-          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      - name: Tool Cloud Agents decommissioned
         run: |
-          node scripts/tool-agents/launch-cloud-agents.mjs
-          node scripts/launch-rth-site-agent.mjs || true
+          echo "scripts/tool-agents/launch-cloud-agents.mjs removed — use blackout-autopilot-dispatch.yml instead."
+          echo "Skipping legacy launch step (workflow_dispatch-only; schedule disabled 2026-08-06)."
 
   site-continuous:
     needs: open-gate
@@ -172,7 +164,7 @@ jobs:
         run: |
           set +e
           node scripts/ops-collect-action-items.mjs > /tmp/ops.json 2>/dev/null || echo '{"items":[]}' > /tmp/ops.json
-          node scripts/tool-agents/export-action-items.mjs > /tmp/tool.json
+          echo '{"items":[]}' > /tmp/tool.json
           node -e "
             const fs = require('fs');
             const a = JSON.parse(fs.readFileSync('/tmp/ops.json','utf8'));

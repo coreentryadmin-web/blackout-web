@@ -17,9 +17,14 @@
  *
  * PER-LANE MAPPING:
  *   ZERO_DTE — truth_kind "official". Reuses `fetchZeroDteSetupLogRange` (db.ts) exactly as
- *     `/api/market/zerodte/record` does, and `record.ts`'s `isZeroDteWin` / `officialPlanPnlPct`
- *     — the SAME predicate shared with feature-store.ts (post the outcome-grading-audit fix) and
- *     the canonical member-facing win/loss (WS-10/WS-11 executable-preferred, mid fallback).
+ *     `/api/market/zerodte/record` does, and `record.ts`'s `asManagedPnlPct` — the AS-MANAGED
+ *     headline `managedGradeView` builds (the exit the member was actually live-guided to take),
+ *     which is the SAME number `/api/market/zerodte/record` and the Track Record UI report as a
+ *     play's result. CORRECTED (found during the 2026-09-06 track-record sweep): this previously
+ *     read `officialPlanPnlPct`/`isZeroDteWin` — record.ts's own doc names those the MECHANICAL
+ *     lane ("never the headline"), the number calibration/feature-store grade on, which can
+ *     genuinely disagree with the as-managed result on any row closed by a live-only exit
+ *     (thesis-break/ratchet-floor/flat-timeout) that isn't a WS-11 trim-scale reconstruction.
  *   SWING — truth_kind "financial". Reuses `fetchSwingPositionsRange` (db.ts) and
  *     `swing/record.ts`'s `isSwingWin`, keyed on the row's frozen `realized_pnl_pct` column — the
  *     SAME number swing/record.ts's per-leg grade and composite already key on. This is
@@ -51,7 +56,7 @@ import {
   type ZeroDteSetupLogRow,
   type SwingPositionRow,
 } from "@/lib/db";
-import { isGradedZeroDteRow, isZeroDteWin, officialPlanPnlPct } from "@/lib/zerodte/record";
+import { asManagedPnlPct, isGradedZeroDteRow } from "@/lib/zerodte/record";
 import { isSwingWin } from "@/lib/swing/record";
 import type { Horizon } from "@/lib/horizons";
 
@@ -70,11 +75,24 @@ export interface UnifiedHorizonOutcome {
   graded_at: string | null;
 }
 
-/** Map ONE zerodte_setup_log row to its unified outcome. Exported for unit testing without a DB. */
+/** Map ONE zerodte_setup_log row to its unified outcome. Exported for unit testing without a DB.
+ *
+ *  Reads `asManagedPnlPct` (record.ts's AS-MANAGED headline — the exit the member was actually
+ *  live-guided to take), NOT `officialPlanPnlPct` (record.ts's own doc: "MECHANICAL... never the
+ *  headline" — the fixed-plan grade the calibration/feature-store lanes key on). This file's own
+ *  header claims `officialPlanPnlPct`/`isZeroDteWin` are "the canonical member-facing win/loss" —
+ *  they are not; `record.ts` documents `managedGradeView`/`asManagedPnlPct` as that. The two can
+ *  genuinely disagree: a live-only exit (thesis-break/ratchet-floor/flat-timeout) that isn't a WS-11
+ *  trim-scale reconstruction never reaches `officialPlanPnlPct` at all (`officialOverridingRealExit`
+ *  only overrides when a GENUINE reconstruction exists to override), so a row that closed at, say,
+ *  -12% on a real thesis-break exit could still read its executable/mechanical plan_pnl_pct here —
+ *  the opposite sign, on the same row, from what `/api/market/zerodte/record` and the Track Record
+ *  UI report as that play's result. `get_horizon_outcomes` is grouped with the Track Record tools
+ *  in Largo's system prompt ("graded win/loss across lanes"), so it must report the same number. */
 export function mapZeroDteOutcome(row: ZeroDteSetupLogRow): UnifiedHorizonOutcome {
   const graded = isGradedZeroDteRow(row);
-  const pnl = graded ? officialPlanPnlPct(row) : null;
-  const label: UnifiedHorizonOutcomeLabel = !graded || pnl == null ? null : pnl === 0 ? "breakeven" : isZeroDteWin(row) ? "win" : "loss";
+  const pnl = graded ? asManagedPnlPct(row) : null;
+  const label: UnifiedHorizonOutcomeLabel = !graded || pnl == null ? null : pnl === 0 ? "breakeven" : pnl > 0 ? "win" : "loss";
   return {
     lane: "ZERO_DTE",
     source_id: `${row.session_date}:${row.ticker}`,

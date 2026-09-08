@@ -366,8 +366,11 @@ async function auditRouteDiscovery() {
     "/api/webhooks/clerk",
     "/api/webhook/whop",
   ]);
-  // The Cognito OAuth endpoints this used to skip were deleted with staging; nothing to skip now.
-  const skipOAuth = new Set();
+  // Optional OAuth callbacks that intentionally 503 when client credentials are absent in prod.
+  const skipOAuth = new Set([
+    "/api/social/tiktok/connect",
+    "/api/social/tiktok/callback",
+  ]);
 
   let pass = 0;
   let fail = 0;

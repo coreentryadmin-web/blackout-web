@@ -1,0 +1,88 @@
+/**
+ * Server-side context loader for the Swing Play Intelligence Engine.
+ * Reads the same caches / DB rows Largo tools use — no provider fan-out, no LLM.
+ */
+import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
+import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
+import { fetchOpenSwingPositions } from "@/lib/db";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import type { SwingPlayBriefContext } from "./play-brief-types";
+import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-brief-resolve";
+import { fetchMeridianForTicker } from "./play-brief-meridian";
+import { fetchMeridianPeerForBrief } from "./play-brief-meridian-peer";
+import type { PortfolioPosition } from "./portfolio";
+
+/**
+ * The member's full open book as `PortfolioPosition[]` for the "Book context" theme-overlap
+ * section. `direction` on the ledger row is lowercase ("long"/"short"); the overlap checker
+ * (and the swing entry gate it shares code with) works in uppercase `PlayDirection`. The play
+ * under review is NOT filtered out here — `bookContextSection` passes the reviewed play's ledger
+ * id into `checkPortfolioOverlap` so the correct row is excluded even when multiple independent
+ * positions share ticker+direction.
+ */
+async function loadOpenBook(): Promise<PortfolioPosition[] | null> {
+  try {
+    const rows = await fetchOpenSwingPositions();
+    return rows.map((r) => ({
+      ticker: r.ticker,
+      direction: r.direction === "short" ? ("SHORT" as const) : ("LONG" as const),
+      positionId: r.id,
+    }));
+  } catch {
+    return null;
+  }
+}
+
+export type LoadSwingPlayBriefInput = SwingBriefResolveHints;
+
+/**
+ * Resolve a swing play for brief composition — open ledger + contract hints beat
+ * naive ticker-only lane lookup.
+ */
+export async function loadSwingPlayBriefContext(
+  input: LoadSwingPlayBriefInput,
+): Promise<SwingPlayBriefContext | null> {
+  const resolved = await resolveSwingPlayForBrief(input);
+  if (!resolved) return null;
+
+  const ticker = resolved.play.ticker.toUpperCase();
+  const meridian = await fetchMeridianForTicker(ticker).catch(() => null);
+  const meridianPeer = await fetchMeridianPeerForBrief(meridian, ticker).catch(() => null);
+
+  // Distinguish a genuine "no data" null from a thrown fetch — FINDINGS 2026-09-06 (#11): an
+  // ecosystem/vector fetch that THROWS must not read the same as one that legitimately returned
+  // nothing, or a total upstream failure can still leave confidence.level at "high".
+  let ecosystemFetchFailed = false;
+  let vectorFetchFailed = false;
+  const [ecosystem, vector, openBook] = await Promise.all([
+    fetchEcosystemContext(ticker).catch(() => {
+      ecosystemFetchFailed = true;
+      return null;
+    }),
+    fetchVectorFullState(ticker, normalizeDteHorizon("all")).catch(() => {
+      vectorFetchFailed = true;
+      return null;
+    }),
+    loadOpenBook(),
+  ]);
+
+  const nowMs = Date.now();
+  // Largo C1: brief read time on the market clock — same convention as Vector/BIE tools.
+  const asOf = etStamp(nowMs) ?? new Date(nowMs).toISOString();
+  return {
+    play: resolved.play,
+    asOf,
+    sessionDate: etSessionDate(nowMs),
+    scanAsOf: resolved.scanAsOf,
+    scanSessionDay: resolved.scanSessionDay,
+    ecosystem,
+    vector,
+    laneRows: resolved.laneRows,
+    meridian,
+    meridianPeer,
+    openBook,
+    ecosystemFetchFailed,
+    vectorFetchFailed,
+  };
+}

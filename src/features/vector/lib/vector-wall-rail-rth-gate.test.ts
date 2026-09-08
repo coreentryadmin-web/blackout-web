@@ -79,9 +79,11 @@ test("the RTH gate is evaluated BEFORE the staleness check, not merged into it",
   // trap. Keeping the market-hours question first makes the two checks obviously independent.
   const src = read(SNAPSHOT);
   const gateIdx = src.indexOf("if (!wallRailRecordingOpen()) return false;");
-  const staleIdx = src.indexOf("nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS");
+  const staleIdx = src.indexOf(
+    "isWsUpdatedAtFresh(s.cachedBeadRailWallsAt, STALE_RECORD_MAX_MS + 1, nowMs)"
+  );
   assert.ok(gateIdx > -1, "recordVectorWallSamplesFromWarm must gate on wallRailRecordingOpen()");
-  assert.ok(staleIdx > -1, "the staleness check must still exist");
+  assert.ok(staleIdx > -1, "the staleness check must still exist (via isWsUpdatedAtFresh)");
   assert.ok(gateIdx < staleIdx, "the RTH gate must come before the first staleness check");
 });
 
@@ -103,4 +105,33 @@ test("the in-process leader and this module agree on the same gate", () => {
   const leader = read("src/lib/vector-bead-recorder-leader.ts");
   assert.match(leader, /isEtCashRth\(\)/, "leader still gates on cash RTH");
   assert.match(read(SNAPSHOT), /isEtCashRth/, "snapshot writers gate on the same clock");
+});
+
+test("vector-snapshot: computeGexWalls spot args reject zero/negative (source scan)", () => {
+  const src = read(SNAPSHOT);
+  assert.match(
+    src,
+    /function resolveVectorWallSpot\(/,
+    "GAMMA-lens walls must resolve spot through a single guarded helper"
+  );
+  assert.match(
+    src,
+    /typeof s\.fallbackSpot === "number" && Number\.isFinite\(s\.fallbackSpot\) && s\.fallbackSpot > 0/,
+    "resolveVectorWallSpot must reject non-finite and non-positive heatmap spot"
+  );
+  const resolvedSpotCalls = [...src.matchAll(/const spot = resolveVectorWallSpot\(s, t\)/g)];
+  assert.ok(
+    resolvedSpotCalls.length >= 2,
+    "GAMMA-lens computeGexWalls paths must resolve spot via resolveVectorWallSpot"
+  );
+  assert.doesNotMatch(
+    src,
+    /spot:\s*s\.fallbackSpot\s*\?\?\s*undefined/,
+    "must not pass raw fallbackSpot ?? undefined to computeGexWalls"
+  );
+  assert.match(
+    src,
+    /if \(!spot\) \{\s*\n\s*s\.cachedWalls = null/,
+    "getVectorGexWalls must fail closed when spot is not yet known"
+  );
 });

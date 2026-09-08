@@ -35,7 +35,13 @@
  * and reproducible anywhere (lib, sim, test) without a dependency.
  */
 
-import { DEFAULT_EXIT_MODE, EXIT_RULES, TRIM_SCALE_RULES, type ZeroDteExitMode } from "./exit-engine";
+import {
+  DEFAULT_EXIT_MODE,
+  EXIT_RULES,
+  TRIM_SCALE_RULES,
+  type ZeroDteExitMode,
+  type ZeroDteRegime,
+} from "./exit-engine";
 import { FEATURE_VECTOR_VERSION } from "./feature-vector";
 import { PLAN_RULES } from "./plan";
 
@@ -88,7 +94,7 @@ export const CONTRACT_SELECTOR_VERSION = "v2";
 export const EXIT_POLICY: ZeroDteExitMode = DEFAULT_EXIT_MODE;
 /** Exit-rule VERSION within the active policy (the numeric thresholds — arm/lock/trim
  *  levels, time-stop). Bump when those move even if the POLICY name is unchanged. */
-export const EXIT_VERSION = "v3";
+export const EXIT_VERSION = "v4";
 /** Grader — how a committed play is turned into a WIN/LOSS + PnL (−50/+100 directional,
  *  condor breach, time-stop rules). Bump when the grading rule changes (it re-labels
  *  the very outcomes calibration counts). */
@@ -175,7 +181,7 @@ export function currentStrategyConfigHash(): string {
 // THE PROBLEM this closes: at commit we froze only the exit MODE NAME
 // (entry_context.exit_policy_at_commit) + the EXIT_VERSION string. The actual NUMERIC
 // thresholds that decide a graded outcome — the −50% stop, +100% target, the ⅓/⅓/⅓
-// trim ladder, the ratchet arm/lock floors, the 15:30 time-stop, the stop-before-target
+// trim ladder, the ratchet arm/lock floors, the 15:50 time-stop, the stop-before-target
 // same-bar collision rule — lived ONLY in code (PLAN_RULES / EXIT_RULES / TRIM_SCALE_RULES).
 // So a grader replaying a historical row re-derived them from CURRENT code: a later
 // numeric edit silently re-graded every past play under the new numbers, corrupting the
@@ -219,7 +225,7 @@ export interface ResolvedExitPolicy {
    *  table + "no trailing stop" in trim_scale mode. Embedded in the hash so ANY numeric edit
    *  to those constants changes config_hash even though they have no dedicated field. */
   trailing_rule: string;
-  /** Same-day hard time-stop, ET "H:MM" (15:30). Derived from PLAN_RULES.time_stop_et_minutes. */
+  /** Same-day hard time-stop, ET "H:MM" (15:50). Derived from PLAN_RULES.time_stop_et_minutes. */
   time_stop_et: string;
   /** How a same-bar stop+target collision is resolved by the grader (stop wins — the
    *  conservative intrabar order gradePlanFromBars/gradeCondorFromBars apply). */
@@ -228,7 +234,7 @@ export interface ResolvedExitPolicy {
   config_hash: string;
 }
 
-/** ET "H:MM" for minutes-since-midnight (15*60+30 → "15:30"). */
+/** ET "H:MM" for minutes-since-midnight (15*60+50 → "15:50"). */
 function formatEtMinutes(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -255,7 +261,10 @@ function stableStringify(value: unknown): string {
  * fingerprints every exit constant that can move a graded outcome — the drift-guard test
  * pins it to a golden, so a silent numeric edit without an EXIT_VERSION bump fails CI.
  */
-export function buildResolvedExitPolicy(mode: ZeroDteExitMode = EXIT_POLICY): ResolvedExitPolicy {
+export function buildResolvedExitPolicy(
+  mode: ZeroDteExitMode = EXIT_POLICY,
+  opts?: { target_pct?: number; regime?: ZeroDteRegime }
+): ResolvedExitPolicy {
   const time_stop_et = formatEtMinutes(PLAN_RULES.time_stop_et_minutes);
   const collision_rule = "stop_before_target_same_bar";
 
@@ -264,13 +273,23 @@ export function buildResolvedExitPolicy(mode: ZeroDteExitMode = EXIT_POLICY): Re
   let trailing_rule: string;
   if (mode === "trim_scale") {
     const r = TRIM_SCALE_RULES.tranches_by_regime;
-    // The shipped/base schedule is the neutral regime; trend/range are encoded in
-    // trailing_rule so a numeric edit to ANY regime's tranches trips the hash.
-    trim_levels = r.neutral.map((trigger_pct) => ({ trigger_pct, fraction: TRIM_SCALE_RULES.tranche_fraction }));
-    runner_fraction = TRIM_SCALE_RULES.tranche_fraction; // the last third runs to the rails
-    trailing_rule =
-      `trim_scale:no_trailing_stop;tranche_fraction=${TRIM_SCALE_RULES.tranche_fraction};` +
-      `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`;
+    const activeRegime: ZeroDteRegime = opts?.regime ?? "neutral";
+    const tranches = r[activeRegime];
+    const extendedRunner = (opts?.target_pct ?? PLAN_RULES.target_pct) > PLAN_RULES.target_pct;
+    // Extended runners (200–400% targets): bank 25% at each trim, let 50% ride — captures more
+    // of Vector-style multi-baggers without changing the standard +100% ⅓/⅓/⅓ ladder.
+    const trancheFraction = extendedRunner ? 0.25 : TRIM_SCALE_RULES.tranche_fraction;
+    trim_levels = tranches.map((trigger_pct) => ({
+      trigger_pct,
+      fraction: trancheFraction,
+    }));
+    runner_fraction = extendedRunner ? 0.5 : TRIM_SCALE_RULES.tranche_fraction;
+    trailing_rule = extendedRunner
+      ? `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${trancheFraction};` +
+        `runner_fraction=${runner_fraction};extended_runner=true;` +
+        `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`
+      : `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${TRIM_SCALE_RULES.tranche_fraction};` +
+        `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`;
   } else {
     // ratchet: bank half at the plan target, then run under the monotonic floor.
     trim_levels = [{ trigger_pct: PLAN_RULES.target_pct, fraction: 0.5 }];
@@ -287,7 +306,7 @@ export function buildResolvedExitPolicy(mode: ZeroDteExitMode = EXIT_POLICY): Re
     policy: mode,
     version: EXIT_VERSION,
     hard_stop_pct: PLAN_RULES.stop_pct,
-    target_pct: PLAN_RULES.target_pct,
+    target_pct: opts?.target_pct ?? PLAN_RULES.target_pct,
     trim_levels,
     runner_fraction,
     trailing_rule,

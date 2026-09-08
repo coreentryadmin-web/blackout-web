@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeGreeksDistribution } from "./greeks-distribution";
+import { analyzeGreeksDistribution, topGammaBuckets } from "./greeks-distribution";
 import type { GexCells } from "./per-expiry-levels";
 
 describe("greeks-distribution", () => {
@@ -107,6 +107,42 @@ describe("greeks-distribution", () => {
     assert.ok(result.clusterCount >= 1, "Should detect at least one cluster");
   });
 
+  it("analyzeGreeksDistribution counts two separated walls as TWO clusters, not one", () => {
+    // Two dominant strikes (~49% each) with three quiet strikes between them. `buckets` is
+    // sorted by gamma MAGNITUDE internally — the two big strikes are equal, so a stable sort
+    // keeps them adjacent to each other in that order (both rank ahead of the three quiet
+    // strikes), which would make a magnitude-order walk see them as ONE consecutive run.
+    // Walking in STRIKE-PRICE order (the fix) correctly sees two runs separated by three
+    // strikes below the 5% threshold.
+    const cells: GexCells = {
+      "5630": { "2026-09-19": 5000 },
+      "5640": { "2026-09-19": 50 },
+      "5650": { "2026-09-19": 50 },
+      "5660": { "2026-09-19": 50 },
+      "5670": { "2026-09-19": 5000 },
+    };
+    const result = analyzeGreeksDistribution(cells, 5650, 0.03);
+    assert.equal(result.clusterCount, 2, "Two strikes separated by three quiet strikes are two clusters, not one");
+  });
+
+  it("analyzeGreeksDistribution: a strike adjacent (in price) to a wall is clustered, even if it ranks far from that wall by exposure", () => {
+    // Same fixture as above. 5660 sits one strike below the 5670 wall — it must read as
+    // clustered. The bug computed "within 2 strikes" using gamma-MAGNITUDE-rank position
+    // instead of strike-PRICE position, under which 5660 ranked far from both walls and was
+    // wrongly marked NOT clustered.
+    const cells: GexCells = {
+      "5630": { "2026-09-19": 5000 },
+      "5640": { "2026-09-19": 50 },
+      "5650": { "2026-09-19": 50 },
+      "5660": { "2026-09-19": 50 },
+      "5670": { "2026-09-19": 5000 },
+    };
+    const result = analyzeGreeksDistribution(cells, 5650, 0.03);
+    const strike5660 = result.buckets.find((b) => b.strike === 5660);
+    assert.ok(strike5660);
+    assert.equal(strike5660.isClustered, true, "5660 is one strike from the 5670 wall — must be clustered");
+  });
+
   it("analyzeGreeksDistribution calculates exposure spread", () => {
     const cells: GexCells = {
       "5540": { "2026-09-19": 5000 },
@@ -188,5 +224,30 @@ describe("greeks-distribution", () => {
     const pcts = result.buckets.map((b) => b.pctOfTotal);
     const sum = pcts.reduce((a, b) => a + b, 0);
     assert.ok(Math.abs(sum - 100) < 0.01, "Percentages should sum to ~100");
+  });
+
+  it("topGammaBuckets must not mutate the caller's strike-ascending buckets array (GreeksDistributionPanel reads analysis.buckets again on every re-render)", () => {
+    const cells: GexCells = {
+      "5540": { "2026-09-19": 1000 },
+      "5545": { "2026-09-19": 2000 },
+      "5550": { "2026-09-19": 5000 },
+      "5555": { "2026-09-19": 1500 },
+      "5560": { "2026-09-19": 500 },
+    };
+    const result = analyzeGreeksDistribution(cells, 5550, 0.03);
+    const strikeAscending = [5540, 5545, 5550, 5555, 5560];
+    assert.deepEqual(
+      result.buckets.map((b) => b.strike),
+      strikeAscending,
+      "documented contract: buckets is strike-ascending"
+    );
+
+    const top5 = topGammaBuckets(result.buckets);
+    assert.equal(top5[0].strike, 5550, "top5 is gamma-ranked, unrelated to buckets' own order");
+    assert.deepEqual(
+      result.buckets.map((b) => b.strike),
+      strikeAscending,
+      "selecting a gamma-ranked view must not reorder the original strike-ascending buckets"
+    );
   });
 });

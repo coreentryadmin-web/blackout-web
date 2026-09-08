@@ -109,11 +109,6 @@ export function largoSubmoduleCardsForDesk(desk: DeskScopeKey): LargoModuleStart
   }));
 }
 
-/** @deprecated Use desk drill-down — kept for tests referencing flat list length. */
-export function largoModuleStarterCards(): LargoModuleStarterCard[] {
-  return DESK_ORDER.flatMap((d) => largoSubmoduleCardsForDesk(d));
-}
-
 /** Compact composer: show desk names only until one is selected. */
 export function largoModuleComposerDesks(): LargoDeskStarterCard[] {
   return largoDeskStarterCards().filter((d) =>

@@ -11,6 +11,7 @@ import {
   IS_STAGING,
   MUTATION_METHODS,
   PUBLIC_TELEMETRY_PATHS,
+  hasBearerToken,
   withStagingNoEdgeCache,
   withNoEdgeCache,
 } from "@/middleware-shared";
@@ -22,8 +23,16 @@ const isProtectedRoute = createRouteMatcher([
   "/heatmap(.*)",
   "/nighthawk(.*)",
   "/vector(.*)",
+  "/meridian(.*)",
   "/admin(.*)",
   "/account(.*)",
+]);
+
+/** Dev-only board UI previews — must not match `/vector(.*)` or `/nighthawk(.*)` auth above. */
+const isVectorBoardDevPreview = createRouteMatcher([
+  "/vector-board-preview",
+  "/nighthawk-boards-preview",
+  "/zerodte-command-preview",
 ]);
 
 const isWebhookRoute = createRouteMatcher(["/api/webhook/(.*)", "/api/webhooks/(.*)"]);
@@ -122,6 +131,13 @@ export default clerkMiddleware(
       }
     }
 
+    if (
+      isVectorBoardDevPreview(req) &&
+      process.env.NODE_ENV !== "production"
+    ) {
+      return withStagingNoEdgeCache(NextResponse.next());
+    }
+
     if (isProtectedRoute(req)) {
       try {
         await auth.protect();
@@ -137,12 +153,10 @@ export default clerkMiddleware(
       !isPublicTelemetryRoute(req) &&
       !isPublicMutationRoute(req)
     ) {
-      const bearer = req.headers.get("authorization") ?? "";
-      const hasBearerToken = bearer.startsWith("Bearer ") && bearer.length > 27;
       const hasClerkCookie =
         req.cookies.has("__session") || req.cookies.has("__client_uat");
 
-      if (!hasBearerToken && !hasClerkCookie) {
+      if (!hasBearerToken(req) && !hasClerkCookie) {
         return withStagingNoEdgeCache(
           NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         );

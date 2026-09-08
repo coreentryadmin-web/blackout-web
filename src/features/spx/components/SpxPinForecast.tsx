@@ -7,6 +7,8 @@ import type { PinConeStep, PinScenario } from "@/features/spx/lib/spx-pin-foreca
 import {
   SPX_PIN_MAX_PAIN_LABEL,
   SPX_PIN_MAX_PAIN_LABEL_PROSE,
+  SPX_PIN_GEX_KING_LABEL,
+  SPX_PIN_GEX_KING_LABEL_PROSE,
 } from "@/features/spx/lib/spx-metric-labels";
 
 const C = {
@@ -19,7 +21,7 @@ const fmt = (n: number | null | undefined, d = 0) =>
 // "effective max pain" mirrors buildDrivers(): pinMaxPain weights OI + today's volume, while the
 // desk header's MAX PAIN tile is classic OI-only. Same word for two metrics is what made the panel
 // look self-contradictory, so the panel names the one it is actually showing.
-const KIND_LABEL: Record<string, string> = { pin: "projected close", call_wall: "call wall", put_wall: "put wall", max_pain: SPX_PIN_MAX_PAIN_LABEL_PROSE, flip: "gamma flip", path: "path cluster" };
+const KIND_LABEL: Record<string, string> = { pin: "projected close", call_wall: "call wall", put_wall: "put wall", max_pain: SPX_PIN_MAX_PAIN_LABEL_PROSE, gex_king: SPX_PIN_GEX_KING_LABEL_PROSE, flip: "gamma flip", path: "path cluster" };
 
 export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boolean }) {
   const { pin, pinLoading } = useSpxPinForecast(sessionActive);
@@ -54,6 +56,8 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
   const chart = buildChart(pin, view.cone, view.pinPx);
   const magnet = pin.magnet;
   const conf = view.pinPct ?? 0;
+  const driftPts = pin.pinDriftPts ?? (view.projPx != null ? view.projPx - pin.spot : 0);
+  const driftPct = pin.pinDriftPctFromSpot ?? (pin.spot > 0 ? (driftPts / pin.spot) * 100 : null);
 
   return (
     <Shell>
@@ -121,7 +125,13 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
                 {/* Live, unsnapped projection (1dp) so it moves intraday — not the frozen strike. */}
                 <div className="spx-pin-proj" style={{ fontFamily: C.mono, fontWeight: 600, color: C.pin, lineHeight: 1 }}>{fmt(view.projPx, 1)}</div>
                 <div style={{ fontFamily: C.mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
-                  {pin.pinPctOfClose != null && <span style={{ color: pin.pinPctOfClose >= 0 ? C.call : C.put }}>{pin.pinPctOfClose >= 0 ? "▲ +" : "▼ "}{fmt(pin.pinPctOfClose, 2)}%</span>} · {fmt((view.projPx ?? pin.spot) - pin.spot, 1)} pts vs spot
+                  <span style={{ color: driftPts >= 0 ? C.call : C.put }}>
+                    {driftPts >= 0 ? "▲ +" : "▼ "}{fmt(Math.abs(driftPct ?? 0), 2)}% vs spot
+                  </span>
+                  {" · "}{fmt(driftPts, 1)} pts vs spot
+                  {pin.pinPctOfClose != null && (
+                    <span style={{ color: C.faint }}> · {pin.pinPctOfClose >= 0 ? "+" : ""}{fmt(pin.pinPctOfClose, 2)}% vs prior</span>
+                  )}
                 </div>
                 {/* The strike it pins to — the discrete target the live projection rounds onto.
                     Headlines the STABILITY-CONFIRMED pin (agreed across PIN_STABILITY_WINDOW
@@ -282,7 +292,19 @@ function WhyPanel({ pin, scenarios, onClose }: { pin: PinPayload; scenarios: Pin
 function buildChart(pin: PinPayload, cone: PinConeStep[], pinPx: number | null) {
   const W = 520, H = 300, padL = 46, padR = 150, padT = 16, padB = 20;
   const levels: { label: string; price: number; color: string; dash: string }[] = [];
-  if (pin.magnet) levels.push({ label: pin.magnet.kind === "put_wall" ? "PUT WALL" : pin.magnet.kind === "max_pain" ? SPX_PIN_MAX_PAIN_LABEL : "CALL WALL", price: pin.magnet.strike, color: pin.magnet.kind === "put_wall" ? C.put : pin.magnet.kind === "max_pain" ? C.pin : C.call, dash: "0" });
+  if (pin.magnet) {
+    const magnetLabel =
+      pin.magnet.kind === "put_wall"
+        ? "PUT WALL"
+        : pin.magnet.kind === "max_pain"
+          ? SPX_PIN_MAX_PAIN_LABEL
+          : pin.magnet.kind === "gex_king"
+            ? SPX_PIN_GEX_KING_LABEL
+            : "CALL WALL";
+    const magnetColor =
+      pin.magnet.kind === "put_wall" ? C.put : pin.magnet.kind === "max_pain" || pin.magnet.kind === "gex_king" ? C.pin : C.call;
+    levels.push({ label: magnetLabel, price: pin.magnet.strike, color: magnetColor, dash: "0" });
+  }
   if (pin.flip != null) levels.push({ label: "γ FLIP", price: pin.flip, color: C.flip, dash: "7 5" });
   const prices = [...cone.flatMap((c) => [c.p10, c.p90]), pin.spot, ...(pinPx != null ? [pinPx] : []), ...levels.map((l) => l.price)].filter((n) => Number.isFinite(n));
   let lo = Math.min(...prices), hi = Math.max(...prices);

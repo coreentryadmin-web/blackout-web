@@ -38,11 +38,19 @@ import {
 } from "./governor";
 import { CHASE_PCT, type ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
-import { NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
+import { DIRECTIONAL_LATE_CUTOFF_ET_MINUTES } from "./plan";
 import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws/source-health";
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
+import {
+  vectorExemptsG17PrimeBand,
+  vectorExemptsG19TopBand,
+  vectorExemptsPlanChase,
+  vectorPulseAlignsDirection,
+} from "./vector-commit-boost";
+import { planChaseExempt, planG19Exempt, type PlanChaseContext } from "./chase-exempt";
 
 /** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
  *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
@@ -73,27 +81,24 @@ export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
 // fixed entry at 9:45 ran −12.1% expectancy / 26% win — the worst tested time — improving
 // monotonically through the morning (10:00 −7.8%, 10:30 −9.1%, 11:00 +1.5%). 9:45 was
 // literally the worst moment to unlock. The move stops at 10:00 (NOT 11:00) on purpose:
-// (1) the backtest grader holds to stop/target/15:30 and ignores the live exit engine, so
+// (1) the backtest grader holds to stop/target/15:50 and ignores the live exit engine, so
 // it likely UNDERSTATES early-entry outcomes; (2) blocking the whole morning would empty
 // the board 9:30–11:00. The soft 10:00–12:30 gradient is handled by timeOfDayFactor
 // (intraday.ts), a score nudge, not a hard block. The gate still buckets every commit by ET
 // time (gate_calibration_json.committed_at_et), so the ledger — not this backtest — decides
 // whether to push the unlock later. Setups found before 10:00 stay visible as WATCH/SKIP
 // cards carrying the unlock time; the scanner re-evaluates every ~2 min, so a setup still
-// alive at 10:00 commits then. The no-new-plays->=15:00 + hard-exit-15:30 rules are
+// alive at 10:00 commits then. The no-new-plays->=15:00 + hard-exit-15:50 rules are
 // unchanged and live upstream (persistZeroDteScan / PLAN_RULES).
 export const OPENING_WINDOW_UNLOCK_ET_MINUTES = 10 * 60;
 export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 
 // ── G-14 · Late-afternoon block ──────────────────────────────────────────────────
-// Evidence (90-day prod record, 101 graded plays): the "late 14:00-15:30" bucket ran
-// 14.3% WR / −19.02% avg P&L — the second-worst time window after the opening drive.
-// With only ~1.5 hours of 0DTE theta left, premium-buying entries face accelerating
-// decay and almost never reach the +100% target; 85.7% stopped out. Shipped at 14:00 ET
-// (FINDINGS 2026-07-28) — the prior 15:00 cutoff left the entire toxic bucket open.
-// CONDOR-EXEMPT: an iron condor WANTS late-session theta crush (credit seller); the late
-// window is only destructive for long-premium entries.
-export const LATE_AFTERNOON_BLOCK_ET_MINUTES = NEW_PLAY_CUTOFF_ET_MINUTES;
+// Directional commits close at 15:30 ET (DIRECTIONAL_LATE_CUTOFF_ET_MINUTES), aligned with
+// NEW_PLAY_CUTOFF and the board copy ("10:00–3:30 ET"). CONDOR-EXEMPT: credit sellers
+// benefit from late-session theta. Reverted 2026-09-04 from a 14:00 hard stop — late-bucket
+// outcomes stay on the graded ledger for calibration-driven tuning.
+export const LATE_AFTERNOON_BLOCK_ET_MINUTES = DIRECTIONAL_LATE_CUTOFF_ET_MINUTES;
 export const LATE_AFTERNOON_BLOCK_LABEL = "15:30 ET";
 
 // ── G-12 · Confluence floor — HARD GATE (Phase 1, 2026-07-24) ─────────────────────
@@ -150,9 +155,20 @@ export function confluenceFloorAt(nowEtMinutes: number): number {
   return early ? ZERODTE_CONFLUENCE_MIN_EARLY : ZERODTE_CONFLUENCE_MIN;
 }
 
-/** G-12 floor — single names only gate VWAP-side (G-1 exempts them from SPY tape). */
-export function g12ConfluenceFloor(ticker: string, nowEtMinutes: number): number {
-  if (isIndexEtfTicker(ticker)) return confluenceFloorAt(nowEtMinutes);
+/** G-12 floor — index ETFs need VWAP + market; BREAKOUT high-score gets a single confirm. */
+export function g12ConfluenceFloor(
+  ticker: string,
+  nowEtMinutes: number,
+  opts?: { score?: number; discovery_origin?: readonly string[] | null }
+): number {
+  if (isIndexEtfTicker(ticker)) {
+    const floor = confluenceFloorAt(nowEtMinutes);
+    const origins = opts?.discovery_origin ?? [];
+    const score = opts?.score ?? 0;
+    // BREAKOUT momentum at top decile: one VWAP+market leg is enough (Vector-style chase).
+    if (origins.includes("BREAKOUT") && score >= 80 && floor > 1) return 1;
+    return floor;
+  }
   return 1;
 }
 
@@ -209,6 +225,20 @@ export function g12ConfirmationCount(
   return confluence.vwap_ok ? 1 : 0;
 }
 
+/** Runner-profile confluence — uses the pinned `confirmations` count when it exceeds the
+ *  G-12 gate leg count so A/B commits that passed with VWAP+market agreement get extended
+ *  runner targets (replay 2026-09: runner_profile null despite confirmations: 2). */
+export function runnerConfluenceCount(
+  confluence: ZeroDteConfluence | null | undefined,
+  ticker: string,
+  vectorCredit: number
+): number {
+  if (!confluence) return Math.max(0, Math.min(1, vectorCredit));
+  const gateCount = g12ConfirmationCount(confluence, ticker);
+  const pinned = confluence.confirmations ?? 0;
+  return Math.max(gateCount, pinned) + Math.max(0, Math.min(1, vectorCredit));
+}
+
 export function g12ConfirmationLegLabel(ticker: string): string {
   return isIndexEtfTicker(ticker)
     ? "VWAP-side + market-aligned"
@@ -244,6 +274,11 @@ export type ZeroDteConflictCalibration = {
   /** Which system(s) this setup opposes (empty when clear). */
   against: Array<"spx_slayer" | "nighthawk_edition">;
   would_block: boolean;
+  /** False for a CONDOR — delta-neutral, so it structurally cannot "oppose" a directional
+   *  take, mirroring the live gate's own `if (!isCondor)` G-6 scoping. `gateVerdictOf`
+   *  treats an inapplicable row as a non-observation (like G-4's `tier: "unknown"`), so
+   *  it never dilutes either bucket in `recommendGate("g6_conflict", ...)`. */
+  applicable: boolean;
   note: string;
 };
 
@@ -399,6 +434,8 @@ export type ZeroDteGateInput = {
   contractHorizon?: "ZERO_DTE" | "ONE_DTE" | "WEEKLY_FALLBACK" | null;
   /** G-10: name's own VWAP/5m trend opposes the play (intraday.ts). */
   intradayConflict?: boolean;
+  /** Play direction vs SPY tape — regime chase / G-19 relief on amplify days. */
+  market_aligned?: boolean | null;
   /** G-11: UW trading halt on the underlying. */
   halted?: boolean;
   /** Phase-0 firewall (D2): TRUE only when the trading-halt FEED is cold — BOTH the UW and LULD
@@ -457,7 +494,33 @@ export type ZeroDteGateInput = {
    * attach), the caller must re-apply via {@link refreshMoneynessGateBlocks} once the refresh has run.
    */
   otmPct?: number | null;
+  /** Vector desk pulse for this ticker (read-only cross-link). When aligned + winner/runner,
+   *  relaxes G-17 and can credit confluence — see vector-commit-boost.ts. */
+  vector_pulse?: ZeroDteVectorPulse | null;
+  /** Pre-computed Vector gate boost (score bump already applied upstream). */
+  vector_g17_exempt?: boolean;
+  /** Extra confluence credit from Vector alignment (0 or 1). */
+  vector_confluence_credit?: number;
+  /** Market State Engine structure at scan time — amplify chase / G-19 regime relief. */
+  regime_structure?: string | null;
+  market_state_confidence?: number | null;
+  /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
+  max_otm_pct?: number | null;
 };
+
+/** Build chase-exempt context from a gate evaluation input. */
+export function planChaseContextFromGateInput(input: ZeroDteGateInput): PlanChaseContext {
+  return {
+    direction: input.direction,
+    score: input.score,
+    vector_pulse: input.vector_pulse,
+    discovery_origin: input.discovery_origin,
+    gamma_regime: input.gamma_regime ?? null,
+    market_aligned: input.market_aligned ?? null,
+    regime_structure: input.regime_structure ?? null,
+    market_state_confidence: input.market_state_confidence,
+  };
+}
 
 /**
  * Evaluate the hard gate stack for ONE fresh (not-yet-committed) setup.
@@ -531,26 +594,31 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-14 — late-afternoon block. DIRECTIONAL ONLY: a condor is a credit seller that
-  // BENEFITS from late-session theta crush; the late window is only destructive for
-  // long-premium entries. Evidence: 14:00-15:30 = 14.3% WR / −19.02% avg P&L (90d prod).
+  // G-14 — late-afternoon block (directional only). Condors stay eligible through persist cutoff.
   if (!isCondor && input.nowEtMinutes >= LATE_AFTERNOON_BLOCK_ET_MINUTES) {
     blocks.push({
       code: "late_afternoon",
       reason:
-        `No new directional 0DTE commits after ${LATE_AFTERNOON_BLOCK_LABEL} — the ` +
-        "late-afternoon bucket ran 14.3% WR / −19% avg premium (90-day prod record). " +
-        "With <1.5 hours of theta left, long-premium entries face accelerating decay " +
-        "and almost never reach target.",
+        `No new directional 0DTE commits after ${LATE_AFTERNOON_BLOCK_LABEL} — session ` +
+        "discipline (entries need room to work before the 15:50 flat exit).",
       threshold: LATE_AFTERNOON_BLOCK_ET_MINUTES,
       unlock_et: null,
     });
   }
 
-  // G-15 REMOVED (2026-07-29). ONE_DTE is a same-day horizon (isSameDayHorizon returns true),
-  // the persist layer accepts it, and grading reports accurate same-day P&L. Blocking 1DTE
-  // starved the board on Mondays (most equities have no Monday 0DTE — only SPX/SPY/QQQ do).
-  // WEEKLY_FALLBACK (dte≥2) is still dropped by the persist layer's isSameDayHorizon guard.
+  // G-15 — WEEKLY_FALLBACK horizon (dte≥5 or no listed 0DTE/1DTE contract). ONE_DTE commits
+  // (same-day grading); only multi-day weeklies are blocked here so the board never shows a
+  // ghost COMMIT that persist drops anyway (BBWI-class misleading WATCH/COMMIT on 2026-09-04).
+  if (input.contractHorizon === "WEEKLY_FALLBACK") {
+    blocks.push({
+      code: "horizon_weekly_fallback",
+      reason:
+        "Selected contract is a weekly/multi-day fallback — excluded from the same-day 0DTE ledger " +
+        "(only ZERO_DTE and ONE_DTE horizons commit and grade with the 15:50 time-stop).",
+      threshold: null,
+      unlock_et: null,
+    });
+  }
 
   // G-3 — score floor, judged on the FINAL post-edge-layer score. Origin-aware: FLOW keeps 65;
   // BREAKOUT/PIN use the looser rail floors (see scoreFloorForOrigins).
@@ -579,7 +647,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   if (
     !isCondor &&
     input.score >= scoreFloorForOrigins(input.discovery_origin) &&
-    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN
+    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN &&
+    !(
+      input.vector_g17_exempt === true ||
+      vectorExemptsG17PrimeBand(input.direction, input.score, input.vector_pulse)
+    )
   ) {
     const single = isSingleRailWithoutFlow(input.discovery_origin);
     const rail = single ? ((input.discovery_origin ?? [])[0] ?? "whole-market") : "multi-rail/FLOW";
@@ -594,13 +666,70 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
+  // G-18 — early-window prime score floor (E2 + replay 2026-09: sub-prime scores in [10:00, 10:45)
+  // cluster on full-stop losers). Require the 75+ prime band unless Vector exempts G-17.
+  if (
+    !isCondor &&
+    input.nowEtMinutes >= OPENING_WINDOW_UNLOCK_ET_MINUTES &&
+    input.nowEtMinutes < EARLY_ENTRY_WINDOW_END_ET_MINUTES &&
+    input.score < 75 &&
+    !(
+      input.vector_g17_exempt === true ||
+      vectorExemptsG17PrimeBand(input.direction, input.score, input.vector_pulse)
+    )
+  ) {
+    blocks.push({
+      code: "early_window_prime_score",
+      reason:
+        `Score ${Math.round(input.score)} in the ${OPENING_WINDOW_UNLOCK_LABEL}–10:45 early window ` +
+        "needs the 75+ prime band (E2 negative EV below prime; Vector alignment can exempt).",
+      threshold: 75,
+      unlock_et: "10:45 ET",
+    });
+  }
+
+  // G-19 — F-5 top-band inversion hard block (85+ measured 33% WR vs 63.6% at 75–84).
+  // FLOW-origin only — BREAKOUT/PIN score on independent scales where 85+ is normal.
+  // Vector winner OR runner (≥68 score) alignment exempts — same predicate as G-17/G-18.
+  const g19Origins = input.discovery_origin ?? [];
+  const g19FlowBacked = g19Origins.length === 0 || g19Origins.includes("FLOW");
+  if (
+    !isCondor &&
+    g19FlowBacked &&
+    input.score >= 85 &&
+    !(
+      input.vector_g17_exempt === true ||
+      vectorExemptsG19TopBand(input.direction, input.score, input.vector_pulse) ||
+      planG19Exempt(input.direction, input.score, input.vector_pulse, {
+        discovery_origin: input.discovery_origin,
+        gamma_regime: input.gamma_regime ?? null,
+        market_aligned: input.market_aligned ?? null,
+        regime_structure: input.regime_structure ?? null,
+        market_state_confidence: input.market_state_confidence,
+      })
+    )
+  ) {
+    blocks.push({
+      code: "score_top_band",
+      reason:
+        `Score ${Math.round(input.score)} sits in the 85+ band where measured WR inverted ` +
+        "(33% vs 63.6% prime band, F-5) — only Vector-confirmed winners/runners commit here.",
+      threshold: 85,
+      unlock_et: null,
+    });
+  }
+
   // G-12 — confluence floor (Phase 1, 2026-07-24). DIRECTIONAL ONLY: confluence counts how many of
   // {VWAP-side, market-aligned} agree with the setup's DIRECTION — a delta-neutral condor has no
   // direction to confirm, so this gate does not apply to it (the sell-regime router + range-intact
   // check are the condor's equivalent "is the structure right" test).
   if (!isCondor && input.confluence != null) {
-    const floor = g12ConfluenceFloor(input.ticker, input.nowEtMinutes);
-    const have = g12ConfirmationCount(input.confluence, input.ticker);
+    const floor = g12ConfluenceFloor(input.ticker, input.nowEtMinutes, {
+      score: input.score,
+      discovery_origin: input.discovery_origin,
+    });
+    const credit = Math.max(0, Math.min(1, input.vector_confluence_credit ?? 0));
+    const have = g12ConfirmationCount(input.confluence, input.ticker) + credit;
     const legLabel = g12ConfirmationLegLabel(input.ticker);
     if (have < floor) {
       const early = floor > ZERODTE_CONFLUENCE_MIN;
@@ -647,7 +776,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // pass-through to moneynessGateBlocks, which is also exported standalone so scan.ts can
   // re-run it after a deferred (thesis-first) contract-plan attach — see
   // refreshMoneynessGateBlocks below, mirroring refreshPlanQualityGateBlocks.
-  blocks.push(...moneynessGateBlocks(input.otmPct, isCondor));
+  blocks.push(
+    ...moneynessGateBlocks(input.otmPct, isCondor, {
+      maxOtmPct: input.max_otm_pct ?? null,
+    })
+  );
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).
   // F-1: 69.2% WR at VIX<17 vs 25.0% at ≥17 — the strongest measured factor.
@@ -853,7 +986,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   } else if (!input.deferPlanQualityGates) {
     // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
     // plan without a real quote or fill. UI SKIP already hid these; persist must match.
-    blocks.push(...planQualityGateBlocks(input.plan ?? null));
+    blocks.push(
+      ...planQualityGateBlocks(input.plan ?? null, {
+        chaseExempt: planChaseExempt(planChaseContextFromGateInput(input)),
+      })
+    );
 
     // G-10 — intraday structure conflict: DEMOTED back to score-only (2026-07-27).
     // Evidence: flow precedes trend changes, and the hard block (promoted 2026-07-18) was
@@ -1019,8 +1156,18 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   };
 }
 
+export type PlanQualityGateOpts = {
+  /** Vector/regime-confirmed momentum — commit at live mark, skip G-8 chase block. */
+  vectorChaseExempt?: boolean;
+  /** Alias — same as vectorChaseExempt (regime widen included). */
+  chaseExempt?: boolean;
+};
+
 /** G-8/G-9 plan-quality blocks — pure, unit-testable, reused by persist defense. */
-export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlock[] {
+export function planQualityGateBlocks(
+  plan: ContractPlan | null,
+  opts?: PlanQualityGateOpts
+): ZeroDteGateBlock[] {
   const blocks: ZeroDteGateBlock[] = [];
   if (plan == null) {
     blocks.push({
@@ -1040,7 +1187,7 @@ export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlo
       unlock_et: null,
     });
   }
-  if (plan.entry_status === "MOVED") {
+  if (plan.entry_status === "MOVED" && !(opts?.vectorChaseExempt || opts?.chaseExempt)) {
     const pct = plan.vs_flow_pct != null ? `${Math.round(plan.vs_flow_pct)}%` : `≥${CHASE_PCT}%`;
     blocks.push({
       code: "plan_moved",
@@ -1051,12 +1198,13 @@ export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlo
     });
   }
   if (plan.illiquid) {
-    const spread = plan.spread_pct != null ? `${plan.spread_pct.toFixed(0)}%` : ">15%";
+    const cap = plan.illiquid_spread_cap ?? 15;
+    const spread = plan.spread_pct != null ? `${plan.spread_pct.toFixed(0)}%` : `>${cap}%`;
     blocks.push({
       code: "plan_illiquid",
       reason:
         `Bid/ask spread is ${spread} of the mark — market too thin for a 0DTE scalp (G-9).`,
-      threshold: 15,
+      threshold: cap,
       unlock_et: null,
     });
   }
@@ -1119,9 +1267,14 @@ const QUOTE_INVALID_SENTENCE: Record<
  */
 export function moneynessGateBlocks(
   otmPct: number | null | undefined,
-  isCondor: boolean
+  isCondor: boolean,
+  opts?: { maxOtmPct?: number | null }
 ): ZeroDteGateBlock[] {
   if (isCondor || otmPct == null) return [];
+  const otmCap =
+    opts?.maxOtmPct != null && Number.isFinite(opts.maxOtmPct) && opts.maxOtmPct > 0
+      ? opts.maxOtmPct
+      : SETUP_MAX_OTM_PCT;
   const blocks: ZeroDteGateBlock[] = [];
   if (otmPct < -SETUP_MAX_ITM_PCT) {
     blocks.push({
@@ -1132,13 +1285,13 @@ export function moneynessGateBlocks(
       threshold: -SETUP_MAX_ITM_PCT,
       unlock_et: null,
     });
-  } else if (otmPct > SETUP_MAX_OTM_PCT) {
+  } else if (otmPct > otmCap) {
     blocks.push({
       code: "max_otm_pct",
       reason:
-        `Top strike is ${otmPct.toFixed(2)}% OTM — past the ${SETUP_MAX_OTM_PCT}% far-OTM lotto ` +
+        `Top strike is ${otmPct.toFixed(2)}% OTM — past the ${otmCap}% far-OTM lotto ` +
         "cap on the live-refreshed underlying (re-checked post live-spot refresh).",
-      threshold: SETUP_MAX_OTM_PCT,
+      threshold: otmCap,
       unlock_et: null,
     });
   }
@@ -1154,10 +1307,11 @@ const MONEYNESS_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set(["max_itm_
 export function refreshMoneynessGateBlocks(
   gate: ZeroDteGateVerdict,
   otmPct: number | null | undefined,
-  isCondor: boolean
+  isCondor: boolean,
+  opts?: { maxOtmPct?: number | null }
 ): ZeroDteGateVerdict {
   const rest = gate.blocks.filter((b) => !MONEYNESS_GATE_CODES.has(b.code));
-  const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor)];
+  const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor, opts)];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
@@ -1176,10 +1330,11 @@ const PLAN_QUALITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
 /** Re-apply G-8/G-9 after thesis-first deferred plan attach (scan.ts). */
 export function refreshPlanQualityGateBlocks(
   gate: ZeroDteGateVerdict,
-  plan: ContractPlan | null
+  plan: ContractPlan | null,
+  opts?: PlanQualityGateOpts
 ): ZeroDteGateVerdict {
   const nonPlan = gate.blocks.filter((b) => !PLAN_QUALITY_GATE_CODES.has(b.code));
-  const blocks = [...nonPlan, ...planQualityGateBlocks(plan)];
+  const blocks = [...nonPlan, ...planQualityGateBlocks(plan, opts)];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
@@ -1188,8 +1343,11 @@ export function refreshPlanQualityGateBlocks(
 }
 
 /** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
-export function freshCommitBlockedByPlan(plan: ContractPlan | null | undefined): boolean {
-  return planQualityGateBlocks(plan ?? null).length > 0;
+export function freshCommitBlockedByPlan(
+  plan: ContractPlan | null | undefined,
+  opts?: PlanQualityGateOpts
+): boolean {
+  return planQualityGateBlocks(plan ?? null, opts).length > 0;
 }
 
 /**
@@ -1241,6 +1399,64 @@ export function refreshGovernorPremiumBudgetBlocks(
   };
 }
 
+const GOVERNOR_CYCLE_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "governor_session_stops",
+  "governor_session_loss_halt",
+  "governor_max_concurrent",
+  "governor_premium_budget",
+  "governor_gamma_budget",
+  "correlated_conflict",
+  "governor_concentration",
+  "governor_reentry_lock",
+]);
+
+/**
+ * Re-apply G-5 governor cycle blocks after thesis-first deferred plan attach (scan.ts).
+ * The first gate pass may have counted phantom commits in `committedThisCycle` before plan
+ * quality / moneyness refresh flipped verdicts — this pass threads the ACCURATE cycle set.
+ */
+export function refreshGovernorCycleBlocks(
+  gate: ZeroDteGateVerdict,
+  input: {
+    ticker: string;
+    direction: "long" | "short";
+    plan: ContractPlan | null;
+    gamma_regime: string | null;
+    governor: GovernorSnapshot;
+    nowMs: number;
+    nowEtMinutes: number;
+    governorPremiumAtRisk: number;
+    governorShortGammaOpen: number;
+    committedThisCycle: GovernorOpenPlan[];
+  }
+): ZeroDteGateVerdict {
+  const nonGov = gate.blocks.filter((b) => !GOVERNOR_CYCLE_GATE_CODES.has(b.code));
+  const blocks = [
+    ...nonGov,
+    ...evaluateZeroDteGovernor(
+      {
+        ticker: input.ticker,
+        direction: input.direction,
+        entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null,
+        gamma_regime: input.gamma_regime,
+      },
+      input.governor,
+      input.nowMs,
+      input.committedThisCycle,
+      {
+        etMinutes: input.nowEtMinutes,
+        premiumAtRisk: input.governorPremiumAtRisk,
+        shortGammaOpen: input.governorShortGammaOpen,
+      }
+    ),
+  ];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
 /** "HH:MM" from ET minutes-since-midnight. */
 function etLabel(etMinutes: number): string {
   const h = Math.floor(etMinutes / 60);
@@ -1257,6 +1473,11 @@ function etLabel(etMinutes: number): string {
  */
 export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCalibration {
   const ticker = input.ticker.toUpperCase();
+  // Phase 4: mirrors evaluateZeroDteGates's own `isCondor` flag (line ~531) — a delta-neutral
+  // condor is scored under entirely different VIX (G-4) and conflict (G-6) rules than a
+  // directional play, so both calibration verdicts below must branch on it the same way the
+  // live gate does, or a condor row gets a directional verdict the live gate never computed.
+  const isCondor = input.play_type === "CONDOR";
   // Flat tape = no directional opposition (same treatment as aligned in G-4). Single names are
   // scoped OUT of the SPY-tape comparison here, mirroring the live gate's own G-1 scoping
   // (INDEX_ETF_TICKERS-only) — a single name's bias-vs-direction comparison says nothing about
@@ -1284,33 +1505,60 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
       note: "Day-open VIX unavailable — no G-4 verdict recorded (never guessed).",
     };
   } else if (vix >= VIX_EXTREME_THRESHOLD) {
-    const isIndexEtf = INDEX_ETF_TICKERS.has(ticker);
-    g4 = {
-      day_open_vix: vix,
-      tier: "extreme",
-      would_block: !isIndexEtf,
-      would_halve_size: isIndexEtf,
-      note: isIndexEtf
-        ? `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: index/ETF product survives at HALF plan size under hardened G-4.`
-        : `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: single names blocked under hardened G-4 (index/ETF only).`,
-    };
+    if (isCondor) {
+      // Mirrors the live condor G-4 branch above (~line 800): extreme VIX blocks EVERY condor
+      // unconditionally — there is no index/ETF half-size carve-out for a delta-neutral sale,
+      // unlike the directional branch below.
+      g4 = {
+        day_open_vix: vix,
+        tier: "extreme",
+        would_block: true,
+        would_halve_size: false,
+        note: `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: extreme vol regime threatens range integrity — condor sale blocked (condor G-4).`,
+      };
+    } else {
+      const isIndexEtf = INDEX_ETF_TICKERS.has(ticker);
+      g4 = {
+        day_open_vix: vix,
+        tier: "extreme",
+        would_block: !isIndexEtf,
+        would_halve_size: isIndexEtf,
+        note: isIndexEtf
+          ? `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: index/ETF product survives at HALF plan size under hardened G-4.`
+          : `VIX ${vixR} ≥ ${VIX_EXTREME_THRESHOLD}: single names blocked under hardened G-4 (index/ETF only).`,
+      };
+    }
   } else if (vix >= VIX_ELEVATED_THRESHOLD) {
-    const elevatedFloor =
-      aligned === true ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
-    const clears = aligned === true ? input.score >= ZERODTE_SCORE_FLOOR : input.score >= VIX_ELEVATED_SCORE_FLOOR;
-    g4 = {
-      day_open_vix: vix,
-      tier: "elevated",
-      would_block: !clears,
-      would_halve_size: false,
-      note: clears
-        ? aligned === true
-          ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned with score ≥ ${ZERODTE_SCORE_FLOOR} — clears hardened G-4.`
-          : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: score ≥ ${VIX_ELEVATED_SCORE_FLOOR} — clears hardened G-4.`
-        : aligned === true
-          ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned setups need score ≥ ${ZERODTE_SCORE_FLOOR} under hardened G-4.`
-          : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: hardened G-4 needs tape alignment AND score ≥ ${VIX_ELEVATED_SCORE_FLOOR} (17-20 regime ran 25% WR vs 69% at 15-17).`,
-    };
+    if (isCondor) {
+      // Mirrors the live condor G-4 branch above: 17-20 VIX is the condor's BEST regime (fatter
+      // premium collected while the range holds — condor-wr.mjs measured 98.7% WR on shipped
+      // geometry including 17-20 sessions), so unlike the directional score-floor logic below,
+      // a condor is never blocked here. Score/alignment play no role in the condor's own G-4.
+      g4 = {
+        day_open_vix: vix,
+        tier: "elevated",
+        would_block: false,
+        would_halve_size: false,
+        note: `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD} (< ${VIX_EXTREME_THRESHOLD} extreme): a condor's best regime — fatter premium while the range holds; condor G-4 only blocks at extreme.`,
+      };
+    } else {
+      const elevatedFloor =
+        aligned === true ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
+      const clears = aligned === true ? input.score >= ZERODTE_SCORE_FLOOR : input.score >= VIX_ELEVATED_SCORE_FLOOR;
+      g4 = {
+        day_open_vix: vix,
+        tier: "elevated",
+        would_block: !clears,
+        would_halve_size: false,
+        note: clears
+          ? aligned === true
+            ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned with score ≥ ${ZERODTE_SCORE_FLOOR} — clears hardened G-4.`
+            : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: score ≥ ${VIX_ELEVATED_SCORE_FLOOR} — clears hardened G-4.`
+          : aligned === true
+            ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned setups need score ≥ ${ZERODTE_SCORE_FLOOR} under hardened G-4.`
+            : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: hardened G-4 needs tape alignment AND score ≥ ${VIX_ELEVATED_SCORE_FLOOR} (17-20 regime ran 25% WR vs 69% at 15-17).`,
+      };
+    }
   } else {
     g4 = {
       day_open_vix: vix,
@@ -1321,33 +1569,52 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
     };
   }
 
-  // G-6 — cross-system conflict verdict.
-  const against: Array<"spx_slayer" | "nighthawk_edition"> = [];
-  if (
-    input.slayerLive != null &&
-    SPX_CORRELATED_TICKERS.has(ticker) &&
-    input.slayerLive.direction !== input.direction
-  ) {
-    against.push("spx_slayer");
+  // G-6 — cross-system conflict verdict. CONDOR-EXEMPT: mirrors the live gate's own
+  // `if (!isCondor)` scoping at G-6's enforcement site above — a delta-neutral condor has
+  // no directional side to "oppose" another desk's take with. Without this, a PIN-sourced
+  // condor that happens to correlate-and-oppose a live Slayer/Night Hawk take would get
+  // tagged conflict:true/would_block:true here even though the live gate never blocks it,
+  // silently mixing a structurally different (delta-neutral) population into the
+  // directional would-block/would-pass cohorts `recommendGate("g6_conflict", ...)` uses to
+  // decide whether G-6 should harden further.
+  let g6: ZeroDteConflictCalibration;
+  if (isCondor) {
+    g6 = {
+      conflict: false,
+      against: [],
+      would_block: false,
+      applicable: false,
+      note: "N/A — CONDOR is delta-neutral, G-6 exempt (mirrors the live gate).",
+    };
+  } else {
+    const against: Array<"spx_slayer" | "nighthawk_edition"> = [];
+    if (
+      input.slayerLive != null &&
+      SPX_CORRELATED_TICKERS.has(ticker) &&
+      input.slayerLive.direction !== input.direction
+    ) {
+      against.push("spx_slayer");
+    }
+    if (input.nighthawkTake != null && input.nighthawkTake.direction !== input.direction) {
+      against.push("nighthawk_edition");
+    }
+    const conflict = against.length > 0;
+    g6 = {
+      conflict,
+      against,
+      would_block: conflict && input.score < CONFLICT_SCORE_FLOOR,
+      applicable: true,
+      note: conflict
+        ? `CONFLICT: ${input.direction} opposes ${against
+            .map((a) =>
+              a === "spx_slayer"
+                ? `the live SPX Slayer ${input.slayerLive!.direction}`
+                : `Night Hawk's ${input.nighthawkTake!.direction} take (edition ${input.nighthawkTake!.edition_for})`
+            )
+            .join(" and ")} — hardened G-6 would require score ≥ ${CONFLICT_SCORE_FLOOR}.`
+        : "No cross-system conflict.",
+    };
   }
-  if (input.nighthawkTake != null && input.nighthawkTake.direction !== input.direction) {
-    against.push("nighthawk_edition");
-  }
-  const conflict = against.length > 0;
-  const g6: ZeroDteConflictCalibration = {
-    conflict,
-    against,
-    would_block: conflict && input.score < CONFLICT_SCORE_FLOOR,
-    note: conflict
-      ? `CONFLICT: ${input.direction} opposes ${against
-          .map((a) =>
-            a === "spx_slayer"
-              ? `the live SPX Slayer ${input.slayerLive!.direction}`
-              : `Night Hawk's ${input.nighthawkTake!.direction} take (edition ${input.nighthawkTake!.edition_for})`
-          )
-          .join(" and ")} — hardened G-6 would require score ≥ ${CONFLICT_SCORE_FLOOR}.`
-      : "No cross-system conflict.",
-  };
 
   return {
     score_at_commit: Math.round(input.score),

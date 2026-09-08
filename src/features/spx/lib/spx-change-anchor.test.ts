@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { pulseChangePctFromPriorClose } from "./spx-change-anchor";
+import { pulseChangePctFromPriorClose, restAnchoredIndexChangePct } from "./spx-change-anchor";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P0 2026-08-07: the header day-change tile was anchored to the SESSION OPEN.
@@ -51,4 +51,15 @@ test("VIX is gated alongside SPX in the pulse fast path, not left behind it", ()
   // payload carries SPX's prior close and no VIX prior close.
   const src = readFileSync("src/features/spx/lib/spx-desk.ts", "utf8");
   assert.match(src, /changeResolved\(SPX\) && changeResolved\(VIX\)/);
+});
+
+test("restAnchoredIndexChangePct trusts change_pct only on REST-seeded anchors", () => {
+  assert.equal(restAnchoredIndexChangePct({ change_pct: 1.2, open_source: "rest" }), 1.2);
+  assert.equal(
+    restAnchoredIndexChangePct({ change_pct: 1.2, open_source: "ws-bar" }, -0.5),
+    -0.5,
+    "ws-bar anchor must not leak session-open change%"
+  );
+  assert.equal(restAnchoredIndexChangePct({ change_pct: 1.2 }, -0.5), -0.5);
+  assert.equal(restAnchoredIndexChangePct(null, -0.5), -0.5);
 });

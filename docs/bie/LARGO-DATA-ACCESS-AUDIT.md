@@ -2,6 +2,13 @@
 
 Last updated: 2026-07-17. Repo: `blackout-web-sandbox`.
 
+**HISTORICAL — superseded 2026-08.** This audit's premise (migrating Largo off Claude onto BIE)
+was reversed: Largo's deterministic BIE router was removed from `/terminal` and Largo is now
+Claude-only (see `src/lib/ai-env.ts`'s module comment). `largoBieOnly()`/`largoSkipBieRouter()`,
+referenced below, no longer exist — they were dead code (zero real callers) removed 2026-09-05.
+Kept for historical context on why BIE-only mode was tried and abandoned; do not use this doc as
+current guidance on Largo's data-access model.
+
 This document answers: **what data Largo can read today**, **what it cannot**, and **how to move Largo fully off Claude onto BIE** without inventing numbers.
 
 ---

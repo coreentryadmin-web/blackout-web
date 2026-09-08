@@ -86,8 +86,15 @@ test("stock inside its entry range with no other signals → CONFIRMED", () => {
   assert.equal(v.reason, "All checks passed");
 });
 
-test("SPX gap against direction still INVALIDATES (existing behavior preserved)", () => {
+test("SPX gap against direction degrades (not invalidates) when single-name premarket is within plan", () => {
   const v = computePlayVerdict(play(), { ...NO_CONTEXT, gapPts: -25, stockPremarket: 102 });
+  assert.equal(v.status, "DEGRADED");
+  assert.ok(v.reason.includes("SPX gapped"));
+  assert.ok(v.reason.includes("treat as caution"));
+});
+
+test("SPX gap against direction still INVALIDATES index plays without stock override", () => {
+  const v = computePlayVerdict(play({ ticker: "SPY", play_type: "etf" }), { ...NO_CONTEXT, gapPts: -25 });
   assert.equal(v.status, "INVALIDATED");
   assert.ok(v.reason.includes("SPX gapped"));
 });
@@ -122,6 +129,22 @@ test("isMorningConfirmStale: true once the 4h threshold is exceeded (the live re
 test("isMorningConfirmStale: exactly at the threshold is not yet stale (> not >=)", () => {
   const checkedAt = "2026-07-07T13:16:00.000Z";
   const now = Date.parse(checkedAt) + MORNING_CONFIRM_STALE_MS;
+  assert.equal(isMorningConfirmStale(checkedAt, now), false);
+});
+
+// BUG FIX (2026-09-03): checked_at is written by a separate cron process, so cross-process clock
+// skew is real — a future-dated checked_at used to produce a negative age that never exceeded
+// MORNING_CONFIRM_STALE_MS, leaving the "as of" qualifier off a verdict whose real age cannot be
+// verified.
+test("isMorningConfirmStale: a checked_at well in the future is stale, not freshest-possible", () => {
+  const now = Date.now();
+  const checkedAt = new Date(now + 10 * 60_000).toISOString();
+  assert.equal(isMorningConfirmStale(checkedAt, now), true);
+});
+
+test("isMorningConfirmStale: a checked_at a few seconds ahead of now (ordinary clock skew) is not stale", () => {
+  const now = Date.now();
+  const checkedAt = new Date(now + 2_000).toISOString();
   assert.equal(isMorningConfirmStale(checkedAt, now), false);
 });
 

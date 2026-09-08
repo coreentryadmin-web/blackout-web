@@ -100,6 +100,50 @@ export function MarketStateStrip({
   );
 }
 
+/** Vector ↔ 0DTE shadow-book — gate-blocked names Vector is tracking as winner/runner. */
+export function VectorNearMissStrip({
+  nearMisses,
+  compact = false,
+}: {
+  nearMisses: import("@/lib/zerodte/vector-near-miss").ZeroDteVectorNearMiss[] | null | undefined;
+  compact?: boolean;
+}) {
+  if (!nearMisses || nearMisses.length === 0) return null;
+  const top = nearMisses.slice(0, 4);
+  return (
+    <div
+      className={clsx("nh-deck-context-strip", compact && "nh-deck-context-strip--compact")}
+      data-testid="zerodte-vector-near-miss-strip"
+      title="Vector is tracking these names positively but 0DTE gates blocked commit — calibration signal, not a trade"
+    >
+      <span className={clsx("font-mono uppercase tracking-widest text-violet-300", compact ? "text-[8px]" : "text-[9px]")}>
+        Vector near-miss
+      </span>
+      <div className={clsx("flex flex-wrap items-center gap-1.5", compact ? "mt-1" : "mt-1.5")}>
+        {top.map((m) => (
+          <GovPill
+            key={m.ticker}
+            label={m.ticker}
+            value={
+              m.vector_band === "winner"
+                ? `V+ ${Math.round(Math.max(m.vector_premium_pct ?? 0, m.vector_peak_pct ?? 0))}%`
+                : m.vector_band === "runner"
+                  ? `V ${Math.round(Math.max(m.vector_premium_pct ?? 0, m.vector_peak_pct ?? 0))}%`
+                  : "tracked"
+            }
+            tone={m.vector_band === "winner" ? "bull" : m.vector_band === "runner" ? "gold" : "sky"}
+            title={[m.block_label, m.block_reason].filter(Boolean).join(" — ")}
+            compact={compact}
+          />
+        ))}
+        {nearMisses.length > top.length && (
+          <GovPill label="more" value={`+${nearMisses.length - top.length}`} tone="sky" compact={compact} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Phase 2c — top session rejection reason from discovery funnel. */
 export function DiscoveryFunnelStrip({
   funnel,
@@ -120,6 +164,67 @@ export function DiscoveryFunnelStrip({
     >
       {compact ? funnel.summary : `Funnel · ${funnel.summary}`}
     </p>
+  );
+}
+
+/** Cortex veto shadow calibration — member-facing calibration read. */
+export function VetoShadowStrip({
+  shadow,
+  compact = false,
+}: {
+  shadow: import("@/lib/zerodte/veto-shadow-summary").VetoShadowSummary | null | undefined;
+  compact?: boolean;
+}) {
+  if (!shadow?.summary) return null;
+  return (
+    <p
+      className={clsx(
+        "nh-deck-context-strip font-mono uppercase tracking-widest text-violet-300/90",
+        compact ? "text-[8px]" : "text-[10px]",
+      )}
+      data-testid="zerodte-veto-shadow-strip"
+      title="Cortex veto shadow — Vector near-miss calibration signal, not a trade recommendation"
+    >
+      {compact ? shadow.summary : `Veto shadow · ${shadow.summary}`}
+      {shadow.vector_winner_misses > 0 && (
+        <span className="ml-2 text-bull">
+          ({shadow.vector_winner_misses} V+ miss{shadow.vector_winner_misses === 1 ? "" : "es"})
+        </span>
+      )}
+    </p>
+  );
+}
+
+/** Scan vs commit session counters — separates Vector-style breadth from ledger commits. */
+export function SessionStatsStrip({
+  stats,
+  compact = false,
+}: {
+  stats: import("@/lib/zerodte/session-board-stats").ZeroDteSessionBoardStats | null | undefined;
+  compact?: boolean;
+}) {
+  if (!stats || stats.scanned === 0) return null;
+  return (
+    <div
+      className={clsx("nh-deck-context-strip flex flex-wrap items-center gap-1.5", compact && "nh-deck-context-strip--compact")}
+      data-testid="zerodte-session-stats-strip"
+      title="Scanner breadth vs committed ledger — candidates are not positions until commit"
+    >
+      <GovPill label="Scanned" value={String(stats.scanned)} tone="sky" compact={compact} />
+      <GovPill label="Ready" value={String(stats.commit_ready)} tone="bull" compact={compact} title="Cleared all hard gates — eligible to commit" />
+      <GovPill label="Blocked" value={String(stats.gate_blocked)} tone="gold" compact={compact} title="Gate-blocked candidates (watch lane)" />
+      <GovPill label="Open" value={String(stats.committed_open)} tone="bull" compact={compact} title="Committed ledger rows still working" />
+      <GovPill label="Closed" value={String(stats.committed_closed)} tone="sky" compact={compact} title="Graded commits today" />
+      {stats.top_block_label && stats.gate_blocked > 0 && (
+        <GovPill
+          label="Top block"
+          value={stats.top_block_label}
+          tone="bear"
+          compact={compact}
+          title={stats.top_block_code ?? undefined}
+        />
+      )}
+    </div>
   );
 }
 

@@ -14,27 +14,62 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { warmVectorWalls, getTickersToWarmAsync } from "@/features/vector/lib/vector-walls-warm";
-import { isEtCashRth } from "@/lib/et-market-hours";
+import { isEtCashRth, isEtExtendedWarmHours } from "@/lib/et-market-hours";
+import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-async function runVectorWallsWarm(started: number): Promise<void> {
-  const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
-  const results = await Promise.allSettled(tickers.map((t) => warmVectorWalls(t)));
+/**
+ * Cross-replica overlap guard. vector-walls-warm has two independent trigger sources —
+ * EventBridge's ~5min schedule AND the in-app rth-warm-leader (20s heal threshold in
+ * rth-warm-leader-logic.ts) — with no lock between them. A leader-triggered heal-fire can
+ * land on top of an EventBridge fire while the prior universe warm is still sweeping Polygon
+ * chain fetches. Same `sharedCacheSetNx` idempotent-skip pattern as desk-warm/heatmap-warm.
+ * TTL (240s) covers maxDuration (120s) as the safety-net ceiling if a release is missed.
+ */
+const OVERLAP_LOCK_KEY = "vector-walls-warm:running";
+const OVERLAP_LOCK_TTL_SEC = 240;
 
-  let warmed = 0;
-  for (const r of results) {
-    if (r.status === "fulfilled") warmed += 1;
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the cash-RTH gate below.
+ *
+ * Same structural gap fixed for desk-warm (#3540) and heatmap-warm (#3542): `force=1`
+ * completely bypasses the `isEtCashRth()` off-hours skip, and OVERLAP_LOCK above guards only
+ * against a SECOND run starting while the FIRST is still in flight — released the instant the
+ * background warm settles, which on an already-hot walls cache can finish far faster than a
+ * cold universe sweep. Nothing capped how OFTEN `?force=1` could be replayed.
+ *
+ * 10s sits safely BELOW every legitimate cadence: rth-warm-leader's heal threshold for this key
+ * is 20s (RTH_WRITER_HEAL_AFTER_MIN["vector-walls-warm"], rth-warm-leader-logic.ts) and
+ * EventBridge's own schedule is ~5 min — neither path re-requests this key sooner than 10s ever
+ * would allow.
+ */
+const RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 10;
+/** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558/#4561 fixed on sibling warm crons. */
+const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
+
+async function runVectorWallsWarm(started: number): Promise<void> {
+  try {
+    const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
+    const results = await Promise.allSettled(tickers.map((t) => warmVectorWalls(t)));
+
+    let warmed = 0;
+    for (const r of results) {
+      if (r.status === "fulfilled") warmed += 1;
+    }
+    const failed = results.length - warmed;
+    if (failed > 0) {
+      console.warn(`[cron/vector-walls-warm] ${failed} universe warm(s) failed`);
+    }
+    console.info(
+      `[cron/vector-walls-warm] background done — warmed=${warmed}/${tickers.length} failed=${failed} elapsed=${Date.now() - started}ms`
+    );
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
   }
-  const failed = results.length - warmed;
-  if (failed > 0) {
-    console.warn(`[cron/vector-walls-warm] ${failed} universe warm(s) failed`);
-  }
-  console.info(
-    `[cron/vector-walls-warm] background done — warmed=${warmed}/${tickers.length} failed=${failed} elapsed=${Date.now() - started}ms`
-  );
 }
 
 export async function GET(req: NextRequest) {
@@ -50,9 +85,47 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  const effectiveCooldownSec = isEtExtendedWarmHours()
+    ? RERUN_COOLDOWN_SEC
+    : OFF_WINDOW_FORCE_COOLDOWN_SEC;
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    effectiveCooldownSec
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — vector-walls-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
+    };
+    await logCronRun("vector-walls-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous Vector walls warm still in flight (idempotent skip)",
+    };
+    await logCronRun("vector-walls-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
   // Universe wall priming can exceed Cloudflare's ~100s origin timeout when caches are cold
   // (ops #2118: market_hours_stale with no fresh cron_job_runs row). Mirror vector-bead-record /
   // vector-full-state-snapshot: handshake in seconds, warming in after().
+  //
+  // UW sweep tag: intentionally NOT wrapped in the shared background UW sweep helper. This cron is
+  // Polygon/GEX-cache heavy (warmVectorWalls → getVectorGexWalls/VexWalls). joinGexStrikeExpiryTicker
+  // only registers a lightweight UW WS subscription — no UW REST fan-out — so it does not compete
+  // with live traffic the way desk-warm / meridian-warm / vector-universe-snapshot do.
   const dispatchWarming = () => {
     void runVectorWallsWarm(started).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);

@@ -1,3 +1,4 @@
+import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import type { SpxAdminIssuesPayload, SpxIssueSeverity } from "@/lib/admin-spx-issues";
 import type { AdminIncidentRow } from "@/lib/admin-incidents";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
@@ -57,9 +58,12 @@ export function buildSpxTerminalFeed(input: {
   flowAlertsToday?: number;
   routeErrors?: Array<{ route: string; message: string; at: string }>;
   openIncidents?: AdminIncidentRow[];
+  /** Test hook — defaults to Date.now(). */
+  now?: number;
 }): SpxTerminalPayload {
   const { desk, play, issues, liveEngine } = input;
-  const now = new Date().toISOString();
+  const clock = input.now ?? Date.now();
+  const now = new Date(clock).toISOString();
   const lines: SpxTerminalLine[] = [];
 
   const push = (row: Omit<SpxTerminalLine, "marker"> & { marker?: string }) => {
@@ -146,7 +150,15 @@ export function buildSpxTerminalFeed(input: {
 
   // ── Open incidents (acked / MTTA) ──
   for (const inc of input.openIncidents ?? []) {
-    const openMs = Date.now() - new Date(inc.opened_at).getTime();
+    const openAge = isoAgeSec(inc.opened_at, clock);
+    const openLabel =
+      inc.mtta_ms != null
+        ? `MTTA ${Math.round(inc.mtta_ms / 1000)}s`
+        : openAge.kind === "clock-skew"
+          ? "open clock skew"
+          : openAge.kind === "invalid"
+            ? "open —"
+            : `open ${openAge.sec}s`;
     push({
       id: `incident:${inc.id}`,
       at: inc.acked_at ?? inc.opened_at,
@@ -156,7 +168,7 @@ export function buildSpxTerminalFeed(input: {
       detail: inc.detail,
       meta: [
         inc.status.toUpperCase(),
-        inc.mtta_ms != null ? `MTTA ${Math.round(inc.mtta_ms / 1000)}s` : `open ${Math.round(openMs / 1000)}s`,
+        openLabel,
         inc.acked_by ? `by ${inc.acked_by}` : null,
       ]
         .filter(Boolean)

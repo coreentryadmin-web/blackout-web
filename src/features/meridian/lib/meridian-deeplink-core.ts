@@ -17,6 +17,17 @@ export type DeskUrlState = {
   view: "timeline" | "analytics" | null;
   /** Active timeline filter. Free-form because FilterKind spans event kinds plus pseudo-kinds. */
   filter: string | null;
+  /**
+   * READ-ONLY bootstrap symbol from an incoming link, e.g. `?ticker=TSLA` from another desk's
+   * cross-link. One-shot on purpose: it seeds the desk's own search box the same way a member
+   * typing the symbol would, so it gets the exact same behavior (auto-selects if the name's next
+   * print is in the visible 21-day timeline window, otherwise surfaces the "Earnings lookup" card
+   * for names further out) — no second search path to keep in sync with the real one. Never
+   * round-trips back into the URL: `deskUrlSearch` does not emit it, so once the desk settles on
+   * an `event` selection the address bar reads as a normal Meridian link, not a lingering
+   * `?ticker=` from wherever the reader arrived.
+   */
+  ticker: string | null;
 };
 
 const VIEWS = new Set(["timeline", "analytics"]);
@@ -33,16 +44,18 @@ export function parseDeskUrlState(search: string): DeskUrlState {
   try {
     params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   } catch {
-    return { event: null, view: null, filter: null };
+    return { event: null, view: null, filter: null, ticker: null };
   }
   const view = params.get("view");
   const event = params.get("event");
   const filter = params.get("filter");
+  const ticker = params.get("ticker");
   return {
     // An empty param (`?event=`) is the same as absent — it carries no selection.
     event: event && event.trim() ? event : null,
     view: view && VIEWS.has(view) ? (view as DeskUrlState["view"]) : null,
     filter: filter && filter.trim() ? filter : null,
+    ticker: ticker && ticker.trim() ? ticker.trim() : null,
   };
 }
 

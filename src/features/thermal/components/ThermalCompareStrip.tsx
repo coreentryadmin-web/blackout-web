@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
+import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
+import { rebaseChangePct } from "@/lib/providers/change-pct";
 // Canonical cash-RTH gate — holiday- and early-close-aware, documented safe on the client.
 import { isEtCashRth } from "@/lib/et-market-hours";
 
@@ -59,8 +61,25 @@ function CompareCard({
     { refreshInterval: pollMs, revalidateOnFocus: false, keepPreviousData: true }
   );
 
-  const spot = data?.spot ?? null;
-  const chg = data?.change_pct ?? null;
+  const { quotes: livePushQuotes } = useLiveQuoteStream([ticker]);
+  const pushQuote = livePushQuotes[ticker.toUpperCase()];
+  const pushSpot = pushQuote != null && pushQuote.price > 0 ? pushQuote.price : null;
+
+  const matrixSpot = data?.spot != null && data.spot > 0 ? data.spot : null;
+  const matrixChangePct =
+    data?.change_pct != null && Number.isFinite(data.change_pct) ? data.change_pct : null;
+  const pushChangePct =
+    pushQuote?.changePct != null && Number.isFinite(pushQuote.changePct)
+      ? pushQuote.changePct
+      : null;
+
+  const spot = pushSpot ?? matrixSpot;
+  const chg =
+    pushSpot != null && matrixSpot != null
+      ? (rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct })
+        ?? pushChangePct
+        ?? matrixChangePct)
+      : pushChangePct ?? matrixChangePct;
   const call = data?.gex?.call_wall ?? null;
   const put = data?.gex?.put_wall ?? null;
   const flip = data?.gex?.flip ?? null;

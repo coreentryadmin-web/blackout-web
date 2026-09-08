@@ -6,6 +6,7 @@ import {
   formatRelativeAge,
   formatCompactAge,
   ageDecayToneFromAge,
+  eventAgeMs,
   freshnessBadgeLabel,
   freshnessTierFromAge,
   playFreshnessDisplay,
@@ -18,10 +19,14 @@ import {
   playTimeRangeCompact,
   playListReturnPct,
   playTriggeredAtMs,
+  openMetricsValues,
   zeroDteActionDisplay,
+  swingActionDisplay,
+  legacyActionDisplay,
   closedCapturePct,
 } from "./play-card-lifecycle.ts";
 import type { TerminalPlay } from "./types.ts";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 const NOW = Date.parse("2026-08-03T12:00:00-04:00");
 
@@ -65,6 +70,17 @@ describe("play-card-lifecycle", () => {
     assert.equal(freshnessTierFromAge(22 * 60_000, "open"), "aging");
     assert.equal(freshnessTierFromAge(47 * 60_000, "open"), "late");
     assert.equal(freshnessTierFromAge(null, "closed"), "closed");
+  });
+
+  it("eventAgeMs rejects clock-skewed future timestamps (fail-closed)", () => {
+    const now = Date.parse("2026-08-03T12:00:00-04:00");
+    const withinTolerance = new Date(now + WS_TIMESTAMP_FUTURE_TOLERANCE_MS - 1_000).toISOString();
+    const farFuture = new Date(now + 30_000).toISOString();
+    assert.equal(eventAgeMs(withinTolerance, now), 0);
+    assert.equal(eventAgeMs(farFuture, now), Number.POSITIVE_INFINITY);
+    const display = playFreshnessDisplay(base(), now, farFuture);
+    assert.equal(display.tier, "late");
+    assert.equal(display.pulse, false);
   });
 
   it("freshnessBadgeLabel matches urgency tiers", () => {
@@ -160,6 +176,21 @@ describe("play-card-lifecycle", () => {
     assert.equal(ageDecayToneFromAge(28 * 60_000, "open"), "aging");
     assert.equal(ageDecayToneFromAge(63 * 60_000, "open"), "stale");
     assert.equal(ageDecayToneFromAge(130 * 60_000, "open"), "late");
+  });
+
+  it("legacyActionDisplay maps INVALIDATED/pulled to PULLED pill", () => {
+    assert.deepEqual(
+      legacyActionDisplay({ horizon: "LEGACY", morningStatus: "INVALIDATED" } as TerminalPlay),
+      { label: "PULLED", tone: "closed" },
+    );
+    assert.deepEqual(
+      legacyActionDisplay({ horizon: "LEGACY", pulled: true } as TerminalPlay),
+      { label: "PULLED", tone: "closed" },
+    );
+    assert.deepEqual(
+      legacyActionDisplay({ horizon: "LEGACY", morningStatus: "DEGRADED" } as TerminalPlay),
+      { label: "DEGRADED", tone: "watch" },
+    );
   });
 
   it("playStatusDisplay maps scannable tones", () => {
@@ -269,6 +300,39 @@ describe("list PNL column — current, not peak", () => {
   });
 });
 
+describe("LEGACY open metrics — stock move, not daily change", () => {
+  const legacy = (over: Partial<TerminalPlay>): TerminalPlay =>
+    ({
+      status: "OPEN",
+      horizon: "LEGACY",
+      ticker: "AAPL",
+      contract: "200C",
+      ...over,
+    }) as TerminalPlay;
+
+  it("openMetricsValues uses stockMovePct / stockPeakPct, never stockChangePct", () => {
+    const m = openMetricsValues(
+      legacy({
+        stockMovePct: 5.2,
+        stockPeakPct: 8.1,
+        stockChangePct: 1.1,
+        pnlPct: null,
+      }),
+    );
+    assert.equal(m.currentPct, 5.2);
+    assert.equal(m.peakPct, 8.1);
+  });
+
+  it("playListReturnPct shows stock move for open LEGACY rows", () => {
+    assert.equal(
+      playListReturnPct(
+        legacy({ stockMovePct: -3.4, stockChangePct: 2.0, pnlPct: null }),
+      ),
+      -3.4,
+    );
+  });
+});
+
 describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () => {
   it("non-0DTE horizons never get the ACTION vocabulary", () => {
     assert.equal(zeroDteActionDisplay(base({ horizon: "SWING", status: "OPEN" })), null);
@@ -372,7 +436,88 @@ describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () 
   });
 });
 
+describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
+  it("pre-entry BUY recommendation → BUY pill", () => {
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "WATCH", recommendation: "BUY" })),
+      { label: "BUY", tone: "watch" },
+    );
+  });
+
+  it("pre-entry WATCH without BUY → WAIT pill", () => {
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "WATCH", recommendation: "HOLD" })),
+      { label: "WAIT", tone: "watch" },
+    );
+  });
+
+  it("SKIP → null (PASSED lifecycle pill)", () => {
+    assert.equal(swingActionDisplay(base({ horizon: "SWING", status: "SKIP" })), null);
+  });
+
+  it("live OPEN with swingEntryAction still_buy → STILL BUY pill (not HOLD)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "OPEN",
+          recommendation: "HOLD",
+          swingEntryAction: "still_buy",
+        }),
+      ),
+      { label: "STILL BUY", tone: "watch" },
+    );
+  });
+
+  it("TRIM recommendation wins over STILL BUY when desk is scaling out", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          swingEntryAction: "still_buy",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 50, fraction: 0.33, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 50%", tone: "active" },
+    );
+  });
+
+  it("live OPEN swing uses HOLD when not enterable", () => {
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "OPEN", recommendation: "HOLD" })),
+      { label: "HOLD", tone: "active" },
+    );
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "HOLD", recommendation: "SELL" })),
+      { label: "EXIT", tone: "active" },
+    );
+  });
+
+  it("CLOSED swing maps closedReason to TARGET/STOPPED", () => {
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "CLOSED", closedReason: "target" })),
+      { label: "TARGET", tone: "closed" },
+    );
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "CLOSED", closedReason: "stopped" })),
+      { label: "STOPPED", tone: "closed" },
+    );
+  });
+});
+
 describe("closedCapturePct — honest post-trade attribution (2026-08-29)", () => {
+  it("prefers server-pinned mfeCapturePct when present", () => {
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: 80, peak: 150, mfeCapturePct: 53 })),
+      53,
+    );
+  });
+
   it("captures the real ratio of realized to peak, as a percentage", () => {
     // exitPnlPct 45.5, peak 91 → banked exactly half the best-ever excursion.
     assert.equal(

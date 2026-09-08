@@ -28,6 +28,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { shouldRejectLargoWithoutRedis } from "@/lib/largo-redis-policy";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 import { largoMemberRouteDeadlineMs } from "@/lib/providers/config";
 
 // ---------------------------------------------------------------------------
@@ -484,7 +485,7 @@ export async function POST(req: NextRequest) {
     const result = await largoRouteDeadlineRace(
       runLargoQuery(effectiveQuestion, resolvedSessionId, userId, images, turnOptions)
     );
-    return NextResponse.json(result, {
+    return NextResponse.json(roundFloats(result), {
       headers: {
         ...NO_STORE_HEADERS,
         Pragma: "no-cache",

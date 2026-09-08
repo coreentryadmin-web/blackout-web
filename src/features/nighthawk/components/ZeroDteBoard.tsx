@@ -12,6 +12,7 @@ import {
   type FreshnessStatus,
 } from "@/components/ui";
 import { resolveFreshFindStatus, type EnrichedZeroDteSetup, type SessionHeat } from "@/lib/zerodte/board";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import { DiscoveryFunnelStrip, GovPill, MarketStateStrip } from "./zerodte-board-strips";
@@ -162,7 +163,15 @@ export function resolveZeroDteFreshness(
   staleAfterMs = 60_000
 ): FreshnessStatus {
   if (upstreamOk === false) return "offline";
-  if (asOfMs > 0 && nowMs > 0 && nowMs - asOfMs > staleAfterMs) return "stale";
+  if (asOfMs > 0 && nowMs > 0) {
+    const ageMs = nowMs - asOfMs;
+    // BUG FIX (2026-09-03): a client/server clock-skewed asOfMs from the future used to produce a
+    // negative ageMs that never exceeded staleAfterMs, always reading "live" for a board whose real
+    // freshness cannot be verified — the sibling isZeroDteMarkStale (marks-math.ts) already guards
+    // against exactly this; this function was missed when that guard was added.
+    if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return "stale";
+    if (ageMs > staleAfterMs) return "stale";
+  }
   return "live";
 }
 
@@ -393,7 +402,7 @@ export function mergePlays(
     const status =
       s.gate?.verdict === "BLOCKED"
         ? ("SKIP" as const)
-        : resolveFreshFindStatus(heatState, moved, Boolean(s.plan?.illiquid));
+        : resolveFreshFindStatus(heatState, moved, Boolean(s.plan?.illiquid), Boolean(s.plan_chase_exempt));
     rows.push({
       ticker: s.ticker,
       direction: s.direction,
@@ -1249,7 +1258,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
                 : "stopped −50%"}
             </span>
           )}
-          {/* A non-stop engine exit (ratchet/thesis/flat/target) or a plain 15:30 close —
+          {/* A non-stop engine exit (ratchet/thesis/flat/target) or a plain 15:50 close —
               distinguished now that closed_reason carries the type; detail is the tooltip. */}
           {row.status === "CLOSED" && row.closed_reason != null && row.closed_reason !== "stopped" && (
             <span

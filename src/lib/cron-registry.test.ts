@@ -44,9 +44,7 @@ const INTENTIONALLY_UNREGISTERED: Record<string, string> = {
   "x-autopost": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-growth": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-replies": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
-  "darkpool-discord": "Unscheduled in cron-jobs.json; invoked off another job's path rather than on its own timer, so a stale window computed from a schedule it does not have would be meaningless.",
-  "helix-discord-digest": "Unscheduled in cron-jobs.json — same reason as darkpool-discord.",
-  "thermal-discord": "Unscheduled in cron-jobs.json — same reason as darkpool-discord.",
+  "cron-staleness-watchdog-self-heal": "PR #3668: a SECOND, conditional log key written by the already-registered cron-staleness-watchdog route (src/app/api/cron/cron-staleness-watchdog/route.ts) — only when self-heal actually dispatches a re-warm, which is not a fixed cadence and has no entry of its own in blackout-infra's cron-jobs.json. Its own stale_after_min would false-alarm on any quiet stretch with no incident. logCronRun's own failure path already fires the standard Discord alert if a re-warm does not succeed; the health board tracks the parent cron-staleness-watchdog key on its real 5-min schedule instead.",
 };
 
 /** Every `logCronRun(...)` key a route can emit, resolving `CRON_KEY`-style constants. */
@@ -129,4 +127,21 @@ test("INTENTIONALLY_UNREGISTERED carries a real reason for each exemption", () =
   for (const [key, reason] of Object.entries(INTENTIONALLY_UNREGISTERED)) {
     assert.ok(reason.length > 40, `${key} needs a real reason, not a placeholder`);
   }
+});
+
+test("vector-bead-record's schedule_label does not claim a deployed EventBridge backup", () => {
+  // FINDINGS.md 2026-09-01: no EventBridge rule exists for this route (confirmed live via
+  // events.list_rules, re-confirmed 2026-09-07) — the only real backup to the 5s in-app primary
+  // (vector-bead-recorder-leader.ts) is rth-warm-leader.ts's in-process heal loop, which shares the
+  // primary's own process/Redis-leader-election failure domain rather than an independent one. The
+  // label used to read "Every 1 min backup (market hours); in-app leader at 5s", implying a real
+  // second layer that doesn't exist. Pinning the corrected text so a future edit can't silently
+  // reintroduce that claim without someone actually deploying the EventBridge rule first.
+  const job = CRON_JOBS.find((j) => j.key === "vector-bead-record");
+  assert.ok(job, "vector-bead-record entry must exist");
+  assert.match(
+    job!.schedule_label,
+    /No EventBridge rule deployed/,
+    "schedule_label must state plainly that there is no independent EventBridge backup for this route"
+  );
 });

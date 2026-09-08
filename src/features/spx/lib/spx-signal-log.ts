@@ -15,6 +15,7 @@ import { isFlowFrameFreshAnywhere } from "@/lib/flow-liveness";
 import { computeShadowFactors, SHADOW_ANOMALY_TICKERS } from "@/features/spx/lib/spx-signals-shadow";
 import { computeMacroPredictionsShadowFactor, resolveMacroWindowState } from "@/features/spx/lib/spx-signals-shadow-predictions";
 import { fetchUwPredictionsConsensus, type PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import {
   computeSkewShadowFactor,
   computeVolDivergenceShadowFactor,
@@ -338,7 +339,7 @@ async function fetchMacroPredictionsConsensusCached(): Promise<{
   if (!uwConfigured()) return { signals: null, fresh: false };
 
   const now = Date.now();
-  if (now - cachedMacroPredictions.fetchedAt < MACRO_PREDICTIONS_CACHE_TTL_MS) {
+  if (isWsUpdatedAtFresh(cachedMacroPredictions.fetchedAt, MACRO_PREDICTIONS_CACHE_TTL_MS, now)) {
     return { signals: cachedMacroPredictions.signals, fresh: cachedMacroPredictions.fresh };
   }
 

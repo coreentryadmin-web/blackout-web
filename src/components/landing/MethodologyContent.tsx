@@ -7,6 +7,7 @@ import type { PublicTrackRecord } from "@/lib/track-record-public";
 import type { TrackRecordPagePayload } from "@/lib/track-record-page";
 import { TRACK_RECORD_METHODOLOGY } from "@/lib/track-record-page";
 import { ZERODTE_RECORD_METHODOLOGY } from "@/lib/zerodte/record";
+import { PLAN_RULES, PLAN_RULES_TIME_STOP_ET_LABEL } from "@/lib/zerodte/plan";
 import { MethodologyLaneNav } from "@/components/landing/MethodologyLaneNav";
 
 const INTRO = `Most trading services show you the wins and quietly forget the rest. BlackOut does the opposite: **every setup is logged, graded, and timestamped** — winners and losers alike. This page is the receipts desk: how we grade outcomes, what each product measures, and the live aggregate numbers you can verify before you subscribe.
@@ -27,7 +28,7 @@ Plays that never traded back into the entry band (unfilled), were invalidated pr
 
 const ZD_DETAIL = `## 0DTE Command (scanner ledger)
 
-0DTE Command grades **every committed scanner setup** on the option's own premium. The headline number is the **as-managed** exit — the ratchet, thesis-break, flat-timeout, or plan stop/target the member was live-guided to take. A fixed mechanical plan grade (−50% / +100% / 15:50 ET) rides beside it as a labeled comparison, never blended in.
+0DTE Command grades **every committed scanner setup** on the option's own premium. The headline number is the **as-managed** exit — the ratchet, thesis-break, flat-timeout, or plan stop/target the member was live-guided to take. A fixed mechanical plan grade (${PLAN_RULES.stop_pct}% / +${PLAN_RULES.target_pct}% / ${PLAN_RULES_TIME_STOP_ET_LABEL} ET) rides beside it as a labeled comparison, never blended in.
 
 These are option-premium returns — not SPX point results and not Night Hawk stock-move percentages.`;
 

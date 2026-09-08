@@ -370,32 +370,44 @@ the same shared event list.
 - **Send:** each NEW (non-deduped) regime event → `sendWebPush({ title:`${ticker} ${label}`,
   body: event.message, url:`/heatmap?ticker=${ticker}` }, {})` — broadcast to all push subscribers.
   Best-effort per ticker (one failure never aborts the rest); never throws.
-- **Schedule:** ~every 5 min during market hours — infra-owned railway registration (per-service
-  `railway.gex-alerts.toml` + a `scripts/hit-cron.mjs` entry), like the EOD cron. Also works
-  on-demand via a Bearer call.
+- **Schedule:** ~every 5 min during market hours — EventBridge rule `blackout-production-gex-alerts`
+  (`cron(*/5 11-21 ? * MON-FRI *)`, `ENABLED`), registered in `blackout-infra` terraform and
+  mirrored in `src/lib/cron-registry.ts`'s `"gex-alerts"` entry, same mechanism as every other
+  prod cron. Also works on-demand via a Bearer call.
 
 ### Platform follow-ups to make web-push LIVE (ALL platform/other-session-owned)
 
-The heatmap side (the `events[]` contract + this evaluator) is complete. Going live requires:
+> **UPDATE (2026-09-03, verified live):** items 1–3 below are DONE, not pending — this section
+> previously described them as outstanding platform/infra work and named a Railway-based
+> registration mechanism (`railway.gex-alerts.toml`) that no longer exists (Railway decommissioned
+> 2026-07-25). Confirmed directly rather than assumed: `web-push` is in `package.json`;
+> `blackout-production/app/env` (Secrets Manager) has `GEX_ALERTS_PUSH=1` and all three VAPID keys
+> set; the EventBridge rule `blackout-production-gex-alerts` is `ENABLED` on
+> `cron(*/5 11-21 ? * MON-FRI *)` (matches the "~every 5 min, market hours" schedule below). The
+> cron is NOT inert — it is actively broadcasting live push alerts to all subscribers today. Only
+> item 4 (the per-ticker subscription model) remains a real open follow-up.
 
-1. **Set VAPID keys + install the package** — set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` +
-   `VAPID_PRIVATE_KEY` (and optionally `VAPID_SUBJECT`) and run `npm i web-push`. Until then both
-   the scaffold and `sendWebPush` stay inert.
-2. **Activate the cron** — set `GEX_ALERTS_PUSH=1`. With VAPID also set, the cron leaves inert mode.
-3. **Register the cron schedule (railway)** — add `railway.gex-alerts.toml` + the `scripts/hit-cron.mjs`
-   entry hitting `/api/cron/gex-alerts` with `Authorization: Bearer ${CRON_SECRET}`, ~every 5 min
-   during market hours.
+The heatmap side (the `events[]` contract + this evaluator) is complete. Going live required:
+
+1. ~~**Set VAPID keys + install the package**~~ **DONE** — `NEXT_PUBLIC_VAPID_PUBLIC_KEY` +
+   `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` are set in prod Secrets Manager; `web-push` is an
+   installed dependency (`package.json`).
+2. ~~**Activate the cron**~~ **DONE** — `GEX_ALERTS_PUSH=1` is set in prod; the cron is out of
+   inert mode.
+3. ~~**Register the cron schedule**~~ **DONE** — registration today is an EventBridge rule in
+   `blackout-infra` terraform (mirrored in `src/lib/cron-registry.ts`'s `"gex-alerts"` entry), not
+   a Railway TOML file. `blackout-production-gex-alerts` is live and `ENABLED`.
 4. **Per-ticker per-user subscription model + a 🔔 opt-in toggle** in the heatmap UI, so alerts
    become per-user-per-ticker (via `sendWebPush(payload, { userId })`) instead of the current
    broadcast. Today alerts broadcast to ALL subscribers; the helper already accepts `{ userId }`
-   for when the subscription model lands.
+   for when the subscription model lands. **This is the one remaining open item.**
 
 | Item | Status |
 | --- | --- |
 | `events[]` contract + evaluator (`fetchGexHeatmap` → `GexEvent[]`) | **HEATMAP-OWNED — done** |
-| `src/lib/push/send-web-push.ts` (shared send helper, inert) | **HEATMAP-OWNED — done** |
-| `src/app/api/cron/gex-alerts/route.ts` (evaluator cron, inert-by-default) | **HEATMAP-OWNED — done** |
-| VAPID keys + `npm i web-push` | **PLATFORM-OWNED — activation** |
-| `GEX_ALERTS_PUSH=1` | **PLATFORM-OWNED — activation** |
-| `railway.gex-alerts.toml` + `scripts/hit-cron.mjs` schedule | **INFRA-OWNED — registration** |
-| Per-ticker per-user push subscription model + 🔔 opt-in toggle | **OTHER-SESSION-OWNED — follow-up** |
+| `src/lib/push/send-web-push.ts` (shared send helper) | **HEATMAP-OWNED — done** |
+| `src/app/api/cron/gex-alerts/route.ts` (evaluator cron) | **HEATMAP-OWNED — done, LIVE** |
+| VAPID keys + `npm i web-push` | **PLATFORM-OWNED — done, verified live 2026-09-03** |
+| `GEX_ALERTS_PUSH=1` | **PLATFORM-OWNED — done, verified live 2026-09-03** |
+| EventBridge cron registration (`blackout-production-gex-alerts`) | **INFRA-OWNED — done, verified ENABLED 2026-09-03** |
+| Per-ticker per-user push subscription model + 🔔 opt-in toggle | **OTHER-SESSION-OWNED — still open** |

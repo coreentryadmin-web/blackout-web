@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 // `import "server-only"`, which THROWS on a plain `tsx --test` import ("cannot be imported from
 // a Client Component"). vector-wall-db.ts re-exports rowToWallSample, so the runtime surface is
 // identical — this just avoids tripping the server-only guard in the test runner.
-import { rowToWallSample } from "./vector-wall-db-row";
+import { rowToWallSample, sortWallSamplesForUpsert } from "./vector-wall-db-row";
 
 // The DB is unreachable from this sandbox (raw TCP blocked), so we only exercise the PURE
 // row → sample mapper. The persist/load functions are thin wrappers around dbQuery and are
@@ -62,4 +62,47 @@ test("rowToWallSample parses jsonb handed back as a string", () => {
   });
   assert.deepEqual(sample.walls, GEX);
   assert.deepEqual(sample.vexWalls, VEX);
+});
+
+function row(ticker: string, sessionYmd: string, time: number) {
+  return { ticker, sessionYmd, sample: { time } };
+}
+
+test(
+  "sortWallSamplesForUpsert produces the SAME row order regardless of input order — the deadlock fix",
+  () => {
+    // Two "replicas" hand this the same rows in different (independent) orders — the whole point
+    // is that both must produce an IDENTICAL output order, or the deadlock this exists to prevent
+    // can still happen. Confirmed live 2026-09-01: 4 `deadlock detected` errors on the multi-row
+    // INSERT this feeds, over a ~29h window in production — see this function's own doc comment.
+    const replicaA = [row("QQQ", "2026-09-01", 200), row("SPX", "2026-09-01", 100), row("SPX", "2026-09-01", 50)];
+    const replicaB = [row("SPX", "2026-09-01", 50), row("SPX", "2026-09-01", 100), row("QQQ", "2026-09-01", 200)];
+
+    const sortedA = sortWallSamplesForUpsert(replicaA);
+    const sortedB = sortWallSamplesForUpsert(replicaB);
+
+    assert.deepEqual(sortedA, sortedB);
+    // And the order is the expected (ticker, session_ymd, bucket_time) order, not just "some
+    // consistent order" — QQQ < SPX alphabetically, and within SPX the earlier bucket_time first.
+    assert.deepEqual(
+      sortedA.map((r) => `${r.ticker}:${r.sample.time}`),
+      ["QQQ:200", "SPX:50", "SPX:100"]
+    );
+  }
+);
+
+test("sortWallSamplesForUpsert does not mutate its input array", () => {
+  const rows = [row("SPX", "2026-09-01", 200), row("QQQ", "2026-09-01", 100)];
+  const original = [...rows];
+  sortWallSamplesForUpsert(rows);
+  assert.deepEqual(rows, original);
+});
+
+test("sortWallSamplesForUpsert orders session_ymd before bucket_time within the same ticker", () => {
+  const rows = [row("SPX", "2026-09-02", 1), row("SPX", "2026-09-01", 999)];
+  const sorted = sortWallSamplesForUpsert(rows);
+  assert.deepEqual(
+    sorted.map((r) => r.sessionYmd),
+    ["2026-09-01", "2026-09-02"]
+  );
 });

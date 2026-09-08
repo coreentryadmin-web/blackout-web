@@ -148,7 +148,8 @@ export function priorDayFromDailyBars(
   return { pdh: prior.h, pdl: prior.l, pdc: prior.c };
 }
 
-function filterRthBars(bars: AggBar[]): AggBar[] {
+/** Cash RTH minute bars only (09:30–16:00 ET). Shared by desk session stats and playbook breakout extremes. */
+export function filterRthBars(bars: AggBar[]): AggBar[] {
   return bars.filter((b) => {
     if (!b.t) return false;
     const parts = new Intl.DateTimeFormat("en-US", {

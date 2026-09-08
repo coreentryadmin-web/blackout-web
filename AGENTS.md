@@ -36,6 +36,7 @@ that repo's `AGENTS.md` for staging-only policy (never merge staging → prod wi
 - **Setup:** `apps/blackout-ios/APP_STORE.md` (Apple ID `6787797476`, bundle `com.blackout-trades.app`).
 - **Mobile UI E2E (Playwright):** `npm run test:ios-ui-e2e` — iPhone viewport + `BlackOutiOSApp` UA, Clerk temp-user auth, clicks every bottom tab + primary segment/control, screenshots → `/opt/cursor/artifacts/ios-ui-e2e/`. Requires `CLERK_SECRET_KEY` + publishable key. Static guards: `npm run validate:ios-mobile-desk`.
 - **Live prod UI (standing — Cloud Agent):** Playwright Chromium **works**. For any UI validation request: mint temp Clerk **admin+premium** (`scripts/audit/lib/ios-playwright-auth.mjs` or `prod-clerk-session.mjs`), launch browser, navigate + click + screenshot. Also: `node scripts/validate-prod-ui-full.mjs`, `npm run validate:prod-admin-ui`, `node scripts/spx-dashboard-e2e-audit.mjs`. **Do not** claim pixel/UI validation is unavailable. See `.cursor/rules/live-ui-validation.mdc`.
+- **Post-deploy UI delivery (standing):** After merging UI to `main`, **automatically** monitor `ECR push (production)`, verify live, screenshot the fix, and post artifacts — **do not ask** the operator for permission. Night Hawk: `node scripts/audit/nighthawk-boards-prod-screenshots.mjs`.
 
 ### Ops auto-fix (cron/errors → agent)
 - **`npm run ops:collect`** — scan prod Postgres + live watchdog; JSON action items (exit 1 if any).
@@ -121,6 +122,58 @@ that repo's `AGENTS.md` for staging-only policy (never merge staging → prod wi
 - Local Postgres 16: `sudo pg_ctlcluster 16 main start`; `.env.local`:
   `DATABASE_URL=postgres://postgres:postgres@localhost:5432/blackout`, `DATABASE_SSL=0`.
 
+### Vector bead rails — DO NOT CHANGE (standing — member directive 2026-09-07)
+
+**The Vector chart bead rails are a locked product surface.** The member reference is the **Sep 3
+~11am ET SPX Slayer / BlackOut mobile screenshots** — dense yellow (call) and magenta (put)
+**horizontal ribbons spanning the full session width** on the Vector chart. That look is the
+contract. **Do not "improve", refactor, thin, trim, re-center, or experiment with bead rails**
+without an explicit member request that names the change.
+
+**What the reference looks like (non-negotiable):**
+- Beads form **thick, continuous horizontal bands** across **~100% of the visible session** (not
+  sparse dots clustered on the right ~10%).
+- **Session-overview viewport** on desk open (`defaultChartViewport: "session"`).
+- Bead x-projection uses **session-scoped bar times** (`sessionBarTimesFromMinuteBars`) — seed
+  bars carry multiple ET days; wall history is single-session only.
+- `WallRailPrimitive` draws the **full-session rail**; live 45m trim applies to circle markers only,
+  not the ribbon rail.
+
+**Sep-3 render constants (commit b2931b64b, pinned 2026-09-07):**
+- `BEAD_ROW_FILL = 0.34`, `ROW_HALO_ROW_GAP_FILL = 0.45`
+- Row ladder `8 / 11 / 13 / 16` at 1m/3m/5m/15m — NOT 10/14/16/18 (#4460 got this backwards)
+- Thickness comes from **row gap** (fewer rows → wider ribbons), not from cranking fill to 0.55
+
+**Member-approved restore (2026-09-07):** After #4465 (viewport/x-domain) and #4470 (embed sync),
+the member explicitly asked to merge the render revert **back to these pinned Sep-3 values**.
+PRs that **restore TO** `0.34` / `0.45` / `8/11/13/16` are **approved** — do not autopilot-block
+them. The lock forbids changing **away from** Sep-3 constants or experimenting with new values,
+not reverting #4460's mistaken 0.55/0.70/10-14-16-18 back to the reference.
+
+**Do NOT:**
+- Switch desk open to centered-live (~48 bars) — that was the regression that broke Sep-3 ribbons.
+- Merge branches named `bead-rail-prominence-restore` or other render-only reverts without member
+  sign-off (wrong fix path — #2341 render-only revert is explicitly rejected).
+- Spot-filter bead-rail recording (`computeBeadRailGexWalls` must stay separate from overlay
+  `getVectorGexWalls` — PR #4032 split; do not reunify).
+
+**If beads look wrong, check IN THIS ORDER before touching render constants:**
+1. Viewport framing (`applySessionOverviewViewport` vs `applyCenteredLiveViewport` on first paint)
+2. `barTimes` passed to `feedWallRail` (must be session-scoped, not full multi-day seed)
+3. `wallHistoryRef` sync on SPX embed fast→full seed upgrade (`SpxVectorEmbed` two-phase load)
+4. Wall-history data density (API / enrich / `computeBeadRailGexWalls` recording path)
+5. Render prominence (`vector-wall-rail-core.ts`) — **last**, only after 1–4 are verified
+
+**Key files (touch only to restore Sep-3 contract):**
+- `src/features/vector/components/VectorChart.tsx` — `refreshTrails`, first-paint viewport
+- `src/features/vector/lib/vector-chart-viewport.ts` — `sessionBarTimesFromMinuteBars`
+- `src/features/vector/lib/vector-ticker.ts` — `defaultChartViewport: "session"`
+- `src/features/vector/lib/vector-wall-rail-core.ts` — bead fill/halo/row ladder
+- `src/features/vector/lib/vector-snapshot.ts` — `getVectorBeadRailGexWalls` recording path
+
+**Active restore PR:** #4465 (x-domain + viewport alignment). Prior #4460 addressed enrich/render
+only — insufficient alone.
+
 ### Merge policy (standing — confirmed 2026-07-06)
 
 **Auto-merge every verified PR into `main`** once local checks and required CI (`verify`) are green.
@@ -133,6 +186,69 @@ Workflow:
 4. Enable auto-merge only when user/policy allows: `gh pr merge <n> --auto --squash --delete-branch`
 
 Full policy + exceptions: **`CLAUDE.md`** § Merge authorization.
+
+### BLACKOUT Autopilot — shared Claude/Cursor state (standing — 2026-09-03)
+
+**Neither Claude nor Cursor is permanent. BLACKOUT Autopilot is permanent.**
+
+**Autopilot dispatch triggers (`.github/workflows/blackout-autopilot-dispatch.yml`):**
+- **Every push to `main`** (merge landed) → wake Cursor immediately
+- **CI green on `main`** → wake Cursor to continue work loop
+- **Every 10 minutes** (schedule fallback)
+- **Every hour** (`blackout-hourly-checklist.yml`) — structured wake with fixed checklist (`npm run blackout:hourly`)
+- PR opened/sync/merged, deploy success, CI failure, peer review approved
+
+**Do NOT rely on the user to wake you.** After any merge, the next session should already be dispatched.
+
+Both agents share **`.blackout-agent/`** as the authoritative operational state machine.
+Do not create separate roadmaps, findings DBs, or competing source of truth.
+
+Every Cursor session MUST begin with:
+
+```bash
+npm run blackout:bootstrap -- --agent=cursor
+npm run blackout:heartbeat -- --agent=cursor --phase=BOOTSTRAP
+```
+
+Read: `ACTIVE_WORK.md`, `LAST_HANDOFF.md`, `WORK_QUEUE.md`, `FINDINGS.md` in `.blackout-agent/`.
+
+**Claim before implement:** `npm run blackout:claim -- --id=BO-P1-xxxx --owner=cursor --phase=IMPLEMENTING`  
+**Heartbeat throughout:** `npm run blackout:heartbeat -- --agent=cursor --task=... --phase=...`  
+**Handoff on milestones:** `npm run blackout:handoff -- --agent=cursor --summary="..."`
+
+**Peer coordination:** Claude ↔ Cursor are peers. Never approve your own PR. CI green ≠ approval.
+If peer owns highest task, pick next independent task. **Never idle — never end your session after one merge.**
+
+**Continuous work loop (mandatory):**
+1. `npm run blackout:session -- --agent=cursor`
+2. `npm run blackout:select -- --agent=cursor` — picks explicit queue OR auto-discovers open PRs + deploy drift
+3. Claim → execute → handoff → **immediately repeat from step 2**
+4. Only pause when select returns empty AND pr-sweep + ops:collect are clean
+
+**RTH lifecycle:** `npm run blackout:rth-lifecycle` at 09:00 ET weekdays — see `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md`
+
+**Standing perpetual tasks** in WORK_QUEUE (`BO-P1-0100` peer review, `BO-P1-0101` deploy ops, `BO-P2-0100` 0DTE) — never mark DONE.
+
+Architecture: `.blackout-agent/README.md`. Constitution: **`CLAUDE.md`** (do not fork).
+Dispatch prompt: `npm run blackout:prompt -- --agent=cursor`  
+Hourly checklist: `npm run blackout:hourly`
+
+**Session entry:** `npm run blackout:session -- --agent=cursor` (sync + heartbeat + resume leases)  
+**Task selection:** `npm run blackout:select -- --agent=cursor`  
+**PR review record:** `npm run blackout:review -- --pr=N --head=<sha> --verdict=APPROVED`  
+**0DTE counterfactual:** `npm run counterfactual:0dte-g18-g19` (G-18/G-19 skip-grading report)  
+**0DTE session replay:** `npm run replay:0dte-session -- --days=5 --json`  
+**Watchdog:** `npm run blackout:watchdog` (stale heartbeats + lease expiry)
+
+### PR webhooks (aggressive peer feedback)
+
+**Workflow:** `.github/workflows/blackout-pr-webhook.yml`
+
+On **every** PR event (open, sync, ready, review, comment), Autopilot:
+1. Posts/updates a structured triage comment on the PR (`npm run blackout:pr-feedback`)
+2. Dispatches **Cursor** for deep peer review when a `claude/*` or `fix/*` PR has green `verify`
+
+Peer feedback markers: `<!-- blackout-pr-webhook:pr-N:head-SHA -->` (updates in-place per HEAD, no spam).
 
 ### Autonomous RTH resume (Cloud Agent — do NOT wait for user)
 

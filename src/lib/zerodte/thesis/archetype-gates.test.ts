@@ -52,6 +52,42 @@ test("FLOW_FOLLOWING: still blocks on its own FLOW floor", () => {
   assert.ok(result.blocks.includes("flow_score_floor"));
 });
 
+test("amplify_floor_relief: lowers FLOW floor from 65 to 58", () => {
+  const blocked = evaluateArchetypeGates({
+    archetype: "FLOW_FOLLOWING",
+    rail_scores: { FLOW: 60 },
+    structural_state: null,
+    flow_class: "CAMPAIGN",
+  });
+  assert.equal(blocked.verdict, "BLOCK");
+
+  const relieved = evaluateArchetypeGates({
+    archetype: "FLOW_FOLLOWING",
+    rail_scores: { FLOW: 60 },
+    structural_state: null,
+    flow_class: "CAMPAIGN",
+    amplify_floor_relief: true,
+  });
+  assert.equal(relieved.verdict, "PASS");
+});
+
+test("amplify_floor_relief: lowers BREAKOUT floor from 55 to 48", () => {
+  const blocked = evaluateArchetypeGates({
+    archetype: "BREAKOUT",
+    rail_scores: { BREAKOUT: 50 },
+    structural_state: "TRIGGERED",
+  });
+  assert.equal(blocked.verdict, "BLOCK");
+
+  const relieved = evaluateArchetypeGates({
+    archetype: "BREAKOUT",
+    rail_scores: { BREAKOUT: 50 },
+    structural_state: "TRIGGERED",
+    amplify_floor_relief: true,
+  });
+  assert.equal(relieved.verdict, "PASS");
+});
+
 test("FAILED_BREAKOUT: weak REVERSAL data with no other signal still reaches PASS (failed_break_reversal_floor was dead code)", () => {
   // scoreReversalRail (rails/reversal.ts) starts at a base of 42 and only returns a hit once
   // boosts push it to >=58, so a fired REVERSAL score is always >=58 — the removed

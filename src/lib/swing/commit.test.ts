@@ -11,6 +11,8 @@ import {
   computeSwingCommitPlan,
   executeSwingCommits,
   isCommitGraduated,
+  isShadowEligibleBlockReason,
+  isShadowEligibleBlockedBy,
   modelRiskUsd,
   isEventArchetype,
   swingCommitKey,
@@ -23,6 +25,8 @@ import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibratio
 import type { ChainContract, PlayDirection } from "../horizon-fanout.ts";
 import { PRODUCTION_PORTFOLIO_BUDGET, DEFAULT_PORTFOLIO_BUDGET } from "./swing-portfolio-budget.ts";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy.ts";
+import { composeCortexEvidence } from "@/lib/nighthawk/cortex";
+import { baseInputs } from "@/lib/nighthawk/cortex/test-helpers";
 
 // ── report builders — REAL graded rows run through the shipped ladder (no faked graduation) ──
 function gradedRows(archetype: SwingArchetype, subLane: SwingSubLane, nWin: number, nLoss: number): SwingCalibrationRow[] {
@@ -49,7 +53,11 @@ function candidate(over: Partial<SwingCommitCandidate> = {}): SwingCommitCandida
   };
 }
 const book = (over: Partial<CommitBookPosition> & { ticker: string }): CommitBookPosition => ({
-  direction: "LONG", archetype: "BREAKOUT", commitKey: `2026-07-24:${over.ticker.toUpperCase()}:STANDARD:long`, isOvernight: true, ...over,
+  direction: "LONG",
+  archetype: "BREAKOUT",
+  commitKey: `2026-07-24:${over.ticker.toUpperCase()}:BREAKOUT:STANDARD:long`,
+  isOvernight: true,
+  ...over,
 });
 
 // ─── the REAL graduation integration (wire, don't weaken) ──────────────────────
@@ -98,7 +106,7 @@ test("commit FIRES when contract-present ∧ budget-cleared ∧ caps-cleared ∧
   assert.equal(plan.committableCount, 1);
   // The ledger row is built with the traded contract + the pinned commit-gate evidence.
   assert.ok(d.insert, "committable → an insert row is built");
-  assert.equal(d.insert!.commit_key, swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long"));
+  assert.equal(d.insert!.commit_key, swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long", "BREAKOUT"));
   assert.equal(d.insert!.sub_lane, "STANDARD");
   assert.equal(d.insert!.direction, "long");
   assert.equal(d.insert!.contract_type, "call");
@@ -232,7 +240,7 @@ test("shadow: a budget-blocked-only candidate gets a shadow row, counted in shad
 });
 
 test("shadow: an idempotency-blocked (already_open) candidate does NOT get a shadow row — it's already trading for real", () => {
-  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long") })];
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long", "BREAKOUT") })];
   const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
   const d = plan.decisions[0]!;
   assert.ok(d.blockedBy.includes("already_open"));
@@ -262,7 +270,7 @@ test("shadow: a candidate blocked by BOTH budget and cap still gets exactly one 
 // ─── idempotency ────────────────────────────────────────────────────────────────
 
 test("idempotency: a name already OPEN under its commit_key is never re-opened", () => {
-  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long") })];
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long", "BREAKOUT") })];
   const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
   const d = plan.decisions[0];
   assert.equal(d.graduated, true, "still graduated (counts as eligible)…");
@@ -272,7 +280,7 @@ test("idempotency: a name already OPEN under its commit_key is never re-opened",
 });
 
 test("idempotency: a name open from a PRIOR session (different commit_key) is still blocked — one thesis root per name+side+archetype", () => {
-  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-17", "NVDA", "STANDARD", "long"), archetype: "BREAKOUT" })];
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-17", "NVDA", "STANDARD", "long", "BREAKOUT"), archetype: "BREAKOUT" })];
   const plan = computeSwingCommitPlan({ candidates: [candidate({ sessionDate: "2026-07-24" })], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
   assert.equal(plan.decisions[0].committable, false);
   assert.ok(plan.decisions[0].blockedBy.includes("already_open"), "prior-session open blocks a same-thesis re-commit");
@@ -406,6 +414,160 @@ test("executeSwingCommits: a throwing insertShadowPosition is fail-soft (caught 
   assert.ok(res.shadowed[0]!.error);
 });
 
+test("computeSwingCommitPlan: V2 G-S12 halt blocks when enforceHalt on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ halted: true })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceHalt: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S12:halted"));
+});
+
+test("computeSwingCommitPlan: V2 G-S12 halt feed stale blocks when enforceHalt on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ halted: false })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceHalt: true, haltFeedStale: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S12:halt_feed_stale"));
+});
+
+test("computeSwingCommitPlan: V2 G-S6 confluence blocks when enforceConfluence on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        discoveryPaths: ["FLOW", "STRUCTURE"],
+        archetype: "BREAKOUT",
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceConfluence: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S6:confluence"));
+  assert.ok(plan.decisions[0]!.shadowInsert, "G-S6-only block gets shadow row for forward grading (Q30)");
+  assert.equal(plan.shadowEligibleCount, 1);
+});
+
+test("computeSwingCommitPlan: V2 G-S14-only block gets shadow row (Q30)", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        preflightV2BlockedBy: ["gate:G-S14:cortex_veto:gex-walls"],
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.shadowInsert);
+  assert.deepEqual(plan.decisions[0]!.shadowInsert!.blocked_by, ["gate:G-S14:cortex_veto:gex-walls"]);
+});
+
+test("computeSwingCommitPlan: V2 G-S3 earnings blocks when enforceEarnings on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        discoveryPaths: ["FLOW", "STRUCTURE", "CATALYST"],
+        archetype: "EVENT_DRIVEN",
+        earningsInWindow: true,
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceEarnings: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S3:earnings_in_window"));
+});
+
+test("computeSwingCommitPlan: V2 G-S4 regime blocks when enforceRegime on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        pillars: { REGIME: 0.1 },
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceRegime: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S4:regime_degraded"));
+});
+
+test("computeSwingCommitPlan: V2 quote_stale blocks when enforceQuoteStale on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ quoteAgeMs: 10 * 60 * 1000 })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceQuoteStale: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:quote_stale"));
+});
+
+test("computeSwingCommitPlan: V2 daily_bar_incomplete blocks when enforceDailyBar on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ dailyBarComplete: false })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceDailyBar: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:daily_bar_incomplete"));
+});
+
+test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ discoveryPaths: ["FLOW"], archetype: "BREAKOUT" })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  assert.equal(plan.committableCount, 1);
+});
+
+test("isShadowEligibleBlockedBy: budget/cap and gate:G-S* qualify; open-ability blocks do not", () => {
+  assert.equal(isShadowEligibleBlockReason("budget:per_position_loss"), true);
+  assert.equal(isShadowEligibleBlockReason("gate:G-S6:confluence"), true);
+  assert.equal(isShadowEligibleBlockReason("gate:quote_stale"), true);
+  assert.equal(isShadowEligibleBlockReason("gate:daily_bar_incomplete"), true);
+  assert.equal(isShadowEligibleBlockReason("already_open"), false);
+  assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence"]), true);
+  assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence", "already_open"]), false);
+});
+
+test("computeSwingCommitPlan: pins cortex assessment into entry_context when provided", () => {
+  const assessment = {
+    decision: "PASS" as const,
+    abstained: false,
+    verdict: composeCortexEvidence(baseInputs({ ticker: "NVDA", direction: "long" })),
+  };
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ cortexAssessment: assessment })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  const ctx = plan.decisions[0]!.insert?.entry_context as Record<string, unknown>;
+  assert.ok(ctx?.cortex);
+  assert.equal((ctx.cortex as { decision?: string }).decision, "PASS");
+});
+
 // ─── small helpers ────────────────────────────────────────────────────────────
 
 test("helpers: event archetype set + commit_key formats", () => {
@@ -414,11 +576,23 @@ test("helpers: event archetype set + commit_key formats", () => {
   assert.equal(isEventArchetype("FAILED_BREAKDOWN"), false, "structural reclaim is not event exposure");
   assert.equal(isEventArchetype("BREAKOUT"), false);
   assert.equal(isEventArchetype(null), false);
-  assert.equal(swingCommitKey("2026-07-24", "nvda", "STANDARD", "long"), "2026-07-24:NVDA:STANDARD:long");
-  assert.equal(swingRollCommitKey("2026-07-24", "nvda", "STANDARD", "long", 1), "2026-07-24:NVDA:STANDARD:long:r1");
+  assert.equal(swingCommitKey("2026-07-24", "nvda", "STANDARD", "long"), "2026-07-24:NVDA:UNCLASSIFIED:STANDARD:long");
+  assert.equal(
+    swingCommitKey("2026-07-24", "nvda", "STANDARD", "long", "BREAKOUT"),
+    "2026-07-24:NVDA:BREAKOUT:STANDARD:long",
+  );
   assert.notEqual(
-    swingRollCommitKey("2026-07-24", "NVDA", "STANDARD", "long", 1),
-    swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long"),
+    swingCommitKey("2026-07-24", "TSLA", "STANDARD", "long", "EVENT_DRIVEN"),
+    swingCommitKey("2026-07-24", "TSLA", "STANDARD", "long", "POST_EARNINGS_DRIFT"),
+    "Q20: distinct archetypes on same name+lane+side must not share commit_key",
+  );
+  assert.equal(
+    swingRollCommitKey("2026-07-24", "nvda", "STANDARD", "long", 1, "BREAKOUT"),
+    "2026-07-24:NVDA:BREAKOUT:STANDARD:long:r1",
+  );
+  assert.notEqual(
+    swingRollCommitKey("2026-07-24", "NVDA", "STANDARD", "long", 1, "BREAKOUT"),
+    swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long", "BREAKOUT"),
     "a roll child key never collides with the parent key",
   );
 });

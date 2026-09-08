@@ -52,6 +52,8 @@ function isOffHoursEt(now = new Date()) {
 const OFF_HOURS = isOffHoursEt();
 const P2_CONTENT_MS = OFF_HOURS ? 1_500 : P2_MS;
 const P1_PREWARM_MS = OFF_HOURS ? 5_000 : P1_MS;
+/** Passed into browser via waitForFunction arg — never close over OFF_HOURS in page.ready. */
+const DASHBOARD_MIN_MATRIX_ROWS = OFF_HOURS ? 5 : 20;
 
 const API_PATHS = [
   "/api/health",
@@ -84,17 +86,10 @@ const PAGES = [
   {
     path: "/dashboard",
     label: "dashboard",
-    ready: IS_STAGING
-      ? () =>
-          document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 5 ||
-          document.body.innerText.length > 800
-      : () => {
-          const minRows = OFF_HOURS ? 5 : 20;
-          return (
-            document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= minRows ||
-            document.body.innerText.length > 800
-          );
-        },
+    readyMinRows: IS_STAGING ? 5 : DASHBOARD_MIN_MATRIX_ROWS,
+    ready: (minRows) =>
+      document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= minRows ||
+      document.body.innerText.length > 800,
   },
   {
     path: "/flows",
@@ -291,7 +286,10 @@ async function main() {
         await p.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => null);
         const domMs = Date.now() - t0;
         await p.waitForFunction(() => window.Clerk?.user?.id, { timeout: 20_000 }).catch(() => null);
-        await p.waitForFunction(page.ready, { timeout: 30_000 }).catch(() => null);
+        const readyWait = page.readyMinRows != null
+          ? p.waitForFunction(page.ready, page.readyMinRows, { timeout: 30_000 })
+          : p.waitForFunction(page.ready, { timeout: 30_000 });
+        await readyWait.catch(() => null);
         const readyMs = Date.now() - t0;
         rec(`page:${page.label}:nav`, grade(navMs, { slowDesk: page.slowDesk }), "commit", navMs);
         rec(`page:${page.label}:dom`, domMs <= P2_MS ? "PASS" : grade(domMs, { slowDesk: page.slowDesk }), "domcontentloaded", domMs);

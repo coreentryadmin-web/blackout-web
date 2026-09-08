@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import { logCronRun } from "@/lib/cron-run";
 import { runSwingActiveRefresh } from "@/lib/swing/active-refresh";
 import type { ManageSyncReads } from "@/lib/swing/manage-sync";
@@ -30,12 +31,18 @@ import {
   gradeSwingPosition,
   withSwingRollTx,
   fetchGradedSwingFeatureRows,
+  fetchOpenSwingShadowPositions,
+  updateSwingShadowMarks,
+  closeSwingShadowPosition,
   type SwingPositionRow,
+  type SwingShadowPositionRow,
 } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
+import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
 import { fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import { todayEt } from "@/lib/et-date";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { buildSwingRollPlan } from "@/lib/swing/roll-plan";
 import { modelRiskUsd, isEventArchetype, type CommitBookPosition } from "@/lib/swing/commit";
 import { resolveProductionPortfolioBudget } from "@/lib/swing/swing-portfolio-budget";
@@ -49,28 +56,64 @@ import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { occSymbolFromSwingRow } from "@/lib/swing/occ-from-row";
+import { resolveSwingExDividendContext } from "@/lib/swing/ex-dividend-reads";
+import { runSwingShadowRefresh, type ShadowRefreshReads } from "@/lib/swing/shadow-refresh";
 import { thesisProgress01, volCollapsedFromIvRanks, addEligibleFromProgress } from "@/lib/swing/thesis-progress";
+import { SWING_RETURN_LOOKBACK_SESSIONS } from "@/lib/swing/swing-ingest";
 import {
   createDailyClosesBetaSource,
   fetchNameBeta,
   type CloseBar,
 } from "@/lib/swing/beta";
+import {
+  commitPillarsFromFeatureVector,
+  deriveManageEdgeReads,
+  liveManageEdgePillars,
+} from "@/lib/swing/manage-edge-reads";
 import { fetchStockDailyBars } from "@/lib/providers/polygon";
 import {
   readSwingServingSnapshot,
   persistSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { sharedCacheGet, sharedCacheSet, sharedCacheSetNx, sharedCacheDel } from "@/lib/shared-cache";
+import {
+  activeRefreshClaimTtlSec,
+  SWING_ACTIVE_REFRESH_CLAIM_KEY,
+} from "@/lib/swing/active-refresh-claim";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 
-/** Best-effort live underlying price from Polygon's last-trade (results.p). null when unavailable. */
+/**
+ * Best-effort live underlying price from Polygon's last-trade (results.p) — null when unavailable
+ * OR when the trade's own SIP timestamp is too old to trust for the structural-stop GATE this spot
+ * feeds (deep-dive Q38: a feed that stays up but goes stale must not silently read as live).
+ */
 async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
   const trade = await fetchStockLastTrade(ticker);
-  const p = trade && typeof trade === "object" ? Number((trade as Record<string, unknown>).p) : NaN;
-  return Number.isFinite(p) && p > 0 ? p : null;
+  return spotFromLastTradeResult(trade);
+}
+
+/** Shadow row reads — underlying spot + option mark + DTE (Q33–Q34 lightweight refresh path). */
+async function loadShadowReads(row: SwingShadowPositionRow, nowMs: number): Promise<ShadowRefreshReads | null> {
+  const spot = await loadUnderlyingSpot(row.ticker).catch(() => null);
+  if (spot == null) return null;
+  let mark: number | null = row.last_mark;
+  const occ = occSymbolFromSwingRow(row);
+  if (occ) {
+    try {
+      const snaps = await fetchOptionsUnifiedSnapshot([occ]);
+      const snap = snaps.get(occ);
+      const live =
+        typeof snap?.mark === "number" && Number.isFinite(snap.mark) && snap.mark > 0 ? snap.mark : null;
+      if (live != null) mark = live;
+    } catch {
+      // fail-soft — underlying path still records
+    }
+  }
+  const dte = row.contract_expiry ? dteOf(row.contract_expiry, nowMs) : null;
+  return { underlyingPrice: spot, mark, dte, nowMs };
 }
 
 /**
@@ -128,6 +171,18 @@ function sessionsHeldFromRow(row: SwingPositionRow, nowMs: number): number | nul
 
 async function runSwingActiveRefreshCron(started: number): Promise<void> {
   const nowMs = started;
+  const claimPayload = { status: "running" as const, at: nowMs };
+  const acquired = await sharedCacheSetNx(
+    SWING_ACTIVE_REFRESH_CLAIM_KEY,
+    claimPayload,
+    activeRefreshClaimTtlSec(),
+  ).catch(() => false);
+  if (!acquired) {
+    console.info(
+      "[cron/swing-active-refresh] skipped — another refresh pass is still running (Q37 singleton claim)",
+    );
+    return;
+  }
   try {
     // Fetch the open book ONCE — reused as the refresh working set AND as the roll gate's book snapshot (budget
     // + caps + idempotency). `rollBook` is then GROWN in place as each roll executes this pass: buildSwingRollPlan
@@ -151,6 +206,22 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     });
     const budget = resolveProductionPortfolioBudget();
     const sessionDay = todayEt(new Date(nowMs));
+    const barLookbackFrom = new Date(nowMs - 200 * 86_400_000).toISOString().slice(0, 10);
+    const closesCache = new Map<string, Promise<CloseBar[]>>();
+    const closesFor = (ticker: string): Promise<CloseBar[]> => {
+      const key = ticker.toUpperCase();
+      let cached = closesCache.get(key);
+      if (!cached) {
+        cached = fetchStockDailyBars(key, barLookbackFrom, sessionDay).then((bars) =>
+          bars
+            .map((b) => ({ t: typeof b.t === "number" ? b.t : undefined, c: Number(b.c) }))
+            .filter((b) => Number.isFinite(b.c)),
+        );
+        closesCache.set(key, cached);
+      }
+      return cached;
+    };
+    const spyClosesPromise = closesFor("SPY").then((bars) => bars.map((b) => b.c));
     // The roll child needs a fresh chain — the SAME resolver discovery uses; fail-soft (→ []) per name.
     const fetchChainRows = async (ticker: string) => {
       try {
@@ -182,11 +253,22 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
       // via null-honesty, but the underlying path + snapshot still record). The live mark ALSO lets the roll
       // executor freeze the parent grade at roll time (roll-plan.ts gradeParentFromMark).
       loadReads: async (row): Promise<ManageSyncReads | null> => {
-        const [spot, optionQuote, ivRank] = await Promise.all([
+        const [spot, optionQuote, ivRank, nameBars, spyCloses, exDiv] = await Promise.all([
           loadUnderlyingSpot(row.ticker),
           loadOptionQuote(row),
           // EOD-cadence, Redis-cached — never a per-tick UW blast. Honest null on miss.
           fetchUwIvRank(row.ticker).catch(() => null),
+          closesFor(row.ticker).catch(() => [] as CloseBar[]),
+          spyClosesPromise.catch(() => [] as number[]),
+          // resolveSwingExDividendContext already catches its own fetch failures and returns
+          // dataUnavailable:true (never rejects) — this outer .catch is defense-in-depth for an
+          // unexpected throw, and must carry the SAME dataUnavailable:true shape so manage.ts's
+          // Q39 fail-safe (skip structural stop, not fail-open EXIT) applies here too.
+          resolveSwingExDividendContext(row.ticker, sessionDay).catch(() => ({
+            exDividendSession: false,
+            exDividendCash: null,
+            dataUnavailable: true,
+          })),
         ]);
         if (spot == null) return null; // no usable underlying read → skip (fail-soft, no snapshot)
         const mark = optionQuote.mark;
@@ -201,6 +283,24 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
           entryPx: row.entry_underlying_px,
           targetPx: row.target_underlying_px,
           spot,
+        });
+        const sessionsHeld = sessionsHeldFromRow(row, nowMs);
+        const nameCloses = nameBars.map((b) => b.c);
+        const livePillars =
+          nameCloses.length > SWING_RETURN_LOOKBACK_SESSIONS && spyCloses.length > SWING_RETURN_LOOKBACK_SESSIONS
+            ? liveManageEdgePillars({
+                nameCloses,
+                spyCloses,
+                direction: row.direction === "short" ? "short" : "long",
+              })
+            : null;
+        const edge = deriveManageEdgeReads({
+          archetype: row.archetype,
+          direction: row.direction === "short" ? "short" : "long",
+          sessionsHeld,
+          thesisProgress01: progress,
+          commit: commitPillarsFromFeatureVector(row.feature_vector),
+          live: livePillars,
         });
         return {
           underlyingPrice: spot,
@@ -219,7 +319,7 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
           // Structural stop = pinned thesis invalidation (underlying terms) — without this, gate 2 never fires.
           structuralStopLevel: row.thesis_invalidation_px,
           // Sessions held → time_stop advisory rung (STANDARD 8 / EXTENDED 14) — only with thesisProgress01.
-          sessionsHeld: sessionsHeldFromRow(row, nowMs),
+          sessionsHeld,
           // Progress toward pinned target — without this, time_stop is permanently inert.
           thesisProgress01: progress,
           // Fresh IV rank → feature-vector iv_rank (wins over commit-pinned value when present).
@@ -232,8 +332,21 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
             entryPremium: row.entry_premium,
             mark,
           }),
+          // Management edge reads (deep-dive Q16) — wire rungs #2/#5/#6/#8/#9 in production.
+          thesisBroken: edge.thesisBroken,
+          thesisBreakReason: edge.thesisBreakReason,
+          catalystShift: edge.catalystShift,
+          regimeShift: edge.regimeShift,
+          flowDecayed: edge.flowDecayed,
+          relStrengthLost: edge.relStrengthLost,
           // Ladder-graduated edge rungs → manage.ts flips advisory→enforced for those rungs only.
           graduatedRungs,
+          // Q39: ex-dividend mechanical gap must not false-trigger structural_stop on LONG.
+          exDividendSession: exDiv.exDividendSession,
+          exDividendCash: exDiv.exDividendCash,
+          // Q39 fail-safe: when the ex-div read itself failed this cycle, manage.ts skips
+          // enforcing a LONG structural-stop breach rather than trusting a fail-open false.
+          exDividendDataUnavailable: exDiv.dataUnavailable,
         };
       },
       insertSnapshot: insertSwingSnapshot,
@@ -255,6 +368,37 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
 
     // Tally the LIVE roll outcomes for observability (a roll writes a terminal parent status + opens a child).
     const rolls = result.outcomes.filter((o) => o.roll);
+
+    // Q31–Q32: member-visible Discord alerts on capital-preservation exit/roll (fire-and-forget).
+    for (const o of rolls) {
+      if (!o.roll?.parentGraded) continue;
+      const parentRow = openRows.find((r) => r.id === o.positionId);
+      if (!parentRow) continue;
+      void import("@/lib/swing/discord-trade-notify")
+        .then(({ notifySwingTerminalFromOutcome }) =>
+          notifySwingTerminalFromOutcome(parentRow, o.roll!, parentRow.last_mark)
+        )
+        .catch((err) => {
+          console.warn(
+            `[swing-discord] terminal notify failed for position ${o.positionId} (${parentRow.ticker}):`,
+            err
+          );
+        });
+    }
+
+    // Q33–Q34: bounded shadow mark/close loop — grades gate-blocked candidates for calibration evidence.
+    let shadowRefresh = { shadows: 0, marked: 0, closed: 0, skipped: 0, errored: 0 };
+    try {
+      shadowRefresh = await runSwingShadowRefresh({
+        fetchOpen: fetchOpenSwingShadowPositions,
+        loadReads: (row) => loadShadowReads(row, nowMs),
+        updateMarks: (id, update) => updateSwingShadowMarks(id, update),
+        closeAndGrade: (id, grade) => closeSwingShadowPosition(id, grade),
+        limit: 25,
+      });
+    } catch (err) {
+      console.error("[cron/swing-active-refresh] shadow refresh failed (non-fatal)", err);
+    }
 
     // Refresh serving-snapshot spots for open tickers so pre-entry setup maturity stays live between
     // discovery phases (cache-writer on the cron; member path stays cache-reader).
@@ -294,22 +438,6 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     const BETA_CACHE_TTL_SEC = 6 * 60 * 60;
     let betasResolved = 0;
     try {
-      const from = new Date(nowMs - 200 * 86_400_000).toISOString().slice(0, 10);
-      const to = sessionDay;
-      const closesCache = new Map<string, Promise<CloseBar[]>>();
-      const closesFor = (ticker: string): Promise<CloseBar[]> => {
-        const key = ticker.toUpperCase();
-        let cached = closesCache.get(key);
-        if (!cached) {
-          cached = fetchStockDailyBars(key, from, to).then((bars) =>
-            bars
-              .map((b) => ({ t: typeof b.t === "number" ? b.t : undefined, c: Number(b.c) }))
-              .filter((b) => Number.isFinite(b.c)),
-          );
-          closesCache.set(key, cached);
-        }
-        return cached;
-      };
       const source = createDailyClosesBetaSource({ fetchCloses: closesFor });
       for (const row of openRows.slice(0, 25)) {
         const cacheKey = `swing:beta:${row.ticker.toUpperCase()}:v1`;
@@ -343,11 +471,13 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     }
 
     console.info(
-      `[cron/swing-active-refresh] background done — positions=${result.positions} refreshed=${result.refreshed} snapshots=${result.snapshotsAppended} skipped=${result.skipped} errored=${result.errored} rolled=${rolls.filter((o) => o.roll?.action === "ROLL" && o.roll?.childId != null).length} closed=${rolls.filter((o) => o.roll?.action === "CLOSE" && o.roll?.parentGraded).length} spotsRefreshed=${spotsRefreshed} betasResolved=${betasResolved} elapsed=${Date.now() - started}ms`
+      `[cron/swing-active-refresh] background done — positions=${result.positions} refreshed=${result.refreshed} snapshots=${result.snapshotsAppended} skipped=${result.skipped} errored=${result.errored} rolled=${rolls.filter((o) => o.roll?.action === "ROLL" && o.roll?.childId != null).length} closed=${rolls.filter((o) => o.roll?.action === "CLOSE" && o.roll?.parentGraded).length} shadows=${shadowRefresh.shadows} shadowMarked=${shadowRefresh.marked} shadowClosed=${shadowRefresh.closed} spotsRefreshed=${spotsRefreshed} betasResolved=${betasResolved} elapsed=${Date.now() - started}ms`
     );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error(`[cron/swing-active-refresh] background REJECTED: ${detail}`);
+  } finally {
+    await sharedCacheDel(SWING_ACTIVE_REFRESH_CLAIM_KEY).catch(() => undefined);
   }
 }
 
@@ -357,11 +487,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Registered `market_hours_only: true` but EventBridge fires on weekday holidays — same ET-INTENT
+  // gap fixed on uw-cache-refresh (#4482) and flow-ingest (#4483). Without this gate, Labor Day
+  // still polled Polygon/UW for every open swing position on the 15-min cadence.
+  if (!isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    await logCronRun("swing-active-refresh", started, payload);
+    return NextResponse.json(payload);
+  }
+
   // Per-position Polygon/UW reads + serving-spot refresh + beta warm can exceed Cloudflare's ~100s
   // origin timeout when the open book is non-empty (ops #1364: market_hours_stale with no fresh row).
   // Mirror coaching-alerts / vector-universe-snapshot: handshake in seconds, refresh in after().
   const dispatchRefresh = () => {
-    void runSwingActiveRefreshCron(started).catch((error) => {
+    void runWithBackgroundUwSweep(() => runSwingActiveRefreshCron(started)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/swing-active-refresh] background refresh REJECTED: ${detail}`);
     });

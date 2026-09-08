@@ -23,9 +23,8 @@
  *         buildMetric()) — verifies the matrix's own detail cells actually produce the
  *         summary numbers next to them, not two independently-drifting representations.
  *      c. call_wall/put_wall (gex) or pos_wall/neg_wall (vex) independently re-derived
- *         from strike_totals via the documented "largest +/- strike" rule
- *         (computeGexRegime/computeVexRegime, polygon-options-gex.ts) and compared to
- *         what the server reported.
+ *         from strike_totals via the side-constrained rule (#2417): call wall must sit
+ *         above spot, put wall below spot (wallsFromStrikeTotals in gex-cross-validation-core.ts).
  *      d. flip/zero_level independently re-derived with the EXACT ported algorithm the
  *         server uses (gex uses cumulativeGammaFlip; vex/dex/charm use zeroGammaFlip —
  *         these are DIFFERENT functions, ported faithfully from
@@ -130,7 +129,7 @@ function zeroGammaFlip(strikeTotals, spot = 0) {
   return null;
 }
 
-/** Cumulative net-short→net-long crossing nearest spot within 12% (used for gex.flip only). */
+/** Cumulative net-short→net-long crossing — lowest plausible within 12% of spot (gex.flip). */
 function cumulativeGammaFlip(strikeTotals, spot = 0) {
   const rows = Object.entries(strikeTotals)
     .map(([s, g]) => ({ strike: Number(s), gamma: g }))
@@ -155,19 +154,21 @@ function cumulativeGammaFlip(strikeTotals, spot = 0) {
   const FLIP_MAX_DIST_PCT = 0.12;
   const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * FLIP_MAX_DIST_PCT);
   if (plausible.length === 0) return null;
-  return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
+  // Lowest plausible crossing — mirrors cumulativeGammaFlipDetail on server (#2417+).
+  return plausible.reduce((lowest, c) => (c < lowest ? c : lowest));
 }
 
-/** Largest-positive / largest-negative strike (computeGexRegime / computeVexRegime rule). */
-function wallsFromStrikeTotals(strikeTotals) {
-  let pos = null, neg = null, maxPos = 0, maxNeg = 0;
+/** Side-constrained max +/- strike above/below spot (wallsFromStrikeTotals rule). */
+function wallsFromStrikeTotals(strikeTotals, spot) {
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
+  let callWall = null, putWall = null, maxPos = 0, maxNeg = 0;
   for (const [s, g] of Object.entries(strikeTotals)) {
     const strike = Number(s);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) { maxPos = g; pos = strike; }
-    if (g < maxNeg) { maxNeg = g; neg = strike; }
+    if (g > maxPos && (!constrained || strike > spot)) { maxPos = g; callWall = strike; }
+    if (g < maxNeg && (!constrained || strike < spot)) { maxNeg = g; putWall = strike; }
   }
-  return { pos, neg };
+  return { pos: callWall, neg: putWall };
 }
 
 const FLIP_TOL = 0.05; // linear-interpolation is deterministic; allow float noise only
@@ -242,9 +243,10 @@ function checkMetricBlock(label, block, spot, nearTermExpiries, flipFn, wallFiel
     rec(`${label}: cells → strike_totals integrity`, "INFO", "near_term_expiries or cells unavailable — skipped");
   }
 
-  // (c) walls
+  // (c) walls — GEX is side-constrained vs spot (#2417); VEX uses global argmax.
   if (wallFieldNames && block.strike_totals) {
-    const { pos, neg } = wallsFromStrikeTotals(block.strike_totals);
+    const wallSpot = label === "gex" ? spot : undefined;
+    const { pos, neg } = wallsFromStrikeTotals(block.strike_totals, wallSpot);
     const [posField, negField] = wallFieldNames;
     const reportedPos = num(block[posField]), reportedNeg = num(block[negField]);
     rec(`${label}: ${posField} matches independent recompute`, (pos == null && reportedPos == null) || pos === reportedPos ? "PASS" : "FAIL",

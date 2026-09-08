@@ -107,6 +107,8 @@ import {
   recordWallSample,
   strikeTrailLifecycle,
   trimHistoryForLiveTrails,
+  trimHistoryToSession,
+  beadRailHistoryForHorizon,
   alignWallHistoryToBarTimes,
   type StrikeTrail,
   type VectorWallLens,
@@ -132,7 +134,7 @@ import { etMinutesOfDay } from "@/lib/swing/scan-cadence";
 import { GammaRegimePrimitive } from "@/features/vector/lib/vector-gamma-regime-primitive";
 import { ExtendedHoursShadePrimitive } from "@/features/vector/lib/vector-extended-hours-shade-primitive";
 import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-hours";
-import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
+import { computeVolumeProfile, sessionRthVolumeProfileBars } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
 import { vectorChartTimeScaleGutter } from "@/features/vector/lib/vector-volume-profile-layout";
 import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
@@ -148,7 +150,7 @@ import { playTechnicalsFromSummary } from "@/features/vector/lib/vector-server-t
 import { buildVectorPlay, type VectorPlay, type VectorPlayEmit, type PlayTechnicals, type PlayBieContext, vectorPlayBieBucketKey } from "@/features/vector/lib/vector-play-engine";
 import { expectedMoveCallouts, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import { evaluateAlerts, type AlertRule, type AlertState, type FiredAlert } from "@/features/vector/lib/vector-alerts";
-import { sessionHodLod } from "@/features/vector/lib/vector-key-levels";
+import { sessionHodLod, lastSessionBars } from "@/features/vector/lib/vector-key-levels";
 import { dominantSwing, goldenPocket } from "@/features/vector/lib/vector-fib-swing";
 import {
   buildReplayTimeline,
@@ -212,6 +214,8 @@ import { readPersisted, writePersisted, VECTOR_DARK_POOL_WALLS_STORAGE_KEY } fro
 import {
   applyCenteredLiveViewport,
   applySessionOverviewViewport,
+  applyVisibleLogicalRange,
+  sessionBarTimesFromMinuteBars,
   wantsSessionOverviewViewport,
   zoomedLogicalRange,
 } from "@/features/vector/lib/vector-chart-viewport";
@@ -567,8 +571,8 @@ function applyDisplayBarsPreservingView(
   applyDisplayBars(candleSeries, volumeSeries, volumeAvgSeries, bars, volumeMode);
   if (following && liveFollowEnabled) {
     maybeFollowLiveViewport(chart, true, bars.length, false, 0);
-  } else if (prevRange && timeScale) {
-    timeScale.setVisibleLogicalRange(prevRange);
+  } else if (prevRange && chart) {
+    applyVisibleLogicalRange(chart, prevRange);
   }
 }
 
@@ -1196,7 +1200,6 @@ function applyWallBeadMarkers(
   /** Replay: snap bucket times to visible bar timestamps so the canvas rail can project x. */
   alignBarTimes?: readonly number[]
 ): { strikes: number[]; rendered: StrikeTrail[] } {
-  if (!beadsPlugin) return { strikes: [], rendered: [] };
   let bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
     minBucketSec: trailBucketSec,
     liveBeads,
@@ -1255,7 +1258,7 @@ function applyWallBeadMarkers(
       });
     }
   }
-  beadsPlugin.setMarkers(markers);
+  beadsPlugin?.setMarkers(markers);
   // Return the strikes actually drawn so the caller can widen the price axis to cover them —
   // otherwise a drawn bead outside the current-ladder range clips out on zoom (see beadStrikesRef) —
   // plus the lifecycle-filtered trails so the caller can feed the WallRailPrimitive (ribbon rail),
@@ -2001,7 +2004,10 @@ export function VectorChart({
             ? initialTimeframe
             : timeframeRef.current;
         if (sessionTf !== timeframeRef.current) setTimeframeState(sessionTf);
-        const sessionDisplay = displayBarsFromMinute(minuteBarsRef.current, sessionTf);
+        const sessionDisplay = displayBarsFromMinute(
+          lastSessionBars(minuteBarsRef.current),
+          sessionTf
+        );
         applySessionOverviewViewport(chart, sessionDisplay);
         chart.timeScale().applyOptions({
           ...vectorTimeScaleSpacingOptions(),
@@ -2011,7 +2017,7 @@ export function VectorChart({
       } else if (preset === "structure") {
         chartUserPannedRef.current = true;
         const range = structureVisibleLogicalRange(barCount);
-        if (range) chart.timeScale().setVisibleLogicalRange(range);
+        if (range) applyVisibleLogicalRange(chart, range);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         liveFollowEnabledRef.current = false;
       } else {
@@ -2053,7 +2059,7 @@ export function VectorChart({
       chartUserPannedRef.current = true;
       wheelZoomCooldownRef.current = Date.now();
       queueDeferredRepaintRef.current();
-      ts.setVisibleLogicalRange(next);
+      applyVisibleLogicalRange(chart, next);
       syncCandleViewportFromRange(chart);
       applyAdaptiveBarSpacingToChart(chart);
     },
@@ -2347,10 +2353,12 @@ export function VectorChart({
         timeframeRef.current,
         display
       );
-      if (barTime != null) {
-        const tone: FlowConfluenceTone =
-          focusLevel.tone === "bull" ? "bull" : focusLevel.tone === "bear" ? "bear" : "bull";
-        pushFlowConfluencePulse(barTime, tone);
+      // Only a genuine bull/bear tone gets a candle pulse. This used to collapse anything else
+      // (e.g. an undetermined-direction flow print, or the neutral "sky" matrix-strike tone) to
+      // "bull" -- silently pulsing a candle bullish for a print whose direction was never
+      // actually determined.
+      if (barTime != null && (focusLevel.tone === "bull" || focusLevel.tone === "bear")) {
+        pushFlowConfluencePulse(barTime, focusLevel.tone as FlowConfluenceTone);
       }
     }
 
@@ -2484,24 +2492,37 @@ export function VectorChart({
       defaultChartViewportRef.current,
       liveFollowEnabledRef.current
     );
-    const history: WallHistorySample[] =
-      composeHorizonTrail(recordedTrail, currentColumn) ??
-      (horizon !== "all"
-        ? []
-        : liveSessionRef.current && !replayModeRef.current && !sessionOverview
-          ? trimHistoryForLiveTrails(
-              wallHistoryRef.current,
-              undefined,
-              liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
-            )
-          : wallHistoryRef.current);
+    const railBarTimes = sessionBarTimesFromMinuteBars(
+      minuteBarsRef.current,
+      timeframeRef.current
+    );
+    const composed = composeHorizonTrail(recordedTrail, currentColumn);
+    const blended = wallHistoryRef.current;
+    const railSource =
+      horizon === "all"
+        ? (composed ?? blended)
+        : beadRailHistoryForHorizon(
+            composed ?? [],
+            blended,
+            railBarTimes[0],
+            railBarTimes[railBarTimes.length - 1]
+          );
+    const railHistory = trimHistoryToSession(railSource, railBarTimes[0]);
+    const markerHistory =
+      sessionOverview || !liveSessionRef.current || replayModeRef.current
+        ? railHistory
+        : trimHistoryForLiveTrails(
+            railHistory,
+            undefined,
+            liveTrailAnchorSec(railHistory, railBarTimes)
+          );
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
     const trailBucketSec = wallTrailSecRef.current;
     const beadProfile: WallBeadRenderProfile = compareCompactBeadsRef.current ? "compare" : "default";
-    const call = applyWallBeadMarkers(
+    applyWallBeadMarkers(
       callBeadsRef.current,
-      history,
+      markerHistory,
       "callWalls",
       v.callColor,
       activeLens,
@@ -2515,9 +2536,9 @@ export function VectorChart({
       compareCompactBeadsRef.current,
       undefined
     );
-    const put = applyWallBeadMarkers(
+    applyWallBeadMarkers(
       putBeadsRef.current,
-      history,
+      markerHistory,
       "putWalls",
       v.putColor,
       activeLens,
@@ -2531,32 +2552,64 @@ export function VectorChart({
       compareCompactBeadsRef.current,
       undefined
     );
+    const callRail = applyWallBeadMarkers(
+      null,
+      railHistory,
+      "callWalls",
+      v.callColor,
+      activeLens,
+      timeframeRef.current,
+      lastBarTime,
+      liveBeads,
+      beadRowCap,
+      pinLiveAnchorBeads,
+      trailBucketSec,
+      spotRef.current,
+      compareCompactBeadsRef.current,
+      railBarTimes
+    );
+    const putRail = applyWallBeadMarkers(
+      null,
+      railHistory,
+      "putWalls",
+      v.putColor,
+      activeLens,
+      timeframeRef.current,
+      lastBarTime,
+      liveBeads,
+      beadRowCap,
+      pinLiveAnchorBeads,
+      trailBucketSec,
+      spotRef.current,
+      compareCompactBeadsRef.current,
+      railBarTimes
+    );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
     const enabled = indicatorsRef.current;
     const eventCursorTime =
       replayModeRef.current ? (timelineRef.current[cursorIndexRef.current] ?? undefined) : undefined;
     feedWallRail(
       wallRailPrimitiveRef.current,
-      call.rendered,
-      put.rendered,
+      callRail.rendered,
+      putRail.rendered,
       v.callColor,
       v.putColor,
       true,
       beadProfile,
-      history,
+      railHistory,
       activeLens,
       enabled.has("bead-integrity-rings"),
       enabled.has("bead-event-glyphs"),
       wallEventsRef.current,
       eventCursorTime,
-      // The candle grid the rail interpolates buckets against. `displayBarsFromMinute` is the same
-      // transform the series itself was fed, so bucket x lands inside the right candle.
-      displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current).map((b) => b.time),
+      // Session-scoped candle grid — aligns bead x with the visible session (multi-day seed carries
+      // prior sessions that have no wall-history samples; see sessionBarTimesFromMinuteBars).
+      railBarTimes,
       timeframeRef.current * 60
     );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
-    beadStrikesRef.current = { call: call.strikes, put: put.strikes };
+    beadStrikesRef.current = { call: callRail.strikes, put: putRail.strikes };
     // Respect a manual vertical zoom — only nudge autoscale when the member hasn't taken the
     // price axis over AND hasn't scrolled within the cooldown window.
     if (
@@ -2566,6 +2619,39 @@ export function VectorChart({
     }
     pinCandlesOnTop(series);
   }, [ticker]);
+
+  // SPX Slayer embed upgrades fast rail-bootstrap → full enriched seed without remounting
+  // (VectorChart key is ticker-only). Sync BOTH rails — 0DTE desk draws from horizonHistoryRef,
+  // not wallHistoryRef — and reframe session viewport so beads span the full chart width.
+  useEffect(() => {
+    let upgraded = false;
+    if (initialWallHistory.length > wallHistoryRef.current.length) {
+      const merged = mergeWallHistory(wallHistoryRef.current, initialWallHistory);
+      wallHistoryRef.current = merged;
+      setSessionHistory(merged);
+      if (hasVexInHistory(merged)) setVexAvailable(true);
+      upgraded = true;
+    }
+    if (initialHorizonWallHistory.length > horizonHistoryRef.current.length) {
+      const merged = mergeWallHistory(horizonHistoryRef.current, initialHorizonWallHistory);
+      horizonHistoryRef.current = merged;
+      upgraded = true;
+    }
+    if (!upgraded || replayModeRef.current) return;
+    const chart = chartRef.current;
+    if (
+      chart &&
+      intradayZoomPresetRef.current === "session" &&
+      !liveFollowEnabledRef.current
+    ) {
+      const display = displayBarsFromMinute(
+        lastSessionBars(minuteBarsRef.current),
+        timeframeRef.current
+      );
+      applySessionOverviewViewport(chart, display);
+    }
+    refreshTrails(lensRef.current);
+  }, [initialWallHistory, initialHorizonWallHistory, refreshTrails]);
 
   const refreshOverlays = useCallback(
     (
@@ -2792,16 +2878,16 @@ export function VectorChart({
           expectedMoveBandsRef.current,
           enabled.has("expected-move")
         );
-        // EOD pin projection (SPX desk only) — always on for SPX (no toggle); the fetch effect
-        // only populates pinProjRef when ticker === "SPX", so it's inert elsewhere.
-        applyPinProjection(seriesRef.current, pinLinesRef, pinSigRef, pinProjRef.current, ticker === "SPX");
+        // EOD pin projection — solid gold axis tag + MC cone. SPX keeps the desk read; every other
+        // ticker uses the generic vector pin-forecast endpoint (populated by the fetch effect below).
+        applyPinProjection(seriesRef.current, pinLinesRef, pinSigRef, pinProjRef.current, pinProjRef.current != null);
         // EOD pin CONE — the MC p10/p50/p90 close distribution as a converging curve in the right
-        // margin (now → 16:00). Projected off the LAST shown bar's time, so the funnel starts at
-        // "now" and narrows onto the pin. SPX-only; a null cone or non-SPX draws nothing.
+        // margin (now → target close). Projected off the LAST shown bar's time, so the funnel starts at
+        // "now" and narrows onto the pin. A null cone draws nothing.
         pinConePrimitiveRef.current?.setData(
           pinConeRef.current,
           bars.length ? (bars[bars.length - 1]!.time as Time) : null,
-          ticker === "SPX"
+          pinConeRef.current != null && pinConeRef.current.length >= 2
         );
         // TIME-CONVERGING EXPECTED-MOVE CONE (default OFF) — the honest "remaining move" companion to
         // the flat band above. Built from the SAME expected-move band + the live spot, funnelling
@@ -2860,7 +2946,7 @@ export function VectorChart({
       const volumeProfileOn = enabled.has("volume-profile");
       const lastBarTime = bars.length ? (bars[bars.length - 1]!.time as Time) : null;
       volumeProfilePrimitiveRef.current?.setData(
-        volumeProfileOn ? computeVolumeProfile(minuteBarsRef.current) : null,
+        volumeProfileOn ? computeVolumeProfile(sessionRthVolumeProfileBars(minuteBarsRef.current)) : null,
         volumeProfileOn,
         lastBarTime
       );
@@ -2957,6 +3043,28 @@ export function VectorChart({
       (oscMap.get("macd-signal") as ISeriesApi<"Line"> | undefined)?.setData(sig);
     }
   }
+
+  useEffect(() => {
+    if (!initialBars.length) return;
+    const prev = minuteBarsRef.current;
+    if (initialBars.length <= prev.length) return;
+    const merged = mergeBarsByTime(prev, initialBars);
+    minuteBarsRef.current = merged;
+    setSessionBars(merged);
+    if (!seriesRef.current || replayModeRef.current) return;
+    const display = displayBarsFromMinute(merged, timeframeRef.current);
+    applyDisplayBarsPreservingView(
+      chartRef.current,
+      seriesRef.current,
+      volumeSeriesRef.current,
+      volumeAvgSeriesRef.current,
+      display,
+      volumeModeRef.current,
+      liveFollowEnabledRef.current
+    );
+    paintOverlays(display);
+    refreshTrails(lensRef.current);
+  }, [initialBars, refreshTrails, paintOverlays]);
 
   // Sync the enabled-indicator set to the ref the imperative paint reads, and repaint immediately
   // against the currently-shown bars so toggling an indicator is instant (no wait for the next
@@ -3098,62 +3206,96 @@ export function VectorChart({
     };
   }, [indicators, ticker, dteHorizon, liveSession, paintOverlays]);
 
-  // EOD PIN projection (SPX desk only) — fetch the 0DTE projected close + band and draw it on the
-  // price chart (solid gold line + dashed band edges). Gated to ticker === "SPX", so /vector and any
-  // other ticker never fetch or draw it. Polls at the desk cadence (5s) during a live session; a
-  // single fetch off-hours. Best-effort: a failed fetch keeps the last-drawn line rather than
-  // blanking it. Draws via paintOverlays → applyPinProjection (idempotent sig ref).
+  // EOD pin projection — fetch the projected close + band and draw on the price chart (gold axis
+  // tag + MC cone in the right margin). SPX keeps the desk `/spx/pin` read (analytic + MC split);
+  // every other ticker uses `/api/market/vector/pin-forecast`. Polls at desk cadence (5s) live;
+  // single fetch off-hours. Best-effort: transient fetch blips on the SAME ticker keep the last
+  // overlay; ticker/horizon changes clear immediately so NVDA never inherits SPX's pin.
   useEffect(() => {
-    if (ticker !== "SPX") return;
     let cancelled = false;
+    pinProjRef.current = null;
+    pinConeRef.current = null;
+    pinSigRef.current = "";
+    paintOverlays(lastDisplayBarsRef.current);
+    const parseCone = (rawCone: unknown): PinConeStep[] | null => {
+      if (!Array.isArray(rawCone)) return null;
+      const cone = rawCone.filter(
+        (s): s is PinConeStep =>
+          !!s &&
+          typeof s === "object" &&
+          ["tMin", "p10", "p50", "p90"].every(
+            (k) => typeof (s as Record<string, unknown>)[k] === "number" && Number.isFinite((s as Record<string, unknown>)[k])
+          )
+      ) as PinConeStep[];
+      return cone.length >= 2 ? cone : null;
+    };
+    const applyPinPayload = (close: number | null, band: unknown, cone: PinConeStep[] | null) => {
+      const pinBand =
+        Array.isArray(band) &&
+        band.length === 2 &&
+        band.every((n) => typeof n === "number" && Number.isFinite(n))
+          ? ([band[0] as number, band[1] as number] as [number, number])
+          : null;
+      pinProjRef.current = close != null ? { close, band: pinBand } : null;
+      pinConeRef.current = cone;
+      paintOverlays(lastDisplayBarsRef.current);
+    };
     const load = async () => {
       try {
-        const res = await fetch("/api/market/spx/pin", { cache: "no-store" });
+        if (ticker === "SPX") {
+          const res = await fetch("/api/market/spx/pin", { cache: "no-store" });
+          if (cancelled || !res.ok) return;
+          const j = (await res.json()) as {
+            pin?: unknown;
+            projectedClose?: unknown;
+            pinBand?: unknown;
+            montecarlo?: { pin?: unknown; projectedClose?: unknown; pinBand?: unknown; cone?: unknown } | null;
+          };
+          if (cancelled) return;
+          const mc = j.montecarlo ?? null;
+          const rawPin =
+            typeof mc?.projectedClose === "number"
+              ? mc.projectedClose
+              : typeof mc?.pin === "number"
+                ? mc.pin
+                : typeof j.projectedClose === "number"
+                  ? j.projectedClose
+                  : j.pin;
+          const rawBand = Array.isArray(mc?.pinBand) ? mc!.pinBand : j.pinBand;
+          const close = typeof rawPin === "number" && Number.isFinite(rawPin) ? rawPin : null;
+          applyPinPayload(close, rawBand, parseCone(mc?.cone));
+          return;
+        }
+
+        const target = dteHorizon === "0dte" ? "eod" : "expiry";
+        const res = await fetch(
+          `/api/market/vector/pin-forecast?ticker=${encodeURIComponent(ticker)}&target=${target}`,
+          { cache: "no-store" }
+        );
         if (cancelled || !res.ok) return;
         const j = (await res.json()) as {
-          pin?: unknown;
-          projectedClose?: unknown;
-          pinBand?: unknown;
-          montecarlo?: { pin?: unknown; projectedClose?: unknown; pinBand?: unknown; cone?: unknown } | null;
+          forecast?: {
+            available?: boolean;
+            projectedClose?: unknown;
+            pin?: unknown;
+            pinBand?: unknown;
+            cone?: unknown;
+          } | null;
         };
         if (cancelled) return;
-        // Prefer the MONTE-CARLO projection on the chart (member-directed): its band is empirical, so
-        // the on-chart line/band reflect the true (possibly asymmetric) distribution. Fall back to the
-        // analytic base when the MC overlay is absent.
-        // Use the UNSNAPPED projectedClose (not the snap-to-strike `pin`) so the on-chart pin tag
-        // AGREES with the forecaster panel's headline and visibly drifts intraday instead of sitting
-        // frozen on a round strike (the "7520 all day" report). Fall back to `pin` if absent.
-        const mc = j.montecarlo ?? null;
+        const f = j.forecast;
+        if (!f?.available) {
+          applyPinPayload(null, null, null);
+          return;
+        }
         const rawPin =
-          typeof mc?.projectedClose === "number" ? mc.projectedClose
-          : typeof mc?.pin === "number" ? mc.pin
-          : typeof j.projectedClose === "number" ? j.projectedClose
-          : j.pin;
-        const rawBand = Array.isArray(mc?.pinBand) ? mc!.pinBand : j.pinBand;
+          typeof f.projectedClose === "number"
+            ? f.projectedClose
+            : typeof f.pin === "number"
+              ? f.pin
+              : null;
         const close = typeof rawPin === "number" && Number.isFinite(rawPin) ? rawPin : null;
-        const band =
-          Array.isArray(rawBand) &&
-          rawBand.length === 2 &&
-          rawBand.every((n) => typeof n === "number" && Number.isFinite(n))
-            ? ([rawBand[0] as number, rawBand[1] as number] as [number, number])
-            : null;
-        pinProjRef.current = close != null ? { close, band } : null;
-        // Parse the MC cone (p10/p50/p90 per time-step) for the on-chart converging curve. Only the
-        // MC forecast carries a cone; validate each step is finite + ordered so a malformed payload
-        // draws nothing rather than a broken funnel. Empty/absent → null (primitive draws nothing).
-        const rawCone = Array.isArray(mc?.cone) ? mc!.cone : null;
-        const cone: PinConeStep[] | null = rawCone
-          ? (rawCone.filter(
-              (s): s is PinConeStep =>
-                !!s &&
-                typeof s === "object" &&
-                ["tMin", "p10", "p50", "p90"].every(
-                  (k) => typeof (s as Record<string, unknown>)[k] === "number" && Number.isFinite((s as Record<string, unknown>)[k])
-                )
-            ) as PinConeStep[])
-          : null;
-        pinConeRef.current = cone && cone.length >= 2 ? cone : null;
-        paintOverlays(lastDisplayBarsRef.current);
+        applyPinPayload(close, f.pinBand, parseCone(f.cone));
       } catch {
         // keep the last-drawn line on a transient blip
       }
@@ -3164,7 +3306,7 @@ export function VectorChart({
       cancelled = true;
       if (id) clearInterval(id);
     };
-  }, [ticker, liveSession, paintOverlays]);
+  }, [ticker, dteHorizon, liveSession, paintOverlays]);
 
   const toggleIndicator = useCallback((id: VectorIndicatorId) => {
     setIndicators((prev) => {
@@ -3553,7 +3695,7 @@ export function VectorChart({
         sessionFlows: sessionHelixFlowsRef.current,
         darkPoolLevels: darkPoolRef.current,
       },
-      dataAgeMs: Date.now() - dataReceivedAtMsRef.current,
+      dataAgeMs: Math.max(0, Date.now() - dataReceivedAtMsRef.current),
       bie: bieContextRef.current,
     };
     const bucketKey = vectorPlayBieBucketKey(playInput);
@@ -3695,7 +3837,10 @@ export function VectorChart({
       if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
       const chart = chartRef.current;
       if (!chart) return;
-      const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+      const display = displayBarsFromMinute(
+        lastSessionBars(minuteBarsRef.current),
+        timeframeRef.current
+      );
       applySessionOverviewViewport(chart, display);
       chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       refreshTrails(lensRef.current);
@@ -4538,17 +4683,13 @@ export function VectorChart({
         intradayZoomPresetRef.current === "live" ||
         (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "live");
       if (sessionFramedOnLoad) {
-        // Live member report (2026-08-26): on first paint, session-overview's right-anchored
-        // framing (applySessionOverviewViewport pins the newest bar 2 slots from the right edge,
-        // with nothing padding the LEFT) left the candles looking dropped into one side of the
-        // pane rather than centered — the exact "SPX Slayer" reference the member pointed to uses
-        // `defaultChartViewport="live"`, whose applyCenteredLiveViewport frames the latest ~48 bars
-        // with the newest bar near the middle. Reuse that same centered framing for the FIRST paint
-        // only — every ongoing session-overview behavior (autoscale gating, re-seed framing on a
-        // new session, live-follow opt-in) still keys off defaultChartViewportRef/
-        // intradayZoomPresetRef being "session", untouched below; this only changes what the member
-        // sees the instant the chart mounts.
-        applyCenteredLiveViewport(chart, initialDisplay.length);
+        // Session overview frames the newest ET day so dense bead rails span the full chart width.
+        // Multi-day seed bars compress today's RTH into a right sliver when fitContent/centered-live
+        // framing is used — the Sep-3 reference ribbons require session time-range framing.
+        applySessionOverviewViewport(
+          chart,
+          displayBarsFromMinute(lastSessionBars(initialBars), initialTimeframe)
+        );
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else if (liveFramedOnLoad) {
         applyCenteredLiveViewport(chart, initialDisplay.length);
@@ -5369,9 +5510,9 @@ export function VectorChart({
         // effect re-runs (SSE/wall polls) must not reset a zoom/pan the member set.
         applySessionOverviewViewport(chart!, display);
         chart?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
-      } else if (prevRange && timeScale) {
+      } else if (prevRange && chart) {
         // Background re-run: pin the exact viewport the member had so zoom/pan survives.
-        timeScale.setVisibleLogicalRange(prevRange);
+        applyVisibleLogicalRange(chart, prevRange);
       }
       refreshTrails(lensRef.current);
       // Repaint the wall GUIDES too: the shown-count (wallCountForTimeframe) changes with the
@@ -5585,7 +5726,15 @@ export function VectorChart({
         ) : null}
         <VectorCrosshairLegend ref={crosshairLegendRef} ticker={ticker} />
         <VectorWallEventTooltip ref={wallEventTooltipRef} />
-        <p className="pointer-events-none absolute bottom-2 left-2 z-10 font-mono text-[10px] uppercase tracking-wide text-sky-300">
+        {/* SPY-vol watermark — same overlap class as the two labels below (docs/audit/UI-UX-MAP.md
+            §5, finding #3): it sits in the volume sub-pane's bottom-left corner, the same band as
+            the chart's own canvas-drawn x-axis time-tick labels at the left edge (e.g. "19:00").
+            Those two got an opaque bg-black/70 backdrop-blur-sm pill when the overlap was first
+            found; this label was missed at the time even though it lives in the identical band —
+            confirmed live 2026-09-03 via pixel-zoomed prod screenshot ("SPI9:00VOL" interleaved
+            glyphs). Same fix here: an opaque pill so the label sits above the tick instead of
+            blending into it, regardless of where the tick lands. */}
+        <p className="pointer-events-none absolute bottom-2 left-2 z-10 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-sky-300 backdrop-blur-sm">
           SPY vol
         </p>
         {/* Honesty label — visible whenever any modeled (reconstructed) bead is on screen, absent

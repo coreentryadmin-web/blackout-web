@@ -32,6 +32,10 @@ export function formatHelixAnalyticsScopeLabel(filters: HelixTapeFilterSnapshot)
   if (filters.whalesOnly) parts.push("Whales");
   if (filters.indicesOnly) parts.push("Indices");
   if (filters.watchlistOnly) parts.push("Watchlist");
+  if (filters.directionFilter && filters.directionFilter !== "all") {
+    parts.push(filters.directionFilter === "bullish" ? "Bull" : "Bear");
+  }
+  if (filters.openingOnly) parts.push("New OI");
   return parts.length > 0 ? parts.join(" · ") : "All flow";
 }
 

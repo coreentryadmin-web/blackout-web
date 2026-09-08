@@ -1,0 +1,528 @@
+/**
+ * Swing Play Intelligence Engine — deterministic, real-time play brief composer.
+ * No Anthropic calls. Every claim traces to platform data with null-honesty.
+ */
+import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
+import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
+import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
+import type { GexPositioning } from "@/lib/providers/gex-positioning";
+import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
+import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import { buildRichEnvelope, type RichSection } from "@/lib/bie/rich-narrative";
+import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { playContractHeadline } from "@/features/nighthawk/command-deck/play-card-lifecycle";
+import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-deck/play-card-display";
+import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
+import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
+import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
+import {
+  collectBriefUnavailableSources,
+  gexMatrixAgeMs,
+  gexMatrixStale,
+  trustedHelixFlow,
+  vectorSnapshotStale,
+} from "./play-brief-absence";
+import { buildIntelSections } from "./play-brief-intel";
+import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
+import { fmtPremium } from "@/lib/fmt-money";
+import {
+  etStampFromDateOrIso,
+  etStampFromIso,
+  parseEtStamp,
+} from "@/lib/largo/temporal/bar-session-date";
+import { thesisHealthUncalibrated } from "./thesis-health";
+
+function fmtPct(n: number | null | undefined, digits = 1): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(digits)}%`;
+}
+
+function fmtUsd(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}$${n.toFixed(2)}`;
+}
+
+function biasFromDirection(dir: string): BieBias {
+  return dir === "SHORT" ? "bearish" : dir === "LONG" ? "bullish" : "neutral";
+}
+
+function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
+  if (play.status === "CLOSED") return "closed";
+  if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") return "open";
+  return "watch";
+}
+
+function thesisHealthSection(play: TerminalPlay): RichSection | null {
+  const h = play.thesisHealth;
+  if (!h) return null;
+  const uncalibrated = thesisHealthUncalibrated(h);
+  if (uncalibrated) {
+    return {
+      title: "Thesis health",
+      body:
+        "Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown.",
+      bias: "neutral",
+    };
+  }
+  const rows = h.pillars
+    .map((p) => {
+      const deltaStr = p.deltaPts != null ? ` (Δ ${p.deltaPts >= 0 ? "+" : ""}${p.deltaPts.toFixed(1)} pts)` : "";
+      return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
+    })
+    .join("\n");
+  return {
+    title: "Thesis health",
+    body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
+    bias: h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
+  };
+}
+
+function managementSection(play: TerminalPlay): RichSection {
+  const action = swingActionDisplay(play);
+  const lines: string[] = [];
+  lines.push(`**Recommended:** ${play.recommendation ?? action?.label ?? "HOLD"}`);
+  if (play.recNote) lines.push(play.recNote);
+  if (play.manageAction) {
+    lines.push(`Manage engine: **${play.manageAction}**`);
+  }
+  if (play.exitPolicy) {
+    const ep = play.exitPolicy;
+    const trims = ep.trim_levels
+      .map((t) => `+${t.trigger_pct}%${t.fired ? " ✓" : ""}`)
+      .join(" · ");
+    if (trims) lines.push(`Trim ladder: ${trims}`);
+    if (ep.stop_premium != null || ep.target_premium != null) {
+      lines.push(`Rails: stop ${fmtUsd(ep.stop_premium)} · target ${fmtUsd(ep.target_premium)}`);
+    }
+  }
+  if (play.progress != null && Number.isFinite(play.progress)) {
+    lines.push(`Trim progress: **${Math.round(play.progress * 100)}%**`);
+  }
+  return { title: "Management", body: lines.join("\n\n") };
+}
+
+function pnlSection(play: TerminalPlay): RichSection {
+  const lines = [
+    `Entry: **${fmtUsd(play.entry)}**`,
+    `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
+    `P&L: **${fmtPct(play.pnlPct)}**`,
+    `Peak: **${fmtPct(play.peak)}**`,
+  ];
+  if (play.execPnlPct != null) lines.push(`Exec P&L: **${fmtPct(play.execPnlPct)}**`);
+  if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
+  return { title: "Position", body: lines.join("\n") };
+}
+
+function watchEntrySection(play: TerminalPlay): RichSection {
+  const lines: string[] = [];
+  const label =
+    swingActionDisplay(play)?.label ??
+    play.swingEntryAction?.toUpperCase() ??
+    play.recommendation ??
+    "WAIT";
+  lines.push(`**Entry stance:** ${label}`);
+  if (play.servingSection) lines.push(`Serving section: **${play.servingSection.replace(/_/g, " ")}**`);
+  if (play.setupState) lines.push(`Setup: **${play.setupState}**`);
+  if (play.entryStatus) lines.push(`Entry geometry: **${play.entryStatus}**`);
+  if (play.gateBlocks?.length) {
+    lines.push(
+      "**Gates blocking entry:**\n" +
+        play.gateBlocks.map((g) => `• ${g.code}: ${g.reason}`).join("\n"),
+    );
+  } else if (play.recommendation === "BUY") {
+    lines.push("No mechanical gates blocking entry on this read.");
+  }
+  return { title: "Entry", body: lines.join("\n\n") };
+}
+
+function closedSection(play: TerminalPlay): RichSection {
+  const lines = [
+    `Exit P&L: **${fmtPct(play.exitPnlPct)}**`,
+    play.closedReason ? `Reason: **${play.closedReason}**` : null,
+    play.mfeCapturePct != null ? `MFE capture: **${fmtPct(play.mfeCapturePct)}**` : null,
+    play.exitAt ? `Closed: **${etStampFromIso(play.exitAt)}**` : null,
+  ].filter(Boolean);
+  return { title: "Outcome", body: lines.join("\n") };
+}
+
+function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): BieFreshness {
+  const ageMs = gexMatrixAgeMs(gex, readMs);
+  if (ageMs == null) return "unknown";
+  // Align with gexMatrixStale — future-skewed asof must not read as "unknown"/fresh (Largo C2).
+  if (gexMatrixStale(gex, readMs)) return "stale";
+  return freshnessFromAgeMs(ageMs);
+}
+
+function fundamentalsObservedMs(asOf: string): number | null {
+  const trimmed = asOf.trim();
+  // Date-only anchors at session close ET (Largo C1) — age uses that clock, not UTC midnight.
+  const dateOnly = /^(\d{4}-\d{2}-\d{2})$/.exec(trimmed);
+  if (dateOnly) return parseEtStamp(`${dateOnly[1]} 16:00 ET`);
+  // Full ISO / clocked stamps: preserve sub-minute precision for skew guards (ET round-trip truncates).
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function fundamentalsFreshness(
+  asOf: string | null | undefined,
+  readMs: number,
+): BieFreshness {
+  if (!asOf) return "unknown";
+  const observedMs = fundamentalsObservedMs(asOf);
+  if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
+  return freshnessFromObservedMs(observedMs, readMs);
+}
+
+function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshness {
+  if (!vec?.asOf) return "unknown";
+  return describeVectorFreshness(vec.asOf, readMs).freshness;
+}
+
+/** C1: BieLevel provenance must carry ET stamps, not raw UTC ISO — cross-product joins depend on it. */
+function levelProvenanceAsOf(
+  gex: GexPositioning | null | undefined,
+  vec: VectorFullState | null,
+  prefer: "gex" | "vector",
+): string | null {
+  if (prefer === "gex") {
+    return gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? vec?.asOfEt ?? etStampFromIso(vec?.asOf) ?? null;
+  }
+  return vec?.asOfEt ?? etStampFromIso(vec?.asOf) ?? gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? null;
+}
+
+function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel[] {
+  const levels: BieLevel[] = [];
+  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+  const gex = ctx.ecosystem?.gex_positioning;
+  const vecFresh = vectorFreshness(vec, readMs);
+  const gexFresh = gexFreshness(gex, readMs);
+  const gexStale = gexMatrixStale(gex, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  // Null at the SOURCE when Vector is stale (not a separate suppression flag) so a live GEX
+  // value for the same level still falls through via `??` instead of the whole entry being
+  // dropped just because the Vector side happened to be present-but-stale.
+  const vecCallWall = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
+  const callWall = vecCallWall ?? gex?.call_wall;
+  const putWall = vecPutWall ?? gex?.put_wall;
+  const flip = vecFlip ?? gex?.flip;
+  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
+  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
+  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
+  if (callWall != null && !callWallFromStaleGex) {
+    levels.push({
+      label: "call wall",
+      price: callWall,
+      provenance: {
+        source: "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, gex?.call_wall != null ? "gex" : "vector"),
+        freshness: gex?.call_wall != null ? gexFresh : vecFresh,
+      },
+    });
+  }
+  if (putWall != null && !putWallFromStaleGex) {
+    levels.push({
+      label: "put wall",
+      price: putWall,
+      provenance: {
+        source: "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, gex?.put_wall != null ? "gex" : "vector"),
+        freshness: gex?.put_wall != null ? gexFresh : vecFresh,
+      },
+    });
+  }
+  if (flip != null && !flipFromStaleGex) {
+    levels.push({
+      label: "gamma flip",
+      price: flip,
+      provenance: {
+        source: "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, gex?.flip != null ? "gex" : "vector"),
+        freshness: gex?.flip != null ? gexFresh : vecFresh,
+      },
+    });
+  }
+  const vecSpot = vectorStale ? undefined : vec?.spot;
+  const spot = vecSpot ?? (gexStale ? undefined : gex?.spot);
+  if (spot != null) {
+    levels.push({
+      label: "spot",
+      price: spot,
+      provenance: {
+        source: vecSpot != null ? "Vector" : "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, vecSpot != null ? "vector" : "gex"),
+        freshness: vecSpot != null ? vecFresh : gexFresh,
+      },
+    });
+  }
+  if (!vectorStale) {
+    for (const z of vec?.confluenceZones ?? []) {
+      levels.push({
+        label: `confluence (${z.kinds.join("+")})`,
+        price: z.center,
+        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      });
+    }
+    for (const dp of vec?.darkPoolLevels ?? []) {
+      levels.push({
+        label: "dark pool",
+        price: dp.strike,
+        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      });
+    }
+  }
+  const vecKing = vectorStale ? undefined : vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
+  const king = vecKing ?? gex?.gex_king_strike;
+  const kingFromStaleGex = vecKing == null && gex?.gex_king_strike != null && gexStale;
+  if (king != null && !kingFromStaleGex) {
+    levels.push({
+      label: "GEX king",
+      price: king,
+      provenance: {
+        source: "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, gex?.gex_king_strike != null ? "gex" : "vector"),
+        freshness: gex?.gex_king_strike != null ? gexFresh : vecFresh,
+      },
+    });
+  }
+  if (vec?.maxPain != null && !vectorStale) {
+    levels.push({
+      label: "max pain",
+      price: vec.maxPain,
+      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+    });
+  }
+  return levels.slice(0, 10);
+}
+
+function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvidence[] {
+  const out: BieEvidence[] = [];
+  if (ctx.scanAsOf) {
+    const scanEt = etStampFromIso(ctx.scanAsOf);
+    const staleScan =
+      ctx.scanSessionDay && ctx.sessionDate && ctx.scanSessionDay !== ctx.sessionDate;
+    out.push({
+      kind: "fact",
+      text: `Swing discovery scan as of ${scanEt}.`,
+      provenance: { source: "Swing lane", asOf: scanEt, freshness: staleScan ? "stale" : "recent" },
+    });
+  }
+  if (ctx.play.markAsOf) {
+    const markMs = Date.parse(ctx.play.markAsOf);
+    const markEt = etStampFromIso(ctx.play.markAsOf);
+    out.push({
+      kind: "fact",
+      text: `Option mark as of ${markEt}.`,
+      provenance: {
+        source: "Swing ledger",
+        asOf: markEt,
+        freshness: Number.isFinite(markMs) ? freshnessFromObservedMs(markMs, readMs) : "unknown",
+      },
+    });
+  }
+  const eco = ctx.ecosystem;
+  const gex = eco?.gex_positioning;
+  const vec = ctx.vector ?? eco?.vector_full_state ?? null;
+  const gexStale = gexMatrixStale(gex, readMs);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const postureFromVec =
+    vec?.regime?.posture != null && !vectorStale ? vec.regime.posture : null;
+  const postureFromGex = gex?.gamma_posture && !gexStale ? gex.gamma_posture : null;
+  const gammaPosture = postureFromVec ?? postureFromGex;
+  if (gammaPosture) {
+    const parts: string[] = [`γ ${gammaPosture}`];
+    if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
+      const netM = gex.net_gex / 1e6;
+      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${netM.toFixed(1)}M`);
+    }
+    if (gex && !gexStale) {
+      // Recompute against the SAME Vector-preferred call/put walls the levels array and narrative
+      // display elsewhere in this brief — not the raw GEX-matrix-only `gex.nearest_wall` — so this
+      // evidence line can never name a different strike than what the member sees as "put wall" /
+      // "call wall" in the rest of the same envelope (found live 2026-09-08, NN SWING_NN_32: this
+      // line said "nearest wall 13.00" while Levels-on-chart/Trade manager read both said put wall
+      // 14.00, the live Vector wall — `gex.nearest_wall` only ever sees the GEX-matrix pair).
+      const vecCallWallPosture = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+      const vecPutWallPosture = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+      const vecSpotPosture = vectorStale ? undefined : vec?.spot;
+      const spotForWall = vecSpotPosture ?? gex.spot;
+      const wall =
+        spotForWall != null
+          ? nearestWallFromLevels(
+              vecCallWallPosture ?? gex.call_wall,
+              vecPutWallPosture ?? gex.put_wall,
+              spotForWall
+            )
+          : null;
+      if (wall) {
+        parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
+      } else if (gex.flip != null) {
+        parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
+      }
+    }
+    out.push({
+      kind: "calc",
+      text: `Dealer posture: ${parts.join(" · ")}`,
+      provenance: {
+        source: postureFromVec ? "Vector" : "GEX",
+        asOf:
+          (postureFromVec ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
+          gex?.as_of_et ??
+          etStampFromIso(gex?.asof) ??
+          ctx.asOf,
+        freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+      },
+    });
+  }
+  const flow = trustedHelixFlow(eco);
+  if (flow) {
+    const bias =
+      flow.call_premium > flow.put_premium * 1.3
+        ? "call-heavy"
+        : flow.put_premium > flow.call_premium * 1.3
+          ? "put-heavy"
+          : "balanced";
+    out.push({
+      kind: "fact",
+      text: `HELIX flow (${flow.window_hours}h): ${bias} — calls ${fmtPremium(flow.call_premium)} · puts ${fmtPremium(flow.put_premium)} · ${flow.print_count} prints`,
+      provenance: { source: "HELIX", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
+  if (eco?.arsenal?.earnings?.earnings_date) {
+    out.push({
+      kind: "fact",
+      text: `Next earnings ${eco.arsenal.earnings.earnings_date}.`,
+      provenance: { source: "Earnings calendar", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
+  const fund = eco?.arsenal?.fundamentals;
+  if (fund && (fund.days_to_cover != null || fund.short_volume_ratio != null)) {
+    const parts: string[] = [];
+    if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
+    if (fund.short_volume_ratio != null) {
+      parts.push(`short vol ratio ${(fund.short_volume_ratio * 100).toFixed(0)}%`);
+    }
+    out.push({
+      kind: "fact",
+      text: `Short interest: ${parts.join(" · ")}`,
+      provenance: {
+        source: "Polygon / Benzinga",
+        asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
+        freshness: fundamentalsFreshness(fund.as_of, readMs),
+      },
+    });
+  }
+  return out;
+}
+
+function followupsFor(play: TerminalPlay): string[] {
+  const t = play.ticker;
+  const bucket = statusBucket(play);
+  const base = [
+    `Show ${t} GEX walls on chart`,
+    `HELIX flow on ${t} last 24h`,
+    `Vector technicals for ${t}`,
+  ];
+  if (bucket === "open") base.unshift(`What changed on ${t} since entry?`);
+  if (bucket === "watch") base.unshift(`When does ${t} entry trigger?`);
+  if (bucket === "closed") base.unshift(`What did we learn from ${t}?`);
+  base.push(`Open full Largo for ${t}`);
+  return base;
+}
+
+export type ComposeSwingPlayBriefOptions = {
+  /** When true, keep redundant intel sections (GEX, Flow, Hold plan, etc.) alongside narrative. */
+  expandIntel?: boolean;
+};
+
+/** Compose a full BieAnswerEnvelope for the selected swing play. */
+export function composeSwingPlayBrief(
+  ctx: SwingPlayBriefContext,
+  opts?: ComposeSwingPlayBriefOptions,
+): SwingPlayBriefResult {
+  const readMs = Date.now();
+  const { play } = ctx;
+  const bucket = statusBucket(play);
+  const headline = playContractHeadline(play);
+  const grade = playGradeLabel(play);
+  const quality = playQualityPct(play);
+  const strength = thesisStrengthPct(play);
+
+  const verdictLines: string[] = [];
+  const action = swingActionDisplay(play);
+  verdictLines.push(`**${headline}** · ${play.direction} · ${action?.label ?? play.status}`);
+  if (grade) verdictLines.push(`Grade **${grade}**${quality != null ? ` · score ${quality}` : ""}`);
+  if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
+  // Dossier regime (discovery-pillar read, e.g. "Breakout · regime 0.82") belongs in "Why this setup"
+  // — not Verdict. It is not Vector/SPX market regime and duplicates archetype when both are present.
+  if (play.archetype) verdictLines.push(`Archetype: ${play.archetype}`);
+  if (play.recNote && bucket === "watch") verdictLines.push(play.recNote);
+
+  const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
+
+  if (bucket === "watch") {
+    sections.push(watchEntrySection(play));
+  } else if (bucket === "open") {
+    sections.push(managementSection(play));
+    const th = thesisHealthSection(play);
+    if (th) sections.push(th);
+    sections.push(pnlSection(play));
+  } else {
+    sections.push(closedSection(play));
+  }
+
+  sections.push(...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel }));
+
+  const invalidation =
+    play.thesisBreak?.level === "break"
+      ? play.thesisBreak.note ?? "Thesis break — structural invalidation fired."
+      : play.gateBlocks?.[0]?.reason ??
+        (bucket === "open" && play.exitPolicy?.stop_premium != null
+          ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
+          : null);
+
+  const envelope: BieAnswerEnvelope = {
+    ...buildRichEnvelope({
+      headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
+      bias: biasFromDirection(play.direction),
+      intent: "swing_play_brief",
+      sections,
+      evidence: evidenceFromContext(ctx, readMs),
+      levels: levelsFromContext(ctx, readMs),
+      invalidation,
+      followups: followupsFor(play),
+      unavailableSources: collectBriefUnavailableSources(ctx),
+    }),
+    asOf: ctx.asOf,
+    session_date: ctx.sessionDate,
+  };
+
+  const flow = trustedHelixFlow(ctx.ecosystem);
+  const flowSnapshot = flow
+    ? { callPremium: flow.call_premium, putPremium: flow.put_premium }
+    : null;
+
+  const trimsFired = play.exitPolicy?.trim_levels?.filter((t) => t.fired).length ?? null;
+  // Diff snapshots must read spot/walls/flip from envelope.levels (already stale-gated in
+  // levelsFromContext) — not a parallel vec/gex fallback that bypasses freshness gates.
+  const snap = snapshotFromBrief(
+    envelope,
+    play,
+    extrasFromBriefResponse({ envelope, flowSnapshot, trimsFired }),
+  );
+
+  return {
+    playId: play.id,
+    ticker: play.ticker,
+    envelope,
+    asOf: ctx.asOf,
+    sessionDate: ctx.sessionDate,
+    engine: "swing_play_intelligence",
+    flowSnapshot,
+    briefContentKey: briefContentKey(snap),
+    trimsFired,
+  };
+}

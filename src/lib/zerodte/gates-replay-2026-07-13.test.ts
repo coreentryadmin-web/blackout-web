@@ -128,8 +128,8 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
   // + G-17's 2026-08-28 extension to a universal 75 floor in the 65-74 band):
   //   AMD  long  09:50 → BLOCKED  G-2 + G-3  (single stock — G-1 tape_alignment bypassed;
   //                                           score 58 < 65 floor; pre-10:00 → opening_window)
-  //   SPY  long  09:55 → BLOCKED  G-1 + G-2  (index ETF, counter-tape; 93-score clears floor;
-  //                                           pre-10:00 → opening_window)
+  //   SPY  long  09:55 → BLOCKED  G-1 + G-2 + G-19 (index ETF, counter-tape; 93-score now
+  //                                           also trips the F-5 top-band hard block)
   //   MU   long  09:55 → BLOCKED  G-2 + G-17 (single stock — G-1 bypassed; score 73 clears G-3's
   //                                           65 floor but not G-17's 75; pre-10:00 → opening_window too)
   //   SPXW long  10:00 → BLOCKED  G-1        (index ETF, counter-tape; at unlock boundary)
@@ -139,9 +139,8 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
   //                                           65-74 band trade-off measured 2026-08-28: it costs
   //                                           some real winners to also catch the real losers in
   //                                           the same band (net positive over the 90d sample).)
-  //   META short 10:40 → BLOCKED  G-17       (score 67 < 75 — the G-6 conflict with NH 7/10 LONG
-  //                                           no longer even needs deciding; G-17 holds it first.
-  //                                           The real -50.11% loser this extension exists to catch.)
+  //   META short 10:40 → BLOCKED  G-17 + G-18 (score 67 < 75 — G-17 single-rail floor AND
+  //                                           G-18 early-window prime score; the real -50.11% loser.)
   //   NVDA long  12:40 → BLOCKED  G-3        (single stock — G-1 bypassed; score 40 < 65 floor)
   //   INTC short 12:51 → BLOCKED  G-3        (score 61 < 65 — below G-17's own 65-74 band, so
   //                                           only score_floor fires, not a redundant G-17 too)
@@ -150,11 +149,11 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
   // (boundary inclusive). Block order is tape_alignment → opening_window → score_floor → G-17.
   const expected: Record<string, string[] | "COMMIT"> = {
     AMD: ["opening_window", "score_floor"],
-    SPY: ["tape_alignment", "opening_window"],
+    SPY: ["tape_alignment", "opening_window", "score_top_band"],
     MU: ["opening_window", "single_rail_corroboration"],
     SPXW: ["tape_alignment"],
-    QQQ: ["single_rail_corroboration"],
-    META: ["single_rail_corroboration"],
+    QQQ: ["single_rail_corroboration", "early_window_prime_score"],
+    META: ["single_rail_corroboration", "early_window_prime_score"],
     NVDA: ["score_floor"],
     INTC: ["score_floor"],
   };
@@ -195,7 +194,7 @@ test("7/13 replay: META short clears G-6's OWN 65 floor (score 67 >= 65) despite
   // below (it still would NOT have blocked at 67 on its own — G-6 and G-17 are independent gates
   // that both happen to reach the same real 2026-07-13 loser).
   assert.equal(meta.verdict, "BLOCKED");
-  assert.deepEqual(meta.blocks.map((b) => b.code), ["single_rail_corroboration"]);
+  assert.deepEqual(meta.blocks.map((b) => b.code), ["single_rail_corroboration", "early_window_prime_score"]);
   // Calibration still records the G-6 conflict for measurement, even though G-6 itself would not
   // have blocked this score on its own — it's G-17 doing the blocking here.
   assert.equal(meta.calibration.g6_conflict.conflict, true);
@@ -252,7 +251,7 @@ test("7/13 replay: session economics — G-17's 2026-08-28 extension zeroes the 
 const QQQ_COMMIT_GATE_SYNTHETIC: ZeroDteGateVerdict = evaluateZeroDteGates({
   ticker: "QQQ",
   direction: "short",
-  score: 90,
+  score: 78,
   nowEtMinutes: 10 * 60 + 20,
   nowMs: dayMs(10 * 60 + 20),
   bias: "down",

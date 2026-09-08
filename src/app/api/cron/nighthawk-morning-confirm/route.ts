@@ -604,6 +604,31 @@ export async function GET(req: NextRequest) {
           .map((p) => `• #${p.rank} ${p.ticker} (${p.direction}): ${p.reason}`)
           .join("\n"),
       }).catch(() => undefined);
+
+      void import("@/features/nighthawk/lib/legacy-discord-trade-notify")
+        .then(async ({ legacyInputFromPlaybookPlay, notifyLegacyTradeClose }) => {
+          const { fetchNighthawkPlayOutcomeId, updateLegacyDiscordLiveState } = await import("@/lib/db");
+          for (const ps of invalidated) {
+            const play = plays.find((p) => p.ticker.toUpperCase() === ps.ticker.toUpperCase());
+            if (!play) continue;
+            const input = legacyInputFromPlaybookPlay(editionFor, play);
+            if (!input) continue;
+            await notifyLegacyTradeClose(input, input.entry_premium, {
+              idempotencySuffix: "stc:invalidated",
+            });
+            const outcomeId = await fetchNighthawkPlayOutcomeId(editionFor, ps.ticker);
+            if (outcomeId != null) {
+              await updateLegacyDiscordLiveState(outcomeId, {
+                closed: true,
+                closedReason: "morning INVALIDATED",
+                lastAction: "CLOSE",
+              }).catch(() => undefined);
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn("[nighthawk-morning-confirm] legacy discord STC (invalidated) failed:", err);
+        });
     }
 
     const payload = {

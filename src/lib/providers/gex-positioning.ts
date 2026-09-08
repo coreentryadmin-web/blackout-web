@@ -1,5 +1,6 @@
 import "server-only";
 
+import { nearestWallFromLevels as sharedNearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { fetchGexHeatmap, type GexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getGexIntradayAdjusted } from "@/lib/providers/gex-intraday-adjust";
 import type { GexIntradayAdjusted } from "@/lib/providers/gex-intraday-adjust-core";
@@ -42,10 +43,26 @@ export type GexPositioning = {
   ticker: string;
   /** Live spot for the underlying. Always > 0 when the object is non-null. */
   spot: number;
-  /** Day change %, signed. */
-  change_pct: number;
+  /** Day change %, signed. Null when the matrix could not recover an honest session change. */
+  change_pct: number | null;
   /** ISO timestamp the underlying matrix was computed. UTC — see the ET fields below. */
   asof: string;
+  /**
+   * Cross-product compute identity, passed through verbatim from the underlying `GexHeatmap`
+   * (see that type's own comment for the full rationale). Two `GexPositioning` reads — for
+   * SPX Slayer, Vector, Thermal, or the public Gamma Snapshot — with the SAME `calculation_id`
+   * are reasoning from the literally identical matrix build; this is how a consumer proves that
+   * instead of diffing every field. Omitted only on a matrix built before this field existed.
+   */
+  calculation_id?: string;
+  /** Same instant as `asof`, exposed under the cross-product contract's requested name. */
+  calculated_at?: string;
+  /** When the spot price feeding this matrix was read — may predate `chain_timestamp`. */
+  spot_timestamp?: string;
+  /** When the options chain feeding this matrix was read. */
+  chain_timestamp?: string;
+  /** When a consumer should stop treating this read as current without a re-fetch. */
+  expires_at?: string;
   /**
    * WHEN, in the terms a consumer can actually reason about.
    *
@@ -192,6 +209,24 @@ function fmtNum(n: number | null | undefined): string {
 }
 
 /**
+ * The wall (call=resistance / put=support) CLOSEST to spot, with signed point distance.
+ *
+ * Shared by `gexPositioningFromHeatmap` (initial derivation off the Polygon-only matrix) AND
+ * `getGexPositioning` (RE-derivation after the live-WS wall override reassigns call_wall/put_wall
+ * — see the override block below for why that reassignment can change which wall is nearer). A
+ * single implementation is what makes it impossible for the two call sites to compute "nearest"
+ * two different ways; duplicating this loop at the second call site is exactly the kind of drift
+ * that produced the bug this helper exists to prevent (see FINDINGS 2026-09-04).
+ */
+function nearestWallFromLevels(
+  callWall: number | null | undefined,
+  putWall: number | null | undefined,
+  spot: number
+): GexPositioning["nearest_wall"] {
+  return sharedNearestWallFromLevels(callWall, putWall, spot);
+}
+
+/**
  * Resolve the canonical positioning contract for `ticker`.
  *
  * CACHE-READER: calls `fetchGexHeatmap(ticker)` with NO forceRefresh → reads the
@@ -232,8 +267,29 @@ export async function getGexPositioning(
     const wsLadder = getGexStrikeExpiryLadder(root, nearTermExpiries);
     if (wsLadder) {
       const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder), base.spot);
-      if (wsWalls.callWall != null) base.call_wall = wsWalls.callWall;
-      if (wsWalls.putWall != null) base.put_wall = wsWalls.putWall;
+      let wallsChanged = false;
+      if (wsWalls.callWall != null) {
+        wallsChanged = wallsChanged || wsWalls.callWall !== base.call_wall;
+        base.call_wall = wsWalls.callWall;
+      }
+      if (wsWalls.putWall != null) {
+        wallsChanged = wallsChanged || wsWalls.putWall !== base.put_wall;
+        base.put_wall = wsWalls.putWall;
+      }
+      // BUG (fixed 2026-09-04): `base.nearest_wall` was computed ONCE inside
+      // gexPositioningFromHeatmap from the PRE-override Polygon call_wall/put_wall and never
+      // touched again. Overwriting call_wall/put_wall above without also recomputing
+      // nearest_wall left it naming whichever strike was nearer BEFORE the override — a
+      // materially different level than the WS ladder just resolved, with a stale
+      // distance_pts, on the very same response object. Every consumer of this contract
+      // (spx-desk-intel.ts, gex-heatmap-for-largo.ts, the /api/market/gex-positioning route,
+      // the mobile ticker route) reads nearest_wall as "the closer of call_wall/put_wall" —
+      // that invariant only holds if it is re-derived from the POST-override levels, using
+      // the exact same nearestWallFromLevels the base derivation used, so the two fields can
+      // never name different strikes / sides / distances in one payload.
+      if (wallsChanged) {
+        base.nearest_wall = nearestWallFromLevels(base.call_wall, base.put_wall, base.spot);
+      }
     }
   }
 
@@ -310,21 +366,10 @@ export function gexPositioningFromHeatmap(
   const callWall = gex.call_wall;
   const putWall = gex.put_wall;
 
-  // nearest_wall: the wall (call=resistance / put=support) closest to spot.
-  let nearest: GexPositioning["nearest_wall"] = null;
-  const candidates: Array<{ strike: number; kind: "resistance" | "support" }> = [];
-  if (callWall != null && Number.isFinite(callWall)) {
-    candidates.push({ strike: callWall, kind: "resistance" });
-  }
-  if (putWall != null && Number.isFinite(putWall)) {
-    candidates.push({ strike: putWall, kind: "support" });
-  }
-  for (const c of candidates) {
-    const dist = Number((c.strike - spot).toFixed(2));
-    if (nearest == null || Math.abs(dist) < Math.abs(nearest.distance_pts)) {
-      nearest = { strike: c.strike, kind: c.kind, distance_pts: dist };
-    }
-  }
+  // nearest_wall: the wall (call=resistance / put=support) closest to spot. Shared helper —
+  // see nearestWallFromLevels's own comment for why getGexPositioning must reuse this exact
+  // function rather than re-deriving "nearest" after its own WS wall override.
+  const nearest = nearestWallFromLevels(callWall, putWall, spot);
 
   const distance_to_flip_pct =
     flip != null && Number.isFinite(flip) && spot > 0
@@ -363,6 +408,11 @@ export function gexPositioningFromHeatmap(
     spot,
     change_pct: hm.change_pct,
     asof: hm.asof,
+    calculation_id: hm.calculation_id,
+    calculated_at: hm.calculated_at,
+    spot_timestamp: hm.spot_timestamp,
+    chain_timestamp: hm.chain_timestamp,
+    expires_at: hm.expires_at,
     as_of_et: session.as_of_et,
     session_date: session.session_date,
     market_session: session.market_session,
@@ -451,9 +501,13 @@ export async function gexContextBlock(ticker: string): Promise<string | null> {
 
   const lines: string[] = [];
   lines.push(`Ticker: ${p.ticker}`);
-  lines.push(
-    `Spot: ${fmtNum(p.spot)} (${p.change_pct >= 0 ? "+" : ""}${p.change_pct.toFixed(2)}% on the day)`
-  );
+  if (p.change_pct != null && Number.isFinite(p.change_pct)) {
+    lines.push(
+      `Spot: ${fmtNum(p.spot)} (${p.change_pct >= 0 ? "+" : ""}${p.change_pct.toFixed(2)}% on the day)`
+    );
+  } else {
+    lines.push(`Spot: ${fmtNum(p.spot)} (day change unavailable)`);
+  }
 
   // Gamma regime read is always a string (neutral when thin) — always present.
   lines.push(`GEX regime read: ${p.gamma_regime_read}`);

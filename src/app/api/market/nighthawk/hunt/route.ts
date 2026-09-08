@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { runWithUwHuntBudget } from "@/lib/providers/uw-hunt-budget";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 // ---------------------------------------------------------------------------
 // Per-user hunt concurrency gate — Redis-backed, mirrors market/largo/query's
@@ -236,7 +237,7 @@ export async function POST(req: NextRequest) {
     userId: authResult.userId,
   });
 
-  return NextResponse.json(response, {
+  return NextResponse.json(roundFloats(response), {
     status: scanResult.ok ? 200 : 422,
     headers: NO_STORE_HEADERS,
   });

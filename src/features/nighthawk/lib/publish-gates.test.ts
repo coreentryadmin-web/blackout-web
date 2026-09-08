@@ -191,35 +191,35 @@ test("G-N1 SHORT mirror: fill edge is the band LOW; 3.5% above spot passes, 3.6%
 // ── G-N2 achievable target boundary, both directions ───────────────────────────────────
 
 test("G-N2 boundary: target exactly K×ATR14 from the fill edge passes; beyond blocks", () => {
-  // fill edge 100, ATR14 4 → allowance 3.5 × 4 = 14.00. Target 114.00 → exactly 3.5×.
+  // fill edge 100, ATR14 4 → allowance 2.0 × 4 = 8.00. Target 108.00 → exactly 2.0×.
   const at = evaluate(
-    play({ entry_range: "$99.50-$100.00", target: "$114.00", stop: "$97.00" }),
+    play({ entry_range: "$99.50-$100.00", target: "$108.00", stop: "$97.00" }),
     dossier({ price: 100, atr14: 4 })
   );
   assert.equal(at.verdict, "PUBLISH");
 
-  // Target 114.10 → 3.525× → target_unreachable.
+  // Target 108.10 → 2.025× → target_unreachable.
   const beyond = evaluate(
-    play({ entry_range: "$99.50-$100.00", target: "$114.10", stop: "$97.00" }),
+    play({ entry_range: "$99.50-$100.00", target: "$108.10", stop: "$97.00" }),
     dossier({ price: 100, atr14: 4 })
   );
   assert.equal(beyond.verdict, "BLOCK");
   assert.deepEqual(beyond.blocks.map((b) => b.code), ["target_unreachable"]);
-  assert.equal(beyond.blocks[0]!.value, 3.525);
+  assert.equal(beyond.blocks[0]!.value, 2.025);
   assert.equal(beyond.blocks[0]!.threshold, GATE_TARGET_MAX_ATR_MULTIPLE);
 });
 
 test("G-N2 SHORT mirror: distance is absolute, so a downside target measures the same", () => {
-  // fill edge 100.00, ATR14 4 → allowance 3.5 × 4 = 14.00. Target 86.00 → exactly 3.5×.
+  // fill edge 100.00, ATR14 4 → allowance 2.0 × 4 = 8.00. Target 92.00 → exactly 2.0×.
   const at = evaluate(
-    play({ direction: "SHORT", entry_range: "$100.00-$100.50", target: "$86.00", stop: "$103.00" }),
+    play({ direction: "SHORT", entry_range: "$100.00-$100.50", target: "$92.00", stop: "$103.00" }),
     dossier({ price: 100, atr14: 4 })
   );
   assert.equal(at.verdict, "PUBLISH");
 
-  // Target 85.90 → 3.525× → target_unreachable.
+  // Target 91.90 → 2.025× → target_unreachable.
   const beyond = evaluate(
-    play({ direction: "SHORT", entry_range: "$100.00-$100.50", target: "$85.90", stop: "$103.00" }),
+    play({ direction: "SHORT", entry_range: "$100.00-$100.50", target: "$91.90", stop: "$103.00" }),
     dossier({ price: 100, atr14: 4 })
   );
   assert.equal(beyond.verdict, "BLOCK");
@@ -552,22 +552,34 @@ test("promoteTopBlocked ranks promotable plays by fewer gate failures first, the
   assert.equal(promoted[1].conviction, "B");
 });
 
-test("promoteTopBlocked promotes target_unreachable (soft gate, not geometry-fatal)", () => {
-  const blocked = [{
+test("promoteTopBlocked promotes target_unreachable only when multiple ≤ rescue cap", () => {
+  const promotable = [{
     ticker: "NVDA",
-    play: play({ ticker: "NVDA" }),
+    play: play({ ticker: "NVDA", score: 60, conviction: "B" }),
     result: {
       verdict: "BLOCK" as const,
-      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 3.5, value: 4.0 }],
+      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 2.0, value: 1.8 }],
       checks: [],
     },
     scored: null,
   }];
-  const promoted = promoteTopBlocked(blocked, 5);
+  const promoted = promoteTopBlocked(promotable, 5);
   assert.equal(promoted.length, 1);
-  assert.equal(promoted[0].ticker, "NVDA");
   assert.equal(promoted[0].gate_promoted, true);
-  assert.equal(isPromotableBlockedPlay(blocked[0]), true);
+  assert.equal(isPromotableBlockedPlay(promotable[0]), true);
+
+  const unreachable = [{
+    ticker: "NVDA",
+    play: play({ ticker: "NVDA", score: 60, conviction: "B" }),
+    result: {
+      verdict: "BLOCK" as const,
+      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 2.0, value: 4.0 }],
+      checks: [],
+    },
+    scored: null,
+  }];
+  assert.equal(promoteTopBlocked(unreachable, 5).length, 0);
+  assert.equal(isPromotableBlockedPlay(unreachable[0]), false);
 });
 
 test("promoteTopBlocked returns empty when every block fails hard geometry gates", () => {

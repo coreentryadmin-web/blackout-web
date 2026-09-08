@@ -14,6 +14,7 @@ export function GET() {
     `- [Why BlackOut](${SITE.url}/why-blackout)`,
     `- [BlackOut vs Others](${SITE.url}/vs/others)`,
     `- [Free Gamma Snapshot](${SITE.url}/tools/gamma-snapshot)`,
+    `- [Public Track Record & Grading Methodology](${SITE.url}/methodology) — how BlackOut grades every setup, with live aggregate stats and no blended win rates`,
     `- [About](${SITE.url}/about)`,
     `- [Contact](${SITE.url}/contact)`,
     "",

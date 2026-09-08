@@ -410,7 +410,9 @@ const STALE_SEVERE_MS = 600_000;
 /** Conviction discount for stale underlying data. Pure + exported for direct unit testing —
  *  see the call site in computeConviction for why this exists. */
 export function stalenessConvictionDiscount(dataAgeMs: number | null | undefined): number {
-  if (dataAgeMs == null || !Number.isFinite(dataAgeMs) || dataAgeMs <= STALE_MILD_MS) return 0;
+  if (dataAgeMs == null || dataAgeMs === undefined) return 0;
+  if (dataAgeMs === Number.POSITIVE_INFINITY) return -30;
+  if (!Number.isFinite(dataAgeMs) || dataAgeMs <= STALE_MILD_MS) return 0;
   if (dataAgeMs <= STALE_MODERATE_MS) return -5;
   if (dataAgeMs <= STALE_SEVERE_MS) return -15;
   return -30;
@@ -538,6 +540,20 @@ function computeConviction(
 
 function gradeFor(conviction: number): VectorPlayGrade {
   return conviction >= 75 ? "A" : conviction >= 55 ? "B" : "C";
+}
+
+/** Nearest confluence zone to spot — starred must not use board-wide `zones[0]`. */
+function nearestConfluenceZone(zones: readonly ConfluenceZone[], spot: number): ConfluenceZone | null {
+  let nearest: ConfluenceZone | null = null;
+  let nearestDist = Infinity;
+  for (const z of zones) {
+    const d = Math.abs(z.center - spot) / spot;
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearest = z;
+    }
+  }
+  return nearest;
 }
 
 /**
@@ -733,9 +749,9 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   } else if (prox && prox.nearness !== "near" && (prox.side === "call" || prox.side === "put")) {
     starred.push(`${prox.strike ? fmt(prox.strike) : ""} ${prox.side} wall ${prox.nearness} — ${prox.callout}`.trim());
   }
-  const top = (input.confluenceZones ?? [])[0] ?? null;
-  if (top && Math.abs(top.center - spot) / spot <= 0.005) {
-    starred.push(`Confluence ${fmt(top.center)} — ${top.kinds.length} levels stacked (score ${top.score})`);
+  const topZone = nearestConfluenceZone(input.confluenceZones ?? [], spot);
+  if (topZone && Math.abs(topZone.center - spot) / spot <= 0.005) {
+    starred.push(`Confluence ${fmt(topZone.center)} — ${topZone.kinds.length} levels stacked (score ${topZone.score})`);
   }
   if (input.bie && input.bie.samples > 0) {
     starred.push(

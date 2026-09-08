@@ -81,16 +81,19 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   }
 
   // C1 — desk internal consistency: spx_change_pct must reconstruct from price ÷ prior_close.
-  if (merged.available && merged.price > 0 && merged.prior_close != null && merged.prior_close > 0 && Number.isFinite(merged.spx_change_pct)) {
+  if (merged.available && merged.price > 0 && merged.prior_close != null && merged.prior_close > 0) {
+    const servedChg = merged.spx_change_pct;
+    if (servedChg != null && Number.isFinite(servedChg)) {
     checked++;
     const implied = ((merged.price - merged.prior_close) / merged.prior_close) * 100;
-    if (Number.isFinite(implied) && Math.abs(implied - merged.spx_change_pct) > 0.1) {
+    if (Number.isFinite(implied) && Math.abs(implied - servedChg) > 0.1) {
       add(
         "SPX desk change% inconsistent with price/prior-close",
-        `desk change ${merged.spx_change_pct.toFixed(2)}% but price ${num(merged.price)} vs prior close ${num(
+        `desk change ${servedChg.toFixed(2)}% but price ${num(merged.price)} vs prior close ${num(
           merged.prior_close
         )} implies ${implied.toFixed(2)}%`
       );
+    }
     }
   }
 

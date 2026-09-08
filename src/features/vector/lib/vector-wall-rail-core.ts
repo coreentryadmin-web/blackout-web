@@ -3,6 +3,12 @@ import { relAlphaT, relStrengthT, beadRadiusForPctShare } from "./vector-wall-vi
 /**
  * Pure colour / size / identity helpers for the Vector bead rail.
  *
+ * ── DO NOT CHANGE BEAD PROMINENCE WITHOUT MEMBER SIGN-OFF (2026-09-07) ────────────────────────
+ * The Sep-3 SPX Slayer reference is dense full-width yellow/magenta session ribbons. Tweaking
+ * BEAD_ROW_FILL / row ladder / halo here is the LAST resort — viewport + x-domain alignment
+ * (`sessionBarTimesFromMinuteBars`, session-overview framing) fixes the common "sparse dots on
+ * the right" regression. See AGENTS.md § "Vector bead rails — DO NOT CHANGE".
+ *
  * Split out of `vector-wall-rail-primitive.ts` for the reason the repo already uses `-core` files:
  * the primitive implements lightweight-charts' `ISeriesPrimitive` and only runs with a live chart
  * and a canvas context, so none of it can be exercised under `tsx --test`. These four functions
@@ -36,10 +42,14 @@ export const HALF_PX_MAX = 7.5;
  * equally bold whether that wall was heavy or thin at the time, so a row showed only THAT A WALL
  * EXISTED and never WHEN IT MATTERED — which is the whole point of drawing it as a time series.
  *
- * 0.25 leaves a faint-but-present weak bead (the rail still shows structure that is there) while
- * giving the strong end somewhere to stand out from.
+ * FLOOR RAISED 0.25 -> 0.35 (2026-09-08, member-requested legibility pass). 0.25 swung the fix
+ * above too far the other way: the weakest bead on a busy rail became hard to see at all against
+ * the dark chart background, especially on the smaller Compare-pane radius. 0.35 is the highest
+ * floor that still clears every existing differentiation invariant with margin (spread 0.63 vs
+ * the >=0.6 floor; king-mid gap 0.39 vs >=0.3; mid-weak gap 0.20 vs >=0.15) — a weak wall is still
+ * clearly dimmer than a strong one, it is just no longer barely-there.
  */
-export const FILL_ALPHA_MIN = 0.25;
+export const FILL_ALPHA_MIN = 0.35;
 export const FILL_ALPHA_MAX = 0.98;
 
 /** Render profile — Compare panes are ~¼ height; default bead sizing paints over candles. */

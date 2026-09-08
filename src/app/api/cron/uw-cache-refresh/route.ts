@@ -23,6 +23,8 @@ import {
 import { fetchMarketMovers } from "@/lib/providers/polygon";
 import { seedUwCacheFromWsStores, shouldSkipUwCacheRefreshTask } from "@/lib/uw-ws-cache-bridge";
 import { seedPulseSnapshotFromUwPrices, seedUwClusterHeartbeat } from "@/lib/ws/socket-cluster-health";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
 const INDEX_TICKERS = ["SPX", "SPY", "QQQ", "IWM"] as const;
 const FLOW_STRIKE_TICKERS = ["SPX", "SPY"] as const;
@@ -120,6 +122,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // EventBridge's own schedule (cron(*/2 11-21 ? * MON-FRI *)) is a fixed-UTC weekday/hour window
+  // with NO holiday awareness — it fires unchanged on a market holiday that falls on a weekday
+  // (measured live 2026-09-07, Labor Day: 44 runs in 90 minutes, each a ~13-call UW/Polygon
+  // fan-out, market closed the whole time). cron-registry.ts already declares this job
+  // `market_hours_only: true` and admin-cron-health.ts already treats it as off-window (via the
+  // same isEtCashRth) for STALENESS purposes — but nothing was actually gating EXECUTION, so the
+  // registry's stated intent and the route's real behavior had quietly diverged. isEtCashRth is
+  // holiday-aware (isTradingDayEt) and RTH-scoped (9:30-16:00 ET + early-close), so this closes the
+  // gap at the one place that actually burns the rate-capped UW quota this cron exists to protect.
+  if (!isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    await logCronRun("uw-cache-refresh", started, payload);
+    return NextResponse.json(payload);
+  }
+
   const redis = await getUwCacheRedis();
   let ws_seeded = 0;
   let ws_skipped: string[] = [];
@@ -132,8 +149,16 @@ export async function GET(req: NextRequest) {
   // polygon indices WS is ingest-owned. Must complete before the heavy REST fan-out (#1343).
   const pulse_seeded = await seedPulseSnapshotFromUwPrices();
 
+  // Tagged as a background sweep (runWithBackgroundUwSweep) so it always leaves at least one
+  // UW concurrency slot reachable for live member traffic even while mid-run — see
+  // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence. This cron's
+  // own 24-way fan-out (5 sector tides + 3 index tickers × 3 fetches + 5 singles + 2 flow-per-
+  // strike) was the one remaining un-tagged caller found in the 2026-09-04 audit sweep: live
+  // CloudWatch showed 939 real member-facing "[uw] flow-alerts failed: rate-limiter queue budget
+  // exceeded" events in one 2.5h RTH window, clustering inside/at-the-start of this cron's own
+  // measured 20-66s run windows (vs. 27 such failures in an equivalent off-hours window).
   const dispatchRefresh = () => {
-    void runUwCacheRefreshTasks(started, redis).catch((error) => {
+    void runWithBackgroundUwSweep(() => runUwCacheRefreshTasks(started, redis)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/uw-cache-refresh] background refresh REJECTED: ${detail}`);
     });

@@ -8,6 +8,7 @@ import {
   fetchVectorEmbedFastSeed,
 } from "@/features/vector/lib/vector-client-seed";
 import { defaultVectorDeskOpenProps } from "@/features/vector/lib/vector-ticker";
+import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
 const VectorPageShell = dynamic(
@@ -34,6 +35,8 @@ type SpxVectorEmbedProps = {
   playLevels?: import("@/features/vector/lib/vector-play-levels").PlayLevelsInput;
   toolbarReplayLeadSlot?: React.ReactNode;
   toolbarPortalEl?: HTMLElement | null;
+  /** Vector play-engine desk state for the SPX play rail (suggested play + intel). */
+  onPlayDeskSnapshot?: (snapshot: VectorPlayDeskSnapshot) => void;
 };
 
 type VectorBarsSeed = {
@@ -62,6 +65,7 @@ export function SpxVectorEmbed({
   playLevels,
   toolbarReplayLeadSlot,
   toolbarPortalEl = null,
+  onPlayDeskSnapshot,
 }: SpxVectorEmbedProps) {
   const [seed, setSeed] = useState<VectorBarsSeed | null>(null);
 
@@ -147,6 +151,7 @@ export function SpxVectorEmbed({
       playLevels={playLevels}
       toolbarReplayLeadSlot={toolbarReplayLeadSlot}
       toolbarPortalEl={toolbarPortalEl}
+      onPlayDeskSnapshot={onPlayDeskSnapshot}
     />
   );
 }

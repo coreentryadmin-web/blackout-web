@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
 import { readSessionCache, writeSessionCache, clearSessionCacheKey } from "@/lib/session-cache";
 
@@ -38,7 +38,24 @@ function loadLayer(): PlayConfirmationLayer | null {
 
 /** Last non-empty confirmation layer — survives refresh/navigation and merges live updates. */
 export function useStablePlayConfirmations(play: SpxPlayPayload | null | undefined) {
-  const stableRef = useRef<PlayConfirmationLayer | null>(loadLayer());
+  // MUST start null, not loadLayer() as the useRef initializer — that reads sessionStorage
+  // during the render React uses for hydration reconciliation, which diverges from the
+  // server (always null, no `window`) whenever a cached layer exists client-side. Same
+  // defect class as useMergedDesk.ts's deskStable ref and useSpxPlay.ts's cachedPayload
+  // state — fixed here the same way: hydrate one tick after mount instead. Currently dead
+  // (SpxTradeAlerts, this hook's only consumer, isn't mounted on the flagship desk per its
+  // own "removed 2026-07-13" comment) but left safe rather than latent for whenever that
+  // panel returns.
+  const stableRef = useRef<PlayConfirmationLayer | null>(null);
+  const [, setCacheHydrated] = useState(false);
+
+  useEffect(() => {
+    const cached = loadLayer();
+    if (cached) {
+      stableRef.current = cached;
+      setCacheHydrated(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (!play) return;

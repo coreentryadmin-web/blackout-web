@@ -9,8 +9,9 @@ import type { PlayStatus } from "@/features/nighthawk/lib/morning-confirm-verdic
 import { parsePlayLevels } from "@/features/nighthawk/lib/play-levels";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
-import type { PlayDirection } from "../horizon-fanout";
+import { calendarDte, type PlayDirection } from "../horizon-fanout";
 import { produceHorizonPlays, type HorizonPlay } from "../horizon-plays";
+import { HORIZONS } from "../horizons";
 import { atrProxyFromCloses, deriveSwingPlanLevels } from "./structure-levels";
 import { buildSwingDossier, type SwingDossier } from "./dossier";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context";
@@ -49,6 +50,24 @@ export const LEGACY_SWING_SIGNAL_KIND = "NIGHT HAWK";
 
 export function isLegacyPromotedSignal(signalKinds: string[] | undefined | null): boolean {
   return (signalKinds ?? []).includes(LEGACY_SWING_SIGNAL_KIND);
+}
+
+/**
+ * Legacy promotion must not admit contracts below the Swing lane floor — the same [dteMin, dteMax]
+ * window organic discovery and produceHorizonPlays enforce. resolveTickerChainRows returns front
+ * expiries with no DTE filter; without this, a dte 2–4 contract overlaps the 0DTE board (FINDINGS
+ * 2026-08-06 P1 dual-admission on the Legacy→Swing path).
+ */
+export function filterChainRowsForSwingPromotion(
+  rows: ChainStrikeRow[],
+  sessionDayYmd: string,
+): ChainStrikeRow[] {
+  const minDte = HORIZONS.SWING.dteMin;
+  const maxDte = HORIZONS.SWING.dteMax;
+  return rows.filter((row) => {
+    const dte = calendarDte(sessionDayYmd, row.expiry);
+    return Number.isFinite(dte) && dte >= minDte && dte <= maxDte;
+  });
 }
 
 /** Cross-session persistence bar satisfied by morning thesis validation (not a lone print). */
@@ -157,6 +176,9 @@ export function buildLegacySwingArtifacts(params: {
   const groundedSpot = spot != null && spot > 0 ? spot : chainSpot;
   if (!(groundedSpot > 0) || chainRows.length === 0) return null;
 
+  const swingChainRows = filterChainRowsForSwingPromotion(chainRows, editionFor);
+  if (swingChainRows.length === 0) return null;
+
   const plan =
     nameCloses != null && nameCloses.length > 0
       ? (planFromCloses(direction, groundedSpot, nameCloses) ?? planFromLegacyLevels(play, groundedSpot))
@@ -164,17 +186,35 @@ export function buildLegacySwingArtifacts(params: {
   if (!plan) return null;
 
   const reads = swingReadsForLegacy(play, direction, groundedSpot);
+
+  const playSet = produceHorizonPlays([
+    {
+      ticker,
+      direction,
+      horizonScores: { SWING: play.score ?? 70 },
+      asOfYmd: editionFor,
+      chainRows: swingChainRows,
+    },
+  ]);
+  const swingPlay = playSet.SWING[0];
+  if (!swingPlay?.contract) return null;
+
+  const intendedDte = swingPlay.contract.dte;
   const dossier = buildSwingDossier({
     ticker,
     asOf: checkedAt,
-    intendedDte: 14,
+    intendedDte,
     reads,
     structure: {
       priceAboveEma20: direction === "LONG",
       ema20AboveEma50: direction === "LONG",
       ema50Rising: direction === "LONG",
     },
-    relStrength: { nameReturnPct: reads.returnPct10d ?? 0, spyReturnPct: reads.spyReturnPct10d ?? 0 },
+    // Omit relStrength when 10d returns are absent — `?? 0` would fabricate a worst-case REL_STRENGTH
+    // score (relativeStrengthScore(0,0)=0) instead of dropping the pillar from the denominator.
+    ...(reads.returnPct10d != null && reads.spyReturnPct10d != null
+      ? { relStrength: { nameReturnPct: reads.returnPct10d, spyReturnPct: reads.spyReturnPct10d } }
+      : {}),
     flow: {
       accumAlignedDays: reads.accumulation?.days ?? 2,
       accumTotalDays: reads.flowWindowDays,
@@ -190,18 +230,6 @@ export function buildLegacySwingArtifacts(params: {
   // Force playbook direction — overnight edition is authoritative after morning confirm.
   const scoredDossier: SwingDossier = { ...dossier, direction };
 
-  const playSet = produceHorizonPlays([
-    {
-      ticker,
-      direction,
-      horizonScores: { SWING: play.score ?? scoredDossier.score.score },
-      asOfYmd: editionFor,
-      chainRows,
-    },
-  ]);
-  const swingPlay = playSet.SWING[0];
-  if (!swingPlay) return null;
-
   const readsForMeta = swingServingReadsFromPlan(scoredDossier, groundedSpot, {
     contract: swingPlay.contract,
     asOf: checkedAt,
@@ -215,6 +243,7 @@ export function buildLegacySwingArtifacts(params: {
     setupState: meta.setupState ?? undefined,
     entryStatus: meta.entryStatus ?? undefined,
     signalKinds: [LEGACY_SWING_SIGNAL_KIND],
+    commitGateBlockedBy: ["legacy:exempt"],
     firstSeenAt: checkedAt,
     bucketGraduated: false,
     factors: meta.factors,
@@ -356,18 +385,64 @@ export function isCarriedContractLive(play: HorizonPlay, sessionDay: string): bo
   return expiry >= sessionDay;
 }
 
+/**
+ * Refresh a legacy-carried play's contract for the current session — recompute calendar DTE, merge a
+ * fresher quote from today's organic scan when strike/expiry match, and drop stale mids when the DTE
+ * label has drifted (FINDINGS 2026-08-07 frozen-contract serve bug).
+ */
+export function refreshCarriedLegacyPlay(
+  play: HorizonPlay,
+  sessionDay: string,
+  freshPlayByTicker?: ReadonlyMap<string, HorizonPlay>,
+): HorizonPlay | null {
+  if (!isCarriedContractLive(play, sessionDay) || !play.contract) return null;
+  const expiry = carriedContractExpiry(play)!;
+  const dte = calendarDte(sessionDay, expiry);
+  if (!Number.isFinite(dte) || dte < HORIZONS.SWING.dteMin || dte > HORIZONS.SWING.dteMax) return null;
+
+  const fresh = freshPlayByTicker?.get(play.ticker.toUpperCase());
+  const sameContract =
+    fresh?.contract &&
+    fresh.contract.expiry === expiry &&
+    fresh.contract.strike === play.contract.strike &&
+    fresh.contract.right === play.contract.right;
+
+  const staleDte = play.contract.dte !== dte;
+  const mergedContract = sameContract
+    ? { ...play.contract, ...fresh!.contract, dte }
+    : {
+        ...play.contract,
+        dte,
+        // A carried blob with a stale DTE label almost certainly has a stale quote too — drop it
+        // honestly until live marks or the next scan repopulates it.
+        ...(staleDte
+          ? { mid: null, bid: null, ask: null, delta: play.contract.delta ?? null }
+          : {}),
+      };
+
+  const reason =
+    play.reason && staleDte
+      ? play.reason.replace(/\b\d+DTE\b/g, `${dte}DTE`)
+      : play.reason;
+
+  return { ...play, contract: mergedContract, reason };
+}
+
 /** Re-attach morning-confirm legacy promotions after a swing-discovery scan overwrites the snapshot. */
 export function carryLegacyPromotedIntoSnapshot(
   fresh: SwingServingSnapshot,
   prior: SwingServingSnapshot | null,
 ): SwingServingSnapshot {
   if (!prior) return fresh;
-  // Drop carried rows whose frozen contract has expired BEFORE anything else keys off them — the
-  // strip below removes these tickers from the fresh scan, so carrying a dead row would also
-  // suppress the live one the scan just produced. See isCarriedContractLive for the live evidence.
-  const triples = legacyPromotedTriplesFromSnapshot(prior).filter((t) =>
-    isCarriedContractLive(t.play, fresh.sessionDay),
+  const freshByTicker = new Map(
+    (fresh.plays ?? []).map((p) => [p.ticker.toUpperCase(), p] as const),
   );
+  const triples = legacyPromotedTriplesFromSnapshot(prior)
+    .map((t) => {
+      const refreshed = refreshCarriedLegacyPlay(t.play, fresh.sessionDay, freshByTicker);
+      return refreshed ? { ...t, play: refreshed } : null;
+    })
+    .filter((t): t is NonNullable<typeof t> => t != null);
   if (triples.length === 0) return fresh;
   const legacyTickers = new Set(triples.map((t) => t.watch.ticker.toUpperCase()));
   const stripped = stripTickersFromSnapshot(fresh, legacyTickers);

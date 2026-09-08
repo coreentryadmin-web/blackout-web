@@ -59,6 +59,55 @@ export function etStamp(tMs: unknown): string | null {
 }
 
 /**
+ * Largo C1 stamp for a raw ISO-8601 instant (option marks, ledger timestamps — anything that
+ * arrives from the DB as a bare `Date.toISOString()` rather than epoch-ms). Falls back to the
+ * original string when it can't be parsed, so a malformed input degrades to "at least visible"
+ * rather than silently vanishing — the same defensive fallback `play-brief-context.ts` already
+ * uses for the brief's own top-level `asOf`.
+ */
+export function etStampFromIso(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return raw;
+  return etStamp(ms) ?? raw;
+}
+
+const DATE_ONLY_RE = /^(\d{4}-\d{2}-\d{2})$/;
+
+/**
+ * Largo C1 stamp for observation dates that arrive without a clock (fundamentals `as_of`,
+ * FINRA settlement dates). `Date.parse("YYYY-MM-DD")` is UTC midnight → prior ET evening,
+ * which inverts cross-product session joins — anchor at session close instead.
+ */
+export function etStampFromDateOrIso(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const dateOnly = DATE_ONLY_RE.exec(trimmed);
+  if (dateOnly) return `${dateOnly[1]} 16:00 ET`;
+  return etStampFromIso(trimmed);
+}
+
+const ET_STAMP_RE = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}) ET$/;
+
+/**
+ * Inverse of {@link etStamp}: parse a Largo C1 wall-clock stamp back to epoch-ms.
+ * Returns null when the string is not exactly "YYYY-MM-DD HH:mm ET" or does not round-trip.
+ */
+export function parseEtStamp(stamp: unknown): number | null {
+  if (typeof stamp !== "string") return null;
+  const trimmed = stamp.trim();
+  const m = ET_STAMP_RE.exec(trimmed);
+  if (!m) return null;
+  const [, ymd, hh, min] = m;
+  for (const offset of ["-04:00", "-05:00"]) {
+    const ms = Date.parse(`${ymd}T${hh}:${min}:00${offset}`);
+    if (!Number.isFinite(ms)) continue;
+    if (etStamp(ms) === trimmed) return ms;
+  }
+  return null;
+}
+
+/**
  * Pull the timespan out of a Polygon aggregates path
  * (`/v2/aggs/ticker/I:SPX/range/1/day/2026-08-13/2026-08-20`). Returns null for any path that is
  * not a ranged aggregates read — `/v2/aggs/ticker/X/prev` and every non-aggs endpoint included.

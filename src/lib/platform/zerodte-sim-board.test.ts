@@ -135,6 +135,13 @@ test("board route serves member path unchanged and only branches to sim behind t
   assert.match(route, /getSimBoardPayload/);
 });
 
+test("board route rounds member-visible floats at the API boundary (sim frames bypass zerodte-service)", () => {
+  const route = readFileSync(join(ROOT, "app/api/market/zerodte/board/route.ts"), "utf8");
+  assert.match(route, /import \{ roundFloats \} from "@\/lib\/round-floats"/);
+  assert.match(route, /roundFloats\(await getSimBoardPayload\(\)\)/);
+  assert.match(route, /roundFloats\(await getZeroDteBoardPayload\(\)\)/);
+});
+
 test("ingest endpoint is admin-gated and writes ONLY the sim key", () => {
   const route = readFileSync(join(ROOT, "app/api/admin/zerodte/sim/board/route.ts"), "utf8");
   assert.match(route, /requireAdminApi/);

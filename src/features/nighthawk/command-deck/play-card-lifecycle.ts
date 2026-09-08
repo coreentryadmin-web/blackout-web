@@ -2,6 +2,8 @@ import type { DeckStatus, TerminalPlay } from "./types";
 import { isoToEtClock, parseCommittedAtEt } from "@/lib/zerodte/play-timeline";
 import { trimScaleBlendedPnlAtStop } from "@/lib/zerodte/marks-math";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
+import { legacyPrimaryPeakPct, legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 /** Which lifecycle bucket drives the left-rail card layout. */
 export type PlayLifecyclePhase = "open" | "watch" | "closed";
@@ -129,7 +131,9 @@ export function eventAgeMs(iso: string | null | undefined, nowMs: number): numbe
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return null;
   const delta = nowMs - at;
-  return delta >= 0 ? delta : 0;
+  // Beyond tolerance, a future stamp is clock skew — must not clamp to 0 and read as "just fired".
+  if (delta < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return Number.POSITIVE_INFINITY;
+  return Math.max(0, delta);
 }
 
 export function freshnessTierFromAge(
@@ -252,6 +256,60 @@ export function playStatusDisplay(status: DeckStatus): { label: string; tone: St
  * matches `trimLadderVisual()`'s own "any tranche fired" semantics (terminal-display.ts) — once
  * the first partial trim banks, what remains IS the runner, even before every tranche has fired.
  */
+export function legacyActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
+  if (play.horizon !== "LEGACY") return null;
+  if (play.morningStatus === "INVALIDATED" || play.pulled) {
+    return { label: "PULLED", tone: "closed" };
+  }
+  if (play.morningStatus === "DEGRADED") {
+    return { label: "DEGRADED", tone: "watch" };
+  }
+  if (play.morningStatus === "UNVERIFIED") {
+    return { label: "UNVERIFIED", tone: "watch" };
+  }
+  return null;
+}
+
+/**
+ * ACTION vocabulary for SWING rows — BUY/STILL BUY on enterable setups; HOLD/TRIM/EXIT on live book.
+ * SKIP deliberately returns null so the honest PASSED lifecycle pill shows (same discipline as 0DTE).
+ */
+export function swingActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
+  if (play.horizon !== "SWING") return null;
+  if (play.status === "WATCH") {
+    if (play.swingEntryAction === "still_buy") return { label: "STILL BUY", tone: "watch" };
+    if (play.swingEntryAction === "buy") return { label: "BUY", tone: "watch" };
+    if (play.recommendation === "BUY") return { label: "BUY", tone: "watch" };
+    return { label: "WAIT", tone: "watch" };
+  }
+  if (play.status === "SKIP") return null;
+  if (play.status === "CLOSED") {
+    if (play.closedReason === "target") return { label: "TARGET", tone: "closed" };
+    if (play.closedReason === "stopped" || play.closedReason === "stop") {
+      return { label: "STOPPED", tone: "closed" };
+    }
+    if (play.closedReason === "flat") return { label: "SCRATCH", tone: "closed" };
+    return null;
+  }
+  if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") {
+    if (play.recommendation === "SELL") return { label: "EXIT", tone: "active" };
+    // Exit-management labels win over entryability pills (same order as zeroDteActionDisplay).
+    // STILL BUY is for members still working a limit — it must not mask an active TRIM ladder.
+    if (play.recommendation === "TRIM") {
+      const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
+      if (next) return { label: `TRIM ${Math.round(next.trigger_pct)}%`, tone: "active" };
+      return { label: "TRIM", tone: "active" };
+    }
+    const anyTrimFired = play.exitPolicy?.trim_levels?.some((t) => t.fired) ?? false;
+    if (anyTrimFired) return { label: "RUNNER", tone: "active" };
+    if (play.swingEntryAction === "still_buy") return { label: "STILL BUY", tone: "watch" };
+    if (play.swingEntryAction === "buy") return { label: "BUY", tone: "watch" };
+    if (play.recommendation === "HOLD") return { label: "HOLD", tone: "active" };
+    return null;
+  }
+  return null;
+}
+
 export function zeroDteActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
   if (play.horizon !== "ZERO_DTE") return null;
   if (play.status === "CLOSED") {
@@ -419,6 +477,9 @@ export function closedRealizedPct(play: TerminalPlay): number | null {
  */
 export function closedCapturePct(play: TerminalPlay): number | null {
   if (play.status !== "CLOSED") return null;
+  if (play.mfeCapturePct != null && Number.isFinite(play.mfeCapturePct)) {
+    return play.mfeCapturePct;
+  }
   const realized = closedRealizedPct(play);
   if (realized == null || !Number.isFinite(realized)) return null;
   if (play.peak == null || !Number.isFinite(play.peak) || play.peak <= 0) return null;
@@ -426,10 +487,13 @@ export function closedCapturePct(play: TerminalPlay): number | null {
   return Number.isFinite(pct) ? pct : null;
 }
 
-/** Open-row primary metric labels — legacy uses stock progress, others use option P&L. */
+
+/** Open-row primary metric labels — legacy prefers option premium when marks are live. */
 export function openMetricsLabels(play: TerminalPlay): { current: string; peak: string } {
   if (play.horizon === "LEGACY") {
-    return { current: "Stock", peak: "Day" };
+    return play.pnlPct != null
+      ? { current: "Premium", peak: "Peak" }
+      : { current: "Stock", peak: "Session" };
   }
   return { current: "Current", peak: "Peak" };
 }
@@ -441,8 +505,8 @@ export function openMetricsValues(play: TerminalPlay): {
 } {
   if (play.horizon === "LEGACY") {
     return {
-      currentPct: play.pnlPct ?? play.stockChangePct ?? null,
-      peakPct: play.stockChangePct ?? null,
+      currentPct: legacyPrimaryPnlPct(play),
+      peakPct: legacyPrimaryPeakPct(play),
     };
   }
   return {
@@ -460,6 +524,11 @@ export function watchMetricsValues(play: TerminalPlay): { trackPct: number | nul
 export function playSymbolLine(play: TerminalPlay): string {
   const leg = play.contract.replace(/\s*·\s*/g, " ").trim();
   return `${play.ticker} ${leg}`;
+}
+
+/** Compact contract headline for detail surfaces — e.g. INTC 90P 4DTE (no extra spacing). */
+export function playContractHeadline(play: TerminalPlay): string {
+  return playSymbolLine(play).replace(/\s+/g, " ").trim();
 }
 
 /** Primary trigger/discovery instant for sort — ms since epoch; 0 when unknown. */

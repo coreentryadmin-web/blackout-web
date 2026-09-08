@@ -5,7 +5,7 @@ export const nightHawkGuide = defineToolGuide({
   chapter: 5,
   title: "Night Hawk",
   description:
-    "Evening playbook and pre-market confirmation — tomorrow's SPX setups, GEX context, and invalidation levels published after the close.",
+    "Evening Edition prep and pre-market confirmation — tomorrow's setups, GEX context, and invalidation levels published after the close.",
   overview: [
     "Night Hawk publishes the Evening Edition: market recap, catalyst scan, GEX positioning, ranked play ideas, and hard invalidation levels for the next session.",
     "Route `/nighthawk` hosts two products side-by-side: PlaybookBoard (left) for the edition and 0DTE Command (right) for the always-on intraday scanner. This chapter covers the playbook; 0DTE Command has its own guide.",

@@ -2,6 +2,7 @@ import { dbConfigured, dbQuery } from "@/lib/db";
 import { sendEmail } from "@/lib/email/resend-client";
 import { WELCOME_SEQUENCE } from "@/lib/email/templates/welcome-sequence";
 import { syncResendContact } from "@/lib/resend-contacts";
+import { isInternalAuditEmail } from "@/lib/internal-audit-email";
 
 const STEP_GAP_DAYS = 2;
 const TOTAL_STEPS = WELCOME_SEQUENCE.length;
@@ -147,6 +148,25 @@ export async function processDueWelcomeSequenceSteps(
 
     for (const row of due.rows) {
       result.processed++;
+
+      // `startWelcomeSequence`'s caller (the Clerk webhook) skips this INSERT for a recognized
+      // audit/test-harness account, but that gate only covers rows created AFTER it shipped
+      // (2026-08-28) — rows from the ~30 ad-hoc harnesses that predate it are already sitting in
+      // this table. Left unchecked, this cron retries them EVERY hour for up to
+      // MAX_STEP_LATENESS_DAYS (Resend rejects `@example.com` etc. with a 422, and a failed send
+      // deliberately leaves next_send_at untouched so the next run retries the SAME step) — see
+      // this file's own MAX_STEP_LATENESS_DAYS comment on why a high bounce rate on a
+      // transactional template is a sender-reputation risk, not just wasted send volume. Marking
+      // complete here (not deleted, not retried) matches the retirement/defensive-branch pattern
+      // below rather than inventing a third way to exit the drip.
+      if (isInternalAuditEmail(row.email)) {
+        await deps.dbQuery(
+          `UPDATE welcome_sequence_state SET completed_at = NOW(), next_send_at = NULL WHERE user_id = $1`,
+          [row.user_id]
+        );
+        continue;
+      }
+
       const nextIndex = row.steps_sent; // 0-based: steps_sent=1 means step 1 done, next is index 1 (step 2)
       const step = WELCOME_SEQUENCE[nextIndex];
       if (!step) {

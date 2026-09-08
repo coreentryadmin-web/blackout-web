@@ -7,6 +7,7 @@ import { flowFallbackAlertId } from "@/lib/flow-alert-id";
 import { markFlowFrameDelivered } from "@/lib/flow-liveness";
 import { extractChainFieldsFromRaw } from "@/lib/flow-raw-fields";
 import { dteFromExpiry } from "@/lib/flow-dte";
+import { notifyHelixAlertSubscribers } from "@/lib/helix-alert-notify";
 
 /**
  * SSE row shape published to the live tape. Extends FlowRow with the canonical
@@ -236,6 +237,9 @@ export async function persistAndPublishFlowAlert(
     // its own writes), so it can never silence the cron that owns this process.
     markFlowFrameDelivered();
     void notifyDiscord(event);
+    // Per-member push alerts (task: HELIX-scoped alerts) — inert by default, see
+    // helix-alert-notify.ts's header for why this is the choke point rather than a cron.
+    void notifyHelixAlertSubscribers(event);
     // Gated on `inserted` specifically, not `shouldPublish` — `shouldPublish` is
     // also true when the flow_alerts insert THREW (insertFailed, an uncertain
     // state used to keep the live tape/Discord fan-out working even if we can't

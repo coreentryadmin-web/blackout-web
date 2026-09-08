@@ -3,6 +3,7 @@
 import {
   buildDeskEvidenceLines,
   countDeskAlignment,
+  deskEvidenceStatusLabel as statusLabel,
   type DeskEvidenceLine,
   type DeskEvidenceStatus,
 } from "@/lib/zerodte/thesis/desk-evidence-lines";
@@ -11,19 +12,6 @@ import type { ThesisPipelineResult } from "@/lib/zerodte/thesis/types";
 type Props = {
   thesis: ThesisPipelineResult | null | undefined;
 };
-
-function statusLabel(status: DeskEvidenceStatus): string {
-  switch (status) {
-    case "aligned":
-      return "aligned";
-    case "opposed":
-      return "opp";
-    case "neutral":
-      return "mixed";
-    default:
-      return "—";
-  }
-}
 
 function statusClass(status: DeskEvidenceStatus): string {
   switch (status) {

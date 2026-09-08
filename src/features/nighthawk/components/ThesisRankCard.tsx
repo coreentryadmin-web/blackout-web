@@ -3,6 +3,7 @@
 import {
   buildDeskEvidenceLines,
   countDeskAlignment,
+  deskEvidenceStatusLabel as statusLabel,
   type DeskEvidenceLine,
   type DeskEvidenceStatus,
 } from "@/lib/zerodte/thesis/desk-evidence-lines";
@@ -15,19 +16,6 @@ type Props = {
 
 function fmtStrike(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
-
-function statusLabel(status: DeskEvidenceStatus): string {
-  switch (status) {
-    case "aligned":
-      return "aligned";
-    case "opposed":
-      return "opp";
-    case "neutral":
-      return "mixed";
-    default:
-      return "—";
-  }
 }
 
 function statusClass(status: DeskEvidenceStatus): string {

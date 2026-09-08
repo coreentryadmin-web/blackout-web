@@ -29,7 +29,8 @@
  *           phased rollout (shadow discovery → dte-bucketed backtest evidence → any stop/target
  *           recalibration, which this change does NOT itself make — PLAN_RULES stays byte-identical
  *           across the whole 0-4 window until real evidence says otherwise).
- *   SWING — 5–30 DTE (was 2-30; the floor moved to stay the exact complement of the widened 0DTE
+ *   SWING — 5–15 DTE (was 5–30; narrowed 2026-09-04 for Swing Command — tactical multi-session holds;
+ *           was 2-30 before the 2026-08-06 floor move; the floor moved to stay the exact complement of the widened 0DTE
  *           window — no dte value is left uncovered or double-covered BY THIS FILE's own record.
  *           IMPORTANT: this file is the source of truth for the DISCOVERY-SIDE 0DTE/SWING boundary,
  *           but Swing's own COMMIT-TIME sub-lane admission (`src/lib/swing/taxonomy.ts`
@@ -62,6 +63,13 @@ export type Horizon = "ZERO_DTE" | "SWING" | "LEAPS";
  *  pin-source.ts / scan-trigger.ts) — every consumer imports this rather than hardcoding its own
  *  copy of the number. See the DTE-windows note above for why this is 4, not 1. */
 export const ZERODTE_MAX_DTE = 4;
+
+/**
+ * Swing Command product ceiling — unified multi-session desk (Swings + folded Bangers/Vector signals).
+ * Operator-set 2026-09-04: narrow swing from 5–30 → 5–15 so every contract fits the tactical swing
+ * hold window; LEAPS absorbs 16–90. DTE=4 weeklies remain on the 0DTE board (same-day exit discipline).
+ */
+export const SWING_MAX_DTE = 15;
 
 /** Which of the two proven exit primitives a horizon routes to. */
 export type ExitPrimitive = "RATCHET" | "SCALE_OUT";
@@ -134,7 +142,7 @@ export const HORIZONS: Record<Horizon, HorizonSpec> = {
     tag: "SWING",
     holdLabel: "days–weeks",
     dteMin: ZERODTE_MAX_DTE + 1,
-    dteMax: 30,
+    dteMax: SWING_MAX_DTE,
     exit: "SCALE_OUT",
     scoreFloor: 60,
     scoreFloorGraduated: false, // PROVISIONAL — graduates on the whole-market banger backtest
@@ -156,7 +164,7 @@ export const HORIZONS: Record<Horizon, HorizonSpec> = {
     label: "LEAPS",
     tag: "LEAPS",
     holdLabel: "weeks–months (≤90d)",
-    dteMin: 31,
+    dteMin: SWING_MAX_DTE + 1,
     dteMax: 90,
     exit: "SCALE_OUT",
     scoreFloor: 62,

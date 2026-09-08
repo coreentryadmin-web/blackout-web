@@ -116,10 +116,8 @@ test("aggregateVectorBars: custom 10m interval buckets", () => {
 // denominator a weak level now recedes to a faint trace by itself, so the row count no longer has
 // to do the decluttering and a low ceiling only hides readable structure.
 test("wallCountForTimeframe: preset timeframes map to the specified shown-counts", () => {
-  // Walked back from 10/14/16/18 the same day: those counts compressed the SPX 3m row gap from
-  // 26px to 17px, and at 17px BEAD_READABLE_MIN_HALF_PX alone fills 38% of every slot — no
-  // thickness budget can bind below the readability floor. Still well above the pre-2026-08-19
-  // 6/10/10/12; the point was never to maximise rows, it was to stop hiding structure.
+  // Sep-3 11am reference (commit b2931b64b): #2341 partial walkback ladder — fewer rows = wider
+  // row gap = thick merged ribbons on SPX 3m (~21px gap, not ~17px at 14 rows).
   assert.equal(wallCountForTimeframe(1), 8, "1m shows 8 near-spot walls");
   assert.equal(wallCountForTimeframe(3), 11, "3m shows 11");
   assert.equal(wallCountForTimeframe(5), 13, "5m shows 13");

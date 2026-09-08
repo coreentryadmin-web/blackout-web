@@ -572,7 +572,7 @@ export const ARTICLE_FAQS: Record<string, FAQItem[]> = {
     {
       question: "What risk rules does the 0DTE system enforce?",
       answer:
-        "Every committed play follows fixed rules: a -50% stop (cut when premium loses half its entry value), a +100% target (trim when premium doubles), a 15:30 ET time stop (hard exit before the close), and 55% chase protection to prevent stale entries.",
+        "Every committed play follows fixed rules: a -50% stop (cut when premium loses half its entry value), a +100% target (trim when premium doubles), a 15:50 ET time stop (hard exit before the close), and 55% chase protection to prevent stale entries.",
     },
   ],
 
@@ -644,6 +644,26 @@ export const ARTICLE_FAQS: Record<string, FAQItem[]> = {
       question: "What is a wall integrity score?",
       answer:
         "The wall integrity score (0-100) rates how trustworthy a gamma wall is by blending strength (how much gamma it concentrates), persistence (how many snapshots it has held across), and isolation (how far it towers over the next wall).",
+    },
+  ],
+
+  /* ── Meridian ────────────────────────────────────────────────────── */
+
+  "meridian-earnings-desk-guide": [
+    {
+      question: "What is the Meridian earnings desk?",
+      answer:
+        "Meridian is a catalyst calendar and earnings desk: a timeline of upcoming and recent earnings, macro releases, OpEx dates, and FDA decisions, with a five-tab sub-desk (Summary, Report, Estimates, Positioning, History) for each earnings print.",
+    },
+    {
+      question: "Why does a print's reaction depend on its timing?",
+      answer:
+        "A print released before the bell moves on the premarket gap, and a print released after the close moves the next session -- the report day's own session is drift from before the numbers were public. Meridian classifies each print's timing and anchors its reaction number accordingly, instead of using a raw same-day move that can invert the read.",
+    },
+    {
+      question: "Does Meridian give trade recommendations on earnings?",
+      answer:
+        "Meridian's per-print read is labeled as context, not a trade recommendation, and every probability or rate it shows carries its own sample size or cohort -- reporting 'too few to rank' rather than inventing a number when the data is thin.",
     },
   ],
 

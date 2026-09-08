@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   applyFlowConfluenceToCandles,
+  chartFocusToneForFlow,
   displayBarTimeForFlowPrint,
   flowAlertTimeSec,
   flowConfluencePulseIntensity,
   resolveFlowPrintBarTime,
+  toneFromFlowSide,
   FLOW_CONFLUENCE_PULSE_MS,
 } from "./vector-flow-confluence";
 
@@ -46,5 +48,42 @@ describe("vector-flow-confluence", () => {
     );
     assert.ok(out[1]!.borderColor?.includes("#") || out[1]!.borderColor?.startsWith("rgba"));
     assert.equal(out[0]!.borderColor, undefined);
+  });
+
+  // Regression: the chart-flash tone (price-line flash + candle pulse for a live HELIX print)
+  // used to read `option_type` alone (`isCall ? "bull" : "bear"`), so a SOLD call -- bearish
+  // everywhere else this print's direction is asserted -- flashed the chart lime/bullish.
+  describe("chartFocusToneForFlow: aggressor-aware, not option-type-alone", () => {
+    test("a bought call reads bull", () => {
+      assert.equal(chartFocusToneForFlow({ option_type: "CALL", ask_pct: 80 }), "bull");
+    });
+    test("a SOLD call reads bear, not bull off option type alone", () => {
+      assert.equal(chartFocusToneForFlow({ option_type: "CALL", ask_pct: 8 }), "bear");
+    });
+    test("a bought put reads bear", () => {
+      assert.equal(chartFocusToneForFlow({ option_type: "PUT", ask_pct: 80 }), "bear");
+    });
+    test("a SOLD put reads bull, not bear off option type alone", () => {
+      assert.equal(chartFocusToneForFlow({ option_type: "PUT", ask_pct: 8 }), "bull");
+    });
+    test("no ask_pct data reads sky (neutral), never a guessed bull/bear", () => {
+      assert.equal(chartFocusToneForFlow({ option_type: "CALL", ask_pct: null }), "sky");
+    });
+    test("a midpoint ask_pct (undetermined aggressor) reads sky", () => {
+      assert.equal(chartFocusToneForFlow({ option_type: "CALL", ask_pct: 50 }), "sky");
+    });
+  });
+
+  describe("toneFromFlowSide: aggressor-aware, delegates to flowDirection", () => {
+    test("a SOLD call reads bear, not bull", () => {
+      assert.equal(toneFromFlowSide({ option_type: "CALL", ask_pct: 8 }), "bear");
+    });
+    test("a SOLD put reads bull, not bear", () => {
+      assert.equal(toneFromFlowSide({ option_type: "PUT", ask_pct: 8 }), "bull");
+    });
+    test("undetermined aggressor falls back to the option-type-only read (no third state exists)", () => {
+      assert.equal(toneFromFlowSide({ option_type: "CALL", ask_pct: null }), "bull");
+      assert.equal(toneFromFlowSide({ option_type: "PUT", ask_pct: null }), "bear");
+    });
   });
 });

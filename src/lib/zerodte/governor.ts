@@ -13,7 +13,7 @@
 // AUDIT SEV-3 (2026-07-24) — realized-loss day-halt (additive, strictly more
 // conservative). The original 3-strike session halt counts ONLY −50% HARD stops
 // (plan_outcome "stopped" / trough ≤ entry·0.5). A LOSING TIME-STOP — a play that
-// closes red at 15:30 (e.g. −25%…−45%) without ever touching the hard stop — was
+// closes red at 15:50 (e.g. −25%…−45%) without ever touching the hard stop — was
 // explicitly excluded, so a chop-and-bleed day where 5–6 committed plays each
 // time-stop red never tripped the halt and the scanner kept committing all day: the
 // SAME capital loss as the 7/13 incident this governor was built for, reached by a
@@ -215,30 +215,6 @@ export const GOVERNOR_ENFORCE_TOD_SIZING = envFlag("GOVERNOR_ENFORCE_TOD_SIZING"
  *  `governor_session_stops`) is UNCHANGED and still enforced unconditionally — it was not part of
  *  this directive. Flip GOVERNOR_ENFORCE_LOSS_HALT=1 to restore the prior always-on behavior. */
 export const GOVERNOR_ENFORCE_LOSS_HALT = envFlag("GOVERNOR_ENFORCE_LOSS_HALT", false);
-
-/** The largest same-direction cluster of open plans within a single correlation group, or
- *  null if no two open plans share a group+direction. Pure. Used both by the board measure
- *  and by the per-candidate evaluator, so the "what counts as concentration" logic lives
- *  in ONE place. Caller need not pre-uppercase — tickers are normalized here. */
-export function maxCorrelatedSameDirection(
-  openPlans: GovernorOpenPlan[]
-): { tickers: string[]; direction: "long" | "short"; count: number } | null {
-  let best: { tickers: string[]; direction: "long" | "short"; count: number } | null = null;
-  for (const group of CORRELATION_GROUPS) {
-    for (const direction of ["long", "short"] as const) {
-      const inCluster = openPlans
-        .filter((p) => p.direction === direction && group.has(p.ticker.toUpperCase()))
-        .map((p) => p.ticker.toUpperCase());
-      // De-dup tickers so a ledger quirk (two rows same ticker/direction) can't inflate
-      // the count — concentration is about distinct correlated exposures.
-      const distinct = Array.from(new Set(inCluster));
-      if (distinct.length >= 2 && (best == null || distinct.length > best.count)) {
-        best = { tickers: distinct.sort(), direction, count: distinct.length };
-      }
-    }
-  }
-  return best;
-}
 
 /**
  * One row's contribution to session premium-at-risk. For a directional play, `entry_premium`
@@ -454,8 +430,12 @@ export type GovernorLedgerRow = Pick<
 /** Did this ledger row stop out? Two independent signals, either suffices:
  *  the graded plan_outcome, or the latched trough at/below the plan's stop level
  *  (derivePlayStatus's own CLOSED/stopped condition) — so the count is right even
- *  before the lazy grader has run. A time-stop close is NOT a stop. */
+ *  before the lazy grader has run. A time-stop close is NOT a stop. Condors are
+ *  excluded: their trough is the winning direction (falling debit-to-close) and
+ *  directional stop math inverts — settlement is gradeCondorFromBars. */
 function ledgerRowStopped(r: GovernorLedgerRow): boolean {
+  const ec = r.entry_context as Record<string, unknown> | null;
+  if (ec?.play_type === "CONDOR" || ec?.condor) return false;
   if (r.plan_outcome === "stopped") return true;
   if (r.status !== "CLOSED") return false;
   return (
@@ -504,6 +484,9 @@ function ledgerRowRealizedPnlPct(r: GovernorLedgerRow): number | null {
   if (mark == null || !Number.isFinite(mark)) return null;
   const observed = r.last_mark_at != null || mark !== entry;
   if (!observed) return null;
+  const ec = r.entry_context as Record<string, unknown> | null;
+  const isCondor = ec?.play_type === "CONDOR" || Boolean(ec?.condor);
+  if (isCondor) return ((entry - mark) / entry) * 100;
   return ((mark - entry) / entry) * 100;
 }
 
@@ -804,27 +787,13 @@ export type ZeroDteGovernorSummary = {
    *  SURFACED so the operator sees the halt firing on ledger evidence. Non-null here
    *  is already reflected in `halted` (this channel enforces). */
   would_halt: string | null;
-  // ── Q9 same-direction concentration MEASURE (surfaced, NOT enforced) ─────────────
-  /** The largest same-direction cluster of open plans within one correlation group
-   *  (index/ETF beta), or null if none. Distinct tickers only. A pure measure — it does
-   *  NOT gate commits (unlike the enforcing halts above); it is calibration evidence. */
-  correlated_concentration: { tickers: string[]; direction: "long" | "short"; count: number } | null;
-  /** The same-direction concentration cap the measure flags against (payload number, not
-   *  a UI copy). */
-  max_correlated_same_dir: number;
-  /** A human reason when the current same-direction correlated cluster is at/over the cap
-   *  (a further correlated same-direction add would be over-concentration), else null.
-   *  SURFACED for the operator + the ledger; NOT reflected in `halted` (measure only, Q9). */
-  would_block_concentration: string | null;
   // ── Phase 2c portfolio governor extensions (measure-first) ───────────────────────
   /** Sum of entry premium across open plans. */
   premium_at_risk: number;
   max_premium_at_risk: number;
-  would_block_premium_budget: string | null;
   /** Open plans with short-gamma regime at commit. */
   short_gamma_open: number;
   max_short_gamma_open: number;
-  would_block_gamma_budget: string | null;
   /** Time-of-day sizing label (lunch chop / prime window). */
   time_of_day_label: string | null;
   /** Effective concurrent cap after time-of-day sizing factor. */
@@ -847,17 +816,6 @@ export function summarizeGovernorForBoard(
   // AUDIT SEV-3 — the realized-loss halt reason keys off the ledger-derived tallies
   // (timestamps don't matter for it), so compute it from `snap`, not the merged stops.
   const wouldHalt = governorLossHaltReason(snap);
-  // Q9 — same-direction concentration MEASURE over the open plans. Pure evidence: it is
-  // surfaced but never folded into `halted`, so it changes nothing the board commits.
-  const concentration = maxCorrelatedSameDirection(snap.open_plans);
-  const wouldBlockConcentration =
-    concentration != null && concentration.count >= GOVERNOR_MAX_CORRELATED_SAME_DIR
-      ? `Session governor (MEASURE): ${concentration.count} same-direction ${concentration.direction} plays ` +
-        `on correlated index/ETF beta (${concentration.tickers.join(", ")}) — at/over the ` +
-        `${GOVERNOR_MAX_CORRELATED_SAME_DIR}-play concentration ceiling; a further correlated ` +
-        `${concentration.direction} add would over-concentrate one direction. Surfaced as evidence, not enforced (Q9).`
-      : null;
-
   const premiumAtRisk = aggregatePremiumAtRisk(rows);
   const shortGammaOpen = opts?.shortGammaOpen ?? 0;
   const todSizing =
@@ -882,15 +840,10 @@ export function summarizeGovernorForBoard(
     loss_halt_count: GOVERNOR_LOSS_HALT_COUNT,
     session_loss_floor_pct: GOVERNOR_SESSION_LOSS_FLOOR_PCT,
     would_halt: wouldHalt,
-    correlated_concentration: concentration,
-    max_correlated_same_dir: GOVERNOR_MAX_CORRELATED_SAME_DIR,
-    would_block_concentration: wouldBlockConcentration,
     premium_at_risk: premiumAtRisk,
     max_premium_at_risk: GOVERNOR_MAX_PREMIUM_AT_RISK,
-    would_block_premium_budget: premiumBudgetReason(premiumAtRisk),
     short_gamma_open: shortGammaOpen,
     max_short_gamma_open: GOVERNOR_MAX_SHORT_GAMMA_OPEN,
-    would_block_gamma_budget: gammaBudgetReason(shortGammaOpen),
     time_of_day_label: todSizing.label,
     effective_max_concurrent: todSizing.effective_max_concurrent,
     time_of_day_sizing_factor: todSizing.factor,

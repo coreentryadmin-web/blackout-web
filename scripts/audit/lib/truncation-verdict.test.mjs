@@ -75,6 +75,8 @@ test("the question names the marker and demands a one-word verdict", () => {
   assert.match(q, /TRUNCATED or COMPLETE/);
   assert.match(q, /get_zerodte_record with days=30/);
   assert.match(q, /LAST\s+top-level key/);
+  assert.match(q, /rows_truncated/);
+  assert.match(q, /does NOT end with …\[truncated\]/);
 });
 
 test("the question works for a tool with no args", () => {

@@ -48,3 +48,13 @@ test("printBias combines side + aggressor (call bought = bullish, put bought = b
   assert.equal(printBias({ option_type: "CALL", ask_pct: 50 }), "neutral");
   assert.equal(printBias({ option_type: "CALL", ask_pct: undefined }), "neutral");
 });
+
+test("printBias returns neutral for a typeless/malformed print instead of fabricating a PUT read", () => {
+  // A print with no readable option_type (HELIX-MAP §6) previously fell through the `isCall` false
+  // branch straight into the PUT logic and invented a bullish/bearish label. Mirrors the
+  // `undetermined` guard `flowDirection` already applies for the exact same input shape.
+  assert.equal(printBias({ option_type: null, ask_pct: 80 }), "neutral");
+  assert.equal(printBias({ option_type: undefined, ask_pct: 20 }), "neutral");
+  assert.equal(printBias({ option_type: "", ask_pct: 20 }), "neutral");
+  assert.equal(printBias({ option_type: "WARRANT", ask_pct: 90 }), "neutral");
+});

@@ -143,30 +143,6 @@ export function buildMarketState(input: {
   };
 }
 
-/** Primary discovery origin on a setup → rail key. */
-export function primaryRailFromOrigins(origins: readonly string[] | null | undefined): DiscoveryRail {
-  const set = new Set((origins ?? []).map((o) => o.toUpperCase()));
-  if (set.has("FLOW")) return "FLOW";
-  if (set.has("BREAKOUT")) return "BREAKOUT";
-  if (set.has("PIN")) return "PIN";
-  return "FLOW";
-}
-
-/**
- * Apply market-state rail weight to a candidate score (pure, idempotent).
- * Returns rounded score — used at merge/sort only, never overwrites raw score in DB.
- */
-export function applyRailWeightToScore(
-  score: number,
-  origins: readonly string[] | null | undefined,
-  state: MarketStateSnapshot | null
-): number {
-  if (!state || !Number.isFinite(score)) return score;
-  const rail = primaryRailFromOrigins(origins);
-  const w = state.rail_weights[rail] ?? 1;
-  return Math.round(score * w * 10) / 10;
-}
-
 /** Weighted score for merge ranking when multiple origins present — uses max rail weight. */
 export function weightedScoreForMerge(
   score: number,

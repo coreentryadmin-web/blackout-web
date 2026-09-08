@@ -17,11 +17,13 @@ import {
   helixContribution,
   meridianContribution,
   nighthawkContribution,
+  spxContribution,
   thermalContribution,
   vectorContribution,
 } from "./product-adapters";
 import { canonicalTicker } from "./product-read";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { isSpxTicker } from "@/features/spx/lib/spx-desk-live";
 
 export type ToolExecutor = (name: string, input: Record<string, unknown>) => Promise<unknown>;
 
@@ -38,6 +40,7 @@ const SOURCES: Source[] = [
   { tool: "get_vector_pulse", input: (t) => ({ ticker: t }), adapt: vectorContribution, label: "vector" },
   { tool: "get_earnings", input: (t) => ({ ticker: t }), adapt: meridianContribution, label: "meridian" },
   { tool: "get_zerodte_plays", input: () => ({}), adapt: nighthawkContribution, label: "nighthawk" },
+  { tool: "get_spx_play", input: () => ({}), adapt: spxContribution, label: "spx" },
 ];
 
 export type CrossProductPayload = CrossProductRead & {
@@ -63,11 +66,19 @@ export async function crossProductRead(
   const ticker = canonicalTicker(rawTicker || "SPX") || "SPX";
 
   const settled = await Promise.allSettled(
-    SOURCES.map((s) => execute(s.tool, s.input(ticker)))
+    SOURCES.map((s) => {
+      if (s.label === "spx" && !isSpxTicker(ticker)) {
+        return Promise.resolve(null);
+      }
+      return execute(s.tool, s.input(ticker));
+    })
   );
 
   const contributions = SOURCES.map((s, i) => {
     const r = settled[i];
+    if (s.label === "spx" && !isSpxTicker(ticker)) {
+      return spxContribution(null, ticker);
+    }
     if (r.status === "rejected") {
       const why = r.reason instanceof Error ? r.reason.message : String(r.reason);
       // Naming the tool matters: "thermal unavailable" and "get_helix_thermal_compare threw" send
@@ -78,7 +89,7 @@ export async function crossProductRead(
         missingReason: `${s.tool} failed: ${why.slice(0, 160)}`,
       };
     }
-    return s.adapt(r.value);
+    return s.label === "spx" ? spxContribution(r.value, ticker) : s.adapt(r.value);
   });
 
   const joined = joinProductSignals(ticker, contributions);
@@ -95,6 +106,6 @@ export async function crossProductRead(
         ? `${cov.label}. These products genuinely disagree — report BOTH readings and their evidence. Do not resolve the split, pick a side, or present the larger camp as the answer.`
         : joined.verdict === "insufficient"
           ? `${cov.label}. Too few products reported to cross-check. Say so — do not present one product's read as a cross-product conclusion.`
-          : `${cov.label}. The reporting products agree. State the coverage: an agreement among two is not an agreement among five.`,
+          : `${cov.label}. The reporting products agree. State the coverage: an agreement among two is not an agreement among six.`,
   };
 }

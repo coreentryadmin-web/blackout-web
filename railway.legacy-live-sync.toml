@@ -1,0 +1,23 @@
+# Railway / EventBridge schedule catalog for Legacy live-sync — mark-and-manage open
+# Night Hawk playbook positions for the Chief Trade Alert Bot (TRIM/STC on premium/stock
+# stop/target and banger scale-out). Synced to EventBridge via blackout-infra
+# scripts/sync-cron-schedules.mjs.
+#
+# Wire it up: service Settings -> Config-as-code -> railway.legacy-live-sync.toml (deprecated
+# Railway path) OR provision via blackout-infra EventBridge sync from this file.
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.legacy-live-sync.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/legacy-live-sync"
+# Every 5 min during the UTC band that covers RTH in BOTH EDT and EST. Route applies
+# LEGACY_DISCORD_ALERTS kill-switch + market-hours guards internally.
+cronSchedule = "*/5 11-21 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

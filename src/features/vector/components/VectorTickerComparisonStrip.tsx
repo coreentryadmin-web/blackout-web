@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { useVectorUniverseSnapshot } from "@/features/vector/lib/vector-universe-client";
 import { buildTickerComparisonRows } from "@/features/vector/lib/vector-ticker-comparison";
-import { formatVectorAge, VECTOR_UNIVERSE_STALE_MS } from "@/features/vector/lib/vector-age-format";
+import { formatVectorAge, isVectorUniverseSnapshotStale } from "@/features/vector/lib/vector-age-format";
 
 type Props = {
   activeTicker: string;
@@ -78,7 +78,7 @@ export function VectorTickerComparisonStrip({ activeTicker, onSelect, className 
   if (!rows.length) return null;
 
   const age = formatVectorAge(data.updatedAt, now);
-  const isStale = now != null && data.updatedAt > 0 && now - data.updatedAt >= VECTOR_UNIVERSE_STALE_MS;
+  const isStale = isVectorUniverseSnapshotStale(data.updatedAt, now);
 
   return (
     <div

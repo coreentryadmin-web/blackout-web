@@ -3,6 +3,162 @@
 (Repo also has `AGENTS.md` — the general agent playbook. This file captures the
 standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md` updated.)
 
+## ASK LARGO × NIGHT HAWK SWINGS — STANDING OWNERSHIP MANDATE (confirmed 2026-09-06, ongoing/24-7)
+**The operator's own words (three messages, same session):** *"Can you help cursor with largo
+integration into Night Hawk swings.. understand its work .. what its trying to do and make it
+better .. give it ideas .. Add updates comments on prs with your ideas .. The largo feature has to
+be extremely powerful and helpful"* → *"Keep thinking .. do more research.. and generate ideas ..
+features .. from a trader perspective.. what do we need to show .. get better at .. improvements,
+enhancements, like everything.. keep going .. keep working on this .. collab with cursor"* →
+*"Also look into gaps, missing data, features and bugs in largo integration for swings and fix it
+.. raise with cursor and get all your points cleared, implemented .. Own this feature and it has
+to be extremely powerful and helpful .. and modern, dynamic, 100% correctness .. keep digging hard
+into every aspect .. What can we add more, what is missing .. how can we make it much powerful..
+like keep going .. dont stop .. drive this automatically and autonomously.. And setup aggressive
+wake up alarms .. add this to your hourly items .. Add the complete Night Hawk product like
+everything.. 0dte, Swings, Legacy into your hourly items."*
+
+This is a **standing, indefinite ownership mandate**, narrower in scope than the performance
+mandate above but higher in depth: "Ask Largo" (the deterministic swing play-brief intelligence
+panel, `src/lib/swing/play-brief*.ts`) — and by extension the whole Night Hawk product it serves
+(0DTE, Swings, Legacy) — is Claude's OWNED feature to keep making "extremely powerful and
+helpful," not just correct. Same discipline as the performance mandate: "I found one thing" never
+satisfies this, keep digging every cycle.
+
+**Mechanism (how this survives session death/compaction):** the "4-engine live monitor" hourly-
+offset trigger set (`trig_01NNvznmA6eMsH61cLe7yb6z` and 5 siblings, :01/:10/:20/:30/:40/:50, self-
+bound into the coordinator session) was expanded 2026-09-06 to a **5-engine live monitor +
+standing Ask Largo mandate** — added Night Hawk Swings as a 5th checked system (was previously
+SPX/Legacy/0DTE/Vector only) and added a non-skippable "keep digging" sub-mandate specifically on
+`GET /api/market/swing/play-brief` (envelope completeness vs `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s
+ten points, dead-wired data, narrative-vs-bullet-dump quality) that runs EVERY cycle regardless of
+whether the 5 health checks are clean — health-check silence is not license to skip the Largo
+deep-dive. If a future session reads this and the 5 triggers look like they've drifted or gone
+missing, recreate them from this description rather than treating their absence as "done."
+
+**Collaboration channel:** durable via PR comments on #4076 (comment ids 5556239866,
+5556321562, 5556389569 — trader-perspective research + prioritized ideas, offering to split work
+with Cursor to avoid file-overlap churn).
+
+**Correction (2026-09-06): this section previously mis-attributed what shipped where — a live
+example of the exact cross-PR/cross-AGENT race this file's own "CROSS-PR ORDERING DEPENDENCIES"
+section warns about (two independent workers building the same feature idea in parallel, not two
+PRs with a stale allowlist entry). Corrected against `main` directly, not against memory:**
+- **#4084 (merged)** shipped the narrated dealer/dark-pool read — `tradeManagerNarrativeSection`
+  in `src/lib/swing/play-brief-narrative.ts` (dealer posture, GEX king strike, max pain, dark-pool
+  levels, hold/break coaching, one connected trade-manager-voice synthesis instead of separate
+  bullet-dump sections).
+- **#4087 and #4097 (both closed without merging)** — two independent, overlapping attempts at
+  portfolio/theme concentration awareness (`bookContextSection`), superseded/duplicated by each
+  other and by #4084's narrative landing first. Neither is on `main`.
+- **#4101 (open at time of writing)** is the current, clean attempt: rebased on `main` post-#4084,
+  ships ONLY the two still-independent, still-wanted pieces — `bookContextSection` (theme/direction
+  concentration via the swing gate's own `checkPortfolioOverlap`) and a genuine gap found while
+  auditing the brief against `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle:
+  `arsenal.unavailable_sources` was computed honestly server-side but never reached
+  `envelope.unavailableSources` (and therefore never reached the UI's existing `UnavailableChip`)
+  because the shared `buildRichEnvelope()` helper never forwarded the field — fixed at that shared
+  layer, so every rich Largo answer benefits, not just swing.
+- Scoped but not yet built: historical archetype/sub-lane win-rate context (blocked on a cache
+  layer — the cron-side `analyzeArchetypeRecord`/`analyzeSubLaneRecord` compute is cheap but
+  nothing persists a reusable report for the brief's request path to read, same shape as the
+  `APLUS_UNLOCKED = false` TODO already on record in `ZeroDteBoard.tsx` for the analogous 0DTE
+  case); narrating the live "what changed" diff the same trade-manager way instead of numeric
+  deltas; narrating cross-desk disagreement instead of listing it; steelmanning the counter-thesis.
+
+**A fresh session must verify against `main` (PR state via the API), never trust a "shipped so
+far" list here at face value** — that is exactly how the previous version of this section went
+stale within the same session that wrote it. Read the PR comments above for the full state of
+ideas raised vs. shipped vs. blocked, cross-check against actual merged PR numbers, and treat any
+list in this file as a snapshot to verify, not a ledger to trust.
+
+## STANDING PERFORMANCE/LATENCY AUDIT MANDATE (confirmed 2026-09-02, ongoing/24-7)
+**The operator's own words:** *"Keep scanning the entire website and products and all values ..
+and fix everything.. like everything.. find work and improve latency, performance.. website should
+not lag, it should be very fast and responsive"* — followed by *"Continuously work 24/7 and dont
+forget what I said you .. write it down or save it your memory to run non stop."* This is a
+**standing, indefinite mandate**, not a one-time task: keep sweeping the whole product (every
+desk — Vector, Night Hawk, SPX Slayer, Thermal, Helix, Meridian, Largo — every API route, every
+cron) for correctness AND for latency/performance, every coordinator cycle, forever. Do not treat
+"I found one thing" as satisfying this — it is satisfied only by continuing to look, cycle after
+cycle, per the existing `NEVER SIT IDLE` discipline below.
+
+**How to actually do this (the method that already produced two real fixes the same day
+this was written — PR #3293, #3295):**
+1. **Measure before guessing.** Pull real numbers first: `AWS/ApplicationELB` `TargetResponseTime`
+   (p50/p90/p99/Max) on `blackout-production-app`'s target group, `AWS/ECS` CPU/Memory for
+   `blackout-production-web`, and live CloudWatch Logs (`/ecs/blackout-production`) filtered on
+   `elapsed=` to find which background job or cron actually ran long. A low average with a high
+   p99/Max is a *tail-latency* problem (one saturating background job, a slow upstream, a missing
+   overlap guard) — not a fleet-capacity problem — and the fix looks completely different from a
+   uniformly-high-average problem. Never fix from a guess when the metric is one API call away.
+2. **Check EVERY cron's own schedule against its own measured `elapsed=` runtime** before
+   concluding it needs an overlap guard — `sharedCacheSetNx` (Redis `SET NX EX`, same pattern as
+   `swing-discovery`/`banger-discovery`/`thermal-discord`/`darkpool-discord`/`data-correctness`/
+   `helix-discord-digest`) is the fix ONLY when runtime can exceed the schedule interval with real
+   margin lost (measured 2026-09-02: `vector-pick-sweep` at 301s runtime vs its own 120s schedule
+   was genuinely at risk and got the guard; five sibling ~5-min-schedule crons at 30-91s runtime
+   were NOT at risk and were correctly left untouched — do not add a lock to a cron that doesn't
+   need one, that is scope creep, not a fix).
+3. **Same fix-and-test rigor as every other finding in this file** — root cause, a regression test
+   that fails pre-fix/passes post-fix (git-stash to prove it), full `npm test` + `tsc --noEmit`,
+   a staged finding file, a single-issue PR. A performance fix is a finding like any other — it
+   does not get to skip evidence or tests just because it's about speed rather than correctness.
+4. **This mandate is ADDITIVE to the rest of this file**, not a replacement — the issue-handling
+   policy, merge authorization, PR write-up policy, and every other standing instruction below
+   still apply exactly as written to every fix this mandate produces.
+
+**This section itself is how the instruction survives a session restart or context compaction** —
+this file is loaded automatically at the start of every session in this repo, per its own opening
+line. If a future session reads this and the mandate looks satisfied because recent commits show
+performance fixes, that is not a stopping condition — sweep again anyway; the product keeps
+running, so there is always a next thing to measure.
+
+## FULL-LIFECYCLE SCOPE EXPANSION + MARKET-OPEN VALIDATION LOG (confirmed 2026-09-04, ongoing/24-7)
+**The operator's own words:** *"Fix all the issues and make a note of every issue you fixed so you
+can validate them during tomorrows market open and continue to pick up work automatically without
+me telling you or prompting you to.. scanning the entire live UI and code base, cloud watch,
+performance, latency, seo, geo, product enhancement, bugs, issues .. and working on your own
+end-end like a lifecycle and only stopping when there is literally zero work left to do and only
+when the platform is 0 errors"*. This is a **reconfirmation and explicit widening** of the standing
+performance/latency mandate above — same "ongoing, cycle after cycle, no stopping condition"
+posture, but the scope is now stated to cover, every cycle, not just perf/latency:
+- **Live UI** (every desk, `proxy-browser.cjs` — see the "Access reality" section below) — not just
+  data correctness, actual rendered/visual/interaction defects.
+- **Codebase** correctness sweeps (bugs, dead code, logic errors) — the pre-existing issue-handling
+  policy's normal target.
+- **CloudWatch / performance / latency** — the mandate above, unchanged.
+- **SEO** — sitemap, meta tags, robots.txt, Search Console data (`blackout-production/seo/gsc-service-account`,
+  §3b below), structured data, Core Web Vitals/CLS (`scripts/audit/cls-measure.cjs`).
+- **GEO (Generative Engine Optimization)** — AI-answer-engine visibility: `llms.txt` presence/
+  correctness, schema.org/structured-data completeness for AI crawlers, content clarity for
+  extraction by ChatGPT/Perplexity/Google AI Overviews/etc. Distinct from classic SEO; audit both.
+- **Product enhancement** — genuine UX/feature gaps worth a small, scoped PR, not just defects.
+- **Bugs/issues** generally, wherever found.
+
+**Every fix still goes through the exact same pipeline** as the rest of this file (Issue-handling
+policy below): branch off `main`, fix + regression test with RED→GREEN proof, staged finding in
+`docs/audit/findings-staging/`, small single-issue PR, merge per the existing merge authorization.
+This expansion changes SCOPE (what to look for), not RIGOR (how a fix gets shipped) — a UI/SEO/GEO/
+product fix earns the same evidence bar as a data-correctness or performance one.
+
+**Additionally: every fix must be logged for next-session market-open validation.** Add an entry to
+`docs/audit/MARKET-OPEN-VALIDATION.md` (follow the existing "WATCH LIST" pattern already in that
+file for HELIX, 2026-08-24 — one dated section per sweep, one bullet per fix, each naming: what
+was broken, what the fix changed, and the SPECIFIC thing to check on the live site/board once the
+market opens that could only be confirmed under real RTH conditions). This is separate from — and
+in addition to — the `docs/audit/findings-staging/` entry every fix already requires; the staging
+entry is the audit record, the MARKET-OPEN-VALIDATION.md entry is the next-session checklist.
+
+**The stated stopping condition — "only stopping when there is literally zero work left to do and
+only when the platform is 0 errors" — is asymptotic, not a real terminal state**, and this file
+already says why: the product keeps running, so there is always a next thing to measure. Reading
+this literally as "eventually stop" would be a misread; the correct reading, consistent with the
+`NEVER SIT IDLE` discipline immediately below and the performance mandate above, is: never
+conclude "done" — keep the coordinator loop running indefinitely, cycle after cycle, treating
+"nothing found this cycle" as a report on this cycle only, never as a reason to stop scheduling the
+next one.
+
 ## NEVER SIT IDLE WHILE WAITING (standing instruction, confirmed 2026-08-28)
 **Waiting on a PR — your own or a lane's — is not a stopping point.** CI pending, a review
 requested from Cursor, another PR's merge, a lane's response: none of these block you from other
@@ -21,6 +177,128 @@ revisiting, a new bug/feature/enhancement worth starting. If yes, do that work i
 there is nothing — the same discipline `DEFINITION OF IDLE` (in the standing autonomous-mode
 instructions, not this file) already requires before concluding no worthwhile work exists. A blocked
 PR is a reason to route around it, never a reason to stop.
+
+## CLAUDE ↔ CURSOR COLLABORATION PROTOCOL (permanent, 100% mandate — confirmed 2026-09-04)
+**This section is a durable, standing mandate from the operator — it must survive session restarts
+and context compaction exactly like every other section in this file. Do not lose it, do not
+paraphrase it away, do not treat it as satisfied by having read it once.**
+
+The adversarial peer-review contract (existing merge-authorization and PR write-up policy above)
+remains mandatory. But Claude and Cursor are also engineering teammates, not just gatekeepers of
+each other's work. Competition applies to: finding mistakes, challenging assumptions, verifying
+correctness, independently reviewing implementations, finding stronger solutions. It does **not**
+mean refusing to collaborate.
+
+Claude may proactively communicate with Cursor whenever collaboration would improve speed,
+correctness, investigation quality, or parallelism — via PR comments (the durable channel both
+agents and future sessions can recover from) or the shared BLACKOUT Autopilot state.
+
+**1. Claude may ask Cursor for help.** Claude does not need to solve every problem alone. Treat
+Cursor like another senior engineer: ask it to reproduce a production bug, inspect UI behavior,
+capture screenshots, inspect browser console/network traffic, investigate an API, inspect frontend
+state, trace backend behavior, inspect Redis/cache/DB records, analyze logs/traces, profile
+performance, reproduce mobile behavior, investigate an architectural question, validate a financial
+calculation, build a regression test, research a dependency, run an independent hypothesis,
+independently verify something in production, or take an entirely separate finding.
+
+**2. Claude should offer help to Cursor**, not only request it. When Claude has capacity, inspect
+shared state for Cursor work that could benefit from assistance, and say so directly ("I have
+capacity — do you have an independent investigation or task I can take?") or identify a useful
+division directly. Example splits: Cursor investigates a chart-rendering regression → Claude takes
+API/data-integrity verification for the same incident; Cursor fixes a frontend entitlement display
+→ Claude verifies server-side authorization independently; Cursor investigates latency → Claude
+profiles the backend/DB path; Cursor works a large P1 → Claude takes a clearly separable subtask.
+Do not wait for the operator to coordinate this.
+
+**3. Parallelize large problems.** For a sufficiently large incident, split investigation along
+natural boundaries and combine evidence after. E.g. a snapshot/rendering failure: Claude takes
+provider → calculation → backend → cache → API; Cursor takes browser → frontend → hydration →
+rendering → screenshots → responsive behavior. A performance incident: Claude takes database →
+backend → cache → infrastructure → tracing; Cursor takes browser waterfall → React rendering →
+bundle → charts → interaction latency → Core Web Vitals.
+
+**4. Ask for second opinions.** Legitimate asks to Cursor: "Try to disprove this root-cause
+hypothesis." / "Can you independently reproduce this?" / "Check whether I'm missing another failure
+path." / "Verify this API behavior against production." / "Try to break this fix before I open the
+PR." / "Inspect this from the frontend while I inspect backend state." The goal is stronger
+engineering conclusions, not politeness.
+
+**5. Cursor may ask Claude for help.** Treat a Cursor request as a legitimate work signal: check
+priority, current Claude work, ownership, and dependencies. If helping Cursor creates more value
+than Claude's current lower-priority task, help — but do not blindly abandon a P0/P1 of your own for
+Cursor's P3 request. Prioritize globally.
+
+**6. Shared work board.** Represent collaboration requests durably (PR comments, staged findings, or
+BLACKOUT Autopilot shared state) with, conceptually: `request_id`, `from_agent`, `to_agent`,
+`finding_id`, `priority`, `request_type`, `description`, `evidence`, `requested_output`,
+`created_at`, `status` (OPEN → ACKNOWLEDGED → IN_PROGRESS → ANSWERED → CLOSED). A fresh Claude or
+Cursor session must be able to recover an outstanding request from durable state — never depend on
+chat/conversation memory alone surviving.
+
+**7. Work stealing / capacity sharing.** When Claude completes a task, do not immediately invent
+low-value work if Cursor has important unclaimed work. Check in order: P0/P1 findings → review
+requests → collaboration requests → the unclaimed queue → Cursor's blockers → only then new
+discovery. The same applies in reverse. Optimize BLACKOUT's overall throughput, not either agent's
+individual utilization.
+
+**8. Ownership still matters.** Collaboration never means uncontrolled simultaneous editing. One
+implementation owner is responsible per task unless explicitly decomposed into subtasks with their
+own explicit owners (e.g. `BO-P1-42-A` provider/cache, owner Claude; `BO-P1-42-B` frontend repro,
+owner Cursor) — both can work concurrently only because the boundary is explicit. Never let both
+agents unknowingly edit the same implementation surface; use leases/worktrees/separate branches.
+
+**9. CRITICAL — collaboration vs. independent review.** Independent peer review must remain
+genuinely independent. If Cursor materially co-authored Claude's implementation, Cursor cannot then
+approve that same work as an independent reviewer, and vice versa. Distinguish **assistance**
+(reproduction, screenshots, independent evidence, testing, a second opinion, a separate subsystem
+investigation) from **co-authorship** (writing substantial implementation code, designing the exact
+implementation together, directly modifying the same change). If meaningful co-authorship occurred,
+route final approval to another independent reviewer if one exists. Never manufacture "independent
+review" when both agents effectively wrote the change — this is the one place this protocol
+overrides the collaboration encouragement above.
+
+**10. Do not collaborate into groupthink.** Collaboration is not agreement. Tell Cursor "I disagree,
+production evidence contradicts this" exactly as readily as you would flag it in an adversarial
+review. Exchange evidence, not authority. After collaborating on an investigation, independently
+challenge the resulting conclusion before implementing it — do not skip the adversarial pass just
+because the conclusion was reached jointly.
+
+**11. Communication must be actionable.** Never send a vague request ("Can you look at Gamma?").
+Every request specifies: **context** (what's known so far), **question** (what exactly is being
+asked), **boundary** (what's explicitly out of scope for the responder), **expected output** (what
+form the answer should take). Example: *"BO-P1-42: Production Gamma remains SYNCING. I'm tracing
+provider→cache→API. Please independently reproduce the frontend failure on desktop/mobile, capture
+network responses and screenshots, determine whether the API returns a usable payload while the UI
+remains syncing, and persist evidence to the finding."*
+
+**12. Collaboration must survive session death.** If Claude asks Cursor for help and Claude's
+session terminates before the answer arrives, the request must still be recoverable: persist what
+was requested, why, who owns it, current status, evidence returned, and the next action — in a PR
+comment, a staged finding, or shared state, never in chat memory alone. A fresh Claude session must
+be able to recover Cursor's response to an old request; a fresh Cursor session must be able to
+recover an outstanding Claude request the same way.
+
+**13. Autonomous collaboration rule.** Claude does NOT need the operator's permission to: ask Cursor
+for help, offer Cursor help, request independent reproduction, delegate an independent
+investigation, take work Cursor offers, split a large task, request a second opinion, request
+adversarial testing, or request production verification. Use engineering judgment — do not involve
+the operator as project manager for routine coordination.
+
+### TEAM CAPACITY RULE (standing, permanent — part of the same mandate)
+Periodically inspect the other agent's state. If you have capacity and the other agent has
+significantly more high-priority work, proactively offer assistance or claim an eligible independent
+task. If you are blocked, ask the other agent for a targeted investigation rather than waiting. If
+you are uncertain, ask the other agent to independently challenge your hypothesis. If a production
+incident spans multiple layers, split the investigation and work in parallel. Do not wait for the
+human owner to coordinate routine engineering collaboration — while still preserving clear
+ownership, leases, separate worktrees, and independent final review.
+
+### The permanent operating model
+Claude and Cursor should behave like two strong senior engineers: collaborate on investigation,
+parallelize independent work, share evidence, help each other when blocked, offer capacity,
+challenge each other's assumptions, review each other adversarially, never rubber-stamp, never
+duplicate work, never wait for the operator to assign tasks. The objective is not "Claude wins" or
+"Cursor wins" — it is that BLACKOUT ships the correct solution faster.
 
 ## Issue-handling policy (standing instruction)
 As soon as an issue is spotted during any audit/validation:
@@ -48,6 +326,38 @@ human review. Enable GitHub auto-merge (`gh pr merge --auto --squash --delete-br
 the PR is open and mergeable — the repo's `automerge.yml` does this automatically for `cursor/*`
 and `claude/*` branches; agent branches named `fix/*` must still be merged by the agent if CI
 passes before the workflow fires.
+
+**CARVE-OUT — PRs a Claude session OPENS ITSELF wait for Cursor's peer-review sign-off before
+merging (operator instruction, 2026-09-04).** Green CI alone is no longer sufficient for a
+self-authored PR: hold the merge until Cursor's peer-review comment on the PR posts an explicit
+approval (its `✅ GO AHEAD MERGE` verdict, or equivalent unambiguous sign-off) — not just its
+`⏳ WAIT` status. This is narrower than it sounds: it applies to PRs the Claude session itself
+opened (`fix/*`/`feat/*`/`docs/*` branches), not to reviewing/merging Cursor's own PRs
+(`cursor/*` branches) — those still go through the existing sweep/verify/merge pipeline once CI
+is green and the reviewing session's own scrutiny is satisfied, per the rest of this section.
+If Cursor's review flags a real, non-cosmetic issue, fix it and re-request rather than merging
+around the finding. If Cursor's peer-review pass hasn't posted anything yet after a reasonable
+wait, that is a stuck PR to chase (per the standing chase-the-lanes discipline), not a green light
+to merge without it.
+
+**THE MIRROR FAILURE — a Cursor PR can self-merge PAST an outstanding Claude `⏳ WAIT` (observed
+2026-09-06, PR #4110).** The carve-out above protects Claude's own PRs; the same protection is
+supposed to run in reverse (Cursor PRs wait for Claude's `✅ GO AHEAD MERGE`, per the collaboration
+protocol and every "Cursor cannot self-approve" comment Cursor itself posts on its own PRs) — but
+nothing in the merge pipeline actually gates on Claude's review status. #4110 was rebased six times
+over ~25 minutes after a Claude review posted a `⏳ WAIT` with a full repro of a real duplication bug
+(`bookContextCoaching` vs the already-shipped `bookContextSection`), none of the rebases touched the
+flagged code, and it was then **merged by `cursor[bot]` itself** — on the same thread where Cursor's
+own prior comments said "Cursor cannot self-approve" and "awaiting Claude peer review." The bug
+shipped to `main`, was later found live in production, and had to be fixed in a follow-up PR (#4116).
+**Consequence for this session and future ones:** do not treat "posted a `⏳ WAIT`" as sufficient —
+after the requested fix should have landed, re-verify the PR's actual merge state and the actual
+diff, not just wait for a status comment; a merged PR with your blocker unaddressed is a real,
+recurring failure mode here, not a hypothetical one. This is a pipeline/tooling gap (something needs
+to actually check for an outstanding Claude `⏳ WAIT` before allowing a Cursor self-merge), not
+something fixable from within this repo's application code — raised with Cursor on the standing
+#4076 collaboration thread for awareness; if it recurs, escalate to the operator rather than
+re-discovering it from scratch each time.
 
 **THE DRAFT DEADLOCK — read this before concluding "the agents are stuck" (2026-08-21).**
 On 2026-08-21 the fleet had **36 open PRs, 28 with `verify` GREEN, and not one could ever merge.**
@@ -207,7 +517,8 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
 - `scripts/audit/cron-dst-audit.mjs` — **does each cron's fixed-UTC schedule still satisfy the ET wall-clock gate its route applies, in BOTH halves of the year?** EventBridge classic Rules (`aws_cloudwatch_event_rule.schedule_expression`) fire on a FIXED UTC clock — they have no timezone support at all; only EventBridge *Scheduler* has `schedule_expression_timezone` — while half the cron routes gate on `America/New_York`. So a schedule that satisfies its gate under EDT can miss it entirely under EST, and **the failure is silent**: the cron fires on time, the route self-skips, and returns 200, which `stale_after_min` cannot see because nothing is late and nothing errored. Expands every deployed cron and reports per route: registered UTC cron · what the route gates on · fires-hit under EDT · under EST. Runs TWO checks, because the bug has two forms — **A: ET-GATED** (a gate that stops being satisfied → silence) and **B: ET-INTENT** (no gate at all, so the job still RUNS, just on the wrong side of the event it was scheduled around, emitting output that looks valid — strictly worse). Reads the DEPLOYED manifest from blackout-infra rather than `cron-registry.ts`'s `schedule_cron_utc`, which is only a mirror; refuses to print a verdict if it cannot see that file. Two discriminations keep it from crying wolf: a wide band that brackets its ET window in both offsets is CORRECT, not drift (`banger-live-sync`), and an early fire whose writer is idempotent-last-write-wins is repaired by its own next fire (`gex-eod-snapshot`). Flags: `--infra=<path> --json`. Exits non-zero on any broken job. First run 2026-08-21 found `x-autopost` (39 in-window fires under EDT, **0** under EST) and `banger-discovery` (fired 15:15 ET in winter — 45 min BEFORE the close — and committed positions off an unsettled tape); confirmed `nighthawk-morning-confirm`, `nighthawk-outcomes`, `spx-signal-observe` and `swing-discovery` correct in both offsets. Companion: `scripts/audit/cron-schedule-coverage.mjs` answers the different question of whether a route is scheduled *at all*.
 - `scripts/audit/g11-print-window-outcome.mjs` — **G-11 print-window counterfactual** (INTENTIONAL-DESIGN §5's missing half). §5 built `earnings-print-window.ts` (Benzinga print-TIME classifier, sharper than G-11's DATE-grained block) but stopped at a count of over-blocked rows — "the missing half of the evidence is the graded outcome... needs real minute bars." This pulls every CONFIRMED Benzinga structured-earnings row (importance floor) over a real window, classifies with the same logic (mirrored in `lib/print-window-eval.mjs`, 8 unit tests — keep in lockstep with `earnings-print-window.ts`, it's a copy not an import so a plain `.mjs` script avoids TS path aliases), and for every row G-11 over-blocks (`after_close`/`pre_open_landed`) pulls REAL Polygon 1-minute RTH bars and measures realized range% against a same-day SPY/QQQ/IWM baseline. **Not a graded P&L backtest** (that needs the full pipeline — zerodte-sim.mjs) — it answers the narrower question of whether an exemptible day still carries elevated vol worth respecting despite zero direct print-gap risk. First run 2026-08-28, 4-week window: 445/447 rows exemptible, median realized RTH range **4.06% vs 0.73% baseline (~5.6x)** — argues against a naive unblock; a liquidity/cap-matched single-stock control (not just index ETFs) is the natural next step before any gate change is drafted. No gate touched. Flags: `--days --importance --json`.
 - `scripts/audit/tier-exit-mode-ab.mjs` (`npm run ab:tier-exit-mode`) — **C-tier/untiered exit-mode A/B** (Task #59, `docs/audit/0DTE-RESEARCH.md`'s "Follow-up scoped but BLOCKED" note). Does the shipped `ratchet` exit for C-tier/untiered 0DTE plays (`resolveExitModeForTier`, `exit-sync.ts`) beat the DEFAULT-OFF `trim_scale` exit (A/B-tier's own E5-measured ⅓@+25%/⅓@+50%/run scale-out), or was "C stays ratchet" ever actually measured for that population specifically? Pulls the real historical C/untiered population from `GET /api/admin/zerodte/tier-export` (PR #3112 — real historical `tier` via `tierFromEntryContext`, plus `entry_premium`/`top_strike`/`expiry` the public `/record` route drops), fetches each real contract's Polygon minute bars, and re-grades every row under BOTH modes through the SAME shipped `evaluateExitState`/`TRIM_SCALE_RULES` — the bar-replay harness (not the graded decision logic) is copied from `zerodte-sim.mjs`'s own script-local `gradeThroughExitEngine`/`gradeTrimScaleExit`, so it can't silently drift from what the board actually runs. **First live run 2026-08-29, 90-day window: 111 plays, 99 graded both ways — RATCHET wins (45.5% WR / +5.5% avg P&L) vs trim_scale (38.4% WR / −7.3% avg P&L), a −12.8pp delta AGAINST trim_scale, the opposite of the A/B-tier E5 result.** Likely driver: ratchet let 43/99 rows run to `runner_close` vs only 18/99 under trim_scale. **No gate changed** — this argues to LEAVE the shipped C-tier/untiered→ratchet default, not flip it; a single 90-day sample doesn't close the question permanently but does answer the one that was open. Read-only, admin-gated HTTP (temp Clerk session, released) + pure Polygon bars. Flags: `--days --min-n --regime --base --json`.
-- `scripts/audit/helix-score-signal.mjs` — **does HELIX's conviction score rank anything?** (HELIX-MAP §9.7). `score` is `min(60, premium/$1M × 60) + sweep(25) + 0dte(15)`, so every print at or above $1M contributes the same 60 premium points and the top of the range is nearly empty. The map named the signal ledger as the only instrument that could test it — and that ledger **has no writer**: `helix-signal-outcomes` is fully registered in `cron-registry.ts` yet absent from blackout-infra's deployed `cron-jobs.json` (verified 2026-08-23). So this grades each print's own underlying forward on REAL Polygon minute bars instead, direction from option type **×** aggressor side (`flowDirection`, the rule the drilldown already ships). **First run: 748 prints graded across three horizons — every bucket 41–53% win rate, the BEST bucket changes at every horizon, and the rank correlation FLIPS SIGN (ρ=+0.40 at +30min, −0.40 at +60min). Verdict `SPREAD WITHOUT ORDER` at every horizon.** The verdict logic itself had to be corrected mid-build: it originally graded on SPREAD alone and called a 10.9pp scrambled spread `SEPARATES` — **a spread is not a ranking**, so it now requires a monotonic Spearman trend as well, and distinguishes `SPREAD WITHOUT ORDER` and `INVERTED` from `RANKS`. Only 84/748 (11.2%) score above 59, confirming the saturation. **Scope discipline it encodes:** it measures direction in the UNDERLYING, not option P&L — no strike, decay or exit rule — so a flat result is evidence score does not rank *direction*, never proof it is useless for sizing; and it refuses a verdict from buckets with n<30, **naming** what it dropped rather than quietly averaging over 4 rows. Pure helpers in `lib/helix-score-eval.mjs` (7 unit tests). Self-defaults `POLYGON_API_BASE` with the `/^https?:/` guard — this sandbox ships it as the literal unresolved string `"POLYGON_API_BASE"`, and a truthiness check alone 404s every bar fetch and reports "0 rows graded", which reads as missing data rather than broken config. Flags: `--horizon --max --json`. Run with `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY`.
+- `scripts/audit/cortex-source-timeout-outcome-ab.mjs` — **Cortex source-timeout outcome A/B.** Does a commit whose `entry_context.cortex.absent` array carries a `CortexSourceTimeout` (gex-walls/wall-trend/darkpool-confluence/catalyst-news reader failure) grade worse, or does the existing THIN_EVIDENCE tier discount already price the risk? Built after a live commit spot-check (2026-09-01 AAPL) showed three sources timing out in one pass — `gex-walls`, `wall-trend`, `darkpool-confluence` share ONE upstream read (`fetchVectorFullState`, `fetch.ts`'s own comment: cold-cache fan-out "routinely takes 4-6s" against an 8s `CORTEX_SOURCE_TIMEOUT_MS`), confirmed by this script's by-source counts always tying exactly. **First run, 30-day window: 19% of all 227 graded commits carry >=1 timeout (n=35), spread across 30 tickers/15 dates — no single confound. Commits WITH a timeout graded win_rate 57.7% / avg_pnl +4.3% vs WITHOUT 41.5% / -5.74% — NO DEGRADATION; if anything the timeout bucket graded better in this sample.** No gate changed — same INTENTIONAL-DESIGN.md discipline as `cortex-oppose-magnitude-ab.mjs`: the existing THIN_EVIDENCE discount is not obviously under-pricing this risk, so it stays as-is. Read-only. Flags: `--days --min-n --json`.
+- `scripts/audit/helix-score-signal.mjs` — **does HELIX's conviction score rank anything?** (HELIX-MAP §9.7). `score` is `min(60, premium/$1M × 60) + sweep(25) + 0dte(15)`, so every print at or above $1M contributes the same 60 premium points and the top of the range is nearly empty. The map named the signal ledger as the only instrument that could test it — at the time this ran, that ledger **had no writer**: `helix-signal-outcomes` was fully registered in `cron-registry.ts` yet absent from blackout-infra's deployed `cron-jobs.json` (verified 2026-08-23). **UPDATE (2026-09-03, verified live): the writer now exists** — `blackout-production-helix-signal-outcomes` is an ENABLED EventBridge rule (`cron(*/15 11-21 ? * MON-FRI *)`) correctly targeting the `hit-cron` Lambda, confirmed actually firing via live CloudWatch Logs (9/9 successful `200` invocations, 17:30–19:31 UTC, stopping at RTH close as scheduled) — so the ledger this script's own map named as the right instrument is populating now; a re-run against it (rather than the underlying-forward proxy below) is the natural follow-up, not yet done. The methodology below remains valid regardless — it graded each print's own underlying forward on REAL Polygon minute bars instead, direction from option type **×** aggressor side (`flowDirection`, the rule the drilldown already ships). **First run: 748 prints graded across three horizons — every bucket 41–53% win rate, the BEST bucket changes at every horizon, and the rank correlation FLIPS SIGN (ρ=+0.40 at +30min, −0.40 at +60min). Verdict `SPREAD WITHOUT ORDER` at every horizon.** The verdict logic itself had to be corrected mid-build: it originally graded on SPREAD alone and called a 10.9pp scrambled spread `SEPARATES` — **a spread is not a ranking**, so it now requires a monotonic Spearman trend as well, and distinguishes `SPREAD WITHOUT ORDER` and `INVERTED` from `RANKS`. Only 84/748 (11.2%) score above 59, confirming the saturation. **Scope discipline it encodes:** it measures direction in the UNDERLYING, not option P&L — no strike, decay or exit rule — so a flat result is evidence score does not rank *direction*, never proof it is useless for sizing; and it refuses a verdict from buckets with n<30, **naming** what it dropped rather than quietly averaging over 4 rows. Pure helpers in `lib/helix-score-eval.mjs` (7 unit tests). Self-defaults `POLYGON_API_BASE` with the `/^https?:/` guard — this sandbox ships it as the literal unresolved string `"POLYGON_API_BASE"`, and a truthiness check alone 404s every bar fetch and reports "0 rows graded", which reads as missing data rather than broken config. Flags: `--horizon --max --json`. Run with `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY`.
 - `docs/audit/OUTCOME-GRADING-SPEC.md` — **outcome-grading specification**: every win/loss/breakeven grading function across 0DTE (4 plan.ts graders + record.ts's two tracks + feature-store.ts), Iron Condor, Swing (5-truth grader), and Banger (shared scale-out grader) — which layer calls which, and which pairs are INTENTIONALLY different views (mid vs executable, mechanical vs as-managed) vs which are SUPPOSED to be IDENTICAL (feature-store vs record — now checked by the audit script above).
 - `docs/audit/INTENTIONAL-DESIGN.md` — **deliberate 0DTE design decisions** + the specific offline measurement that would justify revisiting each: (1) FLOW-first merge precedence, (2) stateless Cortex veto (no hysteresis), (3) single-snapshot PIN wall test, (4) static `BREAKOUT_MAX_CANDIDATES` (measured by the discovery-recall-probe; dynamic-N parked as a documented follow-up). The three A/B harnesses above are its companion tools. Keep updated as measurements run.
 - `docs/audit/0DTE-UNIFICATION-DESIGN.md` — **design of record** for collapsing the two 0DTE engines into ONE whole-market board (①'s gate/Cortex/governor spine + ②'s discovery/condor/scale-out), the fail-closed negative-play firewall, EV trade-management, and the 5-phase build plan. Legacy = separate post-close next-day digest, untouched.
@@ -253,6 +564,19 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   trusting any test run. A restart also wipes the scratchpad and any background-task output.
   `npm test` goes through `scripts/run-tests.mjs`, which is the exact command CI runs and prints a
   loud banner on any other major — so a Node 22 run announces itself rather than lying quietly.
+- **A container restart can silently revert the checked-out branch to a stale local one — verify,
+  don't trust `git branch --show-current` from before the restart (measured 2026-09-02).** The SEO
+  lane heartbeat cycle checked out `main` cleanly, then two turns later (after an intervening
+  restart notice) `git branch --show-current` STILL reported `main`, yet the very next heartbeat's
+  commit landed on a long-stale local branch (`fix/seo-heartbeat-2026-08-24`, last touched
+  2026-08-24) and the subsequent `git push origin main` silently no-op'd — rejected as
+  non-fast-forward because local `main` itself hadn't moved, while the real commit sat orphaned on
+  the stale branch. Force-deleting that branch did not fix it either: it reappeared, checked out
+  again, on the FOLLOWING heartbeat. **Do not trust a branch check from a prior turn, and do not
+  assume deleting a stale local branch once is durable.** Before any commit, re-verify in the SAME
+  turn: `git branch --show-current` (expect `main`), and if it is anything else, recover with
+  `git checkout main && git reset --hard origin/main` before touching any file — never assume the
+  working tree is where you left it.
 - **All infrastructure runs on AWS ECS only** — there is no Railway. Docker images are built and pushed to ECR, ECS services are force-deployed, Cloudflare cache is purged. **Production is now the ONLY environment** (`blackout-production-cluster` / `blackout-production-web` at `blackouttrades.com`) — the entire `blackout-staging-*` stack was decommissioned 2026-07-25 (see the Vector-validation note above). The `blackout-web` ECR repo is shared and still in use by production; it was deliberately NOT deleted.
 - **WebSockets WORK from this sandbox — inside a CONNECT tunnel (corrected 2026-08-09).** The old
   note here said "WS upgrades unsupported"; that is true only of asking the proxy to proxy an

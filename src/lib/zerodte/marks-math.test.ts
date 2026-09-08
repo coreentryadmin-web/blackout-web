@@ -23,8 +23,10 @@ import {
   zeroDteExecutableExit,
   zeroDteHalfSpreadFrac,
   zeroDteMidOf,
+  zeroDteSnapshotAgeMs,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
   ZERODTE_MARK_STALE_MS,
+  ZERODTE_MARK_FUTURE_TOLERANCE_MS,
 } from "./marks-math";
 import {
   gradePlanExecutableFromBars,
@@ -292,6 +294,36 @@ test("isZeroDteMarkStale: custom bound is honored", () => {
   assert.equal(isZeroDteMarkStale(now - 1_001, now, 1_000), true);
 });
 
+test("isZeroDteMarkStale: a timestamp far AHEAD of now is stale, not treated as freshest — but ordinary future skew (and the +30s test-fixture headroom this codebase relies on) is not", () => {
+  // A WS tick or REST snapshot timestamped ahead of `now` (clock skew between the quote source
+  // and this server) makes the raw `nowMs - asOfMs` age negative, which never exceeds a positive
+  // staleAfterMs under a plain `>` comparison — so a garbage future-dated mark read as MORE fresh
+  // than a genuinely current one instead of being flagged untrustworthy. The rejection bound is
+  // the separate, more generous ZERODTE_MARK_FUTURE_TOLERANCE_MS (60s), not staleAfterMs (5s) —
+  // exit-sync.test.ts and zerodte-service-marks.test.ts both deliberately future-date a "fresh"
+  // fixture seed by +30s for CI-scheduler-stall immunity, which must stay fresh under this check.
+  const now = 1_000_000;
+  assert.equal(isZeroDteMarkStale(now + 30_000, now), false); // the exact fixture pattern this codebase relies on
+  assert.equal(isZeroDteMarkStale(now + ZERODTE_MARK_FUTURE_TOLERANCE_MS, now), false); // exactly the bound → NOT stale
+  assert.equal(isZeroDteMarkStale(now + (ZERODTE_MARK_FUTURE_TOLERANCE_MS + 1), now), true); // 1ms further ahead → stale
+});
+
+test("zeroDteSnapshotAgeMs: future beyond tolerance is +Infinity, not age 0", () => {
+  const now = 1_000_000;
+  assert.equal(zeroDteSnapshotAgeMs(now - 5_000, now), 5_000);
+  assert.equal(zeroDteSnapshotAgeMs(now + 30_000, now), 0); // fixture headroom
+  assert.equal(zeroDteSnapshotAgeMs(now + ZERODTE_MARK_FUTURE_TOLERANCE_MS + 1, now), Number.POSITIVE_INFINITY);
+  assert.equal(zeroDteSnapshotAgeMs(0, now), Number.POSITIVE_INFINITY);
+});
+
+test("board serve: future as_of beyond tolerance is not servable (isZeroDteMarkStale with board max age)", () => {
+  const now = 1_000_000;
+  const boardMaxAgeMs = 10 * 60_000;
+  const futureAsOf = now + ZERODTE_MARK_FUTURE_TOLERANCE_MS + 60_000;
+  assert.equal(isZeroDteMarkStale(futureAsOf, now, boardMaxAgeMs), true);
+  assert.equal(zeroDteSnapshotAgeMs(futureAsOf, now) > boardMaxAgeMs, true);
+});
+
 // ── closedStopReason: a stopped CLOSED row books the stop P&L, not a frozen last_mark ─
 test("closedStopReason: CLOSED with trough ≤ stop and no prior target → 'stopped'", () => {
   // entry 1.0 → stop 0.5, target 2.0. trough 0.4 crossed the stop; peak never reached target.
@@ -380,6 +412,12 @@ test("advancePlayLatch: OPEN band — a mark within ±10% of entry before the cu
   const play = { entry_premium: 1.0, peak_premium: null, trough_premium: null };
   const out = advancePlayLatch(play, null, 1.05, NOW_OPEN);
   assert.equal(out.status, "OPEN");
+});
+
+test("advancePlayLatch: condor trough below directional stop does NOT latch CLOSED", () => {
+  const play = { entry_premium: 0.6, peak_premium: 0.6, trough_premium: null, is_condor: true };
+  const out = advancePlayLatch(play, null, 0.25, NOW_OPEN);
+  assert.notEqual(out.status, "CLOSED");
 });
 
 // ── executable-side edge cases (crossed/locked/one-sided books, f clamp) ──────────────

@@ -6,6 +6,7 @@ import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot-types";
 import { publicGexTickers } from "@/lib/public-gex-snapshot-types";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 const TICKERS = publicGexTickers();
 
@@ -14,11 +15,31 @@ function fmtLevel(n: number | null): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function fmtAge(asof: string | null): string {
+function fmtAge(snapshot: PublicGexSnapshot, loading: boolean): string {
+  if (loading) return "Refreshing…";
+  if (snapshot.degraded) {
+    const age = snapshot.snapshot_data_age_seconds;
+    if (age != null && age < 3600) return `cached · ${age < 60 ? `${age}s` : `${Math.round(age / 60)}m`} ago`;
+    return "cached read";
+  }
+  if (!snapshot.available) return snapshot.warming_reason === "warming" ? "initializing" : "unavailable";
+  if (snapshot.snapshot_data_age_seconds != null) {
+    const s = snapshot.snapshot_data_age_seconds;
+    if (s < 5) return "live";
+    if (s < 60) return `${s}s ago`;
+    const mins = Math.round(s / 60);
+    if (mins === 1) return "1m ago";
+    return `${mins}m ago`;
+  }
+  return fmtAgeFromAsof(snapshot.asof);
+}
+
+function fmtAgeFromAsof(asof: string | null): string {
   if (!asof) return "warming";
-  const ms = Date.now() - new Date(asof).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "live";
-  const mins = Math.round(ms / 60_000);
+  const ageSec = ageSecFromIso(asof);
+  if (ageSec == null) return "warming";
+  if (ageSec < 5) return "live";
+  const mins = Math.round(ageSec / 60);
   if (mins < 1) return "just now";
   if (mins === 1) return "1m ago";
   return `${mins}m ago`;
@@ -29,10 +50,23 @@ type Props = {
   variant?: "band" | "academy";
 };
 
+function hasLevels(snapshot: PublicGexSnapshot): boolean {
+  return snapshot.spot != null && Boolean(snapshot.available || snapshot.degraded);
+}
+
 export function HomeGammaPromo({ initial, variant = "band" }: Props) {
   const [ticker, setTicker] = useState<PublicGexTicker>(initial.ticker as PublicGexTicker);
   const [snapshot, setSnapshot] = useState<PublicGexSnapshot>(initial);
-  const [loading, setLoading] = useState(false);
+  // Seeded `true` (not `false`) whenever the server-rendered seed has no levels, so the FIRST paint
+  // never shows `initial.read`'s literal copy (e.g. "Snapshot warming up — check back shortly")
+  // as if it were a live verdict. That seed comes from a `revalidate=3600` ISR page that is ALSO
+  // Cloudflare-edge-cached for up to 7200s for anonymous visitors (see HomeLiveDeskStrip.tsx's own
+  // fix note) — so an `unavailable` snapshot captured at one bad ISR regeneration keeps getting
+  // served, unchanged, to every new visitor for up to ~3h. The mount-fetch below corrects it within
+  // one round trip regardless, but until this flag existed the component displayed that frozen
+  // "warming up"/"unavailable" text as fact for the ~1-8s the correction takes — on EVERY load,
+  // directly contradicting the "Live" pill and "Refreshes live every 5 seconds" copy next to it.
+  const [loading, setLoading] = useState(() => !hasLevels(initial));
 
   const loadTicker = useCallback(async (next: PublicGexTicker) => {
     setLoading(true);
@@ -92,6 +126,7 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
     await loadTicker(next);
   }
 
+  const showLevels = hasLevels(snapshot);
   const isLong = snapshot.posture === "long";
   const isShort = snapshot.posture === "short";
   const spot = snapshot.spot;
@@ -112,11 +147,11 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
           <div className="gamma-academy-teaser-head">
             <span className="gamma-live-dot" aria-hidden />
             <span className="gamma-academy-tag">Free live tool</span>
-            <span className="gamma-academy-fresh">{loading ? "Refreshing…" : fmtAge(snapshot.asof)}</span>
+            <span className="gamma-academy-fresh">{fmtAge(snapshot, loading)}</span>
           </div>
           <h3>Gamma flip &amp; wall levels</h3>
           <p>No sign-in — SPX, SPY, QQQ flip, call wall, put wall, and regime.</p>
-          {snapshot.available && (
+          {showLevels && (
             <div className="gamma-academy-levels" aria-hidden>
               <span className="gamma-lvl gamma-lvl-call">{fmtLevel(call)}</span>
               <span className="gamma-lvl gamma-lvl-flip">{fmtLevel(flip)}</span>
@@ -168,7 +203,7 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
                 <span className="gamma-promo-chrome-title">Gamma snapshot · public</span>
                 <span className="gamma-promo-chrome-live">
                   <span className="gamma-live-dot" aria-hidden />
-                  {loading ? "Syncing" : "Live"}
+                  {loading ? "Syncing" : snapshot.degraded ? "Cached" : "Live"}
                 </span>
               </div>
 
@@ -188,16 +223,25 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
                       </button>
                     ))}
                   </div>
-                  <span className="gamma-promo-age">{fmtAge(snapshot.asof)}</span>
+                  <span className="gamma-promo-age">{fmtAge(snapshot, loading)}</span>
                 </div>
 
-                {!snapshot.available ? (
+                {!showLevels ? (
                   <div className="gamma-promo-warm">
                     <span className="gamma-promo-warm-scan" aria-hidden />
-                    <p>{snapshot.read}</p>
+                    <p>
+                      {loading
+                        ? "Loading live gamma levels…"
+                        : snapshot.read}
+                    </p>
                   </div>
                 ) : (
                   <>
+                    {snapshot.degraded ? (
+                      <p className="gamma-promo-degraded" role="status">
+                        {snapshot.degraded_note ?? "Showing last known levels — live refresh temporarily unavailable."}
+                      </p>
+                    ) : null}
                     <div className="gamma-promo-headline">
                       <div>
                         <p className="gamma-promo-kicker">{snapshot.ticker} spot</p>

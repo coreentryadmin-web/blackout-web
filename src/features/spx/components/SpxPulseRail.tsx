@@ -12,8 +12,9 @@
 // construction; where a source is missing the event kind simply doesn't fire (never faked).
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { etClock } from "@/lib/et-clock";
 import { clsx } from "clsx";
+import { etClock } from "@/lib/et-clock";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
 import type { SpxDeskPayload } from "@/lib/api";
 import { voiceSnapshotFromDesk } from "@/lib/bie/spx-live-voice";
@@ -308,7 +309,9 @@ export function SpxPulseRail({ desk, live, focus, onFocusLevel }: Props) {
     void heartbeat; // re-evaluate on the heartbeat tick
     if (desk?.feed_stalled) return true;
     if (polledAt == null) return false;
-    return Date.now() - polledAt > STALE_AFTER_MS;
+    const ageMs = Date.now() - polledAt;
+    if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return true;
+    return ageMs > STALE_AFTER_MS;
   }, [polledAt, desk?.feed_stalled, heartbeat]);
 
   // Regime chip (from the current desk snapshot — always live, grounded).
@@ -332,7 +335,9 @@ export function SpxPulseRail({ desk, live, focus, onFocusLevel }: Props) {
   // after a Tier-1 fires (else it would contradict a fresh pinned regime-flip/wall-break).
   const showQuiet = useMemo(() => {
     void heartbeat; // re-evaluate on the heartbeat tick as a fresh Tier-1 ages out
-    return !lastTier1 || Date.now() - lastTier1.at > QUIET_AFTER_MS;
+    // Event-timing (not tape freshness): clamp skew so a future `at` cannot suppress quiet for hours.
+    const tier1AgeMs = lastTier1 ? Math.max(0, Date.now() - lastTier1.at) : Number.POSITIVE_INFINITY;
+    return !lastTier1 || tier1AgeMs > QUIET_AFTER_MS;
   }, [lastTier1, heartbeat]);
 
   // ── FOCUS MODE — slim vertical strip (effects above keep accumulating) ──

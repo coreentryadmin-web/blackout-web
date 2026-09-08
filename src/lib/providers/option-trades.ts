@@ -33,6 +33,7 @@ import "server-only";
 import { polygonConfigured } from "./config";
 import { polygonRawJson, resolveOptionsRoot } from "./polygon-options-gex";
 import { fetchIndexSnapshot, fetchStockSnapshot } from "./polygon";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { todayEtYmd } from "./spx-session";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { classifyTradeSide } from "./gex-intraday-adjust-core";
@@ -208,7 +209,7 @@ async function spotFor(optionsRoot: string): Promise<number> {
     const { getStockLiveCandle } = await import("@/lib/ws/stock-candle-store");
     const ticker = isIndex ? optionsRoot.replace(/^I:/, "") : optionsRoot;
     const ws = getStockLiveCandle(ticker);
-    if (ws.current && ws.current.close > 0 && Date.now() - ws.updatedAt < 60_000) {
+    if (ws.current && ws.current.close > 0 && isWsUpdatedAtFresh(ws.updatedAt, 60_000)) {
       return ws.current.close;
     }
   } catch { /* fall through to REST */ }

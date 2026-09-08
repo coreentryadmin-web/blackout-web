@@ -74,7 +74,21 @@ export function extractGexShifts(capturedResults: readonly unknown[] | null | un
       shifts.push({ strike, change, direction: direction as GexShift["direction"] });
     }
 
-    if (!shifts.length) continue;
+    if (!shifts.length) {
+      // A genuinely empty `updated_strikes` means the tool RAN and found nothing to report
+      // (gexMatrixChangesForLargo's own "no strike exceeded the change threshold" path) — that
+      // is a real, checked result and must return a table, not null. A NON-empty array where
+      // every row failed to parse is a different, ambiguous case (ran, but we cannot claim
+      // nothing moved) and keeps falling through to the next result / eventual null.
+      if (raw.length === 0) {
+        return {
+          shifts: [],
+          asOf: typeof result.asof === "string" ? result.asof : null,
+          previousAsOf: typeof result.previous_asof === "string" ? result.previous_asof : null,
+        };
+      }
+      continue;
+    }
     shifts.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
 
     return {

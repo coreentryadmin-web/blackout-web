@@ -42,6 +42,17 @@ export type UniverseRowLike = {
   ticker: string;
   /** Upstream observation time in epoch ms. Null when the builder could not date the row. */
   asOf?: number | null;
+  /**
+   * Set once — the first cycle a row is carried without a usable `asOf` — and then carried forward
+   * unchanged on every subsequent cycle it survives undated. Exists because the undated fallback
+   * used to be the SNAPSHOT's own `updatedAt`, which every refresh bumps to `Date.now()` regardless
+   * of which rows it actually refreshed; that made an undated row's computed "age" reset to ~0 on
+   * every cycle it merely survived, so it never aged out (real incident: a ticker whose builder
+   * keeps failing served spot:null/asOf:null indefinitely while a solo per-ticker fetch for the same
+   * ticker returned real, current data). Stamping `undatedSince` once and carrying it gives an
+   * undated row its own honest clock, independent of how often the container timestamp moves.
+   */
+  undatedSince?: number | null;
 };
 
 export type UniverseSnapshotLike<TRow extends UniverseRowLike = UniverseRowLike> = {
@@ -57,6 +68,10 @@ export type UniverseSnapshotLike<TRow extends UniverseRowLike = UniverseRowLike>
  * rebuild cycles rather than lingering all session.
  */
 export const UNIVERSE_ROW_MAX_AGE_MS = 15 * 60 * 1000;
+
+/** A stamp further ahead of `nowMs` than this is untrustworthy (cross-process clock skew writing
+ *  `asOf`/`updatedAt`), not "extra fresh" — same shape as Helix's FUTURE_PRINT_TOLERANCE_MS. */
+const FUTURE_STAMP_TOLERANCE_MS = 60 * 1000;
 
 export type MergeResult<TRow extends UniverseRowLike> = {
   rows: TRow[];
@@ -81,6 +96,11 @@ export function mergeUniverseSnapshot<TRow extends UniverseRowLike>(
   maxAgeMs: number = UNIVERSE_ROW_MAX_AGE_MS
 ): MergeResult<TRow> {
   const byTicker = new Map<string, TRow>();
+  // Every undated ticker's frozen undatedSince, captured before any expiry decision below — so a
+  // ticker the previous-rows loop just expired can still have its TRUE age carried into the
+  // fresh-rows loop, instead of that loop treating a missing byTicker entry as "never seen undated
+  // before" and handing it a brand-new nowMs clock. See the fresh-rows loop's BUG FIX comment.
+  const priorUndatedSince = new Map<string, number>();
   let carried = 0;
   let expired = 0;
 
@@ -88,15 +108,34 @@ export function mergeUniverseSnapshot<TRow extends UniverseRowLike>(
   for (const row of previous?.rows ?? []) {
     const ticker = String(row?.ticker ?? "").trim().toUpperCase();
     if (!ticker) continue;
-    // A row with no usable `asOf` cannot be aged out on evidence. Treat it as expirable against
-    // the snapshot's own timestamp rather than keeping it forever — an undated row that nothing
-    // has refreshed in 15 minutes is exactly as stale as a dated one.
-    const stamp = Number.isFinite(row?.asOf as number) ? (row.asOf as number) : previous?.updatedAt;
-    if (!Number.isFinite(stamp as number) || nowMs - (stamp as number) > maxAgeMs) {
+    const hasAsOf = Number.isFinite(row?.asOf as number);
+    // A row with no usable `asOf` cannot be aged out on evidence from the row itself. The first
+    // time it is seen undated, fall back to the snapshot's own `updatedAt` (a legacy row read
+    // straight from storage has no better evidence of when it went undated) — but FREEZE that as
+    // `undatedSince` on the carried row from then on, rather than re-deriving it from
+    // `previous.updatedAt` every cycle. `updatedAt` is bumped to `Date.now()` on every refresh
+    // regardless of which rows actually refreshed, so re-deriving it each time reset an undated
+    // row's "age" to ~0 every cycle it merely survived and it never aged out.
+    let undatedSince: number | undefined;
+    if (!hasAsOf) {
+      undatedSince = Number.isFinite(row?.undatedSince as number)
+        ? (row.undatedSince as number)
+        : Number.isFinite(previous?.updatedAt as number)
+          ? (previous!.updatedAt as number)
+          : nowMs;
+      priorUndatedSince.set(ticker, undatedSince);
+    }
+    const stamp = hasAsOf ? (row.asOf as number) : (undatedSince as number);
+    const ageMs = nowMs - stamp;
+    // BUG FIX (2026-09-03): a future-dated stamp (cross-process clock skew across the ECS tasks
+    // that write asOf/updatedAt) used to produce a negative age that never exceeded maxAgeMs,
+    // carrying an untrustworthy row forward indefinitely instead of expiring it like any other
+    // row whose age cannot be verified.
+    if (ageMs > maxAgeMs || ageMs < -FUTURE_STAMP_TOLERANCE_MS) {
       expired += 1;
       continue;
     }
-    byTicker.set(ticker, row);
+    byTicker.set(ticker, hasAsOf ? row : ({ ...row, undatedSince } as TRow));
     carried += 1;
   }
 
@@ -105,7 +144,43 @@ export function mergeUniverseSnapshot<TRow extends UniverseRowLike>(
     const ticker = String(row?.ticker ?? "").trim().toUpperCase();
     if (!ticker) continue;
     if (byTicker.has(ticker)) carried -= 1; // it is being refreshed, not carried
-    byTicker.set(ticker, row);
+    const freshHasAsOf = Number.isFinite(row?.asOf as number);
+    if (freshHasAsOf) {
+      byTicker.set(ticker, row);
+      refreshed += 1;
+      continue;
+    }
+    // A freshly built row can itself be undated (the builder failed to date it this cycle too) —
+    // give it the same honest clock so the NEXT cycle, where it becomes `previous`, ages it
+    // correctly instead of treating it as brand-new every time.
+    //
+    // BUG FIX (2026-09-06): a ticker present in fresh EVERY cycle but never resolving an asOf (a
+    // persistently-broken chain fetch, not a dropped-from-the-fan-out one) needed two fixes:
+    //  1. Read priorUndatedSince (captured above, before expiry) rather than the fresh row's own
+    //     undatedSince field, which a brand-new row object from this cycle's build never carries -
+    //     falling straight through to nowMs every cycle and never accumulating any age at all.
+    //  2. Apply the SAME maxAgeMs expiry check the previous-rows loop applies. Fix 1 alone still
+    //     left the ticker immortal: once genuinely stale, the previous-rows loop above drops it
+    //     from byTicker (increments expired, continues) - but this loop still runs unconditionally
+    //     for every row in fresh and would resurrect it right back with whatever clock it
+    //     computed, on every cycle, forever. A row still undated after maxAgeMs must fall out even
+    //     while the fan-out keeps attempting it - reappearing in fresh without new evidence (a
+    //     real asOf) is not evidence the row is still worth serving.
+    //
+    // Whenever this ticker was ALSO undated in previous.rows, both loops compute the exact same
+    // ageMs off the exact same priorUndatedSince stamp and the same nowMs, so they always agree on
+    // expired-or-not - the previous-rows loop above already incremented expired for it if this
+    // branch is reached. A ticker with no previous-rows entry starts at age 0 here and can never
+    // already be expired. So expired is never incremented again below.
+    const undatedSince = Number.isFinite(row?.undatedSince as number)
+      ? (row.undatedSince as number)
+      : priorUndatedSince.get(ticker) ?? nowMs;
+    const ageMs = nowMs - undatedSince;
+    if (ageMs > maxAgeMs || ageMs < -FUTURE_STAMP_TOLERANCE_MS) {
+      refreshed += 1; // still attempted this cycle - it just didn't survive
+      continue;
+    }
+    byTicker.set(ticker, { ...row, undatedSince } as TRow);
     refreshed += 1;
   }
 

@@ -26,6 +26,8 @@ import {
   loadHeatmapCacheReaderOnly,
   scheduleHeatmapBackgroundWarm,
 } from "@/lib/gex-heatmap-member-serve";
+import { isNighthawkContextEditionFresh } from "./nighthawk-context-freshness";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -169,7 +171,7 @@ function withEnrichmentTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> 
 async function getNightHawkContext(ticker: string): Promise<NightHawkContext> {
   const now = Date.now();
   const mem = nighthawkContextMem.get(ticker);
-  if (mem && now - mem.at < NH_CONTEXT_TTL_MS) return mem.value;
+  if (mem && isWsUpdatedAtFresh(mem.at, NH_CONTEXT_TTL_MS, now)) return mem.value;
 
   if (!dbConfigured()) return null;
   try {
@@ -192,9 +194,9 @@ async function getNightHawkContext(ticker: string): Promise<NightHawkContext> {
       nighthawkContextMem.set(ticker, { at: now, value: null });
       return null;
     }
-    // Only surface editions from the last 24 hours.
-    const age = Date.now() - new Date(edition.published_at).getTime();
-    if (age > 24 * 60 * 60 * 1000) {
+    // Only surface editions from the last 24 hours; reject future-dated published_at (cross-process
+    // clock skew from the Night Hawk cron writer) so an untrustworthy stamp cannot pass as fresh.
+    if (!isNighthawkContextEditionFresh(edition.published_at, now)) {
       nighthawkContextMem.set(ticker, { at: now, value: null });
       return null;
     }
@@ -243,13 +245,13 @@ async function getOverlays(
 ): Promise<{ overlays: GexHeatmapOverlays; at: number | null }> {
   const now = Date.now();
   const mem = overlayMem.get(ticker);
-  if (mem && now - mem.at < OVERLAY_TTL_MS) return { overlays: mem.overlays, at: mem.at };
+  if (mem && isWsUpdatedAtFresh(mem.at, OVERLAY_TTL_MS, now)) return { overlays: mem.overlays, at: mem.at };
 
   try {
     const hit = await sharedCacheGet<{ at: number; overlays: GexHeatmapOverlays }>(
       `gex-overlay:${ticker}`
     );
-    if (hit && now - hit.at < OVERLAY_TTL_MS) {
+    if (hit && isWsUpdatedAtFresh(hit.at, OVERLAY_TTL_MS, now)) {
       overlayMem.set(ticker, hit);
       return { overlays: hit.overlays, at: hit.at };
     }

@@ -3,6 +3,7 @@ import { resolveSpotFromUwStockState } from "@/lib/providers/spot-fallback";
 import { INDEX_FEED_STALL_MS } from "@/lib/ws/polygon-socket";
 import { UW_SOCKET_STALL_MS } from "@/lib/ws/uw-socket-stall";
 import { OPTION_MARK_FRESH_MS } from "@/lib/ws/options-socket";
+import { isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "@/lib/ws/timestamp-freshness";
 import type { OptionMark } from "@/lib/ws/options-socket";
 
 const POLYGON_SNAPSHOT_KEY = "spx:pulse:snapshot";
@@ -14,13 +15,30 @@ const OPTIONS_MARK_PREFIX = "nw:optmark:";
 /** RTH liveness window for cluster heartbeats (matches admin UW channel silence threshold). */
 const UW_CLUSTER_LIVE_MS = 120_000;
 const POLYGON_CLUSTER_LIVE_MS = 30_000;
+/** Ordinary clock skew — a future cluster `updatedAt` must not read as infinitely fresh. */
+const CLUSTER_SPOT_FUTURE_TOLERANCE_MS = 5_000;
 
-type IndexSnapshot = Record<
-  string,
-  { price?: number; change_pct?: number; updatedAt?: number; open_source?: string }
->;
+export type ClusterIndexSpot = { price: number; change_pct: number | null };
 
-export type ClusterIndexSpot = { price: number; change_pct: number };
+type IndexSnapshotEntry = {
+  price?: number;
+  change_pct?: number | null;
+  updatedAt?: number;
+  open_source?: string;
+};
+
+type IndexSnapshot = Record<string, IndexSnapshotEntry>;
+
+/**
+ * Cluster snapshot change% is only trustworthy when the ingest leader seeded a REST anchor
+ * (`open_source === "rest"`). ws-bar anchors measure against a mid-session bar open — same guard
+ * as liveWsIndexSpot / mergeWsIndexSnapshots on the SPX desk.
+ */
+export function clusterIndexSpotChangePct(entry: IndexSnapshotEntry): number | null {
+  if (entry.open_source !== "rest") return null;
+  const changePct = Number(entry.change_pct);
+  return Number.isFinite(changePct) ? changePct : null;
+}
 
 export type UwClusterHealth = {
   is_leader: boolean;
@@ -44,12 +62,12 @@ export function buildUwClusterHealth(input: {
 }): UwClusterHealth {
   const now = input.now ?? Date.now();
   const at = input.cluster_last_message_at;
-  const age = at != null ? Math.max(0, now - at) : null;
+  const age = at != null ? wsUpdatedAtAgeMs(at, now) : null;
   return {
     is_leader: input.is_leader,
     cluster_last_message_at: at,
     cluster_last_message_age_ms: age,
-    cluster_live: age != null && age <= UW_CLUSTER_LIVE_MS,
+    cluster_live: at != null && isWsUpdatedAtFresh(at, UW_CLUSTER_LIVE_MS, now),
   };
 }
 
@@ -67,11 +85,15 @@ export async function readClusterIndexSpot(
       const snap = JSON.parse(raw) as IndexSnapshot;
       const entry = snap[sym];
       const price = entry?.price;
-      if (entry && price != null && price > 0 && entry.updatedAt && now - entry.updatedAt < maxAgeMs) {
-        return {
-          price,
-          change_pct: Number.isFinite(entry.change_pct) ? Number(entry.change_pct) : 0,
-        };
+      const updatedAt = entry?.updatedAt;
+      if (entry && price != null && price > 0 && updatedAt) {
+        const ageMs = now - updatedAt;
+        if (ageMs >= -CLUSTER_SPOT_FUTURE_TOLERANCE_MS && ageMs < maxAgeMs) {
+          return {
+            price,
+            change_pct: clusterIndexSpotChangePct(entry),
+          };
+        }
       }
     }
   } catch {
@@ -145,8 +167,9 @@ export async function readPolygonClusterHealth(
     }
   }
 
-  const age = updatedAt != null ? Math.max(0, now - updatedAt) : null;
-  const cluster_live = age != null && age <= POLYGON_CLUSTER_LIVE_MS;
+  const age = updatedAt != null ? wsUpdatedAtAgeMs(updatedAt, now) : null;
+  const cluster_live =
+    updatedAt != null && isWsUpdatedAtFresh(updatedAt, POLYGON_CLUSTER_LIVE_MS, now);
 
   return {
     is_leader,
@@ -241,6 +264,22 @@ export type OptionsClusterHealth = {
   detail: string;
 };
 
+/** Youngest age among option marks that pass the shared WS freshness gate — null when none qualify. */
+export function youngestFreshOptionMarkAgeMs(
+  markTimestamps: number[],
+  freshMs: number = OPTION_MARK_FRESH_MS,
+  now = Date.now()
+): number | null {
+  let youngest: number | null = null;
+  for (const ts of markTimestamps) {
+    if (typeof ts !== "number" || ts <= 0) continue;
+    if (!isWsUpdatedAtFresh(ts, freshMs, now)) continue;
+    const age = wsUpdatedAtAgeMs(ts, now);
+    if (youngest == null || age < youngest) youngest = age;
+  }
+  return youngest;
+}
+
 /** Web-tier probe: ingest worker owns the options WS; followers check Redis marks / leader lock. */
 export async function readOptionsClusterHealth(now = Date.now()): Promise<OptionsClusterHealth> {
   let leader_present = false;
@@ -266,21 +305,20 @@ export async function readOptionsClusterHealth(now = Date.now()): Promise<Option
         .scan;
       if (typeof scan === "function") {
         const [, keys] = await scan(0, "MATCH", `${OPTIONS_MARK_PREFIX}*`, "COUNT", "20");
+        const markTimestamps: number[] = [];
         for (const key of keys ?? []) {
           const raw = await redis.get(key);
           if (!raw) continue;
           try {
             const mark = JSON.parse(raw) as OptionMark;
             if (typeof mark.ts === "number" && mark.ts > 0) {
-              const age = Math.max(0, now - mark.ts);
-              if (newest_mark_age_ms == null || age < newest_mark_age_ms) {
-                newest_mark_age_ms = age;
-              }
+              markTimestamps.push(mark.ts);
             }
           } catch {
             /* skip malformed */
           }
         }
+        newest_mark_age_ms = youngestFreshOptionMarkAgeMs(markTimestamps, OPTION_MARK_FRESH_MS, now);
       }
     } catch {
       /* mark scan optional — leader lock is the primary web-tier signal */

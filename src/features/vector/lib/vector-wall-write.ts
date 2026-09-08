@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { appendSessionWallSample } from "./vector-wall-persist";
 import type { VectorDteHorizon } from "./vector-dte-horizon";
 import type { WallHistorySample } from "./vector-wall-history";
@@ -147,7 +148,7 @@ export function persistWallSampleDebounced(
   const bucket = sample.time;
   const key = horizon === "all" ? ticker : `${ticker}::${horizon}`;
   const last = lastPersistByTicker.get(key);
-  if (last && last.bucket === bucket && now - last.at < 2_000) return;
+  if (last && last.bucket === bucket && isWsUpdatedAtFresh(last.at, 2_000, now)) return;
   lastPersistByTicker.set(key, { bucket, at: now });
   void writeWallHistorySample({
     source: "sse-hub",

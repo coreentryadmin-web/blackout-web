@@ -212,11 +212,28 @@ async function buildSpxSlayerPrompts(): Promise<SlashPrompt[]> {
   const out: SlashPrompt[] = [];
   const { marketPlatform } = await import("@/lib/platform");
   const { helixThermalCompareForLargo } = await import("@/lib/largo/helix-thermal-compare");
+  const { spxDeskConvergenceForLargo } = await import("@/lib/largo/spx-desk-convergence");
 
-  const [play, compare] = await Promise.all([
+  const [play, compare, convergence] = await Promise.all([
     marketPlatform.spx.getSpxPlayState().catch(() => null),
     helixThermalCompareForLargo("SPX").catch(() => null),
+    spxDeskConvergenceForLargo().catch(() => null),
   ]);
+
+  const alignment = (convergence as { alignment?: string; slayer_bias?: string; vector_bias?: string } | null)
+    ?.alignment;
+  if (alignment) {
+    const conv = convergence as { slayer_bias?: string; vector_bias?: string };
+    pushUnique(out, {
+      id: "spx-vector-slayer-alignment",
+      label: "Vector vs Slayer",
+      live: [conv.vector_bias, "vs", conv.slayer_bias, alignment].filter(Boolean).join(" · "),
+      hint: "Suggested play (Vector) vs desk execution (Slayer)",
+      question:
+        "Are Vector's suggested SPX play and Slayer desk execution aligned right now? Summarize both and say which layer is suggestion vs commit.",
+      rank: 5,
+    });
+  }
 
   const phase = (play as { phase?: string; action?: string; grade?: string } | null)?.phase;
   const action = (play as { action?: string } | null)?.action;
@@ -300,7 +317,11 @@ async function buildNighthawkPrompts(): Promise<SlashPrompt[]> {
 async function buildVectorPrompts(): Promise<SlashPrompt[]> {
   const out: SlashPrompt[] = [];
   const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
-  const state = await fetchVectorFullState("SPX").catch(() => null);
+  // Explicit "all": this flip/regime preview is what a member sees BEFORE asking a question,
+  // and it needs to match whatever SPX Slayer/Thermal would report for the same instant — the
+  // implicit default ("0dte") scopes gammaFlip to today's expiries only, which can genuinely
+  // differ from the canonical all-expiry flip the rest of the desk quotes.
+  const state = await fetchVectorFullState("SPX", "all").catch(() => null);
 
   if (state?.spot != null) {
     pushUnique(out, {

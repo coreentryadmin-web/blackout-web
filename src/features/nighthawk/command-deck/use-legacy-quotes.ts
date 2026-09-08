@@ -160,16 +160,6 @@ export function overlayLegacyQuotes(
     const distTarget = target != null ? ((target - q.price) / q.price * 100).toFixed(1) : null;
     const distStop = stop != null ? ((stop - q.price) / q.price * 100).toFixed(1) : null;
 
-    const stockNote = [
-      `${p.ticker} $${q.price.toFixed(2)} (${q.changePct >= 0 ? "+" : ""}${q.changePct.toFixed(1)}%)`,
-      distTarget != null ? `target ${Number(distTarget) >= 0 ? "+" : ""}${distTarget}%` : null,
-      distStop != null ? `stop ${Number(distStop) >= 0 ? "+" : ""}${distStop}%` : null,
-    ].filter(Boolean).join(" · ");
-
-    const enrichedRecNote = p.recNote
-      ? `${p.recNote} — ${stockNote}`
-      : stockNote;
-
     // STOCK-level move: how far the UNDERLYING travelled from the entry BAND MIDPOINT, in the
     // play's direction. This is NOT the position's P&L — a Legacy play is an OPTION, and an
     // option's return is nothing like its underlying's.
@@ -186,9 +176,9 @@ export function overlayLegacyQuotes(
       : null;
 
     // Dynamic recommendation: when the stock breaches stop or target, override the static
-    // morning-confirmation recommendation so the manage tab gives real-time guidance.
+    // morning-confirmation recommendation so the detail panel gives real-time guidance.
     let recommendation = p.recommendation;
-    let recNote = enrichedRecNote;
+    let recNote = p.recNote;
     if (target != null && stop != null && p.status !== "CLOSED" && p.status !== "SKIP") {
       const atStop = isLong ? q.price <= stop : q.price >= stop;
       const atTarget = isLong ? q.price >= target : q.price <= target;

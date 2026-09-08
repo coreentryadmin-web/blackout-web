@@ -4,6 +4,7 @@ import {
   HELIX_STRIKE_HITS_WINDOW_MS,
   HELIX_TOP_PRINTS_LIMIT,
 } from "@/features/helix/lib/helix-strike-leaders";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 
 export { HELIX_TOP_PRINTS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 // Root cause (2026-08-01 Helix audit): this was 5, but the ingest floor (UW_FLOW_MIN_PREMIUM,
@@ -27,7 +28,11 @@ function alertsInWindow(
 ): FlowAlert[] {
   return alerts.filter((a) => {
     const ms = flowEventTimeMs(a);
-    return ms != null && nowMs - ms <= windowMs;
+    // signalWindowAgeMs rejects a future-dated print rather than letting a negative age slip
+    // under `<= windowMs` and read as "in window" — inflates the ranked pool and can falsely
+    // clear sessionFallback (which is supposed to mean "no real recent print").
+    const age = signalWindowAgeMs(ms, nowMs);
+    return age != null && age <= windowMs;
   });
 }
 

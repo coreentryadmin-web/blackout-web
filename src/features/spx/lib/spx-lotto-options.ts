@@ -5,6 +5,7 @@ import { todayEtYmd } from "@/lib/providers/spx-session";
 import { playLottoChainMaxSpreadPct, playLottoTargetPts } from "@/features/spx/lib/spx-play-config";
 import type { SpxPlayDirection } from "@/features/spx/lib/spx-signals";
 import type { OptionTicket } from "@/features/spx/lib/spx-play-options";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const BASE = polygonRestBase();
 const KEY = polygonRestApiKey();
@@ -139,7 +140,7 @@ export async function buildLottoOptionTicket(
     lottoTicketCache &&
     lottoTicketCache.date === today &&
     lottoTicketCache.vixBucket === currentVixBucket &&
-    now - lottoTicketCache.at < 60_000 &&
+    isWsUpdatedAtFresh(lottoTicketCache.at, 60_000, now) &&
     Math.abs(lottoTicketCache.spot - spot) < 8 &&
     lottoTicketCache.dir === direction
   ) {

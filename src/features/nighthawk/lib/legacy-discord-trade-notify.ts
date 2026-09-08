@@ -1,0 +1,401 @@
+/**
+ * Push Legacy (Night Hawk evening playbook) plays into the Chief Trade Alert Bot —
+ * same BTO/STC embed format and FIFO PnL as 0DTE Command and manual desk entries.
+ *
+ * Hooks:
+ *   - Edition publish → BTO for every ranked play with a parseable option contract
+ *   - legacy-live-sync cron → TRIM/STC on premium + stock stop/target (plan) or scale-out rule
+ *   - Morning INVALIDATED → STC (clears virtual book when pre-market pulls a play)
+ *   - Outcomes target/stop → STC at real option session mark (Polygon bar, heuristic fallback)
+ *
+ * Fire-and-forget: never throws into edition/morning/outcomes crons.
+ */
+import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
+import type { LegacyDiscordLiveRow, NighthawkPlayOutcomeRow } from "@/lib/db";
+import { parseOccSymbol } from "@/lib/largo/core/entities";
+import type { LegacyPublishFieldSource } from "@/features/nighthawk/lib/legacy-publish-fields";
+import { legacyPublishFieldsFrom } from "@/features/nighthawk/lib/legacy-publish-fields";
+import { parseOptionsContract } from "@/features/nighthawk/lib/option-contract-parse";
+import {
+  chiefTradeVirtualLots,
+  formatZeroDteExpiry,
+  formatZeroDteStrike,
+  postChiefTrade,
+  type BuildTradePayloadOpts,
+  type ChiefTradePayload,
+} from "@/lib/zerodte/discord-trade-notify";
+
+export type LegacyTradeDiscordInput = {
+  edition_for: string;
+  ticker: string;
+  direction: "long" | "short";
+  top_strike: number;
+  expiry: string;
+  entry_premium: number;
+  options_play?: string | null;
+  last_mark?: number | null;
+  trims_taken?: number;
+};
+
+export function legacyDiscordAlertsEnabled(): boolean {
+  const raw = process.env.LEGACY_DISCORD_ALERTS?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+/** Legacy desk channel — separate from 0DTE Command (CHIEF_TRADE_CHANNEL_ID on the bot). */
+export function legacyChiefTradeChannelId(): string | null {
+  const raw = process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID?.trim();
+  return raw || null;
+}
+
+function legacyAuthorName(): string {
+  return process.env.LEGACY_DISCORD_AUTHOR_NAME?.trim() || "night-hawk-legacy";
+}
+
+/** Map options_play side (+ play direction fallback) → Chief Trade long/short strike suffix. */
+export function legacyOptionDirection(
+  play: Pick<PlaybookPlay, "direction" | "options_play">
+): "long" | "short" | null {
+  const parsed = parseOptionsContract(play.options_play ?? "");
+  if (parsed?.side === "call") return "long";
+  if (parsed?.side === "put") return "short";
+  const dir = String(play.direction ?? "LONG").toUpperCase();
+  if (dir.includes("SHORT")) return "short";
+  if (dir.includes("LONG")) return "long";
+  return null;
+}
+
+export function legacyInputFromPlaybookPlay(
+  editionFor: string,
+  play: PlaybookPlay
+): LegacyTradeDiscordInput | null {
+  const parsed = parseOptionsContract(play.options_play ?? "");
+  if (!parsed?.expiryYmd || !Number.isFinite(parsed.strike) || parsed.strike <= 0) return null;
+
+  const premium = play.entry_premium;
+  if (premium == null || !Number.isFinite(premium) || premium <= 0) return null;
+
+  const direction = legacyOptionDirection(play);
+  if (!direction) return null;
+
+  return {
+    edition_for: editionFor,
+    ticker: play.ticker.toUpperCase(),
+    direction,
+    top_strike: parsed.strike,
+    expiry: parsed.expiryYmd,
+    entry_premium: premium,
+    options_play: play.options_play,
+  };
+}
+
+/** Live-sync row — uses resolved contract fields from fetchLegacyDiscordLiveRows (not publish_context alone). */
+export function legacyInputFromLiveRow(row: LegacyDiscordLiveRow): LegacyTradeDiscordInput | null {
+  const fromPublish = legacyInputFromOutcomeRow(row, {
+    options_play: row.options_play,
+    entry_premium: row.entry_premium,
+    exit_style: row.exit_style,
+  });
+  if (fromPublish) return fromPublish;
+
+  const parsed = parseOccSymbol(row.contract_occ);
+  if (!parsed) return null;
+
+  const direction =
+    parsed.right === "P"
+      ? "short"
+      : parsed.right === "C"
+        ? "long"
+        : row.direction === "SHORT"
+          ? "short"
+          : "long";
+
+  return {
+    edition_for: row.edition_for,
+    ticker: row.ticker.toUpperCase(),
+    direction,
+    top_strike: parsed.strike,
+    expiry: parsed.expiry,
+    entry_premium: row.entry_premium,
+    options_play: row.options_play,
+  };
+}
+
+export function legacyInputFromOutcomeRow(
+  row: NighthawkPlayOutcomeRow,
+  editionPlay?: LegacyPublishFieldSource["editionPlay"]
+): LegacyTradeDiscordInput | null {
+  const { options_play: optionsPlay, entry_premium: entryPremium } = legacyPublishFieldsFrom({
+    publish_context: row.publish_context as Record<string, unknown> | null | undefined,
+    editionPlay,
+  });
+  if (!optionsPlay || entryPremium == null) return null;
+
+  const parsed = parseOptionsContract(optionsPlay);
+  if (!parsed?.expiryYmd || !Number.isFinite(parsed.strike) || parsed.strike <= 0) return null;
+
+  const direction =
+    parsed.side === "put"
+      ? "short"
+      : parsed.side === "call"
+        ? "long"
+        : row.direction === "SHORT"
+          ? "short"
+          : "long";
+
+  return {
+    edition_for: row.edition_for,
+    ticker: row.ticker.toUpperCase(),
+    direction,
+    top_strike: parsed.strike,
+    expiry: parsed.expiryYmd,
+    entry_premium: entryPremium,
+    options_play: optionsPlay,
+  };
+}
+
+export function buildLegacyTradePayload(
+  row: LegacyTradeDiscordInput,
+  action: "BTO" | "STC",
+  price: number,
+  opts: BuildTradePayloadOpts = {}
+): ChiefTradePayload | null {
+  const strike = formatZeroDteStrike(row.top_strike, row.direction);
+  const expiry = formatZeroDteExpiry(row.expiry);
+  if (!strike || !expiry || !Number.isFinite(price) || price <= 0) return null;
+
+  const ticker = row.ticker.toUpperCase();
+  const virtualLots = chiefTradeVirtualLots();
+  const trimmed = row.trims_taken ?? 0;
+
+  let qty = opts.qty ?? (action === "BTO" ? virtualLots : Math.max(1, virtualLots - trimmed));
+  qty = Math.max(1, Math.floor(qty));
+
+  const suffix = opts.idempotencySuffix ?? action.toLowerCase();
+
+  const channelId = legacyChiefTradeChannelId();
+  return {
+    action,
+    qty,
+    ticker,
+    strike,
+    expiry,
+    price,
+    idempotency_key: `legacy:${row.edition_for}:${ticker}:${suffix}`,
+    author_name: legacyAuthorName(),
+    ...(channelId ? { channel_id: channelId } : {}),
+  };
+}
+
+/** Rough option exit fallback when no live/session mark is available. */
+export function legacyOutcomeExitPremium(
+  entryPremium: number,
+  outcome: "target" | "stop" | "open" | "ambiguous" | "unfilled"
+): number {
+  if (outcome === "target") return Number((entryPremium * 1.35).toFixed(2));
+  if (outcome === "stop") return Number((entryPremium * 0.65).toFixed(2));
+  return entryPremium;
+}
+
+/** Fetch the option session close mark for EOD grade / STC. Falls back to heuristic. */
+export async function resolveLegacyOutcomeExitPremium(
+  input: LegacyTradeDiscordInput,
+  outcome: "target" | "stop" | "open" | "ambiguous" | "unfilled",
+  sessionDate: string
+): Promise<number> {
+  const fallback = legacyOutcomeExitPremium(input.entry_premium, outcome);
+  if (!input.options_play) return fallback;
+
+  try {
+    const { resolveLegacyPlayOcc } = await import("@/features/nighthawk/lib/legacy-play-contract");
+    const occ = resolveLegacyPlayOcc(input.ticker, input.options_play);
+    if (!occ) return fallback;
+
+    const { fetchPolygonOptionBars } = await import("@/lib/providers/polygon-largo");
+    const bars = await fetchPolygonOptionBars(occ, 1, "day", sessionDate, sessionDate, "5");
+    const close = bars[bars.length - 1]?.c;
+    if (close != null && Number.isFinite(close) && close > 0) {
+      return Number(close.toFixed(2));
+    }
+
+    const { fetchLegacyOptionMarksServer } = await import(
+      "@/features/nighthawk/lib/legacy-option-marks-server"
+    );
+    const marks = await fetchLegacyOptionMarksServer([occ], { includeStale: true });
+    const live = marks.get(occ.toUpperCase())?.mark;
+    if (live != null && Number.isFinite(live) && live > 0) {
+      return Number(live.toFixed(2));
+    }
+  } catch {
+    // fail-soft — heuristic below
+  }
+  return fallback;
+}
+
+/** Edition publish → BTO every ranked play with a valid option contract. */
+export async function notifyLegacyEditionPlays(
+  editionFor: string,
+  plays: PlaybookPlay[]
+): Promise<{ posted: number; skipped: number }> {
+  if (!legacyDiscordAlertsEnabled()) return { posted: 0, skipped: plays.length };
+
+  const { fetchNighthawkPlayOutcomeId, updateLegacyDiscordLiveState } = await import("@/lib/db");
+
+  let posted = 0;
+  let skipped = 0;
+  for (const play of plays) {
+    const ok = await notifyLegacyTradeOpen(editionFor, play);
+    if (ok) {
+      posted += 1;
+      const outcomeId = await fetchNighthawkPlayOutcomeId(editionFor, play.ticker);
+      if (outcomeId != null) {
+        const premium = play.entry_premium;
+        await updateLegacyDiscordLiveState(outcomeId, {
+          btoPosted: true,
+          mark: premium ?? undefined,
+          peakPremium: premium ?? undefined,
+          troughPremium: premium ?? undefined,
+          lastAction: "BTO",
+        }).catch(() => undefined);
+      }
+    } else {
+      skipped += 1;
+    }
+  }
+  return { posted, skipped };
+}
+
+/** BTO from a resolved LegacyTradeDiscordInput (outcome row / backfill path). */
+export async function notifyLegacyBtoFromInput(input: LegacyTradeDiscordInput): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  const payload = buildLegacyTradePayload(input, "BTO", input.entry_premium);
+  if (!payload) return false;
+  return postChiefTrade(payload);
+}
+
+export type LegacyDiscordBtoBackfillRow = {
+  id: number;
+  discord_live_state?: { bto_posted?: boolean } | null;
+};
+
+/** Post missing BTO embeds for open rows (e.g. edition published before alerts were live). */
+export async function ensureLegacyDiscordBtos<T extends LegacyDiscordBtoBackfillRow>(
+  rows: T[],
+  inputForRow: (row: T) => LegacyTradeDiscordInput | null,
+  markPosted: (row: T) => Promise<void>
+): Promise<{ bto_posted: number; bto_skipped: number }> {
+  if (!legacyDiscordAlertsEnabled()) {
+    return { bto_posted: 0, bto_skipped: rows.length };
+  }
+
+  let bto_posted = 0;
+  let bto_skipped = 0;
+  for (const row of rows) {
+    if (row.discord_live_state?.bto_posted) {
+      bto_skipped += 1;
+      continue;
+    }
+    const input = inputForRow(row);
+    if (!input) {
+      bto_skipped += 1;
+      continue;
+    }
+    const ok = await notifyLegacyBtoFromInput(input);
+    if (!ok) {
+      bto_skipped += 1;
+      continue;
+    }
+    await markPosted(row);
+    bto_posted += 1;
+  }
+  return { bto_posted, bto_skipped };
+}
+
+/** Single play BTO at publish / confirm. */
+export async function notifyLegacyTradeOpen(
+  editionFor: string,
+  play: PlaybookPlay
+): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  const input = legacyInputFromPlaybookPlay(editionFor, play);
+  if (!input) return false;
+  const payload = buildLegacyTradePayload(input, "BTO", input.entry_premium);
+  if (!payload) return false;
+  return postChiefTrade(payload);
+}
+
+/** trim_scale tranche banked → partial STC (only when CHIEF_TRADE_VIRTUAL_LOTS > 1). */
+export async function notifyLegacyTradeTrim(
+  input: LegacyTradeDiscordInput,
+  trimIndex: number,
+  trimPrice?: number | null
+): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  if (chiefTradeVirtualLots() <= 1) return false;
+  const price = trimPrice ?? input.last_mark;
+  if (price == null || !Number.isFinite(price) || price <= 0) return false;
+  const payload = buildLegacyTradePayload(input, "STC", price, {
+    qty: 1,
+    idempotencySuffix: `trim:${trimIndex}`,
+  });
+  if (!payload) return false;
+  return postChiefTrade(payload);
+}
+
+/** Ratchet / first TRIM latch → bank one virtual lot when lots ≥ 2. */
+export async function notifyLegacyTradeTrimLatch(
+  input: LegacyTradeDiscordInput,
+  trimPrice?: number | null
+): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  if (chiefTradeVirtualLots() < 2) return false;
+  if ((input.trims_taken ?? 0) > 0) return false;
+  return notifyLegacyTradeTrim(input, 1, trimPrice);
+}
+
+/** Scale-out partial at 2× → STC one lot (virtual lots ≥ 2) or status-only. */
+export async function notifyLegacyScaleOutPartial(
+  input: LegacyTradeDiscordInput,
+  trimIndex: number,
+  trimPrice?: number | null
+): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  if (chiefTradeVirtualLots() <= 1) return false;
+  return notifyLegacyTradeTrim({ ...input, trims_taken: trimIndex - 1 }, trimIndex, trimPrice);
+}
+
+/** Morning pull or EOD grade → STC. */
+export async function notifyLegacyTradeClose(
+  input: LegacyTradeDiscordInput,
+  exitPrice?: number | null,
+  opts: Pick<BuildTradePayloadOpts, "idempotencySuffix"> = {}
+): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  const price = exitPrice ?? input.entry_premium;
+  if (!Number.isFinite(price) || price <= 0) return false;
+  const payload = buildLegacyTradePayload(input, "STC", price, {
+    idempotencySuffix: opts.idempotencySuffix ?? "stc",
+  });
+  if (!payload) return false;
+  return postChiefTrade(payload);
+}
+
+/** Outcome row resolved to target/stop → STC with real session option mark. */
+export async function notifyLegacyOutcomeClose(
+  row: NighthawkPlayOutcomeRow,
+  outcome: "target" | "stop"
+): Promise<boolean> {
+  let input = legacyInputFromOutcomeRow(row);
+  if (!input) {
+    const { fetchNighthawkEditionByDate } = await import("@/lib/db");
+    const edition = await fetchNighthawkEditionByDate(row.edition_for);
+    const play = (edition?.plays as PlaybookPlay[] | undefined)?.find(
+      (p) => p.ticker.toUpperCase() === row.ticker.toUpperCase()
+    );
+    if (play) input = legacyInputFromPlaybookPlay(row.edition_for, play);
+  }
+  if (!input) return false;
+  const { outcomeSessionDate } = await import("@/features/nighthawk/lib/play-outcomes");
+  const exit = await resolveLegacyOutcomeExitPremium(input, outcome, outcomeSessionDate(row));
+  return notifyLegacyTradeClose(input, exit, { idempotencySuffix: `stc:${outcome}` });
+}

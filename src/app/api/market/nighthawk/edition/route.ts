@@ -5,11 +5,16 @@ import {
   fetchLatestNighthawkEdition,
   fetchLatestPlayableNighthawkEdition,
   fetchNighthawkEditionByDate,
+  fetchNighthawkEditionOutcomeOverlays,
   fetchNighthawkPulledPlays,
 } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { rowToNightHawkEdition } from "@/features/nighthawk/lib/edition-builder";
 import { applyNighthawkPullOverlay } from "@/features/nighthawk/lib/pull-overlay";
+import {
+  applyEditionOutcomeOverlay,
+  buildOutcomeOverlayMap,
+} from "@/features/nighthawk/lib/edition-outcome-overlay";
 import { assignNighthawkTier } from "@/features/nighthawk/lib/nighthawk-tiers";
 import { isBeforeOrAtMarketCloseEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { requireToolApi } from "@/lib/tool-access-server";
@@ -167,6 +172,21 @@ async function withPullOverlay(edition: NightHawkEdition): Promise<NightHawkEdit
   }
 }
 
+async function withOutcomeOverlay(edition: NightHawkEdition): Promise<NightHawkEdition> {
+  if (!edition.edition_for || !edition.plays?.length) return edition;
+  try {
+    const rows = await fetchNighthawkEditionOutcomeOverlays(edition.edition_for);
+    return applyEditionOutcomeOverlay(edition, buildOutcomeOverlayMap(rows));
+  } catch (err) {
+    console.warn("[nighthawk/edition] outcome-overlay read failed — serving without tier pins:", err);
+    return edition;
+  }
+}
+
+async function withEditionOverlays(edition: NightHawkEdition): Promise<NightHawkEdition> {
+  return withOutcomeOverlay(await withPullOverlay(edition));
+}
+
 let lastGoodEdition: NightHawkEdition | null = null;
 
 async function resolveNighthawkEdition(
@@ -184,12 +204,12 @@ async function resolveNighthawkEdition(
     const edition = rowToNightHawkEdition(activePlayable);
     edition.carry_until_close = true;
     edition.served_for = activePlayable.edition_for;
-    return await withPullOverlay(edition);
+    return await withEditionOverlays(edition);
   }
 
   const exact = await fetchNighthawkEditionByDate(editionFor);
   if (exact) {
-    return await withPullOverlay(markNoPlays(rowToNightHawkEdition(exact)));
+    return await withEditionOverlays(markNoPlays(rowToNightHawkEdition(exact)));
   }
 
   const latest = await fetchLatestNighthawkEdition();
@@ -215,7 +235,7 @@ async function resolveNighthawkEdition(
       edition.stale = true;
       edition.served_for = edition.edition_for;
     }
-    return await withPullOverlay(edition);
+    return await withEditionOverlays(edition);
   }
 
   const legacy = await fetchLegacyPlays();

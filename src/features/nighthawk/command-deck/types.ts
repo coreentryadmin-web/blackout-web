@@ -7,6 +7,7 @@
  */
 
 import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
+import type { SwingManageAction } from "@/lib/swing/manage";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { WhyNow } from "@/lib/zerodte/why-now";
@@ -71,6 +72,8 @@ export interface TerminalPlay {
   /** OCC symbol for the live greeks/marks subscription, when known. */
   occ?: string | null;
   score: number;
+  /** Edition funnel rank (1–5 on Legacy). */
+  rank?: number | null;
   status: DeckStatus;
   horizon: "ZERO_DTE" | "SWING" | "LEAPS" | "LEGACY";
   exitModel: ExitModel;
@@ -123,6 +126,12 @@ export interface TerminalPlay {
   flagUnderlyingPx?: number | null;
   peak?: number | null;
   trough?: number | null;
+  /** Closed: % of peak MFE captured at exit. */
+  mfeCapturePct?: number | null;
+  /** Frozen runner target profile (300%/400% plays). */
+  runnerProfile?: { targetPct: number; tag: string; regime: string } | null;
+  /** True when runner target is projected for an uncommitted WATCH/SKIP candidate. */
+  runnerProjected?: boolean;
   /** Executable exit fill (the BID a long sells into) + its P&L vs entry — the honest realizable
    *  number beside the mid `mark`/`pnlPct`. Null without a live two-sided book (mid-only). */
   execMark?: number | null;
@@ -165,6 +174,17 @@ export interface TerminalPlay {
   /** ISO instant capital was committed (swing ledger committed_at). Null when unknown. */
   committedAt?: string | null;
 
+  /** Hard-gate blocks for SKIP rows — rendered in the command panel (never fabricated). */
+  gateBlocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;
+  /** Vector desk pulse for cross-link — today's best pick on this ticker. */
+  vectorPulse?: {
+    premiumPct: number | null;
+    peakPremiumPct: number | null;
+    actionStatus: string | null;
+    isWinner: boolean;
+    isRunner: boolean;
+  } | null;
+
   /** Timeline replay — engine exit + reconstructed tranches (0DTE only, never fabricated). */
   closedReason?: string | null;
   exitReason?: string | null;
@@ -179,6 +199,8 @@ export interface TerminalPlay {
   /** Sector classification (lower-cased), when known. */
   sector?: string | null;
   /** Morning confirmation status for Legacy plays (CONFIRMED/DEGRADED/INVALIDATED/UNVERIFIED). */
+  /** True when morning-confirm invalidated/pulled this play pre-open. */
+  pulled?: boolean | null;
   morningStatus?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
 
   // ── legacy edition geometry (entry/target/stop as raw strings for the thesis panel) ──
@@ -201,6 +223,11 @@ export interface TerminalPlay {
   // ── legacy stock-level overlay (populated by overlayLegacyQuotes, not the adapter) ──
   stockPrice?: number | null;
   stockChangePct?: number | null;
+  /** Underlying move from entry band midpoint — NOT option P&L. */
+  stockMovePct?: number | null;
+  /** Session excursion of the underlying on the same basis as stockMovePct. */
+  stockPeakPct?: number | null;
+  stockTroughPct?: number | null;
 
   // ── swing-only enrichment (all OPTIONAL, ADDITIVE — 0DTE/LEAPS/Legacy leave them undefined; PR-12
   //    populates them through the horizon adapter). The observable swing state the serving router keys on. ──
@@ -214,4 +241,17 @@ export interface TerminalPlay {
   entryStatus?: SwingEntryState | null;
   /** The serving section (serving.ts) this play resolved to, for the section-grouped terminal. */
   servingSection?: SwingServingSection | null;
+  /** Live manage engine action (manage.ts) — drives EXITING / scale-out advisory on refresh. */
+  manageAction?: SwingManageAction | null;
+  /** Member entry label when geometry still allows entry (buy / still_buy) — decoupled from desk OPEN. */
+  swingEntryAction?: "buy" | "still_buy" | null;
+
+  // ── legacy edition metadata (surfaced for X Ads inspector) ──
+  playType?: "stock" | "index" | "etf" | null;
+  flowStreakDays?: number | null;
+  gatePromoted?: boolean | null;
+  riskNote?: string | null;
+  pulledReason?: string | null;
+  /** Specific morning-confirm reason string (not the generic headline). */
+  morningReason?: string | null;
 }

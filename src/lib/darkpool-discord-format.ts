@@ -7,6 +7,7 @@
 import { formatHelixHitTimestampEt, moneyShort } from "@/lib/helix-discord-format";
 import type { DiscordEmbed } from "@/lib/helix-discord-format";
 import { buildHelixDarkpoolDeepLink, darkpoolPrintToDeepLink } from "@/lib/helix-flow-deep-link";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 
 export { type DiscordEmbed };
 
@@ -200,7 +201,11 @@ export function selectDarkpoolDigestPrints(
   const eligible = prints.filter((p) => passesDarkpoolDiscordFilters(p, minPremium));
   const inWindow = eligible.filter((p) => {
     const ms = new Date(p.executed_at).getTime();
-    return Number.isFinite(ms) && nowMs - ms <= windowMs;
+    // Same future-print guard as Helix's Repeat Hits/digest filters: a future-dated/clock-skewed
+    // executed_at makes nowMs - ms negative, trivially satisfying <= windowMs and getting counted
+    // as an in-window block for the digest ranking.
+    const age = signalWindowAgeMs(Number.isFinite(ms) ? ms : null, nowMs);
+    return age != null && age <= windowMs;
   });
 
   const rows = [...inWindow]

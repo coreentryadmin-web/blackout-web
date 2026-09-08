@@ -128,10 +128,6 @@ export function releaseVectorStreamConnection(): void {
   totalStreams = Math.max(0, totalStreams - 1);
 }
 
-export function vectorStreamConnectionCount(): number {
-  return totalStreams;
-}
-
 /** Latest full-history SSE frame (connection's first frame). Null until first refresh. */
 export function getVectorStreamFullFrame(ticker: string): string | null {
   return hubs.get(normalizeVectorTicker(ticker))?.latestFullFrame ?? null;

@@ -38,6 +38,32 @@ async function render(p: TerminalPlay | null, extraProps: Record<string, unknown
   return renderToStaticMarkup(React.createElement(PlayTerminal, { play: p, ...extraProps }));
 }
 
+function legacyPlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
+  return {
+    id: "LEGACY:AAPL",
+    ticker: "AAPL",
+    direction: "LONG",
+    contract: "shares",
+    score: 70,
+    status: "OPEN",
+    horizon: "LEGACY",
+    exitModel: "PLAN",
+    factors: [],
+    gates: [],
+    recommendation: "HOLD",
+    entry: 190,
+    mark: null,
+    pnlPct: 4.2,
+    stockPrice: 198,
+    stockChangePct: 1.1,
+    entryRange: "$192.50 – $195.00",
+    targetLevel: "$210",
+    stopLevel: "$185",
+    progress: 0.6,
+    ...overrides,
+  } as TerminalPlay;
+}
+
 // ── OCC one-tap copy control ───────────────────────────────────────────────────────────
 test("OCC copy: control renders (accessible button, aria-label) when an OCC is on the row", async () => {
   const html = await render(play({ occ: "NVDA260725C00182000" }));
@@ -46,7 +72,7 @@ test("OCC copy: control renders (accessible button, aria-label) when an OCC is o
   assert.match(html, /<button/); // a real, keyboard-focusable control
 });
 
-test("Swing OPEN play: tabbed terminal defaults to Thesis at first paint (SSR)", async () => {
+test("Swing OPEN play: unified command panel at first paint (SSR)", async () => {
   const html = await render(
     play({
       horizon: "SWING",
@@ -55,12 +81,11 @@ test("Swing OPEN play: tabbed terminal defaults to Thesis at first paint (SSR)",
       factors: [{ label: "Flow", points: 10 }],
     }),
   );
-  assert.match(html, /nh-deck-tabs/);
-  assert.match(html, />\[1\]<\/span>Thesis/);
-  assert.match(html, /Why this play was picked/);
-  assert.doesNotMatch(html, /nh-deck-command-panel/);
-  // Management-only trim ladder headline must not be the default tab body.
-  assert.doesNotMatch(html, /Trim-scale ladder — the engine banks partials/);
+  assert.match(html, /nh-deck-command-panel-v2/);
+  assert.match(html, /nh-deck-verdict-band/);
+  assert.match(html, />Why we picked it</);
+  assert.match(html, />Live · management</);
+  assert.doesNotMatch(html, /nh-deck-tabs/);
 });
 
 test("0DTE single panel v2: verdict band, evidence stack, collapsed technicals", async () => {
@@ -161,6 +186,26 @@ test("premium thesis panels render for 0DTE", async () => {
 test("Play timeline tab absent on Legacy horizon", async () => {
   const html = await render(play({ horizon: "LEGACY" }));
   assert.doesNotMatch(html, />Session log</);
+});
+
+test("Legacy single panel v2: why picked, what to watch, no tab bar", async () => {
+  const html = await render(
+    legacyPlay({
+      thesis: "Bullish breakout above prior resistance with flow confirmation.",
+      targetAtrMultiple: 1.1,
+      tierLabel: "A",
+      rank: 2,
+      morningStatus: "CONFIRMED",
+      factors: [{ label: "Flow", points: 14 }, { label: "Technicals", points: 9 }],
+    }),
+  );
+  assert.match(html, /nh-deck-legacy-panel/);
+  assert.match(html, />Why we picked it</);
+  assert.match(html, />What to watch</);
+  assert.match(html, />How to express it</);
+  assert.match(html, /comparable setups traded that far within the next session/);
+  assert.doesNotMatch(html, /nh-deck-tabs/);
+  assert.doesNotMatch(html, />\[1\]<\/span>Thesis/);
 });
 
 // ── Confidence/Conviction/Thesis-Strength dedup (Night Hawk panel declutter, docs/audit/FINDINGS.md
@@ -272,72 +317,19 @@ test("nowMs prop: omitted → renders without throwing (falls back to the compon
   assert.match(html, /<div/); // sanity: still produces real markup, not a crash
 });
 
-// ── Legacy stop/target distance dedup (2026-08-05) ─────────────────────────────────────
-// Before the fix, a Legacy play's stop/target distance rendered 3x: the Thesis meta grid (bare
-// levels), LegacyManageGeometry (Management tab — levels + live $/% distance + entry-zone track +
-// zone label), and LegacyPnlPanel (PnL tab — a second, identical levels + $/% distance grid, plus a
-// second marker-less STOP/TARGET track). Fix keeps exactly one rendering — LegacyManageGeometry,
-// the richest treatment — and strips the other two down to what's genuinely unique to them.
-function legacyPlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
-  return {
-    id: "LEGACY:AAPL",
-    ticker: "AAPL",
-    direction: "LONG",
-    contract: "shares",
-    score: 70,
-    status: "OPEN",
-    horizon: "LEGACY",
-    exitModel: "PLAN",
-    factors: [],
-    gates: [],
-    recommendation: "HOLD",
-    entry: 190,
-    mark: null,
-    pnlPct: 4.2,
-    stockPrice: 198,
-    stockChangePct: 1.1,
-    entryRange: "$192.50 – $195.00",
-    targetLevel: "$210",
-    stopLevel: "$185",
-    progress: 0.6,
-    ...overrides,
-  } as TerminalPlay;
-}
+// ── Legacy single-panel rail (2026-09) ───────────────────────────────────────────────────
 
-test("Legacy Thesis tab: no longer shows the bare entry range/target/stop meta rows (moved to Management)", async () => {
-  const html = await render(legacyPlay());
-  assert.doesNotMatch(html, />Entry range</);
-  // "Target"/"Stop" labels are Legacy-only meta-grid rows (k/v spans) — assert the specific
-  // labeled rows are gone, not the words in general (which still appear on other tabs/foot).
-  assert.doesNotMatch(html, /<span class="k">Target<\/span>/);
-});
-
-test("Legacy Management tab: LegacyManageGeometry is the sole stop/target distance + entry-zone track", async () => {
-  const html = await render(legacyPlay(), { initialTab: "manage" });
-  assert.match(html, /\$210/); // target level
-  assert.match(html, /\$185/); // stop level
-  assert.match(html, /nh-deck-entry-zone/); // entry-zone marker on the track — the richest cue
-  assert.match(html, /mid-range — hold per plan/); // zone label derived from progress
-  // Distance-to-level ($ / %) computed from stockPrice vs target/stop.
+test("Legacy single panel: levels + progress track live under What to watch", async () => {
+  const html = await render(legacyPlay({ rank: 1 }));
+  assert.match(html, />\$210/);
+  assert.match(html, /\$185/);
+  assert.match(html, /nh-deck-entry-zone/);
+  assert.match(html, /mid-range — hold per plan/);
   assert.match(html, /nh-deck-dist/);
 });
 
-test("Legacy PnL tab: keeps stock quote + day-change, drops the duplicate stop/target grid + track", async () => {
-  const html = await render(legacyPlay(), { initialTab: "pnl" });
-  assert.match(html, /\$198\.00/); // stock quote still shown
-  assert.match(html, /day change/); // day-change line still shown
-  // The duplicate labeled Target/Stop rows and the marker-less STOP/TARGET track are gone.
-  assert.doesNotMatch(html, /<span class="k">Target<\/span>/);
-  assert.doesNotMatch(html, /<span class="k">Stop<\/span>/);
-  assert.doesNotMatch(html, /nh-deck-track/);
-});
-
-test("Legacy PnL tab: unrelated fields (IV rank, R:R, contract) survive the dedup", async () => {
-  const html = await render(
-    legacyPlay({ ivRank: 42, rrRatio: 2.5, optionsPlay: "AAPL 210C 9/19" }),
-    { initialTab: "pnl" },
-  );
-  assert.match(html, />42</);
-  assert.match(html, /2\.5:1/);
-  assert.match(html, /AAPL 210C 9\/19/);
+test("Legacy single panel: stock move uses from-entry label in header stream", async () => {
+  const html = await render(legacyPlay({ stockMovePct: 4.2, pnlPct: 4.2 }));
+  assert.match(html, /4\.2% from entry/);
+  assert.match(html, /stock entry/);
 });

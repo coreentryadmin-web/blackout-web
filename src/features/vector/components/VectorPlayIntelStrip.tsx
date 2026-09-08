@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import type { VectorRegime } from "@/features/vector/lib/vector-regime";
+import { hasReadableRegime, type VectorRegime } from "@/features/vector/lib/vector-regime";
 import type { WallIntegrity } from "@/features/vector/lib/vector-wall-integrity";
 
 type Props = {
@@ -32,11 +32,11 @@ export function VectorPlayIntelStrip({
         ? wallIntegrity.put.note
         : wallIntegrity.call?.note ?? wallIntegrity.put?.note;
 
-  if (!regime && !em && !conf && !wallNote) return null;
+  if (!hasReadableRegime(regime) && !em && !conf && !wallNote) return null;
 
   return (
     <div className={clsx("vector-play-intel-strip", className)} aria-label="Desk intelligence">
-      {regime ? (
+      {hasReadableRegime(regime) ? (
         <span
           className={clsx(
             "vector-play-intel-chip",

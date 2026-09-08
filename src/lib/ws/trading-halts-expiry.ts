@@ -1,14 +1,15 @@
 /**
- * Pure, alias-free helpers for expiring stale trading halts.
+ * Pure helpers for expiring stale trading halts.
  *
  * A halt is normally cleared by a resume event (active:false). That event can be
  * dropped on the wire or missed across a WebSocket reconnect — without an expiry
  * the symbol would stay "halted" and block entries forever. These helpers add a
  * receivedAt-based ceiling so a missed resume self-heals after `maxAgeMs`.
  *
- * Kept dependency-free so it is unit-testable under `tsx --test` without the @/
- * path alias or any runtime imports.
+ * Uses `isWsUpdatedAtFresh` so a clock-skewed future `receivedAt` cannot read as
+ * infinitely fresh and block entries forever — same shape as LULD/UW halt gates.
  */
+import { isWsUpdatedAtFresh } from "./timestamp-freshness";
 
 /** Stored halt: a normalized halt event plus the time it was received. */
 export type StoredTradingHalt = {
@@ -31,8 +32,9 @@ export function isHaltStillActive(
   maxAgeMs: number
 ): boolean {
   if (!halt.active) return false;
-  if (!Number.isFinite(halt.receivedAt)) return false;
-  return now - halt.receivedAt <= maxAgeMs;
+  if (!Number.isFinite(halt.receivedAt) || halt.receivedAt <= 0) return false;
+  // +1 preserves prior `<= maxAgeMs` boundary semantics for non-skewed stamps.
+  return isWsUpdatedAtFresh(halt.receivedAt, maxAgeMs + 1, now);
 }
 
 /**

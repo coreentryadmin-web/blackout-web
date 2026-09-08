@@ -1,4 +1,5 @@
 import { getMeta, setMeta } from "@/lib/db";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const REPLIED_KEY = "x_marketing_replied_ids";
 const HOOKS_KEY = "x_marketing_recent_hooks";
@@ -142,7 +143,7 @@ export async function getCachedFollowingUserIds(
       const parsed = JSON.parse(raw) as { at?: number; ids?: string[] };
       if (
         parsed.at &&
-        Date.now() - parsed.at < FOLLOWING_CACHE_MS &&
+        isWsUpdatedAtFresh(parsed.at, FOLLOWING_CACHE_MS) &&
         Array.isArray(parsed.ids)
       ) {
         return new Set(parsed.ids);

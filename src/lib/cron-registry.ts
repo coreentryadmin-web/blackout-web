@@ -123,9 +123,12 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Platform Warm",
     kind: "http",
     path: "/api/cron/platform-warm",
-    schedule_label: "~Every 5 min (24/7)",
+    schedule_label: "~Every 5 min (extended warm window)",
     stale_after_min: 15,
-    description: "Pre-warm general platform cache (bootstrap bundle) for 24/7 admin/member page loads outside RTH",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Pre-warm general platform cache (bootstrap bundle) during the extended warm window (4 AM–8 PM ET trading days) — same shouldRunCacheWarmer gate as desk/heatmap/zerodte warmers",
   },
   {
     key: "meridian-warm",
@@ -156,12 +159,19 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Vector Bead Record",
     kind: "http",
     path: "/api/cron/vector-bead-record",
-    schedule_label: "Every 1 min backup (market hours); in-app leader at 5s",
+    // No EventBridge rule is deployed for this route (confirmed live via events.list_rules,
+    // 2026-09-01 and re-confirmed 2026-09-07 — see FINDINGS.md) despite the label this replaced
+    // implying one. The only real backup to the 5s in-app primary (vector-bead-recorder-leader.ts)
+    // is rth-warm-leader.ts's own in-process heal loop, which dispatches this route at a 10s
+    // threshold (RTH_WRITER_HEAL_AFTER_MIN["vector-bead-record"] = 10/60 in
+    // rth-warm-leader-logic.ts) — faster in practice than any EventBridge cadence, but sharing the
+    // primary's own process/Redis-leader-election failure domain rather than an independent one.
+    schedule_label: "No EventBridge rule deployed — in-app leader backup only, 10s heal threshold",
     stale_after_min: 1,
     weekdays_only: true,
     market_hours_only: true,
     description:
-      "Record wall-history bead samples every 5s for the full shared universe (~100 tickers: static ∪ dynamic), viewer-independent — primary writer is vector-bead-recorder-leader; this cron is backup + audit",
+      "Record wall-history bead samples every 5s for the full shared universe (~100 tickers: static ∪ dynamic), viewer-independent — primary writer is vector-bead-recorder-leader; this cron route exists for the in-app leader's backup dispatch + manual/admin audit, not an independent EventBridge trigger",
   },
   {
     key: "desk-warm",
@@ -210,7 +220,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description:
-      `Whole-market swing (${SWING_DTE_RANGE}) discovery: two-tier flow+structure screen → dossiers → advances the cross-session accumulation memory (WATCH-only, commits nothing). Idempotent per (session day, phase).`,
+      `Whole-market swing (${SWING_DTE_RANGE}) discovery: two-tier flow+structure screen → dossiers → WATCH accumulation + live commits (armed budget, book-percent caps, idempotency gated). Idempotent per (session day, phase).`,
   },
   {
     key: "swing-active-refresh",
@@ -469,7 +479,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     path: "/api/cron/vector-pick-sweep",
     schedule_label: "~Every 2 min (market hours)",
     schedule_cron_utc: "1-59/2 11-21 * * 1-5",
-    stale_after_min: 8,
+    stale_after_min: 15,
     weekdays_only: true,
     market_hours_only: true,
     description:
@@ -563,6 +573,19 @@ export const CRON_JOBS: CronJobDefinition[] = [
     produces_member_alert: true,
   },
   {
+    key: "legacy-live-sync",
+    name: "Legacy Live Sync",
+    kind: "http",
+    path: "/api/cron/legacy-live-sync",
+    schedule_label: "~Every 5 min (market hours)",
+    stale_after_min: 20,
+    schedule_cron_utc: "*/5 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description: "Live option marks + Chief Trade Alert Bot trim/STC for Legacy playbook plays",
+    produces_member_alert: true,
+  },
+  {
     key: "x-analytics",
     name: "X Analytics",
     kind: "http",
@@ -572,6 +595,54 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 1800,
     schedule_cron_utc: "30 23 * * *",
     description: "Pull X post/profile metrics into analytics",
+  },
+  // ---------------------------------------------------------------------------
+  // THREE LIVE DISCORD-DIGEST CRONS (added 2026-09-04) — routes logged runs but
+  // were absent from CRON_JOBS, so cron-staleness-watchdog never watched them.
+  // Schedules from railway.*.toml / deployed EventBridge (verified live 2026-09-04).
+  // stale_after_min = ~5× interval (darkpool */2) or ~3× (*/15 digests).
+  // ---------------------------------------------------------------------------
+  {
+    key: "darkpool-discord",
+    name: "Dark Pool Discord",
+    kind: "http",
+    path: "/api/cron/darkpool-discord",
+    schedule_label: "~Every 2 min (market hours)",
+    stale_after_min: 10,
+    schedule_cron_utc: "*/2 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Dark-pool burst alerts + 15m top-blocks digest to Discord (inert unless DARKPOOL_DISCORD_ALERTS + webhook)",
+    produces_member_alert: true,
+  },
+  {
+    key: "thermal-discord",
+    name: "Thermal Discord",
+    kind: "http",
+    path: "/api/cron/thermal-discord",
+    schedule_label: "~Every 15 min (market hours)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 13-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Thermal desk card (SPY|SPX|QQQ) to Discord; breach-only poller is a separate route/query",
+    produces_member_alert: true,
+  },
+  {
+    key: "helix-discord-digest",
+    name: "HELIX Discord Digest",
+    kind: "http",
+    path: "/api/cron/helix-discord-digest",
+    schedule_label: "~Every 15 min (market hours)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "HELIX top-hits 15m/30m digests to Discord (inert unless HELIX_DISCORD_ALERTS + webhook)",
+    produces_member_alert: true,
   },
 ];
 

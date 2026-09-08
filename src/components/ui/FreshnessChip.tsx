@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { clsx } from "clsx";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 export type FreshnessStatus = "live" | "stale" | "cached" | "offline" | "syncing";
 
@@ -58,6 +59,20 @@ function formatAge(from: Date, nowMs: number): string {
   return `${Math.floor(m / 60)}h`;
 }
 
+/** Pure status resolver — clock-skewed future asOf must not read as Live. */
+export function effectiveFreshnessStatus(
+  status: FreshnessStatus,
+  asOf: Date | null | undefined,
+  nowMs: number | null,
+  staleAfterMs?: number
+): FreshnessStatus {
+  if (nowMs == null || asOf == null) return status;
+  const ageMs = nowMs - asOf.getTime();
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
+  if (status === "live" && staleAfterMs != null && ageMs > staleAfterMs) return "stale";
+  return status;
+}
+
 /**
  * Honest data-freshness indicator — status word + optional age since `asOf`.
  * Replaces misleading always-green "Live" badges on marketing/desk surfaces.
@@ -88,14 +103,7 @@ export function FreshnessChip({
     return () => clearInterval(id);
   }, [status, asOf, staleAfterMs]);
 
-  const effectiveStatus: FreshnessStatus =
-    status === "live" &&
-    staleAfterMs != null &&
-    now != null &&
-    asOf != null &&
-    now - asOf.getTime() > staleAfterMs
-      ? "stale"
-      : status;
+  const effectiveStatus = effectiveFreshnessStatus(status, asOf, now, staleAfterMs);
 
   const word = label ?? STATUS_LABEL[effectiveStatus];
   const age =

@@ -136,10 +136,15 @@ test("zeroGammaFlip interpolates the neg→pos crossing nearest spot", () => {
   assert.equal(flip, 100);
 });
 
-test("walls picks largest-positive (call) and largest-negative (put) strikes", () => {
-  const w = walls({ "90": -50, "100": 30, "110": 80, "120": -90 });
-  assert.equal(w.call, 110); // +80 is the largest positive
-  assert.equal(w.put, 120); // -90 is the largest negative
+test("walls picks largest-positive (call) and largest-negative (put) strikes, SIDE-CONSTRAINED to spot", () => {
+  // Regression pin: this used to scan strikeTotals unconstrained (largest positive/negative
+  // anywhere), which could report a "call wall" below spot or a "put wall" above it — inverted
+  // resistance/support, the same bug class gex-cross-validation-core.ts's wallsFromStrikeTotals
+  // was built to fix. 120 (-90, the largest-magnitude negative overall) is ABOVE spot 100, so it
+  // must NOT be reported as the put wall — only 90 (below spot) qualifies.
+  const w = walls({ "90": -50, "100": 30, "110": 80, "120": -90 }, 100);
+  assert.equal(w.call, 110, "call wall must be the largest positive strike ABOVE spot");
+  assert.equal(w.put, 90, "put wall must be the largest-magnitude negative strike BELOW spot, never 120 (above spot)");
 });
 
 // ----------------------------- the headline guarantee -----------------------------
@@ -231,7 +236,10 @@ test("flip + walls are recomputed on the ADJUSTED totals", () => {
   assert.equal(view.strike_totals_adjusted["105"], -90);
   // Both strikes now negative → no neg→pos crossing → flip null on adjusted (distinct from OI flip).
   assert.equal(view.flip_adjusted, null);
-  assert.equal(view.put_wall_adjusted, 105); // -90 is the largest negative now
+  // 105 is ABOVE spot (100), so even though -90 is the largest-magnitude negative overall, it must
+  // NOT be reported as the put wall (support above price is inverted) — 95 (below spot, -10) is
+  // the correct constrained answer.
+  assert.equal(view.put_wall_adjusted, 95);
 });
 
 // ----------------------------- graceful degradation -----------------------------

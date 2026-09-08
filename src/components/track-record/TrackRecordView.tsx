@@ -21,7 +21,7 @@ import type { TrackRecordLoadState, TrackRecordPayload } from "./types";
 
 function freshnessForPayload(data: TrackRecordPayload, fetchedAt: Date): FreshnessStatus {
   if (data.liveData === false) return "cached";
-  const ageMs = Date.now() - fetchedAt.getTime();
+  const ageMs = Math.max(0, Date.now() - fetchedAt.getTime());
   if (ageMs > TRACK_RECORD_POLL_MS * 2) return "stale";
   return "live";
 }

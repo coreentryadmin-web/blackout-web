@@ -11,7 +11,7 @@ export type SpxState = {
   hod: number;
   vix: number | null;
   vix_change_pct: number | null;
-  spx_change_pct: number;
+  spx_change_pct: number | null;
   above_vwap: boolean;
   uw_iv_rank: number | null;
   gex_net: number | null;
@@ -26,8 +26,8 @@ export type SpxState = {
   trin: number | null;
   tick: number | null;
   sector_bias: string | null;
-  sector_leaders: Array<{ sector: string; change_pct: number }>;
-  sector_laggards: Array<{ sector: string; change_pct: number }>;
+  sector_leaders: Array<{ sector: string; change_pct: number | null }>;
+  sector_laggards: Array<{ sector: string; change_pct: number | null }>;
   tide_bias: string | null;
   tide_call: number | null;
   tide_put: number | null;
@@ -61,7 +61,7 @@ export function emptySpxState(): SpxState {
     hod: 0,
     vix: null,
     vix_change_pct: null,
-    spx_change_pct: 0,
+    spx_change_pct: null,
     above_vwap: false,
     uw_iv_rank: null,
     gex_net: null,

@@ -20,7 +20,7 @@ export const GEX_KING_DUAL_LABEL = "King node · GEX anchor";
 
 /** One-line definition for tooltips / help text. */
 export const GEX_KING_NODE_HELP =
-  "Strike with the largest absolute net dealer gamma in this view — the dominant pin (King node) and gravitational anchor (GEX anchor). Not the same as call wall or put wall.";
+  "Strike with the largest absolute net dealer gamma in this view — the King node and GEX anchor. Not the same as call wall, put wall, or the EOD pin forecaster.";
 
 /** Scope-qualified dual label, e.g. "King node · GEX anchor (near-term)". */
 export function gexKingDualLabel(scope?: string): string {

@@ -2998,6 +2998,23 @@ html.product-shell .nav-mega {
     @apply font-mono text-[11px] font-semibold text-sky-100/80;
   }
 
+  .nh-analytics-body {
+    @apply flex flex-col gap-2.5;
+  }
+
+  .nh-analytics-footnote {
+    @apply font-mono text-[10px] leading-relaxed text-sky-300/65;
+  }
+
+  /* Swing Command — analytics + cockpit strip above the play ledger. */
+  .nh-swing-deck-chrome {
+    @apply mb-2.5 flex shrink-0 flex-col gap-2;
+  }
+
+  .nh-swing-cockpit {
+    @apply flex-wrap px-1;
+  }
+
   .nh-analytics-tiles {
     @apply grid gap-2;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
@@ -3460,6 +3477,577 @@ html.product-shell .nav-mega {
 
   .nh-history-detail-tone-is-flat {
     color: var(--dk-warn, #f0b94a);
+  }
+
+  /* ── Vector pick board (X Ads Manager reference) ───────────────────────────
+     Three-panel desk: underline tabs + session calendar + table/detail split.
+     Typography mirrors nh-history: small caps headers, bold scanned numbers,
+     green/red/amber discipline only. */
+  .vector-board-shell {
+    @apply flex min-h-0 flex-1 flex-col overflow-hidden;
+  }
+
+  .vector-board-toolbar {
+    @apply shrink-0 border-b pb-2;
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .vector-board-toolbar-row {
+    @apply flex flex-wrap items-end justify-between gap-3;
+  }
+
+  .vector-board-toolbar-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .vector-board-toolbar-meta {
+    @apply mt-2 flex flex-col gap-1;
+  }
+
+  .vector-board-meta-stat {
+    @apply font-mono text-[11px] text-sky-200/80;
+  }
+
+  .vector-board-meta-stat strong {
+    @apply font-extrabold text-sky-50;
+  }
+
+  .vector-board-note {
+    @apply font-mono text-[10px] leading-snug text-sky-300/55;
+  }
+
+  /* Underline tabs — same family as nh-v2 ios-native-segment (Funding | Campaigns | …) */
+  .vector-board-tabs {
+    @apply flex flex-wrap items-stretch gap-5;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .vector-board-tab {
+    @apply relative border-0 bg-transparent pb-2.5 pt-0.5 font-mono text-[13px] font-semibold text-sky-300/55;
+    transition: color 0.15s ease;
+  }
+
+  .vector-board-tab:hover {
+    color: rgba(224, 242, 254, 0.92);
+  }
+
+  .vector-board-tab.is-active {
+    @apply font-extrabold text-sky-50;
+  }
+
+  .vector-board-tab.is-active::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--dk-bull, #00d9a3);
+    box-shadow: 0 0 10px -1px rgba(0, 217, 163, 0.65);
+  }
+
+  .vector-board-tab-count {
+    @apply ml-1 text-[11px] font-semibold text-sky-300/45;
+  }
+
+  .vector-board-tab.is-active .vector-board-tab-count {
+    @apply text-sky-200/70;
+  }
+
+  .vector-board-scope {
+    @apply flex items-center gap-0.5 rounded-full border p-0.5;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(4, 4, 7, 0.35);
+  }
+
+  .vector-board-scope-btn {
+    @apply rounded-full px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em] text-sky-300/60;
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .vector-board-scope-btn:hover {
+    color: rgba(224, 242, 254, 0.95);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .vector-board-scope-btn.is-active {
+    color: #04120d;
+    background: linear-gradient(180deg, #1fe9bb, #00d9a3);
+    box-shadow: 0 2px 10px -2px rgba(0, 217, 163, 0.5);
+  }
+
+  .vector-board-date-picker {
+    @apply flex items-center gap-1.5 rounded-full border px-2.5 py-1;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(4, 4, 7, 0.35);
+  }
+
+  .vector-board-date-picker-label {
+    @apply font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-sky-300/55;
+  }
+
+  .vector-board-date-input {
+    @apply border-0 bg-transparent font-mono text-[11px] font-semibold text-sky-100 outline-none;
+    color-scheme: dark;
+  }
+
+  .vector-board-search {
+    @apply flex items-center gap-1.5 rounded-full border px-2.5 py-1;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(4, 4, 7, 0.35);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .vector-board-search:focus-within {
+    border-color: rgba(0, 217, 163, 0.4);
+    box-shadow: 0 0 0 3px rgba(0, 217, 163, 0.08);
+  }
+
+  .vector-board-search-icon {
+    @apply text-[11px] text-sky-300/50;
+  }
+
+  .vector-board-search-input {
+    @apply w-28 bg-transparent font-mono text-[11px] text-sky-100 outline-none placeholder:text-sky-300/35;
+  }
+
+  .vector-board-search-clear {
+    @apply text-[12px] leading-none text-sky-300/50;
+  }
+
+  .vector-board-cal-wrap {
+    @apply flex shrink-0 flex-wrap items-center gap-2 py-2;
+  }
+
+  .vector-board-cal {
+    @apply flex flex-wrap gap-1.5;
+  }
+
+  .vector-board-cal-cell {
+    @apply flex w-[52px] flex-col items-center gap-0.5 rounded-lg border px-1.5 py-1.5 font-mono;
+    border-color: rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.02);
+    transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+  }
+
+  .vector-board-cal-cell:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+  }
+
+  .vector-board-cal-month {
+    @apply text-[8px] font-bold uppercase tracking-[0.08em] text-sky-300/45;
+  }
+
+  .vector-board-cal-day {
+    @apply text-[11px] font-extrabold text-sky-50;
+  }
+
+  .vector-board-cal-net {
+    @apply text-[10px] font-extrabold;
+  }
+
+  .vector-board-cal-cell.is-up .vector-board-cal-net {
+    color: var(--dk-bull, #00d9a3);
+  }
+
+  .vector-board-cal-cell.is-down .vector-board-cal-net {
+    color: var(--dk-bear, #f0637c);
+  }
+
+  .vector-board-cal-cell.is-flat .vector-board-cal-net {
+    color: var(--dk-warn, #f0b94a);
+  }
+
+  .vector-board-cal-cell.is-up {
+    border-color: rgba(0, 217, 163, 0.2);
+    background: linear-gradient(180deg, rgba(0, 217, 163, 0.1), rgba(0, 217, 163, 0.02));
+  }
+
+  .vector-board-cal-cell.is-down {
+    border-color: rgba(240, 99, 124, 0.2);
+    background: linear-gradient(180deg, rgba(240, 99, 124, 0.1), rgba(240, 99, 124, 0.02));
+  }
+
+  .vector-board-cal-cell.is-selected {
+    border-color: rgba(0, 217, 163, 0.65);
+    box-shadow: 0 0 0 1px rgba(0, 217, 163, 0.4), 0 6px 18px -8px rgba(0, 217, 163, 0.45);
+  }
+
+  .vector-board-cal-clear {
+    @apply rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em];
+    color: var(--dk-warn, #f0b94a);
+    border-color: rgba(240, 185, 74, 0.3);
+    background: rgba(240, 185, 74, 0.08);
+  }
+
+  .vector-board-body {
+    @apply flex min-h-0 flex-1 overflow-hidden;
+  }
+
+  .vector-board-table-pane {
+    @apply flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden;
+  }
+
+  .vector-board-empty {
+    @apply flex min-h-0 flex-1 items-center justify-center p-4;
+  }
+
+  .vector-board-tablewrap {
+    @apply min-h-0 flex-1 overflow-auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 217, 163, 0.25) transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .vector-board-tablewrap::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .vector-board-tablewrap::-webkit-scrollbar-thumb {
+    background: rgba(0, 217, 163, 0.25);
+    border-radius: 999px;
+  }
+
+  .vector-board-table {
+    @apply w-full min-w-[52rem] border-separate font-mono text-[11px];
+    table-layout: fixed;
+    width: 100%;
+    border-spacing: 0;
+  }
+
+  .vector-board-table th,
+  .vector-board-table td {
+    box-sizing: border-box;
+    overflow: hidden;
+    vertical-align: middle;
+  }
+
+  .vector-board-table tbody td.vector-board-col-num,
+  .vector-board-table thead th.vector-board-col-num,
+  .vector-board-table tbody td.vector-board-col-updated,
+  .vector-board-table thead th.vector-board-col-updated {
+    text-align: right;
+  }
+
+  .vector-board-table thead th.vector-board-col-pick,
+  .vector-board-table tbody td.vector-board-col-pick,
+  .vector-board-table thead th.vector-board-col-status,
+  .vector-board-table tbody td.vector-board-col-status {
+    text-align: left;
+  }
+
+/* Column widths are computed inline per visible column set — see vector-board-column-layout.ts */
+  .vector-board-table col.vector-board-col-check {
+    width: 2.25rem;
+  }
+
+  .vector-board-table thead th {
+    @apply sticky top-0 z-10 border-b px-2 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em];
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--nh-desk-text-tertiary, rgba(148, 163, 184, 0.85));
+    background: var(--nh-desk-thead-bg, linear-gradient(180deg, rgba(12, 14, 20, 0.98), rgba(9, 10, 14, 0.96)));
+    border-color: var(--nh-desk-border, rgba(255, 255, 255, 0.08));
+  }
+
+  .vector-board-table thead th.vector-board-col-num {
+    text-align: right;
+  }
+
+  .vector-board-table tbody td {
+    @apply border-b px-2 py-2 text-sky-100/85;
+    border-color: rgba(255, 255, 255, 0.035);
+    transition: background-color 0.15s ease;
+  }
+
+  .vector-board-row {
+    @apply cursor-pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .vector-board-row:hover td,
+  .vector-board-row.is-selected td {
+    background: rgba(255, 255, 255, 0.035);
+  }
+
+  .vector-board-row:hover {
+    transform: translateY(-1px);
+  }
+
+  .vector-board-row.is-selected td {
+    box-shadow: inset 3px 0 0 rgba(0, 217, 163, 0.75);
+  }
+
+  .vector-board-col-num {
+    @apply text-right;
+  }
+
+  .vector-board-col-time {
+    @apply whitespace-nowrap text-[10px] text-sky-300/65;
+  }
+
+  .vector-board-pick-name {
+    @apply text-[13px] font-extrabold tracking-[0.01em];
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--nh-desk-text, #f8fafc);
+  }
+
+  .vector-board-pick-sub {
+    @apply mt-0.5 text-[11px] font-semibold text-sky-100/90;
+  }
+
+  .vector-board-pick-id {
+    @apply mt-0.5 text-[9px] font-medium text-sky-300/45;
+  }
+
+  .vector-board-pnl {
+    @apply text-[11.5px] font-extrabold;
+  }
+
+  .vector-board-pnl.is-up {
+    color: var(--dk-bull, #00d9a3);
+  }
+
+  .vector-board-pnl.is-down {
+    color: var(--dk-bear, #f0637c);
+  }
+
+  .vector-board-pnl.is-flat {
+    color: var(--dk-warn, #f0b94a);
+  }
+
+  .vector-board-mid {
+    @apply text-[10px] font-semibold text-sky-100/80;
+  }
+
+  .vector-board-em {
+    @apply text-sky-300/40;
+  }
+
+  .vector-board-summary-row td {
+    @apply border-b py-2;
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .vector-board-summary-label {
+    @apply mr-2 text-[10px] font-bold uppercase tracking-[0.1em] text-sky-300/65;
+  }
+
+  .vector-board-summary-sub {
+    @apply text-[10px] text-sky-300/50;
+  }
+
+  .vector-board-summary-metric {
+    @apply text-[11px] text-sky-200/80;
+  }
+
+  .vector-board-summary-metric strong {
+    @apply font-extrabold text-sky-50;
+  }
+
+  .vector-board-progress {
+    @apply flex min-w-[72px] flex-col items-end gap-0.5;
+  }
+
+  .vector-board-progress-track {
+    @apply h-1 w-full overflow-hidden rounded-full;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .vector-board-progress-fill {
+    @apply h-full rounded-full;
+    background: var(--dk-warn, #f0b94a);
+  }
+
+  .vector-board-progress-fill.is-up {
+    background: var(--dk-bull, #00d9a3);
+  }
+
+  .vector-board-progress-fill.is-down {
+    background: var(--dk-bear, #f0637c);
+  }
+
+  .vector-board-progress-label {
+    @apply text-[9px] font-bold text-sky-300/55;
+  }
+
+  /* Status dot + label (Active / Expired analogue) */
+  .vector-board-status {
+    @apply inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold;
+  }
+
+  .vector-board-status-dot {
+    @apply h-1.5 w-1.5 shrink-0 rounded-full;
+  }
+
+  .vector-board-status.is-open .vector-board-status-dot {
+    background: var(--dk-bull, #00d9a3);
+    box-shadow: 0 0 6px rgba(0, 217, 163, 0.55);
+  }
+
+  .vector-board-status.is-open .vector-board-status-label {
+    color: var(--dk-bull, #00d9a3);
+  }
+
+  .vector-board-status.is-neutral .vector-board-status-dot {
+    background: var(--dk-warn, #f0b94a);
+  }
+
+  .vector-board-status.is-neutral .vector-board-status-label {
+    color: var(--dk-warn, #f0b94a);
+  }
+
+  .vector-board-status.is-closed .vector-board-status-dot {
+    background: var(--dk-bear, #f0637c);
+    box-shadow: 0 0 6px rgba(240, 99, 124, 0.45);
+  }
+
+  .vector-board-status.is-closed .vector-board-status-label {
+    color: var(--dk-bear, #f0637c);
+  }
+
+  /* Right-rail inspector — wider for desk analytics */
+  .vector-board-detail {
+    @apply flex w-[min(100%,28rem)] shrink-0 flex-col gap-3 overflow-y-auto border-l p-3;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(10, 12, 18, 0.96), rgba(6, 7, 11, 0.92));
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 217, 163, 0.25) transparent;
+  }
+
+  .vector-board-detail--empty {
+    @apply justify-center;
+  }
+
+  .vector-board-detail-empty-title {
+    @apply font-mono text-[12px] font-extrabold text-sky-50;
+  }
+
+  .vector-board-detail-empty-copy {
+    @apply mt-2 font-mono text-[10px] leading-relaxed text-sky-300/55;
+  }
+
+  .vector-board-detail-head {
+    @apply flex items-start justify-between gap-2;
+  }
+
+  .vector-board-detail-ticker {
+    @apply font-mono text-[18px] font-extrabold tracking-[0.01em] text-sky-50;
+  }
+
+  .vector-board-detail-contract {
+    @apply mt-0.5 font-mono text-[12px] font-semibold text-sky-100/90;
+  }
+
+  .vector-board-detail-id {
+    @apply mt-0.5 font-mono text-[9px] text-sky-300/45;
+  }
+
+  .vector-board-detail-close {
+    @apply text-[18px] leading-none text-sky-300/50;
+  }
+
+  .vector-board-detail-status-row {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .vector-board-detail-tag {
+    @apply rounded-md border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.06em] text-sky-200/80;
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .vector-board-detail-hero {
+    @apply flex flex-col gap-1 rounded-lg border p-3;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .vector-board-detail-hero-label {
+    @apply font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/55;
+  }
+
+  .vector-board-detail-hero-value {
+    @apply text-[22px] font-extrabold;
+  }
+
+  .vector-board-detail-hero-value.is-up {
+    color: var(--dk-bull, #00d9a3);
+  }
+
+  .vector-board-detail-hero-value.is-down {
+    color: var(--dk-bear, #f0637c);
+  }
+
+  .vector-board-detail-hero-value.is-flat {
+    color: var(--dk-warn, #f0b94a);
+  }
+
+  .vector-board-detail-grid {
+    @apply grid grid-cols-2 gap-2;
+  }
+
+  .vector-board-detail-metric {
+    @apply flex flex-col gap-0.5 rounded-md border px-2 py-1.5;
+    border-color: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .vector-board-detail-metric-label {
+    @apply font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-sky-300/55;
+  }
+
+  .vector-board-detail-metric-value {
+    @apply font-mono text-[11px] font-semibold text-sky-100/90;
+  }
+
+  .vector-board-detail-metric-value.is-bold {
+    @apply text-[12px] font-extrabold text-sky-50;
+  }
+
+  .vector-board-detail-metric-value.is-up {
+    color: var(--dk-bull, #00d9a3);
+  }
+
+  .vector-board-detail-metric-value.is-down {
+    color: var(--dk-bear, #f0637c);
+  }
+
+  .vector-board-detail-metric-value.is-flat {
+    color: var(--dk-warn, #f0b94a);
+  }
+
+  .vector-board-detail-progress-track {
+    @apply h-1.5 overflow-hidden rounded-full;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .vector-board-detail-progress-fill {
+    @apply h-full rounded-full;
+    background: var(--dk-warn, #f0b94a);
+  }
+
+  .vector-board-detail-progress-fill.is-up {
+    background: var(--dk-bull, #00d9a3);
+  }
+
+  .vector-board-detail-progress-fill.is-down {
+    background: var(--dk-bear, #f0637c);
+  }
+
+  .vector-board-detail-progress-label {
+    @apply mt-1 block font-mono text-[9px] font-bold text-sky-300/55;
+  }
+
+  .vector-board-detail-reason-label {
+    @apply font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/55;
+  }
+
+  .vector-board-detail-reason-copy {
+    @apply mt-1 font-mono text-[11px] leading-relaxed text-sky-100/85;
   }
 
   .nighthawk-market-context {
@@ -7788,6 +8376,14 @@ html.product-shell .nav-mega {
     letter-spacing: 0.08em;
   }
 
+  /* "est" affordance when TICK/TRIN/ADD are breadth-derived proxies (CQ-095). */
+  .spx-hero-est-badge {
+    @apply ml-1 inline-flex items-center rounded-sm border border-amber-400/40 bg-amber-400/10 px-0.5 font-mono text-[8px] font-bold tracking-wider text-amber-200;
+    line-height: 1.2;
+    vertical-align: middle;
+    letter-spacing: 0.08em;
+  }
+
   .spx-sniper-command .spx-sniper-title {
     @apply font-anton text-4xl md:text-6xl leading-none tracking-wide uppercase;
   }
@@ -7869,6 +8465,54 @@ html.product-shell .nav-mega {
   .spx-sniper-triple--desk-v2 .spx-left-pin .spx-left-pin-stack {
     flex: 1 1 auto;
     min-height: 0;
+  }
+
+  /* Vector suggested play + Slayer execution — pin column play rail (2026-09). */
+  .spx-vector-play-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .spx-vector-play-rail__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0 0.125rem;
+  }
+
+  .spx-vector-play-rail__title {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgb(125 211 252 / 0.85);
+  }
+
+  .spx-vector-play-rail__full-link {
+    font-size: 0.625rem;
+    color: rgb(163 230 53 / 0.9);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .spx-vector-play-rail__full-link:hover {
+    text-decoration: underline;
+  }
+
+  .spx-vector-play-rail__card {
+    margin: 0;
+  }
+
+  .spx-vector-play-rail__intel {
+    margin-top: -0.125rem;
+  }
+
+  .spx-vector-play-rail__execution .spx-play-verdict-bar {
+    margin: 0;
   }
 
   /* ── EOD Pin Forecaster: sized against ITS RAIL, not the viewport ──────────────────────────
@@ -9072,24 +9716,47 @@ html.product-shell .nav-mega {
     align-items: stretch;
   }
 
+  /*
+   * `min-height: 0` + `flex: 1 1 0` here is a FLEX-FILL technique: it lets a column stretch to
+   * whatever space its ancestor hands it, shrinking below its own content size if needed. That
+   * only produces a correct result when some ancestor up the chain has a DEFINITE height for the
+   * flex-grow math to distribute — which is true from the >=1280px breakpoint up (its media block
+   * below caps `.vector-page-shell` to `height: 100dvh` and flex-fills every level down to
+   * this grid), and is NOT true below it, where the mobile/stacked layout is plain document flow
+   * with no definite height anywhere in the chain (only the grid's own `min-height` FLOOR above,
+   * which is not a definite size for descendant flex resolution).
+   *
+   * Fed a `flex-basis: 0` and an explicit `min-height: 0` (overriding the default `min-height:
+   * auto`, which is what normally lets a flex item's CONTENT establish a size floor) with no real
+   * space to grow into, every level in this chain collapsed to a literal 0px box — even though
+   * `.vector-chart-canvas--desk-fill` below still forces itself to `min-height: 320px !important`
+   * in isolation. `.vector-chart-stage`'s `overflow: hidden` then clipped that 320px canvas
+   * entirely out of view inside its own 0px parent: the candle/price chart with wall overlay was
+   * unconditionally IN the DOM (verified live — `.vector-chart-canvas` measured w=414 h=320,
+   * `min-height: 320px` computed) and never visible on screen at any width below 1280px (verified
+   * live at 430x932, RESULT unchanged after a 30s settle — this was never a data/timing race).
+   *
+   * FIX: keep the flex-fill (`flex: 1 1 0` + `min-height: 0`) ONLY at >=1280px, where it is both
+   * correct and necessary (see the media block below gated on that breakpoint, which re-adds
+   * exactly these three declarations). Below that, drop them here and let the default `flex: 0 1 auto` +
+   * `min-height: auto` apply — a flex COLUMN with no forced basis/floor sizes itself to its own
+   * content (identical to plain block stacking for a column with no other children needing
+   * alignment), so the canvas's own 320px floor propagates up through every ancestor exactly as
+   * the comment on `.vector-chart-canvas--desk-fill` below always intended it to.
+   */
   .vector-page-shell .vector-chart-terminal-chart {
     display: flex;
     flex-direction: column;
-    min-height: 0;
     min-width: 0;
   }
 
   .vector-page-shell .vector-chart-wrap {
     display: flex;
     flex-direction: column;
-    flex: 1 1 0;
-    min-height: 0;
     min-width: 0;
   }
 
   .vector-page-shell .vector-chart-stage {
-    flex: 1 1 0;
-    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -9201,6 +9868,24 @@ html.product-shell .nav-mega {
     /* Drop the mobile/stacked min-height FLOOR here — it beats the bare `.vector-chart-terminal-grid`
        min-height:0 below on specificity and re-inflates the row past the flex cap. */
     .vector-page-shell .vector-chart-terminal-grid {
+      min-height: 0;
+    }
+
+    /* Re-establish the flex-fill chain the base (mobile) rules above deliberately DON'T set — see
+       the long comment on `.vector-page-shell .vector-chart-wrap`/`.vector-chart-stage`. From here
+       up, `.vector-page-shell` has a definite `height: 100dvh` flex-filled all the way down to this
+       grid, so `flex: 1 1 0` + `min-height: 0` correctly stretches the chart column to fill it
+       instead of collapsing (which is what happens below 1280px, where no ancestor height is
+       definite). This restores exactly the sizing this chain had before it was scoped down. */
+    .vector-page-shell .vector-chart-terminal-chart {
+      min-height: 0;
+    }
+    .vector-page-shell .vector-chart-wrap {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+    .vector-page-shell .vector-chart-stage {
+      flex: 1 1 0;
       min-height: 0;
     }
 
@@ -12526,13 +13211,22 @@ html.product-shell .nav-mega {
     @apply flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-2;
   }
   .vector-play-intel-chip {
-    @apply inline-flex max-w-full flex-col gap-0.5 rounded-lg border border-white/10 bg-black/20 px-2 py-1;
+    /* max-w-[15rem] (not max-w-full): the confluence/wall notes are full sentences that carry a
+       trailing data value ("... · score 5", "772C firm — held 100% of last 6m, clustered"), so the
+       chip's own width — not the strip's flex-wrap — bounds how wide a wrapped value can grow. */
+    @apply inline-flex max-w-[15rem] flex-col gap-0.5 rounded-lg border border-white/10 bg-black/20 px-2 py-1;
   }
   .vector-play-intel-chip-label {
     @apply font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-white/45;
   }
   .vector-play-intel-chip-value {
-    @apply truncate font-mono text-[11px] font-semibold text-cyan-300;
+    /* Regression (2026-08-30): `truncate` (nowrap+ellipsis+overflow:hidden) silently cut off the
+       trailing data value on the confluence/wall chips — e.g. "... · score 5" rendered as
+       "... · score…" with the actual score number hidden. Desktop masked this with the `title=`
+       hover tooltip on the parent <span> (VectorPlayIntelStrip.tsx), but mobile has no hover, so
+       the value was simply unreadable there — confirmed live on /vector at 430x932 prod. Regime/
+       Move stay single short words and are unaffected by wrapping. */
+    @apply whitespace-normal break-words font-mono text-[11px] font-semibold text-cyan-300;
   }
   .vector-play-intel-chip--calm .vector-play-intel-chip-value {
     @apply text-emerald-300;
@@ -19450,6 +20144,16 @@ html.product-shell .nav-mega {
     justify-content: flex-end;
   }
 
+  /* VIX regime ribbon — same pill treatment as the tide bar, but fixed-width content (never
+     grows to fill the row) so it sits as a compact third item beside brand + tide. */
+  .helix-pro-regime--compact {
+    @apply py-1.5 px-2.5 rounded-lg;
+    background: rgba(6, 7, 13, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(12px);
+    flex: 0 0 auto;
+  }
+
   .helix-pro-header-copy {
     @apply min-w-0;
   }
@@ -20281,6 +20985,103 @@ html.product-shell .nav-mega {
     box-shadow: 0 0 14px rgba(191, 95, 255, 0.2);
   }
 
+  .helix-tape-chip--green:not(.helix-tape-chip--active) { color: rgba(0, 230, 118, 0.5); border-color: rgba(0, 230, 118, 0.12); }
+  .helix-tape-chip--green:hover:not(:disabled):not(.helix-tape-chip--active) { color: rgba(0, 230, 118, 0.72); border-color: rgba(0, 230, 118, 0.22); background: rgba(0, 230, 118, 0.06); }
+  .helix-tape-chip--green.helix-tape-chip--active {
+    @apply text-bull border-bull/45;
+    background: rgba(0, 230, 118, 0.1);
+    box-shadow: 0 0 14px rgba(0, 230, 118, 0.2);
+  }
+
+  .helix-tape-presets {
+    @apply flex flex-wrap items-center gap-2 px-1 pb-2;
+  }
+
+  .helix-tape-preset-reset {
+    @apply font-mono text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-lg border border-white/10 text-sky-300/70 hover:text-sky-100 hover:border-white/20 transition-colors;
+  }
+
+  .helix-tape-search-hint {
+    @apply absolute right-2 font-mono text-[10px] text-sky-300/35 pointer-events-none;
+  }
+
+  .helix-session-pulse {
+    @apply mb-2 rounded-xl border border-white/[0.08] px-3 py-2.5;
+    background: linear-gradient(135deg, rgba(8, 12, 20, 0.92), rgba(12, 8, 24, 0.88));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .helix-session-pulse-head {
+    @apply flex flex-wrap items-center gap-2 mb-2;
+  }
+
+  .helix-session-pulse-kicker {
+    @apply font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-purple-light/80;
+  }
+
+  .helix-session-pulse-scope {
+    @apply font-mono text-[10px] text-sky-300/55 truncate;
+  }
+
+  .helix-session-pulse-grid {
+    @apply grid gap-2;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  }
+
+  .helix-pulse-stat {
+    @apply rounded-lg border border-white/[0.06] px-2.5 py-2 min-w-0;
+    background: rgba(0, 0, 0, 0.28);
+  }
+
+  .helix-pulse-stat-label {
+    @apply block font-mono text-[9px] uppercase tracking-[0.12em] text-sky-300/50 mb-0.5;
+  }
+
+  .helix-pulse-stat-value {
+    @apply block text-[13px] font-bold text-sky-50 leading-tight;
+  }
+
+  .helix-pulse-stat-meta {
+    @apply block font-mono text-[9px] text-sky-300/45 mt-0.5 truncate;
+  }
+
+  .helix-pulse-stat--bull .helix-pulse-stat-value { @apply text-bull; }
+  .helix-pulse-stat--bear .helix-pulse-stat-value { @apply text-bear; }
+
+  .helix-hot-tickers {
+    @apply flex items-center gap-2 mb-2 min-w-0;
+  }
+
+  .helix-hot-tickers-label {
+    @apply shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-sky-300/45;
+  }
+
+  .helix-hot-tickers-rail {
+    @apply flex flex-wrap gap-1.5 min-w-0;
+  }
+
+  .helix-hot-ticker-chip {
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-2 py-1 font-mono text-[10px] text-sky-100/85 transition-all hover:border-white/15 hover:bg-white/[0.03];
+  }
+
+  .helix-hot-ticker-chip--active {
+    @apply border-cyan-500/40 text-cyan-100;
+    background: rgba(34, 211, 238, 0.08);
+    box-shadow: 0 0 10px rgba(34, 211, 238, 0.12);
+  }
+
+  .helix-hot-ticker-symbol {
+    @apply font-bold tracking-wide;
+  }
+
+  .helix-hot-ticker-prem {
+    @apply text-sky-300/70;
+  }
+
+  .helix-hot-ticker-bias {
+    @apply text-[9px];
+  }
+
   .helix-tape-input-wrap {
     @apply relative flex items-center;
   }
@@ -21069,7 +21870,14 @@ html.product-shell .nav-mega {
   -webkit-mask-image:linear-gradient(90deg,#000 0,#000 92%,transparent 100%);
   mask-image:linear-gradient(90deg,#000 0,#000 92%,transparent 100%)}
 .nh-deck-hdr-row--secondary{padding:4px 6px;align-items:center;gap:6px;flex-wrap:nowrap}
-.nh-deck-hdr-row--filters{justify-content:flex-start;gap:8px;padding:6px 8px}
+/* flex-wrap:wrap overrides --secondary's nowrap for this row specifically. Without it, the
+   prominent status filterbar below is forced to `width:100%` (its flex-basis) inside a NOWRAP
+   row, so flex-shrink squeezes it and the direction filterbar / search box below don't drop to a
+   second line -- their un-shrunk, white-space:nowrap text paints on top of the shrunk status
+   buttons instead (measured live at 430px: "WATCH"/"CLOSED" overlaid by "L/S"/"LONG"/"SHORT", and
+   the search placeholder clipped at the viewport edge). Desktop widths never trip this because
+   everything already fits on one line at that width, so this is a no-op there. */
+.nh-deck-hdr-row--filters{justify-content:flex-start;gap:8px;padding:6px 8px;flex-wrap:wrap}
 .nh-deck-header-compact .nh-deck-filterbar--prominent{flex:1 1 auto;width:100%}
 .nh-deck-filterbar--prominent{flex:1 1 auto;gap:6px;min-width:0;padding:0;border:0;background:transparent}
 .nh-deck-header-compact .nh-deck-filterbar--prominent .nh-deck-filtbtn{flex:1 1 0;min-width:56px;padding:8px 10px;font-size:11px;font-weight:800;letter-spacing:.08em}
@@ -21337,6 +22145,15 @@ html.product-shell .nav-mega {
 .nh-deck-command-technicals__body{display:flex;flex-direction:column;gap:10px}
 .nh-deck-command-live .nh-deck-premium-stack{margin-bottom:0}
 .nh-deck-command-thesis-prose{font-style:italic}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets{margin:8px 0 0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:1.45;color:var(--dk-text-secondary)}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets li{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets li.is-neg{color:var(--dk-red,#f87171)}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets strong{color:#fff;font-weight:700}
+.nh-deck-legacy-panel .nh-deck-legacy-reach{margin-top:8px;font-size:11px;line-height:1.45;color:var(--dk-amber,#fbbf24)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict{margin:0;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-ok{color:var(--dk-green)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-warn{color:var(--dk-amber)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-brk{color:var(--dk-red,#f87171)}
 /* ── Premium 0DTE terminal panels ── */
 .nh-deck-premium-stack{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
 .nh-deck-premium__heading{margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:.12em;
@@ -22114,6 +22931,135 @@ html.product-shell .nav-mega {
 
 /* ── 0DTE lifecycle play cards (left queue) — table grid ── */
 .nh-deck-play-table{--nh-play-cols:22px 80px minmax(0,1.5fr) 120px 96px 72px}
+/* Swing Command — tighter grid: no dead air between Play and Grade; grade is letter-only. */
+.nh-deck--swing-largo .nh-deck-play-table{--nh-play-cols:20px 64px minmax(0,1fr) 44px 72px 60px}
+.nh-deck--swing-largo .nh-deck-play-grid{column-gap:10px}
+.nh-deck--swing-largo .nh-deck-left{width:30%;min-width:220px}
+.nh-deck--swing-largo .nh-deck-largo{width:26%;min-width:200px;display:flex;flex-direction:column;min-height:0;
+  border-right:1px solid var(--dk-border);background:var(--dk-bg-panel);overflow-y:auto}
+.nh-deck--swing-largo .nh-deck-right{flex:1;min-width:0}
+.nh-deck-largo-empty,.nh-deck-largo{display:flex;flex-direction:column;min-height:0;height:100%}
+.nh-deck-largo__placeholder{padding:16px 14px;color:var(--dk-text-secondary);font-size:12px;line-height:1.45}
+.nh-deck-largo__kicker{display:block;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--dk-cyan);margin-bottom:6px}
+.nh-deck-largo__head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 14px 8px;border-bottom:1px solid var(--dk-line)}
+.nh-deck-largo__title{margin:4px 0 0;font-size:18px;font-weight:800;letter-spacing:.02em;color:var(--dk-text-primary);line-height:1.15}
+.nh-deck-largo__open{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dk-cyan);white-space:nowrap}
+.nh-deck-largo__meta{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px}
+.nh-deck-largo__pill{font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid var(--dk-border);color:var(--dk-text-secondary)}
+.nh-deck-largo__pill b{color:var(--dk-bull)}
+.nh-deck-largo__mini{margin:0 10px 10px}
+.nh-deck-largo__section{padding:0 14px 12px}
+.nh-deck-largo__section-title{margin:0 0 8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--dk-cyan)}
+.nh-deck-largo__factors{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.nh-deck-largo__factors li{display:flex;justify-content:space-between;gap:8px;font-size:11px}
+.nh-deck-largo__factors .lab{color:var(--dk-text-secondary)}
+.nh-deck-largo__factors .pts{font-weight:800;font-variant-numeric:tabular-nums}
+.nh-deck-largo__factors .pts.up{color:var(--dk-bull)}
+.nh-deck-largo__factors .pts.dn{color:var(--dk-bear)}
+.nh-deck-largo__note{margin:0;font-size:11px;line-height:1.45;color:var(--dk-text-secondary)}
+.nh-deck-largo--brief .nh-deck-largo__brief-body{flex:1;min-height:0;overflow:auto;padding:0 8px 8px}
+.nh-deck-largo__actions{display:flex;align-items:center;gap:8px}
+.nh-deck-largo__detail-toggle{border:1px solid var(--dk-border);background:transparent;color:var(--dk-text-secondary);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.nh-deck-largo__detail-toggle.is-on{border-color:rgba(56,189,248,.45);color:var(--dk-cyan)}
+.nh-deck-largo__refresh{border:1px solid var(--dk-border);background:transparent;color:var(--dk-cyan);border-radius:4px;width:28px;height:28px;cursor:pointer;font-size:14px}
+.nh-deck-largo__loading{display:flex;flex-direction:column;gap:8px;padding:12px}
+.nh-deck-largo__skel{height:12px;border-radius:4px;background:linear-gradient(90deg,rgba(56,189,248,.08),rgba(56,189,248,.18),rgba(56,189,248,.08));animation:nhSkel 1.2s ease-in-out infinite}
+.nh-deck-largo__error{margin:12px;font-size:12px;color:var(--dk-bear)}
+.nh-deck-largo__foot{display:flex;justify-content:space-between;gap:8px;padding:8px 12px 10px;border-top:1px solid var(--dk-line);font-size:9px;color:var(--dk-text-secondary);letter-spacing:.06em;text-transform:uppercase}
+.nh-deck-largo__engine{color:#7DD3FC}
+.nh-deck-largo__bie{font-size:12px}
+.nh-deck-largo__bie .bie-answer-head{padding:8px 6px 4px}
+.nh-deck-largo__bie .bie-section-card{margin:6px 0}
+.nh-deck-largo__bie .bie-section-card__title{font-size:10px}
+.nh-deck-largo__bie .bie-section-card__body{font-size:12px;line-height:1.45;color:#E2E8F0}
+.nh-deck-largo__delta{display:block;margin-top:4px;font-size:10px;font-weight:700;letter-spacing:.06em;color:#FBBF24}
+.nh-deck-largo__bie .bie-answer-followups{padding:6px 6px 10px;border-top:1px solid var(--dk-line);margin-top:4px}
+.nh-deck-largo__bie .bie-answer-followups-row{flex-wrap:wrap;gap:6px}
+.nh-deck-largo__bie .bie-followup-chip{font-size:10px;padding:4px 8px;line-height:1.3;max-width:100%;text-align:left;white-space:normal}
+.nh-deck-largo__action-strip{margin:0 12px 8px;padding:10px 12px;border-radius:6px;border:1px solid var(--dk-border);background:rgba(15,23,42,.6)}
+.nh-deck-largo__action-strip--hold{border-color:rgba(56,189,248,.35)}
+.nh-deck-largo__action-strip--trim{border-color:rgba(251,191,36,.45);background:rgba(251,191,36,.06)}
+.nh-deck-largo__action-strip--sell{border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.06)}
+.nh-deck-largo__action-strip--buy{border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.06)}
+.nh-deck-largo__action-strip-primary{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.nh-deck-largo__action-verb{font-size:16px;font-weight:800;letter-spacing:.06em;color:var(--dk-cyan)}
+.nh-deck-largo__action-strip--trim .nh-deck-largo__action-verb{color:#FBBF24}
+.nh-deck-largo__action-strip--sell .nh-deck-largo__action-verb{color:var(--dk-bear)}
+.nh-deck-largo__action-strip--buy .nh-deck-largo__action-verb{color:var(--dk-bull)}
+.nh-deck-largo__action-size{font-size:13px;font-weight:700;color:var(--dk-text-primary)}
+.nh-deck-largo__action-urgency{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--dk-text-secondary)}
+.nh-deck-largo__action-reason{margin:0;font-size:11px;line-height:1.4;color:var(--dk-text-secondary)}
+.nh-deck-largo__action-trims{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.nh-deck-largo__action-trim{font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;border:1px solid var(--dk-border);color:var(--dk-text-secondary)}
+.nh-deck-largo__action-trim.is-fired{border-color:var(--dk-bull);color:var(--dk-bull)}
+.nh-deck-largo__live-dot{display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:50%;background:#34D399;animation:nhLargoPulse 1s ease-in-out infinite}
+@keyframes nhLargoPulse{0%,100%{opacity:.4}50%{opacity:1}}
+.nh-deck-largo__bie .bie-section-card:has(.bie-section-card__title){}
+.nh-deck-largo__bie .bie-section-card__body ul,.nh-deck-largo__bie .bie-section-card__body p{margin:0 0 8px}
+.nh-deck-largo__bie .bie-section-card:first-of-type .bie-section-card__title{color:#7DD3FC}
+.nh-deck-trade-hero__tk-contract{font-size:22px;letter-spacing:.03em}
+
+/* Swing Command — readability: brighter secondary text + larger type on dense panels. */
+.nh-deck--swing-largo{
+  --dk-text-secondary:#B8BDC8;--dk-ink-dim:#B8BDC8;
+  font-size:13px;
+}
+.nh-deck--swing-largo .nh-deck-play-th,
+.nh-deck--swing-largo .nh-deck-play-th--sort{font-size:11px;color:#7DD3FC}
+.nh-deck--swing-largo .nh-deck-play-cell--rank{font-size:11px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-play-cell--play{font-size:15px;font-weight:800;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-play-grade{font-size:15px;font-weight:900}
+.nh-deck--swing-largo .nh-deck-play-cell--time{font-size:14px;color:#67E8F9}
+.nh-deck--swing-largo .nh-deck-play-pnl{font-size:16px;font-weight:900}
+.nh-deck--swing-largo .nh-deck-premlab{font-size:10px;color:#B8BDC8;opacity:1}
+.nh-deck--swing-largo .nh-deck-status-pill{font-size:11px}
+.nh-deck--swing-largo .nh-deck-trade-hero__tk-contract{font-size:28px;font-weight:900;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-trade-hero-dense .nh-deck-trade-hero__tk{font-size:28px}
+.nh-deck--swing-largo .nh-deck-trade-hero__dir{font-size:11px}
+.nh-deck--swing-largo .nh-deck-trade-hero__metric .k{font-size:11px;color:#B8BDC8;letter-spacing:.12em}
+.nh-deck--swing-largo .nh-deck-trade-hero__metric .v{font-size:18px;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-trade-hero__metric.is-primary .v{font-size:28px}
+.nh-deck--swing-largo .nh-deck-trade-hero__chip{font-size:11px;color:#D1D5DB;border-color:rgba(148,163,184,.35)}
+.nh-deck--swing-largo .nh-deck-lifecycle-strip__lab{font-size:10px;color:#7DD3FC}
+.nh-deck--swing-largo .nh-deck-lifecycle-strip__val{font-size:13px;font-weight:800;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-th-title{font-size:11px;color:#7DD3FC}
+.nh-deck--swing-largo .nh-deck-th-score{font-size:38px;color:#E0F2FE}
+.nh-deck--swing-largo .nh-deck-th-delta{font-size:12px}
+.nh-deck--swing-largo .nh-deck-th-delta .k{font-size:10px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-th-grid-hd{font-size:10px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-th-row{font-size:12px;padding:6px 0}
+.nh-deck--swing-largo .nh-deck-th-row .col-pillar .nm{font-size:12px;color:#F1F5F9;font-weight:700}
+.nh-deck--swing-largo .nh-deck-thlbl{font-size:10px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-th-advisory{font-size:12px;border-color:rgba(56,189,248,.28);background:rgba(56,189,248,.06)}
+.nh-deck--swing-largo .nh-deck-th-advisory .tx{font-size:12px;color:#F1F5F9;line-height:1.5}
+.nh-deck--swing-largo .nh-deck-th-advisory .mgmt{font-size:12px}
+.nh-deck--swing-largo .nh-deck-premium__heading{font-size:11px;color:#9DD9FF;letter-spacing:.14em}
+.nh-deck--swing-largo .nh-deck-premium-note{font-size:12px;line-height:1.45}
+.nh-deck--swing-largo .nh-deck-action-card__banner{font-size:10px}
+.nh-deck--swing-largo .nh-deck-action-card__verb{font-size:24px}
+.nh-deck--swing-largo .nh-deck-action-card__row{font-size:12px}
+.nh-deck--swing-largo .nh-deck-action-card__key{color:#7DD3FC}
+.nh-deck--swing-largo .nh-deck-action-card__val{color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-recnote{font-size:12px;color:#D1D5DB;line-height:1.45}
+.nh-deck--swing-largo .nh-deck-meta .k,
+.nh-deck--swing-largo .nh-deck-grid .k{font-size:11px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-meta .v,
+.nh-deck--swing-largo .nh-deck-grid .v{font-size:14px;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-excursion-graphic__stat .s{font-size:11px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-excursion-graphic__stat .v{font-size:14px}
+.nh-deck--swing-largo .nh-deck-largo__title{font-size:20px}
+.nh-deck--swing-largo .nh-deck-largo__factors li{font-size:12px}
+.nh-deck--swing-largo .nh-deck-largo__note{font-size:12px;color:#D1D5DB}
+.nh-swing-deck-chrome .nh-analytics-panel-title{font-size:12px}
+.nh-swing-deck-chrome .nh-analytics-panel-sub{font-size:11px;color:#9DD9FF}
+.nh-swing-deck-chrome .nh-analytics-tile-label{font-size:10px;color:#7DD3FC}
+.nh-swing-deck-chrome .nh-analytics-tile-value{font-size:1.35rem}
+.nh-swing-deck-chrome .nh-analytics-footnote{font-size:11px;color:#B8BDC8}
+.nh-swing-deck-chrome .nh-deck-ck--compact .ckh{font-size:9px;color:#7DD3FC}
+.nh-swing-deck-chrome .nh-deck-ck--compact .ckv,
+.nh-swing-deck-chrome .nh-deck-ck--compact .ckv b{font-size:13px;color:#F8FAFC}
+
+@media (max-width:1100px){.nh-deck--swing-largo .nh-deck-largo{display:none}}
 .nh-deck-play-grid{display:grid;grid-template-columns:var(--nh-play-cols);column-gap:20px;align-items:center;min-width:0;width:100%}
 .nh-deck-play-table-head{padding:8px 12px 10px;margin:0 6px;border-bottom:1px solid rgba(110,122,153,.18);
   position:sticky;top:0;z-index:2;background:linear-gradient(180deg,#0C0C0E 0%,#0C0C0E 100%)}
@@ -22148,6 +23094,24 @@ html.product-shell .nav-mega {
 .nh-deck-origin-dot.is-flow{background:var(--dk-flow)}
 .nh-deck-origin-dot.is-breakout{background:var(--dk-bull)}
 .nh-deck-origin-dot.is-pin{background:var(--dk-ai)}
+.nh-deck-vector-dot{display:inline-flex;align-items:center;margin-left:6px;padding:1px 4px;border-radius:3px;font-size:8px;font-weight:800;letter-spacing:.04em;text-decoration:none;vertical-align:1px;border:1px solid rgba(139,92,246,.35);color:#c4b5fd;background:rgba(139,92,246,.12)}
+.nh-deck-vector-dot.is-winner{border-color:rgba(0,217,163,.45);color:var(--dk-bull);background:rgba(0,217,163,.12)}
+.nh-deck-vector-dot.is-runner{border-color:rgba(250,204,21,.35);color:#fde68a;background:rgba(250,204,21,.08)}
+.nh-deck-vector-xlink{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 10px;padding:8px 10px;border-radius:8px;border:1px solid rgba(139,92,246,.25);background:rgba(139,92,246,.06);font-size:11px}
+.nh-deck-vector-xlink__lab{font-family:var(--font-mono,monospace);font-size:9px;text-transform:uppercase;letter-spacing:.14em;color:#c4b5fd}
+.nh-deck-vector-xlink__val{font-weight:800;color:var(--dk-text-primary)}
+.nh-deck-vector-xlink__val.is-winner{color:var(--dk-bull)}
+.nh-deck-vector-xlink__link{margin-left:auto;font-weight:700;color:#c4b5fd;text-decoration:none}
+.nh-deck-vector-xlink__link:hover{text-decoration:underline}
+.nh-deck-runner-xlink{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 10px;padding:8px 10px;border-radius:8px;border:1px solid rgba(34,197,94,.28);background:rgba(34,197,94,.07);font-size:11px}
+.nh-deck-runner-xlink__lab{font-family:var(--font-mono,monospace);font-size:9px;text-transform:uppercase;letter-spacing:.14em;color:#86efac}
+.nh-deck-runner-xlink__val{font-weight:800;color:var(--dk-bull)}
+.nh-deck-runner-xlink__tag{font-family:var(--font-mono,monospace);font-size:9px;color:var(--dk-text-muted);text-transform:uppercase;letter-spacing:.08em}
+.nh-deck-gate-blocks__list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.nh-deck-gate-blocks__item{display:flex;flex-direction:column;gap:4px}
+.nh-deck-gate-blocks__code{display:inline-flex;align-self:flex-start;padding:2px 6px;border-radius:4px;border:1px solid rgba(56,189,248,.28);font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#7dd3fc}
+.nh-deck-gate-blocks__code.is-veto{border-color:rgba(240,99,124,.35);color:var(--dk-bear)}
+.nh-deck-gate-blocks__reason{font-size:11px;line-height:1.45;color:var(--dk-text-secondary)}
 .nh-deck-row-lifecycle-compact,.nh-deck-row-lifecycle{display:block;width:100%;text-align:left;padding:0;border-left-width:3px;border-left-color:transparent}
 .nh-deck-row-lifecycle-compact .nh-deck-lc-strip,.nh-deck-row-lifecycle .nh-deck-lc-strip{padding:10px 12px}
 .nh-deck-row-lifecycle{margin:2px 6px;border-radius:4px}
@@ -22276,7 +23240,12 @@ html.product-shell .nav-mega {
   margin-top:10px;padding-top:10px;border-top:1px solid var(--dk-border-subtle)}
 .nh-deck-trade-hero__metric{display:flex;flex-direction:column;gap:3px;min-width:0}
 .nh-deck-trade-hero__metric .k{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--dk-text-secondary)}
-.nh-deck-trade-hero__metric .v{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--dk-text-primary);line-height:1.1}
+/* overflow:hidden+ellipsis (not just min-width:0 on the flex parent) — a dollar-formatted
+   "Current" value (e.g. "+$4.80") at the is-primary 22-28px font sizes below can be wider than
+   this grid column; without a clip/truncate rule on the text node itself, it paints straight past
+   the column edge and visually overlaps the next metric's value (live repro, desktop /nighthawk
+   swings, NRG 110C 11DTE: "+$4.80" overlapping "Peak 98%"). */
+.nh-deck-trade-hero__metric .v{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--dk-text-primary);line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .nh-deck-trade-hero__metric.is-primary .v{font-size:22px}
 .nh-deck-trade-hero__rank-den{font-size:11px;font-weight:700;color:var(--dk-text-secondary)}
 .nh-deck-trade-hero__age .nh-deck-age-decay{padding:0;border:none;background:transparent;font-size:14px}
@@ -23022,6 +23991,22 @@ html.product-shell .nav-mega {
   letter-spacing: 0.16em;
   color: #22d3ee;
   text-shadow: 0 0 18px rgba(34, 211, 238, 0.22);
+}
+
+.thermal-triple-overlay-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 9999px;
+  background: #a3e635;
+  box-shadow: 0 0 6px rgba(163, 230, 53, 0.55);
+  vertical-align: middle;
+}
+
+.thermal-triple-overlay-dot.is-off {
+  background: rgba(125, 211, 252, 0.35);
+  box-shadow: none;
 }
 
 .thermal-triple-spot {

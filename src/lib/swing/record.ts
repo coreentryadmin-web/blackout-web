@@ -188,3 +188,47 @@ export function buildSwingRecord(chain: SwingLegRowLike[]): SwingRecord {
     composite,
   };
 }
+
+export type SwingRecordSummary = {
+  methodology: string;
+  window: { since: string; through: string; days: number };
+  chains: number;
+  resolved_chains: number;
+  wins: number;
+  losses: number;
+  opens: number;
+  win_rate_pct: number | null;
+  avg_compounded_return_pct: number | null;
+  low_n: boolean;
+};
+
+/** Aggregate member-facing summary over built chain records. */
+export function buildSwingRecordSummary(
+  records: readonly SwingRecord[],
+  window: { since: string; through: string; days: number },
+): SwingRecordSummary {
+  const resolved = records.filter((r) => r.composite.chainResolved);
+  const wins = resolved.filter((r) => r.composite.outcome === "win").length;
+  const losses = resolved.filter((r) => r.composite.outcome === "loss").length;
+  const opens = records.length - resolved.length;
+  const decided = wins + losses;
+  const compounded = resolved
+    .map((r) => r.composite.compoundedReturnPct)
+    .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  const avgCompounded =
+    compounded.length > 0
+      ? Math.round((compounded.reduce((a, b) => a + b, 0) / compounded.length) * 10) / 10
+      : null;
+  return {
+    methodology: SWING_RECORD_METHODOLOGY,
+    window,
+    chains: records.length,
+    resolved_chains: resolved.length,
+    wins,
+    losses,
+    opens,
+    win_rate_pct: decided > 0 ? Math.round((wins / decided) * 1000) / 10 : null,
+    avg_compounded_return_pct: avgCompounded,
+    low_n: decided < LOW_N_THRESHOLD,
+  };
+}

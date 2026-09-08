@@ -14,6 +14,7 @@ import {
   gatePublishedMirror,
   readPinnedDebriefTag,
   readPinnedTier,
+  readPinnedTierAssignment,
   pinnedTargetAtrMultiple,
   readRejectionCounterfactual,
   retroWouldBlock,
@@ -85,6 +86,23 @@ test("readPinnedTier: reads the real PR-N7 pinned shape ({ tier: { tier, factors
     "a bare string is NOT the real pinned shape — must not silently accept it as if it were",
   );
   assert.equal(readPinnedTier(null), null);
+});
+
+test("readPinnedTierAssignment: returns tier letter + validated factors", () => {
+  const assignment = readPinnedTierAssignment({
+    context_version: 2,
+    tier: {
+      tier: "b",
+      factors: [
+        { label: "Prime band", direction: "up", detail: "Score 40–55" },
+        { label: "bad", direction: "sideways", detail: "ignored" },
+      ],
+    },
+  });
+  assert.deepEqual(assignment, {
+    tier: "B",
+    factors: [{ label: "Prime band", direction: "up", detail: "Score 40–55" }],
+  });
 });
 
 test("readRejectionCounterfactual: ungradeable and malformed blobs read as not-graded", () => {
@@ -556,7 +574,7 @@ test("targetAtrDistribution: reads the PIN, never recomputes from levels", () =>
   assert.equal(dist.rows_n, 6);
   assert.equal(dist.pinned_n, 5);
   assert.equal(dist.median, 2.05);
-  assert.equal(dist.over_gate_n, 2);
+  assert.equal(dist.over_gate_n, 3, "2.05×, 3.65×, 8.23× exceed the live 2.0× gate");
   assert.equal(dist.over_gate_threshold, GATE_TARGET_MAX_ATR_MULTIPLE);
   assert.equal(dist.low_n, false); // 5 === LOW_N_THRESHOLD
   assert.equal(dist.histogram.reduce((a, b) => a + b.n, 0), 5, "only pinned rows are bucketed");
@@ -590,7 +608,7 @@ test("analyzeNighthawkDebriefs: exposes the pinned target-ATR distribution over 
   assert.equal(report.target_atr_distribution.rows_n, 1);
   assert.equal(report.target_atr_distribution.pinned_n, 1);
   assert.equal(report.target_atr_distribution.median, 2.05);
-  assert.equal(report.target_atr_distribution.over_gate_n, 0, "the legacy 9.9× row must not leak in");
+  assert.equal(report.target_atr_distribution.over_gate_n, 1, "2.05× exceeds the live 2.0× gate; legacy 9.9× row excluded");
 });
 
 test("analyzeNighthawkDebriefs: empty input → available:false, stable shape", () => {

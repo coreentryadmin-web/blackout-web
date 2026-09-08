@@ -38,6 +38,112 @@ test("no dependency or build directory is tracked in git", () => {
   );
 });
 
+test("data-correctness cron's markdown scorecard is never tracked in git", () => {
+  // docs/auto/data-correctness-<date>.md is best-effort local convenience output (the durable
+  // record is logCronRun's structured payload, per docs/DATA_CORRECTNESS.md). Tracking it meant
+  // a recurring no-op "chore: commit stray placeholder" PR every time a sandbox session's local
+  // run happened to produce one (#3087, #3113, #3132) — see .gitignore for the full writeup.
+  const bad = tracked().filter((p) => /^docs\/auto\/data-correctness-.*\.md$/.test(p));
+  assert.deepEqual(
+    bad,
+    [],
+    `these must stay gitignored, not committed:\n  ${bad.join("\n  ")}`
+  );
+});
+
+/**
+ * Guards against a redaction placeholder getting committed as a real config default.
+ *
+ * scripts/audit/zerodte-session-replay.mjs shipped, from its very first commit (#3419), with
+ * `process.env.POLYGON_API_BASE = "[REDACTED]"` — a literal 12-character placeholder string,
+ * not a URL. Confirmed byte-for-byte via `git show <sha>:<path> | sha256sum`, not a display
+ * artifact: whatever wrote the self-default guard had its own view of the real URL redacted
+ * (the same thing happens to anyone reading this file in a sandboxed session) and copied the
+ * placeholder text verbatim instead of substituting the real value. The guard looked correct
+ * (checks for a missing/malformed env var, assigns a fallback) but the fallback was itself
+ * invalid, so `api-tracked-fetch.ts`'s host allowlist rejected every request with "refusing to
+ * fetch disallowed host" — an error that reads like a security block, not a broken default, so
+ * this went unnoticed until `npm run replay:0dte-session` was actually run for the first time.
+ *
+ * This scans every script using the same self-default pattern (~35 as of this writing) and
+ * asserts the assigned literal always parses as an http(s) URL — catches this exact class of
+ * bug in any script, present or future, not just the one instance that shipped broken.
+ */
+test("no scripts/audit/*.mjs POLYGON_API_BASE self-default is a non-URL placeholder", () => {
+  const files = tracked().filter((p) => p.startsWith("scripts/audit/") && p.endsWith(".mjs"));
+  const bad: string[] = [];
+  for (const file of files) {
+    const content = readFileSync(file, "utf8");
+    const assignments = content.matchAll(/process\.env\.POLYGON_API_BASE\s*=\s*"([^"]*)"/g);
+    for (const m of assignments) {
+      if (!/^https?:\/\//.test(m[1] ?? "")) {
+        bad.push(`${file}: assigns "${m[1]}" (not an http(s) URL)`);
+      }
+    }
+  }
+  assert.deepEqual(bad, [], `these self-defaults are broken:\n  ${bad.join("\n  ")}`);
+});
+
+/**
+ * Guards against these six modules being reintroduced dead.
+ *
+ * All shipped between #684 ("modular monolith feature folders") and #1210, and were never
+ * imported by anything else in the repo — no component, no route, no barrel re-export, no test.
+ * Confirmed by grepping the whole tree for each file's basename and every symbol it exports; each
+ * hit was the file's own declaration (or, for the three "superseded" ones below, a prose comment
+ * in the file that replaced it, explaining why it isn't used — never an actual import).
+ *
+ * Two are simply unfinished: `useSpxDayPerformance` computes a "today's SPX win rate" stat off
+ * the live `/api/market/spx/outcomes` route but was never wired into a card, and
+ * `spx-sniper-backdrops.ts` names ONE of four shipped `/spx-sniper/*.webp` hero images and emits
+ * `spx-sniper-tint-*` CSS classes that are defined nowhere — even wired up today it would render
+ * unstyled. `spx-session-phase.ts`'s doc comment claims it feeds "commentary + BIE composers",
+ * neither of which calls it.
+ *
+ * The other three were SUPERSEDED, not abandoned:
+ *  - `ThermalFreshnessBar` — `ThermalTripleDesk.tsx` grew its own inline
+ *    `ThermalMatrixFreshnessChip`, a strict subset (Matrix chip only) of what this showed (Matrix
+ *    + overlays + cross-val + wall-scope label); nothing pointed back at the fuller original.
+ *  - `LandingBackdrop` — replaced by `StaticLandingBackdrop.tsx` (same idea, no framer-motion
+ *    loops); `PricingBackdrop.tsx`'s own doc comment names it only to contrast itself against it.
+ *  - `LearnPageShell` — `/learn`'s layout explicitly "drops the inner LearnPageShell/PageShell"
+ *    per its own comment, to avoid a duplicate `<main id="main">` once `/learn` moved under the
+ *    marketing group's shell.
+ *
+ * `src/components/ScrollProgressBar.tsx` is the SAME kind of zero-importer orphan and was found in
+ * this same sweep, but is deliberately NOT on this list and was NOT removed — FINDINGS.md
+ * (2026-08-30, "ScrollProgressBar.tsx is a fully-built, never-wired-in component") already flagged
+ * it for the landing-page owner to decide wire-in-vs-delete rather than removing it unilaterally,
+ * and that decision has not been made yet. Re-flagging, not re-deciding.
+ *
+ * A file with zero importers is easy to miss forever — nothing fails, nothing lints, `tsc` is
+ * silent, and each one predates most of the tests in this repo. This is a narrow allowlist of
+ * PATHS, not a live orphan scanner: a generic "grep every file's basename" check would misfire on
+ * Next.js `page.tsx`/`route.ts`/`layout.tsx` files, which the framework wires by filesystem
+ * convention rather than by import.
+ */
+test("known-orphaned modules stay removed", () => {
+  const removed = [
+    "src/features/spx/hooks/useSpxDayPerformance.ts",
+    "src/features/spx/lib/spx-sniper-backdrops.ts",
+    "src/features/spx/lib/spx-session-phase.ts",
+    "src/features/thermal/components/ThermalFreshnessBar.tsx",
+    "src/components/landing/LandingBackdrop.tsx",
+    "src/components/learn/LearnPageShell.tsx",
+    // src/lib/bie/decompose.ts — removed 2026-09-04; compound detection for Largo stress lives
+    // inline in scripts/largo-stress-run.mjs. dynamic-format.ts was restored 2026-09-07 because
+    // scripts/largo-stress-shape.mjs still imports applyDynamicFormat (see staging finding).
+    "src/lib/bie/decompose.ts",
+  ];
+  const present = tracked().filter((p) => removed.includes(p));
+  assert.deepEqual(
+    present,
+    [],
+    `these dead files were removed as unused (see comment above) — do not reintroduce without ` +
+      `wiring them into something that imports them:\n  ${present.join("\n  ")}`
+  );
+});
+
 test("gitignore entries for node_modules have no trailing slash", () => {
   // A trailing slash restricts the pattern to directories, leaving a same-named symlink or file
   // un-ignored. Every node_modules rule must match regardless of file type.

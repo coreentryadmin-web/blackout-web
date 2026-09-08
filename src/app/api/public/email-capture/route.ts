@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   const utmSource = typeof body.utmSource === "string" ? body.utmSource.slice(0, MAX_BODY_FIELD_LEN) : null;
   const utmCampaign = typeof body.utmCampaign === "string" ? body.utmCampaign.slice(0, MAX_BODY_FIELD_LEN) : null;
 
-  const { isNew } = await recordEmailCapture({ email, sourcePath, utmSource, utmCampaign });
+  const { isNew: _isNew } = await recordEmailCapture({ email, sourcePath, utmSource, utmCampaign });
 
   // PER-RECIPIENT send cooldown. The IP rate limit above bounds the CALLER's request rate; this
   // bounds the VICTIM's inbox, which is the half that matters on an unauthenticated endpoint where
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { ok: true, isNew, emailSent },
+    { ok: true, emailSent },
     { headers: { ...NO_STORE_HEADERS, ...rlHeaders } }
   );
 }

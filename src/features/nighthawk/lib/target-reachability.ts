@@ -123,7 +123,7 @@ export function targetReachabilityNote(k: number): string | null {
 // ── Pinned-multiple histogram (admin analytics) ─────────────────────────────────────────
 
 /** Bucket edges for the pinned target-ATR-multiple distribution. Chosen to straddle the
- *  two constants that matter: the 1.5× minimum-target floor (deterministic-edition.ts:347)
+ *  two constants that matter: the 1.0× minimum-target floor (deterministic-edition.ts)
  *  and the 3.5× publish-gate bar (publish-gates.ts:69). */
 export const TARGET_ATR_HISTOGRAM_EDGES: readonly number[] = [0, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 5.0];
 

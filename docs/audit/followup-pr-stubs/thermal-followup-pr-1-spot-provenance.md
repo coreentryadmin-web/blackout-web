@@ -1,5 +1,10 @@
 # PR: Add Spot Provenance Field to GEX Heatmap
 
+> **STATUS (2026-09-04, verified live): SHIPPED.** `spot_source` exists on `GexHeatmap`
+> (`polygon-options-gex.ts:479`), is wired through `buildGexHeatmapUncached` (`polygon-options-gex.ts:3771`)
+> and the public snapshot (`public-gex-snapshot.ts:214`). This stub is kept for historical context only —
+> the plan below describes work that is already done, not an open item.
+
 **Issue:** Five fallback paths produce spot; payload doesn't record which. No counter/log for fallback frequency.
 
 **Root cause:** `resolveSpotSnapshot()` tries five sources in order (WS → Redis → Polygon REST → prev session → synthetic 0), but heatmap consumer doesn't know which succeeded. This matters for debugging (WS live vs cached vs fallback) and for transparency (member knows data freshness path).

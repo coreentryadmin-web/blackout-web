@@ -48,8 +48,8 @@ describe("meridian-peer-cohort-for-largo-core", () => {
       subject_ticker: "DKS",
       cohort,
       reactions: [
-        { ticker: "BBWI", avgReactionPct: -2.5, beatRate: 0.75, n: 4 },
-        { ticker: "ULTA", avgReactionPct: 1.2, beatRate: 0.5, n: 4 },
+        { ticker: "BBWI", avgReactionPct: -2.5, beatRate: 0.75, n: 4, beatRateN: 4 },
+        { ticker: "ULTA", avgReactionPct: 1.2, beatRate: 0.5, n: 4, beatRateN: 4 },
       ],
     });
 
@@ -61,9 +61,37 @@ describe("meridian-peer-cohort-for-largo-core", () => {
     assert.equal(bbwi?.avg_reaction_pct, -2.5);
     assert.equal(bbwi?.beat_rate, 0.75);
     assert.equal(bbwi?.reaction_sample_n, 4);
+    assert.equal(bbwi?.beat_rate_n, 4);
     const spwh = shaped.members.find((m) => m.ticker === "SPWH");
     assert.equal(spwh?.avg_reaction_pct, null);
     assert.equal(spwh?.reaction_sample_n, 0);
+    assert.equal(spwh?.beat_rate_n, 0);
     assert.match(shaped.interpretation, /unknown, not zero/);
+  });
+
+  it("carries a peer's beat_rate_n independently of reaction_sample_n when the two cohorts differ", () => {
+    // BUG (fixed 2026-09-06): reaction_sample_n backs avg_reaction_pct only. A peer whose EPS is
+    // graded but whose reaction hasn't settled yet has a real beat_rate with reaction_sample_n=0
+    // — Largo must see beat_rate_n, not reuse reaction_sample_n, or it reports a 0-sample beat rate.
+    const cohort = buildSectorCohort({
+      subject: "DKS",
+      subjectValue: 7.2,
+      classification: { majorGroup: "56", label: "Apparel Retail", sicCode: null, sicDescription: null },
+      peers: [{ ticker: "BBWI", value: 5.1, date: "2026-08-20" }],
+    });
+
+    const shaped = shapeMeridianPeerCohortForLargo({
+      event_id: "earnings:DKS:2026-08-25",
+      subject_ticker: "DKS",
+      cohort,
+      reactions: [{ ticker: "BBWI", avgReactionPct: null, beatRate: 1, n: 0, beatRateN: 2 }],
+    });
+
+    const bbwi = shaped.members.find((m) => m.ticker === "BBWI");
+    assert.equal(bbwi?.avg_reaction_pct, null, "no settled reactions on file");
+    assert.equal(bbwi?.reaction_sample_n, 0);
+    assert.equal(bbwi?.beat_rate, 1, "the beat rate is real and known");
+    assert.equal(bbwi?.beat_rate_n, 2, "backed by its own cohort, not reaction_sample_n");
+    assert.match(shaped.interpretation, /DIFFERENT cohorts/);
   });
 });

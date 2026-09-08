@@ -6,6 +6,9 @@ import {
   aggTimespanFromPath,
   etSessionDate,
   etStamp,
+  etStampFromDateOrIso,
+  etStampFromIso,
+  parseEtStamp,
   stampBars,
   stampPolygonAggregatePayload,
 } from "./bar-session-date";
@@ -25,11 +28,52 @@ test("daily bars land at 01:00 ET, not midnight — the detail that made the gue
   assert.equal(etStamp(SPX_AUG_20.t), "2026-08-20 01:00 ET");
 });
 
+test("etStampFromIso converts a raw ISO-8601 mark timestamp to the Largo C1 ET stamp (FINDINGS 2026-09-06 #21)", () => {
+  // The exact live shape: option marks reach the DB as Date.toISOString(), not epoch-ms — the
+  // swing play-brief's C1 violation was rendering this raw rather than converting it.
+  assert.equal(etStampFromIso("2026-09-04T21:45:18.663Z"), "2026-09-04 17:45 ET");
+});
+
+test("etStampFromIso passes through a value it cannot parse rather than dropping it", () => {
+  assert.equal(etStampFromIso("not-a-timestamp"), "not-a-timestamp");
+});
+
+test("etStampFromIso is null-safe", () => {
+  assert.equal(etStampFromIso(null), null);
+  assert.equal(etStampFromIso(undefined), null);
+  assert.equal(etStampFromIso(""), null);
+});
+
+test("etStampFromDateOrIso anchors date-only observation strings at session close ET (C1)", () => {
+  assert.equal(etStampFromDateOrIso("2026-09-05"), "2026-09-05 16:00 ET");
+  assert.equal(
+    etStampFromDateOrIso("2026-09-04T21:45:18.663Z"),
+    "2026-09-04 17:45 ET",
+  );
+});
+
 test("a non-timestamp yields null rather than a plausible wrong date", () => {
   for (const bad of [undefined, null, "", "not-a-number", NaN, {}]) {
     assert.equal(etSessionDate(bad), null);
     assert.equal(etStamp(bad), null);
+    assert.equal(parseEtStamp(bad), null);
   }
+});
+
+test("parseEtStamp round-trips etStamp output (EDT and EST)", () => {
+  const edt = Date.parse("2026-09-05T20:00:00.000Z"); // 16:00 ET (EDT)
+  const est = Date.parse("2026-01-14T21:00:00.000Z"); // 16:00 ET (EST)
+  for (const ms of [edt, est]) {
+    const stamp = etStamp(ms);
+    assert.ok(stamp);
+    assert.equal(parseEtStamp(stamp), ms);
+  }
+});
+
+test("parseEtStamp rejects strings Date.parse cannot read", () => {
+  assert.equal(parseEtStamp("2026-09-05 16:00 ET"), Date.parse("2026-09-05T16:00:00-04:00"));
+  assert.equal(parseEtStamp("not a stamp"), null);
+  assert.equal(parseEtStamp("2026-09-05 16:00 UTC"), null);
 });
 
 test("stamped daily bars answer the question that was answered wrong", () => {

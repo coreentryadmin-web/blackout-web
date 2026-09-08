@@ -6,6 +6,7 @@ import { getNighthawkMetrics, type NighthawkRecordSegment } from "@/features/nig
 import type { NightHawkRecordSegmentWire } from "@/features/nighthawk/lib/types";
 import { wilsonLowerBound, wilsonUpperBound } from "@/lib/swing/calibration";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -66,7 +67,7 @@ export async function GET(req: NextRequest) {
     const metrics = await getNighthawkMetrics(windowDays);
 
     return NextResponse.json(
-      {
+      roundFloats({
         window_days: metrics.window_days,
         total_resolved: metrics.total_resolved,
         pending_count: metrics.pending_count,
@@ -119,7 +120,7 @@ export async function GET(req: NextRequest) {
             };
           }),
         available: metrics.total_resolved > 0,
-      },
+      }),
       { headers: NO_STORE_HEADERS }
     );
   } catch (err) {

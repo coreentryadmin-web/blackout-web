@@ -2812,7 +2812,16 @@ html.nav-locked body { overflow: hidden; }
 /* ── Compact detail header ──────────────────────────────────────────────────────────
    Kind, name and timing on ONE line. The reader chose this event from the lane a second
    ago; the header confirms which one, it does not re-announce it. */
-.meridian-detail-head-v2 { align-items: center; gap: 1rem; margin-bottom: 0.6rem; padding-bottom: 0.55rem; }
+/* flex-wrap: wrap — WITHOUT this, `.meridian-detail-head-v2` stays a single nowrap flex row
+   while its `.meridian-detail-head-main` child holds an h2 (`.meridian-detail-title-v2`) that
+   IS flex-wrap: wrap by design (kicker + ticker + meta wrap to their own lines on narrow
+   screens). At <1440px the title wraps to 2-3 lines and the row grows tall, but the sibling
+   `.meridian-earnings-tablist` (fixed single-line height) never drops to its own row — it just
+   gets `align-items: center`-ed against the now-tall title block, landing mid-way down the
+   wrapped text ("earnings" under the SUMMARY pill, reproduced at 1024px and 430px on every
+   earnings event). Wrapping the row lets the tablist fall below the title once they no longer
+   fit side by side; at >=1440px the title still fits on one line, so nothing here changes. */
+.meridian-detail-head-v2 { align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.6rem; padding-bottom: 0.55rem; }
 .meridian-detail-head-main { min-width: 0; }
 .meridian-detail-title-v2 {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.55rem;

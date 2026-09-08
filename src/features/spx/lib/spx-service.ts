@@ -5,6 +5,7 @@ import {
   fetchRecentSpxSignalLogs,
   fetchSpxAdminRollups,
 } from "@/lib/db";
+import { observeSpxPlayVoiceTransitions } from "@/features/spx/lib/spx-voice-feed-store";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchRecentSpxSnapshots } from "@/features/spx/lib/spx-signal-log";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
@@ -19,6 +20,7 @@ import { playMemberReadCacheSec } from "@/features/spx/lib/spx-play-config";
 import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
+import { roundFloats } from "@/lib/round-floats";
 import { withServerCache, peekServerCache } from "@/lib/server-cache";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
@@ -78,7 +80,7 @@ export function summarizeSpxDesk(merged: SpxDeskPayload): SpxDeskSummary {
 
 export async function getSpxDeskSummary(): Promise<SpxDeskSummary> {
   const { merged } = await loadMergedSpxDesk();
-  return summarizeSpxDesk(merged);
+  return roundFloats(summarizeSpxDesk(merged));
 }
 
 async function evaluateSpxPlayState() {
@@ -133,10 +135,11 @@ async function evaluateSpxPlayState() {
   ).catch((err) => {
     console.warn("[spx-playbook-shadow]", err instanceof Error ? err.message : err);
   });
-  return {
+  void observeSpxPlayVoiceTransitions(play, sessionDate).catch(() => {});
+  return roundFloats({
     ...play,
     playbook_shadow,
-  };
+  });
 }
 
 const SPX_PLAY_EVAL_LOCK_PREFIX = "spx-play-eval-lock";
@@ -168,10 +171,16 @@ async function waitForPeerSpxPlaySnapshot(
  * cache misses on different ECS replicas can return divergent grade/score/direction
  * (spx-bie-consistency prod double-fetch caught flow-skew long vs SCANNING).
  */
-async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
+export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
   const date = todayEtYmd();
   const lockKey = `${SPX_PLAY_EVAL_LOCK_PREFIX}:${date}`;
-  const won = await sharedCacheSetNx(lockKey, Date.now(), SPX_PLAY_EVAL_LOCK_TTL_SEC);
+  // Fail CLOSED (treat as lock-not-won) on a Redis error: this lock only exists to stop every
+  // replica recomputing the expensive eval at once, and Redis being unavailable is exactly the
+  // moment the platform can least afford N-way redundant compute. Falling through to the
+  // stale-cache/peer-wait/degraded chain below costs nothing extra, unlike a cron overlap guard
+  // (where fail-open is the right call because the alternative is a stuck cron) — this is a
+  // single-flight optimization, not a guard against a stuck background job.
+  const won = await sharedCacheSetNx(lockKey, Date.now(), SPX_PLAY_EVAL_LOCK_TTL_SEC).catch(() => false);
   if (!won) {
     const stale = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)

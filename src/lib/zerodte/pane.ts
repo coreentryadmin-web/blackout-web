@@ -8,6 +8,7 @@
 // never to a fabricated value.
 
 import { CONVICTION_A_MIN_SCORE } from "@/lib/nighthawk/cortex/compose";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "./marks-math";
 // Type-only (erased): the tier shapes come from the engine so the reader below can
 // never drift from what assignZeroDteTier/tierForSkip actually emit.
 import type { TierFactor, ZeroDteTier, ZeroDteTierAssignment } from "./tiers";
@@ -75,7 +76,15 @@ export type PaneCortexView =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED" | null;
+      decision:
+        | "PASS"
+        | "VETO"
+        | "VETO_BLIND"
+        | "NET_NEGATIVE"
+        | "THIN_EVIDENCE"
+        | "CONTESTED"
+        | "OPPOSE_UNRESOLVED"
+        | null;
       verdict: CortexVerdictLike;
     };
 
@@ -84,6 +93,7 @@ const CORTEX_DECISIONS = new Set([
   "VETO",
   "VETO_BLIND",
   "NET_NEGATIVE",
+  "THIN_EVIDENCE",
   "CONTESTED",
   "OPPOSE_UNRESOLVED",
 ]);
@@ -112,7 +122,14 @@ export function readCortexView(raw: unknown): PaneCortexView | null {
   }
   const decision =
     typeof a.decision === "string" && CORTEX_DECISIONS.has(a.decision)
-      ? (a.decision as "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED")
+      ? (a.decision as
+          | "PASS"
+          | "VETO"
+          | "VETO_BLIND"
+          | "NET_NEGATIVE"
+          | "THIN_EVIDENCE"
+          | "CONTESTED"
+          | "OPPOSE_UNRESOLVED")
       : null;
   return { abstained: false, decision, verdict };
 }
@@ -279,6 +296,7 @@ const GATE_LABELS: Record<string, string> = {
   // Cortex wire-in codes (#318). cortex_veto carries a `:<source>` suffix — handled
   // by the prefix branch in zeroDteGateLabel below.
   cortex_net_negative: "cortex · net-negative",
+  cortex_thin_evidence: "cortex · thin evidence",
   // Evidence gates (pre-setup rejections), for completeness if ever surfaced here.
   min_gross: "evidence · premium floor",
   min_aggr_share: "evidence · aggression floor",
@@ -298,10 +316,11 @@ export function zeroDteGateLabel(code: string): string {
   return GATE_LABELS[code] ?? code.replace(/_/g, " ");
 }
 
-/** True when a gate block came from the Cortex evidence layer (veto/net-negative) —
- *  the SKIP card highlights these like the other hard-risk blocks. */
+/** True when a gate block came from the Cortex evidence layer (veto/net-negative/thin-evidence)
+ *  — the SKIP card highlights these like the other hard-risk blocks, and cortex-read.ts's
+ *  Largo tooling filters rejection rows down to Cortex skips with this same predicate. */
 export function isCortexBlockCode(code: string): boolean {
-  return code.startsWith("cortex_veto") || code === "cortex_net_negative";
+  return code.startsWith("cortex_veto") || code === "cortex_net_negative" || code === "cortex_thin_evidence";
 }
 
 // ── G-2 unlock countdown ───────────────────────────────────────────────────────────
@@ -379,7 +398,10 @@ export function resolveZeroDteReadiness(input: {
   if (!input.sessionLive) {
     return { tone: "green", label: "OFF-HOURS", detail: "Session closed — board frozen at the final state." };
   }
-  if (input.asOfAgeMs != null && input.asOfAgeMs > staleAfter) {
+  if (
+    input.asOfAgeMs != null &&
+    (input.asOfAgeMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS || input.asOfAgeMs > staleAfter)
+  ) {
     return { tone: "amber", label: "DELAYED", detail: "Board response is stale — numbers may lag the tape." };
   }
   if (input.hasLivePlays && input.marksTransport == null) {

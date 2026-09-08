@@ -23,6 +23,7 @@ import {
   assignNighthawkTier,
   nhTierInputFromScored,
   nhConvictionRank,
+  NH_SCORE_PRIME_MIN,
   type NighthawkTier,
 } from "./nighthawk-tiers";
 
@@ -60,7 +61,9 @@ export function legacyMinPublishTier(): NighthawkTier {
 export function effectiveMinPublishScore(): number {
   const floor = Number(process.env.NH_MIN_PUBLISH_SCORE);
   if (Number.isFinite(floor) && floor > 0) return floor;
-  return legacyGlobalStrongest() ? Math.max(MIN_PUBLISH_SCORE, 55) : MIN_PUBLISH_SCORE;
+  // Global-strongest uses the measured overnight PRIME band floor (40–55), not the
+  // inverted 55–69 band — see nighthawk-tiers.ts header (+2.99% avg in prime band).
+  return legacyGlobalStrongest() ? Math.max(MIN_PUBLISH_SCORE, NH_SCORE_PRIME_MIN) : MIN_PUBLISH_SCORE;
 }
 
 export function effectiveTargetPlays(): number {

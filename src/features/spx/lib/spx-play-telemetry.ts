@@ -8,6 +8,7 @@ import {
 } from "@/features/spx/lib/spx-play-config";
 import { fetchPlayOutcomeStats, type PlayOutcomeStats } from "@/features/spx/lib/spx-play-outcomes";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 export type AdaptivePlayGates = {
   active: boolean;
@@ -27,7 +28,7 @@ const CACHE_MS = 5 * 60_000;
 export async function loadAdaptivePlayGates(): Promise<AdaptivePlayGates> {
   const now = Date.now();
   const cacheKey = todayEtYmd();
-  if (cached && cached.key === cacheKey && now - cached.at < CACHE_MS) return cached.gates;
+  if (cached && cached.key === cacheKey && isWsUpdatedAtFresh(cached.at, CACHE_MS, now)) return cached.gates;
 
   const stats = await fetchPlayOutcomeStats();
   const gates = computeAdaptiveGates(stats);

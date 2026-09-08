@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { gammaShareByExpiry } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
-import { gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
+import { recomputeLevels } from "@/features/thermal/lib/gex-heatmap/recompute-levels";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { clsx } from "clsx";
@@ -26,6 +26,7 @@ import ThermalTripleDesk, {
 } from "@/features/thermal/components/ThermalTripleDesk";
 import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
 import { GreeksDistributionPanel } from "@/features/thermal/components/GreeksDistributionPanel";
+import { ThetaDistributionPanel } from "@/features/thermal/components/ThetaDistributionPanel";
 import {
   buildThermalUrlSearch,
   keyLevelsKicker,
@@ -35,8 +36,13 @@ import {
   parseThermalUrlState,
   shouldForceMatrixRefresh,
   thermalQuoteBadge,
+  spotSourceBadge,
+  shiftPanelEmptyDescription,
+  shiftBasisFootnote,
+  horizonWallsSummary,
   type ThermalComparePresetId,
   type ThermalLens,
+  type ThermalSpotSource,
 } from "@/features/thermal/lib/thermal-desk-state";
 // Canonical cash-RTH gate — holiday- and early-close-aware, and documented safe on the client.
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -61,6 +67,11 @@ import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { todayEt } from "@/lib/et-date";
+import { rebaseChangePct, referenceCloseFromSnapshot } from "@/lib/providers/change-pct";
+import {
+  pulseChangePctFromPriorClose,
+  restAnchoredIndexChangePct,
+} from "@/features/spx/lib/spx-change-anchor";
 import { forcedFlowBetween, wallMarkerRowIndex } from "@/lib/gex-depth";
 import {
   fmtHeatmapExpiry,
@@ -96,7 +107,11 @@ import {
 import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 import { ThermalRegimeStrip } from "@/features/thermal/components/ThermalRegimeStrip";
+import { ThermalSessionTimeline } from "@/features/thermal/components/ThermalSessionTimeline";
+import { ThermalSavedDesksMenu } from "@/features/thermal/components/ThermalSavedDesksMenu";
 import { buildThermalRegimeStrip } from "@/features/thermal/lib/thermal-regime-strip";
+import type { ThermalFlipReason } from "@/features/thermal/lib/thermal-flip-reason";
+import type { ThermalSavedDesk } from "@/features/thermal/lib/thermal-saved-desks";
 import { ThermalIntensityRail } from "@/features/thermal/components/ThermalIntensityRail";
 import {
   THERMAL_INTENSITY_MARKER_GLYPH,
@@ -139,7 +154,13 @@ type GexBlock = {
   put_wall: number | null;
   total: number;
   flip: number | null;
+  flip_reason?: ThermalFlipReason;
   regime: GexRegime;
+  walls_by_horizon?: Array<{
+    label: string;
+    callWall: number | null;
+    putWall: number | null;
+  }>;
 };
 
 /** Net dealer dollar-vanna block. */
@@ -252,6 +273,7 @@ type GexHeatmapResponse = {
   underlying?: string;
   spot?: number;
   change_pct?: number;
+  spot_source?: ThermalSpotSource;
   asof?: string;
   expiries?: string[];
   strikes?: number[];
@@ -334,6 +356,8 @@ type GexHeatmapResponse = {
     divergence: number | null;
     uw_asof: string | null;
   } | null;
+  /** True when the option chain hit the pagination guard — walls/OI may understate. */
+  chain_truncated?: boolean;
   error?: string;
 };
 
@@ -564,68 +588,6 @@ function anchorStrike(totals: Record<string, number>): number | null {
     }
   }
   return anchor;
-}
-
-/**
- * Recompute walls + flip from FILTERED per-strike totals so the levels track the
- * selected expiry scope. Mirrors the server's primary method (we don't have its fn):
- *  - call/pos wall = strike of the max positive total
- *  - put/neg wall  = strike of the min (most negative) total
- *  - flip = the per-strike sign crossing (negative→positive as strike ascends) nearest
- *    spot, linearly interpolated between the bracketing strikes. Falls back to the
- *    strike of smallest |total| if no clean crossing exists.
- * Returns nulls when there's nothing to compute (so callers can defer to server levels).
- */
-function recomputeLevels(
-  totals: Record<string, number>,
-  spot: number
-): { posWall: number | null; negWall: number | null; flip: number | null } {
-  // Guard against invalid spot (NaN, infinite, or ≤0) that could corrupt the flip calculation.
-  if (!Number.isFinite(spot) || spot <= 0) return { posWall: null, negWall: null, flip: null };
-
-  const entries = Object.entries(totals)
-    .map(([s, v]) => ({ strike: Number(s), value: v }))
-    .filter((e) => Number.isFinite(e.strike))
-    .sort((a, b) => a.strike - b.strike);
-  if (entries.length === 0) return { posWall: null, negWall: null, flip: null };
-
-  // Shared with the server's computeGexRegime. There were two independent copies of this scan
-  // (server + here) before the Key Levels row was scoped; a third would have been added for the
-  // per-expiry tiles. One implementation cannot drift from itself.
-  const { callWall: posWall, putWall: negWall } = gexWallsFromStrikeTotals(totals);
-
-  // Flip: ascending NEGATIVE→POSITIVE sign crossing nearest spot, linearly interpolated — the
-  // structural gamma flip (below it dealers net short, above net long). This MATCHES the server's
-  // `computeZeroGammaFlip` (which also keys on neg→pos only); the prior either-direction match
-  // could place the filtered-subset divider at a pos→neg crossing the server would never mark.
-  let flip: number | null = null;
-  let bestDist = Infinity;
-  for (let i = 1; i < entries.length; i++) {
-    const a = entries[i - 1];
-    const b = entries[i];
-    if (a.value === 0 || b.value === 0) continue;
-    if (a.value < 0 && b.value > 0) {
-      const t = Math.abs(a.value) / (Math.abs(a.value) + Math.abs(b.value));
-      const cross = a.strike + t * (b.strike - a.strike);
-      const dist = spot > 0 ? Math.abs(cross - spot) : 0;
-      if (dist < bestDist) {
-        bestDist = dist;
-        flip = Math.round(cross);
-      }
-    }
-  }
-  // Fallback: no clean crossing — the strike of smallest |total| is the nearest pivot.
-  if (flip == null) {
-    let best = Infinity;
-    for (const e of entries) {
-      const a = Math.abs(e.value);
-      if (a < best) {
-        best = a;
-        flip = e.strike;
-      }
-    }
-  }
-  return { posWall, negWall, flip };
 }
 
 /** Plain-language per-metric explainers — the SpotGamma "legibility" layer (Rank 8). */
@@ -1469,6 +1431,7 @@ function TickerSwitcher({
   onPick,
   spot,
   changePct,
+  spotSourceBadge: spotBadge,
   showSpot,
   nativeShell = false,
 }: {
@@ -1476,7 +1439,8 @@ function TickerSwitcher({
   onPick: (t: string) => void;
   /** Live spot beside the selector — the ONE kept clean header spot reference. */
   spot?: number;
-  changePct?: number;
+  changePct?: number | null;
+  spotSourceBadge?: { label: string; title: string } | null;
   showSpot?: boolean;
   /** iOS native shell — bottom sheet picker instead of fixed dropdown (avoids focus zoom + layout break). */
   nativeShell?: boolean;
@@ -1635,7 +1599,7 @@ function TickerSwitcher({
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  const changeBull = (changePct ?? 0) >= 0;
+  const changeBull = changePct != null && changePct >= 0;
 
   function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
@@ -1828,8 +1792,10 @@ function TickerSwitcher({
           aria-atomic="true"
         >
           <span className="sr-only">
-            {ticker} {fmtSpot(spot)}, {changeBull ? "up" : "down"}{" "}
-            {fmtPct(changePct ?? 0)}
+            {ticker} {fmtSpot(spot)}
+            {changePct != null
+              ? `, ${changeBull ? "up" : "down"} ${fmtPct(changePct)}`
+              : ""}
           </span>
           <span aria-hidden className="text-[13px] font-bold tabular-nums text-white">
             {fmtSpot(spot)}
@@ -1845,6 +1811,15 @@ function TickerSwitcher({
               {fmtPct(changePct)}
             </span>
           )}
+          {spotBadge ? (
+            <span
+              data-spot-provenance
+              className="rounded border border-white/10 px-1 py-px font-mono text-[8px] font-bold uppercase tracking-wider text-sky-300/75"
+              title={spotBadge.title}
+            >
+              {spotBadge.label}
+            </span>
+          ) : null}
         </span>
       )}
 
@@ -1875,13 +1850,20 @@ function fmtAsofSeconds(iso: string | undefined): string | null {
  *  copy after the TTL dropped to 5s (FINDINGS 2026-07-28 Thermal audit). */
 const MATRIX_STALE_MS = 15_000;
 
+/** A browser/ECS clock skew of a few seconds is ordinary; beyond that, an `asof` in the future
+ *  is a bad/misparsed server timestamp, not a genuinely brand-new sample — treat it as untrustworthy
+ *  (stale), never as freshest-possible (BUG FIX 2026-09-03: an unguarded `Date.now() - t` went
+ *  negative for a future `asof`, which trivially failed `> MATRIX_STALE_MS` and rendered green/fresh). */
+const FUTURE_ASOF_TOLERANCE_MS = 5_000;
+
 /** Always-visible "as of HH:MM:SS ET" freshness anchor for the matrix header. Renders null when
  *  there is no usable timestamp so it never fabricates freshness. */
 function MatrixFreshness({ asof }: { asof: string | undefined }) {
   const label = fmtAsofSeconds(asof);
   if (!label) return null;
   const t = asof ? new Date(asof).getTime() : NaN;
-  const stale = Number.isFinite(t) && Date.now() - t > MATRIX_STALE_MS;
+  const ageMs = Number.isFinite(t) ? Date.now() - t : NaN;
+  const stale = Number.isFinite(ageMs) && (ageMs > MATRIX_STALE_MS || ageMs < -FUTURE_ASOF_TOLERANCE_MS);
   return (
     <span
       className={clsx(
@@ -2109,124 +2091,6 @@ function ExpiryScopeBar({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Alerts strip (Rank 4c) — compact, dismissible row of server-computed events that
-// rides on the already-polled 20s matrix payload (ZERO extra fetch). `warn` reads
-// bear/amber, `info` reads sky. Relative "Xm ago" is computed client-side from the
-// event `at` timestamp. Reduced-motion safe: a gentle motion-safe pulse on the worst
-// chip only; reduced-motion users get a static strip. Renders nothing when empty.
-// ---------------------------------------------------------------------------
-
-/** Relative "just now" / "2m ago" / "1h ago" from an ISO timestamp. Never throws. */
-function fmtRelative(iso: string, nowMs: number): string {
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return "";
-  const diff = Math.max(0, nowMs - t);
-  const mins = Math.round(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h${m}m ago` : `${h}h ago`;
-}
-
-/** Glyph by event type — ⚡ for crosses/breaks, ▲/▼ for directional flips, • fallback. */
-function eventGlyph(e: GexEvent): string {
-  if (e.type === "wall_broken" || e.type === "flip_crossed") return "⚡";
-  const d = (e.direction ?? "").toLowerCase();
-  if (d.includes("above") || d.includes("long") || d.includes("positive") || d.includes("up")) return "▲";
-  if (d.includes("below") || d.includes("short") || d.includes("negative") || d.includes("down")) return "▼";
-  return "•";
-}
-
-function AlertsStrip({ events }: { events: GexEvent[] }) {
-  // Dismissed locally; re-keyed by the event signature so a NEW event re-opens the strip.
-  const [dismissed, setDismissed] = useState(false);
-  const sig = useMemo(() => events.map((e) => `${e.type}@${e.at}`).join("|"), [events]);
-  const lastSigRef = useRef(sig);
-  // A fresh batch (new signature) clears the dismissal so a new cross is never hidden.
-  if (sig !== lastSigRef.current) {
-    lastSigRef.current = sig;
-    if (dismissed) setDismissed(false);
-  }
-
-  // `nowMs` recomputed each render; the 20s matrix poll re-renders the parent, keeping
-  // "Xm ago" reasonably fresh without a dedicated timer (no extra interval needed).
-  const nowMs = Date.now();
-
-  if (events.length === 0 || dismissed) return null;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="mb-4 rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-3 py-2.5"
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
-            Positioning alerts
-          </span>
-          <Badge tone="accent" size="sm">
-            {events.length}
-          </Badge>
-        </span>
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          aria-label="Dismiss positioning alerts"
-          className={clsx(
-            "rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider outline-none transition-colors",
-            "text-sky-300/70 hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-sky-400"
-          )}
-        >
-          Dismiss ✕
-        </button>
-      </div>
-      <ul className="space-y-1.5">
-        {events.map((e, i) => {
-          const warn = e.severity === "warn";
-          // warn → bear red / amber accent; info → sky.
-          const hex = warn ? "#ff2d55" : "#7dd3fc";
-          const rel = fmtRelative(e.at, nowMs);
-          return (
-            <li
-              key={`${e.type}-${e.at}-${i}`}
-              className={clsx(
-                "flex items-start gap-2.5 rounded-lg border px-3 py-1.5",
-                warn
-                  ? "border-bear/35 bg-bear/[0.06]"
-                  : "border-sky-400/25 bg-sky-400/[0.05]"
-              )}
-              style={warn ? { boxShadow: "inset 0 0 14px rgba(255,45,85,0.05)" } : undefined}
-            >
-              <span
-                aria-hidden
-                // Removed `warn && "motion-safe:animate-pulse"` — the bear-red border
-                // + tinted background + boxShadow already signal urgency once. A
-                // forever-pulsing glyph in the reader's periphery competed with the
-                // matrix for attention every second, and the alerts are dismissible
-                // anyway (they don't need to keep begging). Static wins here.
-                className="mt-px shrink-0 text-[12px] leading-none"
-                style={{ color: hex }}
-              >
-                {eventGlyph(e)}
-              </span>
-              <span className="min-w-0 flex-1 text-[12px] leading-snug" style={{ color: warn ? "#ffd6de" : "#dff1ff" }}>
-                {e.message}
-              </span>
-              {rel && (
-                <span className="shrink-0 font-mono text-[10px] tabular-nums text-sky-300/70">
-                  {rel}
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
 
 /**
  * SYNTHETIC ORDER BOOK — the depth ladder.
@@ -2339,6 +2203,14 @@ function GexDepthLadderView({
       <p className="mb-3 text-[11px] leading-snug text-sky-300/80">
         Stock dealers must trade to stay hedged <em>if price gets there</em> — not resting orders.
         Buying left, selling right.
+        {depth.calibration_factor != null && Number.isFinite(depth.calibration_factor) ? (
+          <span
+            className="ml-1 text-sky-300/65"
+            title="Closed-form Black-Scholes gamma is scaled to match the matrix's own near-term total. The gap vs provider gamma largely reflects dividend yield — a known model limitation, not a data error."
+          >
+            · γ calibration {depth.calibration_factor.toFixed(2)}×
+          </span>
+        ) : null}
       </p>
 
       {targetFlow && targetFlow.bands > 0 && (
@@ -2633,6 +2505,8 @@ export function GexHeatmap({
   // picker shows the real date and its real DTE instead. `expiryScope` is resolved against the live
   // axis in an effect below, since `expiries` is not known at mount.
   const [expiryScope, setExpiryScope] = useState<string>("all");
+  const [highlightStrike, setHighlightStrike] = useState<number | null>(() => urlBoot.strike);
+  const pendingStrikeScrollRef = useRef<number | null>(urlBoot.strike);
   const matrixPollMs = usePollIntervalMs(2_000, 5_000);
   const quotePollMs = usePollIntervalMs(2_000, 5_000);
   const sessionLive = useEtMarketOpen();
@@ -2648,11 +2522,12 @@ export function GexHeatmap({
       lens: lens as ThermalLens,
       compare,
       compareSet: compare ? compareSet : null,
+      strike: highlightStrike,
     });
     const next = qs ? `${pathname}?${qs}` : pathname;
     const cur = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
     if (next !== cur) router.replace(next, { scroll: false });
-  }, [ticker, lens, compare, compareSet, pathname, router, searchParams]);
+  }, [ticker, lens, compare, compareSet, highlightStrike, pathname, router, searchParams]);
 
   // Fast-move bypass: when the live quote diverges from the cached matrix snapshot spot
   // by >0.5%, we append `&force=1` to the matrix key for ONE refetch (then clear it) so
@@ -3477,8 +3352,8 @@ export function GexHeatmap({
     }));
   }, [strikes, filteredTotals, spotStrike, profilePosWall, profileNegWall, flowByStrike]);
 
-  const changePct = data?.change_pct ?? 0;
-  const changeBull = changePct >= 0;
+  const matrixChangePct =
+    data?.change_pct != null && Number.isFinite(data.change_pct) ? data.change_pct : null;
   const isGex = lens === "gex";
   const vocab = LENS_VOCAB[lens];
   const lensUpper = lens.toUpperCase();
@@ -3512,7 +3387,18 @@ export function GexHeatmap({
   const pushedSpot =
     pulseField && quoteMatches ? (pulseSnap?.[pulseField]?.price ?? null) : null;
   const pushedLive = pushedSpot != null && pushedSpot > 0;
-  const pushedChangePct = pulseField ? pulseSnap?.[pulseField]?.change_pct : undefined;
+
+  const pulseAnchoredChangePct: number | null = (() => {
+    if (!pushedLive || !pulseField || !pulseSnap) return null;
+    const entry = pulseSnap[pulseField];
+    if (pulseField === "spx") {
+      const refClose =
+        referenceCloseFromSnapshot({ price: quote?.price, change_pct: quote?.change_pct })
+        ?? referenceCloseFromSnapshot({ price: spot, change_pct: matrixChangePct });
+      return pulseChangePctFromPriorClose(pushedSpot as number, refClose, null);
+    }
+    return restAnchoredIndexChangePct(entry, quote?.change_pct ?? matrixChangePct ?? null);
+  })();
 
   // STOCK/ETF sub-second overlay: the same ticker-scoped guard as the index pulse
   // above (only trust it for the currently-selected ticker), sitting one tier below
@@ -3527,13 +3413,20 @@ export function GexHeatmap({
       : quoteLive
         ? (quote!.price as number)
         : spot;
-  const headerChangePct = pushedLive
-    ? (pushedChangePct ?? (quoteLive ? (quote!.change_pct ?? 0) : changePct))
+  const headerChangePct: number | null = pushedLive
+    ? (rebaseChangePct(pushedSpot as number, { price: spot, change_pct: matrixChangePct })
+      ?? rebaseChangePct(pushedSpot as number, { price: quote?.price, change_pct: quote?.change_pct })
+      ?? pulseAnchoredChangePct
+      ?? (quoteLive && quote!.change_pct != null && Number.isFinite(quote!.change_pct)
+        ? quote!.change_pct
+        : matrixChangePct))
     : stockPushLive
-      ? stockPush!.changePct
+      ? (stockPush!.changePct != null && Number.isFinite(stockPush!.changePct)
+        ? stockPush!.changePct
+        : null)
       : quoteLive
-        ? (quote!.change_pct ?? 0)
-        : changePct;
+        ? (quote!.change_pct != null && Number.isFinite(quote!.change_pct) ? quote!.change_pct : null)
+        : matrixChangePct;
   // NOTE: the old `headerChangeBull` + `quoteFresh` derivations powered the big central
   // spot tape (removed in the UI refactor — spot was shown 4+ times). The compact spot
   // beside the ticker selector derives its own up/down sign, and the panel's Live /
@@ -3606,6 +3499,8 @@ export function GexHeatmap({
         footnote: keyLevelsScopeFootnote,
         spot,
         flip: keyFlip,
+        flipReason:
+          lens === "gex" && keyFlip == null ? (data?.gex?.flip_reason ?? null) : null,
         callWall: keyPosWall,
         putWall: keyNegWall,
         maxPain: keyMaxPain,
@@ -3631,6 +3526,10 @@ export function GexHeatmap({
                 ? (data?.dex?.regime?.read ?? null)
                 : (data?.charm?.regime?.read ?? null),
         gexShiftNet: lens === "dex" || lens === "charm" ? gexShiftNet : null,
+        horizonLine:
+          lens === "gex" && !scopedExpiryLabel
+            ? horizonWallsSummary(data?.gex?.walls_by_horizon)
+            : null,
       }),
     [
       lens,
@@ -3644,6 +3543,7 @@ export function GexHeatmap({
       keyTotal,
       matrixAnchorStrike,
       data?.gex?.regime,
+      data?.gex?.flip_reason,
       data?.vex?.regime,
       data?.dex?.regime,
       data?.charm?.regime,
@@ -3653,6 +3553,59 @@ export function GexHeatmap({
       gexShiftNet,
     ]
   );
+
+  const headerSpotBadge = useMemo(
+    () =>
+      spotSourceBadge({
+        spotSource: data?.spot_source,
+        marketOpen: marketOpenNow,
+      }),
+    [data?.spot_source, marketOpenNow],
+  );
+
+  const scrollMatrixToStrike = useCallback((strike: number) => {
+    if (!Number.isFinite(strike)) return;
+    setHighlightStrike(strike);
+    setPairView("pair-a");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const box = matrixScrollRef.current;
+        const row = box?.querySelector(`tr[data-thermal-strike="${strike}"]`);
+        if (row instanceof HTMLElement) {
+          row.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      });
+    });
+  }, []);
+
+  const scrollMatrixToLevel = useCallback(
+    (key: string) => {
+      const seg = regimeStripModel.segments.find((s) => s.key === key);
+      const strike = seg?.strike;
+      if (strike == null || !Number.isFinite(strike)) return;
+      scrollMatrixToStrike(strike);
+    },
+    [regimeStripModel.segments, scrollMatrixToStrike],
+  );
+
+  useEffect(() => {
+    const pending = pendingStrikeScrollRef.current;
+    if (pending == null || stale || !hasStrikes) return;
+    scrollMatrixToStrike(pending);
+    pendingStrikeScrollRef.current = null;
+  }, [stale, hasStrikes, scrollMatrixToStrike]);
+
+  const recallSavedDesk = useCallback((desk: ThermalSavedDesk) => {
+    setTicker(desk.ticker);
+    setLens(desk.lens as Lens);
+    setCompare(desk.compare);
+    if (desk.compareSet) setCompareSet(desk.compareSet);
+    setExpiryScope(desk.expiryScope);
+    setPairView(desk.pairView);
+    // Saved desks don't store strike — clear any deep-link scroll from the prior view.
+    setHighlightStrike(null);
+    pendingStrikeScrollRef.current = null;
+  }, []);
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
   // Tab A "Matrix" (default): the Strike × Expiry Matrix at full content width.
@@ -3704,6 +3657,7 @@ export function GexHeatmap({
           {hasDarkPoolOverlay ? (
             <button
               type="button"
+              data-overlay-darkpool="toggle"
               onClick={() => setShowDarkPool((v) => !v)}
               aria-pressed={showDarkPool}
               className={clsx(
@@ -3718,6 +3672,7 @@ export function GexHeatmap({
             </button>
           ) : (
             <span
+              data-overlay-darkpool="unavailable"
               className="rounded-md border border-white/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-sky-300/60"
               title={
                 overlaysOfferedForTicker
@@ -3784,6 +3739,7 @@ export function GexHeatmap({
   // GexShift shape). The engine ships NO shift for DEX/CHARM → the panel degrades to a
   // "building history" empty state for those lenses (hasShiftForLens false) — never
   // fabricated. Curve+Shift stays a real pair under every lens; Shift self-explains.
+  const shiftBasisNote = shiftBasisFootnote({ ticker, lens });
   const shiftPanel = (
     <div className="min-w-0">
       <PanelLabel>Intraday Shift</PanelLabel>
@@ -3793,16 +3749,24 @@ export function GexHeatmap({
           <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/85">
             {`Δ ${vocab.unit} · built / melted`}
           </p>
+          {shiftBasisNote ? (
+            <p
+              className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/75"
+              data-shift-basis-footnote
+            >
+              {shiftBasisNote}
+            </p>
+          ) : null}
         </>
       ) : (
         <EmptyState
           icon="◷"
           title="Building positioning history"
-          description={
-            hasShiftForLens
-              ? `The shift view fills in as snapshots accumulate (first read ~after the open). ${vocab.noun} migration — where dealer ${vocab.noun.toLowerCase()} is building vs melting and how the pivot drifts — appears once enough history is collected.`
-              : `Intraday migration is tracked for GEX, VEX, DEX, and CHARM — switch lens to see build/melt drift.`
-          }
+          description={shiftPanelEmptyDescription({
+            hasShiftForLens,
+            marketOpen: marketOpenNow,
+            noun: vocab.noun,
+          })}
         />
       )}
     </div>
@@ -3821,6 +3785,12 @@ export function GexHeatmap({
         <p className="mb-2 font-mono text-[9px] leading-snug text-amber-300/90">
           Our two data sources disagree by {uwCross?.divergence?.toFixed(0)}pt on where the walls
           sit — treat these levels as provisional until they agree.
+        </p>
+      )}
+      {data?.chain_truncated && (
+        <p className="mb-2 font-mono text-[9px] leading-snug text-amber-300/90">
+          Option chain capped before full pagination — walls and open interest may understate true
+          positioning.
         </p>
       )}
       <ExpiryScopeBar
@@ -3952,6 +3922,7 @@ export function GexHeatmap({
                   <tr
                     key={strike}
                     ref={isSpot ? matrixSpotRowRef : undefined}
+                    data-thermal-strike={strike}
                     className={clsx(
                       "border-b border-white/[0.04]",
                       isSpot && "spx-gex-matrix-spot-row",
@@ -4162,9 +4133,13 @@ export function GexHeatmap({
             // own matrix instead of being silently ignored underneath the compare grid.
             setTicker(t);
             setCompare(false);
+            // Drop ?strike= — it belongs to the prior symbol, not the new search target.
+            setHighlightStrike(null);
+            pendingStrikeScrollRef.current = null;
           }}
           spot={headerSpot}
           changePct={headerChangePct}
+          spotSourceBadge={headerSpotBadge}
           showSpot={(live || quoteOnly) && headerSpot > 0}
           nativeShell={nativeShell}
         />
@@ -4232,6 +4207,17 @@ export function GexHeatmap({
               nativeShell && "thermal-grid-toolbar--native",
             )}
           >
+            <ThermalSavedDesksMenu
+              snapshot={{
+                ticker,
+                lens: lens as ThermalLens,
+                compare,
+                compareSet: compare ? compareSet : null,
+                expiryScope,
+                pairView,
+              }}
+              onRecall={recallSavedDesk}
+            />
             <button
               type="button"
               aria-pressed={compare}
@@ -4347,6 +4333,7 @@ export function GexHeatmap({
         <ThermalRegimeStrip
           model={regimeStripModel}
           className="mb-2 gex-key-levels thermal-regime-strip"
+          onLevelClick={scrollMatrixToLevel}
           trailing={
             !nativeShell ? (
               <FlowSummaryStrip flowByStrike={flowByStrike} overlaysLoaded={data != null} />
@@ -4354,6 +4341,14 @@ export function GexHeatmap({
           }
         />
       )}
+
+      {showViewTabs ? (
+        <ThermalSessionTimeline
+          className="mb-3"
+          events={events}
+          onLevelClick={scrollMatrixToStrike}
+        />
+      ) : null}
 
       {/* Night Hawk active-play badge — renders only when a NH edition from the last 24h
           has a play for this ticker. Compact inline badge with a tooltip showing the play
@@ -4425,7 +4420,6 @@ export function GexHeatmap({
       {/* Compare ON + Matrix tab → sector preset grid (each column self-fetches). */}
       {compare && pairView === "pair-a" ? (
         <div className="mt-1">
-          {data && !stale && !empty ? <AlertsStrip events={events} /> : null}
           <ThermalTripleDesk
             ref={compareDeskRef}
             lens={lens}
@@ -4509,16 +4503,6 @@ export function GexHeatmap({
         />
       ) : (
         <>
-          {/* ── Positioning alerts (Rank 4c) — server-computed events riding on the polled
-              matrix payload (ZERO extra fetch). Dismissible, reduced-motion safe;
-              renders nothing when empty/absent. Sits above the regime header. ── */}
-          <AlertsStrip events={events} />
-
-          {/* ── Main area — 2 tabs:
-                • "Matrix" — full-width Strike × Expiry Matrix + flow rail below.
-                • "Profile + Curve + Shift" — 3 equal columns (lg:grid-cols-3), shared
-                  ExpiryScopeBar + overlay toggles above, no flow rail.
-              ──────────────── */}
           <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c" | "pair-d")} className="mt-3">
             <TabPanels>
               <TabPanel value="pair-a">{matrixPanel}</TabPanel>
@@ -4557,11 +4541,15 @@ export function GexHeatmap({
                 )}
               </TabPanel>
               <TabPanel value="pair-d">
-                <GreeksDistributionPanel
-                  cells={cells}
-                  spot={data?.spot ?? null}
-                  ticker={ticker}
-                />
+                {lens === "charm" ? (
+                  <ThetaDistributionPanel cells={cells} spot={data?.spot ?? null} />
+                ) : (
+                  <GreeksDistributionPanel
+                    cells={cells}
+                    spot={data?.spot ?? null}
+                    ticker={ticker}
+                  />
+                )}
               </TabPanel>
             </TabPanels>
           </Tabs>

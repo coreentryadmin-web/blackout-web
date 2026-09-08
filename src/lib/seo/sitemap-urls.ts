@@ -58,9 +58,3 @@ export function absolutePublicUrls(): string[] {
 export function indexNowUrls(): string[] {
   return absolutePublicUrls();
 }
-
-/** @deprecated Use indexNowUrls — kept for callers that only ping learn paths. */
-export function learnIndexNowUrls(): string[] {
-  const paths = ["/learn", ...LEARN_NAV.map((n) => `/learn/${n.slug}`), ...LEARN_ARTICLES.map((a) => a.path)];
-  return paths.map((p) => `${SITE.url}${p}`);
-}

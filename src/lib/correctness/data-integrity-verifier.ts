@@ -12,6 +12,7 @@ import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { sharedCacheGetWithTtl } from "@/lib/shared-cache";
 import { buildCronHealthSnapshot } from "@/lib/admin-cron-health";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
 // ---------------------------------------------------------------------------
 // DATA-LAYER + PIPELINE-INTEGRITY verifier — the "are the numbers actually being
@@ -109,8 +110,27 @@ function groupMetrics(checks: CheckResult[]): MetricScore[] {
   return scores;
 }
 
-function ageMin(thenMs: number, now: number): number {
-  return (now - thenMs) / 60_000;
+/**
+ * Age in minutes of `thenMs` relative to `now`. Exported for direct unit testing — this is the
+ * ONE age computation every freshness check in this file goes through (Postgres latest-row,
+ * Redis GEX matrix asof, and the writer target-freshness reconciliation below), so guarding it
+ * here closes the gap for all of them at once rather than one call site at a time.
+ *
+ * BUG FIX (2026-09-04): a `thenMs` more than ZERODTE_MARK_FUTURE_TOLERANCE_MS ahead of `now`
+ * (cross-process clock skew, or a corrupted/miswritten row) used to produce a NEGATIVE age that
+ * trivially passed every `aMin <= threshold` freshness check below — this verifier's entire job
+ * is to catch exactly that shape of data corruption, so a future-dated timestamp silently reading
+ * as "fresh" is a false PASS on a surface whose whole point is to not produce false passes (see
+ * the "HONESTY" note atop this file). Returns Infinity for a too-far-future `thenMs`, the SAME
+ * sentinel this file already uses for a NaN/unparseable timestamp (see every `Number.isFinite(...)
+ * ? ageMin(...) : Infinity` call site) — so a corrupted future timestamp now surfaces as a FLAG
+ * instead of masking a real staleness/corruption issue. Same tolerance constant
+ * spx-play-gates.ts/playbook-option-execution-contract.ts already use for this identical shape.
+ */
+export function ageMin(thenMs: number, now: number): number {
+  const diffMs = now - thenMs;
+  if (diffMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return Infinity;
+  return diffMs / 60_000;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -631,10 +651,14 @@ async function checkWriters(_ctx: Ctx): Promise<CheckResult[]> {
       if (!nh || nh.status !== "published") return false;
       const ts = nh.published_at ?? nh.updated_at ?? null;
       if (!ts) return false;
-      const ageMin = (Date.now() - new Date(ts).getTime()) / 60_000;
+      // Reuses the module-level ageMin() (not a local reimplementation) so a future-dated
+      // published_at/updated_at (clock skew, or a corrupted row) can't trivially pass this
+      // freshness check the same way it used to for the Postgres/Redis checks above — see
+      // ageMin()'s own doc comment for the full bug history.
+      const targetAgeMin = ageMin(new Date(ts).getTime(), Date.now());
       // Fresh within the writer's own staleness window — a recently published edition means the PG
       // target is current regardless of the handshake log.
-      return Number.isFinite(ageMin) && ageMin <= job.effective_stale_min;
+      return Number.isFinite(targetAgeMin) && targetAgeMin <= job.effective_stale_min;
     })();
 
     // Loud states: failed last run, OR market-hours-stale (the snapshot's #90 in-RTH silent-death flag).

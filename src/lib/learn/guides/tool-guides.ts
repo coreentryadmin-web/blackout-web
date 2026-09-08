@@ -4,4 +4,6 @@ export {
   largoAiGuide,
   nightHawkGuide,
   heatMapsGuide,
+  vectorGuide,
+  meridianGuide,
 } from "@/lib/learn/guides/instruments";

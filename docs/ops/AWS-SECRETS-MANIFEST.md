@@ -58,7 +58,21 @@ Secrets Manager. **Never commit real values.**
 | Key | Purpose |
 |-----|---------|
 | `DISCORD_OPS_WEBHOOK_URL` | Ops alerts |
-| `DISCORD_TRADE_WEBHOOK_URL` | Trade notifications |
+| `DISCORD_TRADE_WEBHOOK_URL` | Trade notifications (legacy webhook path — unused by 0DTE auto-post) |
+| `ZERODTE_DISCORD_ALERTS` | Opt-in `1`/`true` — push committed 0DTE plays to Chief Trade Alert Bot |
+| `LEGACY_DISCORD_ALERTS` | Opt-in `1`/`true` — push Night Hawk legacy playbook plays to Chief Trade Alert Bot |
+| `LEGACY_CHIEF_TRADE_CHANNEL_ID` | Discord channel snowflake for Legacy desk (separate from 0DTE `CHIEF_TRADE_CHANNEL_ID` on the bot) |
+| `LEGACY_DISCORD_AUTHOR_NAME` | Legacy embed author (default `night-hawk-legacy`) |
+| `SWING_DISCORD_ALERTS` | Opt-in `1`/`true` — push Swing desk BTO/STC to Chief Trade Alert Bot |
+| `SWING_CHIEF_TRADE_CHANNEL_ID` | Discord channel snowflake for Swing desk (separate from 0DTE/Legacy) |
+| `SWING_DISCORD_AUTHOR_NAME` | Swing embed author (default `swing-desk`) |
+| `BANGER_DISCORD_ALERTS` | Opt-in `1`/`true` — push Banger (Engine B) desk BTO/STC to Chief Trade Alert Bot |
+| `BANGER_CHIEF_TRADE_CHANNEL_ID` | Discord channel snowflake for Banger desk (separate from 0DTE/Legacy/Swing) |
+| `BANGER_DISCORD_AUTHOR_NAME` | Banger embed author (default `banger-desk`) |
+| `CHIEF_TRADE_BOT_URL` | Public Railway URL for `chief-trade-alert-bot` (`POST /api/trade`) |
+| `CHIEF_TRADE_API_SECRET` | Bearer token shared with the trade bot |
+| `CHIEF_TRADE_AUTHOR_NAME` | Embed author label (default `Night-Hawk-Bot`) |
+| `CHIEF_TRADE_VIRTUAL_LOTS` | Virtual contract count for desk PnL book (default `1`; use `3` for trim_scale partial banking) |
 | `DISCORD_THERMAL_WEBHOOK_URL` | Thermal triple-desk PNG → designated Discord channel (`/api/cron/thermal-discord` 15m RTH + shift leaders; `?breach_only=1` poller 5m RTH for SPY/SPX/QQQ wall/flip alerts; ~4:05 PM ET session recap) |
 | `DISCORD_HELIX_WEBHOOK_URL` | HELIX community flow embeds + digests (`#blackout-helix`; live + `/api/cron/helix-discord-digest`) |
 | `HELIX_DISCORD_ALERTS` | Opt-in `1`/`true` — live HELIX flow embeds (≥$500K · fill <$10 · ≤30 DTE) on persist + 15m RTH digests; uses `DISCORD_HELIX_WEBHOOK_URL` |

@@ -57,6 +57,8 @@ export interface ChainContract {
   askSize?: number | null;
   /** Day/session volume (contracts traded today). Falls back to OI-only when absent. */
   dayVolume?: number | null;
+  /** Epoch ms of the quote observation — used by swing commit quote_stale gate when present. */
+  quoteUpdatedMs?: number | null;
 }
 
 /** Hard liquidity gate a contract must clear to be tradeable. */

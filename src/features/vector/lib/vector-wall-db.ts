@@ -4,7 +4,7 @@ import { logToken } from "@/lib/log-token";
 
 import { dbConfigured, dbQuery } from "@/lib/db";
 import type { WallHistorySample } from "./vector-wall-history";
-import { rowToWallSample, type WallRow } from "./vector-wall-db-row";
+import { rowToWallSample, sortWallSamplesForUpsert, type WallRow } from "./vector-wall-db-row";
 
 /**
  * Durable Postgres write-through for the Vector wall-history rail.
@@ -94,8 +94,11 @@ export async function persistWallSamplesToDb(
   const usable = rows.filter((r) => r.sessionYmd && r.ticker && r.sample);
   if (usable.length === 0) return 0;
   try {
+    // Deterministic row order — see sortWallSamplesForUpsert's own comment for why concurrent
+    // replicas deadlock without it.
+    const sorted = sortWallSamplesForUpsert(usable);
     const values: unknown[] = [];
-    const tuples = usable.map((r, i) => {
+    const tuples = sorted.map((r, i) => {
       const b = i * 7;
       values.push(
         r.ticker,

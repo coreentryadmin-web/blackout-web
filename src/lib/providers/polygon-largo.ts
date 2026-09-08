@@ -40,6 +40,22 @@ function getPolygonBase(): string {
 
 const KEY = process.env.POLYGON_API_KEY ?? "";
 
+/** Optional Next/fetch cache override for call sites that must not force dynamic rendering (e.g. marketing ISR). */
+export type PolygonLargoFetchInit = Pick<RequestInit, "cache"> & {
+  next?: { revalidate?: number };
+};
+
+/**
+ * Build fetch init for `polygonGet` — `cache` and `next.revalidate` are mutually exclusive in
+ * Next's fetch patch; when both are present, `cache: "no-store"` wins and ISR overrides are ignored.
+ */
+export function buildPolygonLargoFetchInit(fetchInit?: PolygonLargoFetchInit): RequestInit {
+  if (fetchInit?.next) {
+    return { headers: { Accept: "application/json" }, next: fetchInit.next };
+  }
+  return { headers: { Accept: "application/json" }, cache: fetchInit?.cache ?? "no-store" };
+}
+
 export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 
 /**
@@ -56,7 +72,8 @@ export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v
 async function polygonGet<T>(
   path: string,
   params: Record<string, string> = {},
-  onFailure?: (reason: string) => void
+  onFailure?: (reason: string) => void,
+  fetchInit?: PolygonLargoFetchInit
 ): Promise<T | null> {
   if (!polygonConfigured()) {
     onFailure?.("Polygon not configured (missing POLYGON_API_KEY)");
@@ -64,10 +81,11 @@ async function polygonGet<T>(
   }
   const qs = new URLSearchParams({ ...params, apiKey: KEY });
   try {
-    const res = await polygonTrackedFetch(path, `${getPolygonBase()}${path}?${qs}`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const res = await polygonTrackedFetch(
+      path,
+      `${getPolygonBase()}${path}?${qs}`,
+      buildPolygonLargoFetchInit(fetchInit)
+    );
     if (!res.ok) {
       console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} returned ${res.status}`);
       onFailure?.(`HTTP ${res.status}`);
@@ -140,11 +158,16 @@ export async function fetchAggBarsWithDiagnostics(
   return { bars: mapBars(data?.results), failureReason: data == null ? failureReason : null };
 }
 
-export async function fetchPreviousDayBar(symbol: string): Promise<AggBar | null> {
+export async function fetchPreviousDayBar(
+  symbol: string,
+  fetchInit?: PolygonLargoFetchInit
+): Promise<AggBar | null> {
   const sym = symbol.toUpperCase();
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     `/v2/aggs/ticker/${sym}/prev`,
-    {}
+    {},
+    undefined,
+    fetchInit
   );
   const row = data?.results?.[0];
   if (!row) return null;
@@ -266,18 +289,26 @@ export async function fetchPolygonNews(ticker: string, limit = 15) {
   });
 }
 
-export function computeLevelsFromBars(bars: AggBar[], price: number) {
+export type ComputeLevelsOptions = {
+  /** When false, omit VWAP — multi-session windows (daily/hourly MTF) are not session VWAP. */
+  includeVwap?: boolean;
+};
+
+export function computeLevelsFromBars(bars: AggBar[], price: number, opts?: ComputeLevelsOptions) {
   if (!bars.length) return { support: null, resistance: null, vwap: null, trend: "unknown" as const };
 
-  let pv = 0;
-  let vol = 0;
-  for (const b of bars) {
-    const v = b.v ?? 0;
-    const tp = (b.h + b.l + b.c) / 3;
-    pv += tp * v;
-    vol += v;
+  let vwap: number | null = null;
+  if (opts?.includeVwap !== false) {
+    let pv = 0;
+    let vol = 0;
+    for (const b of bars) {
+      const v = b.v ?? 0;
+      const tp = (b.h + b.l + b.c) / 3;
+      pv += tp * v;
+      vol += v;
+    }
+    vwap = vol > 0 ? Number((pv / vol).toFixed(2)) : null;
   }
-  const vwap = vol > 0 ? Number((pv / vol).toFixed(2)) : null;
 
   const highs = bars.map((b) => b.h);
   const lows = bars.map((b) => b.l);
@@ -372,8 +403,10 @@ export async function fetchPolygonMtfTechnicals(ticker: string) {
   const missingIndicators = technicalAttempts.filter(a => !a.ok).map(a => a.source);
   recordDataSourceing(sym, "technical_indicators", technicalAttempts, { ema20d, ema50d, ema200d, rsi14d, macdD, ema20h, rsi14h, ema20m, rsi14m }, missingIndicators.length > 0 ? `Missing indicators: ${missingIndicators.join(", ")}` : undefined);
 
-  const dailyLv = computeLevelsFromBars(daily, price);
-  const hourlyLv = computeLevelsFromBars(hourly, price);
+  // VWAP only on today's intraday bars — daily/hourly windows span many sessions and read as
+  // session VWAP in Largo/Night Hawk if we accumulate the whole window.
+  const dailyLv = computeLevelsFromBars(daily, price, { includeVwap: false });
+  const hourlyLv = computeLevelsFromBars(hourly, price, { includeVwap: false });
   const minLv = computeLevelsFromBars(minute15, price);
 
   // ATR14 fallback: daily (preferred) → hourly (off-hours) → prevDay range proxy

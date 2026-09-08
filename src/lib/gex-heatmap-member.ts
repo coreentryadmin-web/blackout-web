@@ -25,7 +25,7 @@ export type HeatmapMemberPayload = {
   available: boolean;
   underlying?: string;
   spot?: number;
-  change_pct?: number;
+  change_pct?: number | null;
   asof?: string;
   expiries?: string[];
   strikes?: number[];

@@ -10,7 +10,7 @@ import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { PLAN_MATRIX } from "@/lib/plan-matrix";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 
-/** Full-desk perks — every module, one membership. */
+/** Full-desk perks — every product, one membership. */
 const DESK_PERKS = PLAN_MATRIX.premium_monthly.includes;
 
 const SPX_PERKS = PLAN_MATRIX.spx_slayer.includes.slice(0, 4);
@@ -59,7 +59,7 @@ export function RedesignPricing() {
               <div className="badge">Full desk</div>
               <div className="pl">Premium · Monthly</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<span> / mo</span></div>
-              <div className="save">Every module · one membership</div>
+              <div className="save">Every product · one membership</div>
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>

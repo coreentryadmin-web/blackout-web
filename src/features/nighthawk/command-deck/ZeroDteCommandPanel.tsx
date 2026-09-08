@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { DeskEvidenceStack } from "@/features/nighthawk/components/DeskEvidenceStack";
 import { ARCHETYPE_LABEL } from "@/lib/zerodte/thesis/archetype";
+import { isCortexBlockCode, zeroDteGateLabel } from "@/lib/zerodte/pane";
 import { managementFor } from "./adapters";
 import { showsTimeStopClock, showsTrimScaleLadder, showsRatchetTrack } from "./terminal-guards";
 import { etClock } from "./PlayTerminal";
@@ -18,6 +20,7 @@ import {
 } from "./TerminalPremiumPanels";
 import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
+import { SwingThesisHealthPanel } from "./SwingThesisHealthPanel";
 import { closedCapturePct, closedRealizedPct } from "./play-card-lifecycle";
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
@@ -67,11 +70,11 @@ export function ZeroDteCommandPanel({
   const isWorking = play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
   const mgmt = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
   const badge =
-    play.horizon === "ZERO_DTE" && play.recommendation
+    (play.horizon === "ZERO_DTE" || play.horizon === "SWING") && play.recommendation
       ? play.recommendation
       : mgmt.recommendation;
   const recNote =
-    play.horizon === "ZERO_DTE" && play.recNote ? play.recNote : mgmt.recNote;
+    (play.horizon === "ZERO_DTE" || play.horizon === "SWING") && play.recNote ? play.recNote : mgmt.recNote;
   const thesisLine = verdictThesisLine(play, sessionClosed);
   const whyAt = etClock(play.firstFlaggedAt);
   const topFactors = play.factors.slice(0, 2);
@@ -117,6 +120,68 @@ export function ZeroDteCommandPanel({
         )}
         {thesisLine && <span className="nh-deck-verdict-band__thesis">{thesisLine}</span>}
       </div>
+
+      {play.vectorPulse && (play.vectorPulse.isWinner || play.vectorPulse.isRunner || play.vectorPulse.premiumPct != null) && (
+        <div className="nh-deck-vector-xlink" data-testid="zerodte-vector-xlink">
+          <span className="nh-deck-vector-xlink__lab">Vector desk</span>
+          <span className={clsx("nh-deck-vector-xlink__val", play.vectorPulse.isWinner && "is-winner")}>
+            {play.vectorPulse.isWinner
+              ? "Winner"
+              : play.vectorPulse.isRunner
+                ? "Runner"
+                : "Tracking"}
+            {play.vectorPulse.premiumPct != null && (
+              <>
+                {" "}
+                {play.vectorPulse.premiumPct >= 0 ? "+" : ""}
+                {Math.round(play.vectorPulse.premiumPct)}%
+              </>
+            )}
+          </span>
+          <Link href={`/vector?ticker=${encodeURIComponent(play.ticker)}`} className="nh-deck-vector-xlink__link">
+            Open in Vector →
+          </Link>
+        </div>
+      )}
+
+      {play.runnerProfile && play.runnerProfile.targetPct > 100 && (
+        <div
+          className="nh-deck-runner-xlink"
+          data-testid="zerodte-runner-profile"
+          title={play.runnerProjected ? "Projected target if this candidate commits" : "Frozen runner target at commit"}
+        >
+          <span className="nh-deck-runner-xlink__lab">Runner target</span>
+          <span className="nh-deck-runner-xlink__val">
+            +{Math.round(play.runnerProfile.targetPct)}%
+            {play.runnerProjected ? " (if committed)" : ""}
+          </span>
+          {play.runnerProfile.tag && (
+            <span className="nh-deck-runner-xlink__tag">{play.runnerProfile.tag}</span>
+          )}
+        </div>
+      )}
+
+      {isCandidate && play.gateBlocks && play.gateBlocks.length > 0 && (
+        <section className="nh-deck-command-section nh-deck-gate-blocks" aria-label="Gate blocks" data-testid="zerodte-gate-blocks">
+          <h3 className="nh-deck-command-heading">Why not committed</h3>
+          <ul className="nh-deck-gate-blocks__list">
+            {play.gateBlocks.map((b) => (
+              <li key={b.code} className="nh-deck-gate-blocks__item">
+                <span
+                  className={clsx(
+                    "nh-deck-gate-blocks__code",
+                    (isCortexBlockCode(b.code) || b.code === "correlated_conflict" || b.code === "governor_session_stops") &&
+                      "is-veto",
+                  )}
+                >
+                  {zeroDteGateLabel(b.code)}
+                </span>
+                <span className="nh-deck-gate-blocks__reason">{b.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Two always-visible rails below the verdict band, not one long scroll — the 3-rail
           brief's Rail 2 vs Rail 3 split: "should I hold/trim/exit?" (trade command: live
@@ -337,9 +402,13 @@ export function ZeroDteCommandPanel({
           {play.thesisHealth && (
             <section className="nh-deck-command-section" aria-labelledby="nh-cmd-thesis-health">
               <h3 id="nh-cmd-thesis-health" className="nh-deck-command-heading">
-                Thesis integrity
+                {play.horizon === "SWING" ? "Swing thesis health" : "Thesis integrity"}
               </h3>
-              <ThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
+              {play.horizon === "SWING" ? (
+                <SwingThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
+              ) : (
+                <ThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
+              )}
             </section>
           )}
 

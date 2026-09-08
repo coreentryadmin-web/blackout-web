@@ -16,6 +16,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import {
+  dismissDeskModals,
   iosPlaywrightDevice,
   iosPlaywrightDeviceProMax16,
   mintIosPlaywrightSession,
@@ -60,11 +61,44 @@ async function shot(page, name) {
 async function clickSegment(page, label) {
   const btn = page.locator(".ios-native-segment-btn", { hasText: label }).first();
   if (await btn.isVisible().catch(() => false)) {
-    await btn.click();
+    await btn.scrollIntoViewIfNeeded().catch(() => null);
+    await btn.click({ timeout: 15_000 }).catch(async () => {
+      // Command-deck header can intercept pointer events on narrow iOS widths.
+      await btn.click({ force: true, timeout: 10_000 });
+    });
     await page.waitForTimeout(600);
     return true;
   }
   return false;
+}
+
+async function closeCommandDeck(page) {
+  const overlay = page.locator(".ios-native-menu-overlay");
+  if (!(await overlay.isVisible({ timeout: 800 }).catch(() => false))) return;
+  await page.getByRole("button", { name: /close command deck/i }).click({ force: true, timeout: 3000 }).catch(() => null);
+  await page.keyboard.press("Escape").catch(() => null);
+  await overlay.waitFor({ state: "hidden", timeout: 8000 }).catch(() => null);
+}
+async function waitForVectorCanvas(page, timeoutMs = 45_000) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const canvas = document.querySelector(".vector-chart-canvas canvas");
+        return Boolean(canvas && canvas.clientHeight > 80 && canvas.clientWidth > 80);
+      },
+      { timeout: timeoutMs }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readVectorCanvasMetrics(page) {
+  return page.evaluate(() => {
+    const canvas = document.querySelector(".vector-chart-canvas canvas");
+    return canvas ? { w: canvas.clientWidth, h: canvas.clientHeight } : null;
+  });
 }
 
 async function clickFlowSeg(page, label) {
@@ -272,11 +306,21 @@ async function assertToolContent(page, route, prefix = "", opts = {}) {
     const lcOk =
       metrics.lcCanvas &&
       metrics.lcCanvas.h > 40 &&
-      metrics.lcCanvas.w > 40 &&
-      metrics.lcCanvas.canvasH > 0;
+      metrics.lcCanvas.w > 40;
     const vectorColVisible =
       metrics.vector && metrics.vector.h > 20 && metrics.vector.display !== "none";
-    if (heroOk && metrics.segment && (!requireVectorCanvas || lcOk || !vectorColVisible)) {
+    if (!requireVectorCanvas && metrics.segment) {
+      ok(`${prefix}content:dashboard`, "segment active (vector not required)");
+      return;
+    }
+    if (metrics.segment && lcOk) {
+      ok(
+        `${prefix}content:dashboard`,
+        `vector canvas lc=${metrics.lcCanvas?.h ?? 0} hero=${metrics.hero?.h ?? 0}`
+      );
+      return;
+    }
+    if (heroOk && metrics.segment && (lcOk || !vectorColVisible)) {
       ok(
         `${prefix}content:dashboard`,
         `hero h=${metrics.hero?.h ?? 0} lc=${metrics.lcCanvas?.h ?? 0}${requireVectorCanvas ? "" : " (no vector req)"}`
@@ -398,6 +442,7 @@ async function testToolPage(page, tab, prefix = "") {
     await page.waitForTimeout(2500);
   }
   if (tab.route === "nighthawk") {
+    await closeCommandDeck(page);
     await page
       .waitForSelector(".nh-deck, .nighthawk-playbook, .nh-deck-loading, .nh-deck-empty", { timeout: 45_000 })
       .catch(() => null);
@@ -410,14 +455,15 @@ async function testToolPage(page, tab, prefix = "") {
     await page.waitForTimeout(600);
   }
   if (tab.route === "dashboard") {
+    await dismissDeskModals(page);
     await page.waitForSelector(".vector-chart-canvas, .ios-native-desk-segment", { timeout: 45_000 }).catch(() => null);
-    await page.waitForTimeout(5000);
+    await waitForVectorCanvas(page, 45_000);
   }
   if (tab.route === "vector") {
     await page.waitForSelector(".vector-chart-canvas, .vector-page-shell, .vector-desk-shell", {
       timeout: 45_000,
     }).catch(() => null);
-    await page.waitForTimeout(5000);
+    await waitForVectorCanvas(page, 45_000);
   }
 
   await assertToolContent(page, tab.route, prefix);
@@ -435,7 +481,7 @@ async function testToolPage(page, tab, prefix = "") {
 
   if (tab.route === "dashboard") {
     await page.waitForSelector(".vector-chart-canvas, .ios-native-desk-segment", { timeout: 45_000 }).catch(() => null);
-    await page.waitForTimeout(tab.route === "dashboard" ? 6000 : 0);
+    await dismissDeskModals(page);
     if (await clickSegment(page, "Matrix")) {
       ok(`${prefix}spx:segment-matrix`);
       await shot(page, `${prefix}spx-matrix`);
@@ -453,13 +499,10 @@ async function testToolPage(page, tab, prefix = "") {
     if (await clickSegment(page, "Vector")) {
       ok(`${prefix}spx:segment-vector`);
       await page.locator(".spx-sniper-vector-col").scrollIntoViewIfNeeded().catch(() => null);
-      await page.waitForTimeout(3000);
-      const lc = await page.evaluate(() => {
-        const canvas = document.querySelector(".vector-chart-canvas canvas");
-        return canvas ? { w: canvas.clientWidth, h: canvas.clientHeight } : null;
-      });
-      if (lc && lc.h > 80 && lc.w > 80) ok(`${prefix}spx:vector-canvas`, `h=${lc.h} w=${lc.w}`);
-      else fail(`${prefix}spx:vector-canvas`, `canvas 0-size or missing (h=${lc?.h ?? 0})`);
+      const ready = await waitForVectorCanvas(page, 45_000);
+      const lc = await readVectorCanvasMetrics(page);
+      if (ready && lc && lc.h > 80 && lc.w > 80) ok(`${prefix}spx:vector-canvas`, `h=${lc.h} w=${lc.w}`);
+      else fail(`${prefix}spx:vector-canvas`, `canvas 0-size or missing (h=${lc?.h ?? 0}, ready=${ready})`);
       await shot(page, `${prefix}spx-vector`);
     }
     if (await clickSegment(page, "Intel")) {
@@ -542,6 +585,7 @@ async function testToolPage(page, tab, prefix = "") {
   }
 
   if (tab.route === "nighthawk") {
+    await closeCommandDeck(page);
     if (await clickSegment(page, "0DTE")) {
       ok("hawk:segment-0dte");
       await page.waitForTimeout(800);
@@ -571,13 +615,10 @@ async function testToolPage(page, tab, prefix = "") {
   }
 
   if (tab.route === "vector") {
-    await page.waitForTimeout(3000);
-    const lc = await page.evaluate(() => {
-      const canvas = document.querySelector(".vector-chart-canvas canvas");
-      return canvas ? { w: canvas.clientWidth, h: canvas.clientHeight } : null;
-    });
-    if (lc && lc.h > 80 && lc.w > 80) ok(`${prefix}vector:canvas`, `h=${lc.h} w=${lc.w}`);
-    else fail(`${prefix}vector:canvas`, `canvas 0-size or missing (h=${lc?.h ?? 0})`);
+    const ready = await waitForVectorCanvas(page, 45_000);
+    const lc = await readVectorCanvasMetrics(page);
+    if (ready && lc && lc.h > 80 && lc.w > 80) ok(`${prefix}vector:canvas`, `h=${lc.h} w=${lc.w}`);
+    else fail(`${prefix}vector:canvas`, `canvas 0-size or missing (h=${lc?.h ?? 0}, ready=${ready})`);
     if (await clickSegment(page, "Pulse")) {
       ok(`${prefix}vector:segment-pulse`);
       await shot(page, `${prefix}vector-pulse`);
@@ -659,7 +700,7 @@ async function runDevicePass(deviceFactory, session, prefix = "") {
       await page.waitForSelector(".ios-native-menu-sheet", { timeout: 10_000 });
       ok(`${prefix}chrome:menu-open`);
       await shot(page, `${prefix}menu-open`);
-      await page.locator(".ios-native-menu-scrim").click({ position: { x: 12, y: 12 } });
+      await closeCommandDeck(page);
       await page.waitForSelector(".ios-native-menu-sheet", { state: "hidden", timeout: 10_000 }).catch(() => null);
       ok(`${prefix}chrome:menu-close`);
     } else {

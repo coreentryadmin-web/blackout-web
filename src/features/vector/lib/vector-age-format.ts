@@ -1,3 +1,5 @@
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+
 /**
  * Shared "how long ago" formatter for the small toolbar age chips (GEX/VEX lens, dark-pool
  * toggle). Extracted from VectorLensToggle.tsx's local `formatLensAge` so a second toggle needing
@@ -16,3 +18,13 @@ export function formatVectorAge(asOf: number | null | undefined, now: number | n
  *  staleness threshold can't drift between them (extracted 2026-08-27 when the second consumer,
  *  VectorTickerComparisonStrip, needed the same disclosure VectorScanner already had). */
 export const VECTOR_UNIVERSE_STALE_MS = 10 * 60 * 1000;
+
+/** True when the universe snapshot is too old to trust, or its `updatedAt` is clock-skewed future. */
+export function isVectorUniverseSnapshotStale(
+  updatedAt: number | null | undefined,
+  now: number | null,
+  staleMs = VECTOR_UNIVERSE_STALE_MS
+): boolean {
+  if (now == null || updatedAt == null || updatedAt <= 0) return false;
+  return !isWsUpdatedAtFresh(updatedAt, staleMs, now);
+}

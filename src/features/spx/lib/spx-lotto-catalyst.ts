@@ -133,6 +133,17 @@ function darkPoolDirection(desk: SpxDeskPayload): {
   return { direction: null, weight: 0 };
 }
 
+/**
+ * Structural technical read for the lotto direction vote — VWAP/PDH, GEX-wall, or prior-close
+ * fallbacks ONLY. Deliberately does NOT re-test the gap: `evaluateLottoCatalysts` already computes
+ * and votes the gap as its own independent `id: "gap"` signal a few lines above where this is
+ * called, so a second gap branch here used to push a SECOND vote (`id: "technical"`) off the exact
+ * same evidence (today's gap%) whenever the gap floor was met — silently occupying 2 of the
+ * `playLottoMinDirectionSignals()` (default 3) required "independent" votes with one underlying
+ * fact. A gap that also has a real second signal (e.g. flow) would satisfy the 3-vote bar with
+ * only 2 genuinely independent sources. This function only ever runs when the caller's own gap
+ * check did NOT already qualify — see evaluateLottoCatalysts.
+ */
 function technicalDirection(desk: SpxDeskPayload): {
   direction: SpxPlayDirection | null;
   label: string;
@@ -142,17 +153,7 @@ function technicalDirection(desk: SpxDeskPayload): {
   if (price <= 0) return { direction: null, label: "No price", weight: 0 };
 
   const pdc = desk.prior_close;
-  const gap = gapPct(desk);
   const wall = desk.gex_walls?.[0];
-  const gapMin = playLottoGapMinPct();
-
-  if (gap != null && Math.abs(gap) >= gapMin) {
-    return {
-      direction: gap > 0 ? "long" : "short",
-      label: `Gap ${gap > 0 ? "+" : ""}${gap.toFixed(2)}% vs prior close`,
-      weight: clampWeight(Math.abs(gap) / gapMin, 3),
-    };
-  }
 
   if (desk.vwap != null) {
     if (price >= desk.vwap && desk.pdh != null && price > desk.pdh - 5) {

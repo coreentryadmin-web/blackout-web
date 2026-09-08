@@ -17,6 +17,26 @@ import {
 } from "@/features/helix/lib/helix-flow-limits";
 
 
+/**
+ * Display for the print card's DTE segment (`<expiry> · <this>`), given the already-resolved
+ * DTE (`flow.dte` when the feed reported one, else the clamped `daysToExpiry()` fallback — see
+ * the call site below). 0DTE prints never reach this function: the card hides the DTE segment
+ * entirely for `dte === 0` and shows an "0DTE" ember badge in the signals row instead.
+ *
+ * UW's own `dte` field goes NEGATIVE for a print reported after its contract's expiry has
+ * already passed — `helix-flow-format.ts`'s `fmtIv` doc comment records a live example
+ * (`dte: -1`, SPY 2026-08-21 expiry, deep-ITM). That is not a hypothetical edge case being
+ * guarded against; it is an observed value the feed actually sends. Rendering it raw produced a
+ * bare "-1d" in the exact same plain `<span>` as a normal "32d" — arithmetically correct, but
+ * with none of the visual urgency a member gets from the highlighted 0DTE treatment one row
+ * up, on a contract that is in a *stronger* state than 0DTE (it isn't merely expiring today,
+ * it already has).
+ */
+export function dtePrintLabel(dte: number): { text: string; expired: boolean } {
+  if (dte < 0) return { text: "EXPIRED", expired: true };
+  return { text: `${dte}d`, expired: false };
+}
+
 // Real mobile-web tape layout (2026-08-02 Helix audit, Tier 1 item #8). Mobile web (and the
 // native iOS shell — both go through useCompactDeskPanels) previously rendered the SAME
 // desktop CSS-grid table (`HelixFlowTable`) as a wide desk viewport, forcing horizontal
@@ -143,6 +163,7 @@ export function HelixMobileFlowTape({
               const isWhale = flow.premium >= WHALE_PRINT_PREMIUM;
               const dte = flow.dte ?? daysToExpiry(flow.expiry);
               const is0dte = dte === 0;
+              const dteLabel = dtePrintLabel(dte);
               const isCompound = compoundTickers?.has(flow.ticker) ?? false;
               const earnIn = earningsDays?.[flow.ticker] ?? null;
               const signals = flowSignals(flow, {
@@ -244,7 +265,9 @@ export function HelixMobileFlowTape({
                       {!is0dte && (
                         <>
                           <span className="text-cyan-400">·</span>
-                          <span>{dte}d</span>
+                          <span className={dteLabel.expired ? "font-bold text-ember" : undefined}>
+                            {dteLabel.text}
+                          </span>
                         </>
                       )}
                     </p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { Panel } from "@/components/ui";
@@ -16,6 +16,10 @@ import {
   kingFromStrikeTotals,
 } from "@/lib/correctness/gex-odte-scope";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import {
+  readSpxMatrixLensFromSession,
+  writeSpxMatrixLensToSession,
+} from "@/features/spx/lib/spx-matrix-lens";
 import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
@@ -94,6 +98,7 @@ type GexHeatmapResponse = {
     divergence: number | null;
     uw_asof: string | null;
   } | null;
+  chain_truncated?: boolean;
 };
 
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
@@ -167,7 +172,19 @@ export function SpxGexMatrixHeatmap({
   priceScaleMap,
   focus,
 }: DeskProps) {
-  const [lens, setLens] = useState<GexHeatmapLens>("gex");
+  const [lens, setLensState] = useState<GexHeatmapLens>("gex");
+
+  const setLens = useCallback((next: GexHeatmapLens | ((prev: GexHeatmapLens) => GexHeatmapLens)) => {
+    setLensState((prev) => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      writeSpxMatrixLensToSession(resolved);
+      return resolved;
+    });
+  }, []);
+
+  useEffect(() => {
+    setLensState(readSpxMatrixLensFromSession());
+  }, []);
   const pollMs = useDeskSessionPollIntervalMs(
     sessionActive ?? deskLive,
     MATRIX_POLL_RTH_MS,
@@ -269,8 +286,12 @@ export function SpxGexMatrixHeatmap({
   // daily expiries settle independently, so a column's King can legitimately
   // differ day to day. Same per-column scoping gives the day's own highest-
   // positive (call wall) and highest-negative (put wall) gamma strikes —
-  // recomputeScopedGexLevels's callWall/putWall selection doesn't depend on
-  // spot, only its flip field does, so 0 is a safe placeholder here.
+  // deliberately the RAW per-column extreme, not a spot-relative resistance/
+  // support read, so this passes spot=0 on purpose: recomputeScopedGexLevels
+  // (2026-09-04) treats spot<=0 as "unconstrained" (same convention as
+  // wallsFromStrikeTotals/computeGexWalls), which is what preserves this
+  // call site's historical "highest |gamma| either side" semantics. Only
+  // `flip` (unused here) depends on spot's actual value.
   const columnKings = useMemo(() => {
     const map = new Map<string, number>();
     for (const expiry of displayExpiries) {
@@ -648,6 +669,12 @@ export function SpxGexMatrixHeatmap({
           <p className="font-mono text-[9px] leading-snug text-amber-300/90">
             UW oracle diverges {uwCross?.divergence?.toFixed(0)}pt from Polygon walls — treat
             levels as provisional until channels agree.
+          </p>
+        )}
+        {data?.chain_truncated && (
+          <p className="font-mono text-[9px] leading-snug text-amber-300/90">
+            Option chain capped before full pagination — walls and open interest may understate true
+            positioning.
           </p>
         )}
         <GexShiftLeadersStrip

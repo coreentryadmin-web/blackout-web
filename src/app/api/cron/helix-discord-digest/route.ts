@@ -90,7 +90,8 @@ async function claimDedup(
   bypass: boolean
 ): Promise<{ claimed: boolean; held: boolean }> {
   if (bypass) return { claimed: true, held: false };
-  const claimed = await sharedCacheSetNx(key, { at: new Date().toISOString() }, ttl);
+  // fail OPEN on a Redis error — a missed dedup window is a harmless duplicate post
+  const claimed = await sharedCacheSetNx(key, { at: new Date().toISOString() }, ttl).catch(() => true);
   return { claimed, held: claimed };
 }
 

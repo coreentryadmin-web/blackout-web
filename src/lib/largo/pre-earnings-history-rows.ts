@@ -134,3 +134,37 @@ export function toPreEarningsHistoryRows(
       (p.reaction_pct ?? p.session_change_pct) != null,
   }));
 }
+
+/**
+ * Has the print `pre-earnings-pack.ts` is building a pack for ALREADY happened?
+ *
+ * `preEarningsPackForLargo`'s `expected_move_pct` is sourced from the LIVE options chain — current
+ * ATM IV, with no anchor to "before this specific print" (`loadEarningsExpectedMove`'s own doc
+ * comment: "ATM IV from the live Polygon chain"). For a genuinely upcoming print that is exactly
+ * the right number. For a print that already happened, the SAME code path instead measures
+ * POST-print IV — the market's forward-looking vol for whatever expiry is nearest NOW — while the
+ * pack still frames it as `kind: "pre_earnings"` beside an "Options-implied move" chip
+ * (`LargoPreEarningsPackCard.tsx`) that reads as "the market expects this print to move ~X%."
+ * Measured live 2026-09-04: LULU, printed hours earlier the same session on a steep guidance cut
+ * (a real intraday crash), served `expected_move_pct: 50.3` under this exact pack — a number
+ * describing CURRENT elevated post-crash IV, presented as though it were the market's PRE-print
+ * expectation. The same stale figure also flows into `meridian-earnings-intel.ts`'s
+ * `input.pack.expected_move_pct` fallback and its derived up/down expected-move price band.
+ *
+ * Same root defect class as the cross-event `expected_vs_realized` fix (FINDINGS.md, 2026-08-21:
+ * "a number a consumer must not pair does not belong in the block") — just at a call site that fix
+ * never reached, since it patched the comparison banner, not this pack's own field.
+ *
+ * DETECTION: `print_history` only ever contains rows Benzinga confirms with real ACTUAL EPS or
+ * revenue (`benzingaRowsToPrintHistory`'s `actual_eps != null || actual_revenue != null` filter —
+ * this module's own header explains why the projection lives in this separate, TESTABLE file
+ * rather than inline in `pre-earnings-pack.ts`, which is `server-only` and reaches its data through
+ * dynamic `@/` imports this module deliberately never adds). A print-history row dated exactly
+ * `resolvedDate` is proof — not a guess — that THIS print already has real numbers on file.
+ */
+export function earningsAlreadyPrinted(
+  resolvedDate: string | null,
+  printHistory: readonly { report_date: string | null }[]
+): boolean {
+  return resolvedDate != null && printHistory.some((p) => p.report_date === resolvedDate);
+}

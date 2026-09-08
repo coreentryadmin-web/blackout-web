@@ -1,0 +1,279 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  BANNED_PUBLIC_MARKETING_PHRASES,
+  MANIFEST_PRODUCT_ORDER,
+  PRODUCT_MANIFEST,
+  manifestProductCount,
+  manifestProductCountWord,
+  manifestPremiumIncludes,
+} from "./product-manifest.ts";
+import { MARKETING_PRODUCTS } from "./products.ts";
+import { LEARN_NAV } from "../learn/nav.ts";
+import type { LearnSlug } from "../learn/nav.ts";
+import type { MarketingModuleId } from "../images.ts";
+
+const REPO = join(import.meta.dirname, "..", "..", "..");
+
+const PUBLIC_SURFACES = [
+  "src/lib/faq/content.ts",
+  "src/lib/plan-matrix.ts",
+  "src/lib/onboarding-content.ts",
+  "src/lib/marketing/products.ts",
+  "src/lib/site.ts",
+  "src/lib/upsell-features.ts",
+  "src/components/landing/RedesignHome.tsx",
+  "src/components/upgrade/UpgradePageShell.tsx",
+  "src/app/(marketing)/vs/others/page.tsx",
+  "src/app/(marketing)/about/page.tsx",
+  "src/app/(marketing)/pricing/page.tsx",
+  "src/components/seo/JsonLd.tsx",
+] as const;
+
+test("manifest defines seven live products including Meridian and Vector", () => {
+  assert.equal(manifestProductCount(), 7);
+  assert.equal(PRODUCT_MANIFEST.vector.launchStatus, "live");
+  assert.equal(PRODUCT_MANIFEST.meridian.launchStatus, "live");
+});
+
+// Regression for a P2 IA finding (2026-09-03): "dark pool" was promised platform-wide (homepage
+// "what you get" list, /about, /vs/others) and the /about page's hand-authored "Seven modules"
+// prose already (correctly) credited it to HELIX — but the CANONICAL manifest that actually
+// drives the homepage cards/pricing/FAQ/schema gave NO product credit for it at all, so a member
+// reading the product descriptions had no way to find which desk shows it. In reality Helix ships
+// a dedicated dark-pool panel (prints/sparkline/bias) and Vector overlays dark-pool price levels
+// on its chart — both already implemented, this was purely a marketing-copy gap.
+test("HELIX and Vector's manifest entries credit dark pool — the products that actually render it", () => {
+  const helix = PRODUCT_MANIFEST.helix;
+  assert.ok(
+    helix.capabilities.some((c) => /dark pool/i.test(c)),
+    "HELIX ships a dedicated dark-pool panel; its capabilities must say so"
+  );
+  assert.match(helix.faqAnswer, /dark pool/i);
+
+  const vector = PRODUCT_MANIFEST.vector;
+  assert.ok(
+    vector.capabilities.some((c) => /dark pool/i.test(c)),
+    "Vector overlays dark-pool levels on its chart; its capabilities must say so"
+  );
+});
+
+// Regression for a P2/P3 finding (2026-09-02): Meridian's "Read the guide" and "Open Meridian"
+// buttons both pointed at /meridian (learnHref === href), so "Read the guide" was a dead-end
+// duplicate rather than real documentation — the only product on the homepage without one. The
+// fix ships a real Meridian Academy guide at /learn/meridian-earnings-desk-guide and re-points
+// learnHref at it, which also un-hides the CTA via RedesignHome's existing
+// `m.learnHref !== m.href` gate.
+test("Meridian has a real, distinct Academy guide (not a duplicate of the product route)", () => {
+  const meridian = PRODUCT_MANIFEST.meridian;
+  assert.notEqual(meridian.learnHref, meridian.href);
+  assert.equal(meridian.learnHref, "/learn/meridian-earnings-desk-guide");
+});
+
+test("Night Hawk manifest positions 0DTE Command first, not swing-only", () => {
+  const hawk = PRODUCT_MANIFEST.hawk;
+  assert.match(hawk.positioning, /0DTE Command/i);
+  assert.match(hawk.lifecycle, /0DTE Command/i);
+  assert.doesNotMatch(hawk.positioning, /swing playbook/i);
+  assert.doesNotMatch(hawk.faqAnswer, /swing and leap/i);
+});
+
+// Regression for a P3 finding (2026-09-04): the manifest test above already guards
+// PRODUCT_MANIFEST.hawk against "swing-only"/"evening" framing, but the Learn hub's own
+// product-navigation metadata (LEARN_NAV, a separate hand-authored array — not derived from
+// the manifest) still said "Evening playbook — tomorrow's setups, scored tonight.", directly
+// contradicting the homepage's "Intraday scanner with evening prep... not a swing-only
+// product" positioning. The manifest fix alone didn't reach this second copy of the claim.
+test("Learn nav's Night Hawk descriptor is not evening-only, matching the manifest's positioning", () => {
+  const nightHawkNav = LEARN_NAV.find((item) => item.slug === "night-hawk");
+  assert.ok(nightHawkNav, "night-hawk must still be a LEARN_NAV entry");
+  assert.doesNotMatch(nightHawkNav!.description, /^Evening playbook/i);
+  assert.match(nightHawkNav!.description, /0DTE|intraday/i);
+});
+
+// Regression for a P3 finding (2026-09-04): Meridian's manifest entry framed the product as
+// narrowly "Earnings intelligence" — a timeline of "upcoming and recent earnings" with estimate
+// revisions and reaction history. But MeridianEventKind (src/features/meridian/lib/
+// meridian-types.ts) is "macro" | "earnings" | "opex" | "fda", with dedicated filter chips
+// (MeridianDesk.tsx) and per-kind detail panels (MeridianEventDetailPanel.tsx) for each — Meridian
+// genuinely implements four catalyst classes, not just earnings. The manifest (which drives the
+// homepage card's `detail`/`positioning`, pricing matrix `detail`, and SEO featureList via
+// manifestSchemaFeatureList) undersold the product relative to its own shipped code AND its own
+// Academy guide, which already documented all four classes correctly. The manifest fix does NOT
+// reach every surface automatically, though — `products.ts`'s HEADLINES/STATS (the homepage card's
+// headline + stat pill) and `upsell-features.ts`'s per-row `label` are hand-authored literals per
+// product, same as every other desk's row, not manifest-derived — so those needed their own edit
+// (products.ts, upsell-features.ts + its test, plus the email templates that hand-list product
+// names) alongside about/page.tsx's hand-duplicated exception (now in PUBLIC_SURFACES above and
+// covered by the banned-phrase test below).
+test("Meridian manifest describes all four catalyst classes, not earnings-only", () => {
+  const meridian = PRODUCT_MANIFEST.meridian;
+  assert.notEqual(meridian.tag, "Earnings intelligence");
+  for (const term of [/macro/i, /opex|OpEx/i, /FDA/i]) {
+    assert.match(meridian.lifecycle, term, `lifecycle must mention ${term}`);
+    assert.ok(
+      meridian.capabilities.some((c) => term.test(c)),
+      `capabilities must mention ${term}`
+    );
+  }
+  assert.match(meridian.faqAnswer, /macro/i);
+  assert.match(meridian.faqAnswer, /opex|OpEx/i);
+  assert.match(meridian.faqAnswer, /FDA/i);
+});
+
+// The manifest fix above doesn't reach products.ts's hand-authored HEADLINES/STATS (the homepage
+// card's headline + stat pill) — those are per-product literals, not manifest-derived, so an
+// earnings-only manifest fix can land while the homepage card still says "Earnings prints" /
+// "earnings desk". Guards that surface specifically.
+test("marketing products' Meridian headline/stat are not earnings-only", () => {
+  const meridian = MARKETING_PRODUCTS.find((p) => p.id === "meridian");
+  assert.ok(meridian, "MARKETING_PRODUCTS is missing the Meridian entry");
+  assert.doesNotMatch(meridian!.headline, /^Earnings/i);
+  assert.notEqual(meridian!.stat.v, "earnings desk");
+});
+
+test("Vector manifest describes live universe screener capabilities", () => {
+  const vector = PRODUCT_MANIFEST.vector;
+  assert.equal(vector.launchStatus, "live");
+  assert.match(vector.lifecycle, /universe screener/i);
+  assert.match(vector.capabilities.join(" "), /wall integrity/i);
+});
+
+test("marketing products derive from manifest without Soon status on Vector", () => {
+  const vector = MARKETING_PRODUCTS.find((p) => p.id === "vector");
+  assert.ok(vector);
+  assert.equal(vector!.launchStatus, "live");
+  assert.equal(vector!.stat.v, "universe scan");
+});
+
+test("premium includes lists every live product label from manifest", () => {
+  const perks = manifestPremiumIncludes();
+  assert.equal(perks.length, 7);
+  for (const id of MANIFEST_PRODUCT_ORDER) {
+    assert.ok(perks.includes(PRODUCT_MANIFEST[id].label));
+  }
+});
+
+test("public marketing surfaces do not contain banned absolute/stale phrases", () => {
+  const combined = PUBLIC_SURFACES.map((rel) => readFileSync(join(REPO, rel), "utf8")).join("\n");
+  const lower = combined.toLowerCase();
+  for (const phrase of BANNED_PUBLIC_MARKETING_PHRASES) {
+    assert.doesNotMatch(
+      lower,
+      new RegExp(phrase.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      `banned phrase "${phrase}" found on a public marketing surface`
+    );
+  }
+});
+
+test("FAQ Night Hawk answer matches manifest lifecycle", () => {
+  const faq = readFileSync(join(REPO, "src/lib/faq/content.ts"), "utf8");
+  assert.match(faq, /0DTE Command/i);
+  assert.doesNotMatch(faq, /overnight playbook/i);
+});
+
+test("plan matrix Night Hawk line matches manifest planInclude", () => {
+  const plan = readFileSync(join(REPO, "src/lib/plan-matrix.ts"), "utf8");
+  assert.match(plan, /PRODUCT_MANIFEST\.hawk\.planInclude/);
+});
+
+// Regression for a P3 finding (2026-09-04): SPX Slayer's manifest entry claimed "GEX / VEX / DEX /
+// CHARM lenses on the 0DTE ladder" — but SPX Slayer's own matrix component
+// (src/features/spx/components/SpxGexMatrixHeatmap.tsx) only ever renders a GEX/VEX toggle
+// ((["gex", "vex"] as const).map(...) — no "dex"/"charm" string literal appears anywhere under
+// src/features/spx/*.tsx). DEX/CHARM ARE real, computed data for the SPX ticker (the same shared
+// GEX pipeline that powers Thermal), and Largo can answer DEX/CHARM questions about SPX from that
+// data — but SPX Slayer's own product UI has no lens toggle for them, so its capability copy
+// overclaimed a feature no SPX Slayer subscriber can actually reach. Thermal's own entry (which
+// DOES ship all four lenses — confirmed live in GexHeatmap.tsx) is deliberately left untouched.
+test("SPX Slayer's manifest capabilities match its real matrix UI (GEX/VEX only, not DEX/CHARM)", () => {
+  const spx = PRODUCT_MANIFEST.spx;
+  assert.doesNotMatch(
+    spx.lifecycle,
+    /DEX|CHARM/i,
+    "SPX Slayer's own matrix UI has no DEX/CHARM lens — lifecycle copy must not claim one"
+  );
+  assert.ok(
+    spx.capabilities.every((c) => !/DEX|CHARM/i.test(c)),
+    "SPX Slayer's own matrix UI has no DEX/CHARM lens — capabilities must not claim one"
+  );
+  assert.ok(
+    spx.capabilities.some((c) => /GEX.*VEX/i.test(c)),
+    "SPX Slayer's real GEX/VEX toggle should still be represented"
+  );
+
+  const thermal = PRODUCT_MANIFEST.thermal;
+  assert.match(
+    thermal.lifecycle,
+    /DEX.*CHARM|CHARM.*DEX/i,
+    "Thermal genuinely ships all four lenses — this assertion should not be narrowed to match SPX"
+  );
+});
+
+// Regression for a P3 IA finding (2026-09-04): Vector and Meridian had no Academy chapter at
+// all — LEARN_NAV (the structured Learn hub's chapter list) stopped at 5 product chapters plus
+// Getting Started and Glossary, even though the manifest already listed all 7 products as live
+// and even pointed their `learnHref` at real guide content. A prospective member reading the
+// Academy's "structured textbook" saw only 5 of 7 products; Vector and Meridian's guides existed
+// only as loose entries in the unstructured Guides catalog (LEARN_ARTICLES), never as numbered
+// curriculum chapters. `MarketingModuleId` (product-manifest.ts ids) and `LearnSlug` (nav.ts
+// chapter slugs) use different naming schemes for the same products (e.g. "thermal" vs
+// "heat-maps", "hawk" vs "night-hawk") — this explicit mapping is the join between them the
+// codebase doesn't otherwise provide, so this test can assert the invariant the finding asked
+// for: every live paid product has exactly one first-class Academy chapter.
+const MANIFEST_ID_TO_LEARN_SLUG: Record<MarketingModuleId, LearnSlug> = {
+  spx: "spx-slayer",
+  helix: "helix-flows",
+  thermal: "heat-maps",
+  largo: "largo-ai",
+  hawk: "night-hawk",
+  vector: "vector",
+  meridian: "meridian",
+};
+
+test("every live product in the manifest has exactly one first-class Academy chapter", () => {
+  const chapterSlugs = new Set(LEARN_NAV.map((item) => item.slug));
+  const missing: string[] = [];
+  for (const id of MANIFEST_PRODUCT_ORDER) {
+    if (PRODUCT_MANIFEST[id].launchStatus !== "live") continue;
+    const slug = MANIFEST_ID_TO_LEARN_SLUG[id];
+    if (!chapterSlugs.has(slug)) missing.push(`${id} (expected LEARN_NAV slug "${slug}")`);
+  }
+  assert.deepEqual(
+    missing,
+    [],
+    `live products missing a first-class Academy chapter: ${missing.join(", ")}`
+  );
+
+  // Every chapter slug in the mapping must actually resolve to a distinct LEARN_NAV entry —
+  // catches a copy-paste duplicate slug as loudly as a missing one.
+  const mappedSlugs = Object.values(MANIFEST_ID_TO_LEARN_SLUG);
+  assert.equal(
+    new Set(mappedSlugs).size,
+    mappedSlugs.length,
+    "product-to-chapter mapping must not alias two products onto the same chapter slug"
+  );
+});
+
+// Regression for a P3 technical-SEO finding (2026-09-04): Pricing's <meta name="description">
+// (and the identical JSON-LD WebPageJsonLd description, and by extension the OG/Twitter copy
+// publicPageMetadata derives from the same string) said "all six trading modules plus Discord"
+// for a full product-launch cycle after the catalog grew to seven — a stale acquisition-layer
+// artifact search/answer engines could ingest as the canonical commercial summary, even though
+// the visible Pricing page content had already been updated. Fixed by deriving the description
+// from manifestProductCountWord() instead of a hand-typed number, so this can't go stale again
+// the same way without the manifest itself changing.
+test("Pricing page SEO description derives its product count from the manifest, not a hardcoded word", () => {
+  const pricingPage = readFileSync(join(REPO, "src/app/(marketing)/pricing/page.tsx"), "utf8");
+  assert.match(
+    pricingPage,
+    /manifestProductCountWord\(\)/,
+    "Pricing's SEO description must derive its product count from the manifest, not a literal string"
+  );
+  assert.doesNotMatch(pricingPage, /\bsix\b/i, "no hardcoded stale product-count word on Pricing");
+
+  const word = manifestProductCountWord();
+  assert.equal(word, "seven", "sanity check: today's live count should spell out as \"seven\"");
+});

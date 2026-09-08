@@ -6,6 +6,7 @@ import { PageShell } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { FlowAnomalyBanner } from "@/components/FlowAnomalyBanner";
 import { HelixTideBar } from "@/features/helix/components/HelixTideBar";
+import { HelixRegimeRibbon } from "@/features/helix/components/HelixRegimeRibbon";
 import { IosIntelligenceHubSegment } from "@/components/ios/IosIntelligenceHubSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 
@@ -52,6 +53,7 @@ export function HelixPageShell() {
             <span className="sr-only">Institutional flow intelligence</span>
           </div>
           <HelixTideBar className="helix-pro-tide helix-pro-tide--compact" />
+          <HelixRegimeRibbon className="helix-pro-regime helix-pro-regime--compact" />
         </div>
       )}
       <div
@@ -61,8 +63,9 @@ export function HelixPageShell() {
         )}
       >
         {nativeShell && (
-          <div className="helix-native-tide">
+          <div className="helix-native-tide flex items-center gap-3">
             <HelixTideBar />
+            <HelixRegimeRibbon />
           </div>
         )}
         <IosIntelligenceHubSegment />

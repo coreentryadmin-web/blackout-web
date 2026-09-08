@@ -27,7 +27,9 @@ import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
+import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { matrixShiftForLens } from "@/lib/gex-shift-leaders";
+import { rebaseChangePct } from "@/lib/providers/change-pct";
 import ThermalCompactMatrix, {
   type ThermalCompareMode,
 } from "@/features/thermal/components/ThermalCompactMatrix";
@@ -220,7 +222,12 @@ function TripleColumn({
     pushQuote?.changePct != null && Number.isFinite(pushQuote.changePct)
       ? pushQuote.changePct
       : null;
-  const headerChangePct = pushChangePct ?? matrixChangePct;
+  const headerChangePct =
+    pushSpot != null && matrixSpot != null
+      ? (rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct })
+        ?? pushChangePct
+        ?? matrixChangePct)
+      : pushChangePct ?? matrixChangePct;
   const changeUp = (headerChangePct ?? 0) >= 0;
   const columnExpiry = useMemo(() => {
     if (!view?.expiries?.length) return null;
@@ -239,6 +246,19 @@ function TripleColumn({
             {shortcut}
           </span>
           <span className="thermal-triple-ticker">{ticker}</span>
+          {isHeatmapOverlayAllowed(ticker) ? (
+            <span
+              className="thermal-triple-overlay-dot"
+              title="HELIX flow overlays available for this ticker"
+              aria-label="Overlays available"
+            />
+          ) : (
+            <span
+              className="thermal-triple-overlay-dot is-off"
+              title="Matrix only — flow overlays not offered for this ticker"
+              aria-label="Overlays not offered"
+            />
+          )}
         </button>
         <div className="thermal-triple-col-head-meta">
           {columnExpiry ? (

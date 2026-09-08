@@ -39,8 +39,8 @@ rec(
 );
 
 rec(
-  "static:bie-composers->zeroDtePlaysForLargo",
-  /zeroDtePlaysForLargo/.test(read("src/lib/bie/composers.ts"))
+  "static:full-platform-snapshot->zeroDtePlaysForLargo",
+  /zeroDtePlaysForLargo/.test(read("src/lib/bie/full-platform-snapshot.ts"))
 );
 
 rec(

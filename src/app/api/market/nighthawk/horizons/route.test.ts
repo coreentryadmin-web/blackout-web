@@ -17,6 +17,23 @@ const RAW_BOARD_FLOAT = 7499.360000000001;
 const RAW_SWING_FLOAT = 1234.5600000000004;
 const EPOCH_MS = 1721835000000; // integer — must pass through roundFloats untouched
 
+mock.module("server-only", { namedExports: {} });
+mock.module("../../../../../lib/vector/vector-pick-leaders-db", {
+  namedExports: { fetchVectorPickLeaderRows: async () => [] },
+});
+mock.module("../../../../../lib/banger/flag", {
+  namedExports: { isBangerEngineEnabled: () => false },
+});
+mock.module("../../../../../lib/banger/positions-db", {
+  namedExports: { fetchBangerBoardRows: async () => [], fetchBangerOpenBookRows: async () => [] },
+});
+mock.module("../../../../../lib/banger/watch-cache", {
+  namedExports: { readBangerWatchSnapshot: async () => null },
+});
+mock.module("../../../../../lib/et-date", {
+  namedExports: { todayEt: () => "2026-09-04" },
+});
+
 mock.module("../../../../../lib/db", {
   namedExports: {
     requireDatabaseInProduction: () => null,
@@ -104,6 +121,8 @@ mock.module("../../../../../lib/swing/serving-lane", {
       sections: [],
       committedCount: 2,
       watchCount: 3,
+      scanAsOf: "2026-09-04T17:00:00.000Z",
+      scanSessionDay: "2026-09-04",
     }),
     // Route also reads the persisted snapshot / discover seam — stub so the mock module shape matches
     // the live import list (missing named exports → TypeError → degraded {available:false} body).
@@ -131,6 +150,8 @@ describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
     );
     const body = await res.json();
     assert.equal(body.board.lanes.SWING.swingFloat, 1234.56, "the unrounded swing lane must be rounded at the edge");
+    assert.equal(body.board.lanes.SWING.scanAsOf, "2026-09-04T17:00:00.000Z");
+    assert.equal(body.board.lanes.SWING.scanSessionDay, "2026-09-04");
   });
 
   test("integer timestamps pass through untouched (roundFloats only trims float noise)", async () => {

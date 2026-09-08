@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { mapAlertAuditTrailRow, computeSafePgPoolMaxDefault } from "./db";
+import { EventEmitter } from "node:events";
+import type { PoolClient } from "pg";
+import { mapAlertAuditTrailRow, computeSafePgPoolMaxDefault, guardCheckedOutClient } from "./db";
 
 test("mapAlertAuditTrailRow: converts NUMERIC confidence_score (a string from node-pg) to a real number", () => {
   const row = mapAlertAuditTrailRow({
@@ -71,6 +73,48 @@ test("computeSafePgPoolMaxDefault: clamps to a floor of 1 for absurd replica cou
   assert.equal(computeSafePgPoolMaxDefault(20, 0), 20, "replicaCount<=1 must not divide by zero");
 });
 
+// Regression for the 2026-09-04 audit finding: two independently-deployed ECS services
+// (blackout-production-web: 8 replicas x PG_POOL_MAX=2, blackout-production-market-worker: 1 x 4)
+// each self-checked ONLY their own env vars and each passed in isolation, yet together they
+// already consumed the FULL shared PgBouncer/RDS-Proxy budget (16+4=20) with zero headroom —
+// confirmed live via CloudWatch (2740 "Connection terminated due to connection timeout" events in
+// one 10-minute window on 2026-09-01, correlating exactly with the web service's RunningTaskCount
+// spiking to 9-10 against a MaxCapacity of 12 that its own pool math never saw, since it only read
+// the 8-replica floor). `reservedForOtherServices` lets one service's own budget math account for
+// a sibling's known consumption; omitting it (the default) reproduces the exact prior behavior.
+test("computeSafePgPoolMaxDefault: reservedForOtherServices carves out a sibling service's known consumption", () => {
+  // market-worker consumes 4 of the shared 20-slot budget — web's own math (5 replicas) should
+  // divide the REMAINING 16 across its replicas (=3), not the full 20 (which would floor to 4).
+  assert.equal(computeSafePgPoolMaxDefault(20, 5, 4), 3);
+  assert.equal(computeSafePgPoolMaxDefault(20, 5, 0), 4, "explicit 0 matches the omitted-arg default (pre-fix result)");
+});
+
+test("computeSafePgPoolMaxDefault: reservedForOtherServices is omittable and preserves the exact prior (pre-fix) result", () => {
+  assert.equal(computeSafePgPoolMaxDefault(20, 5), computeSafePgPoolMaxDefault(20, 5, 0));
+  assert.equal(computeSafePgPoolMaxDefault(20, 4), computeSafePgPoolMaxDefault(20, 4, 0));
+});
+
+test("computeSafePgPoolMaxDefault: reservedForOtherServices never divides by less than 1 available slot, even if it exceeds the whole budget", () => {
+  assert.equal(computeSafePgPoolMaxDefault(20, 5, 999), 1, "an absurd reservation must not go negative or throw");
+});
+
+test("computeSafePgPoolMaxDefault: a negative reservedForOtherServices is treated as 0, never adds slots back", () => {
+  assert.equal(computeSafePgPoolMaxDefault(20, 5, -10), computeSafePgPoolMaxDefault(20, 5, 0));
+});
+
+test("SAFE_PG_POOL_MAX_DEFAULT wiring actually uses REPLICA_COUNT_MAX_FOR_POOL and PGBOUNCER_RESERVED_FOR_OTHER_SERVICES, not just the floor", () => {
+  // Module-load-time env-derived constants can't be re-imported with different env in this
+  // process, so this pins the WIRING (source text) rather than re-deriving the values — the pure
+  // function itself is exhaustively covered above. Guards against the module-level call site
+  // silently reverting to the pre-fix two-argument call while the function signature stays intact.
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /const SAFE_PG_POOL_MAX_DEFAULT = computeSafePgPoolMaxDefault\(\s*PGBOUNCER_BACKEND_BUDGET,\s*REPLICA_COUNT_MAX_FOR_POOL,\s*PGBOUNCER_RESERVED_FOR_OTHER_SERVICES\s*\);/,
+    "SAFE_PG_POOL_MAX_DEFAULT must be derived from the autoscaling ceiling and the reserved-for-siblings budget, not just the floor"
+  );
+});
+
 test("upsertZeroDteSetupLog: direction/top_strike/expiry are pinned (COALESCE-guarded) in the ON CONFLICT UPDATE", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   // WS-01 extracted the one-and-only upsert SQL into the module-level const
@@ -126,6 +170,36 @@ test("updateZeroDteLiveState: SQL status CASE is monotonic — CLOSED terminal, 
   assert.match(body, /LEAST\(COALESCE\(trough_premium, \$4\), \$4\)/);
 });
 
+// FIX (2026-09-01, ZERODTE_TRIM_BANK_LIVE): trims_taken must be a monotonic latch
+// (GREATEST), never a plain overwrite — two independent writers (the ~1s live-marks
+// lane and the ~2-min scan.ts cron sync) share this UPDATE, same as peak/trough
+// above, and a stale writer's lower count must never un-bank a tranche a fresher
+// writer already persisted. It must also freeze once CLOSED (same pattern as the
+// other mark-anchored columns) and be skipped entirely (not zeroed) on a tick that
+// doesn't report a trim, or every ordinary heartbeat write would silently regress it.
+test("updateZeroDteLiveState: trims_taken is a monotonic GREATEST latch, frozen at CLOSED, untouched when omitted", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function updateZeroDteLiveState");
+  assert.ok(start > 0, "updateZeroDteLiveState exists");
+  const body = src.slice(start, src.indexOf("stampZeroDteExitContext"));
+
+  const trimsIdx = body.indexOf("trims_taken = CASE");
+  assert.ok(trimsIdx > 0, "trims_taken SET clause present");
+  const clause = body.slice(trimsIdx, body.indexOf("END", trimsIdx) + 3);
+
+  assert.match(clause, /WHEN status = 'CLOSED' THEN trims_taken/, "frozen once closed, same as peak/trough");
+  assert.match(
+    clause,
+    /WHEN \$5::int IS NOT NULL THEN GREATEST\(trims_taken, \$5::int\)/,
+    "a reported count can only raise the latch, never overwrite/regress it"
+  );
+  assert.match(clause, /ELSE trims_taken/, "omitted ($5 IS NULL) leaves the column untouched, not zeroed");
+
+  // The new 5th bind param must actually be threaded through to the query call.
+  const paramsMatch = body.match(/\[sessionDate, ticker\.toUpperCase\(\), s\.status, s\.mark, s\.trimsTaken \?\? null\]/);
+  assert.ok(paramsMatch, "s.trimsTaken must be bound as the 5th query param, defaulting to null when omitted");
+});
+
 // PR-N1 (P0, docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md §0.1): ensureSchema used to
 // re-issue nighthawk_play_outcomes_outcome_check TWICE — the correct DROP+ADD (with
 // 'unfilled') right after the table DDL, then a stale pre-'unfilled' copy ~270 lines
@@ -169,6 +243,35 @@ test("fetchRecentFlows: ask_pct = COALESCE(ask_side_pct, ask/(ask+bid)*100) with
     /NULLIF\(\s*\(raw_payload->>'total_ask_side_prem'\)::numeric[\s\S]*?total_bid_side_prem[\s\S]*?,\s*0\)/,
     "NULLIF guards a zero two-sided total -> NULL, never 0 (0 would read as 100% sold)"
   );
+});
+
+// Multi-day contract history drilldown (HELIX operator mandate 2026-09-02) needed
+// fetchRecentFlows to scope to ONE contract (ticker+strike+expiry+option_type) over a wide
+// date range, rather than the whole tape — added strike/expiry/option_type as optional filter
+// params, following the exact same clause-push pattern as the existing ticker/min_premium/
+// max_dte/before filters right above them. Raw PG is blocked in CI, so pin by source
+// inspection (same idiom as the ask_pct test above).
+test("fetchRecentFlows: strike/expiry/option_type are optional, parameterized, additive filters", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fnStart = src.indexOf("export async function fetchRecentFlows");
+  assert.ok(fnStart > 0, "fetchRecentFlows exists");
+  const body = src.slice(fnStart, src.indexOf("FROM flow_alerts", fnStart));
+
+  // Each new filter is a parameterized clause ($N), never raw string interpolation of the
+  // caller's value into the SQL text — the same discipline every existing clause here uses.
+  assert.match(body, /clauses\.push\(`strike = \$\$\{i\+\+\}`\)/, "strike is parameterized");
+  assert.match(body, /clauses\.push\(`expiry = \$\$\{i\+\+\}::date`\)/, "expiry is parameterized and cast to date");
+  assert.match(
+    body,
+    /clauses\.push\(`UPPER\(option_type\) = \$\$\{i\+\+\}`\)/,
+    "option_type is parameterized and case-normalized to match stored values"
+  );
+
+  // Each is gated so an existing caller that never passes these params gets byte-identical
+  // behavior — additive, not a rewrite of the existing filter set.
+  assert.match(body, /if \(params\.strike != null && Number\.isFinite\(params\.strike\)\)/);
+  assert.match(body, /if \(params\.expiry\)/);
+  assert.match(body, /if \(params\.option_type\)/);
 });
 
 test("ensureSchema: nighthawk play-outcome CHECK issued exactly once, allowed set includes 'unfilled'", () => {
@@ -297,4 +400,283 @@ test("updateZeroDteLiveState: last_mark/last_mark_at/peak_premium/trough_premium
   assert.match(body, /WHEN status = 'CLOSED' THEN last_mark_at/);
   assert.match(body, /WHEN status = 'CLOSED' THEN peak_premium/);
   assert.match(body, /WHEN status = 'CLOSED' THEN trough_premium/);
+});
+
+// Pool-teardown race: dbQuery must only reset the pool instance IT queried on, so a concurrent
+// caller's retry cannot end a pool another subsystem is still mid-flight on (2026-09-01 ops #3257).
+test("dbQuery: resetPoolForRetry is identity-guarded against concurrent pool replacement", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const dbQueryStart = src.indexOf("export async function dbQuery");
+  assert.ok(dbQueryStart > 0, "dbQuery exists");
+  const dbQueryBody = src.slice(dbQueryStart, dbQueryStart + 1200);
+  assert.match(dbQueryBody, /const activePool = await getPool\(\)/);
+  assert.match(dbQueryBody, /await resetPoolForRetry\(activePool\)/);
+  const resetStart = src.indexOf("async function resetPoolForRetry");
+  assert.ok(resetStart > 0, "resetPoolForRetry exists");
+  const resetBody = src.slice(resetStart, resetStart + 500);
+  assert.match(resetBody, /if \(failedPool && pool !== failedPool\) return/);
+});
+
+// BUG FIX (2026-09-03, live evidence: `[cron-run/spx-evaluate] log failed: Error: Cannot use a
+// pool after calling end on the pool` fired twice in production ECS logs during one RTH session).
+// recordCronJobRun used a raw `(await getPool()).query(...)` for both its insert and its retention
+// prune, bypassing dbQuery's transient-error retry entirely — so the exact pool-teardown race
+// isTransientPgError's own comment documents (a caller mid-flight on a pool another concurrent
+// caller just reset) surfaced as a bare, unretried failure instead of the silent one-retry success
+// every other write in this file already gets. logCronRun's own catch swallows this into a
+// console.warn, so the underlying cron run itself was never actually broken — only its own
+// log-write was needlessly fragile.
+test("recordCronJobRun: both writes go through dbQuery, not a raw pool.query", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function recordCronJobRun");
+  assert.ok(start > 0, "recordCronJobRun exists");
+  const nextExport = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, nextExport > 0 ? nextExport : undefined);
+  assert.match(body, /await dbQuery\(\s*`\s*INSERT INTO cron_job_runs/, "insert must use dbQuery");
+  assert.match(
+    body,
+    /await dbQuery\(`DELETE FROM cron_job_runs WHERE started_at < NOW\(\) - INTERVAL '30 days'`\)/,
+    "retention prune must use dbQuery"
+  );
+  assert.doesNotMatch(
+    body,
+    /\(await getPool\(\)\)\.query/,
+    "must not bypass dbQuery's transient-error retry with a raw pool.query"
+  );
+});
+
+// BUG FIX (2026-09-03, live evidence: the SPX Slayer 0DTE play flickered to the fully-degraded
+// "closed" placeholder DURING live RTH, correlating exactly with
+// `[play-engine-heartbeat] init hydration failed/persist failed: Cannot use a pool after calling
+// end on the pool`). recordCronJobRun (above) was only ONE instance of a much wider pattern: 135
+// other call sites in this file used a raw `(await getPool()).query(...)` instead of dbQuery,
+// including getMeta/setMeta — the shared key-value store play-engine-heartbeat.ts's
+// recordPlayEngineTick/loadPlayEngineHeartbeat (and 50+ other callers across the app) go through
+// for every persisted read/write. Every one of those bypassed dbQuery's transient-error retry, so
+// ANY of them could surface the exact pool-teardown race isTransientPgError documents as a bare,
+// unretried failure — not just the cron-run logging path already fixed. Swept and fixed the whole
+// file in one pass rather than chasing each call site as its own live incident (PR write-up policy
+// "blast radius" — this file already had one instance fixed and 135 more of the identical bug).
+//
+// Two call shapes needed different treatment, both asserted below:
+//  - A PLAIN raw pool query (no way to run inside a caller's transaction) always converts straight
+//    to dbQuery.
+//  - A `db?: Db`-optional helper (setMeta, closeOpenSpxPlayRow, closePlayOutcomeRow,
+//    insertSwingPosition, gradeSwingPosition) must keep two paths: when a transaction client IS
+//    supplied, the write MUST stay on that exact connection (dbQuery always grabs the shared pool,
+//    which would silently escape the transaction) — only the no-`db` common case should route
+//    through dbQuery.
+//  - The lone deliberate exception is pingDatabaseConnectivity, a raw connectivity PROBE — dbQuery's
+//    retry+backoff would mask a real outage behind a false-healthy read for several seconds, which
+//    defeats the point of a health check.
+test("db.ts: no stray raw pool.query left outside the one deliberate exception (pingDatabaseConnectivity)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const rawCalls = [...src.matchAll(/\(await getPool\(\)\)\.query/g)];
+  // Every remaining raw call must be the ping's — locate it once and require every match to fall
+  // inside that function's body, not just count them (a count-based assertion would silently pass
+  // if a NEW raw call appeared elsewhere while the ping's own call happened to disappear).
+  const pingStart = src.indexOf("export async function pingDatabaseConnectivity");
+  assert.ok(pingStart > 0, "pingDatabaseConnectivity exists");
+  const pingEnd = src.indexOf("\nexport async function", pingStart + 1);
+  const pingBody = src.slice(pingStart, pingEnd > 0 ? pingEnd : undefined);
+  assert.match(
+    pingBody,
+    /\(await getPool\(\)\)\.query\("SELECT 1"\)/,
+    "pingDatabaseConnectivity must keep its raw, unretried connectivity probe"
+  );
+  for (const m of rawCalls) {
+    const idx = m.index ?? -1;
+    assert.ok(
+      idx >= pingStart && idx < (pingEnd > 0 ? pingEnd : src.length),
+      `unexpected raw pool.query outside pingDatabaseConnectivity at offset ${idx}`
+    );
+  }
+});
+
+// BUG FIX (2026-09-03): the sweep above only matches the CHAINED call shape
+// `(await getPool()).query(...)`. PR #3407's own regex-based fix and this same test both used
+// that pattern, so a SECOND call shape — hoist the pool into a local first, `const pool = await
+// getPool(); ... pool.query(...)` — was invisible to both and 18 functions (~30 call sites) kept
+// bypassing dbQuery's transient-error retry: insertHelixSignalOutcomes, syncPlaybookArmedPollCounts,
+// upsertPlaybookInstances, insertPlaybookInstanceEvents, fetchPlayLifecycleCounts,
+// fetchSpxAdminRollups, upsertZeroDteSetupLog, resetNullGradedZeroDteRows, insertSwingShadowPosition,
+// insertBieKnowledge, updateBieKnowledgeEmbeddings, upsertNighthawkPlayOutcomes,
+// fetchNighthawkOutcomeAnalytics, fetchNighthawkFunnelStats, and all 4 Meridian snapshot/revision
+// read+write functions. This test generalizes the sweep to the hoisted-variable shape too, so
+// EITHER shape reintroducing a raw bypass — in an existing function or a brand-new one — fails here
+// instead of shipping silently. The allowlist below is every function that legitimately keeps a
+// hoisted pool/client handle: a bootstrap migration run before dbQuery/schema exist, a real
+// multi-statement transaction that must stay pinned to one connection, a session-level advisory
+// lock (same one-connection requirement), a deliberately raw connectivity probe, and a pool-stats
+// reader that never calls .query at all.
+test("db.ts: no stray hoisted-pool.query() left outside the documented transaction/bootstrap/probe exceptions", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const ALLOWLISTED_FUNCTIONS = new Set([
+    "runMigrations", // bootstrap: runs before ensureSchema/dbQuery's schema exists — would be circular
+    "deleteUserDataForClerkId", // real BEGIN/COMMIT transaction, must stay on one connection
+    "dbClient", // returns a raw client for the CALLER to manage a transaction with
+    "pingDatabaseConnectivity", // deliberate raw probe — dbQuery's retry would mask a real outage
+    "getDatabasePoolStats", // reads pool.totalCount/idleCount/waitingCount — never calls .query
+    "acquireHeldLock", // session advisory lock: MUST stay on one connection for its whole hold
+    "releaseHeldLock", // releases the same pinned connection acquireHeldLock opened
+    "insertOpenSpxPlay", // real BEGIN/COMMIT transaction (force-close + supersede + insert)
+  ]);
+
+  const functionStarts = [...src.matchAll(/\n(?:export )?async function (\w+)/g)].map((m) => ({
+    name: m[1]!,
+    idx: m.index! + 1,
+  }));
+
+  const hoistPattern = /(?:const|let)\s+(pool|p)\s*=\s*await getPool\(\);/g;
+  for (const hoist of src.matchAll(hoistPattern)) {
+    const varName = hoist[1]!;
+    const hoistIdx = hoist.index!;
+    // Immediately hoisting into a transaction client (`pool.connect()`/`p.connect()` right after)
+    // is the legitimate shape even outside the named allowlist — skip it.
+    const nextChunk = src.slice(hoistIdx, hoistIdx + 200);
+    if (new RegExp(`${varName}\\.connect\\(\\)`).test(nextChunk)) continue;
+
+    const enclosing = [...functionStarts].reverse().find((f) => f.idx <= hoistIdx);
+    const fnName = enclosing?.name ?? "<unknown top-level>";
+    if (ALLOWLISTED_FUNCTIONS.has(fnName)) continue;
+
+    const nextFnIdx = functionStarts.find((f) => f.idx > hoistIdx)?.idx ?? src.length;
+    const body = src.slice(hoistIdx, nextFnIdx);
+    assert.doesNotMatch(
+      body,
+      new RegExp(`${varName}\\.query\\(`),
+      `${fnName} hoists ${varName} = await getPool() and still calls ${varName}.query(...) directly — ` +
+        `route it through dbQuery instead, or add it to ALLOWLISTED_FUNCTIONS with a stated reason`
+    );
+  }
+});
+
+test("getMeta/setMeta: both route the no-transaction common case through dbQuery", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const getStart = src.indexOf("export async function getMeta");
+  const getEnd = src.indexOf("\nexport async function", getStart + 1);
+  const getBody = src.slice(getStart, getEnd);
+  assert.match(getBody, /await dbQuery</, "getMeta must use dbQuery");
+
+  const setStart = src.indexOf("export async function setMeta");
+  const setEnd = src.indexOf("\nexport async function", setStart + 1);
+  const setBody = src.slice(setStart, setEnd);
+  assert.match(setBody, /await dbQuery\(/, "setMeta's no-db path must use dbQuery");
+  assert.match(setBody, /if \(db\)/, "setMeta must still special-case a supplied transaction client");
+  assert.match(setBody, /await db\.query\(/, "setMeta's db-supplied path must stay on that exact client");
+});
+
+test("db-optional swing/SPX writers: transaction client path preserved, no-db path uses dbQuery", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  for (const fn of [
+    "closeOpenSpxPlayRow",
+    "closePlayOutcomeRow",
+    "insertSwingPosition",
+    "gradeSwingPosition",
+  ]) {
+    const start = src.indexOf(`export async function ${fn}`);
+    assert.ok(start > 0, `${fn} exists`);
+    const end = src.indexOf("\nexport async function", start + 1);
+    const body = src.slice(start, end > 0 ? end : undefined);
+    assert.match(body, /db\s*\?\s*await db\.query/, `${fn} must keep a supplied transaction client on its own connection`);
+    assert.match(body, /await dbQuery/, `${fn}'s no-db path must use dbQuery`);
+    assert.doesNotMatch(
+      body,
+      /\(await getPool\(\)\)\.query|const executor = db \?\? /,
+      `${fn} must not still bypass dbQuery via a shared executor/raw pool call`
+    );
+  }
+});
+
+// Regression for the 2026-09-04 audit finding: a live CloudWatch
+// "uncaughtException: [Error: Connection terminated unexpectedly]" surfaced despite prior PRs
+// already sweeping db.ts so essentially every query goes through dbQuery's try/catch+retry. Root
+// cause is NOT a missing try/catch (every checked-out-client code path already has one) — it's
+// that pg-pool's `_acquireClient` REMOVES a client's 'error' listener for the entire time it is
+// checked out via `pool.connect()` (only re-added on `.release()`), so `livePool.on("error", ...)`
+// above — which covers only IDLE pooled clients — does nothing for a checked-out one. On an
+// unexpected connection drop, node-postgres's Client UNCONDITIONALLY does two independent things:
+// rejects whatever query is in flight (what a surrounding try/catch actually catches), AND
+// separately emits a raw 'error' event on the client object itself. The second half fires even
+// when nothing was in flight (e.g. between two statements in a held transaction, or during a
+// long-held session-advisory-lock window) and is not a promise at all, so no try/catch can reach
+// it — with zero listeners, Node's EventEmitter throws it as an uncaught exception.
+test("guardCheckedOutClient: swallows a checked-out client's own 'error' event instead of letting it become an uncaught exception", () => {
+  // Sanity check first: reproduce the exact failure mode with a bare EventEmitter (Node
+  // specialcases 'error' — emitting it with zero listeners re-throws synchronously), so this test
+  // is proven to exercise a real mechanism and not just call an API that happens to exist.
+  const bareEmitter = new EventEmitter();
+  assert.throws(
+    () => bareEmitter.emit("error", new Error("Connection terminated unexpectedly")),
+    /Connection terminated unexpectedly/,
+    "an EventEmitter with no 'error' listener must genuinely throw — otherwise this test would prove nothing"
+  );
+
+  const client = new EventEmitter() as unknown as PoolClient;
+  const returned = guardCheckedOutClient(client);
+  assert.equal(
+    returned,
+    client,
+    "must return the SAME client instance so call sites can inline it around pool.connect()"
+  );
+  assert.doesNotThrow(
+    () => (client as unknown as EventEmitter).emit("error", new Error("Connection terminated unexpectedly")),
+    "once guarded, the identical drop must not escape as an uncaught exception"
+  );
+});
+
+// BUG FIX (2026-09-08, live evidence: `GET /api/admin/cron-health` served `desk-warm`'s
+// `runs_24h: {ok:0,failed:0,skipped:2}` for a job firing every ~5 min all morning — misread at
+// first glance as "barely ran today"). `admin-cron-health.ts`'s `buildCronHealthSnapshot` built its
+// `runs_24h` aggregate from `fetchCronJobRecentRuns(48)` — `ORDER BY started_at DESC LIMIT 48`
+// with NO per-job or time filter at the query level. With ~48 registered crons, several on 1-5 min
+// schedules, those 48 rows fleet-wide are consumed by whichever jobs fired most recently — a
+// moderately-frequent job can be starved down to 1-2 rows, nowhere near a real 24h picture, even
+// though the caller's own `since24h` variable and the field's own name promise one. Fixed by
+// replacing it with `fetchCronJobRunsLast24h()`, bounded by `WHERE started_at > NOW() - INTERVAL
+// '24 hours'` instead of a row count — every job gets its own real 24h window regardless of how
+// often its neighbors fire. The old row-capped function had exactly one caller and is deleted
+// entirely rather than left as dead code.
+test("fetchCronJobRunsLast24h bounds by TIME, not by a row count that starves low-frequency jobs", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function fetchCronJobRunsLast24h");
+  assert.ok(start > 0, "fetchCronJobRunsLast24h exists");
+  const nextExport = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, nextExport > 0 ? nextExport : undefined);
+  assert.match(
+    body,
+    /WHERE started_at > NOW\(\) - INTERVAL '24 hours'/,
+    "must bound by a real 24h time window"
+  );
+  assert.doesNotMatch(body, /LIMIT \$?\d/, "must not also cap by an arbitrary row count");
+});
+
+test("the old row-capped fetchCronJobRecentRuns is gone, not left as dead code beside its replacement", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  assert.doesNotMatch(
+    src,
+    /export async function fetchCronJobRecentRuns/,
+    "fetchCronJobRecentRuns had exactly one caller (admin-cron-health.ts), now migrated to " +
+      "fetchCronJobRunsLast24h — the row-capped version must not remain unused"
+  );
+});
+
+test("every raw pool.connect() checked-out client in db.ts is wrapped in guardCheckedOutClient", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const uncoveredConnects: string[] = [];
+  for (const rawLine of src.split("\n")) {
+    const line = rawLine.trim();
+    // Skip comment lines — the guard's own doc comment above references "pool.connect()" in prose.
+    if (line.startsWith("//") || line.startsWith("*") || line.startsWith("/**")) continue;
+    if (/\.connect\(\)/.test(line) && !/guardCheckedOutClient\(/.test(line)) {
+      uncoveredConnects.push(line);
+    }
+  }
+  assert.deepEqual(
+    uncoveredConnects,
+    [],
+    `every pool.connect() call site in db.ts must be wrapped in guardCheckedOutClient(...) so its ` +
+      `checked-out client can't emit an unguarded 'error' event — found unwrapped: ` +
+      JSON.stringify(uncoveredConnects)
+  );
 });

@@ -16,24 +16,9 @@ import { getIosToolNavLabel } from "@/lib/ios-tool-routes";
 import { readClientSignedIn } from "@/lib/client-signed-in";
 import { useAdminFlag } from "@/hooks/use-admin-flag";
 import { isSignedInOnDeskPage } from "@/lib/nav-desk-gate";
+import { DESK_NAV_LINKS } from "@/lib/desk-nav-links";
 
-type Accent = "green" | "purple" | "orange" | "blue" | "red" | "teal";
-type FeatureLink = { href: string; label: string; sub: string; accent: Accent; adminOnly?: boolean };
-
-const FEATURE_LINKS: FeatureLink[] = [
-  { href: "/dashboard", label: "SPX Slayer", sub: "SPX structure & 0DTE desk", accent: "green" },
-  { href: "/flows", label: "HELIX", sub: "Institutional options flow", accent: "purple" },
-  { href: "/heatmap", label: "BlackOut Thermal", sub: "Dealer gamma & vanna map", accent: "orange" },
-  { href: "/terminal", label: "Largo", sub: "BlackOut Intelligence desk analyst", accent: "blue" },
-  { href: "/nighthawk", label: "Night Hawk", sub: "Playbook + 0DTE Command", accent: "red" },
-  { href: "/vector", label: "Vector", sub: "Live SPX chart with dealer gamma & vanna structure", accent: "teal" },
-  {
-    href: "/meridian",
-    label: "Meridian",
-    sub: "Catalyst structure desk — macro, earnings, OpEx, FDA",
-    accent: "blue",
-  },
-];
+const FEATURE_LINKS = DESK_NAV_LINKS;
 
 /** Tool routes: `null` = App Router partial prefetch to each route's loading.tsx (not a full RSC burst). */
 const TOOL_LINK_PREFETCH = null;
@@ -290,7 +275,7 @@ export function Nav({
       data-route-pending={routePending ? "true" : "false"}
       initial={isHome && !reduced ? { opacity: 0, y: -20 } : undefined}
       animate={isHome && !reduced ? { opacity: 1, y: 0 } : undefined}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] as const }}
       className={clsx("nav-bar", iosToolChrome && "nav-bar-ios-tool")}
     >
       <div className="nav-surface" aria-hidden>
@@ -346,7 +331,7 @@ export function Nav({
                   initial={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
                   animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
                   exit={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
-                  transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
+                  transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] as const }}
                 >
                   <div className="nav-mega-head">
                     <span className="nav-mega-kicker font-mono">All instruments · one desk</span>

@@ -58,6 +58,12 @@ async function claimWhopEvent(eventId: string): Promise<boolean> {
     return result === "OK"; // OK → first (unclaimed) delivery; null → already claimed
   } catch (err) {
     console.warn("[whop webhook] idempotency claim failed (Redis unavailable) — proceeding:", err);
+    // CQ-114: fail-open is intentional, but ops must know dedup is offline.
+    void notifyOpsDiscord({
+      title: "Whop webhook idempotency fail-open",
+      body: `Redis SET NX failed for event ${eventId} — processing without dedup guard. ${err instanceof Error ? err.message : String(err)}`,
+      severity: "warning",
+    }).catch(() => undefined);
     return true; // fail-open: if Redis is down, process anyway
   }
 }

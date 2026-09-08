@@ -8,11 +8,37 @@ delete process.env.DATABASE_URL;
 delete process.env.DATABASE_PUBLIC_URL;
 
 import {
+  clampedHeartbeatAgeMs,
   getPlayEngineHeartbeat,
   getZeroDteScanHeartbeat,
   recordPlayEngineTick,
   recordZeroDteScanTick,
 } from "./play-engine-heartbeat";
+
+test("clampedHeartbeatAgeMs: ordinary past tick ages normally", () => {
+  const now = 1_000_000_000;
+  assert.equal(clampedHeartbeatAgeMs(new Date(now - 5_000).toISOString(), now), 5_000);
+  assert.equal(clampedHeartbeatAgeMs(new Date(now - 90_000).toISOString(), now), 90_000);
+});
+
+test("clampedHeartbeatAgeMs: a last_tick_at from the future (cross-replica clock skew) clamps to 0, never negative", () => {
+  // last_tick_at is hydrated from Postgres (loadPlayEngineHeartbeat/load()) and can have been
+  // written by a DIFFERENT ECS replica than the one computing age here — ordinary clock skew
+  // between replicas can make that writer's Date.now() read fractionally ahead of this
+  // reader's. Unclamped, this surfaces as a negative age_ms and, via admin-cron-health.ts's
+  // `hbAgeMin = Math.round(age_ms / 60_000)`, a status label reading "engine tick -1m ago".
+  const now = 1_000_000_000;
+  assert.equal(
+    clampedHeartbeatAgeMs(new Date(now + 2_000).toISOString(), now),
+    0,
+    "2s of cross-replica skew must not read as age_ms: -2000"
+  );
+  assert.equal(
+    clampedHeartbeatAgeMs(new Date(now + 1).toISOString(), now),
+    0,
+    "reachable at 1ms of skew"
+  );
+});
 
 test("recordZeroDteScanTick advances the 0DTE scan heartbeat independently of SPX's", async () => {
   const spxBefore = getPlayEngineHeartbeat();

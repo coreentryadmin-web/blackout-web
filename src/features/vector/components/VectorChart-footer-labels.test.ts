@@ -9,6 +9,14 @@
  * the width cap + truncate is a second, independent guard against the text overrunning the
  * chart's own right edge.
  *
+ * Also covers the "SPY vol" volume-pane watermark label (found live 2026-09-03, same overlap
+ * class as above but on the OPPOSITE corner: bottom-LEFT, where it collided with the chart's
+ * first x-axis time tick, e.g. "19:00" — pixel-zoomed prod capture read as garbled "SPI9:00VOL").
+ * The two labels above already had the opaque-pill fix at the time this one shipped; this one was
+ * missed even though it sits in the identical bottom band. Its text is short and static ("SPY
+ * vol"), so unlike the two right-anchored labels it doesn't need the width-cap/truncate guard —
+ * only the background is asserted here.
+ *
  * Does not render VectorChart (it's a 4900+ line canvas-heavy component with no local test
  * harness); asserts on the source className so a future edit near these labels that drops the
  * background or width cap fails loud instead of silently reintroducing the overlap. Verified by
@@ -52,4 +60,16 @@ test("VectorChart: the GEX-scope reconstructed chip has a bounded width and an o
   assert.match(cls, /max-w-\[\d+%\]/, "must cap its own width — this exact text overlapped two chart axis ticks in production");
   assert.match(cls, /truncate/, "must truncate rather than silently overflow past its cap");
   assert.match(cls, /bg-black\/\d+/, "must have an opaque background — a percentage width cap alone can't guarantee dodging every possible tick position");
+});
+
+test("VectorChart: the SPY-vol volume-pane watermark has an opaque background", () => {
+  // "SPY vol" alone is a substring of unrelated prose earlier in the file (e.g. the "SPY volume
+  // backfill" comment) — anchor on the JSX text node's own closing tag to hit the right label.
+  const cls = classNameNear("SPY vol\n        </p>");
+  assert.match(
+    cls,
+    /bg-black\/\d+/,
+    "must have an opaque background — this label sits in the same bottom band as the chart's own canvas-drawn x-axis time ticks (e.g. \"19:00\") and rendered illegibly interleaved with the first one on production"
+  );
+  assert.match(cls, /backdrop-blur-sm/, "must blur behind it like its two sibling labels, so partial-opacity tick glyphs don't show through");
 });

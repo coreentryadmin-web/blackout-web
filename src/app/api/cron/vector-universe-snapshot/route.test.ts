@@ -22,3 +22,11 @@ test("vector-universe-snapshot dispatches recorder in after() and returns 202", 
     "logCronRun must not await the heavy recorder inline"
   );
 });
+
+test("vector-universe-snapshot background dispatch is wrapped in runWithBackgroundUwSweep", () => {
+  assert.match(
+    routeSrc,
+    /import \{[^}]*\brunWithBackgroundUwSweep\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/
+  );
+  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runVectorUniverseSnapshot\(started\)\)/);
+});

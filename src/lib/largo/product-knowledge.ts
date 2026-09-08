@@ -17,11 +17,30 @@ if a field is listed here, a dedicated tool or nested object can return it — d
 
 **Left rail — GEX matrix heatmap:** strike×expiry 0DTE matrix, GEX/VEX lens toggle, live spot row in ladder.
 - Tool: get_gex_heatmap (ticker=SPX, lens=gex|vex) or get_positioning (summary scalars + cross_validation)
+- get_spx_desk_convergence also returns matrix_ui — available lenses (GEX/VEX), default GEX, lane_freshness (Pulse/Desk/Flow per-lane status), and client-only notes (focus mode / iOS panel / active lens toggle are NOT readable server-side)
 - SPX desk bundle: get_spx_structure (price, GEX snapshot, flow tape, dark pool, macro, tide, internals)
 
-**Center — play engine:** phase (SCANNING/WATCH/OPEN/HOLD/CLOSED), confluence score/grade, action (BUY_CALL/BUY_PUT/HOLD/WAIT),
+**Center — suggested play + desk execution (2026-09):** Vector suggests the trade idea (VectorPlayCard: bias/setup/grade/conviction); Slayer verdict bar tracks desk execution (phase, gates, commits, open position). Chart merges Vector structure levels when Slayer is flat/scanning.
+- Tools: get_spx_desk_convergence (ONE call — Vector + Slayer + alignment), get_vector_full_state (ticker=SPX), get_spx_play (Slayer execution snapshot), get_spx_confluence (scored thesis), get_spx_engine_snapshots (history)
+
+**Play engine (Slayer execution layer):** phase (SCANNING/WATCH/OPEN/HOLD/CLOSED), confluence score/grade, action (BUY_CALL/BUY_PUT/HOLD/WAIT),
 gate pass/fail checklist, confirmation items, adaptive-gate telemetry, AI arbiter verdict, option ticket (strike/expiry/premium).
-- Tools: get_spx_play (full engine snapshot), get_spx_confluence (scored thesis only), get_spx_engine_snapshots (history)
+- Tools: get_spx_play (full engine snapshot), get_spx_confluence (scored thesis only), get_spx_engine_snapshots (history), get_gate_rules (live thresholds)
+
+**Member journal:** personal notes/tags per open play (annotation only).
+- Tool: get_spx_journal (requires signed-in member)
+
+**Session transition feed:** flip crosses, king migrations, VWAP/EMA shifts (Pulse/commentary rail events, server-persisted).
+- Tool: get_spx_voice_feed
+
+**Playbook shadow history:** named-playbook matcher observations (PB-01..14) logged on state transitions — shadow evidence, not live commits.
+- Tool: get_playbook_shadow_history
+
+**Discord alert history:** outbound trade-alert audit trail (member-visible final_output from alert_audit_log).
+- Tool: get_discord_alert_history
+
+**Playbook promotion evidence (admin):** OOS named-playbook gate evaluation and closed-outcome rollup.
+- Tool: get_playbook_promotion_evidence (admin only)
 
 **Open positions / member plays:** OPEN/HOLD/TRIM plays with entry, mark, P&L, stop state.
 - Tool: get_open_plays
@@ -32,8 +51,8 @@ gate pass/fail checklist, confirmation items, adaptive-gate telemetry, AI arbite
 **Fast desk pulse:** price, session change, TICK/TRIN/ADD, mega-cap snapshot (~2s lane).
 - Tool: get_spx_pulse
 
-**Embedded Vector on SPX desk:** same Vector state as /vector for SPX — walls, beads, flip, magnet, play card.
-- Tool: get_vector_full_state (ticker=SPX) — NOT a separate SPX-only Vector API
+**Embedded Vector on SPX desk:** same Vector state as /vector for SPX — walls, beads, flip, magnet, suggested play card.
+- Tools: get_vector_full_state (ticker=SPX), get_spx_desk_convergence (Vector + Slayer alignment in one payload)
 
 **Gate thresholds (live config):** mixed-tape block, min grade, buy cooldown, GEX staleness ceiling, post-stop cooldown.
 - Tool: get_gate_rules (SPX Slayer gates — NOT Night Hawk publish gates)
@@ -68,7 +87,7 @@ gate pass/fail checklist, confirmation items, adaptive-gate telemetry, AI arbite
 - Tool: get_helix_derived
 
 **Raw tape:** individual prints with premium, strike, expiry, route, score, direction, gex_proximity enrichment.
-- Tools: get_flow_tape (aggregated + recent list), get_postgres_flows (raw DB list), get_options_flow (per-ticker merge UW+Postgres)
+- Tools: get_flow_tape (aggregated + recent list with truncation flags), get_postgres_flows (prints envelope + pull_skew), get_options_flow (per-ticker merge UW+Postgres)
 
 **Dark pool panel:** lit vs dark prints, block size, side.
 - Tool: get_dark_pool (per ticker) or dark pool section in get_spx_structure for SPX
@@ -179,7 +198,8 @@ key levels + floor pivots, OpEx calendar, daily dealer-regime series, screener p
 ### Answering rules tied to this map
 
 1. Name the product and panel you are reading from in **Data** (e.g. "HELIX Net Premium leaderboard via get_helix_tape_analytics").
-2. For "what changed" on Vector → get_vector_pulse; for "what is the matrix" on Thermal → get_gex_heatmap + lens param.
+2. For "what changed" on Vector → get_vector_pulse; for SPX session events (flip cross, king migrate) → get_spx_voice_feed; for "what is the matrix" on Thermal → get_gex_heatmap + lens param.
+3. For "what is GEX / gamma flip / king node" → get_concept first; then live tools if they need current levels.
 3. For cross-desk synthesis → get_platform_snapshot (include largo) or get_ecosystem_context per ticker.
 4. If the member asks about a panel listed above, CALL the tool — never describe the panel from memory.
 

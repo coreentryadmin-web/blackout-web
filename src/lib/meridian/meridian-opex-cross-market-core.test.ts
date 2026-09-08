@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildMeridianOpexCrossMarket,
   buildMeridianOpexReport,
+  MERIDIAN_OPEX_MAG7,
   rankOpexSessionMovers,
   summarizeMag7Sessions,
 } from "./meridian-opex-cross-market-core";
@@ -97,4 +98,30 @@ test("buildMeridianOpexReport: risk-on when avg SPX positive", () => {
   assert.equal(report.available, true);
   assert.equal(report.outlook.lean, "risk_on");
   assert.ok(report.watch_list.some((w) => w.includes("NVDA")));
+});
+
+test("buildMeridianOpexCrossMarket: divergence_headline's QQQ 'X/N' uses a denominator scoped to dates with usable QQQ data, not the mag7/SPX population", () => {
+  // 3 OpEx dates all have usable SPX + Mag7 data, but QQQ's reaction failed to load on the
+  // third date. Mag7 never outpaces SPX on any date (mag7Led stays 0), so only the QQQ branch
+  // is in play. On the 2 dates that DO have QQQ data, QQQ moved more than SPX on both (100%).
+  const cm = buildMeridianOpexCrossMarket({
+    dates: ["2026-01-16", "2026-02-20", "2026-03-20"],
+    spx: mapOf({ "2026-01-16": rx(0.4), "2026-02-20": rx(-0.2), "2026-03-20": rx(0.1) }),
+    spy: mapOf({ "2026-01-16": rx(0.3), "2026-02-20": rx(-0.1), "2026-03-20": rx(0.1) }),
+    qqq: mapOf({ "2026-01-16": rx(0.6), "2026-02-20": rx(-0.5) }), // no 2026-03-20 entry
+    iwm: mapOf({ "2026-01-16": rx(0.1), "2026-02-20": rx(0), "2026-03-20": rx(0) }),
+    mag7ByTicker: new Map([
+      ...MERIDIAN_OPEX_MAG7.map((ticker) => [
+        ticker,
+        mapOf({ "2026-01-16": rx(0.1), "2026-02-20": rx(-0.3), "2026-03-20": rx(0.05) }),
+      ] as const),
+    ]),
+    moversByDate: new Map(),
+  });
+
+  // Before the fix, the shared denominator `n` counted all 3 mag7/SPX-graded dates, so
+  // 2/3 fell short of the ceil(3*0.67)=3 threshold and the function fell through to
+  // "Mixed index leadership across 3 prior OpEx sessions" — silently absorbing the
+  // QQQ-less date into a metric it could never contribute to.
+  assert.equal(cm.aggregates.divergence_headline, "QQQ moved more than SPX on 2/2 prior OpEx sessions");
 });

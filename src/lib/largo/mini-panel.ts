@@ -7,6 +7,7 @@ import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { deskScopeConfig } from "@/lib/largo/desk-scope";
 import { resolveSubmodule } from "@/lib/largo/slash-submodules";
 import { fmtPremium } from "@/lib/fmt-money";
+import { formatInternalReading } from "@/features/spx/lib/spx-internals-display";
 
 export type MiniPanelRow = {
   label: string;
@@ -110,6 +111,7 @@ export async function fetchMiniPanelPayload(input: {
           ema20?: number;
           tick?: number;
           trin?: number;
+          internals_estimated?: { tick?: boolean; trin?: boolean; add?: boolean };
         } | null;
         if (subId === "play" || subId === "gates") {
           base.rows = [
@@ -151,9 +153,17 @@ export async function fetchMiniPanelPayload(input: {
             { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
           ];
         } else if (subId === "internals") {
+          const est = desk?.internals_estimated;
           base.rows = [
-            { label: "TICK", value: desk?.tick != null ? String(Math.round(desk.tick)) : "—", tone: (desk?.tick ?? 0) >= 0 ? "bull" : "bear" },
-            { label: "TRIN", value: desk?.trin != null ? desk.trin.toFixed(2) : "—" },
+            {
+              label: "TICK",
+              value: formatInternalReading(desk?.tick ?? null, est?.tick, 0),
+              tone: (desk?.tick ?? 0) >= 0 ? "bull" : "bear",
+            },
+            {
+              label: "TRIN",
+              value: formatInternalReading(desk?.trin ?? null, est?.trin, 2),
+            },
             { label: "Spot", value: desk?.price != null ? String(Math.round(desk.price)) : "—" },
             { label: "Play", value: [p?.phase, p?.action].filter(Boolean).join(" · ") || "—" },
           ];
@@ -198,7 +208,10 @@ export async function fetchMiniPanelPayload(input: {
           ];
         } else if (subId === "vector") {
           const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
-          const state = await fetchVectorFullState("SPX").catch(() => null);
+          // Explicit "all" — the implicit default ("0dte") scopes regime/flip to today's
+          // expiries only, which can disagree with the SPX/Thermal panel a member is looking
+          // at right next to this one for the same ticker.
+          const state = await fetchVectorFullState("SPX", "all").catch(() => null);
           base.rows = [
             { label: "Spot", value: state?.spot != null ? String(Math.round(state.spot)) : "—" },
             { label: "Regime", value: state?.regime?.posture ?? "—", tone: biasTone(state?.regime?.posture) },
@@ -315,7 +328,9 @@ export async function fetchMiniPanelPayload(input: {
       }
       case "vector": {
         const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
-        const state = await fetchVectorFullState(ticker).catch(() => null);
+        // Explicit "all" — see the SPX "vector" subId case above for why the implicit "0dte"
+        // default must not leak into a general desk-scoped Vector read.
+        const state = await fetchVectorFullState(ticker, "all").catch(() => null);
         const play = state?.play;
         if (subId === "regime") {
           base.rows = [
@@ -348,6 +363,21 @@ export async function fetchMiniPanelPayload(input: {
         break;
       }
       case "nighthawk": {
+        if (subId === "swing" || subId === "swings") {
+          const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
+          const lane = await swingHorizonForLargo().catch(() => null);
+          const sample = (lane as { sample_plays?: Array<{ ticker?: string; status?: string; score?: number | null }> } | null)?.sample_plays ?? [];
+          const hit = sample.find((p) => (p.ticker ?? "").toUpperCase() === ticker);
+          const counts = (lane as { section_counts?: Record<string, number> } | null)?.section_counts ?? {};
+          const openManaged = (counts.MANAGING ?? 0) + (counts.SCALING_OUT ?? 0) + (counts.EXITING ?? 0);
+          base.rows = [
+            { label: "On lane", value: hit ? hit.status ?? "—" : "—" },
+            { label: "Score", value: hit?.score != null ? String(hit.score) : "—" },
+            { label: "Open book", value: String(openManaged) },
+            { label: "Watch", value: String((lane as { watch_count?: number } | null)?.watch_count ?? 0) },
+          ];
+          break;
+        }
         const zerodte = await import("@/lib/platform/zerodte-service")
           .then((m) => m.zeroDtePlaysForLargo())
           .catch(() => null);

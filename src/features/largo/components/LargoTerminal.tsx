@@ -257,7 +257,7 @@ export function LargoTerminal({
                     : { opacity: 0, y: 14, scale: 0.98 }
                 }
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] as const }}
                 className={clsx(
                   "largo-msg-bubble",
                   msg.role === "user" ? "desk-largo-user largo-msg-user" : "desk-largo-assistant largo-msg-assistant",
@@ -351,7 +351,7 @@ export function LargoTerminal({
               className="largo-suggestions"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] as const }}
             >
               <LargoDeskModulePicker
                 variant="compact"

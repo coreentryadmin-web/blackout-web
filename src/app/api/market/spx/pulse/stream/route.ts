@@ -3,9 +3,12 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { indexStore } from "@/lib/ws/polygon-socket";
 import { tideStore, darkPoolStore, intervalFlowStore, netFlowStore } from "@/lib/ws/uw-socket";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
+import { clusterIndexSpotChangePct } from "@/lib/ws/socket-cluster-health";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +37,7 @@ async function refreshSnapshot(): Promise<void> {
     // cross-replica Redis snapshot only when local hasn't been populated recently (e.g.
     // a replica whose indices socket isn't connected yet).
     const fresh = localFreshAt();
-    if (fresh != null && Date.now() - fresh < 10_000) {
+    if (fresh != null && isWsUpdatedAtFresh(fresh, 10_000)) {
       latestSnapshot = indexStore;
       return;
     }
@@ -72,6 +75,25 @@ function stopRefresherIfIdle(): void {
 // 500 to 2000. Override via SSE_MAX_STREAMS.
 let activeStreams = 0;
 const MAX_STREAMS = Number(process.env.SSE_MAX_STREAMS ?? 2000);
+
+type IndexWireEntry = {
+  price?: number;
+  change_pct?: number | null;
+  open_source?: string;
+};
+
+/** Same REST-anchor gate as /spx/pulse and liveWsIndexSpot — ws-bar change% must not ship on the wire. */
+function sanitizeIndexWire(entry: unknown): IndexWireEntry | undefined {
+  if (!entry || typeof entry !== "object") return undefined;
+  const raw = entry as IndexWireEntry;
+  const price = Number(raw.price);
+  if (!Number.isFinite(price) || price <= 0) return undefined;
+  const change_pct = clusterIndexSpotChangePct(raw);
+  const out: IndexWireEntry = { price };
+  if (change_pct != null) out.change_pct = change_pct;
+  if (raw.open_source) out.open_source = raw.open_source;
+  return out;
+}
 
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
@@ -119,29 +141,41 @@ export async function GET(req: NextRequest) {
           const snapshot = latestSnapshot;
           const tideFresh = tideStore.updatedAt > 0;
           const darkPoolFresh = darkPoolStore.updatedAt > 0 && darkPoolStore.data != null;
-          const data = JSON.stringify({
-            spx: snapshot["I:SPX"],
-            vix: snapshot["I:VIX"],
-            vix9d: snapshot["I:VIX9D"],
-            vix3m: snapshot["I:VIX3M"],
-            tick: snapshot["I:TICK"],
-            trin: snapshot["I:TRIN"],
-            add: snapshot["I:ADD"],
-            tide: tideFresh
-              ? {
-                  call_premium: tideStore.call_premium,
-                  put_premium: tideStore.put_premium,
-                  net: tideStore.net,
-                  bias: tideStore.bias,
-                }
-              : undefined,
-            darkPool: darkPoolFresh ? darkPoolStore.data : undefined,
-            intervalFlow: intervalFlowStore.updatedAt > 0 ? { rows: intervalFlowStore.rows, updatedAt: intervalFlowStore.updatedAt } : undefined,
-            net_flow: netFlowStore.updatedAt > 0
-              ? { call_premium: netFlowStore.call_premium, put_premium: netFlowStore.put_premium, net: netFlowStore.net, updatedAt: netFlowStore.updatedAt }
-              : undefined,
-            t: Date.now(),
-          });
+          // Same boundary rounding as /spx/pulse — SSE clients must not see IEEE tails on prices/premiums.
+          const data = JSON.stringify(
+            roundFloats({
+              spx: sanitizeIndexWire(snapshot["I:SPX"]),
+              vix: sanitizeIndexWire(snapshot["I:VIX"]),
+              vix9d: sanitizeIndexWire(snapshot["I:VIX9D"]),
+              vix3m: sanitizeIndexWire(snapshot["I:VIX3M"]),
+              tick: sanitizeIndexWire(snapshot["I:TICK"]),
+              trin: sanitizeIndexWire(snapshot["I:TRIN"]),
+              add: sanitizeIndexWire(snapshot["I:ADD"]),
+              tide: tideFresh
+                ? {
+                    call_premium: tideStore.call_premium,
+                    put_premium: tideStore.put_premium,
+                    net: tideStore.net,
+                    bias: tideStore.bias,
+                  }
+                : undefined,
+              darkPool: darkPoolFresh ? darkPoolStore.data : undefined,
+              intervalFlow:
+                intervalFlowStore.updatedAt > 0
+                  ? { rows: intervalFlowStore.rows, updatedAt: intervalFlowStore.updatedAt }
+                  : undefined,
+              net_flow:
+                netFlowStore.updatedAt > 0
+                  ? {
+                      call_premium: netFlowStore.call_premium,
+                      put_premium: netFlowStore.put_premium,
+                      net: netFlowStore.net,
+                      updatedAt: netFlowStore.updatedAt,
+                    }
+                  : undefined,
+              t: Date.now(),
+            })
+          );
           controller.enqueue(encoder.encode(`data: ${data}\n\n`));
         } catch {
           cleanup();

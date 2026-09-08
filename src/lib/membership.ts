@@ -30,6 +30,16 @@ export function isAdminManagedTier(meta: Record<string, unknown> | undefined): b
   return meta?.tier_managed_by === "admin";
 }
 
+/**
+ * True for any CURRENTLY-PAID tier that `reconcileAllMemberships`'s downgrade-direction sweep
+ * (step 2) must re-check against Whop. Extracted to a pure predicate so the "which tiers get
+ * self-healed on churn" question is unit-testable without standing up Clerk/Whop clients —
+ * see the bug this fixes in the reconcile function's own comment.
+ */
+export function isPaidTierForReconcileDowngradeCheck(tier: string): boolean {
+  return tier === "premium" || tier === "community";
+}
+
 export async function findClerkUsersByEmail(email: string) {
   const normalized = email.trim().toLowerCase();
   if (!normalized) return [];
@@ -251,9 +261,9 @@ export async function syncWhopMembershipForEmail(
  * in BOTH directions:
  *  - Emails with an active/grace Whop membership → ensures paid users are `premium`
  *    (fixes the missed-upgrade lockout where a subscriber is stuck on `free`).
- *  - Emails of Clerk users currently marked `premium` → re-checks Whop and downgrades
- *    to `free` once the membership has actually lapsed (fixes the revenue leak where a
- *    churned/refunded user keeps premium because no `deactivated` webhook arrived).
+ *  - Emails of Clerk users currently marked `premium` OR `community` → re-checks Whop and
+ *    downgrades to `free` once the membership has actually lapsed (fixes the revenue leak
+ *    where a churned/refunded user keeps a paid tier because no `deactivated` webhook arrived).
  *
  * Work is bounded to (active subscribers ∪ current premium users), not the full user base.
  * Each email is re-resolved via syncWhopMembershipForEmail, which writes the correct tier.
@@ -289,7 +299,15 @@ export async function reconcileAllMemberships(opts?: {
     if (email) emails.add(email);
   }
 
-  // 2) Emails of Clerk users currently marked premium (catches missed downgrades).
+  // 2) Emails of Clerk users currently marked premium OR community (catches missed downgrades).
+  // BUG FIXED HERE: this used to test `tier === "premium"` only. `community` (SPX Slayer, $49/mo,
+  // added by #1159) was never added to this check, so a churned/refunded/deactivated community
+  // subscriber whose `membership.deactivated` webhook is dropped (the exact failure mode this
+  // whole sweep exists to self-heal — see the function's own doc-comment) keeps `community` tier,
+  // and therefore /dashboard desk access, FOREVER: nothing else in the system ever re-resolves
+  // them, because they're invisible to this loop and the webhook already failed once. Premium
+  // members get the safety net every hour; community members got none — an asymmetry with no
+  // stated rationale, not a deliberate policy (the community tier PR never touched this filter).
   const client = await clerkClient();
   const pageSize = 100;
   let offset = 0;
@@ -300,11 +318,11 @@ export async function reconcileAllMemberships(opts?: {
       const tier = String(
         (user.publicMetadata as { tier?: string } | undefined)?.tier ?? ""
       );
-      if (tier === "premium") {
+      if (isPaidTierForReconcileDowngradeCheck(tier)) {
         // Use the PRIMARY email, not emailAddresses[0] — Clerk does not guarantee [0] is primary,
-        // and re-resolving a premium user against an arbitrary secondary address yields 'free' and
+        // and re-resolving a paying user against an arbitrary secondary address yields 'free' and
         // downgrades a paying multi-email customer (audit launch-path #7). (A fuller per-user
-        // resolution — premium if ANY of the account's emails has a membership — is a tracked follow-up.)
+        // resolution — paid if ANY of the account's emails has a membership — is a tracked follow-up.)
         const primaryId = user.primaryEmailAddressId;
         const primary = user.emailAddresses?.find((e) => e.id === primaryId)?.emailAddress;
         const email = (primary ?? user.emailAddresses?.[0]?.emailAddress)?.toLowerCase();

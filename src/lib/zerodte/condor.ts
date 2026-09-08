@@ -57,7 +57,7 @@ export function condorFlagEnabled(): boolean {
 // assignment model. This is a safety gate, not a tuning dial.
 // Production default: SPX + NDX — both cash-settled, European-style index roots (NO early
 // assignment; defined loss holds) with daily 0DTE expirations that are PM/close-settled, so the
-// 15:30-close grader is valid for both. NDX 0DTE is thinner than SPX, but the condor liquidity
+// 15:50-close grader is valid for both. NDX 0DTE is thinner than SPX, but the condor liquidity
 // gate (4 legs quotable + per-leg spread + credit floor) blocks any bad-fill NDX condor, so adding
 // it can only add REAL condors, never a poorly-priced one. XSP/RUT (also cash-settled index) are
 // research-only via the env override. American ETFs/single names are NEVER eligible (assignment).
@@ -301,6 +301,78 @@ export function buildCondorPlan(input: {
     est_intraday_breach_pct: legs.est_intraday_breach_pct,
     skew: "negative",
   };
+}
+
+// ── Live mark helpers (4-leg net debit to close) ─────────────────────────────────────
+/** OCCs for the four condor legs (order preserved), empty when unparsable. */
+export function condorLegOccs(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const legs = (raw as { legs?: unknown }).legs;
+  if (!Array.isArray(legs)) return [];
+  const occs: string[] = [];
+  for (const leg of legs) {
+    if (!leg || typeof leg !== "object") continue;
+    const occ = (leg as { occ?: unknown }).occ;
+    if (typeof occ === "string" && occ.trim()) occs.push(occ.trim());
+  }
+  return occs;
+}
+
+export type CondorLegRoleOcc = { role: "short" | "long"; occ: string };
+
+/** Role + OCC for each condor leg — the structural input for live net-mark pricing. */
+export function condorLegRoles(raw: unknown): CondorLegRoleOcc[] {
+  if (!raw || typeof raw !== "object") return [];
+  const legs = (raw as { legs?: unknown }).legs;
+  if (!Array.isArray(legs)) return [];
+  const out: CondorLegRoleOcc[] = [];
+  for (const leg of legs) {
+    if (!leg || typeof leg !== "object") continue;
+    const role = (leg as { role?: unknown }).role;
+    const occ = (leg as { occ?: unknown }).occ;
+    if ((role === "short" || role === "long") && typeof occ === "string" && occ.trim()) {
+      out.push({ role, occ: occ.trim() });
+    }
+  }
+  return out;
+}
+
+/**
+ * Per-share debit to close a sold condor from live leg marks — same units as `entry_premium`
+ * (per-share premium; net_credit/100 on commit). Short legs add, long legs subtract: the mirror
+ * of buildCondorPlan's conservative credit formula. Requires all four legs to price; null otherwise.
+ */
+export function condorNetMarkPerShare(
+  legs: CondorLegRoleOcc[],
+  markOf: (occ: string) => number | null
+): number | null {
+  if (legs.length !== 4) return null;
+  let net = 0;
+  for (const { role, occ } of legs) {
+    const m = markOf(occ);
+    if (m == null || !(m >= 0)) return null;
+    net += role === "short" ? m : -m;
+  }
+  return Math.round(net * 10000) / 10000;
+}
+
+/**
+ * Conservative executable debit to close a sold condor: buy back shorts at ASK, sell longs at BID.
+ * Same per-share units as `condorNetMarkPerShare` (mid lane). Null when any required side is missing.
+ */
+export function condorNetDebitToCloseExec(
+  legs: CondorLegRoleOcc[],
+  quoteOf: (occ: string) => { bid: number | null; ask: number | null } | undefined
+): number | null {
+  if (legs.length !== 4) return null;
+  let net = 0;
+  for (const { role, occ } of legs) {
+    const q = quoteOf(occ);
+    const px = role === "short" ? q?.ask : q?.bid;
+    if (px == null || !(px >= 0)) return null;
+    net += role === "short" ? px : -px;
+  }
+  return Math.round(net * 10000) / 10000;
 }
 
 // ── Condor liquidity gate (the directional plan-quality replacement) ───────────────────

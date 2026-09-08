@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 import {
   formatLargoScopePrefill,
   largoDeskStarterCards,
-  largoModuleStarterCards,
   largoSubmoduleCardsForDesk,
 } from "./largo-module-starter-cards";
 
@@ -35,8 +34,3 @@ describe("largoSubmoduleCardsForDesk", () => {
   });
 });
 
-describe("largoModuleStarterCards", () => {
-  it("flattens all desk modules", () => {
-    assert.ok(largoModuleStarterCards().length >= 30);
-  });
-});

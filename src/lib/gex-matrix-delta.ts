@@ -6,6 +6,8 @@
  * full 168×14 matrices on every refresh.
  */
 
+import { roundFloats } from "@/lib/round-floats";
+
 /**
  * Simplified matrix snapshot for delta calculation.
  * Accepts either raw array format (number[][]) or record format (Record<string, Record<string, number>>).
@@ -108,28 +110,33 @@ export function calculateMatrixDelta(
 
   // If spot moved but strikes unchanged, still send update (for regime/regime_text changes)
   if (updated_strikes.length === 0 && Math.abs(current.spot - previous.spot) >= 1) {
-    return {
+    return roundFloats({
       ticker: current.underlying,
       asof: current.asof,
       spot: current.spot,
       regime_text: regime,
       updated_strikes: [],
       timestamp_ms: Date.now(),
-    };
+    });
   }
 
   if (updated_strikes.length === 0) {
     return null;
   }
 
-  return {
+  // BUG FIX (2026-09-03): gex_call/gex_put are summed from raw, unrounded GEX cells
+  // (polygon-options-gex.ts's dollar-gamma arithmetic), so they carry the same IEEE-754
+  // float noise (e.g. 7499.360000000001) round-floats.ts exists to strip at the response
+  // boundary — this SSE delta feed served it raw while its sibling REST route
+  // (gex-heatmap/route.ts) already rounds the same underlying data.
+  return roundFloats({
     ticker: current.underlying,
     asof: current.asof,
     spot: current.spot,
     regime_text: regime,
     updated_strikes,
     timestamp_ms: Date.now(),
-  };
+  });
 }
 
 /**
@@ -142,7 +149,7 @@ export function calculateMatrixDeltaFull(
   regime?: string
 ): MatrixDelta {
   if (!previous) {
-    return {
+    return roundFloats({
       ticker: current.underlying,
       asof: current.asof,
       spot: current.spot,
@@ -158,7 +165,7 @@ export function calculateMatrixDeltaFull(
         };
       }),
       timestamp_ms: Date.now(),
-    };
+    });
   }
 
   const updated_strikes: StrikeUpdate[] = [];
@@ -175,12 +182,12 @@ export function calculateMatrixDeltaFull(
     });
   }
 
-  return {
+  return roundFloats({
     ticker: current.underlying,
     asof: current.asof,
     spot: current.spot,
     regime_text: regime,
     updated_strikes,
     timestamp_ms: Date.now(),
-  };
+  });
 }

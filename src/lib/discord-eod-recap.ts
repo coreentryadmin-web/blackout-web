@@ -6,6 +6,7 @@ import type { DiscordEmbed } from "@/lib/helix-discord-format";
 import type { DarkPoolDiscordPrint } from "@/lib/darkpool-discord-format";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { sharedCacheSetNx } from "@/lib/shared-cache";
 
 import { buildHelixFlowDeepLink, buildHelixDarkpoolDeepLink } from "@/lib/helix-flow-deep-link";
@@ -15,6 +16,8 @@ const APP_BASE = (process.env.NEXT_PUBLIC_SITE_URL || "https://blackouttrades.co
 /** ~4:05 PM ET window — dark pool cron (2m) and HELIX digest (15m) both land here. */
 export function isDiscordEodRecapWindow(now = new Date()): boolean {
   if (isEtCashRth(now)) return false;
+  const sessionDay = todayEt(now);
+  if (!isTradingDayEt(sessionDay)) return false;
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     hour: "numeric",
@@ -36,7 +39,10 @@ export async function claimDiscordEodRecap(
   bypass = false
 ): Promise<boolean> {
   if (bypass) return true;
-  return sharedCacheSetNx(eodRecapDedupKey(channel, sessionDate), { at: new Date().toISOString() }, 20 * 60 * 60);
+  // fail OPEN on a Redis error — a missed dedup window is a harmless duplicate post
+  return sharedCacheSetNx(eodRecapDedupKey(channel, sessionDate), { at: new Date().toISOString() }, 20 * 60 * 60).catch(
+    () => true
+  );
 }
 
 function sessionOpenMs(sessionDate: string): number {

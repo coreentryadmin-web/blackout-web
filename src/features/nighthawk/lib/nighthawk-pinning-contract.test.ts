@@ -74,8 +74,18 @@ test("edition builder pins from the SAME in-memory build context it publishes fr
 test("edition read path: EVERY serve branch passes through the pull overlay", () => {
   const src = read("src/app/api/market/nighthawk/edition/route.ts");
   assert.match(src, /async function withPullOverlay/);
+  // withEditionOverlays composes withPullOverlay + the outcome-tier overlay behind one call, so
+  // the 3 DB-served branches now route through withPullOverlay via this wrapper rather than
+  // calling it directly — assert the wrapper itself still delegates to withPullOverlay, THEN
+  // count branches against the wrapper (the property that matters — every branch gets the pull
+  // overlay — is unchanged by this refactor, just reached one level deeper).
+  assert.match(
+    src,
+    /async function withEditionOverlays\([^)]*\)[^{]*\{\s*return withOutcomeOverlay\(await withPullOverlay\(edition\)\);/,
+    "withEditionOverlays must still delegate to withPullOverlay, not bypass it"
+  );
   // carry-until-close, exact-date, and latest-fallback branches all stamp the latch.
-  const overlayCalls = src.match(/await withPullOverlay\(/g) ?? [];
+  const overlayCalls = src.match(/await withEditionOverlays\(/g) ?? [];
   assert.ok(
     overlayCalls.length >= 3,
     `expected the overlay on all 3 DB-served branches (carry/exact/latest), found ${overlayCalls.length}`

@@ -5,6 +5,7 @@
  */
 import type { VectorPlayBias } from "./vector-play-engine";
 import type { VectorDarkPoolLevel } from "./vector-dark-pool-levels";
+import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
 
 export type PlayFlowBias = "bull" | "bear" | "mixed";
 
@@ -13,6 +14,8 @@ export type PlayPlatformFlowPrint = {
   premium?: number | null;
   strike?: number | null;
   expiry?: string | null;
+  /** Ask-side share (0-100) — the aggressor read HELIX already computes for this print. */
+  ask_pct?: number | null;
 };
 
 export type PlayPlatformContext = {
@@ -39,18 +42,30 @@ export function summarizeSessionFlowBias(
   flows: readonly PlayPlatformFlowPrint[] | null | undefined
 ): { bias: PlayFlowBias; callPremium: number; putPremium: number } | null {
   if (!flows?.length) return null;
+  // callPremium/putPremium below are the literal $ traded per option TYPE (display-only — "$34M
+  // calls / $12M puts" is a true fact regardless of who was buying). The BIAS read must NOT reuse
+  // that split: a sold call is bearish, not bullish, so `bias` is bucketed on the aggressor-aware
+  // `flowDirection` (same helper `printBias`/Split Flow Radar already use in HELIX) — a call/put
+  // count that ignores buy-vs-sell is the exact conflation measured to sign-flip 44.6% of tickers
+  // in helix-flow-aggression.ts. A print whose direction is undetermined (no ask_pct, or midpoint)
+  // is excluded from the bias read entirely rather than guessed from its option type.
   let callPremium = 0;
   let putPremium = 0;
+  let bullPremium = 0;
+  let bearPremium = 0;
   for (const f of flows) {
     const prem = num(f.premium);
     if (prem == null || prem < FLOW_MIN_PREMIUM) continue;
     const side = f.option_type?.toUpperCase();
     if (side === "CALL") callPremium += prem;
     else if (side === "PUT") putPremium += prem;
+    const dir = flowDirection(f);
+    if (dir === "bullish") bullPremium += prem;
+    else if (dir === "bearish") bearPremium += prem;
   }
-  const total = callPremium + putPremium;
+  const total = bullPremium + bearPremium;
   if (total <= 0) return null;
-  const ratio = callPremium / total;
+  const ratio = bullPremium / total;
   let bias: PlayFlowBias;
   if (ratio >= 0.62) bias = "bull";
   else if (ratio <= 0.38) bias = "bear";
@@ -67,10 +82,12 @@ export function largestAlignedFlowPremium(
   for (const f of flows) {
     const prem = num(f.premium);
     if (prem == null || prem < FLOW_MIN_PREMIUM) continue;
-    const side = f.option_type?.toUpperCase();
+    // Aligned on the aggressor-aware direction, not raw option type — a sold call must not confirm
+    // a "long" bias just because it is nominally a CALL print.
+    const dir = flowDirection(f);
     const aligned =
-      (bias === "long" && side === "CALL") ||
-      (bias === "short" && side === "PUT");
+      (bias === "long" && dir === "bullish") ||
+      (bias === "short" && dir === "bearish");
     if (aligned && prem > best) best = prem;
   }
   return best;

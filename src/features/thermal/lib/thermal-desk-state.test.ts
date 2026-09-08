@@ -8,6 +8,7 @@ import {
   isUsableGexHeatmapPayload,
   parseThermalLens,
   parseThermalTicker,
+  parseThermalStrike,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
   shouldForceBlankMatrixRefresh,
@@ -20,6 +21,10 @@ import {
   netFlowHeaderTooltip,
   thermalCompareStripLabel,
   thermalQuoteBadge,
+  spotSourceBadge,
+  shiftPanelEmptyDescription,
+  shiftBasisFootnote,
+  horizonWallsSummary,
 } from "./thermal-desk-state.ts";
 
 // PINNED, and deliberately NOT "matches the Indices preset" any more. Its real consumer is
@@ -41,7 +46,10 @@ test("parseThermalTicker / lens / url state", () => {
     lens: "dex",
     compare: true,
     compareSet: "semis",
+    strike: null,
   });
+  assert.equal(parseThermalStrike("775"), 775);
+  assert.equal(parseThermalStrike("bad"), null);
 });
 
 test("buildThermalUrlSearch writes ticker/lens/compare/compareSet and drops compare when off", () => {
@@ -56,9 +64,17 @@ test("buildThermalUrlSearch writes ticker/lens/compare/compareSet and drops comp
   assert.equal(new URLSearchParams(on).get("compare"), "1");
   assert.equal(new URLSearchParams(on).get("compareSet"), "ai");
   assert.equal(new URLSearchParams(on).get("foo"), "1");
-  const off = buildThermalUrlSearch(base, { ticker: "SPY", lens: "vex", compare: false });
+  const withStrike = buildThermalUrlSearch(new URLSearchParams(), {
+    ticker: "SPY",
+    lens: "gex",
+    compare: false,
+    strike: 770,
+  });
+  assert.equal(new URLSearchParams(withStrike).get("strike"), "770");
+  const off = buildThermalUrlSearch(base, { ticker: "SPY", lens: "vex", compare: false, strike: null });
   assert.equal(new URLSearchParams(off).has("compare"), false);
   assert.equal(new URLSearchParams(off).has("compareSet"), false);
+  assert.equal(new URLSearchParams(off).get("strike"), null);
 });
 
 test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
@@ -132,6 +148,29 @@ test("thermalLayerFreshness: matrix live / stale / overlays off / UW off", () =>
   assert.equal(stale.matrix.status, "stale");
   assert.equal(stale.overlays.status, "live");
   assert.equal(stale.crossVal.status, "live");
+});
+
+test("thermalLayerFreshness: cross-check uses age guard, not hardcoded live", () => {
+  const now = Date.parse("2026-08-12T14:00:00Z");
+  const future = thermalLayerFreshness({
+    nowMs: now,
+    matrixAsof: new Date(now - 2_000).toISOString(),
+    hasOverlays: true,
+    overlaysAt: new Date(now - 5_000).toISOString(),
+    crossValPresent: true,
+    crossValUwAsof: new Date(now + 120_000).toISOString(),
+  });
+  assert.equal(future.crossVal.status, "syncing", "far-future asOf must not read live");
+
+  const aged = thermalLayerFreshness({
+    nowMs: now,
+    matrixAsof: new Date(now - 2_000).toISOString(),
+    hasOverlays: true,
+    overlaysAt: new Date(now - 5_000).toISOString(),
+    crossValPresent: true,
+    crossValUwAsof: new Date(now - 120_000).toISOString(),
+  });
+  assert.equal(aged.crossVal.status, "stale");
 });
 
 test("the cross-check layer never shows a member our vendor's initials", () => {
@@ -316,4 +355,30 @@ test("thermalCompareStripLabel — reports the cadence it is actually given, not
   // The old label hardcoded "5s" beside a separately-declared interval; they could drift.
   assert.match(thermalCompareStripLabel({ marketOpen: true, pollSeconds: 20 }), /20s/);
   assert.match(thermalCompareStripLabel({ marketOpen: false, pollSeconds: 8 }), /8s/);
+});
+
+test("spotSourceBadge — maps provenance to member-facing labels", () => {
+  assert.equal(spotSourceBadge({ spotSource: "ws", marketOpen: true })?.label, "Live WS");
+  assert.equal(spotSourceBadge({ spotSource: "rest", marketOpen: false })?.label, "Last close");
+  assert.equal(spotSourceBadge({ spotSource: null, marketOpen: true }), null);
+});
+
+test("shiftPanelEmptyDescription — mentions session closed when market is closed", () => {
+  const closed = shiftPanelEmptyDescription({ hasShiftForLens: true, marketOpen: false, noun: "Gamma" });
+  assert.match(closed, /cash session is closed/i);
+});
+
+test("shiftBasisFootnote — SPX GEX only", () => {
+  assert.match(shiftBasisFootnote({ ticker: "SPX", lens: "gex" }) ?? "", /raw market-structure/i);
+  assert.equal(shiftBasisFootnote({ ticker: "SPY", lens: "gex" }), null);
+  assert.equal(shiftBasisFootnote({ ticker: "SPX", lens: "vex" }), null);
+});
+
+test("horizonWallsSummary — formats 0DTE/3DTE/7DTE walls", () => {
+  const line = horizonWallsSummary([
+    { label: "0DTE", callWall: 775, putWall: 761 },
+    { label: "3DTE", callWall: 780, putWall: 755 },
+  ]);
+  assert.match(line ?? "", /0DTE: C 775 · P 761/);
+  assert.match(line ?? "", /3DTE: C 780 · P 755/);
 });

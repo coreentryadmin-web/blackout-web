@@ -2,6 +2,7 @@ import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { todayEt } from "@/lib/et-date";
 import { notifyPlayDiscord } from "@/features/spx/lib/spx-play-notify";
 import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
+import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
 
 function firePlayTelemetry(label: string, work: () => Promise<unknown>) {
   void work().catch((err) => {
@@ -168,10 +169,13 @@ async function getNhConfluenceBonus(): Promise<{ bonus: number; label: string } 
     const edition = await fetchLatestNighthawkEdition();
     if (!edition) return null;
 
-    // Require the edition to be from today or yesterday (not stale).
+    // Require the edition to be from today or yesterday (not stale). BUG FIX (2026-09-03):
+    // isZeroDteMarkStale (not a raw age subtraction) — published_at is a cross-process
+    // timestamp (a separate Night Hawk cron writes it), so a clock-skewed/bad future stamp
+    // is possible; unguarded, it would trivially pass "not stale" and get used as a valid
+    // morning prior instead of being rejected.
     const publishedAt = new Date(edition.published_at);
-    const ageHours = (Date.now() - publishedAt.getTime()) / 3_600_000;
-    if (ageHours > 20) return null; // Edition older than 20h — too stale to use as a morning prior.
+    if (isZeroDteMarkStale(publishedAt.getTime(), Date.now(), 20 * 3_600_000)) return null;
 
     const plays = Array.isArray(edition.plays) ? edition.plays : [];
     // Infer market_bias from the market_recap field or from plays.
@@ -240,7 +244,11 @@ async function evaluateOpenPlay(
   // We must NOT fire price-driven exits (stop/target/trail/trim) off a stale quote, and
   // we must not record MFE/MAE excursion peaks from a stale price. Time-based exits
   // (theta force-exit, session close) are independent of price and stay live below.
-  const deskStale = isDeskStale(deskAgeSec(desk.polled_at, desk.as_of), playGexStaleMaxSec());
+  const deskStaleMaxSec = playGexStaleMaxSec();
+  const deskStale = isDeskStale(
+    deskAgeSec(desk.polled_at, desk.as_of, Date.now(), deskStaleMaxSec),
+    deskStaleMaxSec
+  );
   const mfe = Math.max(row.mfe_pts, dir === "long" ? price - row.entry_price : row.entry_price - price);
   const mae = Math.max(row.mae_pts, dir === "long" ? row.entry_price - price : price - row.entry_price);
   if (mutate && !deskStale) {
@@ -1118,7 +1126,8 @@ async function evaluateFlatPlay(
   }
 
   // ── Cortex-based deterministic approval (replaces Claude LLM gate) ──────
-  // Cortex VETO/NET_NEGATIVE are already blocked above. What remains:
+  // Cortex VETO/NET_NEGATIVE/THIN_EVIDENCE/CONTESTED/OPPOSE_UNRESOLVED are already
+  // blocked above (cortexGateBlocks). What remains:
   //   PASS     → evidence supports the play (strongest signal)
   //   ABSTAIN  → no evidence available (Cortex outage or thin data)
   //

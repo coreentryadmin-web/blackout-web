@@ -66,7 +66,7 @@ export function perExpiryWallsFromContracts(
   // (QA sweep #4, N4-1, regression from a63f162). Magnitude ranking tolerates the proxy; the
   // regime boundary does not.
   const oiLadder = gexLadderAtSpot(filtered, spot, todayYmd);
-  const walls = computeGexWalls(wallLadder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+  const walls = computeGexWalls(wallLadder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE, spot });
   const flip = oiLadder.size > 0 ? gammaFlipFromLadder(oiLadder, spot) : null;
   return { walls, flip };
 }

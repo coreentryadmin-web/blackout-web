@@ -45,14 +45,40 @@ export interface CaptureHarnessConfig {
   viewport?: "desktop" | "tablet" | "mobile";
 }
 
-/** Map each product to its dashboard URL and capture points */
-const CAPTURE_SURFACES: Record<CaptureSource, { url: string; caption: string }> = {
+/**
+ * Map each product to its dashboard URL and capture points.
+ *
+ * MUST match the canonical desk routes (`LARGO_PLATFORM_LINKS.desks` in
+ * `src/lib/largo/platform-links.ts`, and the allowlist those routes are checked against in
+ * `capture-guard.ts`'s `CAPTURABLE_SURFACE_PATHS`) — see the "canonical desk routes" test below.
+ *
+ * Three of the seven entries here drifted from that canonical mapping and were never caught,
+ * because this harness has no live caller yet (`captureForQueuePackage` is exercised only by
+ * `capture-harness.test.ts`, not by any cron or route) — the same "wired to nothing yet, but
+ * wrong" class of defect `attachmentsFromCaptures`'s diversity no-op was (#3217). Helix and
+ * Thermal were pointed at `/terminal#tab=helix` / `/terminal#tab=thermal` — but `/terminal`
+ * gates on `requireDeskTool("premium", "largo")` specifically (`(site)/terminal/layout.tsx`)
+ * and carries no such tabs, so both would have screenshotted the LARGO page and captioned it
+ * "Helix flow intelligence" / "Thermal gamma structure". Largo itself was pointed at
+ * `/dashboard#tab=largo` — `/dashboard` is SPX Slayer's own route
+ * (`LARGO_PLATFORM_LINKS.desks.spxSlayer`), so a Largo capture would have screenshotted SPX
+ * Slayer and captioned it "Largo AI intelligence". Vector, SPX Slayer, Night Hawk and Meridian
+ * were already correct. Fixed to the real per-product routes: Helix → `/flows`, Thermal →
+ * `/heatmap`, Largo → `/terminal`, SPX Slayer → `/dashboard` (the stray `#tab=spx-slayer`
+ * fragment served no purpose — `/dashboard` IS the SPX Slayer page — so it is dropped too).
+ *
+ * Blast radius: this table backs BOTH the actual navigation URL `captureSingleSource` screenshots
+ * (line ~`surface.url` below) AND the `source_url` recorded on the resulting queue attachment
+ * (`attachmentsFromCaptures`, `CAPTURE_SURFACES[cap.source]?.url`) — so the wrong URL would have
+ * both captured the wrong panel and mislabeled its provenance in the same row.
+ */
+export const CAPTURE_SURFACES: Record<CaptureSource, { url: string; caption: string }> = {
   helix: {
-    url: "https://blackouttrades.com/terminal#tab=helix",
+    url: "https://blackouttrades.com/flows",
     caption: "Helix flow intelligence",
   },
   thermal: {
-    url: "https://blackouttrades.com/terminal#tab=thermal",
+    url: "https://blackouttrades.com/heatmap",
     caption: "Thermal gamma structure",
   },
   vector: {
@@ -60,7 +86,7 @@ const CAPTURE_SURFACES: Record<CaptureSource, { url: string; caption: string }> 
     caption: "Vector market structure",
   },
   spx_slayer: {
-    url: "https://blackouttrades.com/dashboard#tab=spx-slayer",
+    url: "https://blackouttrades.com/dashboard",
     caption: "SPX Slayer trade outcomes",
   },
   nighthawk: {
@@ -72,7 +98,7 @@ const CAPTURE_SURFACES: Record<CaptureSource, { url: string; caption: string }> 
     caption: "Meridian earnings + structure",
   },
   largo: {
-    url: "https://blackouttrades.com/dashboard#tab=largo",
+    url: "https://blackouttrades.com/terminal",
     caption: "Largo AI intelligence",
   },
 };
@@ -262,6 +288,26 @@ async function captureSingleSource(
 }
 
 /**
+ * Pick up to `max` captures, preferring at most one per distinct `source` before ever taking a
+ * second one from any surface. Only reaches into the leftover (duplicate-source) pool if there
+ * aren't enough distinct sources to fill `max` slots.
+ */
+function selectDiverseCaptures(captures: CaptureResult[], max: number): CaptureResult[] {
+  const firstBySource: CaptureResult[] = [];
+  const seen = new Set<CaptureSource>();
+  const duplicates: CaptureResult[] = [];
+  for (const c of captures) {
+    if (seen.has(c.source)) {
+      duplicates.push(c);
+    } else {
+      seen.add(c.source);
+      firstBySource.push(c);
+    }
+  }
+  return firstBySource.concat(duplicates).slice(0, max);
+}
+
+/**
  * Convert capture results into queue-compatible attachments.
  * Filters failures and validates constraints (count, diversity, freshness).
  */
@@ -289,11 +335,16 @@ export function attachmentsFromCaptures(
     return [];
   }
 
-  // Enforce diversity (don't stack same source)
-  const diverse =
-    requireDiversity && fresh.length > 1
-      ? fresh.slice(0, Math.min(fresh.length, maxAttachments))
-      : fresh.slice(0, maxAttachments);
+  // Enforce diversity (don't stack same source). `fresh.slice(0, Math.min(fresh.length,
+  // maxAttachments))` and `fresh.slice(0, maxAttachments)` are byte-identical for every input --
+  // Array.prototype.slice already clamps its end index to the array length -- so the
+  // requireDiversity branch above used to be a complete no-op: neither branch ever looked at
+  // source_surface, both just took the first N captures in array order. A package built from
+  // [helix, helix, thermal, vector] with maxAttachments=3 shipped [helix, helix, thermal] --
+  // vector silently dropped, helix duplicated -- and validateAttachmentConstraints only rejects
+  // the FULLY degenerate case (every attachment from one surface), so a two-of-three-same-source
+  // package like this passed every downstream check.
+  const diverse = requireDiversity ? selectDiverseCaptures(fresh, maxAttachments) : fresh.slice(0, maxAttachments);
 
   return diverse.map((cap, idx) => {
     let role: "PRICE" | "BLACKOUT_SIGNAL" | "CONFIRMATION";

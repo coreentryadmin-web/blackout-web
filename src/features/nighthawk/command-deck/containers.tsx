@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import clsx from "clsx";
 import dynamic from "next/dynamic";
 import { CommandDeck } from "./CommandDeck";
 
@@ -22,29 +21,43 @@ const NighthawkAnalyticsPanel = dynamic(
     ),
   }
 );
+const SwingAnalyticsPanel = dynamic(
+  () => import("@/features/nighthawk/components/SwingAnalyticsPanel").then((m) => m.SwingAnalyticsPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="nh-analytics-panel nh-analytics-panel-loading" role="status" aria-label="Loading swing analytics">
+        <span className="nh-analytics-panel-title">Swing analytics</span>
+        <span className="nh-analytics-empty">Loading…</span>
+      </div>
+    ),
+  }
+);
+import { SwingCockpitStrip } from "./SwingCockpitStrip";
+import type { SwingServingLane } from "@/lib/swing/serving-board";
 import {
   terminalPlayFromZeroDte,
   terminalPlayFromHorizon,
   terminalPlayFromEdition,
   type ZeroDteDeckSource,
 } from "./adapters";
-import { fetchNightHawkHorizons } from "@/lib/api";
+import { fetchNightHawkEdition, fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
+import { LegacyPickLogBoard } from "@/features/nighthawk/components/LegacyPickLogBoard";
+import { legacyEditionSessionDates } from "@/features/nighthawk/lib/legacy-board-calendar";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import type { TerminalPlay } from "./types";
 import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
+import { overlayLegacyOptionMarks, useLegacyOptionMarks } from "./use-legacy-option-marks";
 import { overlayHorizonWatchTrack } from "./use-live-marks";
+import { useSwingLiveDeck } from "./use-swing-live-deck";
 import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
-import { SWING_SERVING_SECTIONS } from "@/lib/swing/serving";
-import {
-  rowsForSwingSection,
-  swingSectionCounts,
-  emptySwingSectionHint,
-  SWING_SECTION_LABEL,
-  type SwingSectionFilter,
-} from "./swing-section-filter";
+import { rowsForSwingSection } from "./swing-section-filter";
+import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
+import { terminalPlayFromClosedSwing } from "./adapters";
 import { NIGHTHAWK_COMPACT_LANE_LABEL } from "@/features/nighthawk/lib/nighthawk-view";
 import { zeroDteEmptyHint } from "../lib/deck-empty-hint";
 import { etNowParts } from "@/features/nighthawk/lib/session";
@@ -139,6 +152,9 @@ export function ZeroDteDeck({
         upstreamOk={data?.upstream_ok ?? null}
         marketState={data?.market_state ?? null}
         discoveryFunnel={data?.discovery_funnel ?? null}
+        sessionStats={data?.session_stats ?? null}
+        vectorNearMisses={data?.vector_near_misses ?? null}
+        vetoShadow={data?.veto_shadow ?? null}
         spxSlayerBadge={data?.spx_slayer_badge}
         emptyHint={zeroDteEmptyHint({
           degraded,
@@ -150,7 +166,20 @@ export function ZeroDteDeck({
   );
 }
 
-// ── Swings / LEAPS: the horizon lane ────────────────────────────────────────────────
+/** Swing Command board SWR cadence — faster than the old 30s lane poll; marks overlay still via stock quotes. */
+function swingBoardRefreshMs(): number {
+  try {
+    const { hour, minute, weekday } = etNowParts();
+    if (weekday === "Sat" || weekday === "Sun") return 15_000;
+    const mins = hour * 60 + minute;
+    if (mins >= 9 * 60 + 25 && mins <= 16 * 60 + 5) return 5_000;
+  } catch {
+    /* fall through */
+  }
+  return 15_000;
+}
+
+// ── Swing Command: unified Swings + Banger + Vector on the horizon lane ─────────────
 
 export function HorizonDeck({
   horizon,
@@ -162,7 +191,8 @@ export function HorizonDeck({
   focusTicker?: string | null;
 }) {
   const { data, isLoading } = useSWR(["deck-horizons", horizon], () => fetchNightHawkHorizons(horizon), {
-    refreshInterval: 30_000,
+    refreshInterval: horizon === "SWING" ? swingBoardRefreshMs() : 30_000,
+    revalidateOnFocus: true,
   });
   // fetchNightHawkHorizons (lib/api.ts) fail-softs a network/upstream error to `{board: null}` —
   // otherwise indistinguishable from a genuinely-empty lane (both render zero rows). Surface that
@@ -170,101 +200,108 @@ export function HorizonDeck({
   // that arrived with board:null is an outage, not "scanning, nothing yet".
   const degraded = data != null && data.board == null;
   const lane = data?.board?.lanes?.[horizon];
-  const [sectionFilter, setSectionFilter] = useState<SwingSectionFilter>("ALL");
-  // Prefer the seven serving sections when present (SWING) — flat committed/watch is back-compat only and
-  // collapses COMMIT_NOW + WAITING_FOR_ENTRY into one misleading "committed" rail.
-  // Seven sections, selectable (FINDINGS 2026-08-06 swing audit P2): these used to be concatenated
-  // into one flat list, so `serving.ts`'s whole reason to exist — telling a member what is
-  // ACTIONABLE vs merely forming — survived only as a small per-card badge. ALL keeps the previous
-  // behaviour as the default view, so nobody's board changes until they choose a section.
+  const swingLane = horizon === "SWING" ? (lane as SwingServingLane | undefined) : undefined;
+  const scanAsOf = swingLane?.scanAsOf ?? null;
+  const { data: swingRecord } = useSWR<{
+    summary?: { win_rate_pct?: number | null };
+    closedDeck?: SwingClosedDeckSource[];
+  }>(
+    horizon === "SWING" ? "/api/market/swing/record?days=30" : null,
+    json,
+    { refreshInterval: 30_000 },
+  );
+  const swingWinRate = swingRecord?.summary?.win_rate_pct ?? null;
+  // Flatten all serving sections — member filter is OPEN/WATCH/CLOSED (same as 0DTE), not seven rails.
   const hasSections = horizon === "SWING" && lane?.sections != null;
-  const sectionCounts = useMemo(() => swingSectionCounts(lane?.sections), [lane?.sections]);
-  const sectionRows = hasSections ? rowsForSwingSection(lane!.sections, sectionFilter) : null;
-  const rows = sectionRows ?? [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
-  const researchCount = horizon === "SWING" ? (lane?.sections?.RESEARCH?.length ?? 0) : 0;
-  const watchCount = horizon === "SWING" ? (lane?.sections?.WATCH?.length ?? 0) : 0;
-  // A filtered-empty section is NOT an empty lane — saying "scanning the whole market" while 40
-  // names sit one tab over would be actively misleading.
-  const sectionEmptyHint = hasSections ? emptySwingSectionHint(sectionFilter, sectionCounts) : null;
+  const rows = hasSections
+    ? rowsForSwingSection(lane!.sections, "ALL")
+    : [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
   const emptyHint = degraded
     ? "Lane data unavailable right now — retrying. This is a data outage, not an empty board."
-    : sectionEmptyHint
-      ? sectionEmptyHint
-      : horizon === "SWING" && rows.length === 0
-      ? researchCount > 0 || watchCount > 0
-        ? "Swing scan active — names building persistence appear in Research once enriched."
-        : "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
+    : horizon === "SWING" && rows.length === 0
+      ? "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
       : `Scanning the whole market for ${horizon === "SWING" ? "Swing" : "LEAPS"} setups — this lane is coming online.`;
-  const plays: TerminalPlay[] = rows.map((p) =>
-    terminalPlayFromHorizon({
-      ticker: p.ticker,
-      direction: p.direction,
-      horizon,
-      score: p.score,
-      status: p.status,
-      reason: p.reason,
-      // Greeks ride through to the deck strip (FINDINGS 2026-08-06): this projection dropped every
-      // greek the payload carried — including `delta`, which has ALWAYS been present — so the strip
-      // had nothing to render no matter what the server sent. Each is null-safe downstream.
-      contract: {
-        strike: p.contract.strike,
-        right: p.contract.right,
-        expiry: p.contract.expiry,
-        dte: p.contract.dte,
-        mid: p.contract.mid,
-        delta: p.contract.delta,
-        gamma: p.contract.gamma,
-        theta: p.contract.theta,
-        vega: p.contract.vega,
-        iv: p.contract.iv,
-      },
-      factors: p.factors,
-      regime: p.regime ?? null,
-      setupState: p.setupState ?? null,
-      entryStatus: p.entryStatus ?? null,
-      archetype: p.archetype ?? null,
-      subLane: p.subLane ?? null,
-      servingSection: p.serving ?? null,
-      firstSeenAt: p.firstSeenAt ?? null,
-      committedAt: p.committedAt ?? null,
-      signalKinds: p.signalKinds ?? null,
-      liveStatus: p.liveStatus ?? null,
-      flagUnderlyingPx: p.flagUnderlyingPx ?? null,
-      entryPremium: p.entryPremium ?? null,
-      livePnlPct: p.livePnlPct ?? null,
-      peakPremium: p.peakPremium ?? null,
-      troughPremium: p.troughPremium ?? null,
-      thesisBreak:
-        p.thesisLevel != null
-          ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }
-          : undefined,
-    }),
+  const basePlays = useMemo<TerminalPlay[]>(
+    () =>
+      rows.map((p) =>
+        terminalPlayFromHorizon({
+          ticker: p.ticker,
+          direction: p.direction,
+          horizon,
+          score: p.score,
+          status: p.status,
+          reason: p.reason,
+          contract: {
+            strike: p.contract.strike,
+            right: p.contract.right,
+            expiry: p.contract.expiry,
+            dte: p.contract.dte,
+            mid: p.contract.mid,
+            bid: p.contract.bid ?? null,
+            ask: p.contract.ask ?? null,
+            delta: p.contract.delta,
+            gamma: p.contract.gamma,
+            theta: p.contract.theta,
+            vega: p.contract.vega,
+            iv: p.contract.iv,
+          },
+          factors: p.factors,
+          regime: p.regime ?? null,
+          setupState: p.setupState ?? null,
+          entryStatus: p.entryStatus ?? null,
+          archetype: p.archetype ?? null,
+          subLane: p.subLane ?? null,
+          servingSection: p.serving ?? null,
+          persistenceObserved: p.persistenceObserved ?? null,
+          persistenceGapReason: p.persistenceGapReason ?? null,
+          firstSeenAt: p.firstSeenAt ?? null,
+          committedAt: p.committedAt ?? null,
+          signalKinds: p.signalKinds ?? null,
+          commitGateBlockedBy: p.commitGateBlockedBy ?? null,
+          liveStatus: p.liveStatus ?? null,
+          flagUnderlyingPx: p.flagUnderlyingPx ?? null,
+          entryPremium: p.entryPremium ?? null,
+          livePnlPct: p.livePnlPct ?? null,
+          peakPremium: p.peakPremium ?? null,
+          troughPremium: p.troughPremium ?? null,
+          markAsOf: p.markAsOf ?? null,
+          manageAction: p.manageAction ?? null,
+          positionId: p.positionId ?? null,
+          thesisBreak:
+            p.thesisLevel != null
+              ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }
+              : undefined,
+        }),
+      ),
+    [rows, horizon],
   );
+  const swingLivePlays = useSwingLiveDeck(horizon === "SWING" ? basePlays : []);
   const watchTickers = useMemo(
-    () => [...new Set(plays.filter((p) => p.status === "WATCH").map((p) => p.ticker))],
-    [plays],
+    () =>
+      horizon === "SWING"
+        ? []
+        : [...new Set(basePlays.filter((p) => p.status === "WATCH").map((p) => p.ticker))],
+    [horizon, basePlays],
   );
-  const stockQuotes = useLegacyStockQuotes(watchTickers, watchTickers.length > 0, 5_000);
-  const playsWithTrack = useMemo(
-    () => overlayHorizonWatchTrack(plays, stockQuotes),
-    [plays, stockQuotes],
+  const stockQuotes = useLegacyStockQuotes(
+    watchTickers,
+    horizon !== "SWING" && watchTickers.length > 0,
+    5_000,
   );
+  const playsWithTrack = useMemo(() => {
+    if (horizon !== "SWING") return overlayHorizonWatchTrack(basePlays, stockQuotes);
+    const closedPlays = (swingRecord?.closedDeck ?? []).map(terminalPlayFromClosedSwing);
+    const openIds = new Set(swingLivePlays.map((p) => p.id));
+    const closedOnly = closedPlays.filter((p) => !openIds.has(p.id));
+    return [...swingLivePlays, ...closedOnly];
+  }, [horizon, swingLivePlays, basePlays, stockQuotes, swingRecord?.closedDeck]);
   const sessionHeat = data?.session?.heat?.state ?? null;
   return (
     <>
-      {hasSections && (
-        <div className="nh-deck-filterbar nh-deck-filterbar--sections" role="group" aria-label="Filter swing plays by serving section">
-          {(["ALL", ...SWING_SERVING_SECTIONS] as SwingSectionFilter[]).map((sec) => (
-            <button
-              key={sec}
-              type="button"
-              className={clsx("nh-deck-filtbtn", sectionFilter === sec && "on")}
-              aria-pressed={sectionFilter === sec}
-              onClick={() => setSectionFilter(sec)}
-            >
-              {SWING_SECTION_LABEL[sec]} <span className="cnt">{sectionCounts[sec]}</span>
-            </button>
-          ))}
+      {horizon === "SWING" && (
+        <div className="nh-swing-deck-chrome">
+          <SwingAnalyticsPanel />
+          <SwingCockpitStrip plays={playsWithTrack} scanAsOf={scanAsOf} winRatePct={swingWinRate} />
         </div>
       )}
       <CommandDeck
@@ -284,9 +321,20 @@ export function HorizonDeck({
   );
 }
 
+/** Alias — Swing Command is the member-facing name for the unified SWING horizon deck. */
+export const SwingCommandDeck = HorizonDeck;
+
 // ── Legacy: the evening edition ─────────────────────────────────────────────────────
 
-export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | undefined; error?: unknown }) {
+export function LegacyDeck() {
+  const todaySession = etSessionDate(Date.now()) ?? "";
+  const [selectedEditionDate, setSelectedEditionDate] = useState<string | null>(null);
+  const editionKey = selectedEditionDate ? ["legacy-edition", selectedEditionDate] : "nighthawk-edition";
+  const { data: edition, error } = useSWR<NightHawkEdition>(
+    editionKey,
+    () => fetchNightHawkEdition(selectedEditionDate ?? undefined),
+    { refreshInterval: 120_000 }
+  );
   // Fetch morning confirmation verdicts when an edition is available.
   const editionFor = edition?.edition_for ?? null;
   const { data: confirmData } = useSWR(
@@ -294,16 +342,20 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
     () => fetch(`/api/nighthawk/play-status?date=${editionFor}`, { cache: "no-store", credentials: "same-origin" }).then((r) => r.ok ? r.json() : null),
     { refreshInterval: 60_000 },
   );
-  const confirmByTicker = new Map<string, { status: string; reason: string; swingPromoted?: boolean }>();
-  if (confirmData?.plays) {
-    for (const ps of confirmData.plays) {
-      confirmByTicker.set(ps.ticker?.toUpperCase(), {
-        status: ps.status,
-        reason: ps.reason,
-        swingPromoted: ps.swingPromoted === true,
-      });
+  const confirmByTicker = useMemo(() => {
+    const map = new Map<string, { status: string; reason: string; swingPromoted?: boolean; checkedAt?: string | null }>();
+    if (confirmData?.plays) {
+      for (const ps of confirmData.plays) {
+        map.set(ps.ticker?.toUpperCase(), {
+          status: ps.status,
+          reason: ps.reason,
+          swingPromoted: ps.swingPromoted === true,
+          checkedAt: typeof ps.checked_at === "string" ? ps.checked_at : (confirmData?.checked_at ?? null),
+        });
+      }
     }
-  }
+    return map;
+  }, [confirmData]);
 
   const confirmCheckedAt: string | null = confirmData?.checked_at ?? null;
 
@@ -329,6 +381,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       exit_style: p.exit_style ?? null,
       iv_rank: p.iv_rank ?? null,
       rr_ratio: p.rr_ratio ?? null,
+      target_atr_multiple: p.target_atr_multiple ?? null,
       flow_streak_days: p.flow_streak_days ?? null,
       confirming_signals: p.confirming_signals ?? null,
       earnings_risk: p.earnings_risk ?? null,
@@ -339,11 +392,13 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       gate_warnings: p.gate_warnings ?? null,
       pulled: p.pulled ?? null,
       pulled_reason: p.pulled_reason ?? null,
+      tier: p.tier ?? null,
+      play_type: p.play_type ?? null,
       morning_status: confirm?.status as "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | undefined ?? null,
       morning_reason: confirm?.reason ?? null,
       swing_promoted: confirm?.swingPromoted ?? null,
       published_at: edition?.published_at ?? null,
-      confirmed_at: confirmCheckedAt,
+      confirmed_at: confirm?.checkedAt ?? p.morning_checked_at ?? confirmCheckedAt,
     });
   }), [rawPlays, confirmByTicker, edition?.published_at, confirmCheckedAt]);
 
@@ -386,7 +441,15 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
   // real-time stock-level progress toward target/stop (the "dynamic trade management" overlay).
   const tickers = useMemo(() => rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean), [rawPlays]);
   const stockQuotes = useLegacyStockQuotes(tickers);
-  const plays = overlayLegacyQuotes(playsWithScorecard, stockQuotes, rawPlays);
+  const legacyOccs = useMemo(
+    () => playsWithScorecard.map((p) => p.occ).filter((o): o is string => typeof o === "string" && o.length > 0),
+    [playsWithScorecard],
+  );
+  const optionMarks = useLegacyOptionMarks(legacyOccs);
+  const plays = overlayLegacyOptionMarks(
+    overlayLegacyQuotes(playsWithScorecard, stockQuotes, rawPlays),
+    optionMarks,
+  );
 
   // Morning-confirm staleness: the verdict is a one-time 9am snapshot that never updates.
   // After 4h it misleads if shown without qualification.
@@ -413,9 +476,33 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
             ? "Recap published — no plays cleared the funnel tonight."
             : null;
 
-  return (
+  const editionLabel =
+    edition?.served_for ?? edition?.edition_for ?? (selectedEditionDate ? selectedEditionDate : todaySession);
+  const calendarDates = useMemo(() => legacyEditionSessionDates(14), []);
+
+  const macroContext = useMemo(() => {
+    if (!confirmData || confirmData.available === false) return null;
+    return {
+      spxPremarket: confirmData.spx_premarket ?? null,
+      priorClose: confirmData.prior_close ?? null,
+      overnightGapPts: confirmData.overnight_gap_pts ?? null,
+      regime: confirmData.regime ?? null,
+      gexBias: confirmData.gex_bias ?? null,
+      callWall: confirmData.call_wall ?? null,
+      putWall: confirmData.put_wall ?? null,
+      summary: confirmData.summary ?? null,
+    };
+  }, [confirmData]);
+
+  const emptyDescription = hasFetchError
+    ? "Edition data unavailable right now — retrying. Check back shortly."
+    : isRecapOnly
+      ? "No plays cleared the scoring funnel tonight — market recap is above."
+      : "Five ranked setups land here after the evening scan · ~5:30 PM ET.";
+
+  const bannerSlot = (
     <>
-      {bannerText && (
+      {bannerText ? (
         <div
           role="status"
           className={`mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
@@ -429,8 +516,8 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
           <span aria-hidden>{hasFetchError || isDegraded ? "!" : isStale || isCarry ? "~" : "i"}</span>
           <span>{bannerText}</span>
         </div>
-      )}
-      {confirmStale && checkedAtLabel && (
+      ) : null}
+      {confirmStale && checkedAtLabel ? (
         <div
           role="status"
           className="mb-3 flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-200"
@@ -438,34 +525,32 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
           <span aria-hidden>~</span>
           <span>Morning verdict from {checkedAtLabel} — may no longer reflect current conditions.</span>
         </div>
-      )}
-      {edition?.recap_headline && (
+      ) : null}
+      {edition?.recap_headline ? (
         <div className="mb-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
           <div className="text-xs font-bold uppercase tracking-wide text-white">{edition.recap_headline}</div>
-          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-sky-200">{edition.recap_summary}</div>}
+          {edition.recap_summary ? (
+            <div className="mt-1 text-xs leading-relaxed text-sky-200">{edition.recap_summary}</div>
+          ) : null}
         </div>
-      )}
-      <CommandDeck
-        plays={plays}
-        // Was the inline literal "Legacy · Tonight's playbook" (~27 chars) — long enough to
-        // overflow `.nh-deck-cmd-lane`'s shrunk flex box and visually bleed over the adjacent
-        // engine-status/Opps-Top-Edge stat pills on a narrow viewport. See the header comment on
-        // NIGHTHAWK_COMPACT_LANE_LABEL (nighthawk-view.ts) for the full root cause + why a shorter
-        // label (not a CSS change) is this fix's scope.
-        laneLabel={NIGHTHAWK_COMPACT_LANE_LABEL.LEGACY}
-        degraded={hasFetchError || isDegraded}
-        loading={!edition && !error}
-        commandCenter
-        deckHorizon="LEGACY"
-        boardAsOf={edition?.published_at ?? null}
-        emptyHint={
-          hasFetchError
-            ? "Edition data unavailable right now — retrying. Check back shortly."
-            : isRecapOnly
-              ? "No plays cleared the scoring funnel tonight — market recap is above."
-              : "Five ranked setups land here after the evening scan · ~5:30 PM ET."
-        }
-      />
+      ) : null}
     </>
+  );
+
+  return (
+    <LegacyPickLogBoard
+      plays={plays}
+      loading={!edition && !error}
+      degraded={hasFetchError || isDegraded}
+      editionFor={edition?.edition_for ?? null}
+      editionLabel={editionLabel}
+      todaySession={todaySession}
+      selectedEditionDate={selectedEditionDate}
+      onSelectedEditionDateChange={setSelectedEditionDate}
+      calendarDates={calendarDates}
+      bannerSlot={bannerSlot}
+      macroContext={macroContext}
+      emptyDescription={emptyDescription}
+    />
   );
 }

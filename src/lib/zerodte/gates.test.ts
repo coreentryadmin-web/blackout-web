@@ -204,7 +204,7 @@ test("G-1 + G-2: a counter-tape long at 09:40 collects BOTH blocks (all reasons 
   );
 });
 
-// ── G-14 · late-afternoon block (no new commits after 3:30 PM ET) ─────────────────
+// ── G-14 · late-afternoon block (no new directional commits after 3:30 PM ET) ───
 
 test("G-14: directional setup at 15:30 ET is BLOCKED", () => {
   const v = evaluateZeroDteGates(input({ nowEtMinutes: 15 * 60 + 30 }));
@@ -213,12 +213,12 @@ test("G-14: directional setup at 15:30 ET is BLOCKED", () => {
   assert.equal(LATE_AFTERNOON_BLOCK_ET_MINUTES, 15 * 60 + 30);
 });
 
-test("G-14: 15:29 commits — boundary is exclusive (last minute before the block)", () => {
-  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 15 * 60 + 29 })).verdict, "COMMIT");
+test("G-14: 14:30 commits — full window through 15:29", () => {
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 + 30 })).verdict, "COMMIT");
 });
 
-test("G-14: 14:00 still commits (window now runs through 15:29 ET)", () => {
-  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 })).verdict, "COMMIT");
+test("G-14: 15:29 commits — boundary is exclusive (last minute before the block)", () => {
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 15 * 60 + 29 })).verdict, "COMMIT");
 });
 
 test("G-14: 15:45 is still BLOCKED after the cutoff", () => {
@@ -261,12 +261,15 @@ test("G-3: BREAKOUT at score 65 clears unified floor; G-17 blocks solo rail belo
 });
 
 
-test("G-15 removed: ONE_DTE commits (Monday equity starvation fix)", () => {
+test("G-15: ONE_DTE commits; WEEKLY_FALLBACK blocked at gate (not ghost COMMIT)", () => {
   const one = evaluateZeroDteGates(input({ contractHorizon: "ONE_DTE" }));
   assert.equal(one.verdict, "COMMIT", "ONE_DTE is a same-day horizon and must commit");
-  assert.ok(!one.blocks.some((b) => b.code === "not_zero_dte"));
+  assert.ok(!one.blocks.some((b) => b.code === "horizon_weekly_fallback"));
   assert.equal(evaluateZeroDteGates(input({ contractHorizon: "ZERO_DTE" })).verdict, "COMMIT");
   assert.equal(evaluateZeroDteGates(input({})).verdict, "COMMIT", "absent horizon = no-op (legacy)");
+  const weekly = evaluateZeroDteGates(input({ contractHorizon: "WEEKLY_FALLBACK" }));
+  assert.equal(weekly.verdict, "BLOCKED");
+  assert.ok(weekly.blocks.some((b) => b.code === "horizon_weekly_fallback"));
 });
 
 test("G-14: condor at 15:15 is NOT blocked (condors benefit from late-session theta)", () => {
@@ -457,7 +460,7 @@ test("G-4: extreme VIX (>=20) blocks single names outright", () => {
 });
 
 test("G-4: extreme VIX (>=20) lets index/ETF products through (half-size in calibration)", () => {
-  const qqq = evaluateZeroDteGates(input({ vixDayOpen: 22, score: 90 }));
+  const qqq = evaluateZeroDteGates(input({ vixDayOpen: 22, score: 78 }));
   assert.equal(qqq.verdict, "COMMIT");
   assert.equal(qqq.calibration.g4_vix.tier, "extreme");
   assert.equal(qqq.calibration.g4_vix.would_halve_size, true);
@@ -577,7 +580,7 @@ test("G-6: score >= 65 overrides the conflict — CONFLICT still flagged but com
     input({
       ticker: "META",
       direction: "short",
-      score: 85,
+      score: 78,
       nighthawkTake: { direction: "long", edition_for: "2026-07-10" },
     })
   );
@@ -654,6 +657,48 @@ test("G-8: MOVED plan blocks even when every other gate clears", () => {
   const v = evaluateZeroDteGates(input({ plan: moved }));
   assert.equal(v.verdict, "BLOCKED");
   assert.equal(v.blocks.some((b) => b.code === "plan_moved"), true);
+});
+
+test("G-8: MOVED plan commits when Vector winner aligns (live mark entry, not PASSED)", () => {
+  const moved: ContractPlan = {
+    ...CLEAN_PLAN,
+    entry_status: "MOVED",
+    vs_flow_pct: 120,
+    mark: 4.4,
+  };
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      plan: moved,
+      score: 88,
+      direction: "long",
+      vector_pulse: {
+        premium_pct: 80,
+        peak_premium_pct: 120,
+        action_status: "still_buy",
+        is_winner: true,
+        is_runner: false,
+        side: "call",
+        direction: "long",
+        strike: 100,
+        occ: "TEST",
+        rank: 1,
+        role: "flow-whale",
+      },
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "plan_moved"), false);
+});
+
+test("planQualityGateBlocks: vectorChaseExempt skips plan_moved on MOVED plans", () => {
+  const moved: ContractPlan = {
+    ...CLEAN_PLAN,
+    entry_status: "MOVED",
+    vs_flow_pct: 90,
+  };
+  assert.equal(planQualityGateBlocks(moved).some((b) => b.code === "plan_moved"), true);
+  assert.deepEqual(planQualityGateBlocks(moved, { vectorChaseExempt: true }), []);
 });
 
 test("G-9: illiquid spread blocks", () => {
@@ -789,7 +834,7 @@ test("planQualityGateBlocks: exported helper matches gate evaluation", () => {
 
 test("refreshPlanQualityGateBlocks: drops stale plan_no_quote after deferred attach", () => {
   const stale = evaluateZeroDteGates(
-    input({ plan: null, deferPlanQualityGates: true, score: 88 })
+    input({ plan: null, deferPlanQualityGates: true, score: 80 })
   );
   assert.equal(stale.verdict, "COMMIT");
   assert.equal(stale.blocks.some((b) => b.code === "plan_no_quote"), false);
@@ -882,7 +927,7 @@ test("evaluateZeroDteGates: a CONDOR is exempt from the moneyness re-check even 
 test("refreshMoneynessGateBlocks: re-applies the caps after a deferred (thesis-first) contract-plan attach", () => {
   // Gates ran first (thesis-first order) with the PRE-refresh otm_pct (inside caps) — no
   // moneyness block yet.
-  const preRefresh = evaluateZeroDteGates(input({ otmPct: 1, score: 88 }));
+  const preRefresh = evaluateZeroDteGates(input({ otmPct: 1, score: 80 }));
   assert.equal(preRefresh.verdict, "COMMIT");
   assert.equal(preRefresh.blocks.some((b) => b.code === "max_itm_pct"), false);
 
@@ -893,7 +938,7 @@ test("refreshMoneynessGateBlocks: re-applies the caps after a deferred (thesis-f
 
   // And the inverse: a candidate that started BLOCKED on a stale reading clears once the
   // refreshed otm_pct is back inside both caps (drift can go either direction).
-  const badPreRefresh = evaluateZeroDteGates(input({ otmPct: -9.55, score: 88 }));
+  const badPreRefresh = evaluateZeroDteGates(input({ otmPct: -9.55, score: 80 }));
   assert.equal(badPreRefresh.verdict, "BLOCKED");
   const goodPostRefresh = refreshMoneynessGateBlocks(badPreRefresh, 1, false);
   assert.equal(goodPostRefresh.blocks.some((b) => b.code === "max_itm_pct"), false);
@@ -901,7 +946,7 @@ test("refreshMoneynessGateBlocks: re-applies the caps after a deferred (thesis-f
 
 test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", () => {
   const gate = evaluateZeroDteGates(
-    input({ play_type: "CONDOR", condorPlan: null, score: 88 })
+    input({ play_type: "CONDOR", condorPlan: null, score: 80 })
   );
   const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
   assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
@@ -914,7 +959,7 @@ test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", ()
 // passed explicitly here since the flag is read once at module load and cannot be flipped
 // at runtime by a test.
 test("refreshGovernorPremiumBudgetBlocks: recomputes the budget using the REAL post-attach premium, not the stale plan=null 0", () => {
-  const base = evaluateZeroDteGates(input({ plan: null, score: 88 }));
+  const base = evaluateZeroDteGates(input({ plan: null, score: 80 }));
   assert.equal(base.blocks.some((b) => b.code === "governor_premium_budget"), false);
 
   // premiumAtRisk sits just under the cap; only a real (now-attached) entry_premium pushes
@@ -934,7 +979,7 @@ test("refreshGovernorPremiumBudgetBlocks: recomputes the budget using the REAL p
 });
 
 test("deferPlanQualityGates: evaluateZeroDteGates skips plan blocks when plan is null", () => {
-  const v = evaluateZeroDteGates(input({ plan: null, deferPlanQualityGates: true, score: 88 }));
+  const v = evaluateZeroDteGates(input({ plan: null, deferPlanQualityGates: true, score: 80 }));
   assert.equal(v.verdict, "COMMIT");
   assert.equal(v.blocks.some((b) => b.code === "plan_no_quote"), false);
 });
@@ -1303,7 +1348,7 @@ test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly
   assert.equal(at17null.calibration.g4_vix.tier, "elevated");
   assert.ok(at17null.blocks.some((b) => b.code === "vix_elevated"));
   // 19.999 → still elevated (a single name at 90 clears the 75 elevated floor).
-  const nvdaHi = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 19.999, score: 90, bias: "flat" }));
+  const nvdaHi = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 19.999, score: 78, bias: "flat" }));
   assert.equal(nvdaHi.calibration.g4_vix.tier, "elevated");
   assert.equal(nvdaHi.verdict, "COMMIT");
   // Exactly 20 (>= extreme) → the same single name is blocked outright (index/ETF only).
@@ -1403,6 +1448,68 @@ test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflic
     const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 65, slayerLive }));
     assert.ok(!cleared.blocks.some((b) => b.code === "cross_system_conflict"), `${ticker} at 65 should override the conflict`);
     assert.equal(cleared.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
+  }
+});
+
+// ── G-6 CONDOR exemption: calibration must mirror the live gate's own `!isCondor` scoping ──
+test("G-6 calibration: a CONDOR correlated-and-opposed at a low score is NOT flagged conflict — mirrors the live gate's exemption", () => {
+  const slayerLive = { direction: "long" as const };
+  const v = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", direction: "short", score: 50, slayerLive }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  // The live gate never evaluates G-6 for a condor (delta-neutral, no side to oppose with).
+  assert.ok(!v.blocks.some((b) => b.code === "cross_system_conflict"));
+  // Calibration must say the SAME thing, not silently flag conflict:true/would_block:true —
+  // that would mix a structurally different (delta-neutral) row into the directional
+  // would-block/would-pass cohorts recommendGate("g6_conflict", ...) measures.
+  assert.equal(v.calibration.g6_conflict.conflict, false);
+  assert.equal(v.calibration.g6_conflict.would_block, false);
+  assert.equal(v.calibration.g6_conflict.applicable, false);
+  assert.deepEqual(v.calibration.g6_conflict.against, []);
+});
+
+// ── G-4 CONDOR calibration: same isCondor mismatch as G-6, in the same function ───────────
+test("G-4 calibration: a CONDOR at elevated VIX (18) with a low score is NOT flagged would_block — mirrors the live gate's best-regime exemption", () => {
+  const v = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", score: 40, bias: null, vixDayOpen: 18 }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  // The live gate's condor G-4 branch only blocks at EXTREME VIX — elevated (17-20) is the
+  // condor's best regime (fatter premium while the range holds), so it never blocks here
+  // regardless of score/alignment (unlike the directional branch, which does gate on score).
+  assert.ok(!v.blocks.some((b) => b.code === "condor_vix_regime"));
+  assert.equal(v.calibration.g4_vix.tier, "elevated");
+  // Before the fix, this read `would_block: true` (score 40 < the directional 65/75 floors),
+  // even though the live gate never even evaluates that floor for a condor — a directional
+  // verdict silently computed for a row the live gate handles under different rules entirely.
+  assert.equal(v.calibration.g4_vix.would_block, false);
+});
+
+test("G-4 calibration: a CONDOR at extreme VIX (20) IS flagged would_block for every ticker, no index/ETF half-size carve-out", () => {
+  const single = evaluateZeroDteGates({
+    ...input({ ticker: "NVDA", score: 90, vixDayOpen: 20 }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  const indexEtf = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", score: 90, vixDayOpen: 20 }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  for (const v of [single, indexEtf]) {
+    assert.ok(v.blocks.some((b) => b.code === "condor_vix_regime"));
+    assert.equal(v.calibration.g4_vix.tier, "extreme");
+    assert.equal(v.calibration.g4_vix.would_block, true);
+    // Unlike the directional branch's index/ETF half-size carve-out, a condor has none —
+    // extreme VIX blocks it outright regardless of ticker.
+    assert.equal(v.calibration.g4_vix.would_halve_size, false);
   }
 });
 
@@ -1656,4 +1763,86 @@ test("stack fix: single name with null SPY tape does not fail G-12 when VWAP-sid
   assert.equal(v.verdict, "COMMIT");
   assert.ok(!v.blocks.some((b) => b.code === "confluence_floor"));
   assert.ok(!v.blocks.some((b) => b.code === "no_market_bias"));
+});
+
+test("G-18: early window sub-prime score (70) is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ score: 70, nowEtMinutes: EARLY_ET }));
+  assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
+test("G-18: early window prime score (78) commits", () => {
+  const v = evaluateZeroDteGates(input({ score: 78, nowEtMinutes: EARLY_ET }));
+  assert.ok(!v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
+test("G-19: score 88+ is BLOCKED without Vector winner", () => {
+  const v = evaluateZeroDteGates(input({ score: 88 }));
+  assert.ok(v.blocks.some((b) => b.code === "score_top_band"));
+});
+
+test("G-19: score 88+ BREAKOUT-only origin is not blocked (F-5 measured on FLOW)", () => {
+  const v = evaluateZeroDteGates(input({ score: 88, discovery_origin: ["BREAKOUT"] }));
+  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+});
+
+test("G-19: score 88+ Vector winner aligned commits", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      score: 88,
+      direction: "long",
+      vector_pulse: {
+        premium_pct: 80,
+        peak_premium_pct: 90,
+        action_status: "still_buy",
+        is_winner: true,
+        is_runner: false,
+        side: "call",
+        direction: "long",
+        strike: 100,
+        occ: "TEST",
+        rank: 1,
+        role: "flow-whale",
+      },
+    })
+  );
+  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+});
+
+test("G-19: score 88+ Vector runner aligned at 68+ commits (not only winners)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      score: 88,
+      direction: "long",
+      vector_pulse: {
+        premium_pct: 28,
+        peak_premium_pct: 35,
+        action_status: "still_buy",
+        is_winner: false,
+        is_runner: true,
+        side: "call",
+        direction: "long",
+        strike: 100,
+        occ: "TEST",
+        rank: 1,
+        role: "flow-whale",
+      },
+    })
+  );
+  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+});
+
+test("runnerConfluenceCount: uses pinned confirmations when higher than gate leg count", async () => {
+  const { runnerConfluenceCount } = await import("./gates.ts");
+  const c: ZeroDteConfluence = {
+    score: 2,
+    confirmations: 2,
+    timing_ok: true,
+    early_window: false,
+    vwap_ok: true,
+    market_ok: true,
+    tier: "double",
+    label: "double",
+  };
+  assert.equal(runnerConfluenceCount(c, "NVDA", 0), 2);
+  assert.equal(runnerConfluenceCount(c, "NVDA", 1), 3);
 });

@@ -20,6 +20,7 @@ import {
   trimLadderVisual,
   unifiedChecklist,
 } from "./terminal-display";
+import { playContractHeadline } from "./play-card-lifecycle";
 import {
   playFreshnessDisplay,
   playLifecycleTimestamps,
@@ -30,8 +31,13 @@ import {
   entryCenteredExcursionLayout,
   formatExcursionPct,
 } from "./trade-excursion-graphic";
-import { signColorClass } from "@/lib/zerodte/terminal-edge";
+import {
+  legacyPrimaryPeakPct,
+  legacyPrimaryPnlPct,
+  legacyPrimaryTroughPct,
+} from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { formatReturnPct } from "./play-card-display";
+import { signColorClass } from "@/lib/zerodte/terminal-edge";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { AgeDecayBadge, StatusPill } from "./DeckStatusBadges";
 import { etNowParts } from "@/features/nighthawk/lib/session";
@@ -113,24 +119,42 @@ export function TradeSummaryHero({
   const freshness = playFreshnessDisplay(play, nowMs, primary.iso);
   const status = playStatusDisplay(play.status);
   const ageLabel = freshness.compactAge ?? "—";
+  const swingHeadline = play.horizon === "SWING" || play.horizon === "LEAPS" ? playContractHeadline(play) : null;
 
   return (
     <header className="nh-deck-trade-hero nh-deck-trade-hero-dense" aria-label="Selected trade summary">
       <div className="nh-deck-trade-hero__headrow">
         <div className="nh-deck-trade-hero__identity">
-          <span className="nh-deck-trade-hero__tk">{summary.ticker}</span>
-          <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
-            {summary.direction}
-            {summary.origin ? ` • ${summary.origin}` : ""}
-          </span>
+          {swingHeadline ? (
+            <>
+              <span className="nh-deck-trade-hero__tk nh-deck-trade-hero__tk-contract">{swingHeadline}</span>
+              <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
+                {summary.direction}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="nh-deck-trade-hero__tk">{summary.ticker}</span>
+              <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
+                {summary.direction}
+                {summary.origin ? ` • ${summary.origin}` : ""}
+              </span>
+            </>
+          )}
           <StatusPill label={status.label} tone={status.tone} />
         </div>
         <ConfidenceBadge play={play} hero className="nh-deck-trade-hero__conf-badge" />
       </div>
 
       <div className="nh-deck-trade-hero__chips">
-        <span className="nh-deck-trade-hero__chip">{summary.horizonLabel}</span>
-        <span className="nh-deck-trade-hero__chip contract">{summary.contract}</span>
+        {!swingHeadline && <span className="nh-deck-trade-hero__chip">{summary.horizonLabel}</span>}
+        {!swingHeadline && <span className="nh-deck-trade-hero__chip contract">{summary.contract}</span>}
+        {swingHeadline && summary.grade && (
+          <span className="nh-deck-trade-hero__chip">Grade {summary.grade}</span>
+        )}
+        {swingHeadline && play.entry != null && (
+          <span className="nh-deck-trade-hero__chip">Entry ${play.entry.toFixed(2)}</span>
+        )}
         {rankContext?.isHighestToday && (
           <span className="nh-deck-trade-hero__chip orig">Highest today</span>
         )}
@@ -255,8 +279,12 @@ export function TradeExcursionGraphic({
   markFlash?: boolean;
 }) {
   const closed = play.status === "CLOSED";
-  const currentPct = closed ? (play.exitPnlPct ?? play.pnlPct) : play.pnlPct;
-  const layout = entryCenteredExcursionLayout(play.trough, play.peak, currentPct, { closed });
+  const currentPct = closed
+    ? (play.exitPnlPct ?? play.pnlPct)
+    : legacyPrimaryPnlPct(play);
+  const worst = legacyPrimaryTroughPct(play);
+  const best = legacyPrimaryPeakPct(play);
+  const layout = entryCenteredExcursionLayout(worst, best, currentPct, { closed });
 
   if (!layout) return null;
 
@@ -324,9 +352,6 @@ export function TradeExcursionGraphic({
     </section>
   );
 }
-
-/** @deprecated Use TradeExcursionGraphic — kept as alias for any stale imports. */
-export const PremiumMarkChart = TradeExcursionGraphic;
 
 function StrengthBar({
   pct,
@@ -535,7 +560,7 @@ export function ManagementActionCard({
 }
 
 export function VisualTrimLadder({ play }: { play: TerminalPlay }) {
-  const rungs = trimLadderVisual(play.exitPolicy);
+  const rungs = trimLadderVisual(play.exitPolicy, play.runnerProfile?.targetPct ?? null);
   if (rungs.length === 0) return null;
   return (
     <section className="nh-deck-trim-visual" aria-label="Trim ladder">
@@ -565,6 +590,9 @@ export function TradeOutcomePanel({ play }: { play: TerminalPlay }) {
   const outcome = tradeOutcomeDisplay(play);
   const closePct = outcome.closePct;
   const sign = closePct != null && closePct >= 0 ? "+" : "";
+  const mfeCapture = outcome.mfeCapturePct;
+  const bestPct = outcome.bestPct;
+  const worstPct = outcome.worstPct;
 
   return (
     <section className="nh-deck-outcome" aria-label="Trade outcome">
@@ -580,6 +608,27 @@ export function TradeOutcomePanel({ play }: { play: TerminalPlay }) {
       >
         {closePct != null ? `${sign}${closePct.toFixed(0)}%` : "—"}
       </div>
+      {outcome.verdict !== "OPEN" && (bestPct != null || worstPct != null || mfeCapture != null) && (
+        <div className="nh-deck-outcome__excursion" aria-label="Excursion and capture">
+          {bestPct != null && (
+            <span className="nh-deck-outcome__peak">
+              Peak {bestPct >= 0 ? "+" : ""}
+              {bestPct.toFixed(0)}%
+            </span>
+          )}
+          {mfeCapture != null && bestPct != null && bestPct > 0 && (
+            <span className="nh-deck-outcome__capture">
+              Captured {mfeCapture.toFixed(0)}% of peak
+            </span>
+          )}
+          {worstPct != null && (
+            <span className="nh-deck-outcome__trough">
+              Trough {worstPct >= 0 ? "+" : ""}
+              {worstPct.toFixed(0)}%
+            </span>
+          )}
+        </div>
+      )}
     </section>
   );
 }

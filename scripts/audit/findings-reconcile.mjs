@@ -27,10 +27,18 @@ const RUNLOG = process.env.FINDINGS_RECONCILE_RUNLOG ?? "docs/audit/RUN-LOG.md";
 const APPLY = process.argv.includes("--apply");
 
 /** A pass log records that a scheduled validation ran and was green. Valuable as history, noise in
- *  a findings file — CLAUDE.md already forbids opening docs-only PRs for them. */
+ *  a findings file — CLAUDE.md already forbids opening docs-only PRs for them.
+ *
+ *  The first two patterns are heading-anchored (`^##`) on purpose. Unanchored, they scan the whole
+ *  1500-char classify() window — a real FINDING whose body prose merely MENTIONS a post-close fix
+ *  agent run or cites "all validators GREEN" as its own regression evidence reads identically to a
+ *  pass log's own self-describing heading. Found 2026-09-04: a real P2 harness-bug FINDING (its
+ *  "What prompted this" field read "SPX Slayer post-close fix agent... reported FAIL") was swept
+ *  into RUN-LOG.md by the unanchored version — the exact "false PASS-LOG buries a live bug" failure
+ *  this file's own header warns about, not a hypothetical. */
 const PASS_LOG = [
-  /all validators GREEN/i,
-  /Post-close fix agent/i,
+  /^##.*all validators GREEN/i,
+  /^##.*Post-close fix agent/i,
   /^##.*\bGREEN\b.*(pass|run|sweep|check)/i,
   /pre-open (validation|gate).*(GREEN|clean)/i,
 ];

@@ -25,16 +25,16 @@ export function welcomePremiumEmail(ctx: WelcomePremiumContext): {
   const t = (s: string) => substituteTokens(s, tokens);
   const fromCommunity = ctx.previousTier === "community";
 
-  const subject = "Full desk unlocked. All six engines, live.";
+  const subject = "Full desk unlocked. All seven products, live.";
 
   const opener = fromCommunity
-    ? "{{firstName}}, you already know what SPX Slayer looks like when it's right — and when it's wrong. No hindsight edits, no deleted trades, no cherry-picking — wins and losses both stay on the record. Premium just handed you the other five instruments running on that same live feed. Same standard, five more lenses on the market."
-    : "{{firstName}}, you're in. Not partway — all the way in. Every engine we run, every read we publish, every setup graded A-F before anyone knows the outcome. Most traders stitch together five different tabs and hope the picture lines up. You just skipped that part. Full read on dealer gamma exposure, institutional flow, and dark-pool prints — across the whole market, not one ticker. This is Premium.";
+    ? "{{firstName}}, you already know what SPX Slayer looks like when it's right — and when it's wrong. No hindsight edits, no deleted trades, no cherry-picking — wins and losses both stay on the record. Premium just handed you the other six products running on that same live feed. Same standard, six more lenses on the market."
+    : "{{firstName}}, you're in. Not partway — all the way in. Every product we run, every read we publish, every setup graded A-F before anyone knows the outcome. Most traders stitch together five different tabs and hope the picture lines up. You just skipped that part. Full read on dealer gamma exposure, institutional flow, and dark-pool prints — across the whole market, not one ticker. This is Premium.";
 
   const sharedParagraphs = [
-    "Thermal puts dealer gamma exposure on the screen as heat, not a guess — GEX, VEX, DEX, CHARM, mapped in real time, the exact strikes where market makers get pinned, squeezed, or forced to chase their own hedges. HELIX tracks the sweeps, the blocks, the dark-pool prints institutions leave behind — surfaced as they clear, so you see size before it's a headline.",
-    "Night Hawk hands you the overnight playbook before the bell, then keeps scanning intraday for 0DTE setups as they build. Largo AI is your live-data chat — ask it what's happening on the tape, and it answers off the same feed running the desk, not a script. Vector scans gamma exposure across tickers at once, so you're never stuck watching one name while the real move breaks out three symbols over.",
-    "Doesn't matter if you're billed monthly or annually — access is identical, full six-engine desk, no walls between you and any of it. Monthly cancels whenever, no contract. Annual locks your rate for the full year.",
+    "Thermal puts dealer gamma exposure on the screen as heat, not a guess — GEX, VEX, DEX, CHARM, mapped in real time, the exact strikes where market makers get pinned, squeezed, or forced to chase their own hedges. HELIX tracks the sweeps, the blocks, the dark-pool prints institutions leave behind — streamed live with quote age on every read.",
+    "Night Hawk runs 0DTE Command intraday — whole-market scanner, Cortex gates, graded play lifecycle — and publishes Evening Edition prep after the close. Largo AI is your live-data chat — ask it what's happening on the tape, and it answers off the same feed running the desk, not a script. Vector scans gamma and flow across the universe with ranked setups, wall integrity, and replay.",
+    "Doesn't matter if you're billed monthly or annually — access is identical, full seven-product desk, no walls between you and any of it. Monthly cancels whenever, no contract. Annual locks your rate for the full year.",
   ];
 
   const annualLine =

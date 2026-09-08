@@ -9,9 +9,9 @@ import {
   computeEarningsYoY,
   dualBeatRateFromPrints,
   earningsWhenFromTime,
+  impactFromEarningsImportance,
   overlayTimelineExpectedMoves,
   parseNextEarningsFromBenzinga,
-  mergeEarningsTimelineSources,
   mergeStreetEstimates,
   pickEarningsCalendarRow,
   postPrintSurpriseLean,
@@ -51,6 +51,25 @@ test("earningsWhenFromTime buckets pre/post market", () => {
   assert.equal(earningsWhenFromTime(null), null);
 });
 
+test("impactFromEarningsImportance: an unrated print reads as the WEAKEST bucket, never the strongest", () => {
+  // Regression pin: Benzinga leaves `importance` null for a large share of names (unrated small/mid
+  // caps). An absent rating must not read as importance>=4 (the codebase's own stated rule in
+  // meridian-em-priority.ts: unknown ranks below a real 0), or every unrated name floods the
+  // "High Impact" strip/count indistinguishably from a confirmed mega-cap print.
+  assert.equal(impactFromEarningsImportance(null), "low");
+  assert.equal(impactFromEarningsImportance(undefined), "low");
+  assert.equal(impactFromEarningsImportance(Number.NaN), "low");
+});
+
+test("impactFromEarningsImportance: real importance still buckets high/medium/low", () => {
+  assert.equal(impactFromEarningsImportance(5), "high");
+  assert.equal(impactFromEarningsImportance(4), "high");
+  assert.equal(impactFromEarningsImportance(3), "medium");
+  assert.equal(impactFromEarningsImportance(2), "medium");
+  assert.equal(impactFromEarningsImportance(1), "low");
+  assert.equal(impactFromEarningsImportance(0), "low");
+});
+
 test("benzingaSurpriseToDisplayPct normalizes ratio to percent", () => {
   assert.equal(benzingaSurpriseToDisplayPct(0.0625), 6.3);
   assert.equal(benzingaSurpriseToDisplayPct(6.25), 6.3);
@@ -72,6 +91,28 @@ test("overlayTimelineExpectedMoves applies chain-IV expected move by ticker", ()
   assert.equal(out[0]?.expected_move_pct, 6.2);
 });
 
+test("overlayTimelineExpectedMoves withholds the live chain-IV overlay once the row has already printed", () => {
+  // Same-day BMO print: loadMeridianEarningsTimeline keeps report_date >= todayYmd, so a row that
+  // already reported earlier today is still in the batch. Overlaying the NOW-live chain IV onto it
+  // would pair "~X% implied move" with " · printed" in the same rendered string (meridian-timeline.ts)
+  // — a forward-looking expectation asserted for an event the same label says already happened.
+  const rows = [
+    {
+      ticker: "NVDA",
+      name: "NVIDIA",
+      report_date: "2026-08-26",
+      when: "afterhours" as const,
+      expected_move_pct: null,
+      source: "earnings_calendar" as const,
+      is_printed: true,
+    },
+  ];
+  const em = new Map([["NVDA", 6.2]]);
+  const out = overlayTimelineExpectedMoves(rows, em);
+  assert.equal(out[0]?.expected_move_pct, null);
+  assert.equal(out[0]?.source, "earnings_calendar");
+});
+
 test("parseNextEarningsFromBenzinga picks nearest upcoming print", () => {
   const next = parseNextEarningsFromBenzinga(
     "NVDA",
@@ -85,44 +126,6 @@ test("parseNextEarningsFromBenzinga picks nearest upcoming print", () => {
   assert.equal(next?.days_until, 9);
   assert.equal(next?.report_time, "afterhours");
   assert.equal(next?.is_confirmed, true);
-});
-
-test("mergeEarningsTimelineSources overlays expected move on Benzinga row", () => {
-  const merged = mergeEarningsTimelineSources(
-    [bz({ ticker: "NVDA", company_name: "NVIDIA", date: "2026-08-26", time: "16:20:00" })],
-    [
-      {
-        ticker: "NVDA",
-        name: "NVDA",
-        report_date: "2026-08-26",
-        when: "afterhours",
-        expected_move_pct: 6.2,
-        source: "chain_iv",
-      },
-    ]
-  );
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0]?.name, "NVIDIA");
-  assert.equal(merged[0]?.expected_move_pct, 6.2);
-  assert.equal(merged[0]?.report_time, "16:20");
-});
-
-test("mergeEarningsTimelineSources drops stale UW-only date when Benzinga confirmed differs", () => {
-  const merged = mergeEarningsTimelineSources(
-    [bz({ ticker: "NVDA", date: "2026-08-26", date_status: "confirmed" })],
-    [
-      {
-        ticker: "NVDA",
-        name: "NVDA",
-        report_date: "2026-08-20",
-        when: "afterhours",
-        expected_move_pct: 5,
-        source: "chain_iv",
-      },
-    ]
-  );
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0]?.report_date, "2026-08-26");
 });
 
 test("mergeStreetEstimates prefers Benzinga then UW tail", () => {

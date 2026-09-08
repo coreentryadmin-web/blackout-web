@@ -5,11 +5,15 @@ import {
   LEGACY_SWING_SIGNAL_KIND,
   buildLegacySwingArtifacts,
   carryLegacyPromotedIntoSnapshot,
+  filterChainRowsForSwingPromotion,
   isCarriedContractLive,
   carriedContractExpiry,
   legacyPlayDirection,
   mergeLegacyPromotedSnapshot,
+  refreshCarriedLegacyPlay,
 } from "./legacy-confirm-promote.ts";
+import { HORIZONS } from "../horizons.ts";
+import { subLaneForDte } from "./taxonomy.ts";
 import { discoverSwingFromPersisted, persistSwingServingSnapshot } from "./serving-lane.ts";
 import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
 import { swingThesisKey } from "./accumulation-store.ts";
@@ -56,6 +60,23 @@ test("legacyPlayDirection normalizes short variants", () => {
   assert.equal(legacyPlayDirection(legacyPlay({ direction: "LONG" })), "LONG");
 });
 
+test("buildLegacySwingArtifacts: absent 10d returns omit REL_STRENGTH (no fabricated 0/0)", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  assert.equal(artifact!.dossier.pillarSignals.REL_STRENGTH, null);
+  assert.ok(
+    artifact!.dossier.dataQuality.missing.includes("REL_STRENGTH"),
+    "REL_STRENGTH must be listed missing, not scored as 0/0 outperformance",
+  );
+});
+
 test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only graduation", () => {
   const artifact = buildLegacySwingArtifacts({
     play: legacyPlay(),
@@ -72,6 +93,40 @@ test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only grad
   assert.deepEqual(artifact!.watch.signalKinds, [LEGACY_SWING_SIGNAL_KIND]);
   assert.equal(artifact!.watch.distinctSessionDays, 2);
   assert.equal(artifact!.dossier.feature_vector?.accumulation?.net_signed_premium ?? 0, 0);
+  assert.ok(
+    (artifact!.play.contract?.dte ?? 0) >= HORIZONS.SWING.dteMin,
+    "promoted contract must clear Swing dteMin",
+  );
+  assert.equal(
+    artifact!.dossier.subLane,
+    subLaneForDte(artifact!.play.contract!.dte),
+    "dossier subLane must match the picked contract DTE",
+  );
+});
+
+test("filterChainRowsForSwingPromotion drops sub-floor expiries", () => {
+  const rows = [
+    { ...chainRows[0]!, expiry: "2026-08-07" },
+    { ...chainRows[0]!, expiry: "2026-08-14" },
+  ];
+  const kept = filterChainRowsForSwingPromotion(rows, "2026-08-04");
+  assert.deepEqual(
+    kept.map((r) => r.expiry),
+    ["2026-08-14"],
+  );
+});
+
+test("buildLegacySwingArtifacts returns null when only sub-floor expiries exist", () => {
+  const shortOnly = [{ ...chainRows[0]!, expiry: "2026-08-07" }];
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows: shortOnly,
+    chainSpot: 99.5,
+  });
+  assert.equal(artifact, null);
 });
 
 // ─── ATR-grounded plan levels (FINDINGS 2026-08-06 P2 follow-up, fix) ──────────────────────────────
@@ -308,4 +363,39 @@ test("carryLegacyPromotedIntoSnapshot DROPS an expired carry and keeps the fresh
     "an expired carried contract must not be served",
   );
   assert.equal(carried.watch.some((w) => w.ticker === "SKHY"), false);
+});
+
+test("refreshCarriedLegacyPlay recomputes DTE and merges a fresher organic quote", () => {
+  const carried = {
+    ticker: "NVDA",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 70,
+    status: "WATCH" as const,
+    scoreFloor: 60,
+    reason: "NIGHT HAWK · 10DTE",
+    contract: {
+      strike: 100,
+      expiry: "2026-08-14",
+      right: "C" as const,
+      dte: 10,
+      mid: 6.44,
+      bid: 6.2,
+      ask: 6.6,
+      openInterest: 0,
+    },
+  };
+  const fresh = {
+    ...carried,
+    contract: { ...carried.contract, dte: 7, mid: 0.22, bid: 0.2, ask: 0.24 },
+  };
+  const refreshed = refreshCarriedLegacyPlay(
+    carried,
+    "2026-08-07",
+    new Map([["NVDA", fresh]]),
+  );
+  assert.ok(refreshed);
+  assert.equal(refreshed!.contract.dte, 7);
+  assert.equal(refreshed!.contract.mid, 0.22);
+  assert.match(refreshed!.reason ?? "", /7DTE/);
 });

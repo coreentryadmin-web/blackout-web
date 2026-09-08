@@ -13,7 +13,13 @@ import {
 } from "recharts";
 import { clsx } from "clsx";
 import { Drawer, Skeleton, EmptyState } from "@/components/ui";
-import { fmtPremium, fetchOptionContractDrilldown, type OptionContractDrilldown } from "@/lib/api";
+import {
+  fmtPremium,
+  fetchOptionContractDrilldown,
+  fetchOptionContractHistory,
+  type OptionContractDrilldown,
+  type OptionContractHistory,
+} from "@/lib/api";
 import type { FlowAlert } from "@/lib/api";
 import {
   daysToExpiry,
@@ -134,6 +140,11 @@ export function ContractDrilldownDrawer({
   const [data, setData] = useState<OptionContractDrilldown | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Independent of `data`/`loading`/`error` above — multi-day history reads a different
+  // upstream (our own Postgres, not UW's live API) and must never block or blank the "today"
+  // section if it fails; a member should still see today's fills even on a bad history fetch.
+  const [history, setHistory] = useState<OptionContractHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const load = useCallback(async (c: FlowAlert) => {
     setLoading(true);
@@ -154,13 +165,35 @@ export function ContractDrilldownDrawer({
     }
   }, []);
 
+  const loadHistory = useCallback(async (c: FlowAlert) => {
+    setHistoryLoading(true);
+    try {
+      const h = await fetchOptionContractHistory({
+        ticker: c.ticker,
+        strike: c.strike,
+        expiry: c.expiry,
+        option_type: c.option_type.toUpperCase() === "PUT" ? "PUT" : "CALL",
+      });
+      setHistory(h);
+    } catch {
+      // Fail silent, not fail loud — see the state comment above. The section below just
+      // hides itself when `history` stays null, same convention as `data` elsewhere here.
+      setHistory(null);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (flow) void load(flow);
-    else {
+    if (flow) {
+      void load(flow);
+      void loadHistory(flow);
+    } else {
       setData(null);
       setError(null);
+      setHistory(null);
     }
-  }, [flow, load]);
+  }, [flow, load, loadHistory]);
 
   const chartData = useMemo(() => {
     if (!data?.intraday?.length) return [];
@@ -463,6 +496,54 @@ export function ContractDrilldownDrawer({
               </div>
             </>
           )}
+
+          {/* ── MULTI-DAY HISTORY ────────────────────────────────────────────────
+              Independent fetch/state from "today" above — our own persisted flow_alerts,
+              not UW's live API, so this can't tell you anything about a contract that has
+              never printed before (a fresh weekly strike, a brand-new expiry). Self-hides
+              on no data/error, same convention as every other optional section here. */}
+          {historyLoading ? (
+            <Skeleton width="100%" height={120} rounded="md" />
+          ) : history && history.days.length > 0 ? (
+            <div className="helix-contract-history desk-panel border border-white/[0.08] rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
+                <p className="helix-print-detail-title !mb-0">
+                  {history.days.length}-session history · last {history.lookback_days}d
+                </p>
+                <span className="font-mono text-[10px] text-sky-300/70">{history.total_prints} prints</span>
+              </div>
+              <div className="max-h-[220px] overflow-auto flow-scroll">
+                <table className="helix-contract-fills-table w-full">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th className="text-right">Prints</th>
+                      <th className="text-right">Calls</th>
+                      <th className="text-right">Puts</th>
+                      <th className="text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.days.map((d) => (
+                      <tr key={d.date}>
+                        <td className="tabular-nums">{d.date}</td>
+                        <td className="text-right tabular-nums">{d.count}</td>
+                        <td className="text-right tabular-nums text-bull">
+                          {d.callPremium > 0 ? fmtPremium(d.callPremium) : "—"}
+                        </td>
+                        <td className="text-right tabular-nums text-bear-text">
+                          {d.putPremium > 0 ? fmtPremium(d.putPremium) : "—"}
+                        </td>
+                        <td className="text-right tabular-nums font-semibold text-white">
+                          {fmtPremium(d.total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </Drawer>

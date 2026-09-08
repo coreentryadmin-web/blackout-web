@@ -1,6 +1,7 @@
 import type { TerminalPlay } from "./types";
 import { tierRank } from "./deck-sort";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
+import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 
 /** Quality / confidence % for the row — score is 0–100 on 0DTE; confidence is 0–1 when wired. */
 export function playQualityPct(play: TerminalPlay): number | null {
@@ -14,15 +15,35 @@ export function playQualityPct(play: TerminalPlay): number | null {
   return null;
 }
 
-/** Letter grade for display — tier label first, never fabricated. */
+/** Letter grade for display — tier label first; horizon lanes fall back to score→letter. */
 export function playGradeLabel(play: TerminalPlay): string | null {
   const t = play.tierLabel?.trim();
-  return t || null;
+  if (t) return t;
+  if (
+    (play.horizon === "SWING" || play.horizon === "LEAPS") &&
+    play.score != null &&
+    Number.isFinite(play.score) &&
+    play.score > 0
+  ) {
+    return convictionFromScore(play.score);
+  }
+  return null;
+}
+
+/** Entry premium in the GRADE column — 0DTE/Legacy only; swings show letter grade, entry lives in the rail. */
+export function playEntryInGradeColumn(play: TerminalPlay): boolean {
+  return play.horizon === "ZERO_DTE" || play.horizon === "LEGACY";
 }
 
 /** Entry premium (0DTE per-contract, or condor net credit) for the list row — compact $ form.
  *  Null when the play carries no entry field rather than showing a fabricated $0.00. */
 export function playEntryDisplay(play: TerminalPlay): string | null {
+  if (play.horizon === "LEGACY") {
+    if (play.entryCostPerContract != null && Number.isFinite(play.entryCostPerContract)) {
+      return `$${play.entryCostPerContract.toFixed(2)}/sh`;
+    }
+    if (play.entryRange) return play.entryRange;
+  }
   if (play.entry == null || !Number.isFinite(play.entry)) return null;
   return `$${play.entry.toFixed(2)}`;
 }
@@ -54,7 +75,10 @@ export function primaryReturnPct(play: TerminalPlay): number | null {
 /** Label beside the return % on list rows — WATCH uses "Since flag", not "P&L". */
 export function primaryReturnLabel(play: TerminalPlay): string {
   if (isWatchTrackStatus(play.status) && play.trackPct != null) return "Since flag";
-  if (play.horizon === "LEGACY" && play.pnlPct != null) return "P&L";
+  if (play.horizon === "LEGACY") {
+    if (play.status === "CLOSED") return "Peak Return";
+    return play.stockMovePct != null ? "Stock" : "P&L";
+  }
   if (play.status === "CLOSED") return "Peak Return";
   return "P&L";
 }
@@ -79,9 +103,4 @@ export function useHeroPlayCard(_play: TerminalPlay, _selected: boolean, _rank: 
 /** Lifecycle card layout — all four Night Hawk lanes. */
 export function useLifecyclePlayCard(_play: TerminalPlay): boolean {
   return true;
-}
-
-/** @deprecated Use useLifecyclePlayCard — kept for call-site clarity during migration. */
-export function useEnhancedZeroDteRow(play: TerminalPlay): boolean {
-  return useLifecyclePlayCard(play);
 }

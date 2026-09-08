@@ -1,0 +1,61 @@
+# BLACKOUT Hourly autonomous wake — structured checklist pass
+#
+# Complements blackout-autopilot-dispatch (every 10m) with a fixed question set so
+# agents always recover state, run ops gates, scan for bugs, and hand off.
+# Requires: CURSOR_API_KEY
+
+name: BLACKOUT Hourly checklist wake
+
+on:
+  schedule:
+    # Top of every hour UTC
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: blackout-hourly-checklist
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Launch Cursor Cloud Agent (hourly checklist)
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CURSOR_API_KEY:-}" ]; then
+            echo "CURSOR_API_KEY not set — skipping hourly wake."
+            exit 0
+          fi
+          CHECKLIST=$(node scripts/blackout-agent/hourly-checklist.mjs)
+          EXTRA="HOURLY WAKE ALARM ($(date -u +%Y-%m-%dT%H:%MZ)) — run the checklist below end-to-end. Do not ask the user."
+          export PROMPT
+          PROMPT=$(node scripts/blackout-agent/dispatch-prompt.mjs --agent=cursor --extra="$EXTRA"$'\n\n'"$CHECKLIST")
+          payload=$(node -e "
+            console.log(JSON.stringify({
+              prompt: { text: process.env.PROMPT },
+              repos: [{ url: 'https://github.com/coreentryadmin-web/blackout-web', startingRef: 'main' }],
+              autoCreatePR: true
+            }));
+          ")
+          resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
+            -u "${CURSOR_API_KEY}:" \
+            -H 'Content-Type: application/json' \
+            -d "$payload") || {
+            echo "::warning::Hourly checklist agent launch failed"
+            exit 0
+          }
+          echo "$resp" | node -e "
+            const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
+            console.log('Hourly checklist agent:', r.agent?.url ?? r.url ?? r);
+          "

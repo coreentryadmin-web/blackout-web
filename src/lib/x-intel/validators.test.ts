@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { validateChronology, validateConfidence } from "@/lib/x-intel/validators";
+import { validateChronology, validateConfidence, validateSessionClaim } from "@/lib/x-intel/validators";
+import type { XIntelQueueRow } from "@/lib/x-intel/queue-types";
 
 describe("x-intel validators", () => {
   describe("chronology validator", () => {
@@ -160,6 +161,56 @@ describe("x-intel validators", () => {
           sample_size: 47,
         },
       } as any);
+      assert.equal(result, null);
+    });
+  });
+
+  describe("session claim validator", () => {
+    it("passes when no session claim is made", () => {
+      const result = validateSessionClaim({
+        session_claim: false,
+        underlying_evidence: [
+          { what: "call wall", value: "7,900", source: "thermal", horizon: "all" },
+        ],
+      } as unknown as XIntelQueueRow);
+      assert.equal(result, null);
+    });
+
+    it("fails a session claim resting entirely on far-dated (all-expiry) evidence", () => {
+      // Regression: this validator used to be a stale stub that ALWAYS returned null for a
+      // session_claim row, regardless of horizon -- a stray comment even said "we log", but it
+      // never did, and never actually checked underlying_evidence. It silently un-fixed the
+      // exact opposite-story defect readyBlockReason (queue-types.ts) already pays to prevent.
+      const result = validateSessionClaim({
+        session_claim: true,
+        underlying_evidence: [
+          { what: "call wall", value: "7,900", source: "thermal", horizon: "all" },
+          { what: "net GEX", value: "-$39.2B", source: "thermal", horizon: "all" },
+        ],
+      } as unknown as XIntelQueueRow);
+      assert(result, "expected a validation failure for a far-dated session claim");
+      assert.equal(result.field, "session_claim");
+      assert.match(result.reason, /far-dated.*today's session/s);
+    });
+
+    it("fails a session claim resting entirely on monthly-expiry evidence, same as all-expiry", () => {
+      const result = validateSessionClaim({
+        session_claim: true,
+        underlying_evidence: [
+          { what: "call wall", value: "7,900", source: "thermal", horizon: "monthly" },
+        ],
+      } as unknown as XIntelQueueRow);
+      assert(result);
+      assert.match(result.reason, /far-dated.*today's session/s);
+    });
+
+    it("passes a session claim resting on 0dte/near evidence", () => {
+      const result = validateSessionClaim({
+        session_claim: true,
+        underlying_evidence: [
+          { what: "call wall", value: "7,700", source: "thermal", horizon: "0dte" },
+        ],
+      } as unknown as XIntelQueueRow);
       assert.equal(result, null);
     });
   });

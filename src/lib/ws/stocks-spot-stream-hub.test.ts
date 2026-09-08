@@ -56,15 +56,15 @@ test("buildSpotFrame: includes only tickers with a live candle, omits the rest",
   assert.equal(frame.ts, atMs + 500);
 });
 
-test("buildSpotFrame: carries changePct through from the store", () => {
+test("buildSpotFrame: omits changePct until REST anchor is authoritative", () => {
   _resetStockCandleStoreForTest();
   const atMs = Date.parse("2026-07-15T14:31:00.000Z");
   recordStockTick("NVDA", 140, undefined, atMs);
   recordStockTick("NVDA", 147, undefined, atMs + 5_000);
 
   const frame = buildSpotFrame(["NVDA"]);
-  // No REST anchor (stubbed null) — ws-bar fallback anchors off the first tick's open (140).
-  assert.equal(frame.quotes.NVDA.changePct, Number((((147 - 140) / 140) * 100).toFixed(2)));
+  assert.equal(frame.quotes.NVDA.price, 147);
+  assert.equal(frame.quotes.NVDA.changePct, null);
 });
 
 test("encodeSpotFrame: produces a well-formed SSE data line", () => {
@@ -73,6 +73,24 @@ test("encodeSpotFrame: produces a well-formed SSE data line", () => {
   assert.ok(encoded.endsWith("\n\n"));
   const parsed = JSON.parse(encoded.slice("data: ".length).trim());
   assert.equal(parsed.quotes.AAPL.price, 230);
+});
+
+test("encodeSpotFrame: rounds IEEE float noise on price and changePct at the wire boundary", () => {
+  const encoded = encodeSpotFrame({
+    type: "quotes",
+    quotes: {
+      NVDA: {
+        price: 147.180000000001,
+        changePct: 1.23456789,
+        asof: "2026-07-15T14:31:00.000Z",
+      },
+    },
+    ts: 1_750_000_000_123,
+  });
+  const parsed = JSON.parse(encoded.slice("data: ".length).trim());
+  assert.equal(parsed.quotes.NVDA.price, 147.18);
+  assert.equal(parsed.quotes.NVDA.changePct, 1.23);
+  assert.equal(parsed.ts, 1_750_000_000_123);
 });
 
 test("connection cap: acquires up to the limit then rejects", () => {

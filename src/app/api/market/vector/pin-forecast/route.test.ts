@@ -65,8 +65,25 @@ test("builder reuses the shared spot + cached chain, adding no provider RPS", ()
   assert.match(serverSrc, /loadCurrentChainContracts/);
 });
 
+test("builder uses real prior-session close, not change_pct inversion", () => {
+  assert.match(serverSrc, /getVectorPriorDayOhlc/);
+  assert.match(serverSrc, /priorClose = priorDay\?\.pdc/);
+  assert.doesNotMatch(serverSrc, /change_pct/);
+  assert.doesNotMatch(serverSrc, /spot \/ \(1 \+ changePct/);
+});
+
 test("Monte-Carlo seed is deterministic per ticker+target+session", () => {
   // Two polls in the same session must agree with each other, or the cone visibly jitters between
   // refreshes for reasons the member cannot see.
   assert.match(serverSrc, /seed: stableSeed\(`\$\{t\}:\$\{target\}:\$\{sessionYmd\}`\)/);
+});
+
+const chartSrc = readFileSync("src/features/vector/components/VectorChart.tsx", "utf8");
+
+test("VectorChart wires generic pin-forecast for non-SPX tickers", () => {
+  assert.match(chartSrc, /\/api\/market\/vector\/pin-forecast\?ticker=/);
+  assert.match(chartSrc, /dteHorizon === "0dte" \? "eod" : "expiry"/);
+  assert.match(chartSrc, /ticker === "SPX"/);
+  assert.doesNotMatch(chartSrc, /applyPinProjection\([^)]*ticker === "SPX"\)/);
+  assert.match(chartSrc, /pinProjRef\.current = null;\s*\n\s*pinConeRef\.current = null;/);
 });

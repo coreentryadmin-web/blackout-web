@@ -113,6 +113,26 @@ test("buildMarketEvidence: put wall is 190, flow put strike is separate", () => 
   assert.equal(ev.preciseRecommendationsBlocked, true);
 });
 
+test(
+  "buildMarketEvidence: a strike-only row with no expiry/parseable symbol degrades honestly instead of throwing",
+  () => {
+    // Reproduces a live production crash (CloudWatch, 2026-09-02): "TypeError: Cannot read
+    // properties of null (reading 'expiry')". Largo's own dealer-positioning tool result can
+    // legitimately carry a strike + premium with no expiry field and no parseable OCC symbol
+    // (get_positioning summary rows, not a raw chain) — extractFlowContracts's old guard
+    // `(strike != null || occ)` only proves ONE of the two is present, so `occ!.expiry` crashed
+    // whenever strike resolved the guard but occ was still null. This must not throw, and the
+    // resulting contract must carry an honest empty expiry (UNKNOWN horizon), not a crash.
+    const rows = [{ ticker: "SPY", spot: 500, strike: 495, premium: 1200, option_type: "put" }];
+    const ev = buildMarketEvidence(rows, "SPY", "2026-09-02", Date.now());
+    assert.ok(ev, "buildMarketEvidence must not throw or return null on a strike-only row");
+    const fc = ev!.flowContracts.find((f) => f.strike === 495);
+    assert.ok(fc, "the strike-only row must still surface as a flow contract");
+    assert.equal(fc!.expiry, "");
+    assert.equal(fc!.horizon, "UNKNOWN");
+  }
+);
+
 test("validateProseAgainstEvidence: catches horizon mislabel on Aug 24 flow", () => {
   const ev = buildMarketEvidence(NVDA_TOOL_RESULTS, "NVDA", NVDA_SESSION, Date.now())!;
   const prose = "Aug 24 217.5C is the best 0DTE play on NVDA today.";

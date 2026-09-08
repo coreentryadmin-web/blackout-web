@@ -3,12 +3,13 @@ import { timingSafeEqual } from "crypto";
 import { tierAtLeast, type Tier } from "@/lib/tiers";
 import { resolveUserTier, TierUnavailableError } from "@/lib/tier-cache";
 import { auth } from "@/lib/auth-server";
+import { isAdminUser } from "@/lib/admin-access";
 
 export function isCronAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) return false;
   const authHeader = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  // Constant-time compare — this is the single auth gate for all 23 cron writers (every
+  // Constant-time compare — this is the single auth gate for every cron writer (every
   // route under api/cron/*), so the `===` early-exit shouldn't leak the secret
   // byte-by-byte via response timing.
   const a = Buffer.from(authHeader);
@@ -32,7 +33,6 @@ export async function requireTierApi(
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
-  const { isAdminUser } = await import("@/lib/admin-access");
   if (await isAdminUser(userId, sessionClaims)) {
     return { userId, tier: "premium" };
   }

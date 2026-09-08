@@ -8,6 +8,7 @@ import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
 import { enrichSessionWallHistory } from "@/features/vector/lib/vector-wall-history-enrich";
 import { primeVectorWallScope } from "@/features/vector/lib/vector-snapshot";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
   // so return an empty trail and let the client fall back to the current-structure column.
   if (!session) {
     return NextResponse.json(
-      { ticker, horizon, sessionYmd: session, history: [] },
+      roundFloats({ ticker, horizon, sessionYmd: session, history: [] }),
       { headers: NO_STORE_HEADERS }
     );
   }
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { ticker, horizon, sessionYmd: session, history },
+    roundFloats({ ticker, horizon, sessionYmd: session, history }),
     { headers: NO_STORE_HEADERS }
   );
 }

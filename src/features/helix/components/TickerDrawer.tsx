@@ -14,6 +14,7 @@ import { fetchFlows, fetchDarkPoolPrints, fmtPremium, type FlowAlert, type DarkP
 import {
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
+import { HelixTickerAlertToggle } from "@/features/helix/components/HelixTickerAlertToggle";
 
 // Guarded via the shared relativeAge: a null/unparseable alerted_at previously rendered "NaNh ago".
 function timeAgo(iso: string | null | undefined): string {
@@ -157,6 +158,7 @@ export function TickerDrawer({
           {callPct == null ? "—" : `${callPct}% calls`}
         </div>
       )}
+      {ticker && <HelixTickerAlertToggle ticker={ticker} />}
     </div>
   );
 
@@ -203,13 +205,13 @@ export function TickerDrawer({
                           className="h-full bg-gradient-to-r from-[#0f9d58] to-bull"
                           initial={{ width: 0 }}
                           animate={{ width: `${callPct ?? 0}%` }}
-                          transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }}
+                          transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] as const }}
                         />
                         <motion.div
                           className="h-full bg-gradient-to-r from-rose-700 to-rose-500 flex-1"
                           initial={{ width: 0 }}
                           animate={{ width: `${100 - (callPct ?? 0)}%` }}
-                          transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1], delay: 0.05 }}
+                          transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] as const, delay: 0.05 }}
                         />
                       </div>
                     </div>

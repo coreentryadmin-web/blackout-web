@@ -2,10 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   summarizeShortVolume,
+  normalizeShortVolumeRatio,
   normalizeShortInterest,
   assembleFundamentalsBundle,
 } from "./ticker-fundamentals";
 import type { PolygonFinancialRatios, FundamentalSignals } from "@/lib/providers/polygon";
+
+test("normalizeShortVolumeRatio: percent-scale upstream values normalize to 0–1 fraction", () => {
+  assert.ok(Math.abs(normalizeShortVolumeRatio(69.13)! - 0.6913) < 1e-9);
+  assert.equal(normalizeShortVolumeRatio(0.42), 0.42);
+  assert.equal(normalizeShortVolumeRatio(0), null);
+});
+
+test("summarizeShortVolume: percent-scale Polygon row normalizes before return", () => {
+  const s = summarizeShortVolume([
+    { date: "2026-07-10", short_volume: 6, total_volume: 10, short_volume_ratio: 69.13 },
+  ]);
+  assert.ok(Math.abs(s.short_volume_ratio! - 0.6913) < 1e-9);
+});
 
 test("summarizeShortVolume: picks the freshest row's ratio + date (bad sort tolerated)", () => {
   const s = summarizeShortVolume([

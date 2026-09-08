@@ -147,7 +147,7 @@ test("HELIX whale print surfaces as a scored candidate with reason", () => {
       spot: 576,
       platformInputs: {
         sessionFlows: [
-          { option_type: "CALL", premium: 3_700_000, strike, expiry },
+          { option_type: "CALL", premium: 3_700_000, strike, expiry, ask_pct: 85 },
         ],
       },
     },
@@ -155,6 +155,33 @@ test("HELIX whale print surfaces as a scored candidate with reason", () => {
   );
   assert.ok(picks.length >= 1);
   assert.ok(picks.some((p) => p.strike === strike && p.reasons?.some((r) => /HELIX/i.test(r))));
+});
+
+test("a SOLD call whale print does not surface as a bullish HELIX candidate", () => {
+  // Regression pin: a call print with ask_pct <= 40 (hit the bid — sold) is bearish, not a "buy
+  // this call" signal, even at whale size. Previously option_type alone drove the candidate.
+  const strike = 572.5;
+  const expiry = ymdPlus(5);
+  const chain: EditionChainData = {
+    spot: 576,
+    rows: [row(strike, { expiry, callAsk: 6, callBid: 5.5 })],
+  };
+  const picks = rankVectorPlayCandidates(
+    {
+      play: basePlay("long", 70),
+      spot: 576,
+      platformInputs: {
+        sessionFlows: [
+          { option_type: "CALL", premium: 3_700_000, strike, expiry, ask_pct: 10 },
+        ],
+      },
+    },
+    chain
+  );
+  assert.ok(
+    !picks.some((p) => p.strike === strike && p.reasons?.some((r) => /HELIX whale/i.test(r))),
+    "a sold call must not surface as a HELIX whale long candidate"
+  );
 });
 
 test("GEX king strike boosts rank when enrichment present", () => {
@@ -184,12 +211,13 @@ test("GEX king strike boosts rank when enrichment present", () => {
   assert.ok(top.reasons?.some((r) => /GEX king|net-gamma pin/i.test(r)));
 });
 
-test("0DTE window: primary-long and gex-king-pin target their own strikes, not both collapsing to nearest-spot", () => {
+test("0DTE window: fade-long primary and gex-king-pin target their own strikes, not both collapsing to nearest-spot", () => {
   // Regression: pickChainContract (Night Hawk's 0DTE picker, reused here for the "0dte" DTE window)
   // ranked purely by distance-to-SPOT with no way to target a different strike. primary-long
-  // (targets the put wall) and gex-king-pin (targets the GEX king strike) are different roles with
-  // different target strikes, but both used to collapse onto whichever 0DTE contract was nearest
-  // spot, with "reason" text that implied a targeting relationship that never actually happened.
+  // (targets the put wall on fade/support plays) and gex-king-pin (targets the GEX king strike) are
+  // different roles with different target strikes, but both used to collapse onto whichever 0DTE
+  // contract was nearest spot, with "reason" text that implied a targeting relationship that never
+  // actually happened.
   const spot = 100;
   const putWall = 98;
   const king = 95; // below spot, valid gex-king-pin candidate for a long bias
@@ -202,7 +230,7 @@ test("0DTE window: primary-long and gex-king-pin target their own strikes, not b
   };
   const picks = rankVectorPlayCandidates(
     {
-      play: basePlay("long", 70),
+      play: basePlay("long", 70, "fade-put"),
       spot,
       putWall,
       enrichment: { gexKingStrike: king, strikeTotals: { "98": 1_000_000, "95": 50_000_000 } },
@@ -213,8 +241,33 @@ test("0DTE window: primary-long and gex-king-pin target their own strikes, not b
   const kingPin = picks.find((p) => p.role === "gex-king-pin");
   assert.ok(primary, "primary-long pick should exist");
   assert.ok(kingPin, "gex-king-pin pick should exist");
-  assert.equal(primary!.strike, 98, "primary-long should target the put wall strike");
+  assert.equal(primary!.strike, 98, "fade-long primary should target the put wall strike");
   assert.equal(kingPin!.strike, 95, "gex-king-pin should target the GEX king strike, not collapse onto primary-long's");
+});
+
+test("momentum-long: primary-long targets the call wall (break geometry), not the put wall", () => {
+  const spot = 102;
+  const putWall = 98;
+  const callWall = 105;
+  const chain: EditionChainData = {
+    spot,
+    rows: [
+      row(105, { expiry: ymdPlus(0), callAsk: 4, callBid: 3.6 }),
+      row(98, { expiry: ymdPlus(0), callAsk: 6, callBid: 5.6 }),
+    ],
+  };
+  const picks = rankVectorPlayCandidates(
+    {
+      play: basePlay("long", 70, "momentum-long"),
+      spot,
+      putWall,
+      callWall,
+    },
+    chain
+  );
+  const primary = picks.find((p) => p.role === "primary-long");
+  assert.ok(primary, "primary-long pick should exist");
+  assert.equal(primary!.strike, 105, "momentum-long should target the call wall break level");
 });
 
 test("neutral play returns no picks", () => {

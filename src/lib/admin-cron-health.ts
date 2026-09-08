@@ -2,8 +2,8 @@ import { CRON_JOBS, type CronJobDefinition } from "@/lib/cron-registry";
 import {
   dbConfigured,
   fetchCronJobLastRuns,
-  fetchCronJobRecentRuns,
   fetchCronJobRunCount,
+  fetchCronJobRunsLast24h,
   fetchLatestNighthawkJob,
   type CronJobRunRow,
 } from "@/lib/db";
@@ -11,7 +11,6 @@ import { loadPlayEngineHeartbeat } from "@/lib/play-engine-heartbeat";
 import {
   formatEtDate,
   isTradingDayEt,
-  isWeekdayEt,
   nextTradingDayEt,
 } from "@/features/nighthawk/lib/session";
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
@@ -21,10 +20,25 @@ import {
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
+import { isoAgeSec } from "@/components/admin/admin-time-ago";
+import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
   return isEtCashRth(now);
+}
+
+/** Night Hawk playbook job age — clock-skewed future timestamps exceed stuck threshold. */
+export function nighthawkJobAgeMin(
+  updatedAt: string | null | undefined,
+  stuckThresholdMin: number,
+  now = Date.now()
+): number | null {
+  if (!updatedAt) return null;
+  const age = isoAgeSec(updatedAt, now);
+  if (age.kind === "ok") return Math.round(age.sec / 60);
+  if (age.kind === "clock-skew") return stuckThresholdMin + 1;
+  return null;
 }
 
 function positiveEnvInt(name: string, fallback: number): number {
@@ -145,11 +159,19 @@ export type CronHealthPayload = {
   }>;
 };
 
-function effectiveStaleMinutes(job: CronJobDefinition): { effective: number; multiplier: number } {
-  if (job.weekdays_only && !isWeekdayEt()) {
+/** Stale ceiling multiplier when a job is off its schedule window.
+ * Uses isTradingDayEt (not isWeekdayEt) so NYSE holidays get the same relaxed
+ * thresholds as weekends — weekday-only crons gate/skipped on holidays (#4520). */
+export function effectiveStaleMinutes(
+  job: CronJobDefinition,
+  now: Date = new Date()
+): { effective: number; multiplier: number } {
+  const etDate = formatEtDate(now);
+  const tradingDay = isTradingDayEt(etDate);
+  if (job.weekdays_only && !tradingDay) {
     return { effective: job.stale_after_min * 2.5, multiplier: 2.5 };
   }
-  if (job.market_hours_only && !isWeekdayEt()) {
+  if (job.market_hours_only && !tradingDay) {
     return { effective: job.stale_after_min * 6, multiplier: 6 };
   }
   return { effective: job.stale_after_min, multiplier: 1 };
@@ -175,7 +197,7 @@ export function evaluateJob(
   }
 
   if (!last) {
-    const { effective: effMin, multiplier: effMult } = effectiveStaleMinutes(job);
+    const { effective: effMin, multiplier: effMult } = effectiveStaleMinutes(job, now);
 
     // A JOB THAT HAS NEVER RUN IS THE DEADEST A JOB CAN BE — IT MUST NOT REPORT AS "unknown".
     //
@@ -225,8 +247,11 @@ export function evaluateJob(
     };
   }
 
-  const ageMin = (now.getTime() - new Date(last.started_at).getTime()) / 60_000;
-  const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
+  const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job, now);
+  // Cross-replica clock skew can stamp started_at slightly in the future — an unclamped
+  // `Date.now() - started_at` reads negative and falsely reports the job as fresh.
+  const trustedAgeMin = ageMinFromIso(last.started_at, now.getTime());
+  const ageMin = trustedAgeMin ?? staleThreshold + 1;
 
   // Market-hours-only crons (flow-ingest, spx-evaluate, heatmap-warm, gex-alerts, …)
   // intentionally skip off-window. Once the market is closed they CANNOT log a fresh run,
@@ -301,7 +326,7 @@ export function evaluateJob(
 
 export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   let lastRuns: Awaited<ReturnType<typeof fetchCronJobLastRuns>> = [];
-  let recentRuns: Awaited<ReturnType<typeof fetchCronJobRecentRuns>> = [];
+  let recentRuns: Awaited<ReturnType<typeof fetchCronJobRunsLast24h>> = [];
   let latestNhJob: Awaited<ReturnType<typeof fetchLatestNighthawkJob>> = null;
   let dbSnapshotError: string | null = null;
 
@@ -309,7 +334,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     try {
       [lastRuns, recentRuns, latestNhJob] = await Promise.all([
         fetchCronJobLastRuns(),
-        fetchCronJobRecentRuns(48),
+        fetchCronJobRunsLast24h(),
         fetchLatestNighthawkJob(),
       ]);
     } catch (error) {
@@ -319,10 +344,9 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   }
 
   const lastByKey = Object.fromEntries(lastRuns.map((r) => [r.job_key, r]));
-  const since24h = Date.now() - 24 * 60 * 60_000;
+  // `fetchCronJobRunsLast24h` already bounds by time, per job — no further filtering needed here.
   const runs24hByKey = new Map<string, CronJobRunRow[]>();
   for (const r of recentRuns) {
-    if (new Date(r.started_at).getTime() < since24h) continue;
     const list = runs24hByKey.get(r.job_key) ?? [];
     list.push(r);
     runs24hByKey.set(r.job_key, list);
@@ -362,19 +386,16 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
 
     if (job.key === "nighthawk-playbook" && latestNhJob) {
       const updatedAt = latestNhJob.updated_at;
-      const ageMin =
-        updatedAt != null
-          ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000)
-          : null;
-      let status = health.status;
-      let statusLabel = health.status_label;
-
       // A non-terminal job (anything not published/failed) whose updated_at is older than this is
       // STUCK — with the fire-and-forget builder a healthy build checkpoints every stage within
       // minutes, so >60m without progress and without publishing means the background build died
       // silently (host kill, OOM, hung Claude call). Escalate to `stale` so the watchdog alerts the
       // same night instead of waiting out the 4h registry ceiling. (#77 hardening D, item 10)
       const STUCK_JOB_MIN = isInEditionWindow() ? 15 : 60;
+      const ageMin = nighthawkJobAgeMin(updatedAt, STUCK_JOB_MIN);
+      let status = health.status;
+      let statusLabel = health.status_label;
+
       const nonTerminal = latestNhJob.status !== "published" && latestNhJob.status !== "failed";
       const stuck = nonTerminal && ageMin != null && ageMin > STUCK_JOB_MIN;
 

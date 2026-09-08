@@ -160,12 +160,13 @@ export async function fetchSpxHealthSnapshot(): Promise<SpxHealthSnapshot> {
     }),
   ]);
 
-  const ageSec = desk ? deskAgeSec(desk.polled_at, desk.as_of) : null;
   // Same threshold the play engine itself uses to decide desk staleness
-  // (spx-play-engine.ts line ~181, spx-play-gates.ts) — this panel reports
-  // "stale" exactly when the live engine would also treat the desk as too
-  // old to trust, not an independently invented number.
+  // (spx-play-engine.ts, spx-play-gates.ts) — this panel reports "stale"
+  // exactly when the live engine would also treat the desk as too old to trust.
   const staleThresholdSec = playGexStaleMaxSec();
+  const ageSec = desk
+    ? deskAgeSec(desk.polled_at, desk.as_of, Date.now(), staleThresholdSec)
+    : null;
 
   return {
     generated_at: new Date().toISOString(),

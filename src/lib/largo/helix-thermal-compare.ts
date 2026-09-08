@@ -18,6 +18,7 @@ import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
 // Importing it here is how this card stops being the third HELIX consumer that quietly disagreed
 // with the other two about which prints the tape even contains (see fetchTickerFlowAndGamma).
 import { helixTapeFetchOptions, tapeWindowCoverage } from "@/lib/largo/helix-tape-analytics";
+import { directionLabel, directionalPremium } from "@/features/helix/lib/helix-flow-aggression";
 import type { FlowAlert } from "@/lib/api";
 import {
   HELIX_FLOW_PAGE_SIZE,
@@ -25,6 +26,7 @@ import {
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
   HELIX_FLOW_MAX_SINCE_HOURS,
 } from "@/features/helix/lib/helix-flow-limits";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 // Shapes and guards live in the CLIENT-SAFE module — see compare-card-types.ts for why a client
 // component importing them from HERE breaks the webpack build. Re-exported so existing server
@@ -59,19 +61,23 @@ export {
   isPeerTickerCompareCard,
 } from "@/lib/largo/compare-card-types";
 
-function flowBiasFromPremiums(
-  call: number | null | undefined,
-  put: number | null | undefined
+/**
+ * Bias off the AGGRESSOR-AWARE read (`directionalPremium`/`directionLabel`,
+ * `helix-flow-aggression.ts`), not a naive call/put premium share. Call-share alone conflates a
+ * BOUGHT call with a SOLD one — the exact rule this card used to run, before its own comment above
+ * the removed `flowBiasFromPremiums` explained the tie-break band as if a bigger call share always
+ * meant more bullish conviction. It doesn't: a sold call is bearish regardless of size. Mapped onto
+ * this card's local vocabulary (`"unknown"` = insufficient/unreadable data, `"mixed"` = genuinely
+ * split rather than unreadable) so callers checking `bias === "unknown"` for "nothing to show" keep
+ * working.
+ */
+function flowBiasFromDirectionalPremium(
+  premium: ReturnType<typeof directionalPremium>
 ): HelixThermalSide["bias"] {
-  const c = typeof call === "number" && Number.isFinite(call) ? call : 0;
-  const p = typeof put === "number" && Number.isFinite(put) ? put : 0;
-  const net = c - p;
-  const total = c + p;
-  if (total < 1) return "unknown";
-  const ratio = net / total;
-  if (ratio > 0.15) return "bullish";
-  if (ratio < -0.15) return "bearish";
-  return "neutral";
+  const label = directionLabel(premium);
+  if (label === "undetermined") return "unknown";
+  if (label === "mixed") return "mixed";
+  return label;
 }
 
 /**
@@ -188,14 +194,6 @@ export function regimeInteractionFor(
   return { flow_bias: flowBias, volatility_regime: vol, read };
 }
 
-/** Whole seconds between an ISO stamp and `now`, or null when the stamp is unusable. */
-function ageSecondsFromIso(iso: string | null | undefined, now: number): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.round((now - t) / 1000));
-}
-
 /**
  * The window phrase the flow one-liner appends — and the window it names must be the ANALYSED span
  * of the prints, not the requested lookback.
@@ -238,7 +236,7 @@ function gammaSummary(gammaRegime: string | null, flip: number | null | undefine
   return "Positioning unavailable";
 }
 
-type FlowTapeRow = { ticker?: string; premium?: number; option_type?: string };
+type FlowTapeRow = { ticker?: string; premium?: number; option_type?: string; ask_pct?: number | null };
 
 /**
  * The subset of `GexPositioning` this card reads. Declared structurally (rather than
@@ -297,7 +295,13 @@ export function compareSidesFrom(
     else if (/put/i.test(String(row.option_type ?? ""))) putPrem += prem;
   }
 
-  const flowBias = flowBiasFromPremiums(callPrem, putPrem);
+  // `call_premium`/`put_premium` above stay a plain option-type sum (a legitimate "how much of
+  // each type traded" metric, unchanged) but `bias` — the field that drives the conflict chip and
+  // `regimeInteractionFor`'s narrative prose — comes from the aggressor-aware read, not call share.
+  const directionalPrem = directionalPremium(
+    flow.rows.map((r) => ({ option_type: r.option_type, ask_pct: r.ask_pct, premium: Number(r.premium ?? 0) }))
+  );
+  const flowBias = flowBiasFromDirectionalPremium(directionalPrem);
   const gammaRegime = pos?.gamma_regime_read ?? null;
   // Structured posture off the positioning contract — NOT a regex over `gamma_regime_read`.
   // See thermalReadFromPosture() for the inversion that cost us.
@@ -354,7 +358,7 @@ export function compareSidesFrom(
     freshness: (pos != null ? "cached" : null) as CompareFreshness,
     // Age of the matrix COMPUTATION, not of the price it models — read with `freshness` and
     // `market_session`, never on its own.
-    age_seconds: pos?.asof ? ageSecondsFromIso(pos.asof, nowMs) : null,
+    age_seconds: pos?.asof ? ageSecFromIso(pos.asof, nowMs) : null,
   };
 
   const { conflict, conflict_note } = describeConflict("Flow", flowSide, "gamma", gamma);

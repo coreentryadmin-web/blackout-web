@@ -5,8 +5,10 @@ import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { forecastPin, type PinContract, type PinForecast } from "@/features/spx/lib/spx-pin-forecast-core";
+import { pinForecastTrendInputs } from "@/features/spx/lib/spx-pin-trend-context";
 import { normalizeVectorTicker } from "./vector-ticker";
 import { loadCurrentChainContracts } from "./vector-gex-reconstruct-server";
+import { getVectorPriorDayOhlc } from "./vector-prior-day-server";
 import { resolveForecastTarget, type ForecastTargetKind } from "./vector-forecast-target";
 
 /**
@@ -76,14 +78,10 @@ export async function getVectorPinForecast(
     const expiryContracts = contracts.filter((c) => c.expiry === resolved.chainExpiry);
     if (expiryContracts.length < 2) return null;
 
-    // Prior close from the live day-change: spot / (1 + change%). Derived rather than fetched
-    // because it only feeds the forecast's "gap context" driver text, so it does not justify a
-    // second provider call — and a non-finite change_pct simply yields null, which the core accepts.
-    const changePct = pos?.change_pct;
-    const priorClose =
-      typeof changePct === "number" && Number.isFinite(changePct) && changePct > -100
-        ? spot / (1 + changePct / 100)
-        : null;
+    const priorDay = await getVectorPriorDayOhlc(t, sessionYmd);
+    const priorClose = priorDay?.pdc ?? null;
+
+    const { recentReturns, macroEvent } = await pinForecastTrendInputs(t, sessionYmd);
 
     const forecast = forecastPin({
       spot,
@@ -96,6 +94,8 @@ export async function getVectorPinForecast(
       closeMs: resolved.closeMs,
       horizonMin: resolved.horizonMin,
       structYears: resolved.structYears,
+      recentReturns,
+      macroEvent,
       method: "montecarlo",
       // Deterministic per ticker+target+session so two polls in the same session agree with each
       // other, while different names still explore different path draws.

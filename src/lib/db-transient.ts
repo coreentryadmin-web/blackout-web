@@ -14,6 +14,16 @@ export function isTransientPgError(err: unknown): boolean {
   if (/server login has been failing|server_login_retry/i.test(msg)) return true;
   if (/connect failed|connection terminated|Connection terminated/i.test(msg)) return true;
   if (/timeout exceeded|too many clients|remaining connection slots/i.test(msg)) return true;
+  // db.ts's resetPoolForRetry() tears down the shared module-level pool as soon as ANY
+  // caller sees a transient error, with no coordination against other concurrent callers
+  // still holding/awaiting that same pool reference. A caller mid-flight on the pool
+  // another caller just ended gets this synchronous pg-library throw — a client-side
+  // use-after-teardown, not a real DB failure. Treating it as transient lets the victim
+  // retry (dbQuery's retry loop re-derives a fresh pool via getPool()) instead of failing
+  // outright on an error the DB itself never raised (found 2026-08-31: a 17s live burst
+  // where 5 unrelated subsystems, including the error-capture pipeline itself, all failed
+  // on this exact race from one genuine transient blip).
+  if (/Cannot use a pool after calling end on the pool/i.test(msg)) return true;
 
   const transientCodes = new Set([
     "ETIMEDOUT",

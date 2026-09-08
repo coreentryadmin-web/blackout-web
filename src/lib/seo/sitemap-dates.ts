@@ -1,6 +1,7 @@
 import { LEARN_ARTICLES, getArticle } from "@/lib/learn/articles";
 import { GUIDE_SEO, isLearnGuideSlug } from "@/lib/learn/guide-seo";
 import { ARTICLE_DATES } from "@/lib/learn/article-dates";
+import { MARKETING_DATES } from "@/lib/seo/marketing-dates";
 import type { SitemapEntry } from "@/lib/seo/sitemap-urls";
 
 /**
@@ -21,19 +22,6 @@ export function getArticleDates(slug: string): { datePublished: string; dateModi
     }
   );
 }
-
-const MARKETING_DATES: Record<string, string> = {
-  "/": "2026-08-02",
-  "/pricing": "2026-08-01",
-  "/faq": "2026-07-31",
-  "/why-blackout": "2026-07-28",
-  "/methodology": "2026-08-28",
-  "/vs/others": "2026-08-03",
-  "/tools/gamma-snapshot": "2026-08-03",
-  "/about": "2026-08-01",
-  "/contact": "2026-07-27",
-  "/learn": "2026-08-03",
-};
 
 const LEGAL_DATE = "2026-07-27";
 

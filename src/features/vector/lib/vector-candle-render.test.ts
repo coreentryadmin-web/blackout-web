@@ -12,6 +12,7 @@ import {
   intradayZoomShortcutLabel,
   centeredLiveVisibleLogicalRange,
   liveEdgeVisibleLogicalRange,
+  normalizeLogicalRange,
   overlayDimFactor,
   structureVisibleLogicalRange,
   toCandlestickDisplayData,
@@ -25,6 +26,13 @@ describe("vector-candle-render", () => {
   test("visibleBarCountFromRange: counts logical span", () => {
     assert.equal(visibleBarCountFromRange({ from: 0, to: 90 }), 90);
     assert.equal(visibleBarCountFromRange(null), null);
+  });
+
+  test("normalizeLogicalRange: rejects inverted ranges lightweight-charts would throw on", () => {
+    assert.deepEqual(normalizeLogicalRange({ from: 10, to: 50 }), { from: 10, to: 50 });
+    assert.equal(normalizeLogicalRange({ from: 50, to: 10 }), null);
+    assert.equal(normalizeLogicalRange(null), null);
+    assert.equal(normalizeLogicalRange({ from: Number.NaN, to: 5 }), null);
   });
 
   test("overlayDimFactor: full opacity when zoomed in, dims when zoomed out", () => {

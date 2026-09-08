@@ -118,6 +118,2223 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
+
+### 0a-1al. Vector scenario provenance future-skew reads as unknown — fix/scenario-read-future-skew-freshness (pending)
+
+**What was broken:** `buildScenarioEnvelope()` stamped Vector scenario provenance via `freshnessFromAgeMs(Date.now() - Date.parse(state.asOf))` without the `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` guard already on swing brief paths (#4454/#4455). Clock-skewed future `asOf` returned `"unknown"` instead of fail-closed `"stale"`.
+
+**Fix:** Hoist shared `freshnessFromObservedMs()` to `answer-envelope.ts`; scenario-read provenance delegates to it (play-brief deduped to same helper).
+
+**Check at the open:** Ask Largo a Vector what-if scenario (e.g. "if SPX drops 1%") — section provenance freshness on a healthy snapshot should read `live`/`recent`, not `STALE` or `age unknown`; only future-skewed `asOf` should read stale.
+
+### 0a-1ak. Option mark provenance future-skew reads as unknown — fix/largo-mark-freshness-future-skew (pending)
+
+**What was broken:** `evidenceFromContext` stamped option-mark provenance via `freshnessFromAgeMs(readMs - markMs)`. Clock-skewed future `markAsOf` returned `"unknown"` instead of fail-closed `"stale"` — same class as #4452/#4454 for GEX/fundamentals.
+
+**Fix:** `freshnessFromObservedMs()` applies `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` before `freshnessFromAgeMs`; fundamentals and option-mark paths both delegate to it.
+
+**Check at the open:** OPEN swing row → Ask Largo brief → option-mark evidence freshness must read `stale` (not `unknown`) when mark timestamp is >5s ahead of read time.
+
+## WATCH LIST — 2026-09-06 coordinator sweep (read this before the routine pass)
+
+### 0a-1aj. Ask Largo swing brief future-skew reads as fresh — fix/largo-brief-future-skew-staleness (pending)
+
+**What was broken:** `gexMatrixStale()` and `vectorAgeStale()` in `play-brief-absence.ts` did not fail-closed on clock-skewed future timestamps — negative age read as "not stale", so dealer posture and Vector levels still drove Ask Largo narrative while provenance said unknown.
+
+**Fix:** Mirror `gexStaleFromAge` / `FreshnessChip` semantics — treat `ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS`, `dataAgeMs === POSITIVE_INFINITY`, and `freshness === "unknown"` as stale for gating.
+
+**Check at the open:** Swings Ask Largo on a play when Vector/GEX snapshot carries future-skewed `asof` — `unavailableSources` must include stale GEX/Vector entries; `resolveGammaPosture` must not cite stale dealer posture.
+
+### 0a-1ai. Stale Vector chart/level fields still read as live in Ask Largo — fix/largo-stale-vector-chart-gating (pending)
+
+**What was broken:** After #4376–#4394 GEX-wall and Vector `play.bias` gates, chart technicals still
+badged bullish/bearish off >120s snapshots; `chartLevelsSection` still showed max pain / dark pool /
+confluence; `gexPostureSection` still printed net GEX / nearest wall while `unavailableSources` also
+flagged stale matrix.
+
+**Fix:** Gate with `vectorSnapshotStale()` / `gexMatrixStale()` in `chartTechnicalsSection`,
+`technicalsCoaching`, `chartLevelsSection`, `collectFocalLevels`, and `gexPostureSection`.
+
+**Check at the open:** Swings Ask Largo on a play with stale Vector (`dataAgeMs` > 120) — chart
+technicals badge neutral, no "chart reads bullish/bearish" coaching, GEX posture shows only staleness
+disclaimer (no net GEX numbers).
+
+---
+
+### 0a-1ah. Stale Vector play.bias in Largo cross-desk coaching — fix/largo-stale-vector-coaching-bias (pending)
+
+**What was broken:** `counterThesisLine()` gated stale Vector `play.bias`, but `crossDeskCoaching()` and
+`vectorPlayCoaching()` still cited Vector bearish/bullish alignment from snapshots >120s old — members
+saw **"Cross-desk friction — Vector bearish"** or **"aligned with swing lane"** off stale desk reads.
+
+**Fix:** Gate Vector bias usage in `play-brief-narrative-coaching.ts` with `vectorSnapshotStale()` (same
+pattern as `counterThesisLine`).
+
+**Check at the open:** Swings Ask Largo on a play where Vector snapshot is stale (`dataAgeMs` > 120 or
+`freshness: stale`) — Trade manager read must NOT cite Vector desk alignment/friction unless Vector is live.
+
+---
+
+### 0a-1ag. Stale GEX-only walls/posture in Largo envelope levels + evidence — #4377 (pending)
+
+**What was broken:** `BieAnswerEnvelope.levels` / `.evidence` (Largo desk read key-levels table +
+evidence panel) cited stale GEX-only call/put walls, gamma flip, GEX king, and dealer posture when
+Vector was absent — sixth Largo C2 surface after chartLevels/watchFor/king-magnet fixes.
+
+**Fix:** Per-side `gexMatrixStale` gating in `levelsFromContext` + `evidenceFromContext`
+(`play-brief.ts`). Vector `regime.posture` still drives dealer posture when GEX matrix is stale.
+
+**Check at the open:** Open swing play-brief with `matrix_age_sec` > 120 and no Vector snapshot —
+key levels must omit walls/flip/king; evidence must not show `Dealer posture: γ …` unless Vector
+regime is live.
+
+---
+
+### 0a-1ac. Short interest missing from envelope.evidence (Largo C7) — fix/largo-short-interest-evidence (pending)
+
+**What was broken:** Catalysts/coaching prose showed DTC and short vol ratio from
+`arsenal.fundamentals`, but `envelope.evidence[]` had no structured row — same failure mode #4311
+fixed for HELIX flow premiums. Largo evidence rail could not ground short-interest claims.
+
+**Fix:** `evidenceFromContext()` emits `Short interest: DTC … · short vol ratio …` with
+`provenance.asOf` from `fundamentals.as_of`.
+
+**Check at the open:** WATCH swing with fundamentals populated — play-brief API returns evidence row
+starting with `Short interest:` matching Catalysts section numbers.
+
+---
+
+### 0a-1af. WATCH rows falsely flagged option mark unavailable in Ask Largo — fix/swing-brief-watch-mark-absence-false-positive (pending)
+
+**What was broken:** WATCH candidates carry a static chain mid with no `markAsOf` (`markIsSync: true`
+by design). The play-brief absence collector, `dataHonestyCoaching`, and `dataFreshnessSection`
+treated this as a C3 failure (`option mark: sync quote without freshness timestamp`), surfacing an
+`UnavailableChip` on the most common Ask Largo surface even though the quote shape is expected
+pre-entry.
+
+**Fix:** Introduced `playExpectsLiveOptionMark()` — only OPEN/HOLD/TRIM rows expect live mark
+freshness. Applied consistently across absence, coaching, and intel sections.
+
+**Evidence:** 3 new tests (absence + coaching + intel). 73/73 in touched test files GREEN.
+
+**Check at the open:** Swings desk WATCH tab → select a candidate → Ask Largo panel must NOT show
+an `UnavailableChip` for "option mark" when the only signal is the expected static chain mid.
+
+---
+
+### 0a-1aa. Hold plan still repeated the thesis-health advisory sentence after #4261's recNote fix — fix/swing-brief-holdplan-thesis-advisory-dup (pending)
+
+**What was broken:** #4261 fixed `holdPlanSection` repeating `recNote`/rails/manage-engine content
+already owned by Management, but left a second, same-class duplicate: the
+`play.thesisHealth.advisory` sentence rendered verbatim — the exact text
+`tradeManagerNarrativeSection`'s pillar-fade narration already carries in "Trade manager read"
+(both sections render together for any live play). Confirmed still present on `main` post-#4261.
+
+**Fix:** Dropped the `— {advisory}` suffix from Hold plan's thesis-health line; kept
+`Thesis health **{health}%** ({rungLabel})` as a compact number, not a repeated sentence.
+
+**Evidence:** 1 new test in `play-brief-intel.test.ts` (RED pre-fix: 1/21 fail in that file; GREEN
+post-fix). `play-brief-intel.test.ts` + `play-brief.test.ts`: 36/36. Full `src/lib/swing/*.test.ts`:
+678/678. `npx tsc --noEmit`: clean.
+
+**Blast radius:** `holdPlanSection` only.
+
+**Check at the open:** `GET /api/market/swing/play-brief?playId=...&expandIntel=1` on a live OPEN
+position with a degraded thesis health — confirm the advisory sentence appears once (in Trade
+manager read), not repeated under Hold plan.
+
+---
+
+### 0a-1ab. Swing Ask Largo dark pool level provenance mislabeled HELIX — fix/swing-brief-darkpool-provenance (pending)
+
+**What was broken:** `levelsFromContext()` stamped Vector-sourced dark pool strikes (`ctx.vector.darkPoolLevels` from `getVectorDarkPoolLevels`) with `envelope.levels[].provenance.source: "HELIX"` while confluence/max-pain rows from the same Vector snapshot correctly read `"Vector"` — Largo C8 provenance violation that corrupts cross-product joins.
+
+**Fix:** Change dark pool level `provenance.source` from `"HELIX"` → `"Vector"`. Regression test in `play-brief.test.ts`.
+
+**Check at the open:** Swings desk → select a play with Vector dark pool levels → Ask Largo level table / SourceStamp for dark pool row must show **Vector**, not HELIX.
+
+---
+
+### 0a-1ae. Stale Vector narrated as "Right now" in dealer posture — fix/swing-brief-stale-vector-right-now (pending)
+
+**What was broken:** `dealerPostureLine()` always led with **"Right now"** even when Vector snapshot was stale (`dataAgeMs > 120s` or `freshness === "stale"`), while structured absence and data honesty coaching correctly flagged staleness — Largo C2 contradiction.
+
+**Fix:** Qualify lead-in as **"Last snapshot (~Ns old)"** when Vector is stale; keep **"Right now"** only on fresh reads.
+
+**Check at the open:** On Swings with a stale Vector read (>2 min), Ask Largo Trade manager read dealer posture line must say **Last snapshot**, not **Right now**.
+
+---
+
+### 0a-1ad. Stale HELIX mislabeled "quiet" in dataHonestyCoaching — fix/swing-brief-helix-stale-coaching-copy (pending)
+
+**What was broken:** When `flow_feed_fresh === false`, `dataHonestyCoaching()` said "HELIX feed quiet" while `unavailableSources` and `dataFreshnessSection()` correctly labeled pipeline **stale** — C3 absence contradiction.
+
+**Fix:** Align coaching copy: "HELIX pipeline stale — flow read unavailable, not evidence of quiet tape".
+
+**Check at the open:** During HELIX pipeline stale window, open Ask Largo on a swing row — Trade manager read Data caveat must say **pipeline stale**, not "feed quiet".
+
+---
+
+### 0a-1ac. HELIX put-only flow build missed by "what changed" diff — fix/swing-brief-helix-put-flow-diff (pending)
+
+**What was broken:** `diffBriefSnapshots()` only entered the HELIX flow-shift branch when call premium moved >$50k. Put-building was nested inside that branch, so flat call + surging puts emitted zero diff lines on refresh.
+
+**Fix:** Independent `putMoved` check mirrors call logic; put-only builds emit `HELIX tape: put flow building`.
+
+**Check at the open:** On Night Hawk Swings OPEN tab, refresh a SHORT play where put premium is building but call is flat — Trade manager read pulse should include put flow building line.
+
+---
+
+### 0a-1ad. Desk context rendered "closed **open**" for an unresolved last swing — fix/swing-brief-desk-context-unresolved-outcome (pending)
+
+**What was broken:** `deskConsensusSection` hardcoded "closed **{outcome}**" but `outcome` can be `"open"`/`"pending"` (unresolved), producing a live contradiction — confirmed on `SWING:AAPL` positionId 36's CLOSED brief.
+
+**Fix:** Render "is still **unresolved**" for `outcome === "open" | "pending"`; terminal outcomes (`target`/`stop`/`ambiguous`/`unfilled`) keep the existing "closed **{outcome}**" phrasing.
+
+**Check at the open:** Pull a CLOSED swing brief (`?status=CLOSED&expandIntel=1`) for any ticker whose last Night Hawk swing is still open/pending — "Desk context" should read "is still unresolved", never "closed open"/"closed pending".
+
+---
+
+### 0a-1z. A total ecosystem/Vector fetch failure was indistinguishable from legitimately-empty data — never reached the structured unavailableSources channel — fix/swing-ecosystem-vector-total-fetch-failure-absence (pending)
+
+**What was broken:** `fetchEcosystemContext`/`fetchVectorFullState` were wrapped in
+`.catch(() => null)` in `play-brief-context.ts` with no signal captured — a total fetch failure
+(network, timeout, provider error) was structurally indistinguishable from "legitimately nothing
+to report." The existing `unavailableSources` plumbing only covered a failure WITHIN a successful
+ecosystem read (`arsenal.unavailable_sources`), not the whole call throwing.
+
+**Fix:** Added `ecosystemFetchFailed`/`vectorFetchFailed` booleans to `SwingPlayBriefContext`, set
+in the loader's `.catch()` handlers, read by `collectBriefUnavailableSources()` to push a
+structured entry — same shape as the existing HELIX/open-book/Meridian/option-mark absence
+entries.
+
+**Check at the open:** No easy live repro (requires an actual Polygon/UW/Vector fetch failure at
+brief-composition time). Note "no fetch failure observed this session" rather than treating
+silence as a pass.
+
+---
+
+### 0a-1y. Option-mark "not synced to live tape" caveat was narrated in prose but never reached the structured unavailableSources channel — fix/swing-markissync-not-structured-absence (merged #4245)
+
+**What was broken:** `dataHonestyCoaching()` already computes `play.markIsSync === true` (sync
+quote without a freshness timestamp) and turns it into a "Data caveat" bullet in the "Trade manager
+read" narrative. `collectBriefUnavailableSources()` — the function populating the envelope's
+structured `unavailableSources` array (Largo C3) — never read this boolean at all, only
+`flow_feed_fresh`. A consumer reading the structured contract fields (the entire reason C3 mandates
+a structured absence channel) would conclude the mark is fully live when the system's own code
+already knows it isn't.
+
+**Fix:** Added `markIsSync === true` to `collectBriefUnavailableSources()`, pushing
+`{ source: "option mark", reason: "sync quote without freshness timestamp" }` — same shape as the
+existing HELIX/open-book/Meridian entries in the same function.
+
+**Check at the open:** For any live position whose Ask Largo brief narrative shows "mark not
+synced to live tape" in its Data caveat, confirm the same brief's `envelope.unavailableSources`
+now also carries `{"source":"option mark","reason":"sync quote without freshness timestamp"}` —
+not just prose.
+
+---
+
+### 0a-1x. Ex-dividend read failure silently re-enabled the Q39 fail-open structural-stop bug on a still-valid LONG thesis — fix/ex-dividend-fail-open-structural-stop (merged #4239)
+
+**What was broken:** `resolveSwingExDividendContext` (`ex-dividend-reads.ts`) caught ANY
+`fetchPolygonDividends` failure (rate limit, timeout, network blip) and returned
+`{ exDividendSession: false, exDividendCash: null }` — byte-identical to "confirmed: today is not
+an ex-dividend day." `manage.ts`'s `structuralStopBroken()` only adjusts the LONG structural-stop
+compare (adds the cash dividend back onto spot) when `exDividendSession === true` — Q39's whole
+point (#3909) is to stop a legitimate ex-div mechanical price drop from reading as a real thesis
+break. A Polygon error on the dividends fetch — nothing to do with whether the ticker actually
+went ex-div — collapsed straight into the un-adjusted compare, so a real ex-div gap on a day the
+dividends feed happened to be flaky could fire a capital-preservation `EXIT`/`structural_stop` on
+a position whose thesis never actually broke. Same fail-open shape was duplicated in
+`swing-active-refresh/route.ts`'s outer `.catch` around the same call.
+
+**Fix:** `resolveSwingExDividendContext` now returns a third field, `dataUnavailable: boolean`
+(`true` only when the Polygon read itself failed; `false` on every real resolution, including a
+genuine non-ex-div day). Forwarded through `ManageSyncReads.exDividendDataUnavailable` →
+`SwingManageInput.exDividendDataUnavailable`. `structuralStopBroken()` now fails SAFE: when the
+LONG compare is about to declare a breach AND this cycle's ex-div data was unavailable, it returns
+`broken: false` (skip enforcement this cycle — the next ~15-min refresh retries with fresh data)
+instead of trusting the unverifiable `false`. Scoped to LONG only (the adjustment never touches
+SHORT) and only when a breach would otherwise fire — a genuine SHORT breach, or a LONG position
+nowhere near its stop, behaves identically to before. Also added the first REAL behavior tests for
+`resolveSwingExDividendContext` (`ex-dividend-reads.test.ts`) — the pre-existing
+`ex-dividend-reads-freshness.test.ts` only regex-scans the source file and never calls the
+function, so it could not have caught this.
+
+**Check at the open:** No user-visible UI change expected under normal conditions (the fix only
+changes behavior on a real Polygon-dividends fetch failure, which is rare and transient). If any
+swing position's Ask Largo brief or the `/nighthawk` Swings board shows a `structural_stop` EXIT
+around 09:30–10:00 ET on a name that is confirmed ex-dividend that same session (check
+`GET /api/market/swing/record` for the position's ticker against a dividends calendar), cross-check
+CloudWatch logs (`/ecs/blackout-production`, filter on `swing-active-refresh`) for a
+`fetchPolygonDividends`/dividends-related error around the same timestamp — if present, the
+position should NOT have been exited (the fail-safe should have skipped it that cycle) and is worth
+flagging as a regression. Absent any observed Polygon dividends-fetch failure during the session,
+there is nothing to observe live (the code path is a rare-error branch) — note "no ex-div fetch
+failure observed this session" rather than treating silence as a pass.
+
+---
+
+### 0a-1w. Option-mark timestamps reached the swing play-brief as raw ISO-8601 UTC instead of the Largo C1 ET stamp — fix/swing-markasof-raw-iso-not-et (merged #4236)
+
+**What was broken:** `play.markAsOf` (a raw ISO string from the DB) was inserted unconverted into
+three places: the "Position" section body (`Mark: **$X** (2026-09-04T21:45:18.663Z)`), the
+top-level evidence array (`text`/`provenance.asOf`), and the "Data freshness" section — all
+violating Largo contract C1 ("YYYY-MM-DD HH:mm ET", never a bare epoch/ISO instant). The brief's
+own top-level `asOf` was already fixed this way in PR #4142, but that fix didn't touch `markAsOf`.
+Live evidence: all 4 sampled open-position envelopes (CG, NN, NRG, CRWD) showed the raw-ISO pattern.
+
+**Fix:** Added `etStampFromIso()` to `bar-session-date.ts` (parses a raw ISO instant, falls back to
+the original string if unparseable) and wired it into all three `markAsOf` render sites. The
+internal freshness-age math (`Date.parse` against the raw value) is untouched — only the displayed
+string changed.
+
+**Check at the open:** Open any live SWING position's Ask Largo brief
+(`GET /api/market/swing/play-brief?playId=SWING:<TICKER>`) and confirm the "Position" and "Data
+freshness" sections, plus the top-level `evidence[].text`/`provenance.asOf` for the option-mark
+entry, all show `YYYY-MM-DD HH:mm ET` — never a string ending in `Z` or containing `T`.
+
+---
+
+### 0a-1u. CLOSED swing positions served a live-recomputed (negative/nonsensical) DTE instead of the frozen exit-date DTE — fix/swing-closed-dte-negative (merged #4231)
+
+**What was broken:** `closedDeckSourceFromRow` (`closed-plays.ts`) computed a CLOSED position's
+`contract.dte` as `calendarDte(etYmd(), expiry)` — days between **today** (the moment the record is
+being *viewed*) and the contract's expiry — for a trade that already finished, possibly weeks ago.
+The swing ledger carries no dedicated dte-at-entry/dte-at-exit column, so this live-recomputed
+number was the only DTE ever served for a closed trade, and it silently changed (and eventually
+went negative once the contract itself expired) every time the record was re-viewed. Live
+production evidence: EWZ and GLW (expiry 2026-09-04, viewed 2026-09-06) both showed `dte: -2`; a
+graded AAPL row (true DTE at entry 6 / at exit 5) showed `dte: 3` — neither true value, just "days
+from right now." The number flows straight into the member-facing `contract` string
+(`${strike}${right} · ${dte}DTE`, `adapters.ts` `terminalPlayFromHorizon`/`terminalPlayFromClosedSwing`)
+rendered on both `/api/market/swing/record`'s closedDeck array and the Ask Largo play-brief headline
+for a closed position (`/api/market/swing/play-brief` resolves a CLOSED play via
+`play-brief-resolve.ts`'s `loadClosedPlay` → the same `closedDeckSourceFromRow`).
+
+**Fix:** `dte` for a CLOSED row is now frozen to the trade's own exit timestamp
+(`row.closed_at ?? row.graded_at`, both fields the ledger already carries) instead of `etYmd()`
+(today) — `calendarDte(exitAt, expiry)`, "days to expiry as of the day this trade actually closed."
+This value never moves on re-view and stays 0 (not negative) for a contract that expired the same
+session it closed, instead of drifting further negative every day the record is read afterward.
+Left untouched on purpose: live OPEN/HOLD/TRIM positions (`live-plays.ts`'s `contractFromRow`),
+where "DTE as of right now" IS the meaningful, correctly-live number for a still-open position.
+
+**Check at the open:** Open `/nighthawk` → Swings → CLOSED tab (or fetch
+`GET /api/market/swing/record`) and inspect any graded CLOSED row whose contract has since expired
+(expiry date at or before today) — `contract.dte` must read `0` or a small non-negative number tied
+to how many days before/at expiry the trade actually closed, never negative. Cross-check the same
+position's Ask Largo brief (`GET /api/market/swing/play-brief?playId=SWING:<TICKER>&positionId=<id>`)
+renders the identical frozen DTE in its headline/contract string, not a different (live-recomputed)
+one. If every currently-graded CLOSED row happens to still be pre-expiry, note "no post-expiry CLOSED
+row observed at open" rather than treating silence as a pass, and instead confirm the DTE shown for
+any CLOSED row matches `calendarDte(closed_at date, expiry date)` by hand for at least one row.
+
+---
+
+### 0a-1w. Ask Largo swing brief repeated the SAME recNote sentence in two sections — "Why this setup" read as a bullet dump, not one trade-manager voice — fix/swing-brief-why-setup-recnote-dup (merged #4257)
+
+**What was broken:** found live during the 2026-09-06 5-engine monitor's Ask Largo deep-dive on
+`SWING_NRG_34` (NRG 110C, HOLD, thesis health 46%). `play.recNote` is already rendered verbatim —
+once, correctly — by `managementSection` for the open bucket (`play-brief.ts:64`) or by the Verdict
+section for the watch bucket (`play-brief.ts:292`). `whyThisSetupSection` (`play-brief-intel.ts:55`)
+pushed the exact same string a SECOND time for any non-CLOSED play (`play.status !== "CLOSED"`),
+so the composed brief showed:
+
+> Management: "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength."
+> Why this setup: "live hold — swing thesis Thesis health 46% — Thesis fading — tighten risk or trim into strength." *(then, separately, "No pillar breakdown on this row — grade is from lane score only.")*
+
+Word-for-word repetition of a full sentence across two sections in one brief — the opposite of the
+"one connected trade-manager-voice synthesis instead of separate bullet-dump sections" standard
+`tradeManagerNarrativeSection` (#4084) set for this product, and it crowded out "Why this setup"'s
+actual job (the pillar/signal breakdown behind the grade) with a repeat of text the member had
+already read one section above.
+
+**Fix:** Removed the duplicate `recNote` push from `whyThisSetupSection`; the section now carries
+only signals-fired / archetype / regime / pillar-or-lane-score content — exactly what its title
+promises and nothing already said above it.
+
+**Evidence:** 2 new tests in `play-brief-intel.test.ts` (RED pre-fix: `whyThisSetupSection` still
+contained the verbatim `recNote`; GREEN post-fix). `play-brief-intel.test.ts` + `play-brief.test.ts`:
+31/31 pass. Full `src/lib/swing/*.test.ts`: 660/660 pass. `npx tsc --noEmit`: clean.
+
+**Blast radius:** `whyThisSetupSection` only — `managementSection`/Verdict's own `recNote` rendering
+is untouched, so the sentence still appears exactly once per brief.
+
+**Check at the open:** Open `/nighthawk` → Swings → Ask Largo on any live OPEN or WATCH position
+carrying a `recNote` (e.g. a HOLD/TRIM play with a thesis-fading note) and confirm the note text
+appears in Management (open) or Verdict (watch) but is NOT repeated verbatim under "Why this
+setup" — that section should show only signals/archetype/pillar content.
+
+---
+
+### 0a-1x. Hold plan duplicated Management stance/note/rails on OPEN swings — fix/swing-hold-plan-recnote-dup (pending)
+
+**What was broken:** For OPEN/HOLD plays where Hold plan renders (no Trade manager read narrative, or
+`expandIntel`), `holdPlanSection` repeated `recNote`, desk stance, trim ladder, rails, and manage
+engine — all already in **Management** one section above.
+
+**Fix:** `holdPlanSection` now carries only hold-specific coaching (DTE/theta, earnings window,
+session time stop, runner fraction, thesis-health fade/giveback).
+
+**Check at the open:** On a live HOLD swing with `recNote` and DTE on the contract, confirm the note
+appears once under Management; Hold plan (if visible) shows time/earnings/theta only.
+
+---
+
+### 0a-1v. Chart technicals bias badge echoed the play's LONG/SHORT direction instead of the technicals it labels — fix/swing-chart-technicals-bias-direction-echo (merged #4232)
+
+**What was broken:** `chartTechnicalsSection`'s `bias` field (`play-brief-intel.ts`) was set from
+`play.direction === "SHORT" ? "bearish" : play.direction === "LONG" ? "bullish" : "neutral"` — a pure
+echo of the position's own direction, carrying zero information from the EMA stack / MACD / VWAP
+side / market-structure lines the badge is attached to. Live evidence: an INTC SHORT play tagged
+`[bearish]` while its own body read EMA-up, price-above-VWAP, RSI 67, MACD bull, CHOCH up (an
+entirely bullish tape); an NN LONG play tagged `[bullish]` while its body read EMA-down,
+price-below-VWAP, MACD bear, BOS down (entirely bearish); a closed AAPL LONG play tagged `[bullish]`
+on its own post-mortem while its technicals read entirely bearish. Misleading exactly when it
+matters most — reviewing why a losing play failed, or judging whether current technicals still
+support an open position.
+
+**Fix:** Added `technicalsBias()` — a majority vote across the four directional signals already
+rendered in the section (EMA stack up/down, MACD bull/bear, spot-vs-VWAP side, market-structure
+BOS/CHOCH direction). A 2-2 split or no readable signals falls back to `neutral`. `chartTechnicalsSection`
+no longer takes a `play: TerminalPlay` param at all — its bias is derived entirely from the
+technicals it already has in hand.
+
+**Check at the open:** Open `/nighthawk` → Swings and inspect the "Chart technicals" section's bias
+badge on a live position — confirm it agrees with the EMA stack / MACD / VWAP-side / structure lines
+printed directly below it (majority read), not with whether the play itself is LONG or SHORT. A
+SHORT play with a bullish-reading tape should show a bullish (not bearish) badge, and vice versa.
+
+---
+
+### 0a-1t. SWING Management Action card fabricated a "TRIM 33%" size once the single trim tranche had already fired — fix/swing-trim-size-fabricated-33pct (pending)
+
+**What was broken:** `managementActionDisplay` (`terminal-display.ts`) sized every TRIM action
+off `play.exitPolicy.trim_levels.find(t => !t.fired)`, falling back to a hardcoded `33` when no
+unfired level remained. SWING's exit policy (`SWING_SCALE_OUT_POLICY`) is a single-tranche ladder
+(one level banks 50% at 2x, then a runner) — once that level fires, which is true for essentially
+every SWING play whose recommendation reaches TRIM, the `33` fallback fired, rendering "TRIM 33%"
+in both the Ask Largo action strip (`SwingLargoInsightsPanel.tsx`) and the main terminal's
+Management tab (`TerminalPremiumPanels.tsx`), directly contradicting the SAME panel's own
+narrative text ("all trims banked — runner only"). The `33` is a 0DTE-only constant (0DTE's real
+trim ladder is 3 tranches of ⅓ each) with no relationship to SWING's policy at all.
+
+**Fix:** Removed the hardcoded fallback; `sizePct` is now `null` (bare "TRIM" verb, no percentage)
+when no unfired trim level remains — matching `play-card-lifecycle.ts`'s `swingActionDisplay`,
+which already handles this exact case honestly. Both render call sites were already null-safe.
+
+**Check at the open:** For any live SWING position whose `liveStatus`/recommendation is TRIM and
+whose single trim tranche has already fired (peak premium ≥ entry × 2), the Management tab
+(`/nighthawk` → open a live SWING position → Management tab) and the Ask Largo action strip
+should show a bare **"TRIM"** pill with NO percentage — not "TRIM 33%". Cross-check against the
+same position's Ask Largo narrative text, which should independently say something like "all
+trims banked — runner only" for the same position; the two should now agree instead of
+contradicting each other. If no live SWING position is in this exact state at open, note "no
+qualifying all-fired TRIM position observed" rather than treating silence as a pass — also spot
+check a SWING position whose trim tranche has NOT yet fired still shows the real percentage
+(e.g. "TRIM 50%"), confirming the fix didn't overcorrect to always-null.
+
+---
+
+### 0a-1p. Swing serving-snapshot TTL (26h) doesn't survive the weekend — silently zeroed thesis-health enrichment for every live position — fix/swing-serving-snapshot-weekend-ttl (PR #4202, pending)
+
+**What was broken:** `SWING_SERVING_TTL_SEC` was `26h`, sized for the ordinary weekday scan cadence but `swing-discovery` is `weekdays_only` — so the Friday POST_CLOSE write expires Saturday evening and the persisted snapshot stays empty through Monday morning (~35h+/week). Both `getSwingServingLane` (main board) and `play-brief-resolve.ts`'s `loadOpenTerminalPlay` (Ask Largo, #4182) key their `attachThesisExplanation` factors/regime enrichment off this one snapshot, so an expired key silently reverted **every live committed position's** Ask Largo thesis-health panel to the generic `46% · Degraded`/`unread` defaults — confirmed live 2026-09-06 (Sunday): all 4 open positions (NRG:34, NN:32, CG:25, CRWD:19) byte-identical to the pre-#4182 audit snapshot, `scanAsOf: null` on `/horizons?view=swings`.
+
+**Fix:** `SWING_SERVING_TTL_SEC` raised `26h → 120h` (5 days), sized past the measured worst ordinary gap (Friday POST_CLOSE → Monday PRE_OPEN, ~58h) plus headroom for a Monday holiday (~82h). New regression test derives the worst-case gap from `SWING_SCAN_PHASES` itself so it can't silently drift again.
+
+**Check at the open (Monday 2026-09-07, a market holiday — so also check Tuesday):** `GET /api/market/nighthawk/horizons?view=swings` should show a non-null `scanAsOf`/`scanSessionDay` even first thing Monday/Tuesday morning before the day's own scan has run; `GET /api/market/swing/play-brief` for any live committed position should show a "Thesis health" regime pillar that is NOT the generic `unread`/`46% · Degraded` default if a matching discovery dossier exists from the prior week.
+
+### 0a-1q. Stale HELIX coached cross-desk friction + counter-thesis — fix/swing-stale-helix-crossdesk (pending)
+
+**What was broken:** When `flow_feed_fresh === false`, Ask Largo still cited stale `recent_flow` in `crossDeskCoaching` (`HELIX call-led` / `HELIX put-led`) and `counterThesisLine`, contradicting the C2/C3 absence contract already enforced in `flowNarrative` and `collectBriefUnavailableSources`.
+
+**Fix:** Route both paths through `trustedHelixFlow()` — stale pipeline rows become absence, not signal.
+
+**Check at the open:** For a ticker whose HELIX feed is quiet (`flow_feed_fresh: false` in ecosystem context), Ask Largo brief must show the `HELIX flow · pipeline stale` unavailable chip and must NOT include `HELIX call-led` / `HELIX put-led` in Trade manager read or counter-thesis bullets.
+
+### 0a-1r. Meridian absence + Vector cross-desk friction missing from Ask Largo envelope/narration — fix/swing-largo-meridian-absence-vector-crossdesk (pending)
+
+**What was broken:** (1) Meridian timeline fetch failures set `meridian.unavailable: true` and honest prose in the catalyst section, but `collectBriefUnavailableSources` never forwarded it to `envelope.unavailableSources` — Largo C3 violation; `UnavailableChip` stayed silent. (2) `crossDeskCoaching` named NH/0DTE/HELIX friction but never Vector `play.bias`, and `vectorPlayCoaching` falsely aligned on thesis substring (`"long"` inside `"Long gamma"`).
+
+**Fix:** Forward Meridian unavailable into envelope sources; add Vector bias to cross-desk friction; align `vectorPlayCoaching` on `vp.bias`.
+
+**Check at the open:** On a ticker where Vector `play.bias` opposes the swing direction, Trade manager read should include `Vector bearish`/`Vector bullish` in the cross-desk friction line. If Meridian timeline is unavailable (simulate or catch a real failure), `unavailableSources` should list `Meridian catalysts · timeline read failed`.
+
+### 0a-1s. checkPortfolioOverlap's self-match exclusion swallowed a genuine second same-ticker/same-direction position — fix/swing-portfolio-overlap-self-match (pending)
+
+**What was broken:** `checkPortfolioOverlap` excluded EVERY existing row matching the candidate's
+ticker+direction (not just the one meant to represent "the candidate's own position"), so two
+independent open positions on the same ticker+direction (allowed by design — `commit.ts`'s
+`swingThesisKey(ticker, direction, archetype)` treats a different archetype on the same name+side
+as a different thesis) both got excluded, silently hiding the concentration from Ask Largo's "Book
+context" section and the swing entry gate's `portfolio_overlap` soft penalty. Live evidence: the
+book's own `record.json` shows EWZ (rootPositionId 29 & 26) and WULF (rootPositionId 17 & 13) each
+with two separate `long` position chains — exactly the shape this bug could not see.
+
+**Fix:** Self-match exclusion now skips only the FIRST row sharing ticker+direction; any additional
+matching row is correctly counted in `sameThemeSameDirection`.
+
+**Check at the open:** For any live position whose ticker has (or gains) a second independent
+open position in the same direction (check `GET /api/admin/zerodte/tier-export`-style ledger export
+or the book itself for a repeated ticker+direction pair), Ask Largo's play-brief "Book context"
+section for either position should now show a **Concentration** line naming the OTHER position —
+not silence. If no such double-position ticker exists live at open, this is unverifiable that day;
+note "no qualifying ticker pair observed" rather than treating silence as a pass.
+
+---
+
+### 0a-1o. Ask Largo swing thesis-health dead-wired to identical reading for every live position — docs/swing-brief-thesis-health-dead-wired (pending, follows the deep audit PR #4178)
+
+**What was broken:** Every live/committed swing position's Ask Largo play-brief rendered the byte-identical `46% · Degraded` thesis-health score regardless of real P&L (confirmed on all 4 currently-open positions: +98.0%, 0.0%, +33.7%, +24.6% all identical). `livePlayFromSwingPosition` never populates `factors`/`regime`, and the fix that already exists for the main board (`serving-lane.ts`'s `attachThesisExplanation`) was never wired into the Ask Largo play-brief resolver.
+
+**Fix:** `loadOpenTerminalPlay` (`play-brief-resolve.ts`) now calls `discoverSwingFromPersisted()` + `attachThesisExplanation()` before building the `TerminalPlay`, mirroring the board's own restoration. Restores the **regime** pillar (15% weight) with real data; persistence/entry_geometry/flow_corroboration (70% weight) remain a tracked follow-up — see the finding's "Scope note" for why those three are NOT safely fixable the same way.
+
+**Check at the open:** `GET /api/market/swing/play-brief` for a live OPEN/HOLD/TRIM position whose ticker still has an active discovery dossier — the "Regime fit" pillar line should show a real regime/archetype read, not the generic "unread" default. Compare two different live positions' thesis-health panels — they should no longer be byte-identical if their dossiers differ.
+
+---
+
+### 0a-1m. Swing Ask Largo — fabricated play-brief confidence — fix/swing-brief-omit-fabricated-confidence (merged #4174)
+
+**What was broken:** `composeSwingPlayBrief()` always stamped `envelope.confidence` as `high` or `moderate` from a coarse `hasRichData` boolean. Largo contract C6 requires omitting confidence when the lane cannot calibrate it — the fabricated score could corrupt cross-product ranking and mislead markdown/Largo exports.
+
+**Fix:** Remove the swing play-brief confidence block; stop `buildRichEnvelope()` from defaulting missing confidence to `high` (concept answers still pass explicit confidence).
+
+**Check at the open:** `GET /api/market/swing/play-brief` for any swing row — `envelope.confidence` should be absent/undefined; Ask Largo panel should not show a confidence badge on the full brief export.
+
+---
+
+### 0a-1n. Thermal `/heatmap` pulse SSE header change_pct session-open anchor — fix/thermal-pulse-change-pct-anchor (pending)
+
+**What was broken:** When the pulse SSE overlay won on SPX/VIX index tickers, `GexHeatmap` fell back to raw `pulseSnap.change_pct` from `indexStore` — measured from session open (ws-bar anchor), not prior close. Same failure class as the 2026-08-07 SPX desk P0; `usePulseStream` was fixed but Thermal called `createPulseEventSource` directly.
+
+**Fix:** (1) V-channel ticks only recompute `change_pct` when `open_source === "rest"`; (2) pulse SSE route sanitizes index wire via `clusterIndexSpotChangePct`; (3) GexHeatmap derives SPX from prior close and gates VIX on REST anchor.
+
+**Check at the open:** `/heatmap` with SPX selected during a gapped session — header day-change% must match SPX desk pulse tile (not invert sign vs true prior-close move). Toggle VIX index header the same way.
+
+---
+
+### 0a-1l. Night Hawk deck etClock — duplicate parser missed Largo C1 asOf — fix/play-terminal-etclock-c1-parse (pending)
+
+**What was broken:** `PlayTerminal.tsx` exported a local `etClock` that only `Date.parse()`d ISO strings. After #4142/#4152 stamped play-brief `asOf` as `YYYY-MM-DD HH:mm ET`, any C1 stamp routed through the deck why-now ribbon or CommandDeck row chips would render blank time (`— ET`).
+
+**Fix:** Delegate `PlayTerminal.etClock` to `@/lib/et-clock` with `{ hour12: false, pad: true }` so ISO and C1 stamps share `parseEtStamp()`.
+
+**Check at the open:** Swings OPEN row with play-brief `asOf` in C1 format → why-now ribbon and deck row chips show `HH:MM ET`, not `— ET`.
+
+---
+
+### 0a-1k. Swing Ask Largo — Desk context duplicated HELIX anomalies — fix/swing-brief-desk-context-dedup (merged #4128)
+
+**What was broken:** `deskConsensusSection` repeated `recent_anomalies[0]` even though Trade manager read (`flowNarrative`) and Flow & positioning already surface the same sweep — members saw the anomaly up to three times. Stale collapse title `Desk consensus` never matched section title `Desk context`.
+
+**Fix:** Desk context renders only Night Hawk outcome history (unique vs `crossDeskCoaching`); remove stale collapse allowlist entry.
+
+**Check at the open:** Swings OPEN row with a live HELIX anomaly → Ask Largo panel mentions the sweep once in Trade manager read; Desk context appears only when NH outcome history exists.
+
+---
+
+## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
+
+### #67. Largo swing brief per-contract premium rounding — fix/largo-swing-premium-format — #4556 (merged)
+
+**What was broken:** `play-brief-narrative.ts` reused the flow-scaled whole-dollar `fmtUsd` for
+per-contract option premiums (mark, stop_premium rails) — same brief showed `+$9.70` in Position
+and `$10` in the Trade Manager narrative for the same field.
+
+**Fix:** Added `fmtOptionUsd` (2-decimal signed, matching `play-brief.ts`'s formatter) and switched
+the three per-contract call sites; flow/aggregate call sites (HELIX tape, dark-pool notional)
+correctly kept the original scaled `fmtUsd`.
+
+**Check at the open:** Open Ask Largo on any live swing position with a fractional per-contract
+mark/stop — Position section and the narrated Trade Manager read must show the SAME precise value
+(e.g. `+$9.70`, not `$10`), not two different roundings of the same field.
+
+### desk-warm `?force=1` off-window hammering — fix/desk-warm-off-window-force-cooldown (pending)
+
+**What was broken:** On Labor Day (NYSE full-day closure, a weekday — market closed), CloudWatch
+showed 166 `force=1` bypasses of the desk-warm hours gate in 6h from 47+ distinct source IPs (not
+any known in-app dispatcher), 70 full runs completed, correlating with a measured ALB p99 68s /
+Max 100s spike. Root external caller not identified from repo code; fixed defensively at the route.
+
+**Fix:** `desk-warm/route.ts`'s force=1 rate-limit floor now widens from 60s to 300s when the call
+lands outside the extended warm window (`isEtExtendedWarmHours`) — a single on-demand debug hit is
+unaffected, a repeated off-window caller is throttled 5x harder.
+
+**Check at the open:** Next off-hours/holiday window, re-run the same CloudWatch query
+(`filterPattern='"force=1 bypassed" "desk-warm"'` over `/ecs/blackout-production`) — completions
+should now be capped at roughly 1 per 5 min even if the same external caller is still hammering it,
+and ALB TargetResponseTime p99/Max should no longer show the same tail-latency spike shape during
+a market-closed window. If the mystery caller is still found, identify and fix it at the source
+too — this PR only hardens the receiving end.
+
+## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
+
+### 0a-1j. Swing Ask Largo OPEN brief — ticker collision picked WATCH lane row — fix/swing-play-brief-ticker-collision (pending)
+
+**What was broken:** Selecting an OPEN swing row (e.g. NRG 110C HOLD) fetched `/api/market/swing/play-brief?playId=SWING:NRG` and resolved the WATCH lane row (115C) — UI showed `Entry` sections instead of `Management`, headline contract mismatch. Post-#4056 prod validation OPEN tab RED.
+
+**Fix:** Stamp ledger `positionId` on live horizon rows → `SWING:{TICKER}:{id}` play ids; pass `positionId` in brief URL; prefer live ledger row in `pickLanePlayForBrief` when status hint absent; disambiguate multi-row open ledger by contract/status.
+
+**Check at the open:** Swings desk OPEN tab → select a ticker with both OPEN capital and WATCH lane rows (NRG if still present) → Ask Largo panel must show **Management** + **Position** sections matching the selected row's contract; re-run `node scripts/audit/ask-largo-swing-brief-validate.mjs` → OPEN pass.
+
+### 0a-1i. Cluster health future-skew + VIX SSE change% gate — fix/cluster-health-vix-sse-change — #4054 (pending)
+
+**What was broken:** (1) `buildUwClusterHealth` / `readPolygonClusterHealth` used `Math.max(0, now - at)` — a clock-skewed future heartbeat read as age 0 and `cluster_live: true` on web-tier followers while `uw-socket.ts` already used `isWsUpdatedAtFresh`. (2) SSE pulse overlay transported `vix_change_pct` verbatim; ws-bar anchors measure from session open, not prior close — same failure class as the 2026-08-07 SPX P0 but VIX has no prior close to derive from.
+
+**Fix:** Route cluster liveness through `isWsUpdatedAtFresh` + `wsUpdatedAtAgeMs`. Gate VIX SSE overlay via `restAnchoredIndexChangePct()` (`open_source === "rest"` only).
+
+**Check at the open:** Admin Operations → socket-health during RTH — follower replicas must not show UW/Polygon cluster live when heartbeat timestamp is skewed. SPX desk header VIX change% must agree with REST pulse when SSE stream carries ws-bar anchor (toggle network: compare `/api/market/spx/pulse` vs live SSE overlay during first 30 min after open).
+
+### 0a-1h. Polygon single-ticker snapshot fabricated flat 0% change — cursor/autopilot-work-loop-ce5a (pending)
+
+**What was broken:** `fetchStockSnapshot()` → `_rowToSnapshot()` returned `change_pct: 0` when Polygon omitted `todaysChangePerc` and `prevDay.c`, while batch movers already used `snapshotChangePctFromRow()` (null when absent).
+
+**Fix:** Wire `_rowToSnapshot` to `snapshotChangePctFromRow(row)`; type `change_pct` as `number | null`.
+
+**Check at the open:** `/api/market/quote?ticker=SPY` during pre-open with no prior close must omit change % (null/—), not show flat `0.00%`.
+
+### 0a-1g. SPX play gate: future-skewed gex_age_ms bypassed stale block — fix/spx-play-gate-gex-age-future-guard (pending)
+
+**What was broken:** `gexStaleFromAge()` correctly lit the GEX stale pill when `pos.asof` was clock-skewed into the future (>5s), but `evaluatePlayGates()` passed the raw negative `gex_age_ms` as a negative `gexSec` that never exceeded `playGexStaleMaxSec()`. A desk with a lit GEX-stale pill could still open plays when `polled_at` was fresh.
+
+**Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` fail-closed guard to `gex_age_ms` in play gates (same pattern as `polled_at` fix 2026-09-03).
+
+**Check at the open:** If GEX snapshot age shows stale on SPX desk during RTH, confirm play rail does not surface new BUY entries for that desk state.
+
+### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — #3979 MERGED
+
+**What was broken:** `describeVectorFreshness()` clamped negative age to 0 and classified `freshnessFromAgeMs(0)` as **live**. A Vector snapshot stamped >5s ahead of the reader (cron writer vs API reader clock skew) read as falsely fresh — Largo/Cortex consumers could present stale tape as live.
+
+**Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` guard (same as `FreshnessChip`, `ageSecFromIso`) → `freshness: unknown`, `age_seconds: null`, disclosure note. Within tolerance, keep clamp-to-zero.
+
+**Check at the open:** Ask Largo a Vector question during RTH; if the underlying Redis snapshot is genuinely stale (>10m), the tool response should carry `freshness: recent/stale` with a note — never `live` on an unparseable or clock-skewed `observed_at`.
+
+### 0a-1f. SPX desk spot 0 off-hours — fix/spx-desk-offhours-last-spot (pending)
+
+**What was broken:** `buildSpxDeskPulse()` off-hours branch returned `price:0` and overwrote `lastPulseForSignals`, erasing the last RTH print. `buildSpxDesk()` returned empty when Polygon had no live index tick. `validate:platform-integrity` FAILed `spx-desk-spot — SPX 0` while Thermal matrix showed spot≈7718.
+
+**Fix:** Closed-market pulse reuses `lastPulseForSignals` with updated market labels (never clobbers). Full desk build falls back to `lastPulseForSignals` then prior session close from daily bars.
+
+**Check at the open:** Weekend/off-hours load `/terminal` — header SPX spot must match Thermal matrix within 1%, never 0 when chain data exists.
+
+### 0a-1d. BIE SPX desk brief mislabeled GEX king as generic "pin" — fix/bie-spx-brief-magnet-labels (pending)
+
+**What was broken:** `composeSpxDeskBrief` WHY / LEVELS / NEXT 5M lines used hardcoded `"pin"` even when the magnet was `desk.gex_king` (GEX king node) — same pin-vs-king confusion the SPX pin panel already disambiguated via `spx-metric-labels.ts`.
+
+**Fix:** `resolveDeskMagnet()` tracks source; prose uses `SPX_PIN_GEX_KING_LABEL_PROSE` or lower-case `SPX_DESK_MAX_PAIN_LABEL`. Regression tests in `spx-desk-brief.test.ts`.
+
+**Check at the open:** SPX Slayer live commentary / Largo SPX brief during RTH — WHY and LEVELS should say "GEX king node" when king is the magnet, never bare "pin".
+
+### 0a-1c. Thermal triple-desk header change_pct not rebased on live push — fix/thermal-triple-desk-header-rebase (pending)
+
+**What was broken:** `ThermalTripleDesk` column headers used `pushChangePct ?? matrixChangePct` with no `rebaseChangePct` when a live push spot overlayed a matrix snapshot. Spot could update while day-change % stayed frozen at the matrix-era value — same class as the GexHeatmap header fix (2026-09-04).
+
+**Fix:** When push spot and matrix spot both exist, `rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct })` before falling back to push/matrix change.
+
+**Check at the open:** On `/heatmap` triple-desk view during RTH, each column's spot vs day-change % should stay coherent when the live quote stream moves away from the matrix snapshot spot.
+
+### 0a-1b. Swing discovery WATCH spot refresh trusted stale last trades — fix/swing-discovery-underlying-spot-freshness (pending, #3893 sibling)
+
+**What was broken:** `swing-discovery` refreshed WATCH-name underlying spots via `fetchStockLastTrade` trusting any finite positive `.p` with no SIP timestamp check. A degraded-but-200-OK feed could overwrite plan-entry fallback with a stale price, skewing FORMING/TRIGGERED/EXTENDED setup-maturity flags on the member board.
+
+**Fix:** Route through shared `spotFromLastTradeResult()` — stale trades return `null` and the existing fail-soft path keeps the plan-entry fallback.
+
+**Check at the open:** On `/swings`, WATCH setup-maturity chips should track live tape during RTH; on single-name feed degradation, names should keep plan-entry spots rather than showing hours-old "live" refreshes.
+
+### 0a-1. Swing structural-stop fed by a stale-but-200-OK underlying spot — fix/swing-underlying-spot-staleness-guard (merged #3893, deep-dive Q38)
+
+**What was broken:** `loadUnderlyingSpot` (`swing-active-refresh/route.ts`) trusted any finite positive `.p` from Polygon's `/v2/last/trade` with no check on the trade's own timestamp. That spot feeds `structuralStopBroken` (`manage.ts`), the highest-precedence GATE rung that fires an unconditional real-money `EXIT`. A hard outage already fails closed (throws/invalid shape → skip); a feed that stays UP but goes STALE (still 200 OK, still a finite positive price) did not — it looked perfectly healthy while silently feeding an old price into the one rung designed to override every other consideration.
+
+**Fix (merged #3893):** New pure `spotFromLastTradeResult` (`src/lib/swing/underlying-spot-freshness.ts`) also validates the trade's SIP timestamp (`t`, nanoseconds) via the shared `isWsUpdatedAtFresh` helper — a trade older than 15 minutes (one full active-refresh cron interval) now reads as `null`, routing through the same existing fail-soft skip path as a hard outage.
+
+**Check at the open:** Watch `swing-active-refresh` CloudWatch logs during RTH for this guard actually firing (should be rare — only on genuine feed degradation, not on ordinary thin trading). Cross-check any real position that DOES get a `structural_stop` EXIT against its ticker's actual live tape on a public chart at the same timestamp, to confirm the exit was driven by a genuinely fresh read.
+
+### 0a0. SPX playbook breakout HOD/LOD used extended-hours bars — fix/spx-playbook-breakout-rth-filter (pending)
+
+**What was broken:** `sessionBreakoutExtremesFromBars` computed session HOD/LOD from all Polygon minute bars including premarket/after-hours. Premarket spikes could inflate HOD and suppress `hod_break` during RTH (desk session stats already RTH-gated via `filterRthBars`).
+
+**Fix:** Export `filterRthBars` from `spx-session.ts` and apply inside `sessionBreakoutExtremesFromBars` before excluding the forming last bar.
+
+**Check at the open:** SPX playbook `hod_break`/`lod_break` flags should only react to cash-session (09:30–16:00 ET) extremes — compare against desk ladder, not premarket wicks.
+
+### 0ax. SPX desk in-process caches future-at guard — fix/spx-desk-inprocess-cache-future-guard (merged #3862)
+
+**What was broken:** SPX desk dark pool REST cache, prior-day OHLC, and pulse structure caches used raw `now - fetchedAt < ttlMs`, so clock-skewed future `fetchedAt` stamps read as infinitely fresh (same class as #3844 / #3849).
+
+**Fix:** Route all three in-process cache-hit gates through `isWsUpdatedAtFresh(fetchedAt, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** SPX desk pulse lane (prior-day levels, structure refresh cadence) and dark pool panel should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
+
+### 0ay. Polygon market-status cache future-at guard — fix/polygon-market-status-cache-future-guard (merged #3855)
+
+**What was broken:** `fetchMarketStatusNow()` gated its 60s in-process cache with raw `Date.now() - fetchedAt < MARKET_STATUS_CACHE_MS`. A clock-skewed future `fetchedAt` yields negative age, which still satisfies `< 60_000`, pinning market-status as infinitely fresh until real time catches up — same class as `fetchVixIvRankPercentile` (fixed #3846) and UW/LULD halt gates.
+
+**Fix:** Route cache hit through `isWsUpdatedAtFresh(marketStatusCache.fetchedAt, MARKET_STATUS_CACHE_MS, now)`.
+
+**Check at the open:** SPX desk market-phase chip (open/closed/extended) should still flip correctly at session boundaries; no stuck "closed" or "open" state after deploy if a process clock was ahead.
+
+### 0az. VWAP proxy / macro predictions / live-marks active set / stock candle fallback — fix/spx-vwap-signal-log-live-marks-future-guard (pending)
+
+**What was broken:** Four tail caches still used raw `now - fetchedAt < ttl`: SPY volume map for SPX VWAP proxy, UW macro predictions in signal log, 0DTE live-marks active-play set (10s), stock-candle Redis fallback refresh. Future stamps pin each indefinitely.
+
+**Fix:** Route all four through `isWsUpdatedAtFresh`.
+
+**Check at the open:** SPX VWAP weighting refreshes on TTL; Night Hawk open-play marks pick up new commits within ~10s; stock spot candles still cross-replica fallback on demand.
+
+### 0aw. Lit/dark ratio + Vector universe age chips future-at guard — fix/future-timestamp-lit-dark-vector-universe (PR #3853)
+
+**What was broken:** `computeLitDarkRatio()` and Vector universe staleness chips (`VectorScanner`, `VectorTickerComparisonStrip`) used raw `now - updatedAt` without the shared future-timestamp guard. Clock-skewed future store timestamps read as fresh (SPX desk lit/dark ratio served from untrusted data); far-future universe `updatedAt` never flipped the stale warning chip while `formatVectorAge` clamped display to `"0s"`.
+
+**Fix:** Route lit/dark freshness through `isWsUpdatedAtFresh`; add `isVectorUniverseSnapshotStale()` for Vector consumers.
+
+**Check at the open:** Vector scanner age chip should turn amber after ~10m without a cron rebuild; SPX desk lit/dark ratio should absent (not serve) when UW stores carry only future `updatedAt` (synthetic/off-hours only).
+
+### 0at. Off-hours `?force=1` desk-warm storm still unexplained — now logs caller IP/UA — fix/cache-warmer-caller-identity (merged #3847)
+
+**What was broken:** Live measurement (this sweep) found `AWS/ApplicationELB` `TargetResponseTime` holding a healthy p50/p90 but p99 3.1-8.2s / Max 10.4-34.0s across 3+ straight off-hours hours (Sat 01:12-04:05 UTC) — tail latency, not fleet load. Root cause: `[cron/desk-warm]` fired 81 times in 3 hours (avg 28s, max 108.5s) via the documented `?force=1` off-hours bypass, entirely outside its deployed EventBridge schedule (weekday 11-21 UTC only). This is the SAME shape a 2026-09-04 investigation found and rate-limited (60s cooldown) after ruling out every known in-app dispatcher (EventBridge, `rth-warm-leader`, `cron-staleness-watchdog`) — the caller holds a valid `CRON_SECRET` but was never identified, because nothing captured about the request itself.
+
+**Fix:** Pure observability — `shouldRunCacheWarmer` now logs `callerInfo` (client IP + user-agent, via a new `callerInfoFromRequest()` helper) alongside the cron key on every off-hours force bypass, across all four warm crons (desk-warm/zerodte-warm/heatmap-warm/meridian-warm). No behavior change to the gate, cooldown, or overlap lock.
+
+**Check at the open:** This doesn't fix the underlying storm — it only makes the NEXT one traceable. Grep CloudWatch for `[cache-warmer-gate] force=1 bypassed` during any future off-hours window and read the `(caller: ip=... ua=...)` field; if it's a known internal IP/UA, route the fix to that caller directly instead of re-running this same "rule out the usual suspects" investigation a third time.
+
+### 0as. SPX graded + lotto ticket caches future-at guard — fix/spx-ticket-lotto-cache-future-guard (merged #3856)
+
+**What was broken:** `pickChainContract()` and `pickLottoChainContract()` in-process ticket caches (45s / 60s TTL) used raw `now - entry.at < ttlMs`, so clock-skewed future `at` stamps read as infinitely fresh — same class as #3844/#3846/#3849.
+
+**Fix:** Route both through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** Open SPX Slayer play rail during RTH — graded tickets and lotto tickets should refresh chain quotes normally after deploy; no stuck stale ticket from a skewed cache stamp.
+
+### 0ar. SPX play technicals + adaptive gates cache future-at guard — fix/spx-play-technicals-telemetry-future-guard (pending)
+
+**What was broken:** `spx-play-technicals.ts` and `spx-play-telemetry.ts` in-process caches used raw `now - entry.at < ttlMs`, so clock-skewed future `at` stamps read as infinitely fresh (ticket/lotto paths fixed in #3856).
+
+**Fix:** Route both through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** SPX Open desk technicals panel and adaptive gate banner should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
+
+### 0au. VIX IV rank + SPX UW ladder cache future-at guard — fix/cache-future-guard-polygon-uw-ladder (merged #3846)
+
+**What was broken:** `fetchVixIvRankPercentile()` and `getSpxOdteScopedUwLadderMap()` used raw `now - entry.at < ttlMs`, so a clock-skewed future `at` read as infinitely fresh (same class as #3844 GEX overlay gates).
+
+**Fix:** Route both in-process cache-hit gates through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** SPX bootstrap / Thermal matrix overlay should refresh VIX IV rank and 0DTE UW ladder overlay normally during RTH — no stuck stale IV rank after deploy clock skew.
+
+### 0av. Legacy swing promotion fabricated REL_STRENGTH via `?? 0` — fix/swing-legacy-rel-strength-null-honesty (merged #3845)
+
+**What was broken:** `buildLegacySwingArtifacts()` passed `relStrength: { nameReturnPct: reads.returnPct10d ?? 0, spyReturnPct: reads.spyReturnPct10d ?? 0 }` even though `swingReadsForLegacy()` intentionally leaves both 10d returns `null`. `relStrengthSignal()` treats `0` as present, scoring `relativeStrengthScore(0,0)=0` — worst case — on every morning-confirm promoted name instead of omitting REL_STRENGTH from the pillar denominator.
+
+**Fix:** Only pass `relStrength` when both 10d returns are grounded; otherwise omit the cluster so `buildSwingDossier` marks REL_STRENGTH absent.
+
+**Check at the open:** After morning-confirm promotes a Legacy CONFIRMED name to Swings, dossier scoring must not include a fabricated REL_STRENGTH=0 contribution — pillar should be absent/missing.
+
+### 0as. Swing TRIM latch ignored `verdict.enforced`, could silently disable the −60% premium_stop — fix/swing-trim-latch-enforced (merged #3842)
+
+**What was broken:** `latchSwingLiveStatus()` (`manage-sync.ts`) flipped a swing position's ledger `status` to `TRIM` on ANY `TAKE_PARTIAL`/`EXIT_RUNNER` verdict, without checking `verdict.enforced`. Those two actions are exclusively produced by EDGE rungs (`profit_ladder`, `catalyst_shift`, `regime_shift`, `flow_decay`, `rel_strength_loss`, `vol_collapse`) — advisory-only until the PR-16 calibration ladder graduates them — so an un-graduated 2× profit-ladder recommendation that nobody actually executed still latched TRIM. The very next refresh tick derives `scaledAlready` from `row.status === "TRIM"`, and `deriveScaleOutAction` disables the −60% `premium_stop` hard stop entirely once `scaledAlready` is true (only the trailing-stop rule re-arms). Net effect: an un-enforced advisory partial could permanently disable capital-preservation on a position that was, in reality, still 100% open and fully exposed. Found during a Swing V2 architecture-review pass (`docs/audit/SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md` #18), independently confirmed by Cursor.
+
+**Fix:** `latchSwingLiveStatus()` now only latches TRIM when `verdict.enforced === true`; an un-enforced TAKE_PARTIAL/EXIT_RUNNER leaves `status` unchanged, so `scaledAlready` stays false and the hard stop stays live next tick.
+
+**Check at the open:** For any swing position that hits a 2× profit-ladder-style mark during RTH while `profit_ladder` has NOT yet graduated (check the calibration ladder state), confirm the ledger row's `status` stays `OPEN`/`HOLD` (not `TRIM`) and that a subsequent adverse move to −60% still triggers a `STOP_OUT` rather than being silently skipped.
+
+### 0ap. Cluster snapshot change_pct without open_source guard — fix/cluster-spot-change-open-source-guard (merged #3837)
+
+**What was broken:** `readClusterIndexSpot()` served `change_pct` from `spx:pulse:snapshot` whenever finite, without checking `open_source`. Web-tier GEX/Thermal cache readers on the Redis cluster fallback could pair a live price with session-open–anchored change% (`ws-bar`), while the SPX desk and `liveWsIndexSpot` already null non-REST anchors.
+
+**Fix:** `clusterIndexSpotChangePct()` — only returns change% when `open_source === "rest"`.
+
+**Check at the open:** Thermal SPX matrix header day-change% vs SPX desk pulse — must agree or both show honest absence; never diverge on anchor basis when reading via cluster snapshot on a cold web replica.
+
+### 0ar. Vector universe null-spot fail-closed — fix/vector-universe-spot-fail-closed (pending)
+
+**What was broken:** When `fetchGexHeatmap` returned `strike_totals` but `spot` was still `null` (cold-cache Polygon contention), `buildVectorUniverseRow` passed `undefined` spot into `computeGexWalls`, running the unconstrained peak scan. That served wrong-side `topCallWall` / `topPutWall` on `/api/market/vector/universe` and persisted the same into narrowed 0DTE/weekly/monthly wall-history rails.
+
+**Fix:** Fail-closed — skip `computeGexWalls` for GAMMA walls when `spot` is unknown; emit empty wall arrays (mirrors `getVectorGexWalls()` returning null).
+
+**Check at the open:** During the first minutes of RTH, poll `/api/market/vector/universe` for tickers that briefly show `spot:null` — they must not carry a non-null `topCallWall` below the spot that resolves seconds later on solo `/api/market/gex-heatmap`.
+
+### 0aq. Largo technicals live change_pct + Night Hawk record roundFloats — fix/largo-technicals-change-pct-nighthawk-record-roundfloats (merged #3836)
+
+**What was broken:** `buildLargoTechnicals` returned live WS spot for stocks but dropped `changePct` (null day % during RTH). Index path (SPX/VIX) used REST-only snapshots instead of the live `indexStore` overlay the quote route uses. `GET /api/market/nighthawk/record` omitted the standard `roundFloats` API boundary.
+
+**Fix:** Stock WS → `changePct = wsCandle.changePct`; index → `resolveLiveIndexWsEntry` + `overlayRestIndexWithWs`; record route wraps payload in `roundFloats`.
+
+**Check at the open:** Largo `get_technicals` for NVDA during RTH must return non-null `change_pct` beside live spot when REST seed landed. SPX technicals spot/`change_pct` must track desk header (not lag REST-only). Night Hawk record JSON must have clean 2dp numerics.
+
+---
+
+### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (pending)
+
+**What was broken:** Default-on Vector volume profile fed the full multi-session minute buffer (including premarket/after-hours) into `computeVolumeProfile`, so POC and value-area bands on equities could anchor to extended-hours spikes instead of the current RTH session. HOD/LOD, opening range, and VWAP got the RTH gate in the 2026-08-05 audit; volume profile was missed.
+
+**Fix:** Add `sessionRthVolumeProfileBars()` (`lastSessionBars` + `filterRthBarsSec`) and scope `VectorChart.tsx` + `vector-analytics-core.ts` through it.
+
+**Check at the open:** On `/vector` with volume profile enabled for NVDA or TSLA during RTH, POC must sit near the RTH price cluster — not at a premarket spike level visible only in extended hours.
+
+---
+
+## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
+
+### 0an. Night Hawk hunt roundFloats — fix/nighthawk-hunt-roundfloats (pending)
+
+**What was broken:** `POST /api/market/nighthawk/hunt` returned raw IEEE floats in `platform_context.spx_price` and play `score` fields while sibling Night Hawk routes (`edition`, `horizons`, `play-bars`, `legacy-marks`) already wrap with `roundFloats`.
+
+**Fix:** Wrap assembled `HuntResponse` in `roundFloats` before `NextResponse.json`.
+
+**Check at the open:** Run a day or swing hunt from Night Hawk — response JSON must show 2dp numerics, no `7499.360000000001`-class tails on scores or SPX context.
+
+### 0am. Dark-pool ticker roundFloats + nighthawk-edition UW sweep — fix/dark-pool-ticker-roundfloats-nighthawk-uw-sweep (pending)
+
+**What was broken:** `GET /api/market/dark-pool/ticker` returned raw IEEE floats at the JSON boundary while sibling `/dark-pool` already calls `roundFloats`. Separately, `GET /api/cron/nighthawk-edition` dispatched `buildEveningEdition` without `runWithBackgroundUwSweep`, so nightly dossier UW fan-out raced live member reads for the same 2-RPS cluster ceiling.
+
+**Fix:** Wrap ticker success payload in `roundFloats({ snapshot, symbol })`; wrap edition build dispatch in `runWithBackgroundUwSweep(() => buildEveningEdition(...))`.
+
+**Check at the open:** Thermal heatmap overlay drilldown on a liquid name (SPY/NVDA) — premiums/sizes must not show IEEE tails. During edition window (~16:00 ET), confirm no spike in live UW queue-wait on member Vector/HELIX reads coinciding with `[cron/nighthawk-edition] background build done` log lines.
+
+### 0al. SPX desk peek served price:0 bootstrap shell — fix/spx-desk-peek-zero-price (merged #3803)
+
+**What was broken:** `GET /api/market/spx/desk` returned any `peekSpxDesk()` cache hit immediately, including bootstrap fast-lane shells with `price: 0` before `buildSpxDesk()` finished — members could flash SPX 0 while Thermal matrix already showed a grounded spot (~7718).
+
+**Fix:** Peek fast-path only when `instant.price > 0`; otherwise fall through to `loadSpxDesk()`.
+
+**Check at the open:** Cold-load `/terminal` after deploy — SPX header spot must match Thermal matrix within 1%, never 0 during a session with live index data.
+
+### 0af. Polygon batch snapshot fabricated flat 0% — fix/polygon-snapshot-change-pct-null (merged #3789)
+
+**What was broken:** `fetchStockSnapshotPerformance` (sector ETFs, leader stocks, breadth universe) and `fetchMarketMovers` used `todaysChangePerc ?? 0`, so a missing provider field read as a flat day on SPX desk `sector_heat` / breadth-derived internals.
+
+**Fix:** `snapshotChangePctFromRow()` returns `null` when change cannot be grounded (provider % or day-close derivation). Breadth internals skip null samples; movers filter null change out.
+
+**Check at the open:** SPX desk sector heat rows should show real +/- % or omit/null — never 0.00% for a ticker with no session change data pre-open. Cross-check XLK/XLF on desk vs `GET /api/market/heatmap` sector panel.
+
+### 0ag. UW spot-fallback fabricated flat 0% — fix/spot-fallback-change-pct-null (merged #3790)
+
+**What was broken:** `resolveSpotFromUwStockState()` returned `change_pct: 0` when UW `/stock-state` omitted `prev_close` — members saw "unchanged" with no prior-close anchor.
+
+**Fix:** `change_pct` is `null` when `prev_close` is absent; `SpotQuote` + pulse snapshot types allow null.
+
+**Check at the open:** `GET /api/market/quote?ticker=<equity>` on UW fallback path — missing prior close must show absent change %, not `0.00%`.
+
+### 0an. Pricing's SEO description still said "six trading modules" after the catalog grew to seven — fix/pricing-seo-stale-six-modules (merged #3797)
+
+**What was broken:** `pricing/page.tsx`'s `publicPageMetadata()` description and `WebPageJsonLd` description both hardcoded "all six trading modules plus Discord" — driving `<meta name="description">`, canonical-adjacent title, OG/Twitter copy, and JSON-LD structured data — even though the visible page and `SoftwareApplicationJsonLd`'s `featureList` already correctly describe all 7 products.
+
+**Fix:** Added `manifestProductCountWord()` to derive the spelled-out count from the live manifest instead of a hardcoded word; both description copies now read from one shared constant. Added "six trading modules" to `BANNED_PUBLIC_MARKETING_PHRASES` and `pricing/page.tsx` to the `PUBLIC_SURFACES` scan.
+
+**Check at the open:** View-source (not just rendered DOM) on `/pricing` for `<title>`, `<meta name="description">`, canonical, OG/Twitter tags, and JSON-LD — confirm no "six"/6-module references remain. Once deployed, request a recrawl in Search Console/Bing Webmaster Tools and verify the refreshed SERP description after re-indexing.
+
+### 0ai. Night Hawk's Learn-chapter SEO metadata still said "Swing Trading Setups" — fix/guide-seo-night-hawk-stale-metadata (merged #3791)
+
+**What was broken:** `GUIDE_SEO["night-hawk"]` (`guide-seo.ts`) — a third, independent copy of the same stale "evening/swing-only" framing already fixed today in `PRODUCT_MANIFEST.hawk` and `LEARN_NAV` — read "Swing Trading Setups Explained" / "runs its evening scanner" as the literal `<title>` and SERP snippet.
+
+**Fix:** Updated to "0DTE Command & Evening Edition" / a description leading with 0DTE Command scanning intraday, Evening Edition as next-session prep. Added a regression test.
+
+**Check at the open:** Google/search-console snippet for `/learn/night-hawk` and the Course JSON-LD chapter list should show the corrected title; confirm no SERP-truncation regression (title 49/60 chars, description 146/160 chars).
+
+### 0ah. Meridian manifest undersold catalyst coverage as earnings-only — fix/meridian-manifest-catalyst-coverage (pending)
+
+**What was broken:** `PRODUCT_MANIFEST.meridian` framed the product as narrowly "Earnings intelligence" (homepage card, pricing matrix, SEO schema, marketing email all derive from this one object) — but Meridian genuinely ships four catalyst classes (earnings, macro, OpEx, FDA), each with its own filter chip and detail panel, confirmed in `meridian-types.ts`/`MeridianDesk.tsx`/`MeridianEventDetailPanel.tsx`. Meridian's own Academy guide already documented this correctly; only the manifest (and a hand-duplicated About-page line) was stale.
+
+**Fix:** Broadened the manifest's `tag`/`positioning`/`lifecycle`/`capabilities`/`faqAnswer` to name all four classes, keeping earnings as the deepest workflow. Synced `about/page.tsx`. Added "Earnings intelligence" to `BANNED_PUBLIC_MARKETING_PHRASES` and a dedicated regression test.
+
+**Check at the open:** Homepage Meridian card should read "Catalyst intelligence" with macro/OpEx/FDA mentioned; `/meridian` desk filter chips (Macro/Earnings/FDA/OpEx) should all resolve real data during a session with active catalysts of each type.
+
+### 0ak. Learn hub Night Hawk descriptor still said "Evening playbook" after the 0DTE Command redesign — fix/learn-nav-night-hawk-stale-descriptor (merged #3784)
+
+**What was broken:** `LEARN_NAV`'s `night-hawk` entry (`src/lib/learn/nav.ts`) described the
+chapter as "Evening playbook — tomorrow's setups, scored tonight." — contradicting the homepage's
+"0DTE Command runs during RTH... not a swing-only product" positioning (`PRODUCT_MANIFEST.hawk`).
+An earlier fix already closed this exact gap in the marketing manifest, but `LEARN_NAV` is a
+separate hand-authored array the earlier fix never reached.
+
+**Fix:** Updated the descriptor to "Always-on 0DTE scanner during RTH, plus next-session Evening
+Edition prep." Added a regression test tying `LEARN_NAV`'s night-hawk descriptor to the same
+"not evening/swing-only" guard the manifest test already has.
+
+**Check at the open:** `/learn` chapter nav and the Course JSON-LD schema (view-source or a
+structured-data testing tool) should show the corrected Night Hawk descriptor; confirm it still
+reads naturally alongside the dedicated Night Hawk guide's own overview content.
+
+### 0aj. Academy's structured curriculum had no Vector or Meridian chapter — feat/academy-vector-meridian-chapters (pending)
+
+**What was broken:** `LEARN_NAV` (Academy's structured chapter list) had 7 entries — Getting Started, SPX Slayer, HELIX, Largo, Night Hawk, Thermal, Glossary — with no chapter for Vector or Meridian, even though `PRODUCT_MANIFEST` already lists all 7 as live products. Their guides existed only in the unstructured Guides catalog, never as numbered curriculum chapters.
+
+**Fix:** Added real, code-grounded Vector and Meridian chapters (8 and 9), wired through the existing `defineToolGuide` pattern with matching SEO metadata. Added an invariant test asserting every live manifest product has exactly one first-class Academy chapter.
+
+**Check at the open:** `/learn` hub should show "9 chapters" and Vector/Meridian in the sidebar chapter list (not just the flat Guides catalog below it); `/learn/vector` and `/learn/meridian` should render with real content and correct prev/next chapter navigation.
+
+### 0ag. Vector Academy guide falsely framed Thermal as SPX-only — fix/vector-guide-thermal-multiticker-claim (merged #3786)
+
+**What was broken:** the Vector guide (`articles.ts`, `vector-scanner-guide`) said "[Thermal] focus[es] on SPX" and "[Thermal] gives you the deep heatmap for SPX" — contradicting the homepage's own accurate "Multi-ticker GEX/VEX/DEX/CHARM matrix" framing and Thermal's real route/UI (11 preset tickers spanning indices and single names, plus live ticker search — no SPX-only gate).
+
+**Fix:** Corrected both passages to reflect Thermal's real multi-ticker capability while keeping Vector's accurate differentiator (automated universe-wide scanning, no manual ticker selection) intact. Added `thermal-ticker-scope-consistency.test.ts` grounding the fix in `HEATMAP_PRESET_TICKERS` and guarding against the SPX-only framing recurring.
+
+**Check at the open:** `/learn/vector-scanner-guide` should read Thermal as multi-ticker; spot-check `/heatmap` with a non-SPX preset (e.g. NVDA, QQQ) still renders a full GEX/VEX/DEX/CHARM matrix, confirming the guide now matches live behavior.
+
+### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (merged #3775)
+
+**What was broken:** the `zerodte-warm` cron's dispatch (`warmZeroDteBoard()` +
+`refreshZeroDteBoardSnapshot()`, firing ~every 1-5 min during market hours) was explicitly NOT
+wrapped in `runWithBackgroundUwSweep` — the helper that reserves one UW rate-limiter concurrency
+slot for live member traffic, already used by four sibling Vector-family crons — on the claim that
+its work was "platform-local, not a UW REST fan-out." That premise was false: both functions call
+`scanZeroDteBoard()` internally, whose top-rank enrichment loop calls `fetchTickerDossier`
+(`runUwPooled` from `uw-rate-limiter.ts`) in bounded parallel batches. So every cron tick was
+competing for the FULL UW ceiling instead of leaving one slot for live traffic. Live evidence
+(0aa's own instrumentation, same day): a 30s window of near-continuous UNTAGGED 10-19s UW
+admissions correlating with `[zerodte-scan]` log lines on the same ECS task.
+
+**Fix:** wrap the cron's own dispatch in `runWithBackgroundUwSweep`, matching the exact pattern the
+four existing Vector-family crons use. The live read path (`/api/market/zerodte/board`,
+`/api/market/nighthawk/horizons` — same `scanZeroDteBoard`/`buildZeroDteBoardPayload` functions,
+called from genuinely live requests) stays untagged, same as before.
+
+**Check at the open:** filter CloudWatch Logs on `[uw] queue wait` during RTH (0aa's
+instrumentation) — the untagged (non-background-sweep) share of queue waits during zerodte-warm's
+firing windows should measurably drop now that its dispatch reserves a slot instead of competing
+for the full ceiling. Also confirm `zerodte-warm`'s own `elapsed=` in `[cron/zerodte-warm]
+background done` log lines didn't regress (the fix changes which ceiling it competes against, not
+its own admission logic) and that `/nighthawk` board reads stay responsive during a `zerodte-warm`
+tick.
+
+### 0af. Open Banger positions vanish under 5 DTE — fix/banger-sub5dte-visibility (merged #3778)
+
+**What was broken:** `horizonPlayFromBangerPosition()` gated an OPEN/PARTIAL banger ledger row's
+Swing Command visibility with the discovery-side admission floor (`HORIZONS.SWING.dteMin=5`) instead
+of a not-yet-expired check — a live position with real capital simply disappeared from every view
+(nothing else reads `banger_positions`) for its final days before expiry or close.
+
+**Fix:** Floor at `dte >= 0` instead of `dteMin`; a row that would fall inside the 0DTE window
+(`dte < 5`) is tagged "closing soon" in its `reason` string. Pre-entry discovery admission
+(`horizonPlayFromBangerWatch`) is unchanged.
+
+**Check at the open:** Find a live OPEN banger position (Swing Command → MANAGING) whose contract is
+inside its final week before expiry — confirm it is still rendered (with a "closing soon" cue)
+rather than missing from the desk.
+
+### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (merged #3771)
+
+**What was broken:** Three paths still used raw `Date.now() - timestamp` without the shared future guard: `readUwCache` (negative age → infinitely fresh UW REST cache), `getIndexFeedFreshness` + `index-snapshot-overlay` (future `updatedAt` clamped to age 0 → live overlay), `resolvePulseFeedStalled` (Redis pulse snapshot), and `HomeGammaPromo.fmtAgeFromAsof` (future `asof` → "live").
+
+**Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` / `isWsUpdatedAtFresh` / `ageSecFromIso` — same pattern as #3760/#3762.
+
+**Check at the open:** SPX desk feed-stalled pill still fires on genuine index silence (not on normal ticks); VIX/SPX index overlays fall back to REST when WS stamp is skewed; homepage gamma promo chip does not show "live" beside a warming snapshot.
+
+### 0ad. Stock SSE change_pct ws-bar authority gate — merged #3769
+
+**What was broken:** `/api/market/stocks/spot-stream` and Thermal's stock push path served `changePct` computed from the first WS bar's open (`openSource === "ws-bar"`) before the REST `prev_close` seed landed — session-open drift, not true day change vs prior close. `/api/market/quote` could show a different % when its REST cache was hot.
+
+**Fix:** `authoritativeStockChangePct()` — member-facing `changePct` is `null` until `openSource === "rest"`. Redis snapshots carry `openSource`; stale/empty paths return `null` not fabricated `0`.
+
+**Check at the open:** On Thermal `/heatmap` with NVDA (or any stock preset): header change % should appear within ~30s of first load and must match `GET /api/market/quote?ticker=NVDA` `change_pct` once both are live. Mid-session reconnect must NOT flash a ws-bar–anchored %.
+
+### 0af. Night Hawk play-bars + legacy-marks roundFloats — fix/nighthawk-api-roundfloats (pending)
+
+**What was broken:** `GET /api/market/nighthawk/play-bars` and `GET /api/market/nighthawk/legacy-marks` returned raw Polygon/provider IEEE floats at the JSON boundary without `roundFloats`.
+
+**Fix:** Wrap both success payloads in `roundFloats(...)` at the route edge.
+
+**Check at the open:** Open a Legacy play detail rail — mark/bid/ask show at most 2dp (no `24.750000000001` noise); play mark history chart tooltip prices are clean.
+
+### 0ac. Vector GEX walls spot constraint — fix/vector-gex-walls-spot-constraint (pending)
+
+**What was broken:** on a cold Vector task before heatmap primed `fallbackSpot`, `getVectorGexWalls()` called `computeGexWalls()` without a spot — unconstrained mode lets call walls sit below spot and put walls above it (inverted resistance/support).
+
+**Fix:** `resolveVectorWallSpot()` prefers heatmap spot, falls back to live candle close; returns `null` (honest empty) when neither is available instead of unconstrained walls.
+
+**Check at the open:** load `/terminal` or `/vector` for a non-oracle ticker immediately after a deploy/cold task — walls should be briefly absent rather than showing inverted call/put levels; once spot resolves, call walls must sit above spot and put walls below.
+
+### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (merged #3759)
+
+**What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
+successfully acquired a slot left zero trace anywhere — `RateLimiterQueueTimeoutError` only fires
+once the budget is fully exhausted, so the whole admitted-but-slow middle of the distribution was
+invisible to CloudWatch Logs. Blocked the follow-up two earlier entries today (vector-pick-sweep
+tail latency, `contract-picks` live timeout) both named as the correct next step.
+
+**Fix:** `throttleUw` now logs `[uw] queue wait <ms>ms` (tagged `(background sweep)` when
+applicable) whenever an admission takes ≥500ms. Pure instrumentation — no change to admission
+timing, concurrency, or rate limiting itself.
+
+**Check at the open:** filter CloudWatch Logs on `[uw] queue wait` during RTH — the `(background
+sweep)` tag separates expected cron-sweep queueing from live member-request queueing, which is
+what the two prior entries' follow-up measurement needs. No product-facing behavior to check; this
+is instrumentation only.
+
+### 0ad. Dark-pool roundFloats + Vector live-quote future guard — fix/dark-pool-roundfloats-vector-live-future-guard (pending)
+
+**What was broken:** `/api/market/dark-pool` returned `premium` without `roundFloats` at the JSON boundary; `isLiveQuotesStale()` had no future-timestamp guard (clock-skewed success time read as live).
+
+**Fix:** Wrap dark-pool response with `roundFloats`; gate live-quote staleness with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`.
+
+**Check at the open:** Poll `/api/market/dark-pool?limit=5` — premiums are clean decimals; Vector contract-pick live badge flips stale when quotes stop updating.
+
+### 0ac. UW stall + L1 cache + SPX GEX stale future guards — fix/uw-future-timestamp-guards (pending)
+
+**What was broken:** Two paths missed the #3745/#3760 future-timestamp sweep: `isUwSocketStalled()` (OPEN socket with future `freshestMessageAt` never reconnects), `gexStaleFromAge()` (future GEX `asof` clamped to age 0 → `gex_stale: false`). (`readUwCache` on separate branch `fix/uw-cache-index-overlay-future-timestamp`.)
+
+**Fix:** Gate stall via `!isWsUpdatedAtFresh`; treat future GEX age as stale.
+
+**Check at the open:** Admin System Vitals UW socket tile still reconnects on genuine silence; SPX desk GEX stale pill fires on real 30s+ lag (not on normal 10–20s ages).
+
+### 0ad. UW L1 cache + stocks/polygon stall future guards — fix/ws-stall-uw-cache-future-timestamp (pending)
+
+**What was broken:** Three paths missed the #3745/#3760 future-timestamp sweep: `readUwCache()` (in-process UW REST L1 — future `fetchedAt` reads as fresh forever), `startStocksWatchdog()` (stocks `A.*` stall — future `lastMessageAt` never triggers reconnect), polygon indices watchdog (same on `lastIndicesMessageAt`).
+
+**Fix:** Route all three through `isWsUpdatedAtFresh` from `timestamp-freshness.ts`.
+
+**Check at the open:** Admin System Vitals stocks + indices socket tiles still reconnect on genuine silence; UW-backed desk supplements (dark pool, flow) still serve from cache during normal RTH without false cache hits from skewed clocks.
+
+### 0ab. LULD halt future-timestamp guard — fix/luld-halt-future-timestamp-guard (pending)
+
+**What was broken:** `isLuldHaltSourceStaleForState()` and `isLuldHaltFeedStale()` used raw `Date.now() - timestamp` age math without a future guard — clock-skewed future cluster/local `last_message_at` stamps read as live/trusted (same class as the UW halt bug fixed in #3745).
+
+**Fix:** Gate all LULD freshness probes through shared `isWsUpdatedAtFresh`.
+
+**Check at the open:** Admin System Vitals → Massive LULD tile shows live during RTH when feed is healthy; 0DTE halt gate still blocks when BOTH UW and LULD are genuinely down (not on a single future-skewed stamp).
+
+### 0za. 0DTE live marks SSE quiet gate future-at guard — fix/zerodte-live-marks-sse-future-guard (pending)
+
+**What was broken:** `useZeroDteLiveMarks` poll fallback used `Date.now() - lastSseAtRef < SSE_QUIET_MS`. A clock-skewed future SSE timestamp suppresses REST fallback while marks may be stale.
+
+**Fix:** Route quiet gate through `isWsUpdatedAtFresh(lastSseAtRef.current, SSE_QUIET_MS)`.
+
+**Check at the open:** Night Hawk 0DTE board with open plays — live marks continue updating via poll when SSE proxy breaks; no frozen premiums after a skewed SSE heartbeat.
+
+### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
+
+**What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.
+
+**Fix:** Route local freshness through `isWsUpdatedAtFresh(fresh, 10_000)`.
+
+**Check at the open:** SPX pulse rail shows live spot during RTH; no stale local indexStore stuck when Redis has fresher cross-replica snapshot.
+
+### 0y. HELIX score probe lacked real-ledger mode — fix/helix-score-signal-ledger-mode (pending)
+
+**What was broken:** `helix-score-signal.mjs` could only grade flow prints via Polygon minute-bar replay; the signal-outcome ledger writer is live since 2026-09-03 but the probe had no path to use official continued/reversed outcomes.
+
+**Fix:** `--source=ledger` mode — reads `GET /api/market/helix/signal-outcomes`, maps job outcomes, matches conviction score from flow tape (±30m).
+
+**Check at the open:** `node --import tsx scripts/audit/helix-score-signal.mjs --source=ledger` returns graded rows when ledger has directional outcomes; re-run weekly as ledger accumulates past the 50-row API cap.
+
+### 0z. vector-walls-warm missing force=1 cooldown — fix/vector-walls-warm-cooldown (pending)
+
+**What was broken:** `vector-walls-warm` had `OVERLAP_LOCK` but no `RERUN_COOLDOWN`. `?force=1` bypasses the cash-RTH gate; on a hot walls cache the background warm can finish in seconds, so replay loops could fan out Polygon chain fetches faster than any legitimate trigger (rth-warm-leader 20s heal threshold).
+
+**Fix:** Added `RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown"` with 10s TTL (below the 20s leader heal threshold, mirroring heatmap-warm).
+
+**Check at the open:** `/admin` → Operations → cron health shows `vector-walls-warm` completing normally during RTH; no burst of concurrent wall-warm completions in CloudWatch within seconds of each other after a mid-session deploy.
+
+Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
+moving tape or real member traffic**. Per the newly-recorded `FULL-LIFECYCLE SCOPE EXPANSION`
+standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained every sweep — not
+just for performance findings — and is separate from, and in addition to, each fix's own
+`docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
+
+### 0aa. Desk enrichment UW fan-out missing background sweep — fix/desk-enrichment-uw-sweep (pending)
+
+**What was broken:** `fetchDeskEnrichmentFields()` in `spx-desk.ts` fans out to 5 UW REST endpoints via `runUwPooled` but was not tagged with `runWithBackgroundUwSweep`. Desk-touching crons (`spx-evaluate`, `spx-signal-observe`, `market-regime-detector`, `data-correctness`) that call `loadMergedSpxDesk()` could trigger enrichment refresh on a stale sticky without reserving a background UW slot.
+
+**Fix:** Wrap `fetchDeskEnrichmentFields` body in `runWithBackgroundUwSweep` at the single fan-out site.
+
+**Check at the open:** Admin Operations → UW rate limiter during RTH — no member-facing 429s when `spx-evaluate` fires on a cold enrichment sticky; SPX desk enrichment panels (greek exposure, flow by expiry, macro) still populate normally.
+
+### 0ab. SPX desk GEX age Math.max(0) false-fresh on future asof — fix/spx-desk-gex-age-future-skew (pending)
+
+**What was broken:** `gexDataAgeMs()` and the canonical desk GEX path clamped `Date.now() - asofMs` with `Math.max(0, …)` before `gexStaleFromAge()`. A clock-skewed future `pos.asof` became `gex_age_ms: 0` → `gex_stale: false` even though `gexStaleFromAge(-60000)` already fail-closes.
+
+**Fix:** Remove the `Math.max(0, …)` clamp at both sites so negative age reaches `gexStaleFromAge`.
+
+**Check at the open:** SPX desk GEX stale pill fires when matrix `pos.asof` lags or skews; `/api/market/spx/bootstrap` `gex_age_ms` / `gex_stale` coherent under RTH.
+
+### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
+
+**What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.
+
+**Fix:** Wrap all five route responses with `roundFloats(...)`; replace halt proxy check with `!isWsUpdatedAtFresh(freshest, maxAgeMs)`.
+
+**Check at the open:** Poll `/api/market/vector/universe` and `/api/market/vector/daily-regime?ticker=SPX` — strike/flip/spot fields should be 2dp with no long float tails. Confirm 0DTE halt gate still blocks entries when UW socket is genuinely down (admin System Vitals).
+
+### 0y. darkpool-discord missing runWithBackgroundUwSweep — fix/darkpool-discord-uw-sweep (pending)
+
+**What was broken:** `darkpool-discord` cron called `fetchUwDarkPoolRecent` (live scan, 15m digest, EOD recap) without the shared `runWithBackgroundUwSweep` tag, competing with member UW REST traffic on cache miss.
+
+**Fix:** Wrapped tick body in `runWithBackgroundUwSweep(() => runDarkpoolDiscordTick(...))`.
+
+**Check at the open:** Admin Operations → UW rate limiter / cron health shows `darkpool-discord` completing without member-facing UW 429s during RTH; Discord #blackout-darkpool live alerts still post during active tape.
+
+### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
+
+**What was broken:** `isFlowFrameFreshFromCluster`, `isFlowFrameFreshAnywhere`, and
+`peekFlowLivenessHeartbeat` used raw `Date.now() - record.at <= maxAgeMs`. A far-future heartbeat
+timestamp yields negative age that passes the gate → flow-ingest skips REST and admin health can
+report cluster WS "fresh" when no live frames are arriving.
+
+**Fix:** route all three through `flowHeartbeatAgeMs()` → shared `signalWindowAgeMs()` (same guard as
+`probePgFlowAlertsFresh`).
+
+**Check at the open:** `/admin` Operations → flow liveness tile tracks real WS delivery during RTH;
+after a genuine UW flow stall the tile must not stay green off a corrupted future-dated heartbeat.
+
+### 0w. Quote route index WS `change_pct` not rebased on ws-bar anchor — fix/quote-index-change-pct-rebase (pending)
+
+**What was broken:** `/api/market/quote` Thermal header tape (SPX/VIX polled ~1.5s) served raw
+`indexStore` `change_pct` on the WS fast path. When `open_source === "ws-bar"` (mid-session cold
+start), that percentage is anchored to the first bar at boot — not prior close — while stock path
+and `indices/route` already rebase via `withFreshPrice` / `overlayRestIndexWithWs`.
+
+**Fix:** `buildIndexWsQuote()` overlays live WS price on shared REST quote cache via
+`overlayRestIndexWithWs`; emits `null` change when no REST baseline and anchor isn't authoritative.
+
+**Check at the open:** On `/heatmap` with SPX selected, compare header day-change% against
+`/api/market/indices` SPX `change_pct` after a mid-session deploy or socket reconnect — they should
+agree within rounding. Specifically watch VIX: ws-bar anchor previously showed +0.07% while REST
+reported -0.35% (measured 2026-09-04).
+
+### 0x. Admin cron health `evaluateJob` age_min unguarded against clock-skewed future `started_at` — fix/admin-cron-age-skew-guard (pending)
+
+**What was broken:** `evaluateJob` computed cron run age as raw `(now - started_at) / 60_000`. Cross-replica clock skew could stamp `started_at` in the future → negative `age_min` on `/admin` System Vitals cron board, or falsely mark the job healthy (negative age never exceeds stale threshold).
+
+**Fix:** Route through `ageMinFromIso`; when age cannot be trusted (clock-skewed future), treat as `staleThreshold + 1` so the job surfaces stale instead of infinitely fresh.
+
+**Check at the open:** `/admin` → Operations → cron health — no negative `age_min` values; jobs with skewed timestamps show stale, not OK.
+
+### 0y. UW / options WS freshness gates treated future timestamps as live — fix/uw-channel-future-timestamp-freshness (pending)
+
+**What was broken:** `isUwChannelFresh`, `getLiveOptionMarkSync`, and admin `cluster_live` used raw `Date.now() - at <= maxAgeMs`. A clock-skewed future stamp yields negative age, which still passes the threshold — falsely reporting a channel as live. (Flow cluster heartbeat was fixed separately in #3718 via `flowHeartbeatAgeMs`.)
+
+**Fix:** Route UW/options freshness through `isWsUpdatedAtFresh` / `wsUpdatedAtAgeMs`. Admin `cluster_live` and `last_message_age_ms` reporting clamped the same way.
+
+**Check at the open:** `/admin` → Operations → UW socket health — `last_message_age_ms` never negative; during RTH with live flow, `cluster_live` true only when frames actually arrived within 120s (not on skew alone).
+
+### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
+
+**What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard — future-skewed `updated_at` bypassed stuck detection.
+
+**Fix:** `ageSecFromIso` / `ageMinFromIso` in `timestamp-freshness.ts`; `nighthawkJobAgeMin()` for admin cron health (clock-skew → `stuckThresholdMin + 1`).
+
+**Check at the open:** `/tools/gamma-snapshot` age honest during RTH; Legacy Night Hawk mark age does not read "0s ago" on skewed `markAsOf`; `/admin` cron health escalates skewed Night Hawk builds to stale.
+
+### 0u. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (pending)
+
+**What was broken:** #3643 (item 0n below) scoped "every setup logged"-style claims on the About
+page, homepage, and `WhyBlackoutContent.tsx` to the three products `/methodology` actually covers.
+`src/app/(marketing)/vs/others/page.tsx`'s comparison table carried the identical overclaim in
+different wording — "Every setup graded A–F with a logged track record" — and wasn't part of that
+fix's surface search, so it survived unscoped.
+
+**Fix:** reworded the row to "SPX Slayer, Night Hawk, and 0DTE Command plays graded A–F with a
+logged track record", matching #3643's wording pattern. Extended
+`public-record-scope-claims.test.ts`'s `SURFACES` list to include this page so the same claim
+class can't regress here again.
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+`https://blackouttrades.com/vs/others` names the three products next to the "Alert accountability"
+row rather than an unscoped "every setup".
+
+### 0t. Two more "every setup logged" overclaim instances (About page + homepage) missed by both #3643 and #3664 — fix/vs-others-remaining-overclaim-instances (merged #3683)
+
+**What was broken:** `RedesignHome.tsx`'s own "them vs us" list bullet (a second, separate copy of
+the sentence `/vs/others/page.tsx` mirrors) and `about/page.tsx`'s `WHAT_WE_DO` intro paragraph both
+still said an unscoped "every setup ... logged"/"grade every setup" — surviving both #3643 (earlier
+today) and the same-day follow-up #3664, because `public-record-scope-claims.test.ts`'s check was
+whole-file ("do the three product names appear anywhere in this file"), not per-claim, so it passed
+even though these two specific claims weren't actually scoped.
+
+**Fix:** named the three products inline (same pattern as #3643/#3664). Rewrote the regression test
+to check per-claim proximity (200-char window) instead of whole-file existence, so a third instance
+like this can't recur undetected. Shipped as its OWN PR rather than a further push onto #3664's
+branch — that branch has been silently rebased-and-reset by another lane twice today, each time
+dropping this exact fix; a standalone PR survives independently of whatever keeps resetting it.
+
+**Check at the open:** none — pure marketing-copy correction. Confirm `https://blackouttrades.com/`
+(homepage "them vs us" section) and `https://blackouttrades.com/about` both name the three products
+next to their own copies of this claim.
+
+### 0s. `cron-registry.test.ts` coverage check broke on `main` — PR #3668 shipped an unregistered `logCronRun` key — fix/cron-registry-self-heal-key (merged #3678)
+
+**What was broken:** PR #3668 added a second, conditional `logCronRun("cron-staleness-watchdog-self-heal", ...)`
+call to the already-registered `cron-staleness-watchdog` route, but never added the new key to
+`cron-registry.test.ts`'s coverage check (`CRON_JOBS` or `INTENTIONALLY_UNREGISTERED`). That test runs
+in `npm test`/CI `verify`, so `main` itself started failing `verify` on every commit after #3668
+merged — including on two unrelated open PRs (#3664, #3667) that merged `main` in and inherited the
+red check despite neither touching cron code.
+
+**Fix:** added `cron-staleness-watchdog-self-heal` to `INTENTIONALLY_UNREGISTERED` with a reason —
+it's a conditional follow-up write (only fires when self-heal actually dispatches a re-warm), not a
+standalone scheduled job in blackout-infra's `cron-jobs.json`, so a `CRON_JOBS`/`stale_after_min`
+entry would false-alarm on any quiet stretch with no incident. `logCronRun`'s own failure path
+already fires the standard Discord alert on a failed re-warm.
+
+**Check at the open:** none — pure CI/test-coverage fix, no production behavior changed. Confirm
+`main`'s own `verify` check is green on its latest commit once this merges.
+
+### 0q. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
+
+**What was broken:** `runSelfHeal` computed a per-job re-warm result (`ok`/`status`/`error`/`detail`)
+for every stale cron it dispatched via `dispatchCronWarm`, but only `console[...]`-logged it — the
+`healed` array declared to carry it into the persisted run record was never pushed into, so it
+stayed `[]` forever. Compounding this, self-heal dispatches via `after()` specifically so it can't
+block the response (Cloudflare's ~100s origin timeout), which means the `result` object embedding
+`self_healed` is built and persisted via `logCronRun` *before* the background self-heal work has
+even started — so a naive `healed.push(...)` fix alone still couldn't reach that already-written
+row. Net effect: a self-heal re-warm that FAILED during a real incident was durably invisible —
+`cron_job_runs` always showed `self_healed: []` / `ok:true` for the watchdog's own run regardless
+of outcome, with the only trace a `console.error` line in raw CloudWatch.
+
+**Fix:** `runSelfHeal` now actually accumulates results, and once the background work settles it
+persists a SECOND, distinctly-keyed `cron_job_runs` row (`cron-staleness-watchdog-self-heal`)
+carrying the real per-job outcome — marked `"failed"` by `logCronRun` (firing the same Discord
+alert every other cron failure gets) if any re-warm did not succeed. The synchronous response no
+longer claims a settled `self_healed: []` when self-heal was actually dispatched; it reports
+`self_healed: null` (pending) plus a `self_heal_log_key` pointing at the follow-up row.
+
+**Check at the open:** this only matters when `CRON_WATCHDOG_SELF_HEAL=1` is set AND a market-hours
+cron actually goes stale during RTH (rare by design — self-heal exists for exactly that incident).
+If a real self-heal fires during tomorrow's open, confirm a second `cron_job_runs` row appears
+under job key `cron-staleness-watchdog-self-heal` (query `GET /api/admin/cron-health` or the
+`cron_job_runs` table directly) with a `healed` array naming the re-warmed job(s) and their real
+`ok`/`status` — not just the watchdog's own always-`ok:true` row. No self-heal firing at all during
+RTH (the common case) means nothing to check — the fix is dormant, not exercised, that day.
+### 0o. `spx-signal-weight-optimize` cron threw an uncaught RangeError on `?days=`/`?days=abc` — fix/spx-signal-weight-optimize-nan-crash (pending)
+
+**What was broken:** `GET /api/cron/spx-signal-weight-optimize?days=` (empty value, or a bare
+`?days`) or `?days=abc` (non-numeric) hit `parseInt("", 10)` = `NaN` (the `??` fallback only fires
+on `null`/`undefined`, and `URLSearchParams.get()` returns `""` not `null`), which flowed into
+`new Date(NaN).toISOString()` and **threw** `RangeError: Invalid time value` ABOVE the route's own
+try/catch — so the crash was never caught, `logCronRun` never fired, and the failure was invisible
+to `cron_job_runs`/`cron-staleness-watchdog`. Sibling crons (`largo-cleanup`, `nighthawk-outcomes`)
+already guarded the identical kind of `?days` override; this one had not.
+
+**Fix:** guard the parsed value with the same idiom `nighthawk-outcomes/route.ts` already uses —
+`Number.isFinite(rawLookbackDays) && rawLookbackDays > 0 ? rawLookbackDays :
+DEFAULT_LOOKBACK_DAYS` — before it reaches any date arithmetic. A valid numeric override still
+works unchanged; only the malformed/missing cases changed, from an uncaught crash to a clean
+fallback to the 30-day default.
+
+**Check at the open:** no RTH-dependent behavior — this cron reads `spx_signal_observations` and
+runs on its own nightly 10 PM UTC schedule with no query param, so the scheduled run was never
+affected by this bug and needs no re-check. The one thing worth confirming once, at any time (not
+specifically at the open): `curl` the route with a valid `CRON_SECRET` Bearer token and
+`?days=`/`?days=abc` and confirm a clean `200 {"ok":true,"skipped":...}` (or a real report once 10+
+days of data exist) instead of a `500` — proving the fix holds against the live route, not just the
+mocked unit test.
+
+### 0p. `GexPositioning.nearest_wall` went stale across the live-WS wall override — fix/gex-positioning-nearest-wall-stale (pending)
+
+**What was broken:** `getGexPositioning()` overwrites `call_wall`/`put_wall` in place with fresher
+UW WS strike-ladder walls during RTH (`hasLiveGexStrikeExpiry(root)` true), but `nearest_wall` was
+computed once, earlier, inside `gexPositioningFromHeatmap()` from the **pre-override** Polygon-only
+walls and never re-derived. So a live RTH response could serve `call_wall`/`put_wall` from the WS
+ladder while `nearest_wall` still named a stale strike/side/distance from before the override —
+read directly by `spx-desk-intel.ts` (Live Desk brief grounding numbers), Largo's positioning tools,
+`/api/market/gex-positioning`, the mobile ticker route, and the Meridian positioning panel.
+
+**Fix:** extracted the "closer of call_wall/put_wall to spot" logic into a shared
+`nearestWallFromLevels()` helper in `gex-positioning.ts`; the WS-override block now recomputes
+`nearest_wall` from the POST-override `call_wall`/`put_wall` whenever either one actually changed,
+using the same helper the base derivation uses (so the two can't drift apart again).
+
+**Check at the open:** on a WS-active ticker (SPX/SPY/QQQ) during RTH, confirm the served
+`nearest_wall.strike` always equals either `call_wall` or `put_wall` in the SAME
+`/api/market/gex-positioning?ticker=SPX` (or equivalent Largo tool call) response, with the correct
+side (`resistance` for call_wall, `support` for put_wall) and a `distance_pts` consistent with
+`nearest_wall.strike - spot`. Pay particular attention right after a fast intraday gamma migration
+(a real WS wall move), since that's the moment pre-fix and post-fix values would have diverged most.
+
+### 0r. `stock-candle-store` REST session-open seed could stamp a new ET session with yesterday's `prev_close` — fix/stock-candle-store-seed-day-rollover-race (pending)
+
+**What was broken:** `seedSessionOpenIfNeeded()`'s `.then()` callback only guarded against a
+*concurrent* REST seed landing twice for the SAME session (`s.openSource === "rest"`) — its own
+comment claimed it also checked "this ticker is still on the session we seeded for", but nothing
+in the code compared the ticker's CURRENT session date against the date active when the fetch
+FIRED. `recordStockTick`'s day-rollover branch resets `openSource` back to `""` (not `"rest"`) on
+a new ET session day, so a REST fetch fired just before an ET session boundary and resolving just
+after would sail past the only guard that existed and permanently stamp the NEW session with an
+anchor fetched for the OLD one — "rest" is never downgraded back to "ws-bar", so the wrong anchor
+then stays authoritative for every `change_pct` computed for that ticker for the rest of the new
+session.
+
+**Fix:** capture the session date at the moment the seed fires (`firedForSessionDate`) and require
+it to still match `s.sessionDate` at resolution time, in addition to the pre-existing
+`openSource === "rest"` concurrent-seed guard (left unchanged, still needed for the in-session
+case). RED→GREEN proof: `git stash` on just the source fix reproduced `changePct` computed off the
+stale anchor (`-92.99` instead of `0`) via a new `t.mock.timers.enable({apis:["Date"]})`-driven test
+that crosses a real ET midnight mid-flight; restoring the fix makes it pass (20/20 in the file,
+139/139 across `src/lib/ws/*.test.ts`).
+
+**Check at the open:** this only manifests right at an ET session boundary for a ticker with an
+in-flight demanded REST seed at that exact moment — genuinely hard to trigger deliberately live.
+The useful live check is a NEGATIVE one: watch any actively-viewed 24-hour-eligible/overnight
+symbol's `change_pct` across today's session open (13:32 UTC / 09:30 ET) for a value that looks
+anchored against a stale multi-day-old close rather than today's real open — that would be this
+exact bug recurring on a boundary this fix did not touch (e.g. a rollover mid-fetch during RTH
+itself, which the fix now also covers, so it should NOT recur at all). No dedicated live probe
+exists for this narrow a race window; the regression test is the durable guard.
+
+### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
+
+**What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
+flags is logged publicly"/"the full ledger, always" and pointed to `/methodology` for "how each
+product is scored" — but `/methodology`'s own payload type (`TrackRecordPagePayload`) is hard-typed
+to exactly SPX Slayer, Night Hawk, and 0DTE Command. HELIX/Thermal/Vector/Meridian/Largo have no
+public ledger section there.
+
+**Fix:** scoped the "every setup"/"each product" claims on all three surfaces to name the three
+products `/methodology` actually covers — no change to whether HELIX/Vector's own internal
+tracking should eventually be exposed publicly (a separate, still-open product question).
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+the live About/homepage/Why-BlackOut pages name SPX Slayer/Night Hawk/0DTE Command next to the
+transparency claim rather than an unscoped "every setup"/"each product."
+
+### 0m. SPX Slayer marketing claimed GEX/VEX/DEX/CHARM lenses — real UI only has GEX/VEX — fix/spx-slayer-lens-overclaim (pending)
+
+**What was broken:** homepage/pricing copy said SPX Slayer provides "GEX / VEX / DEX / CHARM lenses
+on the 0DTE ladder" (`PRODUCT_MANIFEST.spx`). SPX Slayer's own live matrix component
+(`SpxGexMatrixHeatmap.tsx`) only ever renders a GEX/VEX toggle — confirmed by an exact-string grep
+across `src/features/spx/*.tsx` returning zero hits for `"dex"`/`"charm"` as a UI value. The
+dedicated Academy guide already correctly documented only 2 lenses; the marketing copy was the one
+that overclaimed, likely copied from Thermal's genuinely-accurate 4-lens entry in the same file.
+
+**Fix:** corrected `PRODUCT_MANIFEST.spx.lifecycle`/`.capabilities` to say GEX/VEX only; Thermal's
+real 4-lens entry is untouched.
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+`https://blackouttrades.com/` no longer shows "GEX / VEX / DEX / CHARM" attributed to SPX Slayer
+specifically (Thermal's own card should still show all four, correctly).
+
+### 0n2. Thermal GexHeatmap fabricated flat +0.00% when change_pct absent — fix/thermal-header-change-pct-null (pending)
+
+**What was broken:** When the matrix payload omitted `change_pct` and the live quote had not arrived,
+the Thermal ticker header rendered `+0.00%` via `data?.change_pct ?? 0` and `quote!.change_pct ?? 0`
+fallbacks. Sibling `ThermalCompareStrip` already hid the chip with `?? null`.
+
+**Fix:** Thread `matrixChangePct` as `number | null`; only render the header % chip when finite.
+
+**Check at the open:** On `/heatmap`, switch to a ticker whose matrix is loading — header spot may
+show but day-change chip should be absent (not `+0.00%`) until a real quote or matrix change arrives.
+
+### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
+
+**What was broken:** `/pricing` sells three commercial choices — SPX Slayer $49/mo, Premium Monthly
+$199/mo, Premium Yearly — but `FeatureComparison` (the "What you get" matrix) only had Free and
+Premium columns. Every SPX Slayer-only row (the SPX Slayer desk itself included) rendered as
+`— / ✓`, giving a $49 visitor zero representation of what they'd actually get in the page's primary
+feature matrix — reported as a P3 pricing/conversion defect (concrete purchase-decision gap: no way
+to compare $49 vs $199 in the matrix a visitor is looking at to decide).
+
+**Root cause:** `FeatureComparison`/`FEATURE_MATRIX` still modeled the original Free|Premium
+entitlement structure and was never migrated when SPX Slayer became an independently purchasable
+tier — each row's `community` (SPX Slayer) access was a marketing boolean nobody had ever checked
+against a real gate.
+
+**Fix:** new `src/lib/desk-tier-requirements.ts` — the minimum `Tier` each desk's own
+`layout.tsx` actually enforces (`requireDeskTool`/`requireTier`), verified against those layout
+files by `desk-tier-requirements.test.ts` (source-scan, same pattern
+`desk-protected-route-coverage.test.ts` already proved for the protected-route lists). Every desk
+row in `FEATURE_MATRIX` now derives its SPX Slayer/Premium columns from that manifest via
+`tierAtLeast` instead of a hand-typed boolean; the two rows with no code-level gate (0DTE graded
+plays, private Discord) are cross-checked against `PLAN_MATRIX.spx_slayer.includes`'s own canonical
+perk list instead. `FeatureComparison` now renders Free | SPX Slayer ($49/mo) | Premium ($199/mo).
+
+**Check at the open:** none — this is a static marketing page with no RTH-dependent data; `/pricing`
+should show three columns with the SPX Slayer desk row (and every other SPX-desk-scoped row) marked
+✓ under SPX Slayer, and every premium-only desk (HELIX, Largo, Night Hawk, Thermal, Vector,
+Meridian) marked — under SPX Slayer / ✓ under Premium.
+
+### 0m. `bie/decompose.ts` — dead compound-question splitter removed — fix/remove-dead-bie-decompose (pending)
+
+**What was broken:** nothing member-visible — `src/lib/bie/decompose.ts` (a pure "15 questions in
+one ask" splitter, task #57) was never wired into `composeCompound` or called by anything else;
+zero non-test importers anywhere in `src/`. Flagged 2026-08-30 in `FINDINGS.md` as the one of four
+related `bie/*` files that was safe to delete outright (its three siblings — `router.ts` still
+needed for a live type import, `composers.ts`/`dynamic-format.ts` referenced only by a test that
+can't run in this sandbox — were correctly left untouched then and remain untouched now).
+
+**Fix:** `git rm src/lib/bie/decompose.ts src/lib/bie/decompose.test.ts`; extended
+`repo-hygiene.test.ts`'s existing orphan allowlist so it can't silently be reintroduced dead.
+
+**Check at the open:** none — there is no live-RTH-dependent behavior to verify (the module was
+never reachable from any request path before removal). `tsc --noEmit` clean and the full test
+suite passing (recorded in the PR) are the complete verification for a fix of this kind; listed
+here only because the standing instruction asks every fix to be logged, not because there is an
+RTH-specific check to run.
+
+### 0n. Night Hawk readiness chip falsely green on future `as_of` — fix/nighthawk-readiness-future-asof (pending)
+
+**What was broken:** On `/nighthawk`, the header readiness chip could show green **READY** when the
+board's `as_of` timestamp was materially in the future (client/server clock skew). Negative
+`asOfAgeMs` never exceeded the 60s stale threshold, so freshness could not be verified but the
+chip still read ready.
+
+**Fix:** `resolveZeroDteReadiness` in `pane.ts` now treats `asOfAgeMs <
+-ZERODTE_MARK_FUTURE_TOLERANCE_MS` the same as stale age — amber **DELAYED** — matching sibling
+`resolveZeroDteFreshness` in `ZeroDteBoard.tsx`.
+
+**Check at the open:** On `/nighthawk` during RTH with live board data, confirm the readiness chip
+is **READY** only when `as_of` is plausibly current; if a skew incident occurs, chip should read
+**DELAYED** not **READY**.
+
+### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
+
+**What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,
+lib/spx-sniper-backdrops.ts, lib/spx-session-phase.ts}`,
+`src/features/thermal/components/ThermalFreshnessBar.tsx`, `src/components/landing/LandingBackdrop.tsx`,
+and `src/components/learn/LearnPageShell.tsx` had zero importers anywhere in the repo (two
+unfinished features, one dead helper, and three components superseded by a later replacement —
+`ThermalMatrixFreshnessChip`, `StaticLandingBackdrop`, and `/learn/layout.tsx`'s own marketing
+shell, respectively). Pure dead-code removal, no route or rendered output changed. Two other
+same-class orphans were found and deliberately left untouched, both per a **standing prior
+decision already on record in `FINDINGS.md` (2026-08-30)**: `src/components/ScrollProgressBar.tsx`
+(flagged OPEN for the landing-page owner to decide, not this sweep) and
+`src/components/render/DealersLadderBackground.tsx` (a 624-line WebGL shader hero explicitly
+NOT flagged as dead in that same 2026-08-30 sweep, for carrying a deliberate design-intent
+comment) — see the findings-staging entry for the full writeup.
+
+**Fix:** `git rm` the six files; corrected one stale doc-comment that named a removed component
+by name (`thermal-desk-state.ts`); guarded against reintroduction with a `repo-hygiene.test.ts`
+assertion.
+
+**Check at the open:** none — there is no live-RTH-dependent behavior to verify (nothing rendered
+or served by these files was reachable before removal). `tsc --noEmit` clean and the full test
+suite passing (recorded in the PR) are the complete verification for a fix of this kind; listed
+here only because the standing instruction asks every fix to be logged, not because there is an
+RTH-specific check to run.
+
+### 0j. Night Hawk PASSED/WATCH list rendered trackPct with no qualifier — fix/nighthawk-passed-list-trackpct-label (pending)
+
+**What was broken:** the compact play-list row (`PlayLifecycleCardBody`, every board's actual live
+row renderer) showed a never-entered WATCH/SKIP play's hypothetical `trackPct` as a bare colored
+`+N%` with no label — indistinguishable from real P&L. A member screenshotted the mobile PASSED
+tab full of "+PNL%"-style green numbers and asked why none of the "winners" ever opened; they were
+never entered at all. `primaryReturnLabel` ("Since flag" for WATCH/SKIP, "Peak Return" for CLOSED)
+already existed and was already unit-tested — it just wasn't called from this component.
+
+**Fix:** `PlayLifecycleCardBody` now renders `primaryReturnLabel(play)` beside the return figure,
+reusing the existing `.nh-deck-premlab` class. Label-only change — no gate, number, or trading
+logic touched.
+
+**Check at the open:** open `/nighthawk` on a phone-width viewport (or `proxy-browser.cjs --viewport
+430x932`), filter to PASSED/WATCH, and confirm every row's return figure now carries a small
+"Since flag" caption under it, and every CLOSED row carries "Peak Return" — never a bare number.
+
+### 0j-c. Admin panel timeAgo "just now" on clock-skewed ISO timestamps — fix/admin-time-ago-future-guard (pending)
+
+**What was broken:** `timeAgo(iso)` in Operations + X Marketing admin panels used raw `Date.now() - new Date(iso)`
+without a future guard — same failure class as #3627 `storeAge()`.
+
+**Fix:** Shared `timeAgoFromIso()` in `admin-time-ago.ts` with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`.
+
+**Check at the open:** `/admin` → Operations incidents/audit rows show plausible relative times, not "just now" on skewed timestamps.
+
+### 0j-b. Admin ops store-age "just now" on clock-skewed timestamps — fix/admin-store-age-future-guard (merged #3627)
+
+**What was broken:** `storeAge()` in the admin Operations dashboard computed `Date.now() - updatedAt`
+without a future guard. A timestamp more than a few seconds ahead of wall clock produced negative age;
+`Math.floor(negative / 1000) < 10` evaluated true, so the tile read **"just now"** with ok=true.
+
+**Fix:** Extracted to `admin-store-age.ts` with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`; beyond tolerance
+returns `{ label: "clock skew", ok: false }`; otherwise clamps with `Math.max(0, ...)`.
+
+**Check at the open:** `/admin` → Operations → UW/Polygon store tiles show plausible ages during RTH
+(e.g. "12s ago"), not "just now" on a store that hasn't ticked.
+
+### 0j-c. Admin API feed + SPX terminal fmtRel future-skew — fix/admin-fmtrel-future-guard (pending)
+
+**What was broken:** `AdminApiLiveFeed.tsx` and `AdminSpxTerminal.tsx` had local `fmtRel()` helpers
+computing `Date.now() - new Date(iso)` without a future guard — same false **"just now"** / **"now"**
+class as #3627/#3641.
+
+**Fix:** Extended `admin-time-ago.ts` with shared `isoAgeSec()` + compact/open-duration formatters;
+removed duplicate local helpers.
+
+**Check at the open:** `/admin` API live feed + SPX terminal show plausible relative times (or
+"clock skew"), not "just now" on skewed event timestamps.
+
+### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (merged #3605)
+
+**What was broken:** `npm run validate:platform-integrity` hit tier-gated desk routes without Clerk auth,
+WARNing on empty SPX matrix / vector walls even when live member data was healthy.
+
+**Fix:** Mint temp admin+premium Clerk session in `validate-platform-integrity.mjs`; assert vector walls
+via `callWalls`/`putWalls` counts.
+
+**Check at the open:** `npm run validate:platform-integrity` → 0 warn on `thermal-spx-matrix`,
+`vector-spx-0dte-walls`, `gex-positioning-spx` during RTH with strikes > 0.
+
+### 0i-b. Platform-integrity 401 SKIP when Clerk absent — fix/platform-integrity-tier-skip-v2 (pending #3617)
+
+**What was broken:** When Clerk keys are absent (sandbox / lifecycle without auth), `gex-positioning-spx`,
+`thermal-matrix-SPY/QQQ`, and `vector-spx-0dte-walls` returned HTTP 401 but the probe still WARNed instead
+of SKIP — unlike desk/flows/nighthawk/zerodte probes.
+
+**Fix:** Map 401 → SKIP + `tier-gated` for those three probes (complements #3605 auth mint path).
+
+**Check at the open:** `npm run validate:platform-integrity` with no Clerk keys → **0 warn** (tier-gated
+SKIP). With auth during RTH, premium probes PASS with strikes > 0.
+
+### 0g. RTH-open options-socket retry false-fail — fix/rth-open-socket-retry-false-fail (merged #3600)
+
+**What was broken:** `validate:rth-open` called `fail()` on the first options-socket probe attempt even
+when attempt 2/3 returned green (`ingest leader lock held — marks warming`), leaving a stale failure in
+the harness exit code.
+
+**Fix:** `scripts/lib/rth-socket-probe.mjs` — retry up to 3 times; hard-fail only after all attempts.
+
+**Check at the open:** Run `npm run validate:rth-open` during RTH; transient "no ingest leader" on
+attempt 1 must not fail the run when attempt 2 shows warming/fresh marks.
+
+### 0i. Indices VIX change_pct wrong sign — fix/indices-vix-change-pct-ws-overlay (pending)
+
+**What was broken:** `/api/market/indices` served VIX `change_pct` with the wrong sign (+0.07% vs Polygon
+-0.35% on 2026-09-04 RTH) because the route overlaid index REST snapshots with stock-candle-store ticks
+(session-open anchor) instead of indices-WS (`I:VIX` / `spx:pulse:snapshot` prior-close anchor).
+
+**Fix:** `index-snapshot-overlay.ts` — same open_source/rest rebase guard as spx-desk `mergeWsIndexSnapshots`.
+
+**Check at the open:** `NODE_USE_ENV_PROXY=1 node scripts/audit/data-validator.mjs` → `VIX change_pct sign matches Polygon` PASS during RTH.
+
+### 0h. Sentry auth + stale Server Action noise — fix/auth-failure-benign-denylist-and-server-action-reload (pending)
+
+**What was broken:** `validate:deploy` Sentry sample showed `ClerkAuthFailure: You're already signed in`
+(normal navigation to `/sign-in` while authenticated) and `UnrecognizedActionError: Server Action … was not found`
+(deploy-race stale action IDs) as top unresolved issues.
+
+**Fix:** Benign Clerk message denylist in `auth-failure-detect.ts`; extend chunk-reload guard for stale Server Actions.
+
+**Check at the open:** After any deploy rollout, confirm Sentry top issues no longer include these two patterns; members mid-rollout should get a one-shot reload instead of a stuck page on stale Server Actions.
+
+### 0i. Platform-integrity false WARN on tier-gated GEX routes — fix/platform-integrity-tier-gated-skip (pending)
+
+**What was broken:** `validate:platform-integrity` graded `gex-positioning-spx`, `thermal-matrix-SPY/QQQ`,
+and `vector-spx-0dte-walls` as WARN (`strikes=0 spot=—`) when those routes returned **401** after
+#3603 aligned desk auth — the harness already SKIP'd other tier-gated routes but not these four.
+
+**Fix:** `tierGatedStatus()` helper — HTTP 401 → SKIP `tier-gated` for all GEX/vector probes.
+
+**Check at the open:** `npm run validate:platform-integrity` off-session (no Clerk) → **0 warn**,
+10 skip; with admin Clerk session → thermal-matrix SPY/QQQ strikes > 0 PASS.
+
+### 0f. SPX dashboard E2E cross-tool stale matrix flip — fix/spx-dashboard-cross-tool-stale-matrix (pending)
+
+**What was broken:** `spx-dashboard-e2e-audit.mjs` compared gamma flip from a matrix snapshot fetched
+at audit start (after full cell validation) against a fresh `gex-positioning` read. SPX matrix cache
+turns every ~8s RTH — produced false 500pt+ FAILs when the book re-crossed between fetches (e.g.
+matrix 6990 vs positioning 7795 on 2026-09-04 ~10:04 ET).
+
+**Fix:** Re-fetch `/api/market/gex-heatmap?ticker=SPX` inside `crossToolIntegration` alongside
+positioning; annotate flip FAILs with `calculation_id` match/mismatch.
+
+**Check at the open:** `node scripts/spx-dashboard-e2e-audit.mjs` → `integration:spx-cross-tool` PASS
+during RTH; flip delta should be 0 when `calculation_id` matches on back-to-back probe.
+
+### 0c. HELIX FlowAnomalyBanner future-timestamp recency — fix/flow-anomaly-future-timestamp (pending)
+
+**What was broken:** `FlowAnomalyBanner` on `/flows` treated a future-dated `detectedAt` as "recent"
+because `Date.now() - future < RECENCY_MS` — could flash the anomaly banner for events that have not
+happened yet under clock skew.
+
+**Fix:** `isFlowAnomalyRecent()` clamps future skew to not-recent.
+
+**Check at the open:** On `/flows` during RTH, banner only shows anomalies within 15 minutes; no
+spurious banner from skewed rows after deploy.
+
+### 0d. GEX heatmap Night Hawk context future-timestamp gate — fix/gex-heatmap-nh-context-future-timestamp (pending)
+
+**What was broken:** `/api/market/gex-heatmap` could attach `nighthawk_context` from an edition whose
+`published_at` was in the future — negative age never tripped the 24h freshness gate.
+
+**Fix:** `isNighthawkContextEditionFresh()` via shared `isZeroDteMarkStale()` (24h max age + future skew reject).
+
+**Check at the open:** On `/heatmap` or SPX matrix during RTH, Night Hawk context only appears for editions
+published within 24h; no spurious context from skewed/future `published_at` after deploy.
+
+### 0e. Night Hawk verifier premium-vs-chain future-timestamp gate — fix/nighthawk-verifier-future-published-at (pending)
+
+**What was broken:** The correctness-audit verifier's L4 chain-confirm premium check
+(`nighthawk-verifier.ts`) treated a future-dated edition `published_at` as fresh — `Date.now() -
+publishedAtMs` goes negative under clock skew, which always satisfies the `<= 4h` freshness gate,
+letting the premium-vs-chain comparison run on data whose freshness was actually unproven and
+risking a false `flag` verdict from garbage clock-skewed input.
+
+**Fix:** `premiumFresh` now uses the shared `isZeroDteMarkStale()` (4h max age + 60s future-skew
+reject), same pattern as items 0c/0d above.
+
+**Check at the open:** This is correctness-audit tooling, not a member-facing surface — nothing to
+check on the live UI. Confirm instead that the Night Hawk correctness score (wherever the
+correctness-audit run is read from) does not show a spurious `premium` metric `flag` for the
+day's published edition; a real chain-band mismatch should still flag normally.
+
+### 0f. Vector volume-profile POC/VAH/VAL label axis collision — fix/vector-vp-label-collision (pending)
+
+**What was broken:** On SPX Slayer `/dashboard` (shared Vector chart), volume-profile level labels
+("POC", "VAH", "VAL") were drawn at `rightX - 6` flush against the price axis — native lightweight-charts
+price-line axis badges (Pin, Gamma flip, VWAP, etc.) painted on top whenever both levels landed near the
+same price, making the profile label unreadable.
+
+**Fix:** Anchor labels at `gutterLeft + 4px` with left text alignment — inside the profile bar band,
+away from axis badges (`volumeProfileLabelX()`).
+
+**Check at the open:** On `/dashboard` SPX Slayer with volume-profile enabled during RTH, when Pin (or
+any price-line badge) and POC are near the same price, both labels must be independently legible in a
+`proxy-browser.cjs` capture of the chart's right edge (no gray "POC" text hidden under an orange Pin badge).
+
+### 0. Discord digest crons on admin health board — PR #3543 (merged)
+EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — invisible to
+`cron-staleness-watchdog` and the admin cron-health board.
+
+**Fix:** added three registry entries with deployed schedules (`*/2`, `*/15`, `*/15` UTC) and
+`stale_after_min` 10/45/45; `produces_member_alert: true`.
+
+**Check at the open:**
+- `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
+- If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
+
+### 0b. Warm-cron `force=1` replay floors — desk-warm #3540, heatmap-warm #3542, zerodte-warm #3550 (merged), meridian-warm (pending)
+
+**What was broken:** `desk-warm`, `heatmap-warm`, `zerodte-warm`, and `meridian-warm` (and peers)
+had overlap locks but no minimum re-run floor — `?force=1` could replay the full warm pass (or, for
+`zerodte-warm`, the 0DTE scanner tick + board snapshot rebuild) in a tight loop faster than any
+legitimate trigger.
+
+**Fix:** atomic `sharedCacheSetNx` cooldown keys checked before overlap lock (desk-warm 60s,
+heatmap-warm 10s, zerodte-warm 60s, meridian-warm 60s); all fail open on a Redis error.
+
+**Check at the open:**
+- CloudWatch `/ecs/blackout-production`: no burst of `[cron/<name>] background done` lines closer
+  than each cron's own floor apart from an out-of-band `?force=1` caller, for any of the four crons.
+- ALB `TargetResponseTime` p99 stays bounded during warm windows (no overnight replay storms).
+- `zerodte-warm` specifically: legitimate 4 min rth-warm-leader heals unchanged.
+
+### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
+
+**What was broken:** `shouldRunCacheWarmer()` bypassed its weekday 4am-8pm ET hours gate whenever
+`CACHE_WARM_ALWAYS=1` was set — a knob documented as staging-only. Staging was decommissioned
+2026-07-25, but the **production** secret `blackout-production/app/env` still carried
+`CACHE_WARM_ALWAYS=1`, so `desk-warm`, `zerodte-warm`, `heatmap-warm`, and `meridian-warm` were all
+running 24/7 instead of only 4am-8pm ET.
+
+**Evidence (pre-fix, 2026-09-04 00:21-06:18 UTC):** 40+ `desk-warm` background runs (10-33s
+elapsed) firing every 1-3 minutes overnight; `AWS/ECS` CPUUtilization on `blackout-production-web`
+Max 80-90% against a 2-8% average in nearly every 15-min bucket; `AWS/ApplicationELB`
+TargetResponseTime p50/p90 healthy (37-79ms/91-377ms) but **p99 1.7-3.6s, Max 9-41 seconds**.
+
+**Fix:** removed the `CACHE_WARM_ALWAYS` escape hatch entirely from `cache-warmer-gate.ts`; `force=1`
+remains for on-demand warms. Pure code change — does not touch the stale secret value directly
+(deliberately, to stay inside the reviewed PR path), so the secret is now inert post-deploy rather
+than removed.
+
+**Check at the open:**
+- Re-pull the SAME three CloudWatch series (ECS CPU Max, ALB TargetResponseTime p99/Max, `desk-warm`
+  `elapsed=` log frequency) for an **overnight window AFTER this deploys** and confirm: `desk-warm`
+  (and the 3 sibling warm crons) stop firing outside 4am-8pm ET entirely, ECS CPU Max drops back
+  toward the 2-8% average band overnight, and ALB p99/Max tighten toward the p50/p90 band overnight.
+  A continued 24/7 firing pattern post-deploy means the deploy does not carry this fix — confirm by
+  `git merge-base --is-ancestor` against the deployed SHA before concluding the fix failed.
+- During the 4am-8pm ET window itself (i.e. during today's RTH), confirm the 4 warm crons still run
+  normally — this fix must not have silently narrowed the window itself, only removed the bypass.
+
+### 2. Vector GEX wall spot-side inversion — PR #3495 (merged)
+
+**What was broken:** `computeGexWalls(ladder, {maxPerSide})` picked the top-N call/put walls by
+raw gamma magnitude with no spot-side constraint, so a call wall could resolve BELOW spot (or a
+put wall ABOVE spot) whenever the opposite side carried more total gamma than the correct side —
+inverting which strike Vector's GEX lens, per-expiry DTE walls, and the GEX-reconstruction rail all
+displayed as the nearest resistance/support level.
+
+**Fix:** added an optional `spot` parameter that side-constrains `callWalls` (strike > spot) and
+`putWalls` (strike < spot) with no fallback to the wrong side; wired through all 6 call sites across
+`vector-universe.ts`, `vector-dte-walls-core.ts`, `vector-gex-reconstruct.ts`, and
+`vector-snapshot.ts`'s 3 GEX-lens sites. VEX-lens call sites deliberately left unconstrained
+(different semantics, per the PR's own doc comment).
+
+**Check at the open:** on `/vector` (`proxy-browser.cjs`, desktop + mobile), for several liquid
+tickers (SPX, SPY, QQQ, and at least one where the pre-fix inversion was plausible — a name with a
+lopsided gamma book, e.g. IWM/NDX-shaped), confirm the displayed call wall strike is always ABOVE
+the live spot and the put wall strike always BELOW it, across the GEX matrix tab, the per-expiry DTE
+wall view, and the GEX-reconstruction rail. A call wall at or below spot (or vice versa) means the
+fix is not deployed or a call site was missed.
+
+### 3. PgBouncer cross-service/autoscaling budget blindness — PR #3499 (merged)
+
+**What was broken:** `computeSafePgPoolMaxDefault` derived the per-replica Postgres pool ceiling
+from `PGBOUNCER_BACKEND_BUDGET / REPLICA_COUNT_MAX_FOR_POOL` alone, with no carve-out for other
+services sharing the same PgBouncer backend budget (cron Lambda, market-worker, admin tooling) —
+so under a full autoscale-up, real backend connections could exceed the actual PgBouncer budget.
+
+**Fix:** added `PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` (env, defaults 0) as a third parameter,
+reserved BEFORE dividing by replica count, plus a second oversubscription warning that checks
+`poolMax * REPLICA_COUNT_MAX_FOR_POOL + PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` against the budget.
+
+**Check at the open:** this is an infra/config change with no visible UI surface — confirm instead
+via CloudWatch Logs `/ecs/blackout-production` for absence of new PgBouncer connection-exhaustion
+warnings/errors during RTH (peak concurrent-request load), and confirm `PGBOUNCER_RESERVED_FOR_OTHER_SERVICES`
+is actually set to a non-zero value in the production secret if the operator intends the reservation
+to do anything live (the fix ships a safe default of 0, i.e. no behavior change, until the env var is
+set — this is a capability, not yet an active guard, unless the secret was updated separately).
+
+### 4. Night Hawk tier drift — unpinned `score_floor` — PR #3505 (merged)
+
+**What was broken:** `tierFromEntryContext` recomputed `scoreFloorForOrigin(origin)` fresh every
+read instead of using the floor that was actually in effect at commit time. If `ZERODTE_SCORE_FLOOR*`
+env constants changed between a play's commit and any later read (including the record/tier-export
+endpoints), the SAME historical play could tier differently depending on when it was read — measured
+live on a real ASST play (score 59): tier A under the pinned floor of 50, tier B under a later
+recomputed floor of 65.
+
+**Fix:** `buildZeroDteEntryContext` now pins `score_floor` into `entry_context` at commit time;
+`tierFromEntryContext` reads the pinned value when present, falling back to recompute only for
+legacy rows with no pinned floor.
+
+**Check at the open:** open a handful of TODAY's newly-committed 0DTE plays (post-open) in the
+Night Hawk board and the `/api/market/zerodte/record` / tier-export endpoints, and confirm the same
+play reports the SAME tier across both surfaces and across repeated reads through the session — a
+play that tiers differently between two reads (without an intervening `ZERODTE_SCORE_FLOOR*` env
+change) means the pin did not take effect.
+
+### 5. Largo consensus extractor — HELIX/VECTOR field mismatches — PR #3508 (merged)
+
+**What was broken:** `extractHelixRead` read `get_flow_tape`/`get_helix_derived` payload shapes that
+do not carry a real aggressor-aware direction field (only `call_pct`, which per the repo's own C3
+precedent must never be read as bullish/bearish — a bought call is bullish but a sold call is
+bearish). `extractVectorRead` read a non-existent top-level `bias`/`magnet` shape instead of the
+real `result.play.bias` / `result.magnet.pull`. Both fed Largo's cross-product consensus verdict
+with either fabricated or absent directional signal.
+
+**Fix:** `extractHelixRead` now reads `get_helix_tape_analytics`'s real `session.direction` (falling
+back to `directionFromCallPct` only when no real direction field is present); `extractVectorRead`
+now reads `result.play.bias` for direction and `result.magnet.pull` only as supporting strength
+evidence, never as a direction override. The old mismatched tool calls (`get_flow_tape`,
+`get_helix_derived`, `get_vector_pulse`) no longer contribute a vote at all.
+
+**Check at the open, live, with real flow:** ask Largo *"is the flow on \<ticker\> bullish or
+bearish?"* for a ticker whose Helix/Vector panels show a clear, high-confidence direction, and
+confirm Largo's answer matches the panel. Then ask about a ticker where Helix's own panel would
+read neutral/unreadable (e.g. one dominated by unreadable aggressor-side flow) and confirm Largo
+also declines to assert a direction rather than fabricating one from `call_pct`. This is the exact
+CG-incident shape (2026-08-23: 100% call premium, panel BEARISH, old Largo logic BULLISH) — the
+check is whether that disagreement can recur.
+
+### 6. SPX EOD pin forecaster long-gamma bearish lock — PR #3497 (cursor, merged — not authored by this session, logged here for completeness)
+
+**What was broken (per PR description):** the EOD pin forecaster's magnet-selection logic could
+lock onto a distant max-pain strike below spot even in a long-gamma regime where the nearest
+meaningful OI concentration (the "king" node) sat above spot, producing a persistently bearish
+projected close regardless of where dealer positioning actually clustered.
+
+**Fix:** added `pickLongGammaMagnet` — prefers the nearest meaningful OI concentration to spot
+(king node) over a distant max-pain strike when closer, so a long-gamma session can now project a
+close ABOVE spot when warranted. Also wires real prior-day OHLC (`vector-prior-day-server.ts`,
+new) and recent-returns/macro-event trend inputs into the Vector pin forecast, replacing a
+derived-from-day-change approximation.
+
+**Check at the open, on a genuinely long-gamma session:** compare the SPX/Vector EOD pin forecast's
+projected close and drift direction against where the GEX wall/king-node structure actually sits
+relative to spot — confirm the forecast is no longer mechanically pinned bearish/below-spot on a
+day where OI clusters above spot. No pre-fix baseline exists from this session to diff against
+(cursor-authored, evidence lives in the PR's own commit history) — treat today's open as the first
+live observation.
+
+### 7. Meridian timeline showed a live "implied move" beside "· printed" on a same-day print — PR TBD (DISCOVERY lane)
+
+**What was broken:** `overlayTimelineExpectedMoves` (the Meridian earnings **calendar/timeline**
+lane, a different surface from the earnings-detail panel #3474/#3482 already fixed) stamped the
+LIVE Polygon chain-IV expected move onto every timeline row keyed by ticker, with no check of that
+row's own `is_printed` flag. `loadMeridianEarningsTimeline` keeps rows with `report_date >=
+todayYmd`, so a same-day BMO print that has already reported by the time a member loads the page
+mid-session still reached the overlay — pairing a forward-looking "~X% implied move" with the same
+row's own "· printed" label in one rendered string (`meridian-timeline.ts`'s timeline-item
+subtitle), asserting a pre-print expectation for an event the label itself says already happened.
+
+**Fix:** `overlayTimelineExpectedMoves` now returns the row unchanged (no overlay) when
+`row.is_printed` is true — same withhold-not-relabel treatment #3482 already established for the
+detail panel, applied to the second, independent call site that had the same gap.
+
+**Check at the open:** open the Meridian timeline/calendar strip and find a name that reported
+before or at the open (a real BMO print). Confirm its row shows NO "~X% implied move" text
+alongside "· printed" — either the move fragment is absent entirely, or (if the row has not yet
+been enriched this load) it should never coexist with the printed label. A row that shows both
+means the withhold did not take effect. Also spot-check an UNPRINTED same-day AMC print still shows
+a real chain-IV expected move when a chain exists (the withhold must not have gone too far and
+suppressed the legitimate case).
+
+### 8. desk-warm STILL firing off-hours after item #1's `CACHE_WARM_ALWAYS` fix — `force=1` was a separate, unthrottled bypass — PR pending (branch `fix/desk-warm-off-hours-trigger`)
+
+**What was broken:** item #1 above ("Check at the open" #1) worried a continued 24/7 firing pattern
+post-deploy would mean the deploy didn't carry the `CACHE_WARM_ALWAYS` fix. That did NOT happen —
+re-checked live 2026-09-04: 314 `desk-warm` background completions between 00:29-07:59 UTC, i.e.
+the pathological pattern continued for hours AFTER #3512 deployed (~07:32 UTC). But the deploy DID
+carry the fix — proved directly, not assumed: `rth-warm-leader`'s own `isEtExtendedWarmHours` gate
+(shared code with `shouldRunCacheWarmer`) stayed completely silent (zero log lines of any kind) the
+entire off-hours window and resumed at the exact 08:00:02 UTC ET-4am boundary, which is only
+possible if the underlying hours check is correct on the running image. EventBridge and
+cron-staleness-watchdog's self-heal were also positively ruled out with direct CloudWatch/Lambda log
+evidence (see the findings-staging entry). The real gap: `force=1` was ALWAYS a fully separate,
+unconditional bypass of the hours gate (intentional, for on-demand/debug warms) that nothing rate-
+limited — a caller replaying `?force=1` in a loop could re-trigger the route's full UW/Polygon fan-
+out as fast as it liked, since the only existing protection (`OVERLAP_LOCK`) is released the instant
+each run completes (often under a second). Whatever external caller was doing this (not traced to
+any code path this repo owns — all four scripts that construct that exact request are one-shot/
+manual, not scheduled) is now capped regardless of identity.
+
+**Fix:** a second guard, `RERUN_COOLDOWN_KEY`/`RERUN_COOLDOWN_SEC = 60`, checked before the overlap
+lock and before dispatch, claimed via the same atomic `sharedCacheSetNx` primitive but — unlike
+`OVERLAP_LOCK` — never released early, so it holds for its full 60s TTL regardless of how fast the
+run itself finishes. 60s sits below every legitimate cadence (rth-warm-leader's 90s heal threshold,
+EventBridge's 5-min schedule), so it never blocks real traffic.
+
+**Check at the open:** re-pull `desk-warm` `elapsed=` log frequency for an overnight window AFTER
+this deploys and confirm off-hours completions are now capped at roughly one per 60s at most (i.e.
+whatever is still calling `force=1` gets a `"rate-limited"` skip response, logged via
+`logCronRun("desk-warm", …)`, instead of a full re-run) — a continued sub-60s cadence means this fix
+is not yet deployed, not that it failed. During the 4am-8pm ET window itself, confirm `desk-warm`
+still runs on its normal ~90s (leader-heal) / 5-min (EventBridge) cadence — this fix must not have
+introduced any new throttling of legitimate in-window traffic, since 60s is strictly below both.
+
+### 9. PgBouncer follow-up config from #3499 still never set — zero-headroom condition still live — NOT FIXED, needs operator authorization
+
+**What was found:** #3499 (item #3 above) shipped the CODE to defend against web's connection pool
+oversubscribing the shared PgBouncer/RDS budget, but its own write-up said explicitly this stays a
+no-op until an operator sets two new env vars. Re-checked live 2026-09-04: neither
+`REPLICA_COUNT_MAX` nor `PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` has been set on either service —
+the zero-headroom condition #3499 was built to defend against is still live, and still correlates
+with real ALB 5xx + `[db] transient query error` clusters during RTH. Exact remediation values are
+computed and documented in `docs/audit/findings-staging/2026-09-04-pgbouncer-followup-config-never-set.md`
+— this was NOT applied because a live Secrets Manager write was blocked by the coordinator's
+auto-mode classifier as a production-infra change requiring explicit authorization.
+
+**Check at the open:** if an operator has applied the documented remediation, confirm
+`REPLICA_COUNT_MAX`/`PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` are set correctly on both services and
+watch for the new `[db]` warning logs (should stay silent if sized correctly) plus a drop in
+`[db] transient query error`/ALB 5xx clustering during RTH. If NOT yet applied, this item stays
+open — the underlying condition is unchanged from #3499's own original measurement.
+
+### 10. ElastiCache Redis chronically near its effective memory budget, evicting during RTH — NOT FIXED, needs an operator capacity decision
+
+**What was found:** `blackout-production-redis-rg-001` runs 94-99.9% of its effective (post-reservation)
+memory budget continuously, evicting up to 620 TTL'd keys/hour during RTH despite real physical
+headroom on the node (~26-30% free). Three remedies exist (upsize the node, reduce
+`reserved-memory-percent`, or audit cache-key TTL/footprint), each with real cost/risk tradeoffs —
+see `docs/audit/findings-staging/2026-09-04-elasticache-redis-memory-pressure.md` for the full
+evidence and tradeoff analysis. Deliberately left as a documented finding for an explicit operator
+decision rather than executed unilaterally.
+
+**Check at the open:** if a remedy has been applied, confirm `AWS/ElastiCache` `Evictions` trends
+back toward the near-zero off-RTH baseline. If not yet applied, this item stays open.
+
+### 11. market-worker ECS CPU-pinned near 100% during RTH, no autoscaling — NOT FIXED, needs a correctness check before any capacity change
+
+**What was found:** the single-task `blackout-production-market-worker` service (sole owner of live
+Polygon/UW WebSocket ingestion) runs CPU-pinned at 99.6-99.9% for extended stretches during RTH,
+with no registered autoscaling target. A vertical scale (raise task-level `cpu`, keep
+`desiredCount=1`) is the safe remediation; a horizontal scale (autoscaling to N>1 replicas) carries
+a real, unverified correctness risk (duplicate WS subscriptions if the ingestion code isn't built
+for multi-replica coordination) — see
+`docs/audit/findings-staging/2026-09-04-market-worker-cpu-pinned-no-scaling.md` for the full
+analysis. Not executed this pass.
+
+**Check at the open:** if a fix has been applied, confirm `AWS/ECS` `CPUUtilization` for
+market-worker shows real headroom during RTH, and confirm live-data freshness (WS ingestion lag)
+did not regress. If not yet applied, this item stays open.
+
+### 12. RTH ALB tail latency + real 5xx (`vector-pick-sweep` lock TTL + UW-sweep-concurrency) — PR #3411 + PR #3479 (both merged, NEITHER validated under a live RTH tape yet)
+
+**What was broken:** `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s
+target group showed p50 healthy (0.03-1.1s) but p99/Max climbing sharply and staying high across
+nearly every RTH minute — not isolated bursts — with Max repeatedly landing 95-119s, within
+seconds of the ALB's 120s `idle_timeout`. Two independent, previously-shipped fixes target this:
+`vector-pick-sweep`'s cross-replica overlap lock TTL (480s) was shorter than real observed sweep
+runtime (up to 693684ms), so the lock could expire mid-sweep and let a second sweep start while the
+first was still running (#3411, TTL raised to 900s); separately, even a single non-overlapping run
+of any of 4 crons (`vector-pick-sweep`, `vector-dark-pool-warm`, `vector-full-state-snapshot`,
+`bie-full-state-snapshot`) could occupy both of the shared cluster-wide UW rate limiter's ~2
+concurrency slots continuously for up to ~5 minutes, racing live member requests for the same slots
+the whole time (#3479, added `runWithBackgroundUwSweep()`/`reserveForLiveTraffic()` so a tagged
+background sweep can never claim the last slot). Full root-cause detail in both PRs' own
+findings-staging entries: `docs/audit/findings-staging/2026-09-03-vector-pick-sweep-lock-ttl-shorter-than-runtime.md`
+and `docs/audit/findings-staging/2026-09-04-uw-sweep-concurrency-starves-live-traffic.md`.
+
+**Why this item exists separately from those two entries:** neither fix's own "Check at the open"
+step ever made it into this WATCH LIST — a genuine gap in the pipeline the FULL-LIFECYCLE mandate
+above is meant to close. This entry closes it, and adds independent re-confirmation gathered
+2026-09-04 (pre-open) specifically re-measuring the ORIGINAL (pre-#3479) RTH session named in that
+finding, rather than taking its numbers on faith:
+- Re-pulled 1-minute-granularity `TargetResponseTime` (p50/p90/p99/Max) + `HTTPCode_*_5XX_Count` for
+  the FULL 2026-09-03 RTH session (13:00-20:29 UTC): Max ≥95s in **49/450 minutes (11%)** of the
+  session, p99 across the day p50=14.3s/p90=50.2s, while p50 stayed 0.03-1.1s throughout — confirms
+  the tail-latency shape (not a fleet-capacity problem) persisted across the WHOLE session, not a
+  handful of windows. Total 5xx in this RTH-only window: **105 ELB-5xx + 82 target-5xx over 101807
+  requests** — matching the original finding's 24h total of 105 ELB-5xx almost exactly, meaning
+  essentially every ELB-5xx that day happened DURING RTH, consistent with a market-hours-only-cron
+  driven mechanism rather than general traffic volume.
+- Ruled out an ECS rolling deploy as the driver of the worst 5xx cluster (17:04-17:11 UTC, 45
+  ELB-5xx in 8 minutes): `HealthyHostCount`/`UnHealthyHostCount` on the target group stayed pinned
+  at 8/0 for the ENTIRE RTH session — no target ever deregistered, so deploy churn is excluded.
+- Checked raw per-task `AWS/ECS` `CPUUtilization` Max at 1-minute resolution against 5xx
+  occurrence: weak, not the primary driver — `cpu_max` during the 93 minutes carrying any 5xx
+  averaged 77.2%, barely above the day-wide p50 of 78.0% (day-wide p90 89.7%, p99 94.1%); CPU was
+  hot most of the RTH day regardless of whether a 5xx fired that minute.
+- Independently reproduced the exact overlap `CloudWatch Logs /ecs/blackout-production` `elapsed=`
+  timestamps #3479's own commit message cites for the worst cluster: `vector-pick-sweep` "done"
+  lines at 17:06:52 (elapsed=693684ms, i.e. started ~16:55) and 17:09:31 (elapsed=252495ms, started
+  ~17:05:16) — a second sweep starting and finishing while the first was still in flight, landing
+  squarely inside the 17:04-17:11 UTC 5xx cluster — plus dense concurrent completions from
+  `zerodte-warm` (elapsed=212590ms), `vector-dark-pool-warm` (elapsed=173224ms, `failed=12`), and
+  `bie-full-state-snapshot` (elapsed=162304ms) in the same 8-minute window.
+
+**Why this is still unvalidated:** #3411 merged 2026-09-03 20:08 UTC — at the very TAIL of the RTH
+session the evidence above measures (RTH closes 20:00 UTC), so it had essentially no chance to
+affect that session's numbers. #3479 merged 2026-09-04 03:38 UTC — AFTER that RTH session closed
+and BEFORE today's (2026-09-04) open. **Today's open is the first live RTH tape either fix has
+run against.**
+
+**Check at the open:** re-pull the same three series (`TargetResponseTime` p99/Max 1-min, both
+`HTTPCode_*_5XX_Count`, `HealthyHostCount`) for TODAY's RTH session and compare directly against
+the 2026-09-03 baseline above — expect Max to no longer sit repeatedly at 95-119s and the ≥95s
+minute-share to drop well below 11%, and `HTTPCode_ELB_5XX_Count` to drop well below the ~105/day
+baseline. Also grep `elapsed=` for `vector-pick-sweep`/`vector-dark-pool-warm`/
+`vector-full-state-snapshot`/`bie-full-state-snapshot` and confirm no two "done" lines for the SAME
+cron key ever overlap in wall-clock time (start-of-run = done-timestamp minus `elapsed=`). **If the
+pattern is materially unchanged**, that does not necessarily mean the fix is broken — it may mean a
+DIFFERENT cron is now the dominant contributor: `zerodte-warm` (212590ms in the same worst window
+above) does NOT appear to route through `uw-rate-limiter.ts` anywhere in its reachable dependency
+tree (`src/lib/zerodte/scan.ts`, `src/lib/platform/zerodte-service.ts` — no `runWithBackgroundUwSweep`
+wiring, unlike the other four), so it was NOT covered by #3479 and is not yet confirmed either way;
+it already carries its own overlap guard (900s TTL, #3502-era fix) but not a UW/Polygon budget
+reservation. Flagged here as a candidate follow-up, not a confirmed cause — its long runtime is more
+likely dominated by Polygon calls or general compute than the UW ceiling #3479 fixed, and that would
+need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
+standing method.
+
+### 18. Meridian earnings detail header — title overlapped the SUMMARY tab pill on tablet/mobile — PR #3563 (merged, branch `fix/meridian-earnings-header-tab-overlap`)
+
+**What was broken:** `.meridian-detail-head-v2` (the `<header>` row pairing the earnings event
+title with the SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip in
+`MeridianEventDetailPanel.tsx`) had no `flex-wrap` of its own while its title child
+(`.meridian-detail-title-v2`) IS `flex-wrap: wrap` by design. At >=1440px the title fits on one
+line and nothing overlaps; at 1024px and 430px the title wraps to 2-3 lines, the row grows tall,
+and `align-items: center` centered the still-single-line tab strip vertically against that tall
+block — landing the tail of the title ("earnings", right after the "EARNINGS · HIGH IMPACT"
+kicker) directly on top of the SUMMARY pill's left half. Reproduced on every one of the desk's
+~131 live earnings events, on both tablet and mobile, regardless of which tab was active.
+
+**Fix:** added `flex-wrap: wrap` to `.meridian-detail-head-v2` so the tab strip drops to its own
+row once it no longer fits beside the title, instead of being squeezed onto the same nowrap line
+and centered into the middle of the wrapped text. `.meridian-earnings-tablist`'s own
+`flex-wrap: nowrap` (keeps the five tab pills on one row) is untouched. Full root-cause detail:
+`docs/audit/findings-staging/2026-09-04-meridian-earnings-detail-header-tab-overlap.md`.
+
+**Check at the open:** open any live earnings event's detail on `/meridian` at both 1024px and
+430px viewports (or via `proxy-browser.cjs` against production) and confirm the h2 title and the
+SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip render on visually separate lines with no
+overlapping glyphs, across at least 2-3 different real earnings events (title length varies by
+ticker/company name, and this defect is title-length-and-viewport-width dependent) — this could
+only be confirmed pre-open against static/cached data; the specific value of re-checking at the
+open is seeing it against the FULL, currently-live set of ~131 earnings events (including any that
+rolled onto/off the calendar overnight) rather than the handful captured in the original finding's
+screenshots. Also spot-check that the >=1440px desktop rendering is visually unchanged (title and
+tab strip still share one row) — the fix should be a no-op at that width.
+
+### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR #3558 (merged, branch `fix/helix-signals-badge-clip`)
+
+**What was broken:** the `/flows` print tape's Signals cell (`.helix-tape-cell--signals`, FULL
+columns density, desktop with the analytics sidebar hidden) rendered `signals.slice(0, 3)` — a raw
+badge-count cap with no notion of pixel width — inside a `flex-nowrap overflow-hidden` box with no
+scroll or wrap anywhere in its ancestor chain. On a real row carrying 4 signals (STACK / NEW 4.2× /
+REPEAT / a 4th collapsed into `+1`), only STACK and NEW 4.2× rendered whole; REPEAT painted as a
+single clipped `R`, and the `+1` overflow chip was present in the DOM's text but never visually
+painted at all — full write-up in
+`docs/audit/findings-staging/2026-09-04-helix-tape-signal-badge-clip.md`.
+
+**Fix:** new `fitSignalBadges()` (`src/features/helix/lib/helix-signal-fit.ts`) estimates each
+badge's real width from its label and shows only the priority-ordered PREFIX that actually fits the
+column's floor width, with a correctly-sized `+N` chip reserved for whatever is dropped — so the row
+never emits more markup than the 116px cell can paint. Code-level fix only; nothing here depends on
+a live measurement, so this item is about confirming it under real tape volume/variety, not about
+proving the fix exists.
+
+**Check at the open:** on `/flows` in FULL columns density (desktop, hide the analytics sidebar),
+watch a real RTH tape for rows carrying 3+ signals (STACK/WHALE prints with a fresh NEW badge and a
+REPEAT rule are the most likely combo) and confirm every visible badge renders whole — no clipped
+glyphs — and that whenever badges are hidden, a legible `+N` chip is visible summarizing them (never
+a phantom count that never paints). Also worth a spot-check at a narrower desktop width (browser
+window resized down, still above the mobile breakpoint) since the fix budgets against the column's
+CSS floor specifically to stay safe there.
+
+### 16. Vector desk mobile chart collapse — PR #3556 (pending, branch `fix/vector-mobile-chart-collapse`)
+
+**What was broken:** the standalone `/vector` desk's price chart (candles + wall overlay + volume
+pane) never rendered below the 1280px desktop breakpoint — present in the DOM, laid out with a
+real 320px `min-height` floor on its own canvas element, but clipped to nothing by an ancestor
+chain (`.vector-chart-terminal-chart` → `.vector-chart-wrap` → `.vector-chart-stage`) that
+computed to a literal 0px box on every phone/tablet width, because the flex-fill technique those
+three carried unconditionally (`flex: 1 1 0; min-height: 0;`) only resolves correctly when some
+ancestor up the chain has a DEFINITE height to distribute — true only from 1280px up. Independently
+reproduced live 2026-09-04 (fresh temp Clerk session, `proxy-browser.cjs` at 430x932): full-page
+capture showed header → Live Helix → 0DTE Matrix → SCALP play card → SPX Plays, no chart anywhere;
+a DOM probe measured `.vector-chart-canvas` at h=320 while all three ancestors measured h=0,
+unchanged after a 30s settle (ruling out a data/timing race). Full evidence and root cause in
+`docs/audit/findings-staging/2026-09-04-vector-mobile-chart-collapse.md`.
+
+**Fix:** scoped the `flex: 1 1 0; min-height: 0;` triple to the existing `@media (min-width: 1280px)`
+block (byte-identical to what the base rule used to carry, so desktop's resolved CSS is unchanged);
+the base/mobile rule now lets the default `flex: 0 1 auto` + `min-height: auto` apply, so the chart
+column sizes to its own content (the canvas's 320px floor) instead of forcing itself to zero. No JS
+change — `VectorChart.tsx`'s existing `ResizeObserver` autosize nudge was already correctly wired to
+react once the container gets a real size.
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS (market closed, "Session
+closed" shown on Live Helix) — the chart's underlying data feed (live bars, wall overlay, SSE
+ticks) has not been seen rendering into the now-fixed layout under a moving RTH tape. Load
+`/vector` on a phone (or a <1280px-wide window) once the market is open and confirm: (1) the
+candle chart renders above the fold, between the ticker-chip row and the Live Helix card, with
+visible candles/wall beads and a volume sub-pane, matching the desktop layout's content
+(no longer just absent); (2) it stays correctly sized and does not clip/collapse again as live bars
+stream in and the chart's content height changes; (3) the desktop (>=1280px) layout is pixel-for-pixel
+unchanged from before this fix — this was verified via CSS-cascade inspection and existing
+regression tests (`vector-chart-viewport.test.ts`) but not via a fresh live desktop screenshot,
+since the fix's own scope was mobile-only.
+
+### 14b. Legacy→Swing promotion dte<5 dual-admission — PR pending (`fix/legacy-swing-dte-floor`)
+
+**What was broken:** Legacy morning-confirm promotions could land on the Swing board with a picked
+contract at dte 3–4 while `HORIZONS.SWING.dteMin` is 5 — the same dual-admission overlap the
+2026-08-06 horizons widening closed for organic discovery, but via a second code path
+(`legacy-confirm-promote.ts`).
+
+**Fix:** filter chain rows to `[SWING.dteMin, SWING.dteMax]` before fan-out; dossier `intendedDte`
+derives from the picked contract's actual DTE (not a hardcoded 14).
+
+**Check at the open:** after a Legacy morning-confirm cycle, inspect `/nighthawk` Swings lane (or
+`GET /api/market/nighthawk/horizons`) for any `signalKinds` containing `NIGHT HAWK` — every such
+row's `contract.dte` must be ≥ 5 and `subLane` must match `subLaneForDte(contract.dte)`.
+
+### 14. Night Hawk mobile 430x932 — view-tab row overlapped the theme-toggle pill — PR pending (branch `fix/nighthawk-legacy-tab-toggle-overlap`)
+
+**What was broken:** live `/nighthawk` at 430x932 (both default and analytics-expanded states):
+the 5-tab view switcher's "Legacy" tab visually overlapped the adjacent dark/light theme-toggle
+pill — the "L" of "LIGHT" and the moon icon rendered on top of the tail of "Legacy" ("...gacy")
+instead of the row wrapping, truncating, or scrolling. `.nh-v2-page .ios-native-segment` had no
+`overflow-x`/`flex-wrap`, so once VECTOR became the row's 5th tab, the five content-width
+(`flex: 0 0 auto`) tab buttons' combined width could exceed the box the flex algorithm assigned
+the segment (its `min-w-0 flex-1 shrink` classes remove the default min-content floor so it can be
+squeezed below its content width) — the excess used the CSS-default `overflow: visible` and
+painted past the segment's edge, landing on the theme toggle, which paints after it in DOM order.
+
+**Fix:** `.nh-v2-page .ios-native-segment` now scrolls horizontally
+(`overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+-webkit-overflow-scrolling: touch; scrollbar-width: none;` + a hidden `::-webkit-scrollbar`) —
+the same pattern `.nh-history-tablewrap` already uses elsewhere in the desk — instead of leaving
+the overflow unclipped. `.ios-native-segment-btn` is unchanged (`flex: 0 0 auto` stays; tabs must
+not squash/truncate).
+
+**Check at the open:** on live `/nighthawk` at 430x932 (`proxy-browser.cjs`), confirm the view-tab
+row (0DTE/Swings/Bangers/Vector/Legacy) no longer paints "Legacy" (or any tab) through the theme
+toggle in either the default or analytics-expanded state, and that swiping/scrolling the tab row
+horizontally reveals the full "Legacy" label with the theme toggle staying put, fully legible, at
+its own fixed position to the row's right. Also spot-check desktop width (≥1440px) is visually
+unchanged — the fix is a CSS overflow behavior change with no effect once the row already fits.
+
+### 13. Vector chart volume-pane "SPY vol" watermark overlapped the first x-axis tick — PR pending (branch `fix/vector-volume-pane-label-overlap`)
+
+**What was broken:** the volume sub-pane's "SPY vol" watermark label (`VectorChart.tsx`,
+bottom-left corner of the chart stage, just above the x-axis) was a plain transparent `<p>` with no
+background, sitting in the same screen band as the chart's own canvas-drawn x-axis time-tick labels
+at the left edge. Live pixel-zoomed capture of `/vector` (desktop 1440×900) showed it painting
+directly over the first tick ("19:00"), producing garbled interleaved text. Two sibling labels a few
+lines below it in the same file (the "◇ dim = modeled" honesty label and the GEX-scope
+"spot-aligned" chip) already had this exact overlap class fixed on 2026-08-23 (opaque
+`bg-black/70 backdrop-blur-sm` pill) — this third label was simply missed at the time because it
+sits on the opposite corner and the earlier fix was validated on mobile, where this collision does
+not occur (it's a desktop-width-only overlap).
+
+**Fix:** gave the "SPY vol" label the same `rounded bg-black/70 px-1.5 py-0.5 backdrop-blur-sm`
+opaque-pill treatment as its two siblings, position unchanged (`bottom-2 left-2`). Deliberately did
+NOT add the siblings' `max-w-[42%] truncate` width guard — that guard protects variable-length,
+right-anchored text from overrunning the chart's right edge, which doesn't apply to this label's
+short, static text.
+
+**Check at the open, live tape, desktop viewport:** open `/vector` at 1440×900 (or wider) and look
+at the volume sub-pane's bottom-left corner. Confirm "SPY vol" reads cleanly on its own opaque pill
+with the first x-axis time tick (whatever time it now shows, live) visible and legible either beside
+or behind the pill — not interleaved into garbled combined text. Check across a few different zoom/
+pan states, since tick positions move with the visible time range and the original bug's window
+(the label colliding with whichever tick happens to land at the left edge) is a function of viewport
+width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
+didn't regress the already-working sibling labels' layout there.
+
+### 20. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR #3561 (merged, branch `fix/helix-mobile-card-expired-dte`)
+
+**What was broken:** the mobile print card (`HelixMobileFlowTape.tsx`) computed
+`dte = flow.dte ?? daysToExpiry(flow.expiry)` and only special-cased `dte === 0` (0DTE, ember
+badge + hidden bare-number segment). UW's own `dte` field goes negative for a print reported after
+its contract's expiry has already passed (an observed, not hypothetical, feed value — see
+`helix-flow-format.ts`'s `fmtIv` doc comment for a live `dte: -1` example) and that raw value is
+what usually reaches the card, since the clamped `daysToExpiry()` fallback only runs when
+`flow.dte` itself is null. So an already-expired print rendered a bare `"-1d"` in the exact same
+plain styling as an ordinary future DTE like `"32d"`, with none of the visual urgency same-day
+(0DTE) prints get from their highlighted treatment one row up. The desktop table
+(`HelixFlowTable.tsx`) has the identical root-cause pattern at its own `dte`/`is0dte` computation
+and DTE table cell — deliberately left unfixed in this PR (out of this finding's stated scope,
+flagged as a follow-up) but worth checking too.
+
+**Fix:** added `dtePrintLabel(dte)` (exported pure helper next to the mobile card component,
+following this repo's `ExpiryConcentration.tsx` pattern of testing a card's display logic directly)
+that returns `{ text: "EXPIRED", expired: true }` for `dte < 0` and `{ text: "${dte}d", expired:
+false }` otherwise; the card now renders `dteLabel.text` with an ember/bold treatment when
+`expired`, matching the sibling 0DTE badge's ember tone, instead of the raw negative number. The
+`!is0dte` gate that hides the whole DTE segment for 0DTE prints is unchanged.
+
+**Check at the open, live tape, mobile viewport (430×932):** open `/flows` on mobile and watch for
+any print whose expiry has just passed intraday (or catch a stale/late print against a prior day's
+expiry, which is the scenario the original evidence captured — `09/03/26 · -1d` observed the day
+after that expiry). Confirm the card shows `EXPIRED` in the highlighted ember/bold treatment, never
+a bare negative number like `-1d`/`-2d`. Also confirm ordinary future-dated prints on the same tape
+are unaffected (still plain `"<n>d"`) and that a genuine same-day 0DTE print still hides the DTE
+segment and shows its own "0DTE" badge unchanged — this fix must not have touched that branch.
+
+### 15. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
+
+**What was broken:** the expanded Session Analytics panel's play-history table renders 6 columns
+(Date, Ticker, Dir, Tier, Outcome, P&L) inside `.nh-history-tablewrap` — `overflow-x-auto` around a
+`min-w-[440px]` table — which overflows a 430px phone's card width. The overflow clip always eats
+the rightmost column first, and P&L was last, so it required an extra horizontal swipe to see even
+though `globals.css`'s own comment calls it "the single most-scanned value in this table."
+
+**Fix:** reordered columns to Date, Ticker, **P&L**, Dir, Tier, Outcome (P&L moved from 6th to 3rd,
+right after Ticker) — pure JSX reorder, no CSS/data change. See
+`docs/audit/findings-staging/2026-09-04-nighthawk-history-pnl-column-mobile-offscreen.md`.
+
+**Check at the open:** on `/nighthawk` (`proxy-browser.cjs`, 430×932 mobile viewport), open Session
+Analytics, expand a session with graded plays, and confirm the P&L value for each row is visible
+in the table WITHOUT any horizontal swipe — it should render as the 3rd visible column right after
+the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier/Outcome are still
+reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
+rendering (where the table already fit) is visually unchanged.
+
+### 21. `thermal-discord` cron logging "Fontconfig error: No writable cache directories" every ~15-30min RTH — PR #3571 (merged, branch `fix/thermal-discord-fontconfig-cache-dir`)
+
+**What was broken:** CloudWatch showed 72 occurrences/24h of the bare stderr line `Fontconfig
+error: No writable cache directories`, clustered in groups of exactly 4, RTH-only, on the
+`thermal-discord` cron's own ~15-30min cadence. `renderThermalDiscordCardPng` rasterises its SVG
+through `sharp(svg).png()` (librsvg, a real fontconfig client), and the ECS runtime user (`nextjs`,
+created without `-m` in `deploy/Dockerfile`) has no home directory and no `$XDG_CACHE_HOME`, so
+fontconfig had nowhere writable to persist its cache and rebuilt it from scratch on every single
+cold render — silent (nothing threw, the same cron logged success right around these lines), but a
+real per-invocation latency tax.
+
+**Fix:** `ensureFontconfigCacheDir()` in `src/lib/thermal-discord-card.ts`, called before the
+`sharp()` call, points `XDG_CACHE_HOME` at a writable dir under `os.tmpdir()` (Fargate ephemeral
+`/tmp`) once per process and creates it if needed, so fontconfig can keep a warm cache across
+renders within one task's lifetime. Never overrides an operator-supplied `XDG_CACHE_HOME`. See
+`docs/audit/findings-staging/2026-09-04-thermal-discord-fontconfig-cache-dir.md` for the full root
+cause (including the exact Dockerfile lines) and the infra-level follow-up this code-level fix
+deliberately does not attempt.
+
+**Check at the open:** CloudWatch Logs Insights, `/ecs/blackout-production`, same 24h-window query
+(`fields @timestamp, @message | filter @message like /Fontconfig error/`) run AFTER this deploys —
+confirm the line's occurrence count drops to (ideally) zero, or at minimum to once per task
+lifetime instead of once per cron firing, since the fix only makes the cache warm-reusable within a
+task, not eliminate the very first cold render after a fresh deploy/task start. Also spot-check that
+`thermal-discord` embeds still post normally to Discord during RTH (unaffected functionally either
+way, but confirm the fix didn't introduce a regression) via the admin cron-health board or the
+Discord channel itself.
+
+### 19. Vector SPX PLAYS card's off-hours loading copy read as a stalled live scan — PR #3566 (merged, branch `fix/vector-contract-picks-closed-market-loading`)
+
+**What was broken:** a discovery-pass finding reported the mobile `/vector` contract-picks card
+("PLYS · SPX PLAYS · loading" / "Scanning the chain for a contract worth showing…") appearing
+identically across 3 captures ~10 minutes apart, all off-hours, never resolving — unlike the
+adjacent Live Helix panel, which shows an honest "Session closed — Live Helix resumes at the open"
+once it has nothing to show. Independently reproduced live 2026-09-04 (temp Clerk session,
+`proxy-browser.cjs`, 430×932, pre-open ~06:47-06:54 AM ET): the "never resolving" framing did NOT
+hold literally — 2 of 3 fresh page loads resolved to real, populated picks within the capture's own
+wait window (6-20s), and the 3rd (also 6s wait) reproduced the exact reported stuck-looking state.
+So the fetch genuinely runs off-hours and genuinely can resolve with real last-session picks, but
+resolution time off-hours is variable and can run past what a member reasonably waits, and the copy
+gave no signal the delay was expected — read stuck/broken exactly as the discovery pass described,
+even though it wasn't literally permanent. Full evidence, the "why not just copy Helix's exact
+pattern" reasoning (it would hide real off-hours content this card is designed to still show), and
+root cause in `docs/audit/findings-staging/2026-09-04-vector-contract-picks-closed-market-loading-copy.md`.
+
+**Fix:** added an optional `liveSession` prop to `VectorContractPicksCard` (default `true`) and
+branched ONLY the loading-state body copy on it — unchanged live-session wording, vs "Session
+closed — resolving the last session's chain scan (can take longer off-hours)…" when closed. The
+fetch itself, its timing, and every other state (populated picks, "no contract cleared the bar",
+pivot-wait) are untouched. Wired through both real call sites (`VectorPageShell.tsx`,
+`VectorComparePlayStrip.tsx`).
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS. Once the market is open,
+confirm on `/vector` (`proxy-browser.cjs`, 430×932 mobile, and desktop) that: (1) the loading state,
+if seen at all during RTH, still shows the ORIGINAL "Scanning the chain for a contract worth
+showing…" copy (not the closed-market variant) — `liveSession` should read `true` throughout RTH;
+(2) real contract picks still populate normally once a play exists, at the same cadence as before
+this PR (this fix must not have changed fetch timing, only closed-market copy); (3) re-check the
+card off-hours AFTER today's close and confirm the closed-market copy now appears instead of the
+bare "Scanning the chain…" sentence when the loading state is hit.
+
+### 22. `db.ts` checked-out pool clients had no `'error'` listener — raw `uncaughtException` on connection drop — PR #3570 (merged, branch `fix/db-transaction-raw-client-uncaught`)
+
+**What was broken:** one live CloudWatch `uncaughtException: [Error: Connection terminated
+unexpectedly]` in a 24h window, despite `db.ts` already routing essentially every query through
+`dbQuery`'s try/catch+retry and already carrying a `livePool.on("error", ...)` handler for idle
+pooled clients. Root cause was NOT a missing try/catch (every raw `pool.connect()` site already had
+one) — `pg-pool` removes a client's `'error'` listener for the entire time it's checked out
+(`pool.on('error')` only ever covers idle clients), and `pg.Client` emits `'error'` on the client
+object itself UNCONDITIONALLY on an unexpected connection drop, separately from rejecting whatever
+query happens to be in flight — a promise-based `try/catch` can never intercept that second,
+independent emission. See `docs/audit/findings-staging/2026-09-04-db-checked-out-client-error-listener.md`
+for the full node-postgres source trace.
+
+**Fix:** added `guardCheckedOutClient()`, attached at all 7 raw `pool.connect()` sites in `db.ts`
+(migration advisory lock, `spx_signal_log` dedup transaction, `deleteUserDataForClerkId`,
+`dbClient()`, `acquireHeldLock`/`releaseHeldLock`, `insertOpenSpxPlay`, `withSwingRollTx`) —
+mirrors the existing pool-level swallow+log convention, scoped to the checked-out-client gap that
+convention doesn't reach.
+
+**Check at the open:** this is a backend crash-prevention fix with no UI surface — nothing to
+visually confirm on a live desk/board. Instead, pull `/ecs/blackout-production` CloudWatch Logs for
+a full RTH session after this deploys and confirm **zero** further raw
+`uncaughtException: [Error: Connection terminated unexpectedly]` events, with particular attention
+to `spx-evaluate` (holds the SPX-eval advisory lock for its whole run via `acquireHeldLock` — the
+longest-held, highest-risk checkout of the 7) and any DB reconnect/blip windows already visible in
+RDS/PgBouncer metrics that day.
+
+### 23. `data-integrity-verifier.ts`'s own `ageMin()` read a future-dated timestamp as trustworthy — PR pending (branch `fix/data-integrity-verifier-future-timestamps`)
+
+**What was broken:** the shared `ageMin(thenMs, now)` helper every freshness check in
+`data-integrity-verifier.ts` goes through (Postgres `flow_alerts`/`cron_job_runs` latest-row age,
+the Redis GEX matrix `asof` age, and the writer target-freshness reconciliation that suppresses a
+stale `failed` cron handshake row) computed a plain `(now - thenMs) / 60_000` with no guard for
+`thenMs` being in the future. A future-dated row (cross-process clock skew, or a corrupted/
+miswritten timestamp) produced a NEGATIVE age, which trivially passes every `aMin <= threshold`
+freshness check in the file — this is the DATA-CORRECTNESS AUDITOR's own core age computation, so
+being blind to this exact corruption shape undermines the surface whose entire job is to catch it
+(see the file's own "HONESTY" comment: "Nothing here is a false green"). Same bug shape as 16+
+sites already fixed this session (SPX Slayer #3423, coaching alerts #3442, GEX heatmap cache
+#3481, GEX heatmap context editions #3573, Helix flow-anomaly banner #3559, …) — found by sweeping
+for un-guarded `Date.now() - <timestamp>` age comparisons per the standing mandate's named angle 2.
+
+**Fix:** `ageMin()` now returns `Infinity` (the SAME sentinel this file already uses for a NaN/
+unparseable timestamp) when `thenMs` is more than `ZERODTE_MARK_FUTURE_TOLERANCE_MS` (60s — the
+same constant SPX Slayer's #3423 fix uses for this identical shape) ahead of `now`, so a future-
+dated row now surfaces as a FLAG instead of a silent PASS. The one inline duplicate of this same
+calculation (the writer target-freshness check, `targetFreshDespiteFailedHandshake`) was rewired to
+call the now-guarded `ageMin()` instead of re-deriving its own unguarded copy, closing all 4 call
+sites in the file at once rather than one at a time.
+
+**Check at the open:** this is an audit-tooling correctness fix with no member-facing UI surface —
+nothing to visually confirm on a live desk/board. Instead, confirm the `data-correctness` cron
+(`GET /api/cron/data-correctness`) still reports its DATALAYER scorecard normally during RTH (no
+new unexpected FLAGs — a genuine future-dated row should now show as a FLAG where previously it
+would have silently PASSED, so a new FLAG here is the fix working as intended, not a regression).
+
+---
+
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
 **Every item below is a HELIX fix merged over 2026-08-22/23 that has not been seen under a moving
@@ -862,3 +3079,332 @@ for the whole session where the design intent is a 20-minute lock. It was left a
 LOOSENS a fail-closed guard on a live risk device, and that deserves a deliberate decision rather
 than an end-of-session patch.
 
+### 19. Vector universe GEX wall spot-zero guard — 2026-09-04
+
+- **What was broken:** `vector-universe.ts` passed `spot: 0` into `computeGexWalls` when chain spot was transiently zero, persisting wrong-side walls into narrowed-horizon history.
+- **What changed:** Both blended and narrowed-horizon `computeGexWalls` calls now use `spot != null && spot > 0 ? spot : undefined`.
+- **RTH check:** On `/vector` during RTH, pick a dynamic ticker (e.g. INVERT fixture row in admin) and confirm top call/put walls sit on the correct side of spot; no wall-history samples with inverted geometry after a spot=0 chain miss.
+
+### 20. `/meridian` missing from protected-route lists — 2026-09-04
+
+- **What was broken:** `/meridian` (a real tier-gated premium desk) was absent from `isProtectedRoute` (middleware-clerk.ts), `PROTECTED_PREFIXES` (middleware-shared.ts), and `DISALLOWED_ROOTS` (robots.ts). Live-confirmed: anonymous `curl` to `/meridian` returned HTTP 200 with a 1s `<meta http-equiv="refresh">` client-side redirect instead of the clean top-level 307 `/vector` gets from Clerk's `auth.protect()`; `/meridian` also fell through to a no-op edge-cache header in production (no `CDN-Cache-Control: no-store`) instead of the explicit no-store every other protected desk gets.
+- **What changed:** Added `/meridian` to all three lists. New `src/desk-protected-route-coverage.test.ts` scans every `(site)/*/layout.tsx` for the tier-gate pattern and asserts the matching prefix exists in all three lists, so the next gated desk cannot repeat this silently.
+- **RTH check:** Re-run the anonymous curl check against prod: `curl -sD- -o /dev/null https://blackouttrades.com/meridian` should now return a top-level `HTTP/2 307` with `location: /sign-in?redirect_url=%2Fmeridian` (matching `/vector`'s shape) instead of `HTTP/2 200` with a body. Also confirm the response carries `cdn-cache-control: no-store`. No RTH-specific behavior — this is a routing/auth-plumbing fix, safe to check anytime, but flagged here per the standing next-session-validation logging requirement.
+
+### 21. `largo-stress-run.mjs` broken import after `decompose.ts` removal — fix/bie-decompose-dead-code-safe — 2026-09-04
+
+- **What was broken:** `main` already removed `src/lib/bie/decompose.ts` but `scripts/largo-stress-run.mjs` still imported `isCompoundQuestion` from it — `ERR_MODULE_NOT_FOUND` on every Largo stress nightly run (same regression class as #3219).
+- **What changed:** Inlined compound-question detection in `largo-stress-run.mjs`; extended `repo-hygiene.test.ts` allowlist comment.
+- **Check:** `LARGO_STRESS_LIMIT=5 node --import tsx scripts/largo-stress-run.mjs` → `router_mismatch: 0`. No member-visible surface.
+
+### 22. HELIX `/flows` — earnings-badge TZ off-by-one + replay NaN sort — fix/flowfeed-date-handling-bugs — 2026-09-04
+
+- **What was broken (badge):** `FlowFeed.tsx`'s `earningsDays` computed the EARN/E{n}D badge's
+  day-count against browser-LOCAL midnight (`new Date().setHours(0,0,0,0)` /
+  `new Date(dateStr + "T00:00:00")`), not the ET trading-calendar date `earningsMap` actually
+  carries — a member off US/Eastern could see the badge off by exactly one day for the hours
+  around either midnight where the local and ET calendar dates disagree (verified: a West Coast
+  member at 2026-09-04 22:00 PT, when the ET day has already rolled to 2026-09-05, saw "E1D"
+  instead of "EARN"/E0D for a same-ET-day report).
+- **What changed:** Extracted `earningsDayDiffEt()`, ET-anchored via the same technique
+  `daysToExpiry` already uses (`Intl.DateTimeFormat` → `Date.parse` of literal UTC midnight for
+  both endpoints). Also fixed `startReplay()`'s tape sort, which used raw
+  `new Date(a.alerted_at).getTime() - new Date(...)` and returned `NaN` (an
+  `Array.prototype.sort` contract violation, unspecified ordering) for any row with
+  `alerted_at: ""` (a freshly-streamed SSE row with unknown print time, per `flow-persist.ts`) —
+  now uses the extracted null-safe `compareFlowAlertsByTimeAsc()`, matching `displayAlerts`'s
+  existing convention a few lines below.
+- **RTH check:** On `/flows`, with the ET session open, compare the EARN/E{n}D badge day-count
+  against the ticker's actual next report date for a few names spot-checked against Meridian's own
+  `report_date`; there should be no case where a badge reads one day off from what Meridian shows
+  for the SAME print. Separately, run a live Replay (▶ Replay button) during/soon-after RTH once
+  the tape has accumulated at least one freshly-streamed row (new SSE prints briefly carry no
+  `alerted_at` before the DB round-trip lands it) and confirm the replay plays in a clean
+  chronological order with no visibly out-of-order jump.
+
+### 23. SPX Slayer spot headers — null `spx_change_pct` painted bullish — fix/spx-change-pct-null-neutral-tone — 2026-09-04
+
+- **What was broken:** `SpxLiveSpotPrice`, `SpxSniperHeader` strip spot, and `SpxIosMarketStrip` used `(desk?.spx_change_pct ?? 0) >= 0` for bull/bear text and border classes. When day change was genuinely unknown (`null`), price and % chip showed green bull styling while `fmtPct` correctly rendered `—`.
+- **What changed:** `dayChangeTextClass()` / `dayChangeBorderClass()` in `src/lib/api.ts`; all three surfaces use neutral white tone when change is absent.
+- **RTH check:** On `/dashboard` during a brief window where SPX spot is live but `spx_change_pct` is still warming (or force a null in dev), confirm SPX price/% use neutral white styling — not green bull — while the % reads `—`.
+
+### 24. SPX pulse SSE stream — unrounded IEEE floats on wire — fix/spx-pulse-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/spx/pulse/stream` SSE events serialized raw `indexStore` / UW tide numbers without `roundFloats`, so members on the live stream lane could still see tails like `7718.600000000001` while REST `/spx/pulse` was already rounded (PR #3751).
+- **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `pulse/stream/route.ts`.
+- **RTH check:** Open SPX desk with pulse stream connected (Network tab → EventStream on `/api/market/spx/pulse/stream`); confirm `spx.price` and tide `net`/`call_premium` values are 2dp-clean with no IEEE tails during RTH ticks.
+
+### 25. HELIX flows SSE stream — unrounded IEEE floats on wire — fix/flows-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/flows/stream` SSE events serialized raw flow premiums/strikes without `roundFloats`, so members on the live HELIX tape could still see IEEE tails while REST `/flows` was already rounded.
+- **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `flows/stream/route.ts`.
+- **RTH check:** Open `/flows` with live stream connected (Network tab → EventStream on `/api/market/flows/stream`); confirm `premium`, `strike`, and GEX enrichment numbers are 2dp-clean with no IEEE tails on incoming flow events during RTH.
+
+### 26. Vector contract-picks/live + play-bie — unrounded floats at API boundary — fix/vector-live-picks-bie-roundfloats — 2026-09-04
+
+- **What was broken:** `POST /api/market/vector/contract-picks/live` (live bid/ask/mid/greeks on pick monitor) and `POST /api/market/vector/play-bie` (`favPct` historical rate) returned raw IEEE floats while sibling Vector reads already call `roundFloats`.
+- **What changed:** Wrap both success responses in `roundFloats(...)`; add `favPct: 4` to `VECTOR_FRACTION_DP`.
+- **RTH check:** On Vector with an active play, open pick live monitor — confirm option marks are 2dp-clean; BIE evidence line shows a non-zero historical rate when `favPct` is small (e.g. 0.4% not 0.00%).
+
+### 27. Vector snapshot GEX walls — WS ladder race without spot constraint — fix/vector-snapshot-spot-constraint — 2026-09-04
+
+- **What was broken:** `getVectorGexWalls()` in `vector-snapshot.ts` could compute unconstrained gamma walls from the live UW WS ladder when `fallbackSpot` was still null (heatmap fetch in flight), placing call walls below spot or put walls above spot.
+- **What changed:** WS ladder path returns cached walls until spot is known; horizon WS path skips unconstrained compute when spot missing. Builds on spot > 0 guard from prior commit on this branch.
+- **RTH check:** On `/vector` for SPX/SPY/QQQ at session open (first ~30s after 09:30 ET), confirm call walls sit above spot and put walls below spot — no inverted geometry flash.
+
+### 28. 0DTE admin sim board — unrounded floats at API boundary — fix/zerodte-board-sim-roundfloats — 2026-09-04
+
+- **What was broken:** `GET /api/market/zerodte/board?sim=1` (admin-only) served sim frames from Redis without `roundFloats` at the route boundary. Member path rounds inside `zerodte-service.ts`, but sim ingest bypasses that pipeline — synthetic/replay frames could expose IEEE float tails on the admin sim desk.
+- **What changed:** Wrap both sim and member board success responses in `roundFloats()` at `board/route.ts`.
+- **RTH check:** Seed admin sim (`/nighthawk?sim=1`), inspect board JSON or rendered premiums/PnL — confirm 2dp-clean values with no IEEE tails on sim frames.
+
+### 29. Stock spot SSE stream — unrounded IEEE floats on wire — fix/spot-stream-roundfloats — 2026-09-04
+
+- **What was broken:** `/api/market/stocks/spot-stream` SSE frames serialized raw `price` and `changePct` from `stock-candle-store` without `roundFloats`, so members on the push spot lane could see IEEE tails while REST `/api/market/quote` was already rounded.
+- **What changed:** Apply `roundFloats(frame)` inside `encodeSpotFrame()` in `stocks-spot-stream-hub.ts` before `JSON.stringify`.
+- **RTH check:** Open any desk surface using the spot SSE stream (Network tab → EventStream on `/api/market/stocks/spot-stream?tickers=NVDA,AAPL`); confirm `quotes.*.price` and `changePct` are 2dp-clean with no IEEE tails during RTH ticks.
+
+### 31. Swing Q40/Q41 — mark freshness dropped + SSE tier never rechecked — fix/swing-mark-asof-sse-tier-recheck — 2026-09-05
+
+- **What was broken (Q40):** `swing_positions.last_mark_at` and manage-snapshot `quote.asOf` were persisted but never reached `HorizonDeck`/`terminalPlayFromHorizon`, so swing OPEN rows showed SYNC (not STALE) when the incidental 0DTE SSE lane wasn't carrying their OCC.
+- **What was broken (Q41):** `/api/market/zerodte/marks/stream` and `/api/market/vector/stream` checked tier/tool only at connection open — a lapsed Whop member kept receiving live swing + 0DTE P&L until tab close.
+- **What changed:** `HorizonPlay.markAsOf` from `last_mark_at` (quote.asOf fallback); `recheckSseUserEntitlement()` on every user SSE tick.
+- **RTH check:** Night Hawk Swing lane — OPEN position with stale `last_mark_at` should show STALE chip without 0DTE SSE carrying the OCC. Tier revocation mid-session should close SSE within ~1s.
+
+### 32. Vector snapshot VEX/flip/dark-pool + GEX cache reader — future-timestamp guards — fix/vector-snapshot-gex-cache-future-guards — 2026-09-05
+
+- **What was broken:** After gamma-wall memo was migrated to `isWsUpdatedAtFresh`, sibling Vector snapshot caches (VEX walls, gamma flip, dark-pool refresh triggers, wall-history recordability) still used raw `Date.now() - at` — a future stamp reads as infinitely fresh and can skip background refresh or record stale walls into durable rails. `readGexHeatmapCacheOnly` and `pickStaleHeatmapForHandoff` had the same shape for 0DTE thesis evidence reads.
+- **What changed:** Route VEX walls, flip, dark-pool, and recordability gates through `isWsUpdatedAtFresh`; cache-only reader uses `gexHeatmapCacheEntryStale`; handoff uses `gexHeatmapCacheEntryWithinTtl` and skips far-future entries from the `any` fallback.
+- **RTH check:** Vector stream (`/vector` or SPX desk embed) — VEX lens + gamma-flip line should refresh on cadence; no indefinitely-stale wall chips after deploy. Admin GEX health panel `age_sec` should not read negative.
+
+
+- **What was broken:** `buildVectorUniverseSnapshot` fired every universe ticker's `fetchGexHeatmap` at once via a raw `Promise.allSettled` (no concurrency bound). Live-confirmed: `GET /api/market/vector/universe` served fully-null rows (`spot`, `gammaFlip`, walls all null) for `DIA`, `AAOI`, `DRAM`, `ZS`, `NOK` while a solo `GET /api/market/gex-heatmap?ticker=<T>` for each of those same tickers, run ~20 minutes later with no contention, returned `available: true` with a real spot price — proving the batch fan-out (not real data absence) dropped them. Same root-cause shape as the already-fixed `vector-dark-pool-warm` unbounded fan-out (entry above this file's predecessor list, FINDINGS.md 2026-09-02).
+- **What changed:** Added `runPolygonPool` (`polygon-rate-limiter.ts`, mirrors `runUwPool`), bounded-concurrency default 8 (`POOL_MAX_CONCURRENCY`, env-overridable). `buildVectorUniverseSnapshot`'s ticker fan-out now routes through it instead of the raw `Promise.allSettled`.
+- **RTH check:** During/soon after RTH, hit `GET /api/market/vector/universe` and spot-check a handful of non-preset dynamic-universe tickers (names outside the ~11 warm presets — e.g. whichever mid-liquidity names are currently in the dynamic universe) for `spot: null`/`gammaFlip: null` rows; cross-check any null row directly against `GET /api/market/gex-heatmap?ticker=<T>` — if the direct check returns `available: true` with a real spot, the fan-out is still dropping rows and this fix needs a second look (e.g. `POOL_MAX_CONCURRENCY` too high, or a sibling unbounded fan-out — `heatmap-warm`/`vector-walls-warm`, both flagged as blast-radius follow-ups in the finding — needs the same fix).
+
+### 33. SPX desk UW supplemental + flow lane — missing background sweep tag — fix/spx-desk-uw-sweep-rest-flow — 2026-09-05
+
+- **What was broken:** `fetchUwDeskRestSupplemental` (NOPE/max pain/IV) and `buildSpxDeskFlow` (6-endpoint UW fan-out) called `runUwPooled` without `runWithBackgroundUwSweep`, unlike `fetchDeskEnrichmentFields` and `desk-warm`. Cron cold rebuilds (`spx-evaluate`, `spx-signal-observe`, `market-regime-detector`) could consume UW slots reserved for live member traffic.
+- **What changed:** Wrap both UW blocks in `runWithBackgroundUwSweep`; extend static regression test to cover all three paths.
+- **RTH check:** During RTH, confirm SPX desk flow lane + supplemental fields (NOPE, max pain, IV rank on SPX Slayer) populate normally; no elevated UW 429s or member-facing staleness on concurrent desk loads when crons fire (CloudWatch `uw-rate-limiter` / cron `elapsed=` logs).
+
+### 34. Thermal CHARM — call-shaped formula used for puts too, wrong at nonzero dividend yield — test/charm-numerical-derivative-check — 2026-09-05
+
+- **What was broken:** `charmPerShare` used ONE call-shaped closed-form expression for both call and put contracts ("type-independent... like gamma"), true only at dividend yield `q=0`. Missing the `q`-dependent term from differentiating `e^(-qT)` in `Delta(T)`, so even calls were subtly wrong at `q>0`. SPY/QQQ/IWM carry a material dividend yield per this repo's own GEX findings (`gex-depth-validate.mjs`).
+- **What changed:** `charmPerShare(..., type: "call"|"put")` now implements the full dividend-yield-correct formula per-type; the one call site passes the contract's real type through.
+- **RTH check:** On `/heatmap` (Thermal desk) for SPY/QQQ/IWM during RTH, spot-check the CHARM tab's per-strike dollar-charm values before/after this deploys — magnitudes should shift (calls slightly larger in magnitude, puts now genuinely distinct from calls rather than mirroring them) with no sign flips or NaN/null cells. No live provider ground truth exists for charm (Polygon doesn't supply it), so this is a magnitude/shape sanity check, not a numeric cross-check.
+
+### 35. GEX full-chain escalation — flat 12-page guard truncated megacap chains (NFLX/GOOGL) — fix/gex-heatmap-unfiltered-page-guard — 2026-09-05
+
+- **What was broken:** `fetchHeatmapBandUnfiltered`'s page cap (`HEATMAP_UNFILTERED_PAGE_GUARD = 12`) was sized for "tiny low-priced chains" per its own doc comment, but `shouldEscalateToFullChain` escalates on ANY thin banded ladder regardless of price — live-caught truncating both NFLX and GOOGL mid-session ("hit 12-page guard... walls/OI/IV understated"), the third occurrence of a bug class this file already fixed twice (`fetchPolygonOiByExpiry`, the OI-by-expiry term-structure loop).
+- **What changed:** `HEATMAP_UNFILTERED_PAGE_GUARD` now shares the already-fixed, env-overridable `HEATMAP_PAGE_GUARD` (floor 40) instead of a flat 12.
+- **RTH check:** During RTH, watch CloudWatch `/ecs/blackout-production` for `[polygon-gex] fetchHeatmapBandUnfiltered(<ticker>) truncated` on any megacap/thin-ladder name that triggers full-chain escalation (NFLX/GOOGL are known repeaters) — should no longer appear at 12 pages; if it does, the shared guard's floor may need raising further, not a fourth bespoke constant.
+
+### 36. SPX desk pulse — cold replica off-hours still served price:0 when the fast lane's own background fetch hadn't landed yet — fix/spx-desk-pulse-cold-prior-close — 2026-09-05
+
+- **What was broken:** `buildSpxDeskPulse`'s off-hours branch fell through to `price:0` on a fresh ECS replica whenever `lastPulseForSignals` was empty. The original fix in this PR added an `await priorDayForPulseLane()` call, but that helper is itself "never block cold" — on a TRUE cold cache it fires the real prior-day fetch in the background and returns `pdc:null` immediately, so the very first off-hours request after a rollout still saw `price:0` (only the second request onward benefited).
+- **What changed:** When `priorDayForPulseLane()` comes back with `pdc:null`, `buildSpxDeskPulse` now awaits `fetchPriorDayCached()` directly as a fallback before giving up — a real blocking Polygon daily-bar read, safe here because off-hours has no fast-lane RTH latency budget to protect. `buildSpxDeskPulseMinimal` deliberately left unchanged (it guards a real RTH latency budget via `Promise.race(...400ms)`).
+- **RTH/off-hours check:** After this deploys, hit `/api/market/spx/desk` off-hours (pre-market or weekend) on a FRESH ECS replica (right after a deploy/rollout, before any RTH request has warmed `lastPulseForSignals`) — the very first request should already return `price > 0` (prior-session close) rather than `0`, and `/terminal`'s SPX header should not flash `0` on first paint after a cold rollout.
+
+### 37. Vector universe scanner — undated rows never aged out — META stuck at spot:null indefinitely — fix/vector-universe-undated-row-never-expires — 2026-09-05
+
+- **What was broken:** `mergeUniverseSnapshot` fell back to the SNAPSHOT's own `updatedAt` to age a row with no usable `asOf` — but `updatedAt` is bumped to `Date.now()` on every 5-min refresh cycle regardless of which rows actually refreshed, so an undated row's computed age reset to ~0 every cycle it merely survived and could never cross the 15-min expiry. Live-caught: `GET /api/market/vector/universe` served `META` with `spot:null`/`asOf:null` while all 8 other universe tickers had real, fresh data, and a solo `GET /api/market/gex-heatmap?ticker=META` at the same moment returned a real spot price — proving META's own data was fine and only the universe snapshot was stuck.
+- **What changed:** Added `undatedSince` to the row shape — frozen the first cycle a row goes undated (using the same `previous.updatedAt` fallback as before for that one cycle), then carried forward unchanged on every subsequent cycle instead of re-derived from the moving container timestamp. An undated row now genuinely expires after ~15 min of real elapsed time without a successful refresh.
+- **RTH check:** Poll `GET /api/market/vector/universe` a few times ~5 min apart during RTH; no static-allowlist ticker (AAPL/AMZN/META/MSFT/NVDA/QQQ/SPX/SPY/TSLA) should sit at `spot:null` for more than ~20 minutes straight — a null during a genuine transient upstream blip should self-heal on the next successful build.
+
+### 38. Ask Largo swing closed-play post-mortem — MFE capture rendered a nonsensical negative percentage on a round-trip loss — fix/swing-mfe-capture-roundtrip — 2026-09-06
+
+- **What was broken:** Both `lessonsSection` (`play-brief-intel.ts`) and `closedCoaching` (`play-brief-narrative-coaching.ts`) computed "MFE capture" as `(exitPnlPct / peak) * 100` whenever the never-populated `mfeCapturePct` field was absent (confirmed zero producers of `mfe_capture_pct` anywhere in the codebase — it's always null in production). Live-caught on `GET /api/market/swing/play-brief` for `SWING:INTC:35`: peak +25.7%, exited -40.8%, rendered "**Gave back the move** — only **-158.9%** MFE capture" — a percentage with no honest reading once a play round-trips past breakeven into a net loss.
+- **What changed:** New shared helper `mfeCaptureOutcome()` (`mfe-capture.ts`) distinguishes a real capture (non-negative exit) from a "round-trip past breakeven" (negative exit despite a positive peak) and both call sites now render an honest, specific sentence for the round-trip case instead of forcing it through the capture-percentage phrasing.
+- **RTH check:** Next time a swing position closes at a net loss after having been up meaningfully at peak, confirm the closed play's brief ("Trade manager read" and any lessons/outcome section) reads "Round-tripped past breakeven — was up +X% at peak, closed at -Y%" rather than a large negative "MFE capture" percentage. Also spot-check a normal winning-exit closed play still shows the ordinary "MFE capture: N%" / "Strong discipline" / "Gave back the move" phrasing unaffected.
+
+### 39. Ask Largo swing brief — book concentration duplicated across "Trade manager read" and "Book context" — fix/swing-remove-duplicate-book-context-coaching — 2026-09-06
+
+- **What was broken:** PR #4110 added `bookContextCoaching()` calling the same `checkPortfolioOverlap()` as the existing `bookContextSection()` (#4101), rendering the identical concentration warning twice on one brief for any play whose ticker overlaps the member's open book by theme. Flagged with a full repro before merge (⏳ WAIT verdict) but merged anyway by `cursor[bot]` itself.
+- **What changed:** Removed the duplicate `bookContextCoaching()` and its call site; `bookContextSection()` remains the single source for this check.
+- **RTH check:** Open Ask Largo for a swing play whose ticker shares a theme with an existing open position (e.g. a semis name while holding AMD/SMH/NVDA) — the concentration/conflict warning should appear ONCE, in the "Book context" section, not also repeated inside "Trade manager read."
+
+### 40. Ask Largo swing collapse — Desk context hardening + stale title cleanup (P2) — fix/swing-collapse-desk-context-hardening — 2026-09-06
+
+- **What was broken:** #4123 fixed Book context being collapsed; #4128 removed the stale `"Desk consensus"` entry and deduped flow anomalies from `deskConsensusSection`. This PR adds inline docs + NEVER-drop regression tests so a future title rename cannot silently delete Book/Desk context again.
+- **What changed:** Documented why Book context and Desk context must stay excluded from `NARRATIVE_COVERED_TITLES`; hardened regression tests.
+- **RTH check:** For an OPEN/HOLD swing with NH trade history on the name, confirm "Desk context" still appears even when "Trade manager read" leads; flow anomalies appear once in Trade manager read, not again in Desk context.
+
+### 41. Ask Largo swing play-brief — `asOf` was UTC ISO instead of ET stamp — fix/swing-play-brief-asof-et — 2026-09-06
+
+- **What was broken:** `loadSwingPlayBriefContext()` stamped `asOf` with `new Date().toISOString()` (`…Z`), violating Largo C1 (time must be `YYYY-MM-DD HH:mm ET`). Vector/BIE tools already use `etStamp()`; the swing brief was the outlier, making cross-product freshness joins unreliable.
+- **What changed:** `play-brief-context.ts` now sets `asOf` from `etStamp(nowMs)` (ISO fallback only if stamping fails).
+- **RTH check:** `GET /api/market/swing/play-brief` for any swing row — response `asOf` and `envelope.asOf` should read like `2026-09-06 09:32 ET`, not a `…Z` UTC instant.
+
+### 42. Ask Largo swing play-brief — envelope levels hardcoded `live` freshness — fix/swing-brief-vector-freshness — 2026-09-06
+
+- **What was broken:** `levelsFromContext()` stamped Vector spot and related levels as `provenance.freshness: "live"` regardless of `vector.asOf` age; GEX walls were always `"recent"`. Off-hours cached Vector state could be 10–15 minutes old while the structured levels table still read live.
+- **What changed:** Level provenance now uses `describeVectorFreshness(vec.asOf, readMs)` and `freshnessFromAgeMs` on `gex_positioning.asof`; option-mark evidence uses measured age when parseable.
+- **RTH check:** Night Hawk Swings → OPEN/HOLD row → Largo brief levels table: when Vector cache is aged (>60s), spot/wall provenance should show `recent` or `stale`, aligned with the "Data freshness" section.
+
+### 43. Ask Largo swing play-brief — cold GEX / missing Vector silent in unavailableSources — fix/swing-brief-gex-vector-absence — 2026-09-06
+
+- **What was broken:** When `fetchEcosystemContext` succeeded but `gex_positioning` was null (cold matrix), or ecosystem loaded but neither `ctx.vector` nor `ecosystem.vector_full_state` had a live spot, GEX/Vector sections were omitted with no `UnavailableChip`. Total fetch failures were already surfaced via `ecosystemFetchFailed`/`vectorFetchFailed` (#11); cold-matrix / no-spot cases were not.
+- **What changed:** `collectBriefUnavailableSources()` emits structured absence entries for cold GEX and missing Vector desk state when the upstream read succeeded but returned no usable positioning/snapshot.
+- **RTH check:** Night Hawk Swings → open row → Ask Largo: when matrix is cold or Vector has no spot, confirm `UnavailableChip` shows "GEX positioning" and/or "Vector desk state" (not silent omission).
+
+### 44. Ask Largo swing play-brief — BieLevel provenance `asOf` was raw UTC ISO — fix/swing-brief-levels-asof-et — 2026-09-06
+
+- **What was broken:** `levelsFromContext()` stamped every `BieLevel.provenance.asOf` with raw `gex.asof` / `vec.asOf` UTC ISO (`…Z`) while evidence rows already used `etStampFromIso()` — C1 violation that broke cross-product level joins against Vector/Thermal reads carrying `as_of_et`.
+- **What changed:** `levelProvenanceAsOf()` prefers `gex.as_of_et` / `vec.asOfEt`, falling back to `etStampFromIso()` on the raw ISO fields.
+- **RTH check:** `GET /api/market/swing/play-brief` for any row with levels — inspect `envelope.levels[].provenance.asOf`; each must read like `2026-09-06 09:32 ET`, never a `…Z` UTC instant.
+
+### 46. Ask Largo swing lane rank — same-ticker multi-contract collision — fix/swing-lane-rank-contract-match — 2026-09-06
+
+- **What was broken:** `computeLaneRank()` matched peers by ticker only. NRG 110C and NRG 115C WATCH rows both attributed rank #1 to whichever row appeared first — wrong contract identity in Lane rank section and coaching.
+- **What changed:** Parse strike/right from deck contract label and match lane peers by contract before falling back to ticker-only.
+- **RTH check:** Open Ask Largo on a ticker with two WATCH contracts at different strikes — confirm Lane rank reflects the selected row's score position, not the other contract's.
+
+- **What was broken:** `scanSessionDay` from the serving snapshot was never compared to the brief's `sessionDate`. A WATCH row from yesterday's scan still showed a scan timestamp with no staleness warning and no `unavailableSources` entry — discovery looked current when today's scan had not run.
+- **What changed:** `collectBriefUnavailableSources()` emits a structured C3 entry when `scanSessionDay !== sessionDate`; `dataFreshnessSection()` and `dataHonestyCoaching()` narrate the same fact in prose.
+- **RTH check:** Pre-open Monday (or any session before `swing-discovery` cron runs), open Ask Largo on a WATCH swing row — confirm "Data freshness" and/or `UnavailableChip` shows prior-session discovery scan warning, not a silent yesterday timestamp.
+
+### 46. Swing entry gate — lone same-ticker row invisible to portfolio_overlap soft penalty — fix/swing-gate-portfolio-overlap-no-self-skip — 2026-09-06
+
+- **What was broken:** `checkPortfolioOverlap`'s first-match self-exclusion (correct for Ask Largo where the reviewed play is in `openBook`) also ran for uncommitted gate dossiers. A lone pre-existing NVDA LONG in the book was skipped as "self," so `portfolio_overlap` never fired when evaluating a new NVDA LONG candidate.
+- **What changed:** `checkPortfolioOverlap` accepts `{ excludeSelfMatch?: boolean }` (default `true`); `gates-pr5.ts` passes `false`.
+- **RTH check:** During discovery, inspect a dossier whose ticker+direction already exists in the open book — `evaluateSwingGates` soft penalties should include `portfolio_overlap` with concentration reason text, not silence.
+
+### 47. Ask Largo swing play-brief — HELIX pipeline staleness missing from Data freshness — fix/swing-brief-helix-freshness-section — 2026-09-06
+
+- **What was broken:** When `flow_feed_fresh === false`, structured `unavailableSources` and `dataHonestyCoaching()` warned, but `dataFreshnessSection()` stayed silent if mark/scan/Vector were all fine — no Data freshness section at all despite stale HELIX pipeline.
+- **What changed:** `dataFreshnessSection()` adds a HELIX pipeline stale line when `flow_feed_fresh === false`.
+- **RTH check:** During a HELIX pipeline stale window, open Ask Largo on a swing row with fresh mark/scan/Vector — confirm Data freshness section mentions HELIX pipeline stale (not only UnavailableChip/coaching).
+
+
+### 48. Ask Largo swing brief — uncalibrated thesis-health % leaked back into Verdict/Management — fix/swing-thesis-health-uncalibrated-leak — 2026-09-06
+
+- **What was broken:** #4318 taught `thesisHealthSection()`/`holdPlanSection()` to withhold the aggregate thesis-health `%` when committed-position pillars are uncalibrated (generic defaults, not real setup/entry/signal inputs). Three OTHER call sites (`thesisStrengthPct()`, `thesisManagementOverlay()` via `swingManagementVerdict()`, `managementReason()`/`actionProbability()`) read `play.thesisHealth.health` directly with no calibration gate, leaking the exact withheld number back out through the Verdict and Management sections of the SAME brief. Reproduced live on `SWING:NN` (2026-09-06): "Thesis health" section said withheld, but Verdict showed "Thesis strength 46%" and Management showed "Thesis health 46% — Thesis fading...".
+- **What changed:** Added `healthIsCalibrated(play)` gate (SWING-scoped only — 0DTE's thesis health is always live-calibrated) to all three call sites in `terminal-display.ts`, and gated `adapters.ts`'s `swingManagementVerdict()` overlay call the same way.
+- **RTH check:** Open Ask Largo on any committed SWING HOLD/OPEN/TRIM row whose "Thesis health" section shows "Inputs not wired... withheld" — confirm Verdict has NO "Thesis strength X%" line and Management's recNote does NOT contain "Thesis health X%". Also check the live command-deck Conviction panel for the same row doesn't show a numeric conviction score under this condition.
+
+### 49. Ask Largo swing brief — fabricated 45% thesis strength via thesisBreak warn fallback — fix/swing-thesis-strength-warn-fallback-leak — 2026-09-06
+
+- **What was broken:** #4335 gated the direct `thesisHealth.health` path in `thesisStrengthPct()` but left `thesisBreak.level === "warn"` returning a hardcoded **45%** (and `break` → 15%). On uncalibrated committed SWING rows, `thesisBreak` is derived from the same generic-default health — Verdict could show `Thesis strength **45%**` while Thesis health correctly said withheld.
+- **What changed:** `thesisStrengthPct()` returns `null` when `!healthIsCalibrated(play)` before any thesisBreak fallback.
+- **RTH check:** Same as #48 — committed SWING row with withheld thesis health; confirm Verdict has no `Thesis strength` line and Conviction panel shows `—` not 45.
+
+### 50. Ask Largo swing brief — GEX-only dealer posture says "Right now" on stale matrix — fix/largo-gex-stale-dealer-posture — 2026-09-06
+
+- **What was broken:** When Vector desk state was absent and dealer posture came solely from `ecosystem.gex_positioning`, a matrix older than 120s still produced "**Right now**" in the Trade manager narrative. Vector staleness was gated; GEX `matrix_age_sec`/`asof` was ignored in narrative, Data freshness, and `unavailableSources`.
+- **What changed:** Shared `gexMatrixAgeMs`/`gexMatrixStale` helpers; narrative lead uses "Last snapshot" when GEX-sourced posture is stale; Data freshness warns; `unavailableSources` emits `{ source: "GEX matrix", reason: "stale — dealer posture may lag spot" }`.
+- **RTH check:** Night Hawk Swings → row with GEX positioning but no Vector regime → Ask Largo Trade manager read: when matrix is >120s old, confirm "Last snapshot (~Ns old)" not "Right now", and UnavailableChip/Data freshness mention stale GEX matrix.
+
+### 51. Ask Largo swing brief — Meridian peer earnings cohort dropped by narrative bullet cap — fix/largo-meridian-peer-section — 2026-09-06
+
+- **What was broken:** `fetchMeridianPeerForBrief()` loaded sector peer beat-rate cohort on earnings plays, but only `meridianPeerEarningsCoaching()` in `collectCoachingBullets()` consumed it. When Vector/GEX coaching filled `MAX_BULLETS` (14), peer earnings history could be silently dropped despite live cohort data on the read.
+- **What changed:** Added `meridianPeerSection()` wired into `buildIntelSections()` as **Earnings peer lens** — outside `NARRATIVE_COVERED_TITLES`, so collapse logic cannot remove it.
+- **RTH check:** Open Ask Largo on a single-name earnings swing (e.g. retail name within 14d print) with rich Vector/GEX context — confirm **Earnings peer lens** section appears with peer beat rates (`n=`) even when Trade manager read is long.
+
+### 52. Ask Largo swing brief — "Vector regime" label read as a directional call, not dealer gamma posture — fix/swing-chart-vector-regime-gamma-label — 2026-09-06
+
+- **What was broken:** `chartTechnicalsSection()` printed `Vector regime: **long**`/`**short**` bare — this is a dealer GAMMA regime (spot vs gamma flip), not a directional call — sitting in the same section as directional signals (EMA, MACD, structure) and right before the separate "Vector desk" section's own directional POSITION call. Live repro (`SWING:NN`): Chart technicals showed "Vector regime: long" while Vector desk showed "momentum short" for the same ticker.
+- **What changed:** Relabeled to `Dealer gamma regime: **long gamma**`/`**short gamma**`/`**transition** (near flip)` — matches the labeling already used everywhere else this field is surfaced (`play-brief-narrative.ts`'s `dealerPostureLine`). No data changed, only the label.
+- **RTH check:** Open Ask Largo on any swing row with a resolved Vector gamma regime — confirm "Chart technicals" reads "Dealer gamma regime: X gamma", never a bare "Vector regime: long/short" that could be misread as contradicting the Vector desk section's directional call.
+
+### 53. Ask Largo swing brief — Benzinga headlines leak raw HTML entities into Catalysts & news — fix/swing-arsenal-news-headline-html-entities — 2026-09-06
+
+- **What was broken:** Benzinga news headlines (via the Polygon-keyed feed) arrive HTML-entity-encoded; `assembleEcosystemArsenal()` mapped `headline` straight into `arsenal.news.headlines` with no decode step, so the swing brief's "Catalysts & news" section literally rendered `&#39;`/`&amp;` instead of `'`/`&`. Live repro (`SWING:NN`, 2026-09-06): "Tuesday&#39;s Intraday Session", "Safran Electronics &amp; Defense". Same class of bug `meridian-feed-text.ts` fixed for the Meridian desk on 2026-08-21, missed here because this call site feeds the swing brief instead.
+- **What changed:** Headlines now run through the existing `sanitizeFeedText()` decoder before reaching `arsenal.news.headlines` — same decoder Largo tool answers and the Meridian desk already use.
+- **RTH check:** Open Ask Largo on any swing row with recent ticker news containing an ampersand or apostrophe in the headline (or in an FDA/M&A-channel market catalyst) — confirm "Catalysts & news" renders the plain character, never a raw `&amp;`/`&#39;`/`&lt;` entity.
+
+### 54. Ask Largo swing brief — stale GEX-only wall levels still steelman counter-thesis — fix/largo-gex-stale-wall-steelman — 2026-09-06
+
+- **What was broken:** `counterThesisLine()`'s call-wall/put-wall steelman reasons read `eco.gex_positioning.call_wall`/`put_wall` with no staleness gate when no live Vector wall was present — a >120s-old GEX matrix could still steelman "call wall X overhead" as a counter-thesis reason, the same dishonesty class #4355/#4360 fixed for dealer posture. Flagged by Cursor's peer review on #4360 as a follow-up.
+- **What changed:** Gated each wall independently (`callWallFromStaleGex`/`putWallFromStaleGex`) — suppresses only the side whose wall came from the stale GEX-only fallback, so a live Vector wall on one side still steelmans even when the other falls back to stale GEX.
+- **RTH check:** Open Ask Largo on a swing row with GEX positioning but no Vector wall data, matrix >120s old — confirm "Trade manager read"'s Counter-thesis line does not cite a call/put wall as a steelman reason.
+
+### 55. Ask Largo swing brief — stale GEX-only gamma posture drove GEX-king narration — fix/largo-gex-stale-posture-magnet-king — 2026-09-06
+
+- **What was broken:** `narrateKing`/`narrateMagnet` resolved `posture` inline as `vec?.regime?.posture ?? ecosystem.gex_positioning?.gamma_posture ?? null` with no staleness gate — a fifth instance of the same class #4360/#4364/#4367/#4372 fixed elsewhere on this read path. A Vector-sourced (live, fresh) king strike could still get its "Pin risk" vs "acceleration" directional call from an independently-stale GEX-only `gamma_posture` read.
+- **What changed:** Shared `resolveGammaPosture(ctx, vec)` helper — live Vector regime always wins; GEX-only fallback suppressed once `gexMatrixStale()`. Both `narrateKing` and `narrateMagnet` call sites now go through it.
+- **RTH check:** Open Ask Largo on an open swing position whose GEX king strike is Vector-sourced (live) while `gex_positioning.matrix_age_sec` is independently stale (>120s) — confirm the king-strike line reads "Max-gamma node" (posture-unknown), not a confident "Pin risk" call.
+
+### 56. Ask Largo swing brief — envelope GEX provenance ignored matrix_age_sec — fix/largo-gex-freshness-matrix-age-sec — 2026-09-06
+
+- **What was broken:** `gexFreshness()` in `play-brief.ts` derived envelope provenance freshness only from `gex.asof`, ignoring `matrix_age_sec` that every other GEX staleness gate on the swing path uses. When `asof` was recent but `matrix_age_sec` > 120s, narrative sections correctly treated the matrix as stale while BIE envelope evidence still labeled dealer posture as **live**.
+- **What changed:** `gexFreshness()` now routes through shared `gexMatrixAgeMs()` — same age source as `gexMatrixStale()` and `unavailableSources`.
+- **RTH check:** Pull `GET /api/market/swing/play-brief` for a position where `gex_positioning.matrix_age_sec` > 120 but `asof` is recent — confirm envelope dealer-posture evidence provenance is not `live` (should be `recent` or `stale` per age).
+
+### 57. Ask Largo swing brief — stale GEX-only flip qualified live dealer posture — fix/largo-gex-stale-dealer-posture-flip — 2026-09-06
+
+- **What was broken:** `dealerPostureLine()` took `flip = vec?.gammaFlip ?? gex?.flip` with no staleness gate. Live Vector `regime.posture` could render under **"Right now"** while a stale GEX-only `flip` still appeared in the `γ-flip` suffix — sixth instance of the Largo C2 stale-GEX class on this read path.
+- **What changed:** Per-value stale GEX gating on flip (mirrors break-watch/counter-thesis/focal-levels): suppress flip when from stale GEX-only fallback; live Vector `gammaFlip` still wins.
+- **RTH check:** Open Ask Largo on a swing with live Vector dealer posture but no Vector flip, GEX matrix >120s old — confirm "Trade manager read" dealer line shows posture without a `γ-flip` cite.
+
+### 58. Ask Largo swing brief — magnet coaching claimed "long-gamma regime" regardless of measured posture — fix/largo-magnet-coaching-posture — 2026-09-06
+
+- **What was broken:** `magnetCoaching()` hardcoded "Dealer hedging center of mass — price gravitates here in long-gamma regimes." for any far-from-spot gamma magnet, never consulting actual measured posture. Live repro (`SWING:NRG`, 2026-09-06): the same brief's own dealer-posture line said "dealers **short gamma**" while the magnet line asserted a long-gamma regime — an internally contradictory, factually wrong claim (not a staleness issue — both reads were fresh).
+- **What changed:** `magnetCoaching()` now takes `ctx` and resolves posture via the shared `resolveGammaPosture(ctx, vec)` helper (relocated to `play-brief-absence.ts`); when posture isn't measured "long" it now says "Pivot node — acceleration risk if the magnet fails to hold." instead.
+- **RTH check:** Open Ask Largo on an open swing position with a far gamma magnet (>1.2% from spot) while the desk's dealer-posture line reads "short gamma" or unresolved — confirm the magnet line says "Pivot node — acceleration risk", never "long-gamma regimes".
+
+### 59. Ask Largo swing brief — Vector desk intel-card bias chip ignored snapshot staleness — #4388 — 2026-09-06
+
+- **What was broken:** `vectorDeskSection()` stamped the intel-card `bias` chip straight from `vec.play.bias` with no staleness gate — seventh/eighth instance of the Largo C2 class on this read path (#4387 had already gated the same `play.bias` value inside the narrative-coaching call sites `crossDeskCoaching`/`vectorPlayCoaching`, but this separate `play-brief-intel.ts` intel-card path was missed).
+- **What changed:** `vectorDeskSection()` now gates the bias chip behind `!vectorSnapshotStale(vec)` — same shared helper #4387 uses. Stale → `neutral`; body/headline content unaffected.
+- **RTH check:** Open Ask Largo on a swing row whose Vector snapshot is stale (>120s / `freshness: "stale"`) but still carries a directional `play.bias` — confirm the Vector desk intel card's bias chip reads neutral, not bullish/bearish.
+
+### 60. Ask Largo swing brief — chart-read narrative silently dropped the dissenting MACD vote — fix/swing-technicals-coaching-omits-macd — 2026-09-06
+
+- **What was broken:** `technicalsBias()` computes "chart reads bullish/bearish" from four votes — emaStack, MACD, spot-vs-VWAP, structure direction — but `technicalsCoaching()`'s printed "Chart read" line only ever surfaced three of them (VWAP, RSI, emaStack, structure), never MACD. A MACD vote that dissented from the printed verdict (live repro, `SWING:NRG` 2026-09-06: bear MACD inside an otherwise 3-bull read) was invisible — the narrative said "chart reads bullish" with no way to see one of its own four inputs disagreed, even though the raw "Chart technicals" section on the same brief plainly showed `MACD: bear`.
+- **What changed:** Added `MACD **bullish**/**bearish**` to the `parts` list `technicalsCoaching()` renders, using the same phrasing convention `vector-desk-intel.ts` already uses for MACD elsewhere. `technicalsBias()` itself was untouched — only the narrative's transparency into its own scoring was incomplete, not the scoring itself.
+- **RTH check:** Open Ask Largo on any swing row where Vector's MACD read disagrees with its other three technicals inputs (e.g. bear MACD inside an up-EMA-stack/above-VWAP/up-structure bullish read) — confirm the "Trade manager read" → "Chart read" bullet explicitly names the MACD reading, not just the winning votes.
+
+### 61. Ask Largo swing brief — 7 coaching helpers + wall-dynamics section + trade-manager proximity/wall bullets + stale Vector spot still narrated off stale snapshots — #4411 — 2026-09-06
+
+- **What was broken:** #4400–#4402 gated `chartTechnicalsSection`, `chartLevelsSection`'s walls, `watchForSection`'s walls, `vectorDeskSection`, `vectorPlayCoaching`, `collectFocalLevels`'s king strike, and `counterThesisLine`'s walls against `vectorSnapshotStale()` — but seven coaching helpers in `play-brief-narrative-coaching.ts` (`magnetCoaching`, `expectedMoveCoaching`, `confluenceCoaching`, `wallIntegrityCoaching`, `vexCoaching`, `flowPrintsCoaching`, `wallDynamicsCoaching`) still narrated directional/level content straight off `vec.*` with no staleness check. `wallDynamicsSection` (the intel-section counterpart) had the identical gap, `tradeManagerNarrativeSection`'s "Nearest wall"/"Wall just moved" bullets were ungated, and — a level below any of the above — a stale Vector **spot** could still win over a live GEX spot at the source in `chartLevelsSection`, `watchForSection`, `levelsFromContext` (`play-brief.ts`), and `tradeManagerNarrativeSection`'s own spot resolution, silently propagating a stale price into every level/break-trigger computed downstream of it. Multiple parallel PRs (#4404-#4407, #4413) converged on parts of this gap; #4411 was independently verified as the superset (785/785 tests pass, tsc clean) and merged over the others to avoid a duplicate/conflicting landing.
+- **What changed:** Added `vectorSnapshotStale()` early-return gates to all 7 coaching helpers and to `wallDynamicsSection`; gated `tradeManagerNarrativeSection`'s proximity/wall-event bullets; nulled stale Vector spot **at the source** (not via a separate suppression flag) in `chartLevelsSection`, `watchForSection`, `levelsFromContext`, and `tradeManagerNarrativeSection` so a live GEX spot still falls through via `??`; added a null-spot guard on `breakTrigger`/`dealerPostureLine`'s flip resolution so a fully-stale-Vector, GEX-absent row degrades cleanly instead of computing off `undefined`.
+- **RTH check:** Open Ask Largo on a swing row with a stale Vector snapshot (>120s / `freshness: "stale"`) carrying a gamma magnet, expected-move band, confluence zone, wall-integrity tier, VEX flip, flow print, or wall-dynamics event — confirm none of those coaching bullets render, and that the Trade manager read's "Nearest wall"/"Wall just moved" bullets are absent. Separately, on a row where Vector is stale but GEX has a live spot/wall for the same level, confirm the level still renders (sourced from GEX), not dropped entirely.
+
+### 62. Ask Largo swing brief — stale GEX-only spot could still surface in trade-manager narrative + no GEX-matrix-age caveat in data-honesty coaching — #4415 — 2026-09-06
+
+- **What was broken:** #4411 nulled stale Vector spot at source in `tradeManagerNarrativeSection` but still fell through to `gex_positioning.spot` unconditionally, so a stale GEX matrix (Vector also stale/absent) could still print `Spot **X.XX**` in the unresolved-posture line with no freshness caveat — the same Largo C2 class #4401/#4411 fixed for walls/flip, just left open for spot's GEX-side fallback. Separately, `dataHonestyCoaching` warned on Vector age and HELIX pipeline staleness but never on GEX matrix age, even though `dataFreshnessSection` already surfaces that caveat elsewhere — so a collapsed intel layout could miss it in the Trade manager read specifically.
+- **What changed:** Null `gex?.spot` at source when `gexMatrixStale()` in `tradeManagerNarrativeSection` (same null-at-source pattern as #4401/#4411) — when both Vector and GEX are stale, spot resolves to absent rather than a stale price. Added a `GEX matrix **Ns** stale — dealer posture may lag spot` line to `dataHonestyCoaching` when matrix age exceeds 120s.
+- **RTH check:** Open Ask Largo on a swing row where both the Vector snapshot and the GEX matrix are stale (>120s) — confirm the Trade manager read's posture line shows no spot price (not a stale one), and confirm the "Data honesty" coaching bullet explicitly names the GEX matrix staleness, not just Vector/HELIX.
+
+### 63. Ask Largo swing brief — chart-technicals body still rendered in full under a stale-Vector "Last snapshot" prefix — #4414 — 2026-09-06
+
+- **What was broken:** `chartTechnicalsSection()` prefixed a stale Vector read with "Last snapshot" but still rendered the full body — Spot, EMA 9/21/50 stack, VWAP, RSI, MACD, structure, and dealer gamma regime — as if live; only the section's `bias` chip was neutralized (#4387/#4402). The regression coverage at the time only checked bias + prefix, so a stale snapshot could still narrate a confident-looking technicals readout under a caveat nobody would read past.
+- **What changed:** Mirrored `vectorDeskSection()`'s early-return pattern — when stale, the section now returns only the age caveat plus, if present, the desk grade labeled "(from prior snapshot)"; the live path (full technicals body) is unchanged.
+- **RTH check:** Open Ask Largo on a swing row with a stale Vector snapshot (>120s) — confirm "Chart technicals" shows only the "Last snapshot (~Ns old)" caveat (and, if present, a "(from prior snapshot)"-labeled grade), never Spot/EMA/VWAP/RSI/MACD/structure/gamma-regime lines.
+
+### 64. Ask Largo swing brief — stale GEX-only spot still drove level-formatting and flip-watch lines — #4419 — 2026-09-06
+
+- **What was broken:** #4415 nulled stale GEX spot at source in `tradeManagerNarrativeSection`, but `chartLevelsSection`, `watchForSection`, and `levelsFromContext` (`play-brief.ts`) still resolved `vec?.spot ?? gex?.spot` unconditionally — a stale GEX matrix (with Vector also stale/absent) could still drive wall-distance percentage strings or enable flip-watch lines off an aged spot price.
+- **What changed:** Suppressed `gex?.spot` at each of the three remaining spot-resolution sites when `gexMatrixStale()`, mirroring #4415's pattern exactly; `levelsFromContext` reuses the function's already-in-scope `gexStale` variable rather than recomputing it.
+- **RTH check:** Open Ask Largo on a swing row where both Vector and the GEX matrix are stale (>120s) — confirm "Chart levels", "What to watch", and the envelope's `levels` array do not show a numeric spot or a flip-watch line derived from the stale GEX fallback.
+
+### 65. Ask Largo swing brief — prior-session 0DTE stance could drive cross-desk friction after close or before board refresh — #4424 — 2026-09-06
+
+- **What was broken:** `crossDeskCoaching`, `counterThesisLine`, and `flowIntelSection` consumed `eco.zerodte_today` whenever non-null, without verifying `zerodte_today.session_date === ctx.sessionDate` — the same Largo C2 dishonesty class already fixed for Vector snapshots and stale GEX matrix reads, but for 0DTE cross-desk stance specifically. After the close or before today's 0DTE board refreshes, yesterday's short/long 0DTE stance could still produce live-looking cross-desk friction lines in the swing brief.
+- **What changed:** Added shared `zerodteLiveForSession(z, sessionDate)` in `play-brief-absence.ts` — nulls the 0DTE take when its `session_date` doesn't match the brief's session date. Gated all three call sites (`crossDeskCoaching`, `counterThesisLine`, `flowIntelSection`) through it. Also fixed a CodeQL-flagged unused import (`gexMatrixAgeMs`) introduced in the same PR.
+- **RTH check:** Off-hours or before the 0DTE board's first refresh of the session — confirm the swing brief's cross-desk coaching and flow-intel sections do not cite yesterday's 0DTE short/long stance as live cross-desk friction.
+
+### 66. SPX Slayer desk_context countdowns rendered live on an NYSE holiday — fix/spx-play-desk-context-holiday-gate — 2026-09-07
+
+- **What was broken:** `GET /api/market/spx/play`'s `desk_context` sub-object (`minutes_to_close`, `minutes_to_no_entry`, `minutes_to_force_exit`) was gated by `isEtWeekday` (Sat/Sun only) instead of `isTradingDayEt` (weekday AND not an NYSE holiday). Live repro on Labor Day 2026-09-07 (a Monday): `desk_context.minutes_to_close: 97` rendered at 14:21 ET in the same payload whose top-level `gates.blocks` already said `["Session closed"]`.
+- **What changed:** Swapped the gate to `isTradingDayEt(formatEtDate(now))` in all three countdown helpers in `spx-play-context.ts` — same helper `isSpxEngineCronWindow` already uses for the equivalent check elsewhere in this feature.
+- **RTH check:** On the next NYSE holiday that falls on a weekday, confirm `GET /api/market/spx/play`'s `desk_context.minutes_to_close`/`minutes_to_no_entry`/`minutes_to_force_exit` are all `null` throughout the day. On an ordinary trading day, confirm they still count down normally during RTH (the control case this fix's regression test also covers).
+
+### 67. Ask Largo swing brief — mark/stop-premium rounded to a whole dollar, contradicting the same field elsewhere in the same brief — fix/largo-swing-premium-format — 2026-09-07
+
+- **What was broken:** Live-fetched `SWING:NRG` brief (2026-09-07, holiday, Vector spot unwired): Position section showed `Mark: **+$9.70**` while the Trade-manager-read section's "Live read" bullet showed `mark **$10**` for the identical `play.mark` field — and the Management section's `Rails: stop +$1.96` sat beside a "Break watch — lose premium stop **$2**" bullet from the identical `exitPolicy.stop_premium` field. Root cause: `play-brief-narrative.ts` had its own `fmtUsd` built for FLOW/aggregate dollar amounts (whole-dollar/k/M, correct for HELIX/dark-pool premium in the hundreds-of-thousands+ range) and reused it for per-contract option premiums, where cents are a large fraction of the number — a different, precise 2-decimal `fmtUsd` already lives in `play-brief.ts` for exactly this and was not the one used.
+- **What changed:** Added `fmtOptionUsd` (2-decimal, signed) in `play-brief-narrative.ts` and switched the three per-contract-premium call sites (`degradedReadLine`'s mark, `tradeManagerNarrativeSection`'s `stop_premium` fallback break-watch line, `railsFallback`'s stop/target) to it. Flow/aggregate call sites (HELIX tape, dark-pool premium) were left on the original `fmtUsd` — those correctly want whole-dollar/k/M scaling.
+- **RTH check:** Open Ask Largo on any live OPEN swing position with a fresh mark — confirm the dollar figure for mark/stop/target reads identically (same digits, same precision) in the Position section, the Management section's "Rails" line, and the Trade-manager-read section's "Live read"/"Break watch" bullets.
+
+### 68. Ask Largo swing brief — HELIX flow evidence used raw dollars while narrative used k/M — fix/largo-helix-flow-premium-format — 2026-09-07
+
+- **What was broken:** HELIX 24h flow aggregate appeared as `+$1000000.00` in envelope evidence while the Trade-manager-read / Flow intel sections showed `$1.0M` for the same `call_premium` field — Largo contract precision violated within one brief.
+- **What changed:** Routed HELIX aggregate flow and dark-pool notional formatting through `fmtPremium` from `@/lib/fmt-money` in `play-brief.ts`, `play-brief-intel.ts`, and `play-brief-narrative.ts` (via `fmtFlowUsd` wrapper).
+- **RTH check:** Open Ask Largo on a swing row with HELIX flow >$100k — confirm evidence chips and trade-manager narrative show identical k/M strings (e.g. both `$1.2M`, not mixed with `$1200000.00`).
+
+### 69. Ask Largo swing brief — "Vector desk" section rendered a live, actionable directive on CLOSED plays — fix/closed-vector-desk-live-recommendation — 2026-09-07
+
+- **What was broken:** Live repro across four CLOSED swing chains (CCI/AMZN/GLW/NOW, 2026-09-07): `vectorDeskSection()` had no `bucket` parameter and rendered the full CURRENT Vector directive block — entry zone, targets, invalidation, starred "Watch now" call — bullish/bearish-badged, on a play that already closed days earlier. Same defect class as the "Watch levels" fix immediately preceding this one, in a different section that was never made bucket-aware to begin with.
+- **What changed:** `vectorDeskSection` now takes a `bucket` param; for `"closed"` it renders only an informational grade/conviction line framed "since this play closed" with a forced neutral bias, dropping thesis/entryZone/targets/invalidation/starred entirely. Watch/open buckets are unchanged.
+- **RTH check:** Open Ask Largo on any CLOSED swing position — confirm "Vector desk" shows only a neutral "since this play closed" grade line, never an Entry zone/Targets/Invalidation/"Watch now" block, and never a bullish/bearish bias badge.

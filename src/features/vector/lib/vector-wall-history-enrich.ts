@@ -7,6 +7,8 @@ import { getVectorWallHistory } from "@/features/vector/lib/vector-snapshot";
 import {
   backfillRailGaps,
   decimateSeedHistory,
+  isConstrainedThinRail,
+  mergePreferDenserUnderlay,
   mergeWallHistory,
   railUncoveredSec,
   RAIL_GAP_FILL_MIN_SEC,
@@ -56,13 +58,20 @@ export async function enrichSessionWallHistory(
   }
 
   const uncoveredSec = railUncoveredSec(observed, firstBar, lastBar, RAIL_GAP_FILL_MIN_SEC);
-  const modeledRail =
-    uncoveredSec > RAIL_RECONSTRUCT_MIN_UNCOVERED_SEC
-      ? await reconstructSessionRail({ ticker, sessionYmd }).catch(() => [] as WallHistorySample[])
-      : [];
+  const thinConstrained = isConstrainedThinRail(observed);
+  const needsReconstruct =
+    uncoveredSec > RAIL_RECONSTRUCT_MIN_UNCOVERED_SEC || thinConstrained;
+  const modeledRail = needsReconstruct
+    ? await reconstructSessionRail({ ticker, sessionYmd }).catch(() => [] as WallHistorySample[])
+    : [];
+
+  const healed =
+    thinConstrained && modeledRail.length
+      ? mergePreferDenserUnderlay(observed, modeledRail)
+      : observed;
 
   const backfilled = backfillRailGaps(
-    observed,
+    healed,
     modeledRail,
     firstBar,
     lastBar,

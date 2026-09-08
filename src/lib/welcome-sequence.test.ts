@@ -77,12 +77,12 @@ test("startWelcomeSequence is a no-op when the DB is not configured", async () =
 test("processDueWelcomeSequenceSteps sends the next step and advances state", async () => {
   const { deps, queries, sent } = fakeDeps({
     sendOk: true,
-    selectRows: [{ user_id: "user_1", email: "trader@example.com", first_name: "Sam", steps_sent: 1 }],
+    selectRows: [{ user_id: "user_1", email: "trader@gmail.com", first_name: "Sam", steps_sent: 1 }],
   });
   const result = await processDueWelcomeSequenceSteps(200, deps);
 
   assert.deepEqual(result, { processed: 1, sent: 1, failed: 0 });
-  assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ email: "trader@example.com", firstName: "Sam" }).subject, "sends step 2 for steps_sent=1");
+  assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ email: "trader@gmail.com", firstName: "Sam" }).subject, "sends step 2 for steps_sent=1");
 
   const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("SET steps_sent"));
   assert.equal(update?.params[1], 2, "steps_sent advances to 2");
@@ -92,7 +92,7 @@ test("processDueWelcomeSequenceSteps marks the row complete after the final step
   const lastIndex = WELCOME_SEQUENCE.length - 1;
   const { deps, queries } = fakeDeps({
     sendOk: true,
-    selectRows: [{ user_id: "user_1", email: "trader@example.com", first_name: null, steps_sent: lastIndex }],
+    selectRows: [{ user_id: "user_1", email: "trader@gmail.com", first_name: null, steps_sent: lastIndex }],
   });
   await processDueWelcomeSequenceSteps(200, deps);
 
@@ -105,7 +105,7 @@ test("processDueWelcomeSequenceSteps marks the row complete after the final step
 test("processDueWelcomeSequenceSteps leaves state untouched on a send failure (so the next run retries)", async () => {
   const { deps, queries } = fakeDeps({
     sendOk: false,
-    selectRows: [{ user_id: "user_1", email: "trader@example.com", first_name: null, steps_sent: 0 }],
+    selectRows: [{ user_id: "user_1", email: "trader@gmail.com", first_name: null, steps_sent: 0 }],
   });
   const result = await processDueWelcomeSequenceSteps(200, deps);
 
@@ -118,6 +118,42 @@ test("processDueWelcomeSequenceSteps returns zeros when nothing is due", async (
   const { deps } = fakeDeps({ selectRows: [] });
   const result = await processDueWelcomeSequenceSteps(200, deps);
   assert.deepEqual(result, { processed: 0, sent: 0, failed: 0 });
+});
+
+// ── Legacy audit/test-harness rows ─────────────────────────────────────────────────────────
+// The Clerk webhook gate (isInternalAuditEmail, added 2026-08-28) only stops NEW audit accounts
+// from entering this table — rows from the ~30 ad-hoc harnesses that predate it are already
+// sitting here, and without a check in the cron loop itself, this hourly job would retry each
+// one forever (a failed send deliberately doesn't advance next_send_at), burning a real Resend
+// 422 every run until the 7-day staleness cutoff.
+
+test("processDueWelcomeSequenceSteps retires a legacy audit-account row without attempting a send", async () => {
+  const { deps, sent, queries } = fakeDeps({
+    selectRows: [{ user_id: "user_audit", email: "helix-interaction-audit@example.com", first_name: null, steps_sent: 1 }],
+  });
+  const result = await processDueWelcomeSequenceSteps(200, deps);
+
+  assert.equal(sent.length, 0, "must never attempt to send to a recognized audit account");
+  assert.deepEqual(result, { processed: 1, sent: 0, failed: 0 }, "resolved, not a failure — a skip is not a bounce");
+
+  const update = queries.find(
+    (q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("WHERE user_id = $1")
+  );
+  assert.ok(update, "the row must be marked complete so it never resurfaces");
+  assert.match(update!.sql, /completed_at = NOW\(\)/);
+  assert.match(update!.sql, /next_send_at = NULL/);
+  assert.deepEqual(update?.params, ["user_audit"]);
+});
+
+test("processDueWelcomeSequenceSteps still sends to a real member sharing no audit pattern", async () => {
+  const { deps, sent } = fakeDeps({
+    sendOk: true,
+    selectRows: [{ user_id: "user_1", email: "trader@gmail.com", first_name: "Sam", steps_sent: 1 }],
+  });
+  const result = await processDueWelcomeSequenceSteps(200, deps);
+
+  assert.equal(sent.length, 1, "a real member's email must not be caught by the audit-account skip");
+  assert.deepEqual(result, { processed: 1, sent: 1, failed: 0 });
 });
 
 // ── Staleness cutoff ────────────────────────────────────────────────────────────────────────
@@ -154,11 +190,11 @@ test("retiring stale rows never sends mail", async () => {
 test("rows inside the window still send normally", async () => {
   // Guard against the cutoff being over-broad — a few missed hourly runs must still deliver.
   const { deps, sent } = fakeDeps({
-    selectRows: [{ user_id: "user_1", email: "trader@example.com", first_name: "Sam", steps_sent: 1 }],
+    selectRows: [{ user_id: "user_1", email: "trader@gmail.com", first_name: "Sam", steps_sent: 1 }],
     sendOk: true,
   });
   const res = await processDueWelcomeSequenceSteps(200, deps);
   assert.equal(res.sent, 1, "a due row inside the window is still delivered");
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ email: "trader@example.com", firstName: "Sam" }).subject);
+  assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ email: "trader@gmail.com", firstName: "Sam" }).subject);
 });

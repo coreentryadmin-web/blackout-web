@@ -1,5 +1,16 @@
 # PR: Add Chain Truncation Indicator to Heatmap
 
+> **STATUS (2026-09-04, verified live): PARTIALLY SHIPPED — narrowed scope below.** Item 1 (server
+> field) is done: `chain_truncated` is computed in `polygon-options-gex.ts:3772` and published on
+> `GexHeatmap` (`polygon-options-gex.ts:481`) and the public snapshot (`public-gex-snapshot.ts:215`).
+> Items 3 (member UI badge) and the Largo tool surfacing this stub's item 1 implied are still NOT
+> done — confirmed zero references to `chain_truncated` anywhere in `src/features/thermal/` or
+> `src/lib/largo/gex-heatmap-for-largo.ts`. **Remaining open scope: (a) a member-facing UI badge on
+> the Thermal/SPX heatmap when `chain_truncated` is true, (b) publish `chain_truncated` through the
+> Largo GEX contract the same way `flip_reason`/`spot_source` already are.** The implementation
+> sketch below is stale for item 1 (already shipped, differently) but the UI/Largo pieces remain a
+> real, live backlog item.
+
 **Issue:** Thin/low-priced names escalate to full chain or get capped; walls/OI understated. `warnChainTruncated` exists server-side but doesn't surface to UI.
 
 **Root cause:** When a ticker has <50 strikes in the narrow band or very thin option chains, the builder uses a fallback (full chain or capped at 100 strikes). This silently reduces data quality, but members don't know walls may be incomplete. `warnChainTruncated` boolean exists in the accumulate logic but isn't exported to payload.

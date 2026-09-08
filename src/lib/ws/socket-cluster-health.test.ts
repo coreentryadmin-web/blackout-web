@@ -2,11 +2,71 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildUwClusterHealth,
+  clusterIndexSpotChangePct,
   evaluateOptionsClusterOk,
   evaluatePolygonClusterOk,
   evaluateUwClusterOk,
   readUwClusterHealth,
+  youngestFreshOptionMarkAgeMs,
 } from "./socket-cluster-health";
+import { OPTION_MARK_FRESH_MS } from "./options-socket";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "./timestamp-freshness";
+
+test("clusterIndexSpotChangePct: only REST-anchored snapshots carry change_pct", () => {
+  assert.equal(
+    clusterIndexSpotChangePct({ change_pct: 0.42, open_source: "rest" }),
+    0.42
+  );
+  assert.equal(
+    clusterIndexSpotChangePct({ change_pct: 0.42, open_source: "ws-bar" }),
+    null,
+    "ws-bar anchor must not leak session-open change% to GEX cluster readers"
+  );
+  assert.equal(clusterIndexSpotChangePct({ change_pct: 0.42 }), null);
+  assert.equal(clusterIndexSpotChangePct({ change_pct: NaN, open_source: "rest" }), null);
+});
+
+test("buildUwClusterHealth: clock-skewed future heartbeat is not cluster_live", () => {
+  const now = Date.now();
+  const futureAt = now + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 60_000;
+  const uw = buildUwClusterHealth({
+    is_leader: false,
+    cluster_last_message_at: futureAt,
+    now,
+  });
+  assert.equal(uw.cluster_live, false);
+  assert.equal(uw.cluster_last_message_age_ms, 0);
+});
+
+test("youngestFreshOptionMarkAgeMs: future-skewed mark is not fresh (age 0 trap)", () => {
+  const now = 1_700_000_000_000;
+  const futureTs = now + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 60_000;
+  const freshTs = now - 5_000;
+  assert.equal(youngestFreshOptionMarkAgeMs([futureTs], OPTION_MARK_FRESH_MS, now), null);
+  assert.equal(youngestFreshOptionMarkAgeMs([futureTs, freshTs], OPTION_MARK_FRESH_MS, now), 5_000);
+});
+
+test("youngestFreshOptionMarkAgeMs: stale mark excluded, youngest fresh returned", () => {
+  const now = 1_700_000_000_000;
+  assert.equal(
+    youngestFreshOptionMarkAgeMs([now - 90_000, now - 10_000], OPTION_MARK_FRESH_MS, now),
+    10_000
+  );
+});
+
+test("evaluateOptionsClusterOk: future-skewed marks alone must not pass RTH gate", () => {
+  const result = evaluateOptionsClusterOk(
+    {
+      leader_present: false,
+      newest_mark_age_ms: null,
+      cluster_live: false,
+      detail: "no fresh cluster option marks and no ingest leader",
+    },
+    true,
+    false
+  );
+  assert.equal(result.ok, false);
+});
 
 test("evaluateUwClusterOk: follower is healthy when cluster heartbeat is fresh", () => {
   const uw = buildUwClusterHealth({

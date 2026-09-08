@@ -116,7 +116,10 @@ export async function prefetchDeskScopeBlock(
           chunks.push(JSON.stringify({ setup_stats: stats, trade_history: history }, null, 0).slice(0, 4000));
         } else if (subId === "vector") {
           const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
-          const vector = await fetchVectorFullState("SPX").catch(() => null);
+          // Explicit "all" — this gets injected into Largo's context alongside the "flow-gex"
+          // case's canonical matrix read a few lines below; the implicit "0dte" default would
+          // silently give Largo two different scopes for the same ticker's walls/flip.
+          const vector = await fetchVectorFullState("SPX", "all").catch(() => null);
           toolsUsed.push("desk_prefetch_spx_vector");
           chunks.push(JSON.stringify({ vector }, null, 0).slice(0, 4000));
         } else if (subId === "flow-gex") {
@@ -166,7 +169,10 @@ export async function prefetchDeskScopeBlock(
       }
       case "vector": {
         const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
-        const state = await fetchVectorFullState(t).catch(() => null);
+        // Explicit "all" — see the SPX "vector" subId case above for why the implicit "0dte"
+        // default must not leak into a general desk-scoped Vector read that gets injected
+        // straight into Largo's context as ground truth.
+        const state = await fetchVectorFullState(t, "all").catch(() => null);
         toolsUsed.push("desk_prefetch_vector");
         const subId = sub?.id;
         if (subId === "regime") {

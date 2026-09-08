@@ -93,12 +93,45 @@ test("computeZeroGammaFlip picks neg→pos crossing nearest spot (2-decimal)", (
 });
 
 test("recomputeScopedGexLevels matches server wall semantics", () => {
+  // Spot sits between 6000 and 6100 — the wall producer must pick from the RIGHT side of spot for
+  // each bucket (2026-09-04 audit follow-up to #3495/#2417). 6000 (value 8) is the largest positive
+  // strike overall, but it is BELOW spot, so it cannot be the call wall (resistance) — 6100 is the
+  // only positive strike above spot. King is unconstrained (argmax |value| anywhere) and stays 6000.
   const totals = { "5900": -5, "6000": 8, "6100": 3 };
   const levels = recomputeScopedGexLevels(totals, 6050);
-  assert.equal(levels.callWall, 6000);
+  assert.equal(levels.callWall, 6100);
   assert.equal(levels.putWall, 5900);
   assert.equal(levels.king, 6000);
   assert.equal(levels.netTotal, 6);
+});
+
+test("recomputeScopedGexLevels: call wall never lands below spot, put wall never above it", () => {
+  // Pre-fix this returned callWall=6000 (below spot 6050) — a "wrong side of spot" bug identical
+  // to the one PR #2417 fixed for wallsFromStrikeTotals/deriveWalls/computeGexRegime and #3495
+  // fixed for computeGexWalls; this was the one wall producer #2417 named as still needing the
+  // migration but never applied it to.
+  const totals = { "5900": -5, "6000": 8, "6100": 3 };
+  const levels = recomputeScopedGexLevels(totals, 6050);
+  assert.ok(levels.callWall != null && levels.callWall > 6050, "call wall must sit above spot");
+  assert.ok(levels.putWall != null && levels.putWall < 6050, "put wall must sit below spot");
+});
+
+test("recomputeScopedGexLevels: no qualifying strike on a side returns null rather than the wrong side", () => {
+  // Every positive strike sits below spot — there is no real call wall in this book, and the
+  // honest answer is null, not the largest positive value regardless of side.
+  const totals = { "5900": -5, "6000": 8 };
+  const levels = recomputeScopedGexLevels(totals, 6050);
+  assert.equal(levels.callWall, null);
+  assert.equal(levels.putWall, 5900);
+});
+
+test("recomputeScopedGexLevels: spot<=0 (unresolved spot) leaves the pick unconstrained", () => {
+  // Callers pass `spot ?? 0` when spot is unknown (vector-odte-matrix-rows.ts) — that must not
+  // silently null every wall; it falls back to the historical unconstrained pick.
+  const totals = { "5900": -5, "6000": 8, "6100": 3 };
+  const levels = recomputeScopedGexLevels(totals, 0);
+  assert.equal(levels.callWall, 6000);
+  assert.equal(levels.putWall, 5900);
 });
 
 test("isHairlineNetGammaSign: balanced book is hairline", () => {

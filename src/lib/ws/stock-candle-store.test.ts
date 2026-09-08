@@ -6,8 +6,10 @@ import {
   getStockCandleStoreStats,
   wsSpotPrice,
   computeChangePct,
+  authoritativeStockChangePct,
   _resetStockCandleStoreForTest,
   _setSnapshotFetcherForTest,
+  _skewLocalUpdatedAtForTest,
 } from "./stock-candle-store";
 
 // Every test in this file must stay network-free: stub the REST session-open
@@ -107,12 +109,12 @@ test("recordStockTick: tracks volume when provided", () => {
   assert.equal(snap.current!.volume, 50000);
 });
 
-test("getStockLiveCandle: returns null for unknown ticker", () => {
+test("getStockLiveCandle: returns null changePct for unknown ticker (no fabricated flat 0%)", () => {
   _resetStockCandleStoreForTest();
   const snap = getStockLiveCandle("ZZZZ");
   assert.equal(snap.current, null);
   assert.equal(snap.updatedAt, 0);
-  assert.equal(snap.changePct, 0);
+  assert.equal(snap.changePct, null);
 });
 
 test("computeChangePct: rounds to 2dp and matches the indexStore sibling's rounding", () => {
@@ -120,21 +122,27 @@ test("computeChangePct: rounds to 2dp and matches the indexStore sibling's round
   assert.equal(computeChangePct(595, 600), -0.83);
 });
 
-test("computeChangePct: returns 0 when there is no session-open anchor yet", () => {
-  assert.equal(computeChangePct(605.5, 0), 0);
+test("computeChangePct: returns null when there is no session-open anchor yet", () => {
+  assert.equal(computeChangePct(605.5, 0), null);
 });
 
-test("recordStockTick: first bar of the day seeds a provisional ws-bar session_open when REST hasn't resolved", () => {
+test("authoritativeStockChangePct: null unless openSource is rest", () => {
+  assert.equal(authoritativeStockChangePct(105, 100, "rest"), 5);
+  assert.equal(authoritativeStockChangePct(105, 100, "ws-bar"), null);
+  assert.equal(authoritativeStockChangePct(105, 100, ""), null);
+});
+
+test("recordStockTick: first bar of the day does NOT serve ws-bar change% until REST anchor lands", () => {
   _resetStockCandleStoreForTest();
   const atMs = Date.parse("2026-07-15T14:45:00.000Z");
   recordStockTick("PLTR", 40, undefined, atMs);
   recordStockTick("PLTR", 41, undefined, atMs + 5_000);
 
-  // No REST anchor (stubbed to null) — change% is computed off the first bar's
-  // open (40), same fallback tier indexStore uses on a mid-session reconnect.
+  // No REST anchor (stubbed to null) — ws-bar is provisional; member-facing % stays absent.
   const snap = getStockLiveCandle("PLTR");
   assert.equal(snap.current?.close, 41);
-  assert.equal(snap.changePct, computeChangePct(41, 40));
+  assert.equal(snap.changePct, null);
+  assert.equal(snap.openSource, "ws-bar");
 });
 
 test("getStockLiveCandle: a REST-seeded session_open anchor overrides the ws-bar open", async () => {
@@ -153,6 +161,7 @@ test("getStockLiveCandle: a REST-seeded session_open anchor overrides the ws-bar
 
   const snap = getStockLiveCandle("ORCL");
   assert.equal(snap.changePct, computeChangePct(105, 100));
+  assert.equal(snap.openSource, "rest");
   _setSnapshotFetcherForTest(async () => null);
 });
 
@@ -182,6 +191,63 @@ test("getStockLiveCandle: a seed attempt that comes back empty does NOT retry on
   getStockLiveCandle("ZZZZ");
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls, 1);
+
+  _setSnapshotFetcherForTest(async () => null);
+});
+
+test("seedSessionOpenIfNeeded: a REST seed that resolves AFTER a day rollover must not stamp the new session with the stale prior-day anchor", async (t) => {
+  // Regression for the day-rollover race: recordStockTick's day-rollover branch
+  // resets openSource back to "" (not "rest") on a new ET session day, so the
+  // .then() callback's ORIGINAL guard (`s.openSource === "rest"`) could not detect
+  // a REST fetch that outlived the session it was fired for — it only caught a
+  // concurrent seed that had ALREADY landed for the SAME session. A fetch fired
+  // just before ET midnight and resolving just after would sail past that guard
+  // and permanently stamp the new session with an anchor fetched for the old one
+  // ("rest" is never downgraded back to "ws-bar").
+  //
+  // `recordStockTick`'s day-rollover check compares `todayEtYmd()` — the REAL ET
+  // wall-clock date, with no injection point in this store — against the ticker's
+  // stored sessionDate, so a genuine same-process day rollover can only be produced
+  // by faking Date itself (varying only the `atMs` bar-timestamp argument does not
+  // change what day the store believes it is).
+  _resetStockCandleStoreForTest();
+
+  const dayOne = Date.parse("2026-07-15T23:00:00.000Z"); // 19:00 ET, 2026-07-15 (EDT, UTC-4)
+  t.mock.timers.enable({ apis: ["Date"], now: dayOne });
+
+  recordStockTick("RGLD", 50, undefined, Date.now());
+  // No REST anchor has landed yet -> ws-bar fallback seeds day 1's sessionOpen=50.
+
+  // Fire the REST seed for DAY 1's session but keep its promise pending, simulating
+  // a demanded read whose fetch was in flight right as the session rolled over.
+  let resolveSeed!: (v: { prev_close: number } | null) => void;
+  const pendingSeed = new Promise<{ prev_close: number } | null>((resolve) => {
+    resolveSeed = resolve;
+  });
+  _setSnapshotFetcherForTest(
+    () => pendingSeed as ReturnType<typeof import("../providers/polygon").fetchStockSnapshot>
+  );
+  getStockLiveCandle("RGLD"); // fires seedSessionOpenIfNeeded, captured for day 1
+
+  // Cross the ET midnight boundary (00:00 ET = 04:00 UTC on 2026-07-16) while that
+  // day-1 fetch is still unresolved.
+  t.mock.timers.tick(6 * 60 * 60 * 1000); // +6h -> 01:00 ET, 2026-07-16 (day 2)
+  recordStockTick("RGLD", 70, undefined, Date.now());
+  // recordStockTick's rollover branch has now reset sessionDate/sessionOpen/openSource
+  // for day 2 and re-seeded a fresh ws-bar anchor at 70 — all while the day-1 fetch
+  // above is still in flight.
+
+  // The day-1 fetch NOW resolves with day-1's own prev_close — correct for day 1,
+  // stale for day 2. Pre-fix this landed anyway because openSource was reset to ""
+  // (not "rest") by the rollover, so the old guard never caught it.
+  resolveSeed({ prev_close: 999 });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const snap = getStockLiveCandle("RGLD");
+  // Day 2's own ws-bar anchor (70) is still internal; member-facing % stays absent.
+  assert.equal(snap.changePct, null);
+  assert.equal(snap.openSource, "ws-bar");
+  assert.notEqual(snap.changePct, computeChangePct(70, 999));
 
   _setSnapshotFetcherForTest(async () => null);
 });
@@ -251,4 +317,19 @@ test("wsSpotPrice: normalizes to uppercase", () => {
   const atMs = Date.parse("2026-07-15T14:44:00.000Z");
   recordStockTick("GOOG", 195, undefined, atMs);
   assert.equal(wsSpotPrice("goog"), 195);
+});
+
+test("getStockLiveCandle: clock-skewed future updatedAt must not read as infinitely fresh", () => {
+  _resetStockCandleStoreForTest();
+  const atMs = Date.parse("2026-07-15T14:50:00.000Z");
+  recordStockTick("SPY", 605, undefined, atMs);
+  assert.equal(getStockLiveCandle("SPY").current?.close, 605);
+
+  // Skew 10s into the future — beyond WS_TIMESTAMP_FUTURE_TOLERANCE_MS (5s).
+  _skewLocalUpdatedAtForTest("SPY", 10_000);
+
+  const snap = getStockLiveCandle("SPY");
+  assert.equal(snap.current, null, "future-skewed candle must not be presented as live");
+  assert.equal(snap.changePct, null, "stale/missing change must not fabricate 0%");
+  assert.ok(snap.updatedAt > Date.now(), "updatedAt preserved for diagnostics");
 });

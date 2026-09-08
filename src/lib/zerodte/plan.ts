@@ -20,11 +20,37 @@ export const PLAN_RULES = {
   time_stop_et_minutes: 15 * 60 + 50,
 } as const;
 
+/** `PLAN_RULES.time_stop_et_minutes` as "H:MM" ET, for prose that quotes the hard-exit
+ *  time — derive from here, never hardcode the string. A hardcoded "15:30" copy of this
+ *  (stale since the time stop moved to 15:50) shipped on the public methodology page, the
+ *  0DTE Command FAQ, and five Learn-article passages, all contradicting the actual engine
+ *  and each other — see FINDINGS 2026-09-02. */
+export const PLAN_RULES_TIME_STOP_ET_LABEL = `${Math.floor(PLAN_RULES.time_stop_et_minutes / 60)}:${String(
+  PLAN_RULES.time_stop_et_minutes % 60
+).padStart(2, "0")}`;
+
 /** 0DTE directional commits open at 10:00 ET (G-2 unlock). */
 export const ZERODTE_COMMIT_OPEN_ET_MINUTES = 10 * 60;
 
-/** No NEW 0DTE plays after 15:30 ET — gate G-14 + persist backstop. */
+/** No NEW 0DTE plays of ANY kind (including condor) after 15:30 ET — persist-layer backstop,
+ *  discovery-layer condor-fresh-eligibility boundary (scan.ts), and directional commit cutoff
+ *  (G-14 / confluence ENTRY_CUTOFF). Operator may tighten via
+ *  ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES (ET minutes since midnight). */
 export const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60 + 30;
+
+/** No NEW DIRECTIONAL 0DTE commits after 15:30 ET — gate G-14 (gates.ts) + confluence
+ *  ENTRY_CUTOFF_ET_MINUTES. Aligned with NEW_PLAY_CUTOFF_ET_MINUTES and the board copy
+ *  ("new plays 10:00–3:30 ET"). The 14:00 hard stop (2026-09-01) was reverted 2026-09-04:
+ *  operator intent is to trade the full RTH commit window and tune quality via gates/score
+ *  rather than forfeit the 14:00–15:30 power hour — late-bucket outcomes stay in calibration. */
+export const DIRECTIONAL_LATE_CUTOFF_ET_MINUTES = ((): number => {
+  const raw = process.env.ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES?.trim();
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return NEW_PLAY_CUTOFF_ET_MINUTES;
+})();
 
 /** Human ET label for the hard exit (derived from PLAN_RULES). */
 export function zerodteTimeStopEtLabel(): string {
@@ -41,6 +67,8 @@ export function zerodteTimeStopEtLabel(): string {
 // grading honesty by flooring at the flag-time mark, so this guard only needs to
 // catch genuinely "already happened" moves, not routine 0DTE gamma swings.
 const CHASE_PCT_DEFAULT = 55;
+/** G-9 plan_illiquid spread cap (% of mark). Amplify sessions may widen via regime-commit-relief. */
+export const PLAN_ILLIQUID_SPREAD_PCT = 15;
 export const CHASE_PCT = (() => {
   const raw = process.env.ZERODTE_CHASE_PCT?.trim();
   if (!raw) return CHASE_PCT_DEFAULT;
@@ -157,9 +185,11 @@ export type ContractPlan = {
   /** mark vs flow fill, % — positive = paying up vs the smart money. */
   vs_flow_pct: number | null;
   entry_status: EntryStatus;
-  /** Bid/ask spread as % of mark — exit tax. >15% flags the market as too thin. */
+  /** Bid/ask spread as % of mark — exit tax. >cap flags the market as too thin (G-9). */
   spread_pct: number | null;
   illiquid: boolean;
+  /** Spread cap (%) used when `illiquid` was judged — for G-9 block copy. */
+  illiquid_spread_cap?: number;
   /** WS-04: fail-closed malformed-quote verdict. null = quote valid; a non-null reason
    *  is translated to a distinct plan_quote_invalid / plan_quote_stale block in
    *  planQualityGateBlocks (gates.ts). OPTIONAL for back-compat — a historical/hand-built
@@ -202,6 +232,10 @@ export function buildContractPlan(input: {
   keySupports: number[];
   keyResistances: number[];
   vwap: number | null;
+  /** Override chase band (default CHASE_PCT) — amplify sessions may use effectiveChasePct(). */
+  chasePct?: number;
+  /** Override G-9 illiquid spread cap (default PLAN_ILLIQUID_SPREAD_PCT). */
+  illiquidSpreadPct?: number;
 }): ContractPlan {
   const { occ, direction, price, flowAvgFill, bid, ask, mark } = input;
 
@@ -217,8 +251,14 @@ export function buildContractPlan(input: {
       ? round2(((ask - bid) / mark) * 100)
       : null;
   // Wide markets tax every exit twice — a strong tape on an untradeable contract
-  // is still a pass for a 0DTE scalp.
-  const illiquid = spreadPct != null && spreadPct > 15;
+  // is still a pass for a 0DTE scalp. Amplify sessions may widen the cap (regime-commit-relief).
+  const illiquidSpreadCap =
+    input.illiquidSpreadPct != null &&
+    Number.isFinite(input.illiquidSpreadPct) &&
+    input.illiquidSpreadPct > 0
+      ? input.illiquidSpreadPct
+      : PLAN_ILLIQUID_SPREAD_PCT;
+  const illiquid = spreadPct != null && spreadPct > illiquidSpreadCap;
 
   // WS-04: explicit fail-closed malformed-quote verdict, computed BESIDE the legacy
   // percent-spread check (which is kept untouched). This catches the books the % test
@@ -234,9 +274,14 @@ export function buildContractPlan(input: {
     quoteAgeMs: input.quoteAgeMs ?? null,
   });
 
+  const chasePct =
+    input.chasePct != null && Number.isFinite(input.chasePct) && input.chasePct > 0
+      ? input.chasePct
+      : CHASE_PCT;
+
   let status: EntryStatus;
   if (mark == null) status = "NO_QUOTE";
-  else if (vsFlow != null && vsFlow >= CHASE_PCT) status = "MOVED";
+  else if (vsFlow != null && vsFlow >= chasePct) status = "MOVED";
   else if (vsFlow != null && vsFlow <= -10) status = "CHEAPER";
   else status = "IN_RANGE";
 
@@ -267,6 +312,7 @@ export function buildContractPlan(input: {
     entry_status: status,
     spread_pct: spreadPct,
     illiquid,
+    illiquid_spread_cap: illiquidSpreadCap,
     quote_invalid_reason: quoteInvalidReason,
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,
@@ -394,7 +440,7 @@ export function etMinutesOf(epochMs: number): number {
  * The flag bar ITSELF is excluded (`bar.t <= flaggedAtMs` is skipped): its own high/low
  * happened around the flag print in unknowable order, so testing them against target/stop
  * would be intrabar clairvoyance — the same discipline the skip grader applies via
- * `entryBar.t + 1`. Past the time stop, exit at the last usable close ≤15:30 ET. No bars
+ * `entryBar.t + 1`. Past the time stop, exit at the last usable close ≤15:50 ET. No bars
  * strictly after the flag → ungradeable.
  *
  * TIE-BREAK DIVERGENCE vs derivePlayStatus (deliberate, documented): on a same-bar
@@ -535,7 +581,7 @@ export function gradePlanExecutableFromBars(
  * to the target — and banks `fractionₖ` of the original at that level. The runner (whatever is
  * left after the trims) then rides to the plan target (bid high ≥ target), the plan stop (bid
  * low ≤ stop, checked FIRST within a bar per the frozen collision rule — stop-before-target),
- * or the 15:30 time-stop (sell the remainder into the closing bid). `f` is the row's OWN pinned
+ * or the 15:50 time-stop (sell the remainder into the closing bid). `f` is the row's OWN pinned
  * half-spread (clamped [0, 0.95] like the single-walk grade), so the reconstruction pays the
  * real committed spread on every leg.
  *
@@ -691,14 +737,26 @@ export function derivePlayStatus(input: {
   peak: number | null;
   trough: number | null;
   nowEtMinutes: number;
+  /** Frozen plan target % (runner profile). Defaults to PLAN_RULES.target_pct (+100%). */
+  targetPct?: number | null;
+  /** Frozen plan stop %. Defaults to PLAN_RULES.stop_pct (−50%). */
+  stopPct?: number | null;
   /** When true, skip the latched plan-stop close so the exit engine can honor a
    *  protective floor first (scan.ts / live-marks.ts run the engine on this pass). */
   deferPlanStop?: boolean;
+  /** Iron condor: entry_premium is net credit, mark is debit-to-close — directional
+   *  peak/trough TRIM/stop logic is inverted and must not fire. Hold to time-stop;
+   *  settlement is owned by gradeCondorFromBars. */
+  isCondor?: boolean;
 }): LivePlayState {
-  const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop } = input;
+  const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop, isCondor } = input;
+  const stopPct = input.stopPct ?? PLAN_RULES.stop_pct;
+  const targetPct = input.targetPct ?? PLAN_RULES.target_pct;
   const pnl =
     entryPremium != null && entryPremium > 0 && mark != null && mark > 0
-      ? Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100
+      ? isCondor
+        ? Math.round(((entryPremium - mark) / entryPremium) * 10000) / 100
+        : Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100
       : null;
 
   // The hard exit closes EVERYTHING — including rows with no entry premium or no
@@ -709,8 +767,8 @@ export function derivePlayStatus(input: {
   if (!(entryPremium != null && entryPremium > 0)) {
     return { status: "HOLD", live_pnl_pct: null, closed_reason: null };
   }
-  const stop = entryPremium * (1 + PLAN_RULES.stop_pct / 100);
-  const target = entryPremium * (1 + PLAN_RULES.target_pct / 100);
+  const stop = entryPremium * (1 + stopPct / 100);
+  const target = entryPremium * (1 + targetPct / 100);
 
   // Target checked BEFORE stop. peak/trough are latched extremes with no timestamp,
   // so a naive stop-first check can't tell "hit stop, never recovered" apart from
@@ -732,11 +790,11 @@ export function derivePlayStatus(input: {
   // exit — the trim/ratchet that this TRIM card actually guides), so what the member is
   // shown and what is booked to their record agree; the mechanical grade is kept beside
   // it only as a labeled hold-to-stop/target comparison.
-  if (peak != null && peak >= target) {
+  if (!isCondor && peak != null && peak >= target) {
     return { status: "TRIM", live_pnl_pct: pnl, closed_reason: null };
   }
-  if (!deferPlanStop && trough != null && trough <= stop) {
-    return { status: "CLOSED", live_pnl_pct: PLAN_RULES.stop_pct, closed_reason: "stopped" };
+  if (!isCondor && !deferPlanStop && trough != null && trough <= stop) {
+    return { status: "CLOSED", live_pnl_pct: stopPct, closed_reason: "stopped" };
   }
   // Symmetric band per this function's own doc comment ("within 10% of entry") — a lower
   // bound is required, not just an upper one, or a play sliding toward the stop (but not

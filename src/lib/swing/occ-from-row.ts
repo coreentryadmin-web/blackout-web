@@ -10,7 +10,7 @@
  * Returns a Massive/Polygon-style `O:` prefixed symbol, or null when absent.
  */
 
-import { buildOcc } from "@/lib/ws/options-socket";
+import { buildOcc } from "@/lib/occ-symbol";
 
 export type SwingOccRowParts = {
   contract_occ?: string | null;

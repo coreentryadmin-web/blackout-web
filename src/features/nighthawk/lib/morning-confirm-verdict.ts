@@ -4,6 +4,7 @@
 import type { PlaybookPlay } from "./types";
 import { parsePlayLevels } from "./play-levels";
 import { INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
 const SPX_RELEVANT_TICKERS = new Set<string>([...INDEX_SET, ...INDEX_ETF_PLAYS]);
 
@@ -15,6 +16,8 @@ export type PlayStatus = {
   direction: string;
   status: PlayConfirmStatus;
   reason: string;
+  /** Per-play verdict instant — usually identical across the edition (cron batch time). */
+  checked_at?: string | null;
   /** True once this CONFIRMED ticker was actually promoted into the Swing serving snapshot —
    *  stamped after promoteLegacyConfirmedToSwing runs (see nighthawk-morning-confirm/route.ts
    *  Phase 3.8). Promotion can fail per-ticker (e.g. "no chain rows") even when status is
@@ -42,7 +45,13 @@ export function isMorningConfirmStale(checkedAt: string | null | undefined, nowM
   if (!checkedAt) return false;
   const checkedMs = Date.parse(checkedAt);
   if (Number.isNaN(checkedMs)) return false;
-  return nowMs - checkedMs > MORNING_CONFIRM_STALE_MS;
+  const ageMs = nowMs - checkedMs;
+  // BUG FIX (2026-09-03): checked_at is written by a separate cron process, so cross-process
+  // clock skew is real — a future-dated checked_at used to produce a negative ageMs that never
+  // exceeded MORNING_CONFIRM_STALE_MS, leaving the "as of" qualifier off a verdict whose real age
+  // cannot be verified. Same tolerance marks-math.ts's isZeroDteMarkStale applies to option marks.
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return true;
+  return ageMs > MORNING_CONFIRM_STALE_MS;
 }
 
 /** Format an ISO timestamp as Eastern clock time for the badge tooltip, e.g. "9:16 AM ET". */
@@ -89,8 +98,9 @@ export function computePlayVerdict(
   // was checked, so a stock that gapped clean through its own stop (or target)
   // on stock-specific news still confirmed.
   const stockPx = context.stockPremarket ?? null;
+  const { entry_range_high: entryHi, entry_range_low: entryLo, target, stop } = parsePlayLevels(play);
+
   if (stockPx != null && stockPx > 0) {
-    const { entry_range_high: entryHi, entry_range_low: entryLo, target, stop } = parsePlayLevels(play);
     if (target != null || stop != null || entryHi != null) checksEvaluated++;
     if (stop != null && (isLong ? stockPx <= stop : stockPx >= stop)) {
       status = "INVALIDATED";
@@ -124,13 +134,28 @@ export function computePlayVerdict(
 
   // ── Hard invalidation checks ──────────────────────────────────────────────
 
-  // 1. Gap against the play's direction
+  // 1. Gap against the play's direction — SPX is a weak proxy for single names when
+  // the stock's own premarket is available and still within plan levels.
   if (gapPts !== null) checksEvaluated++;
   if (gapPts !== null && Math.abs(gapPts) > GAP_PTS_THRESHOLD) {
     const gapAgainst = isLong ? gapPts < -GAP_PTS_THRESHOLD : gapPts > GAP_PTS_THRESHOLD;
     if (gapAgainst) {
-      status = "INVALIDATED";
-      reasons.push(`SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts against ${direction} direction`);
+      const stockConfirms =
+        stockPx != null &&
+        stockPx > 0 &&
+        isSingleName &&
+        !(
+          stop != null && (isLong ? stockPx <= stop : stockPx >= stop)
+        );
+      if (stockConfirms) {
+        if (status === "CONFIRMED") status = "DEGRADED";
+        reasons.push(
+          `SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts against ${direction} direction — ${play.ticker} pre-market still within plan, treat as caution`,
+        );
+      } else {
+        status = "INVALIDATED";
+        reasons.push(`SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts against ${direction} direction`);
+      }
     }
   }
 

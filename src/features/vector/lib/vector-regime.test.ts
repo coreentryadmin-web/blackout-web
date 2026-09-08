@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveVectorRegime } from "./vector-regime";
+import { deriveVectorRegime, hasReadableRegime } from "./vector-regime";
 
 test("long gamma: spot above flip → calm, range-bound read with levels", () => {
   const r = deriveVectorRegime({ spot: 7575, gammaFlip: 7495, topCallWall: 7600, topPutWall: 7500 });
@@ -62,4 +62,21 @@ test("NaN wall level is OMITTED, never rendered as 'NaN' (AAPL banner bug from 1
   // Both NaN → no levels clause at all.
   const r2 = deriveVectorRegime({ spot: 316, gammaFlip: 310, topCallWall: NaN, topPutWall: NaN });
   assert.doesNotMatch(r2.read, /NaN|resistance|support/);
+});
+
+test("hasReadableRegime: false for null/undefined and for the unavailable ('unknown') reading", () => {
+  // Regression: deriveVectorRegime never returns null -- its "unavailable" case still returns a
+  // full, truthy object whose own headline is the literal placeholder string "REGIME --". A plain
+  // `!!regime` presence check can't tell that apart from a real reading, which is exactly how a
+  // desk-intel chip and a stat tile rendered "Regime" / "REGIME --" stacked on top of each other.
+  assert.equal(hasReadableRegime(null), false);
+  assert.equal(hasReadableRegime(undefined), false);
+  const unavailable = deriveVectorRegime({ spot: null, gammaFlip: 7495 });
+  assert.equal(unavailable.posture, "unknown");
+  assert.equal(hasReadableRegime(unavailable), false);
+});
+
+test("hasReadableRegime: true for a real long/short/transition reading", () => {
+  const r = deriveVectorRegime({ spot: 7575, gammaFlip: 7495 });
+  assert.equal(hasReadableRegime(r), true);
 });

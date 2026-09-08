@@ -3,10 +3,14 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal, etClock } from "./PlayTerminal";
-import { DiscoveryFunnelStrip, MarketStateStrip, SpxSlayerBadgeStrip } from "@/features/nighthawk/components/zerodte-board-strips";
+import { SwingLargoInsightsPanel } from "./SwingLargoInsightsPanel";
+import { DiscoveryFunnelStrip, MarketStateStrip, SessionStatsStrip, SpxSlayerBadgeStrip, VectorNearMissStrip, VetoShadowStrip } from "@/features/nighthawk/components/zerodte-board-strips";
+import type { VetoShadowSummary } from "@/lib/zerodte/veto-shadow-summary";
+import type { ZeroDteVectorNearMiss } from "@/lib/zerodte/vector-near-miss";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import type { SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
+import type { ZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
 import { sortPlaysForDeckBy, type DeckSortMode } from "./deck-sort";
 import {
   deployedRisk,
@@ -33,9 +37,9 @@ import {
   useLifecyclePlayCard,
 } from "./play-card-display";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
+import { legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
 import { DeckPlayTableHeader } from "./DeckPlayTableHeader";
-import { groupSwingSections } from "./swing-section-groups";
 import {
   buildDeckCommandCenterStats,
   convictionRankContext,
@@ -76,8 +80,12 @@ export function CommandDeck({
   upstreamOk = null,
   marketState = null,
   discoveryFunnel = null,
+  sessionStats = null,
+  vectorNearMisses = null,
+  vetoShadow = null,
   spxSlayerBadge,
   focusTicker = null,
+  boardChrome = "default",
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -105,6 +113,12 @@ export function CommandDeck({
   marketState?: MarketStateSnapshot | null;
   /** 0DTE only — top session gate hint (Phase 2c). */
   discoveryFunnel?: DiscoveryFunnelHint | null;
+  /** 0DTE only — scan vs commit session counters. */
+  sessionStats?: ZeroDteSessionBoardStats | null;
+  /** 0DTE only — Vector winner/runner blocked by gates (shadow book). */
+  vectorNearMisses?: ZeroDteVectorNearMiss[] | null;
+  /** 0DTE only — Cortex veto shadow calibration summary. */
+  vetoShadow?: VetoShadowSummary | null;
   /** 0DTE only — SPX Slayer's own live play, read-only board badge (feat/nh-spx-badge). Undefined
    *  on lanes that don't pass it (Swings/LEAPS/Legacy) — the badge renders nothing, never idle
    *  chrome for a lane that was never meant to carry it. */
@@ -113,6 +127,8 @@ export function CommandDeck({
    *  Swings Open" link) — forces the selection to that ticker's row as soon as it's present in
    *  `plays`, overriding the normal preferred-selection logic for one focus event. */
   focusTicker?: string | null;
+  /** Vector board chrome — wider detail rail + premium filter styling (Legacy parity). */
+  boardChrome?: "default" | "vector";
 }) {
   // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
@@ -169,18 +185,6 @@ export function CommandDeck({
   // sort is unchanged; conviction is a second view over the SAME list (deck-sort.ts).
   const [sortMode, setSortMode] = useState<DeckSortMode>("status");
   const sorted = useMemo(() => sortPlaysForDeckBy(directed, sortMode), [directed, sortMode]);
-  // SWING only: split the flat sorted list into its seven serving.ts sections so the board renders them as
-  // visually distinct rails (FINDINGS 2026-08-06 P2) instead of one undifferentiated concatenated list —
-  // exactly the failure mode serving.ts's own header says it exists to prevent.
-  const swingGroups = useMemo(
-    () => (deckHorizon === "SWING" ? groupSwingSections(sorted) : null),
-    [deckHorizon, sorted],
-  );
-  const rankById = useMemo(() => {
-    const m = new Map<string, number>();
-    sorted.forEach((p, i) => m.set(p.id, i + 1));
-    return m;
-  }, [sorted]);
 
   // Cockpit figures — computed off the FULL board (not the display order), so they're identical under
   // either sort. Both auto-update on the SWR board refresh that replaces `plays`.
@@ -267,9 +271,21 @@ export function CommandDeck({
   );
 
   return (
-    <div className="nh-deck nh-deck-fill" data-mobile-view={mobileDetailOpen ? "detail" : "list"}>
+    <div
+      className={clsx(
+        "nh-deck nh-deck-fill",
+        boardChrome === "vector" && "nh-deck--vector-chrome",
+        deckHorizon === "SWING" && commandCenter && "nh-deck--swing-largo",
+      )}
+      data-mobile-view={mobileDetailOpen ? "detail" : "list"}
+    >
       <div className="nh-deck-left">
         {commandCenter ? (
+          // Command-center header is filters-only by explicit product direction (2026-08-28
+          // declutter, see the test above): the regime/funnel/session-stats strips are
+          // redundant with the view toggle and push the trade queue below the fold. Do NOT
+          // render nh-deck-context-strips here even though the full (non-command-center)
+          // header below does — that asymmetry is intentional, not an oversight.
           <DeckCompactHeader
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
@@ -291,8 +307,11 @@ export function CommandDeck({
                     : `${directed.length} of ${plays.length}`}
               </span>
             </div>
-            {deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
+            {deckHorizon === "ZERO_DTE" && !degraded && (sessionStats || vectorNearMisses?.length || marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
               <div className="nh-deck-context-strips mb-2 space-y-2 px-0.5">
+                <SessionStatsStrip stats={sessionStats} />
+                <VectorNearMissStrip nearMisses={vectorNearMisses} />
+                <VetoShadowStrip shadow={vetoShadow} />
                 <MarketStateStrip ms={marketState} />
                 <DiscoveryFunnelStrip funnel={discoveryFunnel} />
                 <SpxSlayerBadgeStrip badge={spxSlayerBadge} />
@@ -340,25 +359,14 @@ export function CommandDeck({
           {commandCenter && !loading && sorted.length > 0 && (
             <DeckPlayTableHeader sortMode={sortMode} setSortMode={setSortMode} />
           )}
-          {swingGroups ? (
-            swingGroups.map((g) => (
-              <div key={g.key} className="nh-deck-section-group" data-section={g.key}>
-                <div className="nh-deck-section-head" title={g.hint}>
-                  <span className="nh-deck-section-label">{g.label}</span>
-                  <span className="nh-deck-section-count">{g.plays.length}</span>
-                </div>
-                {g.plays.map((p) => (
-                  <PlayCard key={p.id} play={p} rank={rankById.get(p.id) ?? 1} selected={p.id === selId} onSelect={selectPlay} nowMs={nowMs} />
-                ))}
-              </div>
-            ))
-          ) : (
-            sorted.map((p, i) => (
-              <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={selectPlay} nowMs={nowMs} />
-            ))
-          )}
+          {sorted.map((p, i) => (
+            <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={selectPlay} nowMs={nowMs} />
+          ))}
         </div>
       </div>
+      {deckHorizon === "SWING" && commandCenter && (
+        <SwingLargoInsightsPanel play={selected} />
+      )}
       <PlayTerminal
         play={selected}
         sessionClosed={sessionClosed}
@@ -724,7 +732,7 @@ export const PlayCard = memo(function PlayCard({
   onSelect: (id: string) => void;
   nowMs: number;
 }) {
-  const markFlash = useFlash(p.mark ?? p.pnlPct ?? p.trackPct ?? null);
+  const markFlash = useFlash(p.mark ?? p.pnlPct ?? p.stockMovePct ?? p.trackPct ?? null);
 
   const asOfMs = p.markAsOf ? Date.parse(p.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);
@@ -834,20 +842,18 @@ export const PlayCard = memo(function PlayCard({
             <span className="nh-deck-prem" style={{ display: "block" }}>
               ${p.stockPrice.toFixed(2)}
             </span>
-            <span className="nh-deck-premlab">{p.pnlPct != null ? "P&L" : "STOCK"}</span>
+            <span className="nh-deck-premlab">{p.pnlPct != null ? "Premium" : "Stock"}</span>
             <span
               className={clsx(
                 "nh-deck-pnl",
-                (p.pnlPct ?? p.stockChangePct ?? 0) > 0 && "nh-deck-pos",
-                (p.pnlPct ?? p.stockChangePct ?? 0) < 0 && "nh-deck-neg",
+                (legacyPrimaryPnlPct(p) ?? 0) > 0 && "nh-deck-pos",
+                (legacyPrimaryPnlPct(p) ?? 0) < 0 && "nh-deck-neg",
               )}
               style={{ display: "block" }}
             >
-              {p.pnlPct != null
-                ? `${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%`
-                : p.stockChangePct != null
-                  ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%`
-                  : "—"}
+              {legacyPrimaryPnlPct(p) != null
+                ? `${legacyPrimaryPnlPct(p)! >= 0 ? "+" : ""}${legacyPrimaryPnlPct(p)!.toFixed(1)}%`
+                : "—"}
             </span>
           </>
         ) : (
