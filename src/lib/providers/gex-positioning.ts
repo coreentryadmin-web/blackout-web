@@ -1,5 +1,6 @@
 import "server-only";
 
+import { nearestWallFromLevels as sharedNearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { fetchGexHeatmap, type GexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getGexIntradayAdjusted } from "@/lib/providers/gex-intraday-adjust";
 import type { GexIntradayAdjusted } from "@/lib/providers/gex-intraday-adjust-core";
@@ -222,21 +223,7 @@ function nearestWallFromLevels(
   putWall: number | null | undefined,
   spot: number
 ): GexPositioning["nearest_wall"] {
-  let nearest: GexPositioning["nearest_wall"] = null;
-  const candidates: Array<{ strike: number; kind: "resistance" | "support" }> = [];
-  if (callWall != null && Number.isFinite(callWall)) {
-    candidates.push({ strike: callWall, kind: "resistance" });
-  }
-  if (putWall != null && Number.isFinite(putWall)) {
-    candidates.push({ strike: putWall, kind: "support" });
-  }
-  for (const c of candidates) {
-    const dist = Number((c.strike - spot).toFixed(2));
-    if (nearest == null || Math.abs(dist) < Math.abs(nearest.distance_pts)) {
-      nearest = { strike: c.strike, kind: c.kind, distance_pts: dist };
-    }
-  }
-  return nearest;
+  return sharedNearestWallFromLevels(callWall, putWall, spot);
 }
 
 /**

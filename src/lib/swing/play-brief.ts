@@ -6,6 +6,7 @@ import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } 
 import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
 import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
+import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { buildRichEnvelope, type RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
@@ -333,7 +334,24 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       parts.push(`net GEX ${netM >= 0 ? "+" : ""}${netM.toFixed(1)}M`);
     }
     if (gex && !gexStale) {
-      const wall = gex.nearest_wall;
+      // Recompute against the SAME Vector-preferred call/put walls the levels array and narrative
+      // display elsewhere in this brief — not the raw GEX-matrix-only `gex.nearest_wall` — so this
+      // evidence line can never name a different strike than what the member sees as "put wall" /
+      // "call wall" in the rest of the same envelope (found live 2026-09-08, NN SWING_NN_32: this
+      // line said "nearest wall 13.00" while Levels-on-chart/Trade manager read both said put wall
+      // 14.00, the live Vector wall — `gex.nearest_wall` only ever sees the GEX-matrix pair).
+      const vecCallWallPosture = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+      const vecPutWallPosture = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+      const vecSpotPosture = vectorStale ? undefined : vec?.spot;
+      const spotForWall = vecSpotPosture ?? gex.spot;
+      const wall =
+        spotForWall != null
+          ? nearestWallFromLevels(
+              vecCallWallPosture ?? gex.call_wall,
+              vecPutWallPosture ?? gex.put_wall,
+              spotForWall
+            )
+          : null;
       if (wall) {
         parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
       } else if (gex.flip != null) {
