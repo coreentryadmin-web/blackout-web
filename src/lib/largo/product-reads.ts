@@ -71,10 +71,26 @@ function compactSwingLane(lane: Awaited<ReturnType<typeof getSwingServingLane>>)
     score: p.score ?? null,
     reason: typeof p.reason === "string" ? p.reason.slice(0, 120) : null,
   }));
+  // `committed_count` is `lane.committed.length` — every play whose STATUS field is "COMMIT". For
+  // SWING that flag means "score cleared the commit floor", which is stamped on a play the moment
+  // discovery scores it, LONG before any real capital moves (serving.ts's `aboveFloor` gate) — a
+  // real ledger position ALSO carries status "COMMIT" (live-plays.ts: "live capital is committed —
+  // back-compat committed[] view"), so this one number silently mixes "floor-cleared candidate,
+  // no position yet" with "real open position" and cannot be read as an open-position count.
+  // Measured live 2026-09-08: `committed_count` read 14 while only 4 names were actually open on
+  // the member board — the other 10 were COMMIT_NOW/WAITING_FOR_ENTRY candidates still pre-entry.
+  // `open_position_count` is the number this field is often mistaken for: real `swing_positions`
+  // rows, i.e. the three LIVE sections (MANAGING + SCALING_OUT + EXITING) that `section_counts`
+  // already carries but that nothing previously surfaced as a single, unambiguous total.
+  const openPositionCount =
+    (sectionCounts.MANAGING ?? 0) + (sectionCounts.SCALING_OUT ?? 0) + (sectionCounts.EXITING ?? 0);
   return {
     horizon: lane.horizon,
     label: lane.label,
     committed_count: lane.committedCount,
+    committed_count_note:
+      "Score-floor-cleared candidates (pre-entry + open) — NOT a count of open positions. Use open_position_count for that.",
+    open_position_count: openPositionCount,
     watch_count: lane.watchCount,
     section_counts: sectionCounts,
     sample_plays: sample,

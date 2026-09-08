@@ -118,6 +118,30 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-08 live-incident fix (read this before the routine pass)
+
+### 0a-2a. Largo's swing `committed_count` conflated with open positions — docs/swing-committed-vs-open-clarification
+
+**What was broken:** the operator asked (twice) why the Swings board looked underactive. Live UI
+screenshot (`proxy-browser.cjs` on `/nighthawk?view=swings`) showed **Open 4 / Watch 26 / Closed
+24**, while the API's `committedCount` read **14** and rising — `assembleSwingServingLane` counts
+every play with `status === "COMMIT"`, which for SWING means "score cleared the commit floor"
+(stamped pre-entry, before any real capital moves) — a real ledger position is ALSO stamped
+`status: "COMMIT"` for back-compat, so the one number mixes pre-entry candidates with real open
+positions. The command-deck UI already resolves this correctly (`horizonDeckStatus()` downgrades a
+COMMIT-status play with no `liveStatus` to `WATCH` for display); the gap was that Largo's own tool
+payload (`compactSwingLane`) forwarded the raw, ambiguous `committed_count` with no accompanying
+open-position total.
+
+**Fix:** added `open_position_count` (sum of `section_counts.MANAGING + SCALING_OUT + EXITING`) and
+a `committed_count_note` to `swingHorizonForLargo`'s payload in `src/lib/largo/product-reads.ts`.
+Not a bug in the swing engine/commit funnel — that funnel (score floor → entry execution →
+budget/caps/idempotency gates → real position or shadow row) is working as designed.
+
+**Check at the open:** ask Largo "how many swing plays are open right now" during RTH — the answer
+should match the live board's Open count, and if `committed_count` is quoted at all it should be
+qualified as pre-entry+open candidates, not presented as the open-position count.
+
 ## WATCH LIST — 2026-09-07 coordinator sweep (read this before the routine pass)
 
 ### 0a-1al. Vector scenario provenance future-skew reads as unknown — fix/scenario-read-future-skew-freshness (pending)
