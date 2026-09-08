@@ -875,6 +875,33 @@ test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (
   assert.equal(section, null, "stale Vector-only levels must not render a section");
 });
 
+// FINDING 2026-09-08 (Ask Largo monitor cycle): a confluence node's score is a weighted sum of
+// half-point weights (call-wall 3, gamma-flip 2.5, max-pain 2, ...), so it can legitimately land
+// on a half-point like 7.5 — but this section rounded it to a whole number (`.toFixed(0)`) while
+// `confluenceCoaching`'s "Trade manager read" line displayed the SAME zone's SAME score unrounded.
+// A member reading both sections for the SAME node saw two different numbers (7.5 vs 8) for what
+// is one figure computed once — not real cross-product disagreement, just inconsistent display
+// precision. Both sites now render `.toFixed(1)`.
+test("chartLevelsSection: confluence score renders at one-decimal precision, not rounded to a whole number", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      spot: 100,
+      confluenceZones: [{ center: 101, kinds: ["gamma-flip", "call-wall"], score: 7.5 }],
+    }),
+  });
+  assert.ok(section);
+  assert.match(section!.body, /score 7\.5/, "must show the real half-point score, not rounded");
+  assert.doesNotMatch(section!.body, /score 8\b/, "must not round 7.5 up to 8");
+});
+
 test("watchForSection: stale GEX-only flip and put wall omitted from watch levels (Largo C2)", () => {
   const section = watchForSection(
     {
