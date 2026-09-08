@@ -11,6 +11,27 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-08 (15:33 UTC / Tue 2026-09-08 11:34 ET) — [SEO] RTH wake: gamma-snapshot re-checked, honest-absence flip=null confirmed correct
+
+**Severity.** — (no defect found)
+
+Still market open, same trading day already confirmed this morning. CLS was measured live ~2
+hours ago (13:33 UTC) and no homepage-affecting commits landed since (`git log
+5e63554e6..origin/main -- src/app/page.tsx src/components/home` empty) — that measurement stands,
+not re-purging redundantly. Re-polled `/api/public/gex-snapshot?ticker=SPX` twice: spot still
+ticking real values (7692.74 → 7692.15), `session: OPEN`, `degraded: false`, low staleness.
+
+One thing worth a closer look: `flip` came back `null` this poll, vs. a real number at 13:33 UTC.
+Pulled the full payload — this is **correct, not a defect**: the API explains it plainly
+(`"read": "No gamma flip — dealers are net short gamma at EVERY strike, so there is no long-gamma
+region above spot"`), `call_wall`/`put_wall` still populated, `degraded: false`. A genuine
+market-regime absence, honestly represented rather than papered over — confirms the endpoint's
+absence-over-fabrication design (the same principle `LARGO-PRODUCT-CONTRACT.md` documents
+elsewhere) holds under a real live condition, not just in the common case.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-08 (14:13 UTC) — [SEO] Daily growth cycle: no new opportunity, quiet day
 
 No new striking-distance query; same 2 as every prior cycle, both already optimized. 28d totals
