@@ -359,6 +359,28 @@ something fixable from within this repo's application code — raised with Curso
 #4076 collaboration thread for awareness; if it recurs, escalate to the operator rather than
 re-discovering it from scratch each time.
 
+**THE MIRROR FAILURE, CLAUDE SIDE — a self-authored PR merges the instant it's undrafted, with
+zero Cursor comments ever posted (observed 2026-09-08, PRs #4595, #4598, #4602, #4604).** The
+carve-out above says a Claude-opened PR waits for Cursor's explicit sign-off before merging — but
+four PRs opened and undrafted by this same session merged within about a minute of each undraft,
+every single time, with `merged_by: coreentryadmin-web` and **no comment of any kind ever posted
+on any of the four**. Checked whether `automerge.yml` did it: no — `enable-automerge` and
+`auto-merge` both read `conclusion: "skipped"` on every one of these PRs, both before and after
+undrafting, so the workflow never armed. The only plausible explanation is a **parallel session on
+this same account** applying the pre-2026-09-04 merge-authorization text literally ("auto-merge
+every verified PR... once CI is green... do not wait for human review") without the later carve-out
+addendum in its own working context — i.e. two sessions reading the same file, one with the update
+and one without, racing the same PR. **Consequence for this session and future ones:** undrafting a
+green self-authored PR is not a safe "wait for sign-off" state here — it can merge before the next
+check-in ever runs, regardless of intent. Re-verify actual merge state after every undraft rather
+than trusting a scheduled check-in to catch it first; if a PR has already merged with zero Cursor
+engagement, that is not a corruption event by itself (verify the content, per the discipline the
+original #4586 incident established) but it IS the carve-out failing to hold — flag it once on the
+#4076 thread rather than silently re-normalizing it, same as the Cursor-side mirror failure above.
+This is a pipeline/coordination gap between parallel sessions, not something fixable from within
+this repo's application code; if it keeps recurring after this note exists, escalate to the
+operator rather than re-diagnosing from scratch each time.
+
 **THE DRAFT DEADLOCK — read this before concluding "the agents are stuck" (2026-08-21).**
 On 2026-08-21 the fleet had **36 open PRs, 28 with `verify` GREEN, and not one could ever merge.**
 Nothing had failed: no red check, no error, no agent complaint. It read like a broken connection to
