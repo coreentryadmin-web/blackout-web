@@ -11,6 +11,28 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-08 (16:33 UTC / Tue 2026-09-08 12:34 ET) — [SEO] RTH wake: final window check before 13:00 ET, gamma-snapshot liveness re-confirmed
+
+**Severity.** — (no defect found)
+
+Last RTH cycle before the trigger's 13:00 ET cutoff back to normal search/authority work. No
+homepage-affecting commits landed since the 13:33 UTC live-data CLS measurement (0.0319, GOOD) —
+`git log 5e63554e6..origin/main -- src/app/page.tsx src/components/home` still empty, so that
+measurement stands; not re-purging/re-measuring redundantly.
+
+Re-polled `/api/public/gex-snapshot?ticker=SPX` twice at ~6s spacing: `spot` still ticking
+(7688.03 → 7688.21), `session: OPEN`, `degraded: false`, low staleness both times. `put_wall`
+moved 7550 → 7675 since the last check — confirms the wall levels themselves genuinely update
+over time, not just spot, closing out the liveness cross-check. `flip` is still `null`, consistent
+with the short-gamma-everywhere regime confirmed correct last cycle (real explanatory `read`
+field, not a fabricated or stale value) — persisting, not a fluke.
+
+Everything healthy for the full RTH window observed today. Returning to normal SEO/search work on
+the next wake per the trigger's own instruction.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-08 (15:33 UTC / Tue 2026-09-08 11:34 ET) — [SEO] RTH wake: gamma-snapshot re-checked, honest-absence flip=null confirmed correct
 
 **Severity.** — (no defect found)
