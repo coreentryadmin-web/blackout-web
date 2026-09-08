@@ -505,6 +505,23 @@ test("the alpha budget is wide enough to be a channel at all", () => {
   );
 });
 
+// ── WEAK-BEAD LEGIBILITY FLOOR (2026-09-08, member follow-up on the fix above) ────────────────
+// 0.25 solved "everything looks equally bold" but pushed the weak end far enough down that the
+// weakest bead on a busy rail read as barely-there against the dark chart background. This raises
+// the floor to 0.35 — still nowhere near the old 0.6 uniformity bug, but visibly more present —
+// while re-asserting every invariant the earlier fix established still holds with margin.
+test("weak-bead legibility floor sits at 0.35, not the old 0.25", () => {
+  assert.ok(
+    FILL_ALPHA_MIN >= 0.35 - 1e-9,
+    `FILL_ALPHA_MIN regressed to ${FILL_ALPHA_MIN} — the weakest bead is barely visible again`
+  );
+  const weakest = fillAlpha(0, 100);
+  assert.ok(
+    weakest >= 0.35 - 1e-9,
+    `a zero-strength bead renders at ${weakest}, below the legibility floor`
+  );
+});
+
 test("SIZE and ALPHA use DIFFERENT curves, and each keeps its own job", () => {
   // They shared one exponent, which is why the rail could never have both channels alive: the
   // super-linear shape size needs (a fading wall must visibly shrink) is the same shape that pins
