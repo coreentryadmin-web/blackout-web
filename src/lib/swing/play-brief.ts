@@ -273,13 +273,18 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       });
     }
   }
-  const king = gex?.gex_king_strike;
-  const kingFromStaleGex = king != null && gexStale;
+  const vecKing = vectorStale ? undefined : vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
+  const king = vecKing ?? gex?.gex_king_strike;
+  const kingFromStaleGex = vecKing == null && gex?.gex_king_strike != null && gexStale;
   if (king != null && !kingFromStaleGex) {
     levels.push({
       label: "GEX king",
       price: king,
-      provenance: { source: "GEX", asOf: levelProvenanceAsOf(gex, vec, "gex"), freshness: gexFresh },
+      provenance: {
+        source: "GEX",
+        asOf: levelProvenanceAsOf(gex, vec, gex?.gex_king_strike != null ? "gex" : "vector"),
+        freshness: gex?.gex_king_strike != null ? gexFresh : vecFresh,
+      },
     });
   }
   if (vec?.maxPain != null && !vectorStale) {
