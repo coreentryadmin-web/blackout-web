@@ -1064,6 +1064,12 @@ test("horizon adapter: COMMIT_NOW + commit gate block → WATCH/WAIT with gate b
 });
 
 test("horizon adapter: live OPEN + enterable geometry → STILL BUY action + swingEntryAction", () => {
+  // committedAt must stay inside the 3-day DEFAULT_ENTRY_VALIDITY_DAYS window
+  // (entry-enterability.ts) relative to whenever this test actually runs — a
+  // hardcoded absolute timestamp is a date-bomb that silently ages past the
+  // window and starts failing (`swingEntryAction` degrades from 'still_buy' to
+  // null once past the deadline).
+  const committedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const live = terminalPlayFromHorizon({
     ticker: "nvda",
     direction: "LONG",
@@ -1071,7 +1077,7 @@ test("horizon adapter: live OPEN + enterable geometry → STILL BUY action + swi
     score: 88,
     status: "COMMIT",
     liveStatus: "OPEN",
-    committedAt: "2026-09-05T14:00:00.000Z",
+    committedAt,
     servingSection: "MANAGING",
     setupState: "TRIGGERED",
     entryStatus: "AT_TRIGGER",
@@ -1085,6 +1091,8 @@ test("horizon adapter: live OPEN + enterable geometry → STILL BUY action + swi
 });
 
 test("horizon adapter: rolled child at AT_TRIGGER → still_buy (fresh child commit, deskCommitted)", () => {
+  // Same date-bomb risk as the test above: committedAt must stay inside the
+  // 3-day entry-validity window relative to actual run time, not a fixed date.
   const rolledChild = terminalPlayFromHorizon({
     ticker: "nvda",
     direction: "LONG",
@@ -1092,8 +1100,8 @@ test("horizon adapter: rolled child at AT_TRIGGER → still_buy (fresh child com
     score: 88,
     status: "COMMIT",
     liveStatus: "OPEN",
-    committedAt: "2026-09-05T15:00:00.000Z",
-    firstSeenAt: "2026-09-01T10:00:00.000Z",
+    committedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    firstSeenAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     positionId: 99,
     servingSection: "MANAGING",
     setupState: "TRIGGERED",
