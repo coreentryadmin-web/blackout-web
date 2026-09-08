@@ -8222,6 +8222,31 @@ export async function fetchAccumulating(minSessionDays = 1, limit = 500): Promis
   return res.rows.map(mapSwingAccumRow);
 }
 
+/**
+ * Every accumulation row (promoted AND still-pending) first seen on or after `sinceDate` —
+ * unlike `fetchAccumulating`, which drops any row with `promoted_position_id` set. A recall
+ * study of the persistence gate needs BOTH cohorts to compare: candidates that cleared the bar
+ * (promoted, or distinct_session_days >= MIN_PERSISTENCE_SESSIONS) against ones still stuck on
+ * a single sighting, so dropping the promoted half would silently exclude the gate's own
+ * "worked as intended" cases from the comparison. Read-only, admin-export use only.
+ */
+export async function fetchSwingAccumulationExport(
+  sinceDate: string,
+  limit = 2000
+): Promise<SwingAccumRow[]> {
+  await ensureSchema();
+  const normalized = normalizeIsoDateInput(sinceDate);
+  if (!normalized) return [];
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM swing_candidate_accumulation
+      WHERE first_seen_at >= $1::date
+      ORDER BY first_seen_at DESC
+      LIMIT $2`,
+    [normalized, limit]
+  );
+  return res.rows.map(mapSwingAccumRow);
+}
+
 /** Link an accumulation row to the position it promoted into (stops further accretion counting
  *  as a fresh candidate). Requires the thesis archetype so a sibling thesis on the same name+side
  *  is not falsely retired. */

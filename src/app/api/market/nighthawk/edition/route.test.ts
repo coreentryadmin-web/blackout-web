@@ -73,3 +73,35 @@ test("a published edition with zero plays is flagged, and stays available", () =
 test("pre-publish empty shells are not cached (ops-collect false-positive guard)", () => {
   assert.match(read(ROUTE), /shouldCache:.*available !== false/s);
 });
+
+// ── 2026-09-08 live incident: a maxBlockMs timeout fallback was indistinguishable from a
+// genuinely quiet day ──────────────────────────────────────────────────────────────────────
+//
+// Observed live: one request mid-session (well before close, with a real published edition
+// confirmed live moments before and after) returned `available:false, edition_for:<tomorrow>,
+// plays:[]` — the bare `emptyEdition()` shape. `resolveNighthawkEdition` never got a chance to
+// return its own honest "nothing published" result; the SWR cache's `maxBlockMs` raced the real
+// computation and lost, so the caller only ever saw the FALLBACK. A bare `emptyEdition()` fallback
+// is indistinguishable from a confirmed empty day — the exact "absence read as fact" class this
+// route otherwise guards against (see the `?date=` and `no_plays` tests above).
+
+test("a maxBlockMs timeout fallback is a distinct function, not a bare lastGoodEdition ?? emptyEdition() inline", () => {
+  const src = read(ROUTE);
+  assert.match(src, /function timeoutFallbackEdition/, "the timeout fallback must be its own named function, not duplicated inline");
+  assert.equal(
+    (src.match(/fallback: async \(\) => timeoutFallbackEdition\(editionFor\)/g) ?? []).length,
+    2,
+    "both withServerCache calls (fire-and-forget + blocking) must use the same timeout fallback"
+  );
+  // The bug-shape regex it replaces must be gone, not just aliased.
+  assert.doesNotMatch(src, /fallback: async \(\) => lastGoodEdition \?\? emptyEdition\(editionFor\)/);
+});
+
+test("timeoutFallbackEdition: no prior good read in this process → degraded, not a bare empty shell", () => {
+  const src = read(ROUTE);
+  assert.match(
+    src,
+    /function timeoutFallbackEdition\(editionFor: string\): NightHawkEdition \{\s*if \(lastGoodEdition\) return lastGoodEdition;\s*return \{ \.\.\.emptyEdition\(editionFor\), degraded: true \};/,
+    "no lastGoodEdition to fall back on must stamp degraded:true — PlaybookBoard.tsx already has a dedicated notice for it"
+  );
+});
