@@ -625,6 +625,42 @@ test("guardCheckedOutClient: swallows a checked-out client's own 'error' event i
   );
 });
 
+// BUG FIX (2026-09-08, live evidence: `GET /api/admin/cron-health` served `desk-warm`'s
+// `runs_24h: {ok:0,failed:0,skipped:2}` for a job firing every ~5 min all morning — misread at
+// first glance as "barely ran today"). `admin-cron-health.ts`'s `buildCronHealthSnapshot` built its
+// `runs_24h` aggregate from `fetchCronJobRecentRuns(48)` — `ORDER BY started_at DESC LIMIT 48`
+// with NO per-job or time filter at the query level. With ~48 registered crons, several on 1-5 min
+// schedules, those 48 rows fleet-wide are consumed by whichever jobs fired most recently — a
+// moderately-frequent job can be starved down to 1-2 rows, nowhere near a real 24h picture, even
+// though the caller's own `since24h` variable and the field's own name promise one. Fixed by
+// replacing it with `fetchCronJobRunsLast24h()`, bounded by `WHERE started_at > NOW() - INTERVAL
+// '24 hours'` instead of a row count — every job gets its own real 24h window regardless of how
+// often its neighbors fire. The old row-capped function had exactly one caller and is deleted
+// entirely rather than left as dead code.
+test("fetchCronJobRunsLast24h bounds by TIME, not by a row count that starves low-frequency jobs", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function fetchCronJobRunsLast24h");
+  assert.ok(start > 0, "fetchCronJobRunsLast24h exists");
+  const nextExport = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, nextExport > 0 ? nextExport : undefined);
+  assert.match(
+    body,
+    /WHERE started_at > NOW\(\) - INTERVAL '24 hours'/,
+    "must bound by a real 24h time window"
+  );
+  assert.doesNotMatch(body, /LIMIT \$?\d/, "must not also cap by an arbitrary row count");
+});
+
+test("the old row-capped fetchCronJobRecentRuns is gone, not left as dead code beside its replacement", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  assert.doesNotMatch(
+    src,
+    /export async function fetchCronJobRecentRuns/,
+    "fetchCronJobRecentRuns had exactly one caller (admin-cron-health.ts), now migrated to " +
+      "fetchCronJobRunsLast24h — the row-capped version must not remain unused"
+  );
+});
+
 test("every raw pool.connect() checked-out client in db.ts is wrapped in guardCheckedOutClient", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   const uncoveredConnects: string[] = [];
