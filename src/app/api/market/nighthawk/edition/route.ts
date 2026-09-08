@@ -189,6 +189,26 @@ async function withEditionOverlays(edition: NightHawkEdition): Promise<NightHawk
 
 let lastGoodEdition: NightHawkEdition | null = null;
 
+/**
+ * Serve when the real computation blew past `maxBlockMs` (a transient DB/read hiccup, not a
+ * confirmed "nothing published" result — resolveNighthawkEdition never got to finish, let alone
+ * return its own honest empty state). Falling back to a BARE `emptyEdition()` here made a timeout
+ * indistinguishable from a genuinely quiet day: both render "Tonight's edition publishes after the
+ * close" with `available: false` and no signal that anything went wrong. Live-observed 2026-09-08
+ * mid-session (well before close, with a real published edition already confirmed live moments
+ * before and after): one request in the middle returned exactly this shape.
+ *
+ * `lastGoodEdition` (this process's own last successful read) is served AS-IS, unflagged — real,
+ * if momentarily stale, content the member is entitled to see plainly. Only the genuinely-unknown
+ * case (no prior good read in this process either) gets stamped `degraded` — the UI already has a
+ * dedicated notice for it ("Served from a degraded fallback…", PlaybookBoard.tsx) that nothing on
+ * this path had ever triggered.
+ */
+function timeoutFallbackEdition(editionFor: string): NightHawkEdition {
+  if (lastGoodEdition) return lastGoodEdition;
+  return { ...emptyEdition(editionFor), degraded: true };
+}
+
 async function resolveNighthawkEdition(
   editionFor: string,
   explicitDate: string | null
@@ -271,7 +291,7 @@ export async function GET(req: NextRequest) {
       void withServerCache(cacheKey, nighthawkEditionCacheTtlMs(), () => resolveNighthawkEdition(editionFor, explicitDate), {
         maxBlockMs: nighthawkEditionReadMaxBlockMs(),
         staleOnInflight: true,
-        fallback: async () => lastGoodEdition ?? emptyEdition(editionFor),
+        fallback: async () => timeoutFallbackEdition(editionFor),
         shouldCache: (value) => (value as NightHawkEdition).available !== false,
       }).catch(() => undefined);
       return NextResponse.json(roundFloats(instant), { headers: NO_STORE_HEADERS });
@@ -284,7 +304,7 @@ export async function GET(req: NextRequest) {
       {
         maxBlockMs: nighthawkEditionReadMaxBlockMs(),
         staleOnInflight: true,
-        fallback: async () => lastGoodEdition ?? emptyEdition(editionFor),
+        fallback: async () => timeoutFallbackEdition(editionFor),
         shouldCache: (value) => (value as NightHawkEdition).available !== false,
       }
     );
