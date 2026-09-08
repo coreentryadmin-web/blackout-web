@@ -68,8 +68,14 @@ import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodt
 import { computeZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
 import { fetchZeroDteVectorPulseByTicker } from "@/lib/zerodte/vector-crosslink";
 
-function mfeCapturePct(exitPnlPct: number | null, peakPnlPctVal: number | null): number | null {
-  if (exitPnlPct == null || peakPnlPctVal == null || peakPnlPctVal <= 0) return null;
+// "Captured X% of the peak move" only reads as a real fraction when the exit itself is still a
+// gain — once exitPnlPct goes negative the play round-tripped past breakeven into a realized
+// loss, a DIFFERENT event (not a worse "capture"). Dividing a negative exit by a small positive
+// peak blows up to a nonsensical magnitude (e.g. peak +1.25%, exit -40% → "captured -3200%"), so
+// a round-trip is withheld (null) rather than shown as a fabricated capture ratio. Mirrors the
+// same fix already shipped for swing plays (mfeCaptureOutcome, src/lib/swing/mfe-capture.ts).
+export function mfeCapturePct(exitPnlPct: number | null, peakPnlPctVal: number | null): number | null {
+  if (exitPnlPct == null || peakPnlPctVal == null || peakPnlPctVal <= 0 || exitPnlPct < 0) return null;
   return Math.round((exitPnlPct / peakPnlPctVal) * 100);
 }
 import { computeVectorNearMisses } from "@/lib/zerodte/vector-near-miss";
