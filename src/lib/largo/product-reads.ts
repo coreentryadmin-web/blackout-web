@@ -770,8 +770,9 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
     const state = await fetchVectorFullState(ticker, h);
     if (!state) {
       // No live spot is not an empty pulse — it is no read at all. Saying so stops "no signals"
-      // from being reported as a quiet tape.
-      return { available: false, reason: "no_live_vector_state", ticker: ticker.toUpperCase(), signals: [] };
+      // from being reported as a quiet tape. `signals` itself must stay null, not [], for the
+      // same reason the comment states — an empty array here is still a countable answer.
+      return { available: false, reason: "no_live_vector_state", ticker: ticker.toUpperCase(), signals: null };
     }
 
     // The OBSERVATION clock (`nowMs`) stays keyed to the snapshot, because every signal age and
@@ -872,7 +873,7 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
   } catch (e) {
     return {
       available: false,
-      signals: [],
+      signals: null,
       error: e instanceof Error ? e.message : "vector_pulse_failed",
     };
   }
