@@ -144,37 +144,56 @@ export const ARCHETYPE_META: Record<SwingArchetype, ArchetypeMeta> = {
 // freshly-triggered failed-breakdown reclaim is actionable the SESSION IT FIRES — forcing a 2nd
 // session throws away the whole edge (the move is already underway by tomorrow's scan).
 //
-// THE RULE: cross-session archetypes keep `minDistinctSessions: 2`. Event/immediate archetypes drop
-// to `minDistinctSessions: 1` BUT set `requiresCorroboration: true`, which is NOT a licence to
-// promote a single raw print. It swaps "wait for a 2nd SESSION" for "require a 2nd independent
-// SIGNAL within the session" — e.g. a flow print AND a structure/catalyst signal, i.e. ≥2 distinct
-// signal kinds. See `meetsPersistence` in accumulation-store.ts for the ANTI-LONE-PRINT invariant:
-// a lone print (one observation, one signal kind, one session) NEVER promotes for ANY archetype.
+// THE RULE (updated 2026-09-08, see ARCHETYPE_PERSISTENCE's own header comment for the measured
+// evidence): every classified archetype now runs `minDistinctSessions: 1` with
+// `requiresCorroboration: true` — a 2nd independent SIGNAL within the session substitutes for a 2nd
+// SESSION, for cross-session archetypes exactly as it always did for event/immediate ones. This is
+// NOT a licence to promote a single raw print: it swaps "wait for a 2nd SESSION" for "require a 2nd
+// independent SIGNAL within the session" — e.g. a flow print AND a structure/catalyst signal, i.e.
+// ≥2 distinct signal kinds. See `meetsPersistence` in accumulation-store.ts for the ANTI-LONE-PRINT
+// invariant: a lone print (one observation, one signal kind, one session) NEVER promotes for ANY
+// archetype. FAILED_BREAKDOWN remains the sole exception (1 session, no corroboration required) —
+// a volume-confirmed structure reclaim IS itself the thesis. Unclassified candidates (no archetype
+// at all) still fall through to `DEFAULT_PERSISTENCE_RULE`'s conservative 2-session/no-corroboration
+// floor, since there's no archetype-level evidence to reason from for those.
 export interface ArchetypePersistenceRule {
   /** Distinct session days required before promotion is even considered. 2 = classic cross-session
    *  build; 1 = an event/immediate setup that can be actioned the session it fires. */
   minDistinctSessions: number;
-  /** When true (event/immediate archetypes on a 1-session floor), promotion additionally requires a
-   *  2nd INDEPENDENT signal in the same session — corroboration REPLACES the 2nd session, it never
-   *  lowers the bar to a single lone print. Ignored for cross-session archetypes (they clear on the
-   *  distinct-session count alone). */
+  /** When true (a 1-session floor), promotion additionally requires a 2nd INDEPENDENT signal in the
+   *  same session — corroboration REPLACES the 2nd session, it never lowers the bar to a single lone
+   *  print. Ignored for a 2-session floor (that clears on the distinct-session count alone). */
   requiresCorroboration: boolean;
 }
 
 /** Default (unclassified name / no archetype): the conservative classic gate — a real multi-session
- *  build, never a first-sighting. Identical to the pre-critique-#3 uniform behavior. */
+ *  build, never a first-sighting. Identical to the pre-critique-#3 uniform behavior. Left untouched
+ *  by the 2026-09-08 loosening below: `classifyArchetype`'s deliberate null-when-thin design means an
+ *  unclassified candidate has no measured archetype-level evidence at all, so the conservative floor
+ *  stays the safe default when there's nothing more specific to reason from. */
 export const DEFAULT_PERSISTENCE_RULE: ArchetypePersistenceRule = {
   minDistinctSessions: 2,
   requiresCorroboration: false,
 };
 
+// 2026-09-08: the flat 2-session/no-corroboration floor on the 5 "standard" archetypes below was
+// loosened to 1-session+corroboration (matching EVENT_DRIVEN/POST_EARNINGS_DRIFT) after
+// `scripts/audit/swing-persistence-recall.mjs` measured it against 90 days of real accumulation
+// data (docs/audit/INTENTIONAL-DESIGN.md item #7): persistence-CLEARED candidates did NOT
+// outperform BLOCKED ones at any horizon (+1d: 45.5% vs 58.8% WR; +3d: 52.6% vs 50.0%; +5d: 55.3%
+// vs 43.8%, thin n at the tail) — the extra calendar-day wait was not earning its keep. This does
+// NOT remove the quality bar: `meetsPersistence`'s anti-lone-print invariant still requires ≥2
+// independent signal KINDS in the same session (never a single raw print), it just stops requiring
+// that confirmation arrive on a SECOND calendar day when same-day corroboration already exists.
 export const ARCHETYPE_PERSISTENCE: Record<SwingArchetype, ArchetypePersistenceRule> = {
-  // Cross-session archetypes — theses that BUILD over days. Keep the 2-distinct-session gate.
-  BREAKOUT: { minDistinctSessions: 2, requiresCorroboration: false },
-  PULLBACK_CONTINUATION: { minDistinctSessions: 2, requiresCorroboration: false },
-  MEAN_REVERSION: { minDistinctSessions: 2, requiresCorroboration: false },
-  FLOW_ACCUMULATION: { minDistinctSessions: 2, requiresCorroboration: false },
-  SECTOR_ROTATION: { minDistinctSessions: 2, requiresCorroboration: false },
+  // Cross-session archetypes — theses that BUILD over days, but a same-session 2nd independent
+  // signal is real corroboration, not noise: 1 session + corroboration (see note above), matching
+  // the event/immediate archetypes' existing treatment.
+  BREAKOUT: { minDistinctSessions: 1, requiresCorroboration: true },
+  PULLBACK_CONTINUATION: { minDistinctSessions: 1, requiresCorroboration: true },
+  MEAN_REVERSION: { minDistinctSessions: 1, requiresCorroboration: true },
+  FLOW_ACCUMULATION: { minDistinctSessions: 1, requiresCorroboration: true },
+  SECTOR_ROTATION: { minDistinctSessions: 1, requiresCorroboration: true },
   // Event / immediate archetypes — actionable the session they fire. 1 session BUT corroboration
   // required (a 2nd independent signal, never a lone print).
   // Event / immediate archetypes: a single session is enough IF the sighting is corroborated by ≥2

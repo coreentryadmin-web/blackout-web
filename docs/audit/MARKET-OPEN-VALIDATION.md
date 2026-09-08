@@ -118,6 +118,36 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-08 evidence-based gate loosening (read this before the routine pass)
+
+### 0a-3a. Swing cross-session persistence floor loosened for 5 standard archetypes — fix/swing-persistence-loosen-standard-archetypes
+
+**What was broken:** operator complaint (repeated) that Swing Command shows too few promoted plays
+and that "winning plays on watch aren't getting promoted." Live-observed several high-scoring
+TRIGGERED+AT_TRIGGER setups (HOOD 83.6, EWY 84.9, AMD 75.9, XME 69.7, CCJ 67.3) blocked purely by
+the persistence gate requiring 2 distinct session days for BREAKOUT/PULLBACK_CONTINUATION/
+MEAN_REVERSION/FLOW_ACCUMULATION/SECTOR_ROTATION — a gate already documented as "provisional, never
+validated." A real 90-day backtest (`scripts/audit/swing-persistence-recall.mjs`,
+`docs/audit/INTENTIONAL-DESIGN.md` item #7) found persistence-cleared candidates did NOT
+outperform blocked ones at any horizon (+1d 45.5% vs 58.8% WR; +3d 52.6% vs 50.0%; +5d 55.3% vs
+43.8%).
+
+**Fix:** loosened those 5 archetypes from `minDistinctSessions: 2, requiresCorroboration: false` to
+`minDistinctSessions: 1, requiresCorroboration: true` — matching the already-shipped
+EVENT_DRIVEN/POST_EARNINGS_DRIFT treatment. Same-day corroboration (≥2 independent signal kinds)
+still required; a lone print never promotes. `FAILED_BREAKDOWN` and the unclassified-candidate
+default (2 sessions, no corroboration) are unchanged.
+
+**Check at the open:** compare WATCH→COMMIT promotion volume for BREAKOUT/PULLBACK_CONTINUATION/
+MEAN_REVERSION/FLOW_ACCUMULATION/SECTOR_ROTATION candidates against pre-2026-09-08 baseline — expect
+MORE same-day promotions for multi-signal-corroborated names (a real quality bar, not a blanket
+loosening). Watch for any single-signal-kind name incorrectly promoting (would indicate a
+corroboration-check regression) — should NOT happen, `hasCorroboration` still requires 2+ distinct
+kinds. If promoted volume rises with a WORSE realized win rate over the following 1-2 weeks, that
+would be the first real evidence against this change and should prompt revisiting it.
+
+---
+
 ## WATCH LIST — 2026-09-08 live-incident fix (read this before the routine pass)
 
 ### 0a-2a. Largo's swing `committed_count` conflated with open positions — docs/swing-committed-vs-open-clarification
