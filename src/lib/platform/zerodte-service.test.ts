@@ -424,6 +424,57 @@ test("exit visibility: a stopped play with no trim tranches armed still pins P&L
   assert.equal(board.ledger[0]!.peak_pnl_pct, 10);
 });
 
+// FINDINGS: mfeCapturePct() divided a negative exit by a small positive peak with no guard,
+// producing nonsensical magnitudes like "captured -3200% of peak" for a play that round-tripped
+// past breakeven into a loss — a fabricated ratio, not a real "capture" fraction. Mirrors the
+// round-trip guard already shipped for swing plays (mfe-capture.ts's mfeCaptureOutcome).
+test("mfe capture: a round-trip to a loss withholds mfe_capture_pct rather than a blown-up ratio", async () => {
+  // entry 4.0, peak 4.05 (+1.25%), exit stamped -40% — a real round-trip past breakeven.
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 2.4,
+        peak_premium: 4.05,
+        trough_premium: 2.4,
+        status: "CLOSED",
+        entry_context: { exit: { pnl_pct: -40, peak_pnl_pct: 1.25, reason: "plan_stop", at: "2026-07-07T15:00:00.000Z" } },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.peak_pnl_pct, 1.25);
+  assert.equal(
+    board.ledger[0]!.mfe_capture_pct,
+    null,
+    "a negative exit against a tiny peak must never surface as a fabricated capture ratio",
+  );
+});
+
+test("mfe capture: a genuine gain-on-gain exit still computes a real capture ratio", async () => {
+  // entry 4.0, peak 6.0 (+50%), exit stamped +25% — a real partial capture of the peak move.
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 5.0,
+        peak_premium: 6.0,
+        trough_premium: 4.0,
+        status: "CLOSED",
+        entry_context: { exit: { pnl_pct: 25, peak_pnl_pct: 50, reason: "plan_target_final", at: "2026-07-07T15:00:00.000Z" } },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.mfe_capture_pct, 50, "unchanged behavior for a real capture: 25/50 * 100");
+});
+
 /** The META-class row: peaked +87% (arming both trim tranches), then stopped at −50%. */
 function metaStoppedRunner(entryContext: Record<string, unknown> | null) {
   return ledgerRow({
