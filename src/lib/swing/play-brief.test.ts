@@ -529,6 +529,48 @@ test("composeSwingPlayBrief: stale Vector wall must fall through to a LIVE GEX w
   assert.equal(flip?.price, 24.2, "must fall through to the live GEX flip, not the stale Vector one");
 });
 
+// FINDING 2026-09-08 (Ask Largo monitor cycle, live CG SWING_CG_25): the structured `levels`
+// array's "GEX king" entry read ONLY `gex?.gex_king_strike`, with no Vector-ladder fallback —
+// unlike call wall/put wall/gamma flip immediately above it, which all correctly prefer a live
+// Vector reading via `vecX ?? gex?.x`. Meanwhile play-brief-narrative.ts's `focalLevelsFrom`
+// already computed king as `vecKing ?? kingFromGex`. Same envelope, same conceptual level, two
+// different precedence rules: a member saw "GEX king 52.5" in Levels-on-chart (GEX matrix) and
+// "GEX king 50.00" in the Trade manager read narrative (Vector ladder) for the SAME brief.
+test("composeSwingPlayBrief: GEX king level prefers a live Vector ladder king over the GEX matrix, matching the narrative's precedence", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        matrix_age_sec: 30,
+        asof: new Date().toISOString(),
+        as_of_et: "2026-09-05 16:00 ET",
+        gex_king_strike: 25,
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-09-05 16:00 ET",
+      spot: 24.5,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      ladder: { rows: [{ strike: 24, isKing: true }] },
+    } as unknown as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const levels = brief.envelope.levels ?? [];
+  const king = levels.find((l) => l.label === "GEX king");
+  assert.equal(king?.price, 24, "must show the live Vector ladder's king strike, not the GEX matrix one");
+});
+
 test("composeSwingPlayBrief: diff snapshot must not bypass stale-gated envelope levels (Largo C2)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
