@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   effectiveStaleMinutes,
@@ -210,4 +212,25 @@ test("NYSE holiday silence on gated warmers does not false-flag market_hours_sta
     LABOR_DAY_MIDDAY
   );
   assert.equal(health.market_hours_stale, false);
+});
+
+// BUG FIX (2026-09-08) — companion to the db.ts fix. buildCronHealthSnapshot's `runs_24h` aggregate
+// used to be built from `fetchCronJobRecentRuns(48)` (the last 48 cron_job_runs rows GLOBALLY, no
+// per-job or time bound), which starves any moderately-frequent job's 24h count once its faster
+// neighbors fill the 48-row window — `desk-warm` (a ~5min-schedule cron) read
+// `runs_24h: {ok:0,failed:0,skipped:2}` live in production despite running normally all morning.
+// Fixed by switching to `fetchCronJobRunsLast24h()`, which bounds by `WHERE started_at > NOW() -
+// INTERVAL '24 hours'` per job instead of by an arbitrary row count fleet-wide.
+test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bounded fetch, not the old row-capped one", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /fetchCronJobRunsLast24h\(\)/,
+    "buildCronHealthSnapshot must call the time-bounded fetch for its 24h aggregate"
+  );
+  assert.doesNotMatch(
+    src,
+    /fetchCronJobRecentRuns/,
+    "must not still reference the deleted row-capped fetch (starves low-frequency jobs' 24h counts)"
+  );
 });

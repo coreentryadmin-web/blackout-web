@@ -2,8 +2,8 @@ import { CRON_JOBS, type CronJobDefinition } from "@/lib/cron-registry";
 import {
   dbConfigured,
   fetchCronJobLastRuns,
-  fetchCronJobRecentRuns,
   fetchCronJobRunCount,
+  fetchCronJobRunsLast24h,
   fetchLatestNighthawkJob,
   type CronJobRunRow,
 } from "@/lib/db";
@@ -326,7 +326,7 @@ export function evaluateJob(
 
 export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   let lastRuns: Awaited<ReturnType<typeof fetchCronJobLastRuns>> = [];
-  let recentRuns: Awaited<ReturnType<typeof fetchCronJobRecentRuns>> = [];
+  let recentRuns: Awaited<ReturnType<typeof fetchCronJobRunsLast24h>> = [];
   let latestNhJob: Awaited<ReturnType<typeof fetchLatestNighthawkJob>> = null;
   let dbSnapshotError: string | null = null;
 
@@ -334,7 +334,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     try {
       [lastRuns, recentRuns, latestNhJob] = await Promise.all([
         fetchCronJobLastRuns(),
-        fetchCronJobRecentRuns(48),
+        fetchCronJobRunsLast24h(),
         fetchLatestNighthawkJob(),
       ]);
     } catch (error) {
@@ -344,10 +344,9 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   }
 
   const lastByKey = Object.fromEntries(lastRuns.map((r) => [r.job_key, r]));
-  const since24h = Date.now() - 24 * 60 * 60_000;
+  // `fetchCronJobRunsLast24h` already bounds by time, per job — no further filtering needed here.
   const runs24hByKey = new Map<string, CronJobRunRow[]>();
   for (const r of recentRuns) {
-    if (new Date(r.started_at).getTime() < since24h) continue;
     const list = runs24hByKey.get(r.job_key) ?? [];
     list.push(r);
     runs24hByKey.set(r.job_key, list);

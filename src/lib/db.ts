@@ -10408,16 +10408,29 @@ export async function fetchCronJobLastRuns(): Promise<CronJobRunRow[]> {
   return res.rows.map(mapCronJobRunRow);
 }
 
-export async function fetchCronJobRecentRuns(limit = 48): Promise<CronJobRunRow[]> {
+/**
+ * All runs across every job in the last 24h — TIME-bounded, not row-count-bounded.
+ *
+ * This used to be `fetchCronJobRecentRuns(48)` (`ORDER BY started_at DESC LIMIT 48`, no per-job or
+ * time filter at the query level) — deleted; its only caller (`admin-cron-health.ts`, feeding a
+ * `runs_24h` aggregate) now calls this instead. A flat `LIMIT 48` across the WHOLE table starves
+ * any job whose neighbors fire more often: with ~48 registered crons and several on 1-5 min
+ * schedules, the 48 most recent rows fleet-wide can cover a few minutes, not a day. A moderately-
+ * frequent job then reads `runs_24h: {ok:0,failed:0,skipped:2}` — which looks like "barely ran
+ * today" to an admin, when the job may be running perfectly on schedule and simply lost the race
+ * for a slot in those 48 rows. Bounding by TIME instead returns whatever a real 24h window
+ * actually contains, matching the field's own name and the `idx_cron_job_runs_key_at (job_key,
+ * started_at DESC)` index this table already carries.
+ */
+export async function fetchCronJobRunsLast24h(): Promise<CronJobRunRow[]> {
   await ensureSchema();
   const res = await dbQuery(
     `
     SELECT id, job_key, status, started_at, duration_ms, message, meta_json
     FROM cron_job_runs
-    ORDER BY started_at DESC
-    LIMIT $1
-    `,
-    [limit]
+    WHERE started_at > NOW() - INTERVAL '24 hours'
+    ORDER BY job_key, started_at DESC
+    `
   );
   return res.rows.map(mapCronJobRunRow);
 }
