@@ -46,7 +46,21 @@ import { timeOfDayFactor } from "./intraday";
  *  cap of 3/6. Quality gates + session stop/loss floors are the real risk brake;
  *  every setup that clears them should be free to commit. Default 100 is effectively
  *  "no desk scarcity" for a whole-market board while still bounding runaway commits
- *  if something else fails open. Set `ZERODTE_MAX_CONCURRENT=0` for unlimited. */
+ *  if something else fails open. Set `ZERODTE_MAX_CONCURRENT=0` for unlimited.
+ *
+ *  RECONCILED 2026-09-09 (architecture review flagged 100 alongside
+ *  GOVERNOR_MAX_CORRELATED_SAME_DIR=2 as two apparently-incompatible risk postures
+ *  in one governor): they are not incompatible, they bound DIFFERENT things on
+ *  purpose. This constant deliberately does NOT bound aggregate risk — it is a
+ *  runaway-commit backstop only. Aggregate risk is bounded by
+ *  GOVERNOR_MAX_CORRELATED_SAME_DIR (concentration), GOVERNOR_MAX_PREMIUM_AT_RISK
+ *  (capital), and the gamma budget below — a book of 90 small, uncorrelated,
+ *  budget-capped plans across different tickers/directions is not "90x the risk" of
+ *  one plan once those three are enforced; it's diversification. No incident in this
+ *  codebase's history has ever tied raw plan COUNT (independent of correlation/
+ *  premium/gamma) to a loss — inventing a tight count-based cap now would re-narrow
+ *  the board through a different door than every other 2026-09 gate change, on no
+ *  more evidence than "the two numbers look different," which they're supposed to. */
 function envConcurrentCap(name: string, def: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return def;
@@ -179,9 +193,15 @@ export function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
 // re-measured since enforcement began.
 
 /** Max same-direction correlated open plans before the concentration measure flags it.
- *  CONSERVATIVE starting value (calibration-first) — with the 3-concurrent cap, a cluster
- *  of 3 same-direction correlated plays is the whole book pointed one way behind one beta;
- *  flagging at 2 means "one more correlated same-direction add would be over-concentration". */
+ *  CONSERVATIVE starting value (calibration-first). NOTE (corrected 2026-09-09 — this
+ *  comment used to justify 2 by reference to "the 3-concurrent cap," a total-book size
+ *  that hasn't existed since GOVERNOR_MAX_CONCURRENT_PLANS was raised to 100 on
+ *  2026-07-29; the two constants were never actually reconciled after that change,
+ *  which is exactly why they read as contradictory): this cap is independent of total
+ *  concurrency by design — see GOVERNOR_MAX_CONCURRENT_PLANS's own doc comment. It
+ *  bounds DIRECTIONAL CONCENTRATION specifically: no matter how large the total book
+ *  is allowed to grow, no more than 2 of its plans may be the same-direction bet on
+ *  correlated index/ETF beta. That is the real risk control; total plan count is not. */
 export const GOVERNOR_MAX_CORRELATED_SAME_DIR = 2;
 
 function envFlag(name: string, defaultOn: boolean): boolean {

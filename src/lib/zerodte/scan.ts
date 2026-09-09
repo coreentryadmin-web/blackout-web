@@ -145,6 +145,7 @@ import {
   refreshPlanQualityGateBlocks,
   refreshContractLiquidityGateBlocks,
   refreshMoneynessGateBlocks,
+  refreshQualificationDislocationGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
@@ -696,6 +697,17 @@ export async function scanZeroDteBoard(flags?: {
             ),
           }
         );
+        // G-23: attachContractPlans (and its refreshUnderlyingFromLiveSpot) has now run above —
+        // s.underlying_price/_as_of and s.plan are the real post-refresh values, so re-apply the
+        // dislocation circuit-breaker against them, mirroring the moneyness refresh just above.
+        s.gate = refreshQualificationDislocationGateBlocks(s.gate, {
+          qualificationPrice: s.qualification_underlying_price ?? null,
+          qualificationAsOfMs: parseIsoMs(s.qualification_underlying_price_as_of),
+          currentPrice: s.underlying_price ?? null,
+          currentAsOfMs: parseIsoMs(s.underlying_price_as_of),
+          quote: s.plan ? { bid: s.plan.bid, ask: s.plan.ask, mark: s.plan.mark } : null,
+          isCondor: s.play_type === "CONDOR",
+        });
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
@@ -1115,6 +1127,16 @@ async function attachGateVerdicts(
       // value — refreshMoneynessGateBlocks (below) re-applies the same caps once the refresh has
       // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
       otmPct: s.otm_pct ?? null,
+      // G-23 (same ordinary-vs-thesis-first split as otmPct above): qualification_underlying_price
+      // was frozen in enrichSetup BEFORE any refresh ever ran, so it always reflects the true
+      // qualification moment regardless of pipeline. underlying_price/_as_of, by contrast, are
+      // already live-refreshed here in the ordinary pipeline (attachContractPlans ran above) and
+      // still pre-refresh under thesis-first — refreshQualificationDislocationGateBlocks (below)
+      // re-applies against the real refreshed values once that pass has happened.
+      qualificationUnderlyingPrice: s.qualification_underlying_price ?? null,
+      qualificationUnderlyingPriceAsOfMs: parseIsoMs(s.qualification_underlying_price_as_of),
+      currentUnderlyingPrice: s.underlying_price ?? null,
+      currentUnderlyingPriceAsOfMs: parseIsoMs(s.underlying_price_as_of),
       intradayConflict: s.intraday_conflict,
       market_aligned: s.market_aligned ?? null,
       regime_structure: marketState?.regime_structure ?? null,
@@ -1197,6 +1219,14 @@ async function attachGateVerdicts(
     committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
   }
   return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
+}
+
+/** Parse an ISO-8601 as-of stamp to epoch-ms, or null on absence/malformed input — never NaN,
+ *  which would otherwise silently poison the G-23 dislocation-window arithmetic downstream. */
+function parseIsoMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   evaluateZeroDteGates,
   gateRejectionFor,
   MARKET_BIAS_MAX_AGE_MS,
+  INPUT_SYNC_MAX_SKEW_MS,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
   contractLiquidityGateBlocks,
@@ -19,6 +20,9 @@ import {
   freshCommitBlockedByPlan,
   moneynessGateBlocks,
   refreshMoneynessGateBlocks,
+  qualificationDislocationGateBlocks,
+  refreshQualificationDislocationGateBlocks,
+  QUALIFICATION_DISLOCATION_MAX_PCT,
   refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
@@ -171,6 +175,92 @@ test("G-1 bypass: single-name with stale bias commits (staleness irrelevant for 
   const v = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", biasAsOfMs: staleMs }));
   assert.equal(v.verdict, "COMMIT");
   assert.deepEqual(v.blocks.filter(b => b.code === "no_market_bias"), []);
+});
+
+// ── G-20 · cross-input synchronization/freshness ──────────────────────────────────
+
+test("G-20: quote and bias both fresh individually but desynced from each other blocks", () => {
+  // Quote observed 5s ago (well inside the 60s quote-freshness bound); bias read 12min
+  // ago (well inside the 15min bias-freshness bound). Individually both pass G-1/G-8-G-9's
+  // OWN freshness checks, but they describe two different instants ~12min apart — well past
+  // the 5-minute sync tolerance.
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks[0]!.code, "input_desync");
+  assert.equal(v.blocks[0]!.threshold, INPUT_SYNC_MAX_SKEW_MS);
+  assert.match(v.blocks[0]!.reason, /apart/);
+});
+
+test("G-20: quote and bias synchronized (both fresh, close in time) does not block", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 }, // 5s old
+      biasAsOfMs: NOW_MS - 60_000, // 1min old — 55s skew from the quote, well under the 5min tolerance
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20: exactly at the sync tolerance boundary is still fresh (exclusive boundary)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 0 },
+      biasAsOfMs: NOW_MS - INPUT_SYNC_MAX_SKEW_MS,
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+
+  const overByOne = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 0 },
+      biasAsOfMs: NOW_MS - INPUT_SYNC_MAX_SKEW_MS - 1,
+    })
+  );
+  assert.equal(overByOne.blocks[0]!.code, "input_desync");
+});
+
+test("G-20 fail-open: no quote timestamp (plan omits quoteAgeMs) never blocks, even with a stale-looking bias gap", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: CLEAN_PLAN, // no quoteAgeMs — the live scan always supplies one; fixtures may not
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 fail-open: no plan at all never blocks", () => {
+  const v = evaluateZeroDteGates(input({ plan: null, biasAsOfMs: NOW_MS - 12 * 60 * 1000 }));
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 fail-open: missing bias timestamp never blocks (bias absence is G-1's job, not G-20's)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: null,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 bypass: single-name stocks skip cross-input sync entirely (same scope as G-1)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
 });
 
 // ── G-2 · opening window (worst first 30 min, unlock 10:00 — user-authorized 2026-07-23) ──
@@ -708,6 +798,10 @@ test("gateRejectionFor: one row per blocked setup — primary code, ALL reasons 
   assert.equal(row.gate_failed, "tape_alignment", "primary = first-evaluated failing gate");
   assert.match(String(row.reason), /fights the DOWN market tape/);
   assert.match(String(row.reason), /10:00 ET/, "second block's sentence rides the same row");
+  // blocks_json (2026-09-09) carries EVERY failing code, not just the primary one — the
+  // prerequisite for gate-ablation/marginal-value analysis, which needs to know G-2 also
+  // fired underneath G-1, not just whichever evaluated first.
+  assert.deepEqual(row.blocks, ["tape_alignment", "opening_window"]);
   // Evidence-gate columns carry through so both gate families are comparable rows.
   assert.equal(row.gross_premium, 2_400_000);
   assert.equal(row.direction, "long");
@@ -718,6 +812,7 @@ test("gateRejectionFor: a null verdict (gate context unreadable) is itself a fai
   const row = gateRejectionFor(rejectionSource, null);
   assert.equal(row.gate_failed, "gate_context_unavailable");
   assert.match(String(row.reason), /fail closed/);
+  assert.deepEqual(row.blocks, ["gate_context_unavailable"], "single synthetic block, not empty");
 });
 
 // ── G-7..G-11 (precision gates, 2026-07-18 audit) ────────────────────────────────
@@ -1085,6 +1180,202 @@ test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", ()
   );
   const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
   assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
+});
+
+// ── G-23 · qualification-to-commit dislocation circuit-breaker ─────────────────────
+// Distinct from G-8 (anchored to the flow print's fill, never re-examines the underlying) and
+// the moneyness re-check just above (only re-tests the FINAL strike distance, never the SPEED
+// of the move) — see qualificationDislocationGateBlocks's module doc in gates.ts.
+
+const QUAL_AT_MS = Date.parse("2026-09-09T14:00:00Z");
+
+test("qualificationDislocationGateBlocks: abnormal move (>=1.5%) inside the window → BLOCKED", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 102, // +2% — past the 1.5% default
+    currentAsOfMs: QUAL_AT_MS + 90_000, // 90s later — well inside the 5-min window
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "qualification_dislocation");
+  assert.match(blocks[0]!.reason, /2\.00% in 1\.5 min/);
+  assert.equal(blocks[0]!.threshold, QUALIFICATION_DISLOCATION_MAX_PCT);
+});
+
+test("qualificationDislocationGateBlocks: same magnitude move but over a LONG window (ordinary drift) → no block", () => {
+  // Same 2% final move as the abnormal case above, but it took 20 minutes to get there —
+  // ordinary intraday drift, not a violent dislocation. Confirms the gate is genuinely
+  // velocity-gated, not just a magnitude cap duplicating the moneyness re-check.
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 102,
+    currentAsOfMs: QUAL_AT_MS + 20 * 60_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: small/normal drift inside the window → no false positive", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100.5, // 0.5% — well under the 1.5% cap
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: a crossed book at commit time → BLOCKED regardless of price move", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100.1, // negligible move
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.5, ask: 2.0, mark: 2.2 }, // bid > ask — crossed
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "qualification_dislocation");
+  assert.match(blocks[0]!.reason, /crossed/);
+});
+
+test("qualificationDislocationGateBlocks: a locked book at commit time → BLOCKED", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100,
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.0, ask: 2.0, mark: 2.0 }, // zero-width book
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.match(blocks[0]!.reason, /locked/);
+});
+
+test("qualificationDislocationGateBlocks: a CONDOR is exempt from the crossed/locked quote check", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100,
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.0, ask: 2.0, mark: 2.0 },
+    isCondor: true,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: fails OPEN when the qualification-time snapshot is missing", () => {
+  // No qualification_underlying_price on the setup (never touched by enrichSetup, e.g. a
+  // hand-built fixture/test) — must NOT fabricate a block from data that was never captured.
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: null,
+      qualificationAsOfMs: null,
+      currentPrice: 200, // a huge apparent move — irrelevant, there is nothing to compare it to
+      currentAsOfMs: QUAL_AT_MS + 60_000,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: 100,
+      qualificationAsOfMs: undefined,
+      currentPrice: 200,
+      currentAsOfMs: QUAL_AT_MS + 60_000,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+});
+
+test("qualificationDislocationGateBlocks: fails OPEN when the current-side snapshot is missing", () => {
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: 100,
+      qualificationAsOfMs: QUAL_AT_MS,
+      currentPrice: null,
+      currentAsOfMs: null,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+});
+
+test("qualificationDislocationGateBlocks: a non-positive elapsed window never manufactures a block (clock-skew guard)", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 110, // 10% move — would otherwise trip
+    currentAsOfMs: QUAL_AT_MS - 5_000, // "current" is BEFORE qualification — skew, not a real window
+    quote: null,
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("evaluateZeroDteGates: existing gate behavior is UNCHANGED when qualification/current fields are simply not supplied", () => {
+  // The base input() fixture never sets these — every pre-existing gate test in this file
+  // relies on that being a true no-op, same guard as the moneyness otmPct test above.
+  const v = evaluateZeroDteGates(input());
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+test("evaluateZeroDteGates: an abnormal fast underlying dislocation since qualification BLOCKS a fresh commit", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      qualificationUnderlyingPrice: 100,
+      qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS,
+      currentUnderlyingPrice: 102.5, // +2.5% since qualification
+      currentUnderlyingPriceAsOfMs: QUAL_AT_MS + 60_000, // 1 minute later
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "qualification_dislocation"), true);
+});
+
+test("evaluateZeroDteGates: ordinary drift over qualification/current does NOT block (no false positive)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      qualificationUnderlyingPrice: 100,
+      qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS,
+      currentUnderlyingPrice: 100.3,
+      currentUnderlyingPriceAsOfMs: QUAL_AT_MS + 60_000,
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "qualification_dislocation"), false);
+});
+
+test("refreshQualificationDislocationGateBlocks: re-applies G-23 after a deferred (thesis-first) contract-plan attach", () => {
+  // Gates ran first (thesis-first order) with no current-side data yet attached — no block.
+  const preRefresh = evaluateZeroDteGates(
+    input({ qualificationUnderlyingPrice: 100, qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS, score: 80 })
+  );
+  assert.equal(preRefresh.verdict, "COMMIT");
+  assert.equal(preRefresh.blocks.some((b) => b.code === "qualification_dislocation"), false);
+
+  // attachContractPlans now runs and the underlying has, in fact, dislocated violently.
+  const postRefresh = refreshQualificationDislocationGateBlocks(preRefresh, {
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 103,
+    currentAsOfMs: QUAL_AT_MS + 45_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.equal(postRefresh.verdict, "BLOCKED");
+  assert.equal(postRefresh.blocks.some((b) => b.code === "qualification_dislocation"), true);
 });
 
 // Bug found 2026-08-26 alongside the plan_no_quote fix: G-5's premium-budget check runs with
@@ -1833,8 +2124,36 @@ test("regime_blind blocks fresh commit when regime plane is blind", () => {
   assert.ok(v.blocks.some((b) => b.code === "regime_blind"));
 });
 
-test("G-13 flow_accumulation_conflict blocks when aligned === false", () => {
-  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false }));
+// G-13 (2026-09-09, operator-approved CTO gate-architecture review): DOWNGRADED from an
+// unconditional hard block to an ELEVATED QUALITY REQUIREMENT — a conflicted setup can
+// still proceed if it clears score >= 75 AND confluence confirmations >= 2.
+
+test("G-13: aligned === false BLOCKS when the setup does NOT clear the elevated quality bar (low score)", () => {
+  // score 70 < 75 elevated floor, even with confluence(2) confirming — still blocked.
+  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false, score: 70 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: aligned === false BLOCKS when score clears 75 but confluence confirmations < 2", () => {
+  const v = evaluateZeroDteGates(
+    input({ flowAccumulationAligned: false, score: 80, confluence: confluence(1) })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: aligned === false does NOT block once score >= 75 AND confluence confirmations >= 2 (elevated quality clears the conflict)", () => {
+  const v = evaluateZeroDteGates(
+    input({ flowAccumulationAligned: false, score: 75, confluence: confluence(2) })
+  );
+  assert.ok(!v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: a missing confluence read cannot satisfy the >=2 confirmation requirement — still blocks even at a high score", () => {
+  // Elevated-quality override requires MEASURED confirmation, not the ordinary G-12
+  // fail-open — absence of a read is not evidence the conflict is resolved.
+  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false, score: 90, confluence: null }));
   assert.equal(v.verdict, "BLOCKED");
   assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
 });
@@ -1844,12 +2163,16 @@ test("G-13 reason names the ACTUAL blocked ticker/direction, not a hardcoded exa
   // example with no interpolation at all — every blocked setup, regardless of its real
   // ticker or direction, rendered that identical sentence (confirmed live: SPXW/SPY/QQQ/NVDA
   // all showed "(MU-long/bearish-acc class)" verbatim on 2026-08-04).
-  const nvda = evaluateZeroDteGates(input({ ticker: "NVDA", direction: "long", flowAccumulationAligned: false }));
+  const nvda = evaluateZeroDteGates(
+    input({ ticker: "NVDA", direction: "long", flowAccumulationAligned: false, score: 60 })
+  );
   const block1 = nvda.blocks.find((b) => b.code === "flow_accumulation_conflict");
   assert.ok(block1?.reason.includes("NVDA-long"), `expected NVDA-long in reason, got: ${block1?.reason}`);
   assert.ok(!block1?.reason.includes("MU-long"), "must not carry the stale hardcoded example ticker");
 
-  const tsla = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", flowAccumulationAligned: false }));
+  const tsla = evaluateZeroDteGates(
+    input({ ticker: "TSLA", direction: "short", flowAccumulationAligned: false, score: 60 })
+  );
   const block2 = tsla.blocks.find((b) => b.code === "flow_accumulation_conflict");
   assert.ok(block2?.reason.includes("TSLA-short"), `expected TSLA-short in reason, got: ${block2?.reason}`);
 });

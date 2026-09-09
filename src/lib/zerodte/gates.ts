@@ -36,7 +36,7 @@ import {
   type GovernorOpenPlan,
   type GovernorSnapshot,
 } from "./governor";
-import { CHASE_PCT, type ContractPlan } from "./plan";
+import { CHASE_PCT, evaluateQuoteValidity, type ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
 import { DIRECTIONAL_LATE_CUTOFF_ET_MINUTES } from "./plan";
 import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws/source-health";
@@ -72,6 +72,29 @@ function envInt(name: string, def: number): number {
 /** Max age of the SPY read the bias came from. A bias computed from bars that
  *  stopped arriving 15+ minutes ago is a memory, not a market state — fail closed. */
 export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
+
+// ── G-20 · Cross-input synchronization/freshness ────────────────────────────────
+// Architecture review 2026-09-09 (operator): G-1's SPY tape bias (fresh if ≤15min,
+// MARKET_BIAS_MAX_AGE_MS above) and G-8/G-9's option quote (fresh if ≤60s,
+// QUOTE_VALIDITY.max_quote_age_ms, ./plan.ts) are each checked for staleness
+// INDIVIDUALLY, but nothing checks whether the two are synchronized WITH EACH OTHER.
+// A quote observed seconds ago combined with a bias read from, say, 12 minutes ago is
+// "fresh" by BOTH individual bounds yet describes two different instants of the
+// market — the operator's framing: "a quote from now combined with an underlying/tape
+// observation from materially earlier can produce a perfectly valid-looking but
+// invalid decision." Scoped identically to G-1 (index ETFs, non-condor only) because
+// that is the only population where the bias is actually consulted directionally —
+// single names bypass G-1 (and therefore this gate) for the same reason already
+// documented there: they trade on their own catalysts, not the SPY tape.
+/** Max allowed skew (ms) between the option quote's own observation instant and the
+ *  SPY bias read it is being judged alongside. FIRST CONSERVATIVE DEFAULT, NOT YET
+ *  CALIBRATED against graded outcomes — same honesty as QUOTE_VALIDITY's own bounds
+ *  ("conservative defaults ... reject only the clearly malformed/untradeable"). Picked
+ *  deliberately WIDE relative to either individual bound (quote ≤60s, bias ≤15min) so
+ *  this only fires on a genuine desync between two already-individually-fresh reads —
+ *  never as a redundant restating of either bound alone. Revisit once the ledger has
+ *  enough input_desync-tagged commits to measure real incidence/outcome. */
+export const INPUT_SYNC_MAX_SKEW_MS = 5 * 60 * 1000;
 
 // ── G-2 · Opening-window block ──────────────────────────────────────────────────
 // USER-AUTHORIZED 2026-07-23 (supersedes the 2026-07-13 "first 15 min only" directive):
@@ -522,6 +545,23 @@ export type ZeroDteGateInput = {
   market_state_confidence?: number | null;
   /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
   max_otm_pct?: number | null;
+  /**
+   * G-23 qualification-to-commit dislocation circuit-breaker inputs. `qualification*` is the
+   * FROZEN underlying price/as-of the setup qualified on (EnrichedZeroDteSetup's
+   * `qualification_underlying_price`/`_as_of`, stamped once in board.ts's enrichSetup — see that
+   * field's doc for why a frozen copy is necessary at all). `current*` is the underlying price/
+   * as-of AT COMMIT TIME — in the ordinary (non-thesis-first) pipeline this is the
+   * live-refreshed `underlying_price`/`underlying_price_as_of` after attachContractPlans has
+   * already run (same ordering board.ts's `otmPct` doc describes); under thesis-first, where
+   * attachContractPlans runs AFTER this gate, `current*` is still pre-refresh on the first pass
+   * and the caller should re-derive + re-apply via {@link refreshQualificationDislocationGateBlocks}
+   * once the refresh has happened, mirroring refreshMoneynessGateBlocks. All four fail OPEN on
+   * null/undefined, same convention as otmPct.
+   */
+  qualificationUnderlyingPrice?: number | null;
+  qualificationUnderlyingPriceAsOfMs?: number | null;
+  currentUnderlyingPrice?: number | null;
+  currentUnderlyingPriceAsOfMs?: number | null;
 };
 
 /** Build chase-exempt context from a gate evaluation input. */
@@ -606,6 +646,36 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         threshold: null,
         unlock_et: null,
       });
+    }
+  }
+
+  // G-20 — cross-input synchronization/freshness. Same scope as G-1 (index ETF, non-condor):
+  // this only matters where the bias is actually consulted directionally against the quote.
+  // FAIL-OPEN on missing data (either timestamp absent) — same "absence is not staleness"
+  // convention as every other conditional gate here (quote age, confluence, VIX/macro
+  // unavailability): a caller/fixture that doesn't supply one or both timestamps is
+  // unaffected, never blocked from an unmeasured factor.
+  if (!isCondor && isIndexEtfG1) {
+    const quoteAgeMs = input.plan?.quoteAgeMs ?? null;
+    // Reconstruct the quote's absolute observation instant the same way it was measured:
+    // nowMs is the SAME wall-clock the live scan passes to both buildContractPlan (which
+    // computed quoteAgeMs) and evaluateZeroDteGates (this call) — see scan.ts's shared `nowMs`.
+    const quoteObservedAtMs = quoteAgeMs != null ? input.nowMs - quoteAgeMs : null;
+    if (quoteObservedAtMs != null && input.biasAsOfMs != null) {
+      const skewMs = Math.abs(quoteObservedAtMs - input.biasAsOfMs);
+      if (skewMs > INPUT_SYNC_MAX_SKEW_MS) {
+        blocks.push({
+          code: "input_desync",
+          reason:
+            `Option quote and SPY tape read are ${Math.round(skewMs / 1000)}s apart — over the ` +
+            `${Math.round(INPUT_SYNC_MAX_SKEW_MS / 1000)}s cross-input sync tolerance. Both are ` +
+            "individually fresh (quote ≤60s, bias ≤15min) but describe different instants of the " +
+            "market — a fresh price read against a stale tape read (or vice versa) can look like a " +
+            "valid setup while describing a market state that no longer exists.",
+          threshold: INPUT_SYNC_MAX_SKEW_MS,
+          unlock_et: null,
+        });
+      }
     }
   }
 
@@ -702,8 +772,10 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // the SPECIFIC replay-measured worst-timed slice of the session (E2's own evidence is about
   // TIMING, not about whether Vector happens to agree), and Vector alignment was never itself
   // measured as curing that early-window effect — it was borrowed verbatim from G-17's own
-  // (now-removed, see the 2026-09-09 G-17 restructure above) Vector exemption predicate.
-  // G-19 still references its own `vectorExemptsG19TopBand` exemption predicate, untouched.
+  // exemption predicate. G-17's OWN Vector exemption (a SEPARATE code path, `single_rail_
+  // corroboration`, further below) is explicitly UNTOUCHED by this change — be precise about
+  // which gate is being read: both G-17 and G-19 still reference `vectorExemptsG17PrimeBand`/
+  // their own exemption predicates; only G-18's block condition drops it.
   if (
     !isCondor &&
     input.nowEtMinutes >= OPENING_WINDOW_UNLOCK_ET_MINUTES &&
@@ -780,19 +852,36 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   }
 
   // G-13 — multi-day flow accumulation direction conflict (aligned === false).
-  if (
-    !isCondor &&
-    ZERODTE_BLOCK_ACCUM_MISALIGN &&
-    input.flowAccumulationAligned === false
-  ) {
-    blocks.push({
-      code: "flow_accumulation_conflict",
-      reason:
-        "Multi-day options flow accumulation opposes this setup's direction — " +
-        `the stacked positioning read disagrees with the ${input.ticker}-${input.direction} commit.`,
-      threshold: null,
-      unlock_et: null,
-    });
+  // DOWNGRADED from unconditional hard block to an ELEVATED QUALITY REQUIREMENT
+  // (2026-09-09, operator-approved CTO gate-architecture review): a setup whose
+  // stacked positioning opposes its direction can still proceed if it clears a HIGHER
+  // bar than the ordinary commit floors — score >= 75 (the same PRIME band G-17/G-18
+  // already use elsewhere in this stack) AND confluence confirmations >= 2 (reusing
+  // g12ConfirmationCount, the exact G-12 leg count — not a new metric). The conflict
+  // stays fully visible in the block reason/telemetry even when it doesn't block, so
+  // the disagreement is never silently hidden by a strong score. ZERODTE_BLOCK_ACCUM_MISALIGN
+  // remains the on/off flag for the WHOLE mechanism (both the block and the elevated-
+  // quality check it now gates) — set it false to disable G-13 entirely.
+  //
+  // A missing confluence read cannot itself satisfy the >=2 confirmation requirement:
+  // this is an ELEVATED bar being asked to override a real, measured conflict signal,
+  // not G-12's own ordinary fail-open (which never manufactures a block from an
+  // unmeasured factor) — the absence of measurement here is not evidence of agreement.
+  if (!isCondor && ZERODTE_BLOCK_ACCUM_MISALIGN && input.flowAccumulationAligned === false) {
+    const confirmCount = input.confluence != null ? g12ConfirmationCount(input.confluence, input.ticker) : 0;
+    const clearsElevatedQuality = input.score >= 75 && confirmCount >= 2;
+    if (!clearsElevatedQuality) {
+      blocks.push({
+        code: "flow_accumulation_conflict",
+        reason:
+          "Multi-day options flow accumulation opposes this setup's direction — " +
+          `the stacked positioning read disagrees with the ${input.ticker}-${input.direction} commit ` +
+          `(score ${Math.round(input.score)}, ${confirmCount} confluence confirmations — needs >=75 ` +
+          "score AND >=2 confirmations to override a stacked-positioning conflict).",
+        threshold: 75,
+        unlock_et: null,
+      });
+    }
   }
 
   // ── Moneyness re-check (live-refreshed underlying) — P0 fix, 2026-08-27 ─────────────────
@@ -807,6 +896,20 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   blocks.push(
     ...moneynessGateBlocks(input.otmPct, isCondor, {
       maxOtmPct: input.max_otm_pct ?? null,
+    })
+  );
+
+  // ── G-23 — qualification-to-commit dislocation circuit-breaker ──────────────────────────
+  // See the module doc above qualificationDislocationGateBlocks for the full distinction from
+  // G-8 (no-chase) and the moneyness re-check just above.
+  blocks.push(
+    ...qualificationDislocationGateBlocks({
+      qualificationPrice: input.qualificationUnderlyingPrice ?? null,
+      qualificationAsOfMs: input.qualificationUnderlyingPriceAsOfMs ?? null,
+      currentPrice: input.currentUnderlyingPrice ?? null,
+      currentAsOfMs: input.currentUnderlyingPriceAsOfMs ?? null,
+      quote: input.plan ? { bid: input.plan.bid, ask: input.plan.ask, mark: input.plan.mark } : null,
+      isCondor,
     })
   );
 
@@ -1423,6 +1526,185 @@ export function refreshMoneynessGateBlocks(
   };
 }
 
+// ── G-23 · Qualification-to-commit price dislocation / circuit-breaker ──────────────────
+// Architecture review 2026-09-09: a setup can pass the evidence gates (board.ts's
+// deriveZeroDteSetups) at one underlying price/moment and then reach COMMIT (this file's
+// evaluateZeroDteGates) minutes later against a market that has moved violently in between —
+// a fast spike/crash, a temporary feed glitch, or a crossed/unstable book. The thesis that
+// justified the setup (a specific strike distance, a specific premium, a specific tape read)
+// can be stale by the time it actually commits, even though every OTHER gate in the stack
+// still reads clean.
+//
+// This is DISTINCT from the two existing checks that look similar, confirmed by reading both:
+//   • G-8 no-chase (planQualityGateBlocks/CHASE_PCT above, plan.ts) compares the LIVE MARK to
+//     the flow PRINT's own fill price — it is anchored to what the smart-money tape paid, not
+//     to the moment this candidate qualified, and it never re-examines the UNDERLYING at all
+//     (a mispriced/illiquid option can pass G-8 while the underlying itself has gapped).
+//   • The moneyness re-check (moneynessGateBlocks above, P0 fix 2026-08-27) re-tests otm_pct
+//     against the SAME static ITM/OTM caps board.ts already applied once — it only asks "where
+//     did the strike distance END UP", never "how fast did it get there". A 3% underlying move
+//     over 20 minutes and a 3% move in 90 seconds can land at an IDENTICAL final otm_pct and
+//     therefore read identically to that gate — but they are different risk profiles (normal
+//     intraday drift vs a violent dislocation the original thesis never priced in). Neither
+//     existing gate has a time dimension; this one is built specifically to have one.
+//
+// Two independent trigger conditions, either one blocks a FRESH commit:
+//   (1) MAGNITUDE + VELOCITY: the underlying moved >= QUALIFICATION_DISLOCATION_MAX_PCT since
+//       qualification, AND that move happened inside QUALIFICATION_DISLOCATION_WINDOW_MS. Both
+//       conditions must hold — a large move over a long window is ordinary drift (already priced
+//       by the moneyness re-check if it pushed past a strike cap); a small move in a short window
+//       is noise. Only the combination — fast AND large — is the abnormal case this gate targets.
+//   (2) CROSSED/LOCKED BOOK: the contract's live quote is crossed (bid > ask) or locked
+//       (bid == ask) at commit time. Reuses evaluateQuoteValidity (plan.ts) rather than
+//       reinventing the predicate — same function G-9's plan_quote_invalid already calls via
+//       buildContractPlan's quote_invalid_reason. This IS already blocked by G-9 whenever a plan
+//       exists at eval time (deliberately redundant there — a genuinely crossed/unstable book is
+//       exactly the "market state invalidates the thesis" case this circuit-breaker exists to
+//       catch, so it is asserted here too rather than assumed covered by a sibling gate); it adds
+//       real coverage in the thesis-first pipeline, where G-8/G-9 are deferred
+//       (deferPlanQualityGates) until refreshPlanQualityGateBlocks re-applies them later — this
+//       check runs unconditionally whenever a plan is already attached, closing the same gap in
+//       the same style as refreshMoneynessGateBlocks/refreshPlanQualityGateBlocks below.
+//
+// Config-gated, conservative defaults (same discipline as every other threshold in this file):
+// 1.5% is well past normal 0DTE-hours intraday noise (the moneyness caps themselves tolerate a
+// 12-16% OTM band and a 2% ITM band — this is a much tighter, SPEED-gated trigger, not a
+// replacement for those), and 5 minutes is short enough that only a genuinely fast dislocation —
+// not an ordinary multi-minute drift — can trip it. Both are env-overridable so the ledger can
+// tune them without a deploy, mirroring CHASE_PCT/QUOTE_VALIDITY above.
+export const QUALIFICATION_DISLOCATION_MAX_PCT = envInt("ZERODTE_QUALIFICATION_DISLOCATION_MAX_PCT", 1.5);
+export const QUALIFICATION_DISLOCATION_WINDOW_MS = envInt(
+  "ZERODTE_QUALIFICATION_DISLOCATION_WINDOW_MS",
+  5 * 60 * 1000
+);
+
+/**
+ * G-23 pure predicate — reused by evaluateZeroDteGates below and unit-tested directly.
+ * Fails OPEN (returns no blocks) whenever the qualification-time snapshot, the current
+ * snapshot, or either timestamp is missing/non-finite — this is a SUPPLEMENTARY circuit-
+ * breaker layered on top of the evidence gates' own fail-closed no_underlying_price check,
+ * not a replacement for it; a caller that simply doesn't supply qualification data (tests,
+ * fixtures, a setup enrichSetup never touched) sees zero behavior change, same convention as
+ * otmPct/vixDayOpen/macroEvents above.
+ */
+export function qualificationDislocationGateBlocks(input: {
+  qualificationPrice: number | null | undefined;
+  qualificationAsOfMs: number | null | undefined;
+  currentPrice: number | null | undefined;
+  currentAsOfMs: number | null | undefined;
+  /** Live quote at commit time (from the attached ContractPlan) — undefined/null when no plan
+   *  has attached yet (e.g. thesis-first's first pass); the crossed/locked trigger simply does
+   *  not fire in that case, same as G-9 with no plan. */
+  quote?: { bid: number | null; ask: number | null; mark: number | null } | null;
+  isCondor: boolean;
+  maxPct?: number;
+  maxWindowMs?: number;
+}): ZeroDteGateBlock[] {
+  const blocks: ZeroDteGateBlock[] = [];
+  const maxPct =
+    input.maxPct != null && Number.isFinite(input.maxPct) && input.maxPct > 0
+      ? input.maxPct
+      : QUALIFICATION_DISLOCATION_MAX_PCT;
+  const maxWindowMs =
+    input.maxWindowMs != null && Number.isFinite(input.maxWindowMs) && input.maxWindowMs > 0
+      ? input.maxWindowMs
+      : QUALIFICATION_DISLOCATION_WINDOW_MS;
+
+  // ── Trigger 1: magnitude + velocity ──────────────────────────────────────────────
+  const qp = input.qualificationPrice;
+  const cp = input.currentPrice;
+  const qAt = input.qualificationAsOfMs;
+  const cAt = input.currentAsOfMs;
+  if (
+    qp != null &&
+    Number.isFinite(qp) &&
+    qp > 0 &&
+    cp != null &&
+    Number.isFinite(cp) &&
+    cp > 0 &&
+    qAt != null &&
+    Number.isFinite(qAt) &&
+    cAt != null &&
+    Number.isFinite(cAt)
+  ) {
+    const elapsedMs = cAt - qAt;
+    // elapsedMs <= 0 means the "current" snapshot is not actually newer than qualification
+    // (clock skew, or the two timestamps were never meant to be compared) — never manufacture
+    // a dislocation from a non-positive window, same "fail toward the KNOWN" discipline
+    // refreshUnderlyingFromLiveSpot uses for its own observed-at guard.
+    if (elapsedMs > 0 && elapsedMs <= maxWindowMs) {
+      const movePct = Math.abs((cp - qp) / qp) * 100;
+      if (movePct >= maxPct) {
+        const minutes = elapsedMs / 60_000;
+        blocks.push({
+          code: "qualification_dislocation",
+          reason:
+            `Underlying moved ${movePct.toFixed(2)}% in ${minutes.toFixed(1)} min since this setup ` +
+            `qualified — past the ${maxPct}%/${(maxWindowMs / 60_000).toFixed(0)}-min dislocation ` +
+            "circuit-breaker; the thesis this setup qualified on may no longer hold.",
+          threshold: maxPct,
+          unlock_et: null,
+        });
+      }
+    }
+  }
+
+  // ── Trigger 2: crossed/locked book at commit time ────────────────────────────────
+  // CONDOR is delta-neutral across 4 legs priced by condor.ts's own liquidity gate
+  // (condorLiquidityGateBlocks) — this single-quote predicate does not apply to it, same
+  // short-circuit moneynessGateBlocks uses for the same reason.
+  if (!input.isCondor && input.quote) {
+    const reason = evaluateQuoteValidity({
+      bid: input.quote.bid,
+      ask: input.quote.ask,
+      mark: input.quote.mark,
+    });
+    if (reason === "crossed" || reason === "locked") {
+      blocks.push({
+        code: "qualification_dislocation",
+        reason:
+          `Contract quote is ${reason} at commit time (bid/ask book is ` +
+          `${reason === "crossed" ? "impossible" : "zero-width"}) — an unstable book fails a fresh commit closed (G-23).`,
+        threshold: null,
+        unlock_et: null,
+      });
+    }
+  }
+
+  return blocks;
+}
+
+const QUALIFICATION_DISLOCATION_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "qualification_dislocation",
+]);
+
+/** Re-apply G-23 after a deferred (thesis-first) contract-plan attach (scan.ts) — mirrors
+ *  refreshMoneynessGateBlocks/refreshPlanQualityGateBlocks exactly, needed for the same reason:
+ *  thesis-first defers attachContractPlans (and therefore both the live underlying refresh and
+ *  the live quote) until AFTER evaluateZeroDteGates has already run once with stale/absent
+ *  current-side inputs. */
+export function refreshQualificationDislocationGateBlocks(
+  gate: ZeroDteGateVerdict,
+  input: {
+    qualificationPrice: number | null | undefined;
+    qualificationAsOfMs: number | null | undefined;
+    currentPrice: number | null | undefined;
+    currentAsOfMs: number | null | undefined;
+    quote?: { bid: number | null; ask: number | null; mark: number | null } | null;
+    isCondor: boolean;
+    maxPct?: number;
+    maxWindowMs?: number;
+  }
+): ZeroDteGateVerdict {
+  const rest = gate.blocks.filter((b) => !QUALIFICATION_DISLOCATION_GATE_CODES.has(b.code));
+  const blocks = [...rest, ...qualificationDislocationGateBlocks(input)];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
 const PLAN_QUALITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
   "plan_no_quote",
   "plan_moved",
@@ -1808,6 +2090,11 @@ export function gateRejectionFor(
   return {
     ticker: setup.ticker,
     gate_failed: primary.code,
+    // Every failing code, not just the primary one — see the field's own doc comment
+    // (board.ts) for why: primary-only made unique/redundant-rejection and gate-ablation
+    // analysis impossible to compute from history (a setup that failed both G-1 and G-12
+    // only ever recorded whichever evaluated first).
+    blocks: verdict && verdict.blocks.length > 0 ? verdict.blocks.map((b) => b.code) : [primary.code],
     reason: verdict && verdict.blocks.length > 0
       ? verdict.blocks.map((b) => b.reason).join(" ")
       : primary.reason,
