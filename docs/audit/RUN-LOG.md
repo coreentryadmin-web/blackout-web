@@ -11,6 +11,22 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-09 (15:33 UTC / Wed 2026-09-09 11:33 ET) — [SEO] RTH wake: gamma-snapshot re-checked, liveness holds
+
+**Severity.** — (no defect found)
+
+Still market open, same trading day already confirmed this morning. No homepage-affecting commits
+since this morning's live-data CLS measurement (0.0299 GOOD; `git log 5e63554e6..origin/main --
+src/app/page.tsx src/components/home` empty) — that measurement stands, not re-purging
+redundantly. Re-polled `/api/public/gex-snapshot?ticker=SPX` twice ~6s apart: `spot` ticking
+(7634.64 → 7635.06), `session: OPEN`, `degraded: false`, low staleness. `put_wall` moved 7500 →
+7630 since this morning's check — further confirms wall levels genuinely update through the
+session, not just spot. `flip` still `null`, consistent with the short-gamma regime observed all
+week.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-09 (14:11 UTC) — [SEO] Daily growth cycle: no new opportunity, quiet day
 
 **Severity.** — (no defect found)
