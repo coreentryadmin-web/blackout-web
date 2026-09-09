@@ -79,3 +79,14 @@ test("computeLaneRank: disambiguates same-ticker WATCH rows by contract", () => 
   assert.equal(snap!.rank, 2, "110C ranks second behind 115C — ticker-only match would wrongly rank #1");
   assert.equal(snap!.playScore, 40);
 });
+
+test("computeLaneRank: deltaFromMedian is rounded, not a raw float subtraction artifact", () => {
+  const lanes = [row("NRG", 45.4, "COMMIT"), row("CRWD", 70, "COMMIT")];
+  const snap = computeLaneRank(play({ ticker: "AMZN", score: 57.2, status: "WATCH" }), [
+    row("AMZN", 57.2, "WATCH"),
+    row("FSLR", 45.4, "WATCH"),
+  ]);
+  assert.ok(snap);
+  // Live repro (AMZN brief, 2026-09-09): 57.2 - 45.4 === 11.800000000000004 in raw IEEE754 math.
+  assert.equal(snap!.deltaFromMedian, 11.8, "must round to 1dp, not leak 11.800000000000004 into the narrative");
+});
