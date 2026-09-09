@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   buildContractPlan,
   evaluateQuoteValidity,
+  evaluateContractLiquidity,
   gradePlanExecutableFromBars,
   gradePlanFromBars,
   DIRECTIONAL_LATE_CUTOFF_ET_MINUTES,
@@ -243,7 +244,8 @@ test("buildContractPlan: illiquidSpreadPct override widens G-9 cap", () => {
 // ════════════════════════════════════════════════════════════════════════════════════
 // evaluateQuoteValidity — every fail-closed QuoteInvalidReason + the valid pass.
 // Checked most-degenerate-first: zero_bid → crossed → locked → mark_out_of_band →
-// wide_dollars → thin_size → stale.
+// wide_dollars → stale. (thin_size moved to evaluateContractLiquidity/G-21 — see its
+// own test block below, part of the 2026-09-09 G-9/G-21 split.)
 // ════════════════════════════════════════════════════════════════════════════════════
 
 test("evaluateQuoteValidity: a clean two-sided book returns null (valid → committable)", () => {
@@ -282,14 +284,41 @@ test("evaluateQuoteValidity: wide_dollars — an absolutely-huge spread the % ch
   assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 6.0, mark: 3.0 }), null);
 });
 
-test("evaluateQuoteValidity: thin_size — enforced ONLY when the provider reports both sizes", () => {
-  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 0, askSize: 5 }), "thin_size");
-  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 5, askSize: 0 }), "thin_size");
-  // Absent size is NOT proof of illiquidity → not enforced.
-  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: null, askSize: 5 }), null);
+test("evaluateQuoteValidity: no longer accepts/enforces size — that moved to evaluateContractLiquidity (G-21)", () => {
+  // A well-formed quote passes G-9 regardless of size — size is exclusively G-21's concern now.
   assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1 }), null);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// evaluateContractLiquidity (G-21, 2026-09-09 split) — thin_size + no_volume_or_oi, both
+// conditional-on-availability (absence of a field is never treated as proof of illiquidity).
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("evaluateContractLiquidity: thin_size — enforced ONLY when the provider reports BOTH sizes", () => {
+  assert.equal(evaluateContractLiquidity({ bidSize: 0, askSize: 5 }), "thin_size");
+  assert.equal(evaluateContractLiquidity({ bidSize: 5, askSize: 0 }), "thin_size");
+  // Absent size is NOT proof of illiquidity → not enforced.
+  assert.equal(evaluateContractLiquidity({ bidSize: null, askSize: 5 }), null);
+  assert.equal(evaluateContractLiquidity({}), null);
   // At the floor is fine.
-  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 1, askSize: 1 }), null);
+  assert.equal(evaluateContractLiquidity({ bidSize: 1, askSize: 1 }), null);
+});
+
+test("evaluateContractLiquidity: no_volume_or_oi — enforced ONLY when BOTH volume and OI are reported, and BOTH are below the floor", () => {
+  assert.equal(evaluateContractLiquidity({ openInterest: 0, dayVolume: 0 }), "no_volume_or_oi");
+  // Either one alone clearing the floor is enough real activity.
+  assert.equal(evaluateContractLiquidity({ openInterest: 5, dayVolume: 0 }), null);
+  assert.equal(evaluateContractLiquidity({ openInterest: 0, dayVolume: 5 }), null);
+  // Absent field(s) are NOT proof of illiquidity → not enforced.
+  assert.equal(evaluateContractLiquidity({ openInterest: 0, dayVolume: null }), null);
+  assert.equal(evaluateContractLiquidity({}), null);
+});
+
+test("evaluateContractLiquidity: a clean, well-sized, active contract returns null", () => {
+  assert.equal(
+    evaluateContractLiquidity({ bidSize: 10, askSize: 10, openInterest: 500, dayVolume: 200 }),
+    null
+  );
 });
 
 test("evaluateQuoteValidity: stale — enforced ONLY when a quote age is supplied, boundary at the cap is fresh", () => {

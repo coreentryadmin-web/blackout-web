@@ -197,7 +197,7 @@ test("collectBriefUnavailableSources: prior-session 0DTE surfaces in unavailable
   );
 });
 
-test("collectBriefUnavailableSources: prior-session Night Hawk surfaces in unavailableSources (Largo C3)", () => {
+test("collectBriefUnavailableSources: prior-session Night Hawk Legacy surfaces in unavailableSources (Largo C3/C4)", () => {
   const ctx = {
     sessionDate: "2026-09-06",
     ecosystem: {
@@ -215,7 +215,7 @@ test("collectBriefUnavailableSources: prior-session Night Hawk surfaces in unava
   assert.ok(
     sources.some(
       (s) =>
-        s.source === "Night Hawk swings" &&
+        s.source === "Night Hawk Legacy" &&
         s.reason === "prior session (2026-09-05) — today's edition not yet run",
     ),
   );
@@ -596,7 +596,7 @@ test("collectBriefUnavailableSources: CLOSED play suppresses live-desk-freshness
   assert.ok(!sources.some((s) => s.source === "open book"));
   assert.ok(!sources.some((s) => s.source === "swing discovery scan"));
   assert.ok(!sources.some((s) => s.source === "0DTE Command"));
-  assert.ok(!sources.some((s) => s.source === "Night Hawk swings"));
+  assert.ok(!sources.some((s) => s.source === "Night Hawk Legacy"));
   assert.ok(!sources.some((s) => s.source === "option mark"));
 });
 

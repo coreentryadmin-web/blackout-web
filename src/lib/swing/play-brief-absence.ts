@@ -361,10 +361,23 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // (#4427), but consumers reading unavailableSources alone still saw nothing wrong (C3 gap). Same
   // not-applicable-once-CLOSED reasoning as the discovery-scan/0DTE checks above — this is the
   // exact chip the user's live bug report screenshot showed on a CLOSED AAPL play.
+  //
+  // SOURCE LABEL — must say "Legacy", never "swings" (Largo C4 identity, fixed 2026-09-09).
+  // `ctx.ecosystem.nighthawk_recent` is read from `nighthawk_play_outcomes` (db.ts), which is
+  // Night Hawk LEGACY's next-day evening-edition table (`edition_for` + `next_day_open/close` +
+  // "Legacy Chief Trade Alert Bot live state" — see the table's own column comments in db.ts).
+  // It has nothing to do with the live Swing board this very brief is FOR — that board's own
+  // staleness is already reported separately, correctly, as `"swing discovery scan"` a few lines
+  // above. The original fix (#staged 2026-09-07, BO-P2-largo-nighthawk-unavailable-c3) labeled
+  // this row "Night Hawk swings", which — read inside a Night Hawk SWINGS play-brief — says "our
+  // own board is stale" when it actually means "the separate Legacy digest hasn't published
+  // today's edition yet". That is exactly the C4 violation the product contract calls out (SPX
+  // vs SPY): a plausible-looking wrong identity is worse than an obviously-missing one, and it
+  // reaches Largo verbatim as this string, so the model would reason about it as the wrong product.
   const nh = ctx.ecosystem?.nighthawk_recent;
   if (!isClosed && nh && ctx.sessionDate && nh.edition_for !== ctx.sessionDate) {
     out.push({
-      source: "Night Hawk swings",
+      source: "Night Hawk Legacy",
       reason: `prior session (${nh.edition_for}) — today's edition not yet run`,
     });
   }
