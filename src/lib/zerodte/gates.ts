@@ -538,6 +538,20 @@ export function planChaseContextFromGateInput(input: ZeroDteGateInput): PlanChas
   };
 }
 
+/** G-17's 70-74 conditional band (below) needs "every other execution/safety gate clean" —
+ *  G-8/G-9 (quote quality) and G-21 (contract liquidity/depth). Named here, not inline, so
+ *  the set is a single place to extend when a future execution/safety gate (e.g. G-23) is
+ *  added. */
+const EXECUTION_SAFETY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "plan_no_quote",
+  "plan_moved",
+  "plan_illiquid",
+  "plan_quote_stale",
+  "plan_quote_invalid",
+  "plan_thin_size",
+  "plan_no_volume_or_oi",
+]);
+
 /**
  * Evaluate the hard gate stack for ONE fresh (not-yet-committed) setup.
  * Deterministic: same inputs, same verdict. Collects every failing gate.
