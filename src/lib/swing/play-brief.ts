@@ -38,10 +38,22 @@ function fmtPct(n: number | null | undefined, digits = 1): string {
   return `${sign}${n.toFixed(digits)}%`;
 }
 
+/**
+ * Format an ABSOLUTE premium price ($ per contract) — entry, mark, and the exit-policy's
+ * stop/target rail levels. All four call sites (below) are prices, never signed deltas, so
+ * this must never carry a "+"/"-" prefix.
+ *
+ * BUG FIXED 2026-09-09 (live repro on NN, position #32): this used to be `n >= 0 ? "+" : ""`,
+ * a signed-delta formatter borrowed for an absolute price. A premium price is never negative
+ * to begin with, so every open swing brief rendered "Entry: **+$1.95**" / "Mark: **+$1.35**"
+ * regardless of whether the position was up or down — and worse, "Rails: stop +$0.78" put a
+ * "+" on the STOP-LOSS trigger price, which reads as a gain when hitting it is a ~60% loss.
+ * `play-brief-intel.ts` already has the correct sign-free formatter for other absolute price
+ * levels (GEX walls, spot); this brings play-brief.ts's copy in line with it.
+ */
 function fmtUsd(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}$${n.toFixed(2)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 function biasFromDirection(dir: string): BieBias {
