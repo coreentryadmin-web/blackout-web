@@ -93,8 +93,33 @@ export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
  *  deliberately WIDE relative to either individual bound (quote ≤60s, bias ≤15min) so
  *  this only fires on a genuine desync between two already-individually-fresh reads —
  *  never as a redundant restating of either bound alone. Revisit once the ledger has
- *  enough input_desync-tagged commits to measure real incidence/outcome. */
+ *  enough input_desync-tagged commits to measure real incidence/outcome. Also reused
+ *  (deliberately — see the broadening note below) as the tolerance for the second,
+ *  option-vs-underlying G-20 leg. */
 export const INPUT_SYNC_MAX_SKEW_MS = 5 * 60 * 1000;
+
+// ── G-20 broadening · option quote vs its OWN underlying quote ──────────────────
+// Architecture review 2026-09-09, item 10: the leg above only covers index/ETF setups,
+// because it is a desync check against the SPY TAPE BIAS — a read that only exists for
+// (and is only consulted directionally on) index/ETF setups, mirroring G-1's own scoping.
+// That leaves a SEPARATE, genuinely distinct data-integrity gap uncovered: whether THIS
+// name's option quote and THIS SAME name's own underlying quote were observed at
+// (approximately) the same instant. This has nothing to do with SPY at all — a single
+// name's option premium is priced off its own underlying, so if the option quote is fresh
+// (say, just re-fetched via a fallback path) but the underlying price it is being judged
+// against is a stale flow-print value that scan.ts's attachContractPlans never got a
+// chance to refresh (refreshUnderlyingFromLiveSpot only updates it when the live batch
+// snapshot actually returns a usable underlying/as-of — see that function's own doc), the
+// otm_pct/chase/dislocation math is silently comparing two different moments of the same
+// name, even though each timestamp is individually "fresh" by its own bound. Unlike the
+// leg above, this one applies to EVERY directional setup — index/ETF AND single name
+// alike — because every setup, regardless of ticker, has both an option quote and an
+// underlying quote that can desync from each other independently of the SPY tape. Uses
+// the SAME tolerance (INPUT_SYNC_MAX_SKEW_MS) as the sibling leg above: one G-20 concept,
+// two independently-scoped checks, sharing a conservative not-yet-calibrated bound until
+// the ledger has evidence to split them. Distinct block CODE (`input_desync_underlying`,
+// board.ts) so the two legs stay separable in telemetry/rejection logs even though they
+// share a tolerance constant.
 
 // ── G-2 · Opening-window block ──────────────────────────────────────────────────
 // USER-AUTHORIZED 2026-07-23 (supersedes the 2026-07-13 "first 15 min only" directive):
@@ -442,6 +467,15 @@ export type ZeroDteGateInput = {
   bias: MarketBias | null;
   /** Epoch-ms of the newest SPY bar behind `bias` (IntradayRead.last_bar_ms). */
   biasAsOfMs: number | null;
+  /** G-20 broadening (item 10): the underlying's OWN live-quote observation instant —
+   *  epoch-ms of the same snapshot fetch that (when it succeeds) refreshes
+   *  `underlying_price`/`underlying_price_as_of` in scan.ts's attachContractPlans
+   *  (refreshUnderlyingFromLiveSpot). Compared against the option quote's own observation
+   *  instant (reconstructed the same way as the sibling SPY-tape leg: `nowMs -
+   *  input.plan.quoteAgeMs`) for EVERY directional setup, not just index/ETF — see the
+   *  module doc above INPUT_SYNC_MAX_SKEW_MS. Null/undefined = unknown → fails OPEN, same
+   *  "absence is not staleness" convention as biasAsOfMs/otmPct/vixDayOpen above. */
+  underlyingQuoteAsOfMs?: number | null;
   /** G-5 session state (./governor.ts). Null = state unreadable → fail closed. */
   governor: GovernorSnapshot | null;
   /** Fresh commits already accepted earlier in this same scan cycle — feeds the
@@ -691,6 +725,23 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
       }
     }
   }
+
+  // G-20 broadening (item 10) — option quote vs its OWN underlying quote. DIRECTIONAL ONLY
+  // (mirrors the moneyness re-check's own condor scoping — a condor's tradeability is judged
+  // by its own 4-leg liquidity gate, not a single option-vs-underlying comparison), but
+  // UNLIKE the SPY-tape leg above, NOT restricted to index/ETF — every directional setup has
+  // its own option quote and its own underlying quote to desync. Pure pass-through to
+  // inputDesyncUnderlyingGateBlocks, also exported standalone so scan.ts can re-run it after a
+  // deferred (thesis-first) contract-plan attach via refreshInputDesyncUnderlyingGateBlocks
+  // below, mirroring refreshMoneynessGateBlocks.
+  blocks.push(
+    ...inputDesyncUnderlyingGateBlocks({
+      plan: input.plan ?? null,
+      underlyingQuoteAsOfMs: input.underlyingQuoteAsOfMs ?? null,
+      nowMs: input.nowMs,
+      isCondor,
+    })
+  );
 
   // G-2 — opening window (block the worst first 30 min, unlock 10:00 ET — user-authorized
   // 2026-07-23, see the constant's doc). Clock-based, so the block self-expires: the card
@@ -1535,6 +1586,74 @@ export function refreshMoneynessGateBlocks(
 ): ZeroDteGateVerdict {
   const rest = gate.blocks.filter((b) => !MONEYNESS_GATE_CODES.has(b.code));
   const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor, opts)];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
+// ── G-20 broadening · option-vs-underlying quote sync (item 10) ─────────────────────────
+// See the module doc above INPUT_SYNC_MAX_SKEW_MS / ZeroDteGateInput.underlyingQuoteAsOfMs
+// for the full rationale. Pure predicate — SIBLING to moneynessGateBlocks/
+// qualificationDislocationGateBlocks, same shape: called directly inside
+// evaluateZeroDteGates AND re-run standalone by refreshInputDesyncUnderlyingGateBlocks below
+// once a deferred (thesis-first) contract-plan attach has actually populated `plan`/
+// `underlyingQuoteAsOfMs`.
+export function inputDesyncUnderlyingGateBlocks(input: {
+  /** The attached contract plan (carries quoteAgeMs) — null/undefined on a setup with no
+   *  plan yet (evidence-only, or thesis-first's first pass) → fails OPEN, same as the
+   *  sibling SPY-tape leg. */
+  plan: ContractPlan | null | undefined;
+  /** The underlying's own live-quote observation instant (epoch-ms). Null/undefined →
+   *  fails OPEN. */
+  underlyingQuoteAsOfMs: number | null | undefined;
+  /** Wall clock used to reconstruct the option quote's absolute observation instant from
+   *  `plan.quoteAgeMs` — same reconstruction the sibling SPY-tape leg uses. */
+  nowMs: number;
+  isCondor: boolean;
+}): ZeroDteGateBlock[] {
+  if (input.isCondor) return [];
+  const quoteAgeMs = input.plan?.quoteAgeMs ?? null;
+  const quoteObservedAtMs = quoteAgeMs != null ? input.nowMs - quoteAgeMs : null;
+  if (quoteObservedAtMs == null || input.underlyingQuoteAsOfMs == null) return [];
+  const skewMs = Math.abs(quoteObservedAtMs - input.underlyingQuoteAsOfMs);
+  if (skewMs <= INPUT_SYNC_MAX_SKEW_MS) return [];
+  return [
+    {
+      code: "input_desync_underlying",
+      reason:
+        `Option quote and its own underlying quote are ${Math.round(skewMs / 1000)}s apart — ` +
+        `over the ${Math.round(INPUT_SYNC_MAX_SKEW_MS / 1000)}s cross-input sync tolerance. ` +
+        "Independent of any SPY tape read: the option premium and the underlying price it is " +
+        "being priced/gated against describe different instants of this name's own market — " +
+        "the otm_pct/chase/dislocation math downstream may be judging a stale pairing.",
+      threshold: INPUT_SYNC_MAX_SKEW_MS,
+      unlock_et: null,
+    },
+  ];
+}
+
+const INPUT_DESYNC_UNDERLYING_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "input_desync_underlying",
+]);
+
+/** Re-apply the G-20 option-vs-underlying leg after a deferred (thesis-first) contract-plan
+ *  attach (scan.ts) — mirrors refreshMoneynessGateBlocks exactly. Needed because thesis-first
+ *  defers attachContractPlans (and therefore both the live plan's quoteAgeMs and the live
+ *  underlyingQuoteAsOfMs refresh) until AFTER evaluateZeroDteGates has already run once with a
+ *  null plan / stale underlying-as-of. */
+export function refreshInputDesyncUnderlyingGateBlocks(
+  gate: ZeroDteGateVerdict,
+  input: {
+    plan: ContractPlan | null | undefined;
+    underlyingQuoteAsOfMs: number | null | undefined;
+    nowMs: number;
+    isCondor: boolean;
+  }
+): ZeroDteGateVerdict {
+  const rest = gate.blocks.filter((b) => !INPUT_DESYNC_UNDERLYING_GATE_CODES.has(b.code));
+  const blocks = [...rest, ...inputDesyncUnderlyingGateBlocks(input)];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
