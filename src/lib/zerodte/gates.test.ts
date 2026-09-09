@@ -513,23 +513,23 @@ test("G-4: normal VIX (<17) commits freely, calibration tier logged", () => {
   assert.equal(normal.calibration.g4_vix.would_block, false);
 });
 
-test("G-4: elevated VIX tape-aligned score 65–74 commits (G-1 already blocks counter-tape)", () => {
-  // G-17 (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also applies at
-  // score 70 with no discovery_origin set here — this test is about G-4's OWN floor, so check
-  // vix_elevated specifically clears rather than the overall verdict.
+test("G-4 CANONICALIZED (2026-09-09): elevated VIX + tape-aligned score 70 (<75) now BLOCKS — no tape-alignment relief", () => {
+  // Pre-canonicalization this cleared at the standard 65 floor when tape-aligned. The
+  // canonical rule removes that relief: VIX >= 17 requires score >= 75 for EVERY ticker,
+  // full stop, regardless of G-1 tape alignment.
   const aligned = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70 }));
-  assert.ok(!aligned.blocks.some((b) => b.code === "vix_elevated"));
-  assert.equal(aligned.calibration.g4_vix.would_block, false);
+  assert.ok(aligned.blocks.some((b) => b.code === "vix_elevated"));
+  assert.equal(aligned.calibration.g4_vix.would_block, true);
 });
 
-test("G-4: elevated VIX with flat tape uses the standard 65 floor (flat = no directional opposition)", () => {
-  // Flat tape clears G-1 (no counter-tape fight), so the elevated regime keeps the 65 floor.
-  // (G-17 also applies at this score with no discovery_origin — check vix_elevated, not overall verdict.)
+test("G-4 CANONICALIZED: elevated VIX + flat tape at score 70 (<75) also BLOCKS — flat gets no relief either", () => {
+  // Flat tape used to keep the standard 65 floor; the canonical rule applies the uniform
+  // 75 floor regardless of tape state (flat, aligned, counter, or unknown all behave alike).
   const flat70 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70, bias: "flat" }));
-  assert.ok(!flat70.blocks.some((b) => b.code === "vix_elevated"));
+  assert.ok(flat70.blocks.some((b) => b.code === "vix_elevated"));
   assert.equal(flat70.calibration.g4_vix.tier, "elevated");
-  assert.equal(flat70.calibration.g4_vix.would_block, false);
-  // Null bias (unknown tape — stale or unavailable) still requires 75 (belt-and-suspenders).
+  assert.equal(flat70.calibration.g4_vix.would_block, true);
+  // Null bias (unknown tape) behaves identically now — no separate treatment.
   const null64 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 64, bias: null }));
   assert.equal(null64.verdict, "BLOCKED");
   assert.equal(null64.blocks.some((b) => b.code === "vix_elevated"), true);
@@ -574,24 +574,22 @@ test("G-4 fail-closed: attempted-but-unavailable VIX blocks a fresh NON-index co
   assert.match(v.blocks.find((b) => b.code === "vix_unavailable")!.reason, /VIX read unavailable/);
 });
 
-test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF whose score clears the elevated floor (no spurious empty)", () => {
-  // QQQ (index) tape-aligned short at 80 ≥ 75: no present VIX regime could have blocked it,
+test("G-4 fail-closed CANONICALIZED: unavailable VIX does NOT block an index/ETF whose score clears the uniform 75 floor", () => {
+  // QQQ (index) short at 80 ≥ 75: no present VIX regime could have blocked it,
   // so an unavailable VIX must not either.
   const strong = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 80, vixDayOpen: null, vixUnavailable: true }));
   assert.equal(strong.verdict, "COMMIT");
   assert.equal(strong.blocks.some((b) => b.code === "vix_unavailable"), false);
-  // Tape-aligned index at 70 clears too (aligned elevated floor is 65, G-3 guarantees ≥65).
-  // G-17 also applies at 70 with no discovery_origin set — check vix_unavailable specifically.
-  const aligned = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(aligned.blocks.some((b) => b.code === "vix_unavailable"), false);
+  // 70 < 75 now DOES block — the canonical rule has no tape-alignment relief to check against.
+  const at70 = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(at70.blocks.some((b) => b.code === "vix_unavailable"), true);
 });
 
-test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF with flat tape above the standard 65 floor (flat = aligned)", () => {
-  // Flat tape is treated as aligned, so the 65 floor applies — 70 >= 65 → no present VIX could block.
-  // (G-17 also applies at 70 with no discovery_origin set — check vix_unavailable specifically.)
+test("G-4 fail-closed CANONICALIZED: unavailable VIX blocks an index/ETF below 75 regardless of tape state (flat or null)", () => {
+  // Flat tape used to keep the standard 65 floor; canonicalized, 70 < 75 blocks regardless.
   const v = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), false);
-  // Null bias (unknown tape) at 70 < 75 → DOES block (belt-and-suspenders for unknown tape).
+  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), true);
+  // Null bias (unknown tape) at 70 < 75 also blocks — identical treatment now.
   const nullBias = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: null, vixDayOpen: null, vixUnavailable: true }));
   assert.equal(nullBias.verdict, "BLOCKED");
   assert.equal(nullBias.blocks.some((b) => b.code === "vix_unavailable"), true);
@@ -1637,53 +1635,46 @@ test("G-3: score 64.999 blocks, exactly 65 commits — the floor comparison is o
 test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly 20 is extreme", () => {
   // 16.999 → normal regime, no floor bump; a flat-tape 70 commits.
   assert.equal(evaluateZeroDteGates(input({ vixDayOpen: 16.999, score: 70, bias: "flat" })).calibration.g4_vix.tier, "normal");
-  // Exactly 17 (>= elevated) → flat-tape 70 clears G-4's OWN floor (flat = aligned, 65 floor).
-  // (G-17 also applies at 70 with no discovery_origin set — check vix_elevated specifically.)
+  // Exactly 17 (>= elevated) → CANONICALIZED: uniform 75 floor, so a 70 now BLOCKS regardless
+  // of tape state (flat here, null below — both behave identically).
   const at17 = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: "flat" }));
   assert.equal(at17.calibration.g4_vix.tier, "elevated");
-  assert.ok(!at17.blocks.some((b) => b.code === "vix_elevated"));
-  // Exactly 17 with null bias (unknown tape) at 70 < 75 → blocked.
+  assert.ok(at17.blocks.some((b) => b.code === "vix_elevated"));
   const at17null = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: null }));
   assert.equal(at17null.calibration.g4_vix.tier, "elevated");
   assert.ok(at17null.blocks.some((b) => b.code === "vix_elevated"));
-  // 19.999 → still elevated (a single name at 90 clears the 75 elevated floor).
+  // 19.999 → still elevated (a single name at 78 clears the uniform 75 elevated floor).
   const nvdaHi = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 19.999, score: 78, bias: "flat" }));
   assert.equal(nvdaHi.calibration.g4_vix.tier, "elevated");
   assert.equal(nvdaHi.verdict, "COMMIT");
-  // Exactly 20 (>= extreme) → the same single name is blocked outright (index/ETF only).
+  // Exactly 20 (>= extreme) → the same single name is blocked outright (index/ETF only) —
+  // the extreme tier is UNCHANGED by the canonicalization.
   const nvdaExtreme = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 20, score: 90, bias: "flat" }));
   assert.equal(nvdaExtreme.calibration.g4_vix.tier, "extreme");
   assert.ok(nvdaExtreme.blocks.some((b) => b.code === "vix_extreme"));
 });
 
-test("G-4: elevated flat-tape score floor is 65 (same as aligned) — 64 blocks, 65 clears", () => {
-  const at64 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 64, bias: "flat" }));
-  assert.ok(at64.blocks.some((b) => b.code === "vix_elevated"));
-  // G-17 also applies at 65 with no discovery_origin set — check vix_elevated specifically.
-  const at65 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 65, bias: "flat" }));
-  assert.ok(!at65.blocks.some((b) => b.code === "vix_elevated"));
-  // Null bias triggers G-1 no_market_bias first (can't reach G-4), so the 75 elevated
-  // floor for unknown tape is tested via the calibration path and fail-closed tests.
+test("G-4 CANONICALIZED: elevated-tier score floor is a uniform 75 for every ticker — 74 blocks, 75 clears", () => {
+  const at74 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 74, bias: "flat" }));
+  assert.ok(at74.blocks.some((b) => b.code === "vix_elevated"));
+  const at75 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 75, bias: "flat" }));
+  assert.ok(!at75.blocks.some((b) => b.code === "vix_elevated"));
 });
 
-// ── G-4: elevated-VIX tape scoping must match G-1's (index/ETF only) ─────────────────
-// Bug found 2026-08-26: the elevated-VIX floor read `input.bias` vs `input.direction`
-// unconditionally, so a single name (which G-1 already exempts from tape alignment
-// entirely) with a disagreeing SPY bias was silently held to the stricter 75 floor —
-// re-imposing exactly the SPY-tape constraint G-1 was written to remove for single names.
-test("G-4: a single name with a DISAGREEING SPY bias still gets the standard 65 floor (G-1 exempts it from tape alignment)", () => {
-  // NVDA long, SPY tape DOWN (disagreeing) — G-1 never fires for single names, so this
-  // must reach G-4 and clear at the standard 65 floor, not the 75 elevated-counter-tape floor.
-  // (G-17 also applies at score 70 with no discovery_origin set — check vix_elevated specifically
-  // rather than the overall verdict.)
-  const v = evaluateZeroDteGates(
+// ── G-4 CANONICALIZED (2026-09-09): single names get NO carve-out from the elevated floor ──
+// Pre-canonicalization, a single name (G-1-exempt from tape alignment) always got the standard
+// 65 floor at elevated VIX regardless of score/tape — a full bypass of G-4's own regime throttle
+// for that instrument class. The canonical rule removes it: every ticker/instrument type needs
+// score >= 75 at VIX >= 17, full stop.
+test("G-4 CANONICALIZED: a single name at elevated VIX with score 70 (<75) now BLOCKS regardless of tape state", () => {
+  const disagreeing = evaluateZeroDteGates(
     input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
   );
-  assert.equal(v.calibration.g4_vix.tier, "elevated");
-  assert.ok(!v.blocks.some((b) => b.code === "vix_elevated"));
+  assert.equal(disagreeing.calibration.g4_vix.tier, "elevated");
+  assert.ok(disagreeing.blocks.some((b) => b.code === "vix_elevated"));
 
-  // The same score/VIX/disagreeing-bias combination on an INDEX ETF must still block —
-  // this fix must not loosen the elevated floor for the instrument class it actually protects.
+  // Index ETF at the same score/VIX/disagreeing-bias combo is ALSO blocked (unchanged from
+  // before — this fix does not loosen anything for the instrument class the floor protects).
   const vEtf = evaluateZeroDteGates(
     input({ ticker: "QQQ", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
   );
@@ -1691,24 +1682,30 @@ test("G-4: a single name with a DISAGREEING SPY bias still gets the standard 65 
   assert.ok(vEtf.blocks.some((b) => b.code === "tape_alignment"), "index ETF counter-tape still blocked by G-1 before G-4 is reached");
 });
 
-test("computeGateCalibration: a single name's g4_vix.tier ignores SPY bias the same way the live gate does", () => {
+test("computeGateCalibration: a single name's g4_vix uses the SAME uniform 75 floor as an index ETF, no tape-aligned note", () => {
   const v = evaluateZeroDteGates(
     input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
   );
-  assert.equal(v.calibration.g4_vix.would_block, false);
-  assert.match(v.calibration.g4_vix.note, /tape-aligned/);
+  assert.equal(v.calibration.g4_vix.would_block, true);
+  assert.doesNotMatch(v.calibration.g4_vix.note, /tape-aligned/);
 });
 
-// ── G-4 fail-closed couldBlock narrowing: index/ETF flat at EXACTLY the 65 floor ──────
-test("G-4 fail-closed: an index/ETF flat-tape at 65+ could NOT have been blocked → unavailable VIX passes it", () => {
-  // couldBlock = !isIndexEtf || (!tapeAlignedOrFlat && score < 75). QQQ flat → tapeAlignedOrFlat=true → couldBlock false.
-  // (G-17 also applies at 65 with no discovery_origin set — check vix_unavailable specifically.)
-  const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 65, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
+// ── G-4 fail-closed couldBlock narrowing: uniform 75 floor, no tape-alignment carve-out ──
+test("G-4 fail-closed: an index/ETF at 75+ could NOT have been blocked → unavailable VIX passes it; below 75 fails closed", () => {
+  // couldBlock = !isIndexEtf || score < 75 (canonicalized — no tape-alignment term).
+  const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 75, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
-  // Null bias (unknown tape) at 74 < 75 → a present elevated VIX COULD have blocked it → fails closed.
+  // 74 < 75 → a present elevated VIX COULD have blocked it → fails closed, regardless of tape.
   const vNull74 = evaluateZeroDteGates(input({ ticker: "QQQ", score: 74, bias: null, vixDayOpen: null, vixUnavailable: true }));
   assert.equal(vNull74.verdict, "BLOCKED");
   assert.ok(vNull74.blocks.some((b) => b.code === "vix_unavailable"));
+  // A single name (non-index/ETF) can ALSO be blocked by extreme VIX now regardless of score —
+  // couldBlock = !isIndexEtf is unconditionally true — so it fails closed even at a high score.
+  const vSingleHighScore = evaluateZeroDteGates(
+    input({ ticker: "NVDA", score: 90, bias: "flat", vixDayOpen: null, vixUnavailable: true })
+  );
+  assert.equal(vSingleHighScore.verdict, "BLOCKED");
+  assert.ok(vSingleHighScore.blocks.some((b) => b.code === "vix_unavailable"));
 });
 
 // ── Stacked firewalls: every fail-closed signal at once surfaces every code ───────────
@@ -2025,20 +2022,19 @@ test("G-13 does not block when flow accumulation aligned or absent", () => {
   assert.equal(evaluateZeroDteGates(input({ flowAccumulationAligned: null })).verdict, "COMMIT");
 });
 
-test("stack fix: VIX unavailable without regime_blind — index ETF flat at 70 commits (G-4 narrowing)", () => {
+test("stack fix: VIX unavailable without regime_blind — index ETF at 75 (uniform floor) commits (G-4 narrowing)", () => {
+  // CANONICALIZED: the couldBlock narrowing no longer has a tape-alignment term, so this
+  // needs score >= 75 (not the old 70) to demonstrate "no present VIX could have blocked it".
   const v = evaluateZeroDteGates(
     input({
       ticker: "QQQ",
-      score: 70,
+      score: 75,
       bias: "flat",
       vixDayOpen: null,
       vixUnavailable: true,
       regimeBlockFreshCommits: false,
     }),
   );
-  // G-17 (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also fires at
-  // score 70 with no discovery_origin set here, so the overall verdict is BLOCKED — this test
-  // is about G-4's OWN narrowing, so check those two codes specifically clear instead.
   assert.ok(!v.blocks.some((b) => b.code === "regime_blind"));
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
 });
