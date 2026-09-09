@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-08T21:42:57.149Z",
+  "updated_at": "2026-09-09T05:09:57.165Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "67dc17b4748b3ac6f781ae594ef45473bad2a66a",
+    "last_main_sha": "5e327308e676002368efc309f774eb743f91f7b2",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
@@ -1162,6 +1162,132 @@
     },
     {
       "at": "2026-09-08T21:42:57.149Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T02:26:20.688Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T02:26:21.432Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T02:26:21.754Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:08:17.731Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 24
+    },
+    {
+      "at": "2026-09-09T03:08:18.786Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:08:19.378Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 24
+    },
+    {
+      "at": "2026-09-09T03:30:11.514Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:30:12.166Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:30:12.514Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:55:29.210Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:55:29.870Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:55:30.184Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T04:29:04.948Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 30
+    },
+    {
+      "at": "2026-09-09T04:29:05.826Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 30
+    },
+    {
+      "at": "2026-09-09T04:29:06.177Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 30
+    },
+    {
+      "at": "2026-09-09T04:50:13.044Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T04:50:14.049Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 30
+    },
+    {
+      "at": "2026-09-09T04:50:14.355Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 30
+    },
+    {
+      "at": "2026-09-09T05:09:56.243Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T05:09:56.902Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T05:09:57.165Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
