@@ -511,15 +511,25 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
 });
 
 test("tradeManagerNarrativeSection: railsFallback stop/target rails render sign-free absolute prices (2026-09-09 blast-radius fix)", () => {
-  // Empty trim_levels + no manageAction/time_stop_et/runner_fraction and a >7 DTE contract (the
-  // default "110C · 13DTE") mean manageLifecycleCoaching contributes no "Manage plan" bullet, so
-  // railsFallback's own "Manage rails" line is the one under test here — a separate code path
-  // (and a separate fmtOptionUsd call site) from the "Break watch" fallback covered above.
+  // Empty trim_levels + no manageAction/time_stop_et/runner_fraction + a contract with no DTE
+  // token mean manageLifecycleCoaching contributes no "Manage plan" bullet, so railsFallback's own
+  // "Manage rails" line is the one under test here — a separate code path (and a separate
+  // fmtOptionUsd call site) from the "Break watch" fallback covered above.
+  //
+  // Contract override note (2026-09-09): the default fixture contract ("110C · 13DTE") no longer
+  // isolates this path — manageLifecycleCoaching now always contributes a DTE-runway line for any
+  // DTE it can parse (dte<=7 keeps the urgency framing, dte>7 gets a plain "N DTE remaining" one;
+  // see play-brief-narrative-coaching.ts), a fix for the DTE fact being silently dropped above 7
+  // DTE (live CRWD 9DTE repro, docs/audit/findings-staging/2026-09-09-swing-manage-plan-dte-
+  // runway-gap.md). This test's own isolation intent is unaffected by that fix — it explicitly
+  // wants the "no Manage plan bullet at all" precondition, which now requires a contract with no
+  // DTE token at all, not merely one above the old 7-day threshold.
   const section = tradeManagerNarrativeSection(
     ctx({
       play: play({
         status: "HOLD",
         recommendation: "HOLD",
+        contract: "110C",
         exitPolicy: {
           trim_levels: [],
           stop_premium: 1.5,

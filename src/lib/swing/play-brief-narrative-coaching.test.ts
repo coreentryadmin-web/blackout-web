@@ -186,6 +186,22 @@ test("manageLifecycleCoaching: trim ladder + time stop", () => {
   assert.match(line!, /25% runner/i);
 });
 
+// Live repro (CRWD:19 brief, 2026-09-09): collapseRedundantIntelSections drops the whole
+// "Hold plan" section whenever this narrative renders, claiming its content is folded in here —
+// but the DTE-runway fact only appeared in this function's own line for dte<=7, so a 9DTE
+// position lost the fact entirely (not just deduped, actually deleted with nothing folded in).
+test("manageLifecycleCoaching: DTE > 7 still carries runway context, not just the <=7 urgency line", () => {
+  const line = manageLifecycleCoaching(play({ contract: "110C · 9DTE" }), "open");
+  assert.match(line!, /9 DTE.*remaining/i);
+  assert.doesNotMatch(line!, /theta accelerating/i, "9 DTE is not yet the urgency threshold");
+});
+
+test("manageLifecycleCoaching: DTE <= 7 keeps the urgency framing, not the plain 'remaining' line", () => {
+  const line = manageLifecycleCoaching(play({ contract: "110C · 5DTE" }), "open");
+  assert.match(line!, /5 DTE.*theta accelerating/i);
+  assert.doesNotMatch(line!, /5 DTE\*\* remaining/i);
+});
+
 test("progressRatchetCoaching: stop/target rails render sign-free absolute prices (2026-09-09 blast-radius fix)", () => {
   // Same root cause as play-brief.ts's fmtUsd / play-brief-narrative.ts's fmtOptionUsd: this
   // file's own file-local fmtUsd carried the identical signed-delta "+" on an absolute premium
