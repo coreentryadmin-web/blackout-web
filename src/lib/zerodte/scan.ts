@@ -151,6 +151,8 @@ import {
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
   INDEX_ETF_TICKERS,
+  liveCommitPreconditionsUnmet,
+  liveCommitPreconditionBlock,
 } from "./gates";
 import {
   fetchZeroDteVectorPulseByTicker,
@@ -719,6 +721,21 @@ export async function scanZeroDteBoard(flags?: {
           nowMs: reconcileNowMs,
           isCondor: s.play_type === "CONDOR",
         });
+        // Item 9 (2026-09-09 CTO gate-architecture review): re-run the live-commit
+        // precondition check off the SAME real post-refresh values the G-20 refresh just
+        // above used (s.plan/s.underlying_price_as_of are now live, not the pre-refresh
+        // snapshot the FIRST attachGateVerdicts pass saw before attachContractPlans ran
+        // under thesis-first) — mirrors the ordinary (non-thesis-first) call site exactly,
+        // just re-computed post-refresh instead of computed once pre-refresh.
+        s.live_commit_preconditions = liveCommitPreconditionsUnmet({
+          ticker: s.ticker,
+          play_type: s.play_type,
+          plan: s.plan ?? null,
+          confluence: s.confluence ?? null,
+          nowMs: reconcileNowMs,
+          biasAsOfMs: tape.biasAsOfMs,
+          underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
+        });
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
@@ -1190,6 +1207,22 @@ async function attachGateVerdicts(
       vector_confluence_credit: postBoost.confluence_credit,
       max_otm_pct: runnerOtmRelax ? effectiveMaxOtmPct(true) : null,
     });
+    // Item 9 (2026-09-09 CTO gate-architecture review): computed ALONGSIDE the gate
+    // verdict just above, off the SAME field values just fed to evaluateZeroDteGates
+    // (plan/confluence/biasAsOfMs/underlyingQuoteAsOfMs/nowMs) — never a second gate
+    // pass, purely an additional read of the same input. See gates.ts's
+    // liveCommitPreconditionsUnmet doc for why the pure gate library must stay
+    // permissive here while the live-commit call site (persistZeroDteScan, below in
+    // this file) must not inherit that permissiveness.
+    s.live_commit_preconditions = liveCommitPreconditionsUnmet({
+      ticker: s.ticker,
+      play_type: s.play_type,
+      plan: s.plan ?? null,
+      confluence: s.confluence ?? null,
+      nowMs,
+      biasAsOfMs,
+      underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
+    });
     s.regime_plane = regimePlane;
     if (s.thesis_gate_blocks?.length && !regimeBypassesThesisBlocks(reliefCtx)) {
       const tb = thesisBlocksToGateBlocks(s.thesis_gate_blocks);
@@ -1633,19 +1666,36 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     const planGateOpts = { chaseExempt };
     const planBlocked =
       s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan, planGateOpts);
-    if (s.gate?.verdict === "COMMIT" && !planBlocked) {
+    // Item 9 (2026-09-09 CTO gate-architecture review): THIS is the real capital-
+    // committing step (committedFresh feeds `eligible` → the DB upsert rows below) — the
+    // one place in the whole pipeline that must not inherit evaluateZeroDteGates's
+    // deliberate fail-open permissiveness on missing G-9/G-12/G-20 inputs. s.gate can read
+    // COMMIT purely because those specific reads were never present for this setup (the
+    // gate had nothing to check, not something it checked and cleared); a live commit must
+    // not treat that as equivalent to an actually-verified COMMIT. s.live_commit_preconditions
+    // was computed alongside s.gate in attachGateVerdicts (scan.ts) — read here, never
+    // recomputed, so this stays a pure downstream DECISION, not a second gate pass.
+    const preconditionsUnmet = (s.live_commit_preconditions?.length ?? 0) > 0;
+    if (s.gate?.verdict === "COMMIT" && !planBlocked && !preconditionsUnmet) {
       committedFresh.push(s);
       continue;
     }
     let verdict = s.gate;
-    if (s.gate?.verdict === "COMMIT" && planBlocked) {
+    if (s.gate?.verdict === "COMMIT" && (planBlocked || preconditionsUnmet)) {
       verdict = {
         ...s.gate,
         verdict: "BLOCKED",
         blocks: [
           ...s.gate.blocks,
-          ...planQualityGateBlocks(s.plan ?? null, planGateOpts),
-          ...contractLiquidityGateBlocks(s.plan ?? null),
+          ...(planBlocked
+            ? [
+                ...planQualityGateBlocks(s.plan ?? null, planGateOpts),
+                ...contractLiquidityGateBlocks(s.plan ?? null),
+              ]
+            : []),
+          ...(preconditionsUnmet
+            ? [liveCommitPreconditionBlock(s.live_commit_preconditions ?? [])]
+            : []),
         ],
       };
     }

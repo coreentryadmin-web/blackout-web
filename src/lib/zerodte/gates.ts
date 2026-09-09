@@ -1661,6 +1661,129 @@ export function refreshInputDesyncUnderlyingGateBlocks(
   };
 }
 
+// ── Cross-cutting: LIVE-COMMIT-PATH preconditions (item 9, 2026-09-09 CTO gate-
+// architecture review) ───────────────────────────────────────────────────────────────
+// evaluateZeroDteGates above is DELIBERATELY permissive/fail-open on four specific data
+// points, each documented at its own gate above: G-9's quote-age timestamp
+// (plan.quoteAgeMs — evaluateQuoteValidity's "stale" branch is DORMANT without it, plan.ts),
+// G-12's confluence read (input.confluence — a null read is a pass, not a block, so a
+// rising _nullConfluencePassCount is the only trace it leaves), and both G-20 legs' cross-
+// input timestamps (the SPY-tape leg's quote-vs-bias pairing above, the option-vs-
+// underlying leg's quote-vs-underlying pairing in inputDesyncUnderlyingGateBlocks). That
+// permissiveness is CORRECT for the pure library — a generic/test/fixture/replay caller
+// that never supplies one of these fields must not be penalized for a gap that was never
+// real (see each gate's own "absence is not staleness/unmeasured" doc). It is NOT correct
+// for the one caller that actually commits real capital: a live setup whose gate verdict
+// is COMMIT only because one of these reads was never actually present isn't a verified-
+// clean setup — it cleared every gate that COULD have caught a problem with it only
+// because those gates had nothing to check. This function is that stricter, ADDITIONAL
+// read of the same input — pure, deterministic, computed ALONGSIDE (never inside)
+// evaluateZeroDteGates, so the gate function's own return value/behavior is BYTE-IDENTICAL
+// for every other caller (see the regression test in gates.test.ts). scan.ts's live-commit
+// call site (persistZeroDteScan) is the only place this actually downgrades a commit —
+// see liveCommitPreconditionBlock below and board.ts's `live_commit_precondition_unmet`
+// code.
+//
+// Scoped IDENTICALLY to each underlying gate so this never flags a precondition a setup
+// structurally never needed: G-9/G-12/the option-vs-underlying G-20 leg are DIRECTIONAL
+// ONLY (a CONDOR is judged by condor_liquidity/condor_range_break instead and has no
+// directional `plan`/confluence read at all — see evaluateZeroDteGates's own isCondor
+// branches); the SPY-tape G-20 leg is additionally index/ETF-only (mirrors G-1's own
+// scoping — a single name's own quote has no business being compared to the SPY tape).
+export type LiveCommitPreconditionGap =
+  | "quote_age_unknown" // G-9: plan.quoteAgeMs missing — the staleness check never fired because there was nothing to measure it against, not because the quote is known-fresh
+  | "confluence_unread" // G-12: no confluence read attached — the confirmation floor never fired because nothing was read, not because confirmations were sufficient
+  | "input_desync_unmeasured" // G-20 (SPY-tape leg, index/ETF + non-condor only): quote-vs-bias timestamps not both known — the desync check never fired
+  | "input_desync_underlying_unmeasured"; // G-20 (option-vs-underlying leg, every directional setup): quote-vs-underlying timestamps not both known — the desync check never fired
+
+const LIVE_COMMIT_PRECONDITION_LABEL: Record<LiveCommitPreconditionGap, string> = {
+  quote_age_unknown: "option quote age (G-9 staleness)",
+  confluence_unread: "confluence read (G-12 confirmation floor)",
+  input_desync_unmeasured: "option-quote-vs-SPY-tape timestamps (G-20)",
+  input_desync_underlying_unmeasured: "option-quote-vs-underlying timestamps (G-20 broadening)",
+};
+
+/**
+ * Which live-commit-path preconditions were genuinely ABSENT for this gate input — i.e.
+ * which checks above were structurally UNABLE to evaluate, rather than evaluating and
+ * finding no problem. Takes a subset of the SAME ZeroDteGateInput a setup's gate
+ * evaluation used — the caller passes either the pre-refresh or post-refresh snapshot,
+ * same as every refresh* function in this file (refreshMoneynessGateBlocks etc.), so this
+ * can be re-run after a deferred (thesis-first) contract-plan attach exactly like they are.
+ * PURE: no IO, no mutation, never reads or writes the gate verdict itself — this is an
+ * entirely separate, additional check, NOT a modification of evaluateZeroDteGates.
+ *
+ * Empty array = every precondition this setup structurally needs was present — a COMMIT
+ * verdict can be trusted on this front (every OTHER gate in the stack still applies
+ * independently; this only closes the specific "fail-open on missing data" gap).
+ */
+export function liveCommitPreconditionsUnmet(
+  input: Pick<
+    ZeroDteGateInput,
+    "ticker" | "play_type" | "plan" | "confluence" | "nowMs" | "biasAsOfMs" | "underlyingQuoteAsOfMs"
+  >
+): LiveCommitPreconditionGap[] {
+  const gaps: LiveCommitPreconditionGap[] = [];
+  const isCondor = input.play_type === "CONDOR";
+  const isIndexEtfG1 = !isCondor && isIndexEtfTicker(input.ticker);
+
+  // G-9 — quote-age timestamp. Directional only (a CONDOR never builds a directional
+  // `plan` at all). Only flagged when a plan EXISTS but its age is unmeasured — a null
+  // plan is a DIFFERENT, already fail-CLOSED case (plan_no_quote) that a COMMIT verdict
+  // could never reach in the first place, so there is nothing to tighten there.
+  if (!isCondor && input.plan != null && input.plan.quoteAgeMs == null) {
+    gaps.push("quote_age_unknown");
+  }
+
+  // G-12 — confluence read. Directional only, same scoping as the gate itself.
+  if (!isCondor && input.confluence == null) {
+    gaps.push("confluence_unread");
+  }
+
+  // Both G-20 legs reconstruct the option quote's absolute observation instant the exact
+  // same way the gate itself does (see inputDesyncUnderlyingGateBlocks/the G-20 SPY-tape
+  // block above): nowMs - plan.quoteAgeMs.
+  const quoteAgeMs = input.plan?.quoteAgeMs ?? null;
+  const quoteObservedAtMs = quoteAgeMs != null ? input.nowMs - quoteAgeMs : null;
+
+  // G-20 SPY-tape leg — index/ETF, non-condor only (mirrors G-1's own scoping).
+  if (isIndexEtfG1 && (quoteObservedAtMs == null || input.biasAsOfMs == null)) {
+    gaps.push("input_desync_unmeasured");
+  }
+
+  // G-20 option-vs-underlying leg (broadening, item 10) — every directional setup.
+  if (!isCondor && (quoteObservedAtMs == null || input.underlyingQuoteAsOfMs == null)) {
+    gaps.push("input_desync_underlying_unmeasured");
+  }
+
+  return gaps;
+}
+
+/**
+ * Builds the single BLOCK a live commit downgrades to when `liveCommitPreconditionsUnmet`
+ * returns a non-empty gap list. Distinct code (`live_commit_precondition_unmet`, board.ts)
+ * so it stays separable in telemetry/rejection logs from every other block reason — the
+ * human sentence names exactly which read(s) were missing so a SKIP card / rejection-log
+ * row is self-explanatory. Never called by evaluateZeroDteGates itself — only by the one
+ * live-commit call site (scan.ts's persistZeroDteScan) that actually writes a ledger row.
+ */
+export function liveCommitPreconditionBlock(
+  gaps: readonly LiveCommitPreconditionGap[]
+): ZeroDteGateBlock {
+  const labels = gaps.map((g) => LIVE_COMMIT_PRECONDITION_LABEL[g]).join("; ");
+  return {
+    code: "live_commit_precondition_unmet",
+    reason:
+      `Gate verdict was COMMIT, but the live-commit path could not verify: ${labels}. ` +
+      "The gate itself correctly stays fail-open on missing data so generic/test/fixture " +
+      "callers aren't penalized for a gap that was never real — but a REAL commit " +
+      "shouldn't print on a verdict it can't actually trust the evidence for (item 9, " +
+      "2026-09-09 CTO gate-architecture review).",
+    threshold: null,
+    unlock_et: null,
+  };
+}
+
 // ── G-23 · Qualification-to-commit price dislocation / circuit-breaker ──────────────────
 // Architecture review 2026-09-09: a setup can pass the evidence gates (board.ts's
 // deriveZeroDteSetups) at one underlying price/moment and then reach COMMIT (this file's

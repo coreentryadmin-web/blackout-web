@@ -1399,6 +1399,88 @@ test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (s
   assert.match(String(amdRej!.reason), new RegExp(`max ${GOVERNOR_MAX_CONCURRENT_PLANS} concurrent`));
 });
 
+// ── Item 9 (2026-09-09 CTO gate-architecture review) · live-commit-path preconditions ──
+// persistZeroDteScan is the ACTUAL capital-committing step (committedFresh feeds `eligible`
+// → commitFreshZeroDteRowsAtomic → the real ledger insert), so it is the one place that
+// must NOT treat a COMMIT verdict as trustworthy when gates.ts's liveCommitPreconditionsUnmet
+// found the gate verdict was only COMMIT because a specific read (G-9 quote age, G-12
+// confluence, either G-20 leg's timestamps) was never actually present. These tests exercise
+// the real downgrade-at-commit-time decision — s.live_commit_preconditions is set directly on
+// the fixture (as scan.ts's attachGateVerdicts would have stamped it), never recomputed here.
+
+test("persistZeroDteScan: a COMMIT verdict with unmet live-commit preconditions is downgraded to BLOCKED and never reaches the ledger", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+  const setup = freshCommitSetup("NVDA", 80) as Record<string, unknown>;
+  setup.live_commit_preconditions = ["confluence_unread"];
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+  await new Promise((r) => setTimeout(r, 0)); // let the best-effort rejection write flush
+
+  assert.equal(logged, 0, "an unverified COMMIT must not write a ledger row");
+  assert.equal(state.upsertRows.length, 0);
+  assert.equal(state.atomicSelectedRows.length, 0);
+  const rej = state.rejectionRows.find((r) => String(r.ticker).toUpperCase() === "NVDA");
+  assert.ok(rej, "the withheld commit must be recorded to zerodte_scan_rejections (fail-VISIBLE, not silent)");
+  assert.equal(rej!.gate_failed, "live_commit_precondition_unmet");
+  assert.match(String(rej!.reason), /confluence read/);
+});
+
+test("persistZeroDteScan: a COMMIT verdict with EVERY live-commit precondition present commits normally, unchanged from today's behavior", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+  const setup = freshCommitSetup("NVDA", 80) as Record<string, unknown>;
+  setup.live_commit_preconditions = [];
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+
+  assert.equal(logged, 1);
+  assert.deepEqual(state.atomicSelectedRows.map((r) => String(r.ticker).toUpperCase()), ["NVDA"]);
+  assert.equal(state.rejectionRows.length, 0);
+});
+
+test("persistZeroDteScan: an ABSENT live_commit_preconditions field (never computed) commits normally — fail-open by omission, same discipline as every other optional gate input", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+  // freshCommitSetup does not set live_commit_preconditions at all — undefined, not [].
+  const setup = freshCommitSetup("NVDA", 80);
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+
+  assert.equal(logged, 1, "an undefined precondition record must never itself block a commit");
+  assert.deepEqual(state.atomicSelectedRows.map((r) => String(r.ticker).toUpperCase()), ["NVDA"]);
+});
+
+test("persistZeroDteScan: unmet preconditions AND a plan-quality block BOTH land on the same downgraded verdict (additive, neither silently drops the other)", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+  const setup = freshCommitSetup("NVDA", 80) as Record<string, unknown>;
+  setup.live_commit_preconditions = ["quote_age_unknown"];
+  // A MOVED plan — freshCommitBlockedByPlan's planQualityGateBlocks fires plan_moved.
+  setup.plan = {
+    ...(setup.plan as Record<string, unknown>),
+    entry_status: "MOVED",
+    vs_flow_pct: 60,
+  };
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+  await new Promise((r) => setTimeout(r, 0));
+
+  assert.equal(logged, 0);
+  const rej = state.rejectionRows.find((r) => String(r.ticker).toUpperCase() === "NVDA");
+  assert.ok(rej);
+  const codes = rej!.blocks as string[];
+  assert.ok(codes.includes("plan_moved"), `expected plan_moved among ${JSON.stringify(codes)}`);
+  assert.ok(
+    codes.includes("live_commit_precondition_unmet"),
+    `expected live_commit_precondition_unmet among ${JSON.stringify(codes)}`
+  );
+});
+
 // ── D3 · option-quote staleness plumbing ─────────────────────────────────────────
 // computeQuoteAgeMs is the scan's bridge between OptionSnapshot.quoteUpdatedMs (last_quote
 // .last_updated, ns→ms) and the WS-04 `stale` predicate on buildContractPlan. It must:

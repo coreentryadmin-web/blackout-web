@@ -860,6 +860,15 @@ export type ZeroDteGateFailure =
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
   | "input_desync" // G-20: option quote and SPY tape bias individually fresh but desynced from each other (>5min apart) — index/ETF only (mirrors G-1's scoping)
   | "input_desync_underlying" // G-20 broadening (2026-09-09, item 10): option quote and its OWN underlying quote individually fresh but desynced from each other — EVERY directional setup (index/ETF and single-name alike), distinct from input_desync above (which compares against the SPY tape bias, not the name's own underlying)
+  // ── Live-commit-path precondition (item 9, 2026-09-09) — NOT produced by
+  // evaluateZeroDteGates itself. G-9/G-12/both G-20 legs above correctly FAIL OPEN inside
+  // the pure gate library when their input is simply missing (so a generic/test/fixture
+  // caller isn't penalized for data it never had) — this code is pushed ONLY by the live-
+  // commit call site (scan.ts's persistZeroDteScan, via gates.ts's
+  // liveCommitPreconditionsUnmet/liveCommitPreconditionBlock) when a REAL fresh commit's
+  // gate verdict was COMMIT but one of those specific reads was genuinely absent for THIS
+  // setup — an unverified pass, not a verified-clean one.
+  | "live_commit_precondition_unmet"
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
   | "horizon_weekly_fallback" // G-15: WEEKLY_FALLBACK excluded — not same-day gradable on 0DTE ledger
@@ -1444,7 +1453,7 @@ import type { ContractPlan } from "./plan";
 import type { IntradayRead } from "./intraday";
 // Type-only (erased at compile time — no runtime cycle with ./gates, which imports
 // only types back from this module).
-import type { ZeroDteGateVerdict } from "./gates";
+import type { ZeroDteGateVerdict, LiveCommitPreconditionGap } from "./gates";
 // Type-only for the same reason: ./cortex-gate's runtime deps (the Cortex barrel)
 // never enter this module's load graph.
 import type { ZeroDteCortexAssessment } from "./cortex-gate";
@@ -1584,6 +1593,21 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  block is clock-based). Null = not evaluated (already-committed ticker, or the
    *  gate context couldn't be built — persist fails closed on that). */
   gate: ZeroDteGateVerdict | null;
+  /**
+   * Item 9 (2026-09-09 CTO gate-architecture review): which live-commit-path
+   * preconditions (gates.ts's liveCommitPreconditionsUnmet) were genuinely ABSENT when
+   * `gate` above was computed — G-9's quote-age timestamp, G-12's confluence read, and/or
+   * either G-20 leg's cross-input timestamps. `gate` itself may still read COMMIT (the
+   * pure gate library correctly fails OPEN on each of these individually), but a non-empty
+   * array here means that COMMIT is UNVERIFIED on this specific front, not verified-clean.
+   * Computed alongside (never inside) `gate` in scan.ts's attachGateVerdicts, and
+   * RECOMPUTED after a deferred (thesis-first) contract-plan attach the same way the G-20/
+   * moneyness/qualification-dislocation refresh* helpers are. `[]` = every precondition
+   * this setup structurally needed was present. `null`/undefined = not yet computed
+   * (mirrors `gate: null` — never itself treated as "unmet" by the live-commit call site,
+   * which only downgrades on a non-empty array; see persistZeroDteScan).
+   */
+  live_commit_preconditions?: LiveCommitPreconditionGap[] | null;
   /** Night Hawk Cortex assessment (./cortex-gate.ts) — evaluated ONLY for a fresh
    *  find that survived the hard gate stack. Null = Cortex never ran for this
    *  setup this cycle (gate-blocked before the Cortex layer, or an
