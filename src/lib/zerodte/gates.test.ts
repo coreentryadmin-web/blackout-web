@@ -2155,6 +2155,16 @@ test("G-18: early window sub-prime score (70) is BLOCKED", () => {
   assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
 });
 
+test("G-18 CANONICALIZED (2026-09-09): a Vector exemption no longer clears the early-window block — unconditional 75+ in this window", () => {
+  // vector_g17_exempt used to bypass G-18's own block condition (borrowed from G-17's
+  // predicate) — that borrowed exemption is now REMOVED from G-18 specifically. G-17's OWN
+  // exemption (a separate code path) is untouched — see the next test block.
+  const v = evaluateZeroDteGates(
+    input({ score: 70, nowEtMinutes: EARLY_ET, vector_g17_exempt: true })
+  );
+  assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
 test("G-18: early window prime score (78) commits", () => {
   const v = evaluateZeroDteGates(input({ score: 78, nowEtMinutes: EARLY_ET }));
   assert.ok(!v.blocks.some((b) => b.code === "early_window_prime_score"));

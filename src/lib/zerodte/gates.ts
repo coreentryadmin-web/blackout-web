@@ -749,22 +749,28 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   }
 
   // G-18 — early-window prime score floor (E2 + replay 2026-09: sub-prime scores in [10:00, 10:45)
-  // cluster on full-stop losers). Require the 75+ prime band unless Vector exempts G-17.
+  // cluster on full-stop losers). UNCONDITIONAL 75+ prime band inside this window as of
+  // 2026-09-09 (operator-approved CTO gate-architecture review) — the Vector exemption is
+  // REMOVED specifically from this gate's block condition. Root cause: the early window is
+  // the SPECIFIC replay-measured worst-timed slice of the session (E2's own evidence is about
+  // TIMING, not about whether Vector happens to agree), and Vector alignment was never itself
+  // measured as curing that early-window effect — it was borrowed verbatim from G-17's own
+  // exemption predicate. G-17's OWN Vector exemption (a SEPARATE code path, `single_rail_
+  // corroboration`, further below) is explicitly UNTOUCHED by this change — be precise about
+  // which gate is being read: both G-17 and G-19 still reference `vectorExemptsG17PrimeBand`/
+  // their own exemption predicates; only G-18's block condition drops it.
   if (
     !isCondor &&
     input.nowEtMinutes >= OPENING_WINDOW_UNLOCK_ET_MINUTES &&
     input.nowEtMinutes < EARLY_ENTRY_WINDOW_END_ET_MINUTES &&
-    input.score < 75 &&
-    !(
-      input.vector_g17_exempt === true ||
-      vectorExemptsG17PrimeBand(input.direction, input.score, input.vector_pulse)
-    )
+    input.score < 75
   ) {
     blocks.push({
       code: "early_window_prime_score",
       reason:
         `Score ${Math.round(input.score)} in the ${OPENING_WINDOW_UNLOCK_LABEL}–10:45 early window ` +
-        "needs the 75+ prime band (E2 negative EV below prime; Vector alignment can exempt).",
+        "needs the 75+ prime band (E2 negative EV below prime — unconditional in this window, " +
+        "no Vector-alignment exemption).",
       threshold: 75,
       unlock_et: "10:45 ET",
     });
