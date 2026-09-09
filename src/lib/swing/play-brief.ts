@@ -273,6 +273,17 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
         provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
       });
     }
+    // The gamma magnet is narrated prominently in the "Trade manager read" section
+    // (magnetCoaching, play-brief-narrative-coaching.ts) as a decision-relevant price ("pull up
+    // toward this node"), but was never added to the structured envelope.levels array — anything
+    // consuming levels (a "show on chart" follow-up, another Largo surface) had no way to see it.
+    if (vec?.magnet?.strike != null) {
+      levels.push({
+        label: "gamma magnet",
+        price: vec.magnet.strike,
+        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      });
+    }
   }
   const vecKing = vectorStale ? undefined : vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
   const king = vecKing ?? gex?.gex_king_strike;
