@@ -281,6 +281,7 @@ export function evidenceRowParts(item: CortexEvidenceItemLike): EvidenceRowParts
 const GATE_LABELS: Record<string, string> = {
   tape_alignment: "G-1 · tape alignment",
   no_market_bias: "G-1 · tape unreadable",
+  input_desync: "G-20 · quote/tape desync",
   opening_window: "G-2 · opening window",
   score_floor: "G-3 · score floor",
   single_rail_corroboration: "G-17 · prime band floor (65-74)",

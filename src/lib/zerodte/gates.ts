@@ -74,6 +74,29 @@ function envInt(name: string, def: number): number {
  *  stopped arriving 15+ minutes ago is a memory, not a market state — fail closed. */
 export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
 
+// ── G-20 · Cross-input synchronization/freshness ────────────────────────────────
+// Architecture review 2026-09-09 (operator): G-1's SPY tape bias (fresh if ≤15min,
+// MARKET_BIAS_MAX_AGE_MS above) and G-8/G-9's option quote (fresh if ≤60s,
+// QUOTE_VALIDITY.max_quote_age_ms, ./plan.ts) are each checked for staleness
+// INDIVIDUALLY, but nothing checks whether the two are synchronized WITH EACH OTHER.
+// A quote observed seconds ago combined with a bias read from, say, 12 minutes ago is
+// "fresh" by BOTH individual bounds yet describes two different instants of the
+// market — the operator's framing: "a quote from now combined with an underlying/tape
+// observation from materially earlier can produce a perfectly valid-looking but
+// invalid decision." Scoped identically to G-1 (index ETFs, non-condor only) because
+// that is the only population where the bias is actually consulted directionally —
+// single names bypass G-1 (and therefore this gate) for the same reason already
+// documented there: they trade on their own catalysts, not the SPY tape.
+/** Max allowed skew (ms) between the option quote's own observation instant and the
+ *  SPY bias read it is being judged alongside. FIRST CONSERVATIVE DEFAULT, NOT YET
+ *  CALIBRATED against graded outcomes — same honesty as QUOTE_VALIDITY's own bounds
+ *  ("conservative defaults ... reject only the clearly malformed/untradeable"). Picked
+ *  deliberately WIDE relative to either individual bound (quote ≤60s, bias ≤15min) so
+ *  this only fires on a genuine desync between two already-individually-fresh reads —
+ *  never as a redundant restating of either bound alone. Revisit once the ledger has
+ *  enough input_desync-tagged commits to measure real incidence/outcome. */
+export const INPUT_SYNC_MAX_SKEW_MS = 5 * 60 * 1000;
+
 // ── G-2 · Opening-window block ──────────────────────────────────────────────────
 // USER-AUTHORIZED 2026-07-23 (supersedes the 2026-07-13 "first 15 min only" directive):
 // push the unlock from 9:45 → 10:00 ET, blocking the demonstrably-worst first 30 minutes
@@ -588,6 +611,36 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         threshold: null,
         unlock_et: null,
       });
+    }
+  }
+
+  // G-20 — cross-input synchronization/freshness. Same scope as G-1 (index ETF, non-condor):
+  // this only matters where the bias is actually consulted directionally against the quote.
+  // FAIL-OPEN on missing data (either timestamp absent) — same "absence is not staleness"
+  // convention as every other conditional gate here (quote age, confluence, VIX/macro
+  // unavailability): a caller/fixture that doesn't supply one or both timestamps is
+  // unaffected, never blocked from an unmeasured factor.
+  if (!isCondor && isIndexEtfG1) {
+    const quoteAgeMs = input.plan?.quoteAgeMs ?? null;
+    // Reconstruct the quote's absolute observation instant the same way it was measured:
+    // nowMs is the SAME wall-clock the live scan passes to both buildContractPlan (which
+    // computed quoteAgeMs) and evaluateZeroDteGates (this call) — see scan.ts's shared `nowMs`.
+    const quoteObservedAtMs = quoteAgeMs != null ? input.nowMs - quoteAgeMs : null;
+    if (quoteObservedAtMs != null && input.biasAsOfMs != null) {
+      const skewMs = Math.abs(quoteObservedAtMs - input.biasAsOfMs);
+      if (skewMs > INPUT_SYNC_MAX_SKEW_MS) {
+        blocks.push({
+          code: "input_desync",
+          reason:
+            `Option quote and SPY tape read are ${Math.round(skewMs / 1000)}s apart — over the ` +
+            `${Math.round(INPUT_SYNC_MAX_SKEW_MS / 1000)}s cross-input sync tolerance. Both are ` +
+            "individually fresh (quote ≤60s, bias ≤15min) but describe different instants of the " +
+            "market — a fresh price read against a stale tape read (or vice versa) can look like a " +
+            "valid setup while describing a market state that no longer exists.",
+          threshold: INPUT_SYNC_MAX_SKEW_MS,
+          unlock_et: null,
+        });
+      }
     }
   }
 

@@ -858,6 +858,7 @@ export type ZeroDteGateFailure =
   // didn't ticker X commit" is one queryable surface for both gate families.
   | "tape_alignment" // G-1: direction fights the SPY session bias
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
+  | "input_desync" // G-20: option quote and SPY tape bias individually fresh but desynced from each other (>5min apart)
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
   | "horizon_weekly_fallback" // G-15: WEEKLY_FALLBACK excluded — not same-day gradable on 0DTE ledger

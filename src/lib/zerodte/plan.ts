@@ -203,6 +203,14 @@ export type ContractPlan = {
   /** Underlying anchors from real chart structure (nearest levels), null when unknown. */
   underlying_target: number | null;
   underlying_invalid: number | null;
+  /** G-20: age (ms) of the live quote AT PLAN-BUILD TIME (same input this function used to
+   *  evaluate `quote_invalid_reason`'s "stale" branch above) — carried through on the returned
+   *  plan (previously computed-then-discarded) so a caller can reconstruct the quote's absolute
+   *  observation instant as `nowMs − quoteAgeMs` (nowMs is the SAME wall-clock passed into both
+   *  buildContractPlan and evaluateZeroDteGates in the live scan — see scan.ts's shared `nowMs`).
+   *  Optional/back-compat, same "absence is not staleness" convention as every other conditional
+   *  field here: undefined when the provider supplied no quote timestamp. */
+  quoteAgeMs?: number | null;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -319,6 +327,7 @@ export function buildContractPlan(input: {
     time_stop_et: zerodteTimeStopEtLabel(),
     underlying_target: target,
     underlying_invalid: invalid,
+    quoteAgeMs: input.quoteAgeMs ?? null,
   };
 }
 

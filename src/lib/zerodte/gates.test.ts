@@ -12,6 +12,7 @@ import {
   evaluateZeroDteGates,
   gateRejectionFor,
   MARKET_BIAS_MAX_AGE_MS,
+  INPUT_SYNC_MAX_SKEW_MS,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
   moneynessGateBlocks,
@@ -168,6 +169,92 @@ test("G-1 bypass: single-name with stale bias commits (staleness irrelevant for 
   const v = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", biasAsOfMs: staleMs }));
   assert.equal(v.verdict, "COMMIT");
   assert.deepEqual(v.blocks.filter(b => b.code === "no_market_bias"), []);
+});
+
+// ── G-20 · cross-input synchronization/freshness ──────────────────────────────────
+
+test("G-20: quote and bias both fresh individually but desynced from each other blocks", () => {
+  // Quote observed 5s ago (well inside the 60s quote-freshness bound); bias read 12min
+  // ago (well inside the 15min bias-freshness bound). Individually both pass G-1/G-8-G-9's
+  // OWN freshness checks, but they describe two different instants ~12min apart — well past
+  // the 5-minute sync tolerance.
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks[0]!.code, "input_desync");
+  assert.equal(v.blocks[0]!.threshold, INPUT_SYNC_MAX_SKEW_MS);
+  assert.match(v.blocks[0]!.reason, /apart/);
+});
+
+test("G-20: quote and bias synchronized (both fresh, close in time) does not block", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 }, // 5s old
+      biasAsOfMs: NOW_MS - 60_000, // 1min old — 55s skew from the quote, well under the 5min tolerance
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20: exactly at the sync tolerance boundary is still fresh (exclusive boundary)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 0 },
+      biasAsOfMs: NOW_MS - INPUT_SYNC_MAX_SKEW_MS,
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+
+  const overByOne = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 0 },
+      biasAsOfMs: NOW_MS - INPUT_SYNC_MAX_SKEW_MS - 1,
+    })
+  );
+  assert.equal(overByOne.blocks[0]!.code, "input_desync");
+});
+
+test("G-20 fail-open: no quote timestamp (plan omits quoteAgeMs) never blocks, even with a stale-looking bias gap", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: CLEAN_PLAN, // no quoteAgeMs — the live scan always supplies one; fixtures may not
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 fail-open: no plan at all never blocks", () => {
+  const v = evaluateZeroDteGates(input({ plan: null, biasAsOfMs: NOW_MS - 12 * 60 * 1000 }));
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 fail-open: missing bias timestamp never blocks (bias absence is G-1's job, not G-20's)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: null,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 bypass: single-name stocks skip cross-input sync entirely (same scope as G-1)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
 });
 
 // ── G-2 · opening window (worst first 30 min, unlock 10:00 — user-authorized 2026-07-23) ──
