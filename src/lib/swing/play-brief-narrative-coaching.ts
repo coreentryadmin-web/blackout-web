@@ -23,9 +23,14 @@ function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
+/** Absolute per-contract premium PRICE (stop/target rails) — never a signed delta, so no "+"/"-"
+ *  prefix. BUG FIXED 2026-09-09: this carried the same sign defect just fixed in play-brief.ts's
+ *  own fmtUsd and play-brief-narrative.ts's fmtOptionUsd (same root cause, third file — a
+ *  signed-delta formatter reused for an absolute price) — `progressRatchetCoaching`'s only call
+ *  site here renders `ep.stop_premium`/`ep.target_premium`, the identical absolute-price fields,
+ *  so it inherited the identical "+$1.50" mislabel on a stop-loss trigger price. */
 function fmtUsd(n: number): string {
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}$${n.toFixed(2)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 function fmtPct(n: number, digits = 1): string {

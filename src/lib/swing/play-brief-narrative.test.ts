@@ -431,11 +431,12 @@ test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not targ
     "open",
   );
   assert.ok(section);
-  // Precise 2-decimal premium (matches play-brief.ts's own fmtUsd) — not rounded to a whole
-  // dollar, which previously made this contradict the Management section's "Rails: stop +$3.50"
-  // rendered from the same stop_premium value (see the fmtOptionUsd regression tests below).
-  assert.match(section!.body, /Break watch.*reclaim \*\*\+\$3\.50\*\*/i);
-  assert.doesNotMatch(section!.body, /reclaim \*\*\$1/);
+  // Precise 2-decimal premium (matches play-brief.ts's own fmtUsd), sign-free (2026-09-09 fix —
+  // stop_premium is an absolute price, never a signed delta; see the fmtOptionUsd regression
+  // tests below) — not rounded to a whole dollar, which previously made this contradict the
+  // Management section's "Rails: stop $3.50" rendered from the same stop_premium value.
+  assert.match(section!.body, /Break watch.*reclaim \*\*\$3\.50\*\*/i);
+  assert.doesNotMatch(section!.body, /reclaim \*\*\+?\$1/);
 });
 
 test("describeDarkPoolLevel: support language for long below spot", () => {
@@ -501,11 +502,38 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   // Break watch line used fmtUsd's whole-dollar rounding (`$${n.toFixed(0)}`, built for HELIX/
   // dark-pool flow premiums in the hundreds-of-thousands+ range) for a PER-CONTRACT option
   // premium. mark=2.45 rendered as "$2" and stop_premium=1.96 as "$2" — same digit, wrong value,
-  // and both disagreed with the Position section's precise "+$2.45" (play-brief.ts's own
-  // 2-decimal fmtUsd) rendered from the exact same field in the same brief. Now both use
-  // fmtOptionUsd (2-decimal, signed) so one fact reads as one number everywhere in the document.
-  assert.match(section!.body, /Live read.*mark \*\*\+\$2\.45\*\*/i, "mark must render precise, not rounded to $2");
-  assert.match(section!.body, /Break watch.*lose premium stop \*\*\+\$1\.96\*\*/i, "stop_premium must render precise, not rounded to $2");
+  // and both disagreed with the Position section's precise "$2.45" rendered from the exact same
+  // field in the same brief. Now both use fmtOptionUsd (2-decimal) so one fact reads as one
+  // number everywhere in the document. Sign-free since 2026-09-09 (blast radius of the
+  // play-brief.ts fmtUsd fix) — mark/stop_premium are absolute prices, never signed deltas.
+  assert.match(section!.body, /Live read.*mark \*\*\$2\.45\*\*/i, "mark must render precise, not rounded to $2, and not signed");
+  assert.match(section!.body, /Break watch.*lose premium stop \*\*\$1\.96\*\*/i, "stop_premium must render precise, not rounded to $2, and not signed");
+});
+
+test("tradeManagerNarrativeSection: railsFallback stop/target rails render sign-free absolute prices (2026-09-09 blast-radius fix)", () => {
+  // Empty trim_levels + no manageAction/time_stop_et/runner_fraction and a >7 DTE contract (the
+  // default "110C · 13DTE") mean manageLifecycleCoaching contributes no "Manage plan" bullet, so
+  // railsFallback's own "Manage rails" line is the one under test here — a separate code path
+  // (and a separate fmtOptionUsd call site) from the "Break watch" fallback covered above.
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        exitPolicy: {
+          trim_levels: [],
+          stop_premium: 1.5,
+          target_premium: 6,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Manage plan/i, "test setup must not accidentally exercise the Manage plan path");
+  assert.match(section!.body, /Manage rails.*stop \*\*\$1\.50\*\*.*target \*\*\$6\.00\*\*/i);
+  assert.doesNotMatch(section!.body, /stop \*\*\+/i, "stop_premium is an absolute price, never a signed delta");
+  assert.doesNotMatch(section!.body, /target \*\*\+/i, "target_premium is an absolute price, never a signed delta");
 });
 
 test("tradeManagerNarrativeSection: bias reads bullish from technicals on SHORT play with bullish tape (FINDINGS 2026-09-06 #13 parity)", () => {
