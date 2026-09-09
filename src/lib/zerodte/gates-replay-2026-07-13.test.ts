@@ -132,7 +132,10 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
   //                                           tripped the F-5 top-band hard block pre-2026-09-09 —
   //                                           G-19 is now non-blocking telemetry, topBandInversionFlag)
   //   MU   long  09:55 → BLOCKED  G-2 + G-17 (single stock — G-1 bypassed; score 73 clears G-3's
-  //                                           65 floor but not G-17's 75; pre-10:00 → opening_window too)
+  //                                           65 floor but sits in the RESTRUCTURED (2026-09-09)
+  //                                           70-74 conditional sub-band and doesn't meet its
+  //                                           admission bar here (conditional_band_unmet, not the
+  //                                           old single_rail_corroboration); pre-10:00 → opening_window too)
   //   SPXW long  10:00 → BLOCKED  G-1        (index ETF, counter-tape; at unlock boundary)
   //   QQQ  short 10:20 → BLOCKED  G-17       (index ETF, aligned, ≥ 10:00 — clears G-3's 65 floor
   //                                           but score 65 < G-17's 75. This is the REAL winner
@@ -153,7 +156,11 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
     // G-19 downgraded to telemetry 2026-09-09 — score_top_band no longer fires (SPY still
     // blocks on tape_alignment + opening_window regardless; verify the telemetry separately).
     SPY: ["tape_alignment", "opening_window"],
-    MU: ["opening_window", "single_rail_corroboration"],
+    // G-17 restructured 2026-09-09: MU's score 73 sits in the NEW 70-74 conditional sub-band
+    // (was the flat "single_rail_corroboration" 65-74 reject before the restructure) — it does
+    // not meet the conditional band's admission bar in this replay fixture, so it now reports
+    // the distinct conditional_band_unmet code instead.
+    MU: ["opening_window", "conditional_band_unmet"],
     SPXW: ["tape_alignment"],
     QQQ: ["single_rail_corroboration", "early_window_prime_score"],
     META: ["single_rail_corroboration", "early_window_prime_score"],

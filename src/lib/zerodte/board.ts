@@ -865,7 +865,8 @@ export type ZeroDteGateFailure =
   | "score_floor" // G-3: post-edge-layer score below origin-aware floor (65 FLOW / looser BREAKOUT·PIN)
   | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse) — DOWNGRADED 2026-09-09 to non-blocking telemetry (ZeroDteGateVerdict.topBandInversionFlag); this code is retained as a historical/type value only and is never pushed by evaluateZeroDteGates anymore
   | "early_window_prime_score" // G-18: sub-prime scores in early window
-  | "single_rail_corroboration" // G-17: the 65-74 band needs the prime floor (≥75), any origin combo
+  | "single_rail_corroboration" // G-17 (RESTRUCTURED 2026-09-09): the 65-69 sub-band — rejected outright, no admission path
+  | "conditional_band_unmet" // G-17 (RESTRUCTURED 2026-09-09): the 70-74 sub-band — CONDITIONAL admission (confluence>=2 + clean tape/VIX/execution) not met
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open
   | "governor_session_stops" // G-5: 3 stops today — halted for the session

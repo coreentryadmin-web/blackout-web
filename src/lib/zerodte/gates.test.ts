@@ -444,6 +444,77 @@ test("G-17: the 65-74 band blocks REGARDLESS of rail corroboration; 75+ commits 
   assert.ok(!corroboratedPrime.blocks.some((b) => b.code === "single_rail_corroboration"));
 });
 
+// ── G-17 RESTRUCTURE (2026-09-09, operator-approved CTO gate-architecture review) ────────
+// Three-band architecture: <65 REJECT (G-3) / 65-69 REJECT unconditional / 70-74 CONDITIONAL
+// (confluence>=2 AND clean tape AND clean VIX AND clean execution/safety) / 75+ PRIME.
+// Literal deterministic test matrix from the review's own spec.
+
+test("G-17 matrix: score 64 → REJECT", () => {
+  const v = evaluateZeroDteGates(
+    input({ score: 64, nowEtMinutes: 12 * 60, vixDayOpen: 15, confluence: confluence(2) })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+});
+
+test("G-17 matrix: score 67 → REJECT (65-69 unconditional sub-band)", () => {
+  const v = evaluateZeroDteGates(
+    input({ score: 67, nowEtMinutes: 12 * 60, vixDayOpen: 15, confluence: confluence(2) })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "single_rail_corroboration"));
+});
+
+test("G-17 matrix: score 72, confluence>=2, tape-aligned, VIX-clean, execution clean, outside early window → COMMIT-eligible", () => {
+  const v = evaluateZeroDteGates(
+    input({ score: 72, nowEtMinutes: 12 * 60, vixDayOpen: 15, confluence: confluence(2) })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.ok(!v.blocks.some((b) => b.code === "conditional_band_unmet"));
+});
+
+test("G-17 matrix: score 72 during 10:00-10:45 early window → REJECT (G-18 still requires 75, unaffected by the conditional band)", () => {
+  const v = evaluateZeroDteGates(
+    input({ score: 72, nowEtMinutes: EARLY_ET, vixDayOpen: 15, confluence: confluence(2) })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
+test("G-17 matrix: score 72 under elevated VIX (>=17) → REJECT (canonicalized G-4 still applies — conditional band does NOT exempt from G-4)", () => {
+  const v = evaluateZeroDteGates(
+    input({ score: 72, nowEtMinutes: 12 * 60, vixDayOpen: 18, confluence: confluence(2) })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "vix_elevated"));
+});
+
+test("G-17 matrix: score 72 with confluence UNKNOWN (null read) → REJECT (G-12 fix — absence cannot satisfy the >=2 bar)", () => {
+  const v = evaluateZeroDteGates(
+    input({ score: 72, nowEtMinutes: 12 * 60, vixDayOpen: 15, confluence: null })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "conditional_band_unmet"));
+});
+
+test("G-17 matrix: score 72 with confluence measured 0 or 1 → REJECT, same as unknown (not a new hole)", () => {
+  const zero = evaluateZeroDteGates(
+    input({ score: 72, nowEtMinutes: 12 * 60, vixDayOpen: 15, confluence: confluence(0) })
+  );
+  assert.equal(zero.verdict, "BLOCKED");
+  assert.ok(zero.blocks.some((b) => b.code === "conditional_band_unmet"));
+});
+
+test("G-17 matrix: score 78 → COMMIT-eligible (PRIME, unrestricted)", () => {
+  const v = evaluateZeroDteGates(input({ score: 78, nowEtMinutes: 12 * 60, vixDayOpen: 15 }));
+  assert.equal(v.verdict, "COMMIT");
+});
+
+test("G-17 matrix: score 87 → NOT blocked solely by score (composes with item 7's G-19 removal)", () => {
+  const v = evaluateZeroDteGates(input({ score: 87, nowEtMinutes: 12 * 60, vixDayOpen: 15 }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.topBandInversionFlag, true);
+});
+
 // ── G-5 · session governor (wiring — the rules themselves live in governor.test.ts) ─
 
 test("G-5: unreadable governor state fails closed with gate_context_unavailable", () => {
