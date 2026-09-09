@@ -96,6 +96,18 @@ export function entryCortexScoreOf(entryContext: Record<string, unknown> | null)
   return typeof score === "number" && Number.isFinite(score) ? score : null;
 }
 
+/** Did commit relief strip this play's ONLY veto (a `gex-walls` wall fact) to let it
+ *  commit? (`entry_context.cortex.gex_walls_veto_relieved`, cortex-vector-relief.ts.)
+ *  False for every row that predates the wire-in — same fail-safe default as
+ *  entryCortexScoreOf above, never a stale-data false positive. Live-monitor finding
+ *  2026-09-09: without this, the exit-time thesis check re-vetoes on the exact wall
+ *  relief overrode, closing the position within ~1 second of entry (SHOP/MSTR). */
+export function entryGexWallsVetoReliefOf(entryContext: Record<string, unknown> | null): boolean {
+  const cortex = entryContext?.cortex as Record<string, unknown> | undefined;
+  if (!cortex || cortex.abstained === true) return false;
+  return cortex.gex_walls_veto_relieved === true;
+}
+
 /**
  * Legacy/unpinned-row exit-mode selector — superseded by resolveExitModeForTier() (the E5
  * graduation) for every fresh commit; this one is now only a fallback for rows with no
@@ -450,6 +462,7 @@ export async function evaluateLedgerRowExit(
       regime,
       trimsTaken,
       gexQualityDegraded,
+      entryGexWallsVetoRelieved: entryGexWallsVetoReliefOf(row.entry_context),
     });
 
     // A trim_scale tranche just armed (never ratchet's own single "plan_target_trim" —

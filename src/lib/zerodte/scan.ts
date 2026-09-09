@@ -123,7 +123,7 @@ import {
 } from "./strategy-version";
 import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy, playRailsFromRow } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
-import { applyCortexCommitRelief } from "./cortex-vector-relief";
+import { applyCortexCommitRelief, gexWallsVetoWasRelieved } from "./cortex-vector-relief";
 import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
 import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
@@ -1764,7 +1764,10 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       {
         score: s.score,
         gamma_regime: s.gamma_regime,
-        cortex: cortexEntryContextFor(s.cortex),
+        cortex: cortexEntryContextFor(
+          s.cortex,
+          s.cortex != null ? gexWallsVetoWasRelieved(s.cortex) : false
+        ),
         discovery_origin: s.discovery_origin,
       },
       sessionCtx,
