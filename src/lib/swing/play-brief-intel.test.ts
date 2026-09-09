@@ -1169,6 +1169,44 @@ test("chartLevelsSection: stale GEX king strike omitted even when Vector desk is
   assert.doesNotMatch(section!.body, /GEX king strike/);
 });
 
+// FINDING 2026-09-09 (Ask Largo monitor cycle, live AAPL:36): chartLevelsSection's "GEX king
+// strike" line read ONLY gex.gex_king_strike, with no Vector-ladder fallback — unlike call
+// wall/put wall/gamma flip immediately above it in this same section, which all correctly
+// prefer a live Vector reading (`vecX ?? gex?.x`), and unlike play-brief.ts's structured
+// `levels` array and play-brief-narrative.ts's `focalLevelsFrom` (both `vecKing ?? kingFromGex`).
+// Same envelope, same conceptual level, two different precedence rules: live prod showed
+// "GEX king strike: 330.00" in this section's narrative text and "GEX king: 320.00" in the
+// structured Key levels / Trade manager read for the SAME AAPL:36 brief.
+test("chartLevelsSection: GEX king strike prefers a live Vector ladder king over the GEX matrix, matching the structured levels/narrative precedence", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gex_king_strike: 105,
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 100,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      gexWalls: { putWalls: [{ strike: 94 }], callWalls: [] },
+      ladder: { rows: [{ strike: 102, isKing: true }] },
+    } as unknown as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /GEX king strike: \*\*102\.00\*\*/, "must show the live Vector ladder's king strike, not the GEX matrix one");
+  assert.doesNotMatch(section!.body, /105\.00/);
+});
+
 test("meridianCatalystSection: empty successful read states quiet calendar, not silence", () => {
   const section = meridianCatalystSection({
     play: fixturePlay(),
