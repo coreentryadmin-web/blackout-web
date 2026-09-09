@@ -128,8 +128,9 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
   // + G-17's 2026-08-28 extension to a universal 75 floor in the 65-74 band):
   //   AMD  long  09:50 → BLOCKED  G-2 + G-3  (single stock — G-1 tape_alignment bypassed;
   //                                           score 58 < 65 floor; pre-10:00 → opening_window)
-  //   SPY  long  09:55 → BLOCKED  G-1 + G-2 + G-19 (index ETF, counter-tape; 93-score now
-  //                                           also trips the F-5 top-band hard block)
+  //   SPY  long  09:55 → BLOCKED  G-1 + G-2  (index ETF, counter-tape; 93-score would have also
+  //                                           tripped the F-5 top-band hard block pre-2026-09-09 —
+  //                                           G-19 is now non-blocking telemetry, topBandInversionFlag)
   //   MU   long  09:55 → BLOCKED  G-2 + G-17 (single stock — G-1 bypassed; score 73 clears G-3's
   //                                           65 floor but not G-17's 75; pre-10:00 → opening_window too)
   //   SPXW long  10:00 → BLOCKED  G-1        (index ETF, counter-tape; at unlock boundary)
@@ -149,7 +150,9 @@ test("7/13 replay: full verdict table matches the decision doc's §2 projection 
   // (boundary inclusive). Block order is tape_alignment → opening_window → score_floor → G-17.
   const expected: Record<string, string[] | "COMMIT"> = {
     AMD: ["opening_window", "score_floor"],
-    SPY: ["tape_alignment", "opening_window", "score_top_band"],
+    // G-19 downgraded to telemetry 2026-09-09 — score_top_band no longer fires (SPY still
+    // blocks on tape_alignment + opening_window regardless; verify the telemetry separately).
+    SPY: ["tape_alignment", "opening_window"],
     MU: ["opening_window", "single_rail_corroboration"],
     SPXW: ["tape_alignment"],
     QQQ: ["single_rail_corroboration", "early_window_prime_score"],
