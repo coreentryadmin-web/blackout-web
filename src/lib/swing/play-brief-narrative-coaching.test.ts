@@ -520,6 +520,43 @@ test("vectorPlayCoaching: returned line has an EVEN count of ** bold markers (no
   assert.doesNotMatch(line!, /^\*\*Vector desk: \*\*/);
 });
 
+// FINDINGS 2026-09-09 (live NRG repro): VectorPlayEmit.starred is documented (vector-play-engine.ts)
+// to ALWAYS have the headline as its first element. This coaching bullet rendered the headline once
+// via `vp.headline`, then rendered `vp.starred[0]` a second time under a separate "starred level"
+// label — duplicating the exact same text verbatim in one bullet.
+test("vectorPlayCoaching: does not duplicate the headline as a 'starred level' (starred[0] IS the headline)", () => {
+  const vec = {
+    play: {
+      headline: "POSITION · pivot at the 119.71 gamma flip — long above / short below",
+      invalidation: "5m close back through 119.71",
+      starred: [
+        "POSITION · pivot at the 119.71 gamma flip — long above / short below",
+        "Flip cross imminent — watch 119.71",
+      ],
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  const headlineOccurrences = (
+    line!.match(/POSITION · pivot at the 119\.71 gamma flip — long above \/ short below/g) ?? []
+  ).length;
+  assert.equal(headlineOccurrences, 1, `headline must appear once, not duplicated as "starred level": ${line}`);
+  assert.match(line!, /starred level \*\*Flip cross imminent — watch 119\.71\*\*/);
+});
+
+test("vectorPlayCoaching: omits the 'starred level' clause when there is no starred item beyond the headline", () => {
+  const vec = {
+    play: {
+      headline: "Ride momentum",
+      invalidation: "below 100",
+      starred: ["Ride momentum"],
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  assert.doesNotMatch(line!, /starred level/);
+});
+
 test("vexCoaching: narrates vanna flip", () => {
   const line = vexCoaching(
     {

@@ -141,8 +141,11 @@ import {
   gateRejectionFor,
   runnerConfluenceCount,
   planQualityGateBlocks,
+  contractLiquidityGateBlocks,
   refreshPlanQualityGateBlocks,
+  refreshContractLiquidityGateBlocks,
   refreshMoneynessGateBlocks,
+  refreshQualificationDislocationGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
@@ -683,6 +686,7 @@ export async function scanZeroDteBoard(flags?: {
         const planGateOpts = { chaseExempt: planChaseExempt(chaseCtx) };
         s.plan_chase_exempt = planGateOpts.chaseExempt;
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null, planGateOpts);
+        s.gate = refreshContractLiquidityGateBlocks(s.gate, s.plan ?? null);
         s.gate = refreshMoneynessGateBlocks(
           s.gate,
           s.otm_pct ?? null,
@@ -693,6 +697,17 @@ export async function scanZeroDteBoard(flags?: {
             ),
           }
         );
+        // G-23: attachContractPlans (and its refreshUnderlyingFromLiveSpot) has now run above —
+        // s.underlying_price/_as_of and s.plan are the real post-refresh values, so re-apply the
+        // dislocation circuit-breaker against them, mirroring the moneyness refresh just above.
+        s.gate = refreshQualificationDislocationGateBlocks(s.gate, {
+          qualificationPrice: s.qualification_underlying_price ?? null,
+          qualificationAsOfMs: parseIsoMs(s.qualification_underlying_price_as_of),
+          currentPrice: s.underlying_price ?? null,
+          currentAsOfMs: parseIsoMs(s.underlying_price_as_of),
+          quote: s.plan ? { bid: s.plan.bid, ask: s.plan.ask, mark: s.plan.mark } : null,
+          isCondor: s.play_type === "CONDOR",
+        });
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
@@ -1112,6 +1127,16 @@ async function attachGateVerdicts(
       // value — refreshMoneynessGateBlocks (below) re-applies the same caps once the refresh has
       // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
       otmPct: s.otm_pct ?? null,
+      // G-23 (same ordinary-vs-thesis-first split as otmPct above): qualification_underlying_price
+      // was frozen in enrichSetup BEFORE any refresh ever ran, so it always reflects the true
+      // qualification moment regardless of pipeline. underlying_price/_as_of, by contrast, are
+      // already live-refreshed here in the ordinary pipeline (attachContractPlans ran above) and
+      // still pre-refresh under thesis-first — refreshQualificationDislocationGateBlocks (below)
+      // re-applies against the real refreshed values once that pass has happened.
+      qualificationUnderlyingPrice: s.qualification_underlying_price ?? null,
+      qualificationUnderlyingPriceAsOfMs: parseIsoMs(s.qualification_underlying_price_as_of),
+      currentUnderlyingPrice: s.underlying_price ?? null,
+      currentUnderlyingPriceAsOfMs: parseIsoMs(s.underlying_price_as_of),
       intradayConflict: s.intraday_conflict,
       market_aligned: s.market_aligned ?? null,
       regime_structure: marketState?.regime_structure ?? null,
@@ -1194,6 +1219,14 @@ async function attachGateVerdicts(
     committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
   }
   return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
+}
+
+/** Parse an ISO-8601 as-of stamp to epoch-ms, or null on absence/malformed input — never NaN,
+ *  which would otherwise silently poison the G-23 dislocation-window arithmetic downstream. */
+function parseIsoMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
 }
 
 /**
@@ -1329,6 +1362,8 @@ async function attachContractPlans(
       mark: snap?.mark ?? null,
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
+      openInterest: snap?.openInterest ?? null,
+      dayVolume: snap?.dayVolume ?? null,
       quoteAgeMs: computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
@@ -1568,7 +1603,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       verdict = {
         ...s.gate,
         verdict: "BLOCKED",
-        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null, planGateOpts)],
+        blocks: [
+          ...s.gate.blocks,
+          ...planQualityGateBlocks(s.plan ?? null, planGateOpts),
+          ...contractLiquidityGateBlocks(s.plan ?? null),
+        ],
       };
     }
     gateRejections.push(gateRejectionFor(s, verdict ?? null));
@@ -1736,7 +1775,15 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
     // setups carry gate=null and pass null here — the upsert's COALESCE pin keeps
     // the original commit-time verdict untouched either way.
-    gate_calibration_json: s.gate ? ({ ...s.gate.calibration } as unknown as Record<string, unknown>) : null,
+    // G-19 (2026-09-09): topBandInversionFlag rides alongside the G-4/G-6 calibration
+    // columns so the ledger can check for a recurrence of the F-5 top-band-inversion
+    // pattern without needing to re-derive it from raw score/origin after the fact.
+    gate_calibration_json: s.gate
+      ? ({
+          ...s.gate.calibration,
+          top_band_inversion_flag: s.gate.topBandInversionFlag,
+        } as unknown as Record<string, unknown>)
+      : null,
     // entry_context.cortex pins the FULL evidence vector (or the honest abstain
     // record) at commit — the §3.1 calibration loop's raw material. Refresh-lane
     // setups never ran the Cortex (s.cortex null → blob field null), and the

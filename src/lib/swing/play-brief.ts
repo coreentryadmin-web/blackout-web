@@ -23,6 +23,7 @@ import {
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
+import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import { fmtPremium } from "@/lib/fmt-money";
 import {
@@ -285,6 +286,17 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
         provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
       });
     }
+    // The gamma magnet is narrated prominently in the "Trade manager read" section
+    // (magnetCoaching, play-brief-narrative-coaching.ts) as a decision-relevant price ("pull up
+    // toward this node"), but was never added to the structured envelope.levels array — anything
+    // consuming levels (a "show on chart" follow-up, another Largo surface) had no way to see it.
+    if (vec?.magnet?.strike != null) {
+      levels.push({
+        label: "gamma magnet",
+        price: vec.magnet.strike,
+        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      });
+    }
   }
   const vecKing = vectorStale ? undefined : vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
   const king = vecKing ?? gex?.gex_king_strike;
@@ -488,10 +500,18 @@ export function composeSwingPlayBrief(
 
   sections.push(...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel }));
 
+  // Prefer a real per-ticker technical break level (put wall/gamma flip/call wall — same
+  // computation the "Trade manager read" narrative's own "Break watch" bullet uses) over the
+  // raw commit-gate reason. The gate reason is frequently a SYSTEM-WIDE operational block (e.g.
+  // G-S12 halt-feed-stale) that reads identically across every gate-blocked ticker on the board
+  // at once and tells a trader nothing about THIS setup — see resolveBreakInvalidation's own
+  // comment for the live evidence. Gate reason / premium stop stay as fallbacks for when no real
+  // level is computable (no live spot, no walls/flip at all).
   const invalidation =
     play.thesisBreak?.level === "break"
       ? play.thesisBreak.note ?? "Thesis break — structural invalidation fired."
-      : play.gateBlocks?.[0]?.reason ??
+      : resolveBreakInvalidation(ctx) ??
+        play.gateBlocks?.[0]?.reason ??
         (bucket === "open" && play.exitPolicy?.stop_premium != null
           ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
           : null);

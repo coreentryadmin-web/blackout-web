@@ -213,8 +213,18 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStaleForLevels;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStaleForLevels;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStaleForLevels;
-  // King strike is GEX-only in this section — gate whenever the matrix is stale (Vector presence irrelevant).
-  const kingFromStaleGex = gex?.gex_king_strike != null && gexStaleForLevels;
+  // King strike previously read GEX-only here ("Vector presence irrelevant") while play-brief.ts's
+  // structured `levels` array AND play-brief-narrative.ts's focalLevelsFrom (used by the "Trade
+  // manager read" section) both already preferred a live Vector-ladder king via
+  // `vec?.ladder?.rows?.find(isKing) ?? gex.gex_king_strike`. Same envelope, same conceptual level,
+  // two different precedence rules — a member could see e.g. "GEX king strike: 330.00" here (raw
+  // GEX matrix) and "GEX king 320.00" in the structured Key levels / Trade manager read for the
+  // SAME brief (live-confirmed 2026-09-09, AAPL:36: matrix gex_king_strike=330 vs Vector ladder
+  // king=320, both rendered in the same envelope). Match the other two call sites' precedence so
+  // every section in one brief tells the same GEX-king story (Largo contract: one coherent read).
+  const vecKingForLevels = vectorStaleForLevels ? undefined : vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
+  const king = vecKingForLevels ?? gex?.gex_king_strike ?? null;
+  const kingFromStaleGex = vecKingForLevels == null && gex?.gex_king_strike != null && gexStaleForLevels;
 
   if (callWall != null && !callWallFromStaleGex) {
     lines.push(`**Call wall (GEX):** ${callWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, callWall)}` : ""}`);
@@ -225,8 +235,8 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   if (flip != null && !flipFromStaleGex) {
     lines.push(`**Gamma flip:** ${flip.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, flip)}` : ""}`);
   }
-  if (gex?.gex_king_strike != null && !kingFromStaleGex) {
-    lines.push(`GEX king strike: **${gex.gex_king_strike.toFixed(2)}**`);
+  if (king != null && !kingFromStaleGex) {
+    lines.push(`GEX king strike: **${king.toFixed(2)}**`);
   }
   if (vec?.maxPain != null && !vectorStaleForLevels) {
     lines.push(`Max pain: **${vec.maxPain.toFixed(2)}**`);
@@ -753,8 +763,12 @@ export function vectorDeskSection(
   if (p.entryZone) lines.push(`Entry zone: **${p.entryZone}**`);
   if (p.targets.length) lines.push(`Targets: ${p.targets.map((t) => `**${t}**`).join(" · ")}`);
   if (p.invalidation) lines.push(`Invalidation: **${p.invalidation}**`);
-  if (p.starred.length) {
-    lines.push("**Watch now:**\n" + p.starred.slice(0, 4).map((s) => `• ${s}`).join("\n"));
+  // `starred[0]` is documented (VectorPlayEmit.starred, vector-play-engine.ts) to ALWAYS be the
+  // headline itself — already rendered above, so skip it here. Slicing from 0 duplicated the
+  // headline as the first "Watch now" bullet (live repro: NRG brief 2026-09-08).
+  const watchNow = p.starred.slice(1, 5);
+  if (watchNow.length) {
+    lines.push("**Watch now:**\n" + watchNow.map((s) => `• ${s}`).join("\n"));
   }
   // Largo C2 — stale Vector play.bias must not badge bullish/bearish (early return above handles stale body).
   const bias =

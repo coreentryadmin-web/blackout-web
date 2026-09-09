@@ -858,13 +858,15 @@ export type ZeroDteGateFailure =
   // didn't ticker X commit" is one queryable surface for both gate families.
   | "tape_alignment" // G-1: direction fights the SPY session bias
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
+  | "input_desync" // G-20: option quote and SPY tape bias individually fresh but desynced from each other (>5min apart)
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
   | "horizon_weekly_fallback" // G-15: WEEKLY_FALLBACK excluded — not same-day gradable on 0DTE ledger
   | "score_floor" // G-3: post-edge-layer score below origin-aware floor (65 FLOW / looser BREAKOUT·PIN)
-  | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse)
+  | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse) — DOWNGRADED 2026-09-09 to non-blocking telemetry (ZeroDteGateVerdict.topBandInversionFlag); this code is retained as a historical/type value only and is never pushed by evaluateZeroDteGates anymore
   | "early_window_prime_score" // G-18: sub-prime scores in early window
-  | "single_rail_corroboration" // G-17: the 65-74 band needs the prime floor (≥75), any origin combo
+  | "single_rail_corroboration" // G-17 (RESTRUCTURED 2026-09-09): the 65-69 sub-band — rejected outright, no admission path
+  | "conditional_band_unmet" // G-17 (RESTRUCTURED 2026-09-09): the 70-74 sub-band — CONDITIONAL admission (confluence>=2 + clean tape/VIX/execution) not met
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open
   | "governor_session_stops" // G-5: 3 stops today — halted for the session
@@ -883,6 +885,10 @@ export type ZeroDteGateFailure =
   // ── WS-04 malformed-quote validation (fail-closed; additive to plan_illiquid/plan_no_quote) ──
   | "plan_quote_invalid" // G-9: malformed book — zero/null bid, crossed, locked, mark out of band, or $-spread over cap
   | "plan_quote_stale" // G-9: quote age beyond the freshness bound (only when a quote timestamp is available)
+  // ── G-21 contract liquidity/depth (2026-09-09 split OUT of G-9's plan_quote_invalid) —
+  // a well-formed, in-band quote can still be too THIN to fill; distinct from quote integrity.
+  | "plan_thin_size" // G-21: resting bid/ask size below the floor (only when the provider reports size)
+  | "plan_no_volume_or_oi" // G-21: BOTH day volume and open interest read zero (only when both were supplied)
   | "intraday_conflict" // G-10: VWAP + 5m trend oppose the play direction
   | "halted" // G-11: underlying trading halt
   | "earnings" // G-11: reports today/next session — different trade than 0DTE scalp
@@ -918,6 +924,14 @@ export type ZeroDteGateFailure =
   | "condor_macro_block" // block a condor HARDER in a macro window (a CPI/FOMC breakout is its worst case)
   | "condor_range_break" // spot has approached/breached a short strike — the defended range is failing
   | "flow_accumulation_conflict" // G-13: multi-day flow direction opposes the setup (aligned === false)
+  // G-23: qualification-to-commit price dislocation / circuit-breaker — the underlying moved an
+  // abnormal amount in an abnormally short window since this setup passed the evidence gates
+  // (distinct from G-8 no-chase, which is anchored to the flow PRINT's fill, not the qualification
+  // moment, and never re-checks the underlying itself; distinct from the moneyness re-check, which
+  // only re-tests final strike distance, not the SPEED of the move that produced it), OR the
+  // contract's live quote is crossed/locked at commit time. See qualificationDislocationGateBlocks
+  // (gates.ts) for the full doc.
+  | "qualification_dislocation"
   | "regime_blind" // Regime Plane: VIX/macro/halt/GEX blind — no fresh commits
   | "governor_concentration" // Q9 enforced: too many correlated same-direction opens
   | "governor_premium_budget" // Phase 2c: aggregate entry premium budget exceeded
@@ -929,6 +943,13 @@ export type ZeroDteGateFailure =
 export type ZeroDteGateRejection = {
   ticker: string;
   gate_failed: ZeroDteGateFailure;
+  /** EVERY gate code that failed this evaluation (gate_failed is only blocks[0] — the
+   *  first/primary code). Added 2026-09-09: prerequisite for gate-ablation/marginal-value
+   *  analysis, which needs to know the FULL set of gates a rejected candidate failed, not
+   *  just the one that happened to be checked first. Null/empty for the four evidence
+   *  gates (board.ts's own min_gross/min_aggr_share/min_dominance/moneyness checks, which
+   *  predate the hard-gate stack and only ever produce one code per candidate anyway). */
+  blocks?: ZeroDteGateFailure[] | null;
   /** Human-readable block sentence (hard-gate rows; the UI's SKIP card copy). Null for
    *  the four evidence gates, whose numeric columns already carry the whole story. */
   reason?: string | null;
@@ -1613,6 +1634,22 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  overnight; it does NOT gate or score the board today. Null = not computed (e.g. same-day
    *  0DTE with no overnight to measure, or malformed today/expiry inputs) — never fabricated. */
   session_gap_days?: number | null;
+  /**
+   * G-23 (gates.ts qualificationDislocationGateBlocks): the underlying price + as-of this setup
+   * QUALIFIED on — a FROZEN copy of `underlying_price`/`underlying_price_as_of` taken here, in
+   * enrichSetup, which runs immediately after deriveZeroDteSetups and BEFORE scan.ts's
+   * attachContractPlans ever calls refreshUnderlyingFromLiveSpot. That refresh mutates
+   * `underlying_price`/`underlying_price_as_of` IN PLACE (see refreshUnderlyingFromLiveSpot's own
+   * doc) so by commit time those two fields hold the CURRENT live-refreshed mark, not the one this
+   * setup was evaluated against when it passed the evidence gates. Without a frozen copy there is
+   * no way to ask "how far has price moved since this candidate qualified" — the qualification-time
+   * value is gone the moment it is refreshed. Optional/undefined is the ordinary case for any setup
+   * enrichSetup never touched (tests, fixtures, a setup built by a path that doesn't call
+   * enrichSetup) — G-23 fails OPEN on absence like every other supplementary gate input in this
+   * file, never fabricating a block from data that was never captured.
+   */
+  qualification_underlying_price?: number | null;
+  qualification_underlying_price_as_of?: string | null;
 };
 
 // ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────
@@ -1780,6 +1817,11 @@ export function enrichSetup(
 
   return {
     ...setup,
+    // G-23 frozen qualification snapshot — captured HERE, before attachContractPlans ever runs,
+    // so it survives the later live-spot refresh that overwrites underlying_price/_as_of in place.
+    // See the field doc on EnrichedZeroDteSetup for the full rationale.
+    qualification_underlying_price: setup.underlying_price,
+    qualification_underlying_price_as_of: setup.underlying_price_as_of,
     dossier_score: scored?.score ?? null,
     conviction: scored?.conviction ?? null,
     direction_confirmed: scored ? scored.direction === setup.direction : null,
