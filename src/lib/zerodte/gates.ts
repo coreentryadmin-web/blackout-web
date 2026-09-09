@@ -834,19 +834,36 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   }
 
   // G-13 — multi-day flow accumulation direction conflict (aligned === false).
-  if (
-    !isCondor &&
-    ZERODTE_BLOCK_ACCUM_MISALIGN &&
-    input.flowAccumulationAligned === false
-  ) {
-    blocks.push({
-      code: "flow_accumulation_conflict",
-      reason:
-        "Multi-day options flow accumulation opposes this setup's direction — " +
-        `the stacked positioning read disagrees with the ${input.ticker}-${input.direction} commit.`,
-      threshold: null,
-      unlock_et: null,
-    });
+  // DOWNGRADED from unconditional hard block to an ELEVATED QUALITY REQUIREMENT
+  // (2026-09-09, operator-approved CTO gate-architecture review): a setup whose
+  // stacked positioning opposes its direction can still proceed if it clears a HIGHER
+  // bar than the ordinary commit floors — score >= 75 (the same PRIME band G-17/G-18
+  // already use elsewhere in this stack) AND confluence confirmations >= 2 (reusing
+  // g12ConfirmationCount, the exact G-12 leg count — not a new metric). The conflict
+  // stays fully visible in the block reason/telemetry even when it doesn't block, so
+  // the disagreement is never silently hidden by a strong score. ZERODTE_BLOCK_ACCUM_MISALIGN
+  // remains the on/off flag for the WHOLE mechanism (both the block and the elevated-
+  // quality check it now gates) — set it false to disable G-13 entirely.
+  //
+  // A missing confluence read cannot itself satisfy the >=2 confirmation requirement:
+  // this is an ELEVATED bar being asked to override a real, measured conflict signal,
+  // not G-12's own ordinary fail-open (which never manufactures a block from an
+  // unmeasured factor) — the absence of measurement here is not evidence of agreement.
+  if (!isCondor && ZERODTE_BLOCK_ACCUM_MISALIGN && input.flowAccumulationAligned === false) {
+    const confirmCount = input.confluence != null ? g12ConfirmationCount(input.confluence, input.ticker) : 0;
+    const clearsElevatedQuality = input.score >= 75 && confirmCount >= 2;
+    if (!clearsElevatedQuality) {
+      blocks.push({
+        code: "flow_accumulation_conflict",
+        reason:
+          "Multi-day options flow accumulation opposes this setup's direction — " +
+          `the stacked positioning read disagrees with the ${input.ticker}-${input.direction} commit ` +
+          `(score ${Math.round(input.score)}, ${confirmCount} confluence confirmations — needs >=75 ` +
+          "score AND >=2 confirmations to override a stacked-positioning conflict).",
+        threshold: 75,
+        unlock_et: null,
+      });
+    }
   }
 
   // ── Moneyness re-check (live-refreshed underlying) — P0 fix, 2026-08-27 ─────────────────
