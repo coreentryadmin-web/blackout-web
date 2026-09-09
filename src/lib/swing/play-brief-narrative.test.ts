@@ -893,6 +893,35 @@ test("tradeManagerNarrativeSection: includes counter-thesis when opposing signal
   assert.match(section!.body, /Counter-thesis/i);
 });
 
+// FINDINGS 2026-09-09 (live NRG repro): crossDeskCoaching's "Cross-desk friction" bullet and
+// counterThesisLine's "Vector bearish/bullish" reason both independently derive the same
+// Vector-vs-swing misalignment and, unfixed, both cite the same headline in the same document —
+// e.g. "Cross-desk friction — Vector bearish (Fade the rip)." AND, several bullets later,
+// "Counter-thesis (bear case) — Vector bearish (Fade the rip) · ...". A trade-manager voice states
+// a fact once, not three times across three sections.
+test("tradeManagerNarrativeSection: Counter-thesis omits the Vector reason when crossDeskCoaching already named it, but keeps other reasons", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        play: { bias: "short", headline: "Fade the rip", invalidation: "102.00", thesis: "mean reversion" },
+        technicals: { emaStack: "down", macd: "bear", vwapSide: "above", structure: "BOS down" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  const friction = (section!.body.match(/Cross-desk friction[^\n]*/g) ?? []);
+  const counter = (section!.body.match(/Counter-thesis[^\n]*/g) ?? []);
+  assert.equal(friction.length, 1, `expected one Cross-desk friction bullet, got: ${section!.body}`);
+  assert.match(friction[0]!, /Fade the rip/);
+  assert.equal(counter.length, 1, `expected one Counter-thesis bullet, got: ${section!.body}`);
+  // The Vector-specific reason is dropped from Counter-thesis (already stated above)...
+  assert.doesNotMatch(counter[0]!, /Vector bearish/);
+  // ...but the independent EMA-stack reason survives, proving this isn't a blanket suppression.
+  assert.match(counter[0]!, /bear EMA stack/);
+});
+
 test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BULLETS on rich Vector data", () => {
   const richVector = {
     spot: 100,

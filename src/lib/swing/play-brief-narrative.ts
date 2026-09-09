@@ -438,7 +438,20 @@ function railsFallback(play: TerminalPlay): string | null {
 }
 
 /** Steelman the opposing case — honest bear/bull risks for the swing direction. */
-export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay, spot: number | null): string | null {
+/** `vectorConflictAlreadyNoted` — crossDeskCoaching (play-brief-narrative-coaching.ts) derives the
+ *  identical Vector-vs-swing-direction misalignment from the identical vec.play input, earlier in
+ *  the same bullet list, and already names this exact headline in its "Cross-desk friction" bullet
+ *  when it fires. Without this flag both bullets AND this counter-thesis reason cite the same
+ *  headline as three separate facts in one document — live repro: NRG brief 2026-09-09, "Cross-desk
+ *  friction — Vector bearish (...)" and "Counter-thesis (bear case) — Vector bearish (...)" both
+ *  present. The other counter-thesis reasons (EMA stack, fading pillar, GEX walls) are independent
+ *  evidence and stay untouched — only the Vector-specific reason is omitted when redundant. */
+export function counterThesisLine(
+  ctx: SwingPlayBriefContext,
+  play: TerminalPlay,
+  spot: number | null,
+  vectorConflictAlreadyNoted?: boolean,
+): string | null {
   const vec = vectorOf(ctx);
   const eco = ctx.ecosystem;
   const reasons: string[] = [];
@@ -468,7 +481,7 @@ export function counterThesisLine(ctx: SwingPlayBriefContext, play: TerminalPlay
   const vp = vec?.play;
   // Same Largo C2 gap as stale GEX walls/posture (#4355/#4364): steelmanning Vector desk bias
   // off a stale snapshot reads like a live opposing read.
-  if (!vectorSnapshotStale(vec, Date.now(), ctx.sessionDate)) {
+  if (!vectorSnapshotStale(vec, Date.now(), ctx.sessionDate) && !vectorConflictAlreadyNoted) {
     if (play.direction === "LONG" && vp?.bias === "short") {
       reasons.push(`Vector bearish (${vp.headline ?? vp.grade ?? "desk read"})`);
     } else if (play.direction === "SHORT" && vp?.bias === "long") {
@@ -654,7 +667,10 @@ export function tradeManagerNarrativeSection(
   }
   if (breakLine) add(breakLine, { reserved: true });
 
-  const counter = counterThesisLine(ctx, play, spot);
+  // crossDeskCoaching (collected into `bullets` above via collectCoachingBullets) already names
+  // the same Vector headline when desks conflict — see counterThesisLine's own doc comment.
+  const vectorConflictAlreadyNoted = bullets.some((b) => /Vector (bearish|bullish)/.test(b));
+  const counter = counterThesisLine(ctx, play, spot, vectorConflictAlreadyNoted);
   if (counter) add(counter, { reserved: true });
 
   if (!bullets.length) return null;
