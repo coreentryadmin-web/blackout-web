@@ -130,6 +130,87 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   assert.deepEqual(brief.flowSnapshot, { callPremium: 1_200_000, putPremium: 400_000 });
 });
 
+test("composeSwingPlayBrief: invalidation prefers a real per-ticker technical break level over a generic system-wide commit-gate reason", () => {
+  // Regression for the live defect found 2026-09-09: NBIS, CRCL and MU — three different
+  // gate-blocked WATCH setups, three different archetypes — all showed the LITERAL SAME
+  // "Trading-halt feed unavailable..." string in the UI's labeled "Invalidation" callout,
+  // because play-brief.ts fell straight from thesisBreak to `gateBlocks?.[0]?.reason` without
+  // ever checking whether a real technical level (put wall/gamma flip, already computed for
+  // the "Trade manager read" narrative's own "Break watch" bullet) was available. Timestamps
+  // are relative to Date.now() so this does not depend on the sandbox's wall clock matching a
+  // hardcoded fixture date (gexMatrixStale/vectorSnapshotStale are real-Date.now()-based).
+  const recentIso = new Date(Date.now() - 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      direction: "LONG",
+      gateBlocks: [
+        { code: "G-S12", reason: "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers." },
+      ],
+      thesisBreak: { level: "intact", note: "Structure holding" },
+    }),
+    asOf: recentIso,
+    sessionDate: "2026-09-09",
+    scanAsOf: recentIso,
+    scanSessionDay: "2026-09-09",
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      recent_flow: null,
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      spx_desk_convergence: null,
+      flow_feed_fresh: true,
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        change_pct: 1.2,
+        asof: recentIso,
+        as_of_et: "recent",
+        session_date_et: "2026-09-09",
+        market_phase: "open",
+        call_wall: 26,
+        put_wall: 22,
+        flip: 24,
+        gex_king_strike: 25,
+        net_gex: null,
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
+        gamma_posture: "long",
+        vanna_posture: null,
+        delta_posture: null,
+        charm_posture: null,
+      },
+      vector_full_state: null,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    },
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "**Break watch** — lose **22.00** on a closing basis → structural support failed; exit or cut size.",
+  );
+  assert.doesNotMatch(
+    brief.envelope.invalidation ?? "",
+    /Trading-halt feed unavailable/,
+    "a system-wide gate reason must not stand in for a real per-ticker invalidation level when one is computable",
+  );
+});
+
 test("composeSwingPlayBrief: dossier regime stays in Why this setup, not unlabeled Verdict", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ regime: "Sector rotation · regime 0.82", archetype: "BREAKOUT" }),
@@ -537,6 +618,7 @@ test("composeSwingPlayBrief: stale Vector snapshot envelope levels must not cite
       maxPain: 23.5,
       confluenceZones: [{ center: 25, kinds: ["gex"], score: 80 }],
       darkPoolLevels: [{ strike: 24.8, premium: 1_200_000, pct: 35 }],
+      magnet: { strike: 27, distancePct: 10.2, pull: "up" },
     } as SwingPlayBriefContext["vector"],
   };
   const brief = composeSwingPlayBrief(ctx);
@@ -551,6 +633,7 @@ test("composeSwingPlayBrief: stale Vector snapshot envelope levels must not cite
   assert.ok(!labels.includes("max pain"), "stale Vector max pain must be suppressed");
   assert.ok(!labels.some((l) => l.startsWith("confluence")), "stale Vector confluence must be suppressed");
   assert.ok(!labels.includes("dark pool"), "stale Vector dark pool must be suppressed");
+  assert.ok(!labels.includes("gamma magnet"), "stale Vector gamma magnet must be suppressed");
   const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
   assert.equal(postureEvidence, undefined, "stale Vector regime must not ground envelope dealer posture");
 });
@@ -1293,6 +1376,34 @@ test("composeSwingPlayBrief: dark pool envelope levels attribute Vector provenan
     "Vector",
     "dark pool levels come from Vector full-state, not HELIX tape",
   );
+});
+
+// FINDINGS 2026-09-09: the "Trade manager read" narrative (magnetCoaching) names the gamma
+// magnet as a decision-relevant price ("pull up toward this node"), but levelsFromContext never
+// surfaced it in the structured envelope.levels array — a "show on chart" follow-up or any other
+// Largo consumer of structured levels had no way to see the value the prose was pointing at.
+test("composeSwingPlayBrief: gamma magnet is surfaced as a structured envelope level, not narrative-only", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-09-05 16:00 ET",
+      spot: 120,
+      magnet: { strike: 134.06, distancePct: 11.7, pull: "up" },
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const magnet = brief.envelope.levels?.find((l) => l.label === "gamma magnet");
+  assert.ok(magnet, "gamma magnet level must be present");
+  assert.equal(magnet?.price, 134.06);
+  assert.equal(magnet?.provenance?.source, "Vector");
 });
 
 test("composeSwingPlayBrief: envelope level provenance uses ET stamps, not raw UTC ISO (C1)", () => {

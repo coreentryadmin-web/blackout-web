@@ -1586,6 +1586,13 @@ async function runMigrations(): Promise<void> {
     -- visible discipline, never a silent drop). NULL for the original 4 evidence gates, whose
     -- rows predate the hard-gate stack and whose numeric columns already tell the whole story.
     ALTER TABLE zerodte_scan_rejections ADD COLUMN IF NOT EXISTS reason TEXT;
+    -- blocks_json (2026-09-09): EVERY gate code that failed, not just the primary one
+    -- gate_failed already carries. Prerequisite for gate-ablation/marginal-value analysis —
+    -- see ZeroDteGateRejection's own doc comment (board.ts) for the full rationale. Additive
+    -- nullable JSONB, same idempotent-ALTER pattern as counterfactual_json (skip-grading.ts):
+    -- rows written before this column existed carry NULL forever, and every reader must
+    -- treat it as optional.
+    ALTER TABLE zerodte_scan_rejections ADD COLUMN IF NOT EXISTS blocks_json JSONB;
 
     -- swing_scan_rejections (Swing Engine V2 P1): durable near-miss / cap-drop log for the
     -- multi-day swing discovery funnel. Tier-1 budget caps silently dropped strong names before
@@ -4451,6 +4458,8 @@ export async function insertZeroDteScanRejection(row: {
   last_seen: string | null;
   /** Human-readable block sentence (hard-gate rows only; evidence-gate rows pass null). */
   reason?: string | null;
+  /** EVERY gate code that failed this evaluation (see blocks_json's schema comment above). */
+  blocks?: string[] | null;
 }): Promise<void> {
   await ensureSchema();
   await dbQuery(
@@ -4458,9 +4467,9 @@ export async function insertZeroDteScanRejection(row: {
     INSERT INTO zerodte_scan_rejections (
       session_date, ticker, gate_failed, threshold, gross_premium,
       aggression, side_dominance, otm_pct, direction, prints,
-      first_seen, last_seen, reason
+      first_seen, last_seen, reason, blocks_json
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `,
     [
       row.session_date,
@@ -4476,6 +4485,7 @@ export async function insertZeroDteScanRejection(row: {
       row.first_seen,
       row.last_seen,
       row.reason ?? null,
+      row.blocks && row.blocks.length > 0 ? JSON.stringify(row.blocks) : null,
     ]
   );
 }
@@ -4537,6 +4547,9 @@ export async function fetchZeroDteScanRejections(opts?: {
     first_seen: string | null;
     last_seen: string | null;
     reason: string | null;
+    /** Every gate code that failed this evaluation — null on rows written before
+     *  blocks_json existed (2026-09-09) or on the four evidence-gate rejections. */
+    blocks: string[] | null;
   }>
 > {
   await ensureSchema();
@@ -4545,7 +4558,7 @@ export async function fetchZeroDteScanRejections(opts?: {
   const sessionDate = opts?.session_date;
   const cols = `id, observed_at, session_date, ticker, gate_failed, threshold,
            gross_premium, aggression, side_dominance, otm_pct, direction, prints,
-           first_seen, last_seen, reason`;
+           first_seen, last_seen, reason, blocks_json`;
   let res;
   if (ticker && sessionDate) {
     res = await dbQuery(
@@ -4592,6 +4605,10 @@ export async function fetchZeroDteScanRejections(opts?: {
     first_seen: isoTimestampString(r.first_seen),
     last_seen: isoTimestampString(r.last_seen),
     reason: r.reason != null ? String(r.reason) : null,
+    // node-postgres parses JSONB columns into a JS value already (unlike DATE, which needs
+    // isoDateString's funnel above) — but validate the shape rather than trust it blindly,
+    // since a hand-edited row or a future schema change could leave something else there.
+    blocks: Array.isArray(r.blocks_json) ? r.blocks_json.map((b: unknown) => String(b)) : null,
   })  );
 }
 

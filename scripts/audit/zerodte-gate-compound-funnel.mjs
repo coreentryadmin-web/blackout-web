@@ -14,7 +14,9 @@
  * ever measured the real joint funnel before touching a single number.
  *
  * This script closes that gap for the FLOW-origin gate stack (gates.ts's evaluateZeroDteGates,
- * G-1 through G-19): it runs REAL production functions against REAL live market data and reports
+ * G-1 through G-23 as of 2026-09-09 — see the three new safety gates in the APPROXIMATED section
+ * below, none of which this offline harness can actually exercise yet): it runs REAL production
+ * functions against REAL live market data and reports
  * an ISOLATED failure rate per gate (how many real candidates trip THIS gate, regardless of any
  * other) alongside the JOINT pass rate (how many clear every gate at once) — the actual number
  * this repo has never measured.
@@ -336,6 +338,9 @@ console.log(`    G-6 cross_system_conflict — no live Slayer/Night Hawk cross-d
 console.log(`    G-7 macro_hard_block — no macro-calendar fetch (treated as zero events)`);
 console.log(`    G-8/G-9 plan_moved/plan_illiquid/plan_no_quote/plan_quote_* — no live option quote fetch`);
 console.log(`    G-11 halted/earnings — no halt-feed/earnings-feed fetch`);
+console.log(`    G-20 input_desync (2026-09-09) — needs plan.quoteAgeMs; no live option quote fetched this pass (plan: null) → fail-open, never fires here`);
+console.log(`    G-21 quote thin_size/no_volume_or_oi (2026-09-09 recalibration) — lives inside plan-quality (planQualityGateBlocks), SKIPPED here same as G-8/G-9`);
+console.log(`    G-23 qualification_dislocation (2026-09-09) — needs a qualification-time underlying snapshot this offline harness never captures → fail-open, never fires here`);
 console.log(`    Cortex veto layer (cortex-gate.ts) — evaluated AFTER these hard gates in production, not run here`);
 console.log(`    BREAKOUT/PIN origins — this run measures FLOW-origin setups only`);
 

@@ -12,10 +12,17 @@ import {
   evaluateZeroDteGates,
   gateRejectionFor,
   MARKET_BIAS_MAX_AGE_MS,
+  INPUT_SYNC_MAX_SKEW_MS,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
+  contractLiquidityGateBlocks,
+  refreshContractLiquidityGateBlocks,
+  freshCommitBlockedByPlan,
   moneynessGateBlocks,
   refreshMoneynessGateBlocks,
+  qualificationDislocationGateBlocks,
+  refreshQualificationDislocationGateBlocks,
+  QUALIFICATION_DISLOCATION_MAX_PCT,
   refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
@@ -168,6 +175,92 @@ test("G-1 bypass: single-name with stale bias commits (staleness irrelevant for 
   const v = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", biasAsOfMs: staleMs }));
   assert.equal(v.verdict, "COMMIT");
   assert.deepEqual(v.blocks.filter(b => b.code === "no_market_bias"), []);
+});
+
+// ── G-20 · cross-input synchronization/freshness ──────────────────────────────────
+
+test("G-20: quote and bias both fresh individually but desynced from each other blocks", () => {
+  // Quote observed 5s ago (well inside the 60s quote-freshness bound); bias read 12min
+  // ago (well inside the 15min bias-freshness bound). Individually both pass G-1/G-8-G-9's
+  // OWN freshness checks, but they describe two different instants ~12min apart — well past
+  // the 5-minute sync tolerance.
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks[0]!.code, "input_desync");
+  assert.equal(v.blocks[0]!.threshold, INPUT_SYNC_MAX_SKEW_MS);
+  assert.match(v.blocks[0]!.reason, /apart/);
+});
+
+test("G-20: quote and bias synchronized (both fresh, close in time) does not block", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 }, // 5s old
+      biasAsOfMs: NOW_MS - 60_000, // 1min old — 55s skew from the quote, well under the 5min tolerance
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20: exactly at the sync tolerance boundary is still fresh (exclusive boundary)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 0 },
+      biasAsOfMs: NOW_MS - INPUT_SYNC_MAX_SKEW_MS,
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+
+  const overByOne = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 0 },
+      biasAsOfMs: NOW_MS - INPUT_SYNC_MAX_SKEW_MS - 1,
+    })
+  );
+  assert.equal(overByOne.blocks[0]!.code, "input_desync");
+});
+
+test("G-20 fail-open: no quote timestamp (plan omits quoteAgeMs) never blocks, even with a stale-looking bias gap", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: CLEAN_PLAN, // no quoteAgeMs — the live scan always supplies one; fixtures may not
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 fail-open: no plan at all never blocks", () => {
+  const v = evaluateZeroDteGates(input({ plan: null, biasAsOfMs: NOW_MS - 12 * 60 * 1000 }));
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 fail-open: missing bias timestamp never blocks (bias absence is G-1's job, not G-20's)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: null,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+test("G-20 bypass: single-name stocks skip cross-input sync entirely (same scope as G-1)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
 });
 
 // ── G-2 · opening window (worst first 30 min, unlock 10:00 — user-authorized 2026-07-23) ──
@@ -423,23 +516,23 @@ test("G-4: normal VIX (<17) commits freely, calibration tier logged", () => {
   assert.equal(normal.calibration.g4_vix.would_block, false);
 });
 
-test("G-4: elevated VIX tape-aligned score 65–74 commits (G-1 already blocks counter-tape)", () => {
-  // G-17 (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also applies at
-  // score 70 with no discovery_origin set here — this test is about G-4's OWN floor, so check
-  // vix_elevated specifically clears rather than the overall verdict.
+test("G-4 CANONICALIZED (2026-09-09): elevated VIX + tape-aligned score 70 (<75) now BLOCKS — no tape-alignment relief", () => {
+  // Pre-canonicalization this cleared at the standard 65 floor when tape-aligned. The
+  // canonical rule removes that relief: VIX >= 17 requires score >= 75 for EVERY ticker,
+  // full stop, regardless of G-1 tape alignment.
   const aligned = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70 }));
-  assert.ok(!aligned.blocks.some((b) => b.code === "vix_elevated"));
-  assert.equal(aligned.calibration.g4_vix.would_block, false);
+  assert.ok(aligned.blocks.some((b) => b.code === "vix_elevated"));
+  assert.equal(aligned.calibration.g4_vix.would_block, true);
 });
 
-test("G-4: elevated VIX with flat tape uses the standard 65 floor (flat = no directional opposition)", () => {
-  // Flat tape clears G-1 (no counter-tape fight), so the elevated regime keeps the 65 floor.
-  // (G-17 also applies at this score with no discovery_origin — check vix_elevated, not overall verdict.)
+test("G-4 CANONICALIZED: elevated VIX + flat tape at score 70 (<75) also BLOCKS — flat gets no relief either", () => {
+  // Flat tape used to keep the standard 65 floor; the canonical rule applies the uniform
+  // 75 floor regardless of tape state (flat, aligned, counter, or unknown all behave alike).
   const flat70 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70, bias: "flat" }));
-  assert.ok(!flat70.blocks.some((b) => b.code === "vix_elevated"));
+  assert.ok(flat70.blocks.some((b) => b.code === "vix_elevated"));
   assert.equal(flat70.calibration.g4_vix.tier, "elevated");
-  assert.equal(flat70.calibration.g4_vix.would_block, false);
-  // Null bias (unknown tape — stale or unavailable) still requires 75 (belt-and-suspenders).
+  assert.equal(flat70.calibration.g4_vix.would_block, true);
+  // Null bias (unknown tape) behaves identically now — no separate treatment.
   const null64 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 64, bias: null }));
   assert.equal(null64.verdict, "BLOCKED");
   assert.equal(null64.blocks.some((b) => b.code === "vix_elevated"), true);
@@ -484,24 +577,22 @@ test("G-4 fail-closed: attempted-but-unavailable VIX blocks a fresh NON-index co
   assert.match(v.blocks.find((b) => b.code === "vix_unavailable")!.reason, /VIX read unavailable/);
 });
 
-test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF whose score clears the elevated floor (no spurious empty)", () => {
-  // QQQ (index) tape-aligned short at 80 ≥ 75: no present VIX regime could have blocked it,
+test("G-4 fail-closed CANONICALIZED: unavailable VIX does NOT block an index/ETF whose score clears the uniform 75 floor", () => {
+  // QQQ (index) short at 80 ≥ 75: no present VIX regime could have blocked it,
   // so an unavailable VIX must not either.
   const strong = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 80, vixDayOpen: null, vixUnavailable: true }));
   assert.equal(strong.verdict, "COMMIT");
   assert.equal(strong.blocks.some((b) => b.code === "vix_unavailable"), false);
-  // Tape-aligned index at 70 clears too (aligned elevated floor is 65, G-3 guarantees ≥65).
-  // G-17 also applies at 70 with no discovery_origin set — check vix_unavailable specifically.
-  const aligned = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(aligned.blocks.some((b) => b.code === "vix_unavailable"), false);
+  // 70 < 75 now DOES block — the canonical rule has no tape-alignment relief to check against.
+  const at70 = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, vixDayOpen: null, vixUnavailable: true }));
+  assert.equal(at70.blocks.some((b) => b.code === "vix_unavailable"), true);
 });
 
-test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF with flat tape above the standard 65 floor (flat = aligned)", () => {
-  // Flat tape is treated as aligned, so the 65 floor applies — 70 >= 65 → no present VIX could block.
-  // (G-17 also applies at 70 with no discovery_origin set — check vix_unavailable specifically.)
+test("G-4 fail-closed CANONICALIZED: unavailable VIX blocks an index/ETF below 75 regardless of tape state (flat or null)", () => {
+  // Flat tape used to keep the standard 65 floor; canonicalized, 70 < 75 blocks regardless.
   const v = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), false);
-  // Null bias (unknown tape) at 70 < 75 → DOES block (belt-and-suspenders for unknown tape).
+  assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), true);
+  // Null bias (unknown tape) at 70 < 75 also blocks — identical treatment now.
   const nullBias = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: null, vixDayOpen: null, vixUnavailable: true }));
   assert.equal(nullBias.verdict, "BLOCKED");
   assert.equal(nullBias.blocks.some((b) => b.code === "vix_unavailable"), true);
@@ -662,6 +753,10 @@ test("gateRejectionFor: one row per blocked setup — primary code, ALL reasons 
   assert.equal(row.gate_failed, "tape_alignment", "primary = first-evaluated failing gate");
   assert.match(String(row.reason), /fights the DOWN market tape/);
   assert.match(String(row.reason), /10:00 ET/, "second block's sentence rides the same row");
+  // blocks_json (2026-09-09) carries EVERY failing code, not just the primary one — the
+  // prerequisite for gate-ablation/marginal-value analysis, which needs to know G-2 also
+  // fired underneath G-1, not just whichever evaluated first.
+  assert.deepEqual(row.blocks, ["tape_alignment", "opening_window"]);
   // Evidence-gate columns carry through so both gate families are comparable rows.
   assert.equal(row.gross_premium, 2_400_000);
   assert.equal(row.direction, "long");
@@ -672,6 +767,7 @@ test("gateRejectionFor: a null verdict (gate context unreadable) is itself a fai
   const row = gateRejectionFor(rejectionSource, null);
   assert.equal(row.gate_failed, "gate_context_unavailable");
   assert.match(String(row.reason), /fail closed/);
+  assert.deepEqual(row.blocks, ["gate_context_unavailable"], "single synthetic block, not empty");
 });
 
 // ── G-7..G-11 (precision gates, 2026-07-18 audit) ────────────────────────────────
@@ -877,6 +973,66 @@ test("refreshPlanQualityGateBlocks: drops stale plan_no_quote after deferred att
   assert.equal(blocked.blocks.some((b) => b.code === "plan_no_quote"), true);
 });
 
+// ── G-21 · contract liquidity/depth (2026-09-09 split OUT of G-9's plan_quote_invalid) ──
+// A well-formed, in-band quote (clears G-9) can still be too THIN to fill — a SIBLING
+// check with its own distinct gate codes, not a branch of plan_quote_invalid.
+
+test("contractLiquidityGateBlocks: exported helper matches gate evaluation, clean plan passes", () => {
+  assert.deepEqual(contractLiquidityGateBlocks(CLEAN_PLAN), []);
+  assert.deepEqual(contractLiquidityGateBlocks(null), []);
+});
+
+test("G-21: thin_size fails closed with the DISTINCT plan_thin_size code, not plan_quote_invalid", () => {
+  const plan: ContractPlan = { ...CLEAN_PLAN, liquidity_invalid_reason: "thin_size" };
+  const blocks = contractLiquidityGateBlocks(plan);
+  assert.equal(blocks.some((b) => b.code === "plan_thin_size"), true);
+  assert.equal(blocks.some((b) => b.code === "plan_quote_invalid"), false);
+  const v = evaluateZeroDteGates(input({ plan, score: 80 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_thin_size"), true);
+});
+
+test("G-21: no_volume_or_oi fails closed with its own DISTINCT code, and is independent of quote_invalid_reason", () => {
+  const plan: ContractPlan = { ...CLEAN_PLAN, liquidity_invalid_reason: "no_volume_or_oi" };
+  const v = evaluateZeroDteGates(input({ plan, score: 80 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_no_volume_or_oi"), true);
+  assert.equal(v.blocks.some((b) => b.code === "plan_quote_invalid"), false);
+});
+
+test("G-21: a plan that is BOTH quote-invalid (G-9) AND thin (G-21) surfaces BOTH distinct codes at once", () => {
+  const plan: ContractPlan = {
+    ...CLEAN_PLAN,
+    quote_invalid_reason: "crossed",
+    liquidity_invalid_reason: "thin_size",
+  };
+  const v = evaluateZeroDteGates(input({ plan, score: 80 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_quote_invalid"), true);
+  assert.equal(v.blocks.some((b) => b.code === "plan_thin_size"), true);
+});
+
+test("refreshContractLiquidityGateBlocks: drops/applies G-21 after deferred plan attach (thesis-first)", () => {
+  const stale = evaluateZeroDteGates(
+    input({ plan: null, deferPlanQualityGates: true, score: 80 })
+  );
+  assert.equal(stale.blocks.some((b) => b.code === "plan_thin_size"), false);
+
+  const cleared = refreshContractLiquidityGateBlocks(stale, CLEAN_PLAN);
+  assert.equal(cleared.blocks.some((b) => b.code === "plan_thin_size"), false);
+
+  const thinPlan: ContractPlan = { ...CLEAN_PLAN, liquidity_invalid_reason: "thin_size" };
+  const blocked = refreshContractLiquidityGateBlocks(stale, thinPlan);
+  assert.equal(blocked.verdict, "BLOCKED");
+  assert.equal(blocked.blocks.some((b) => b.code === "plan_thin_size"), true);
+});
+
+test("freshCommitBlockedByPlan: true for a G-21 liquidity defect even when G-8/G-9 are clean", () => {
+  const thinPlan: ContractPlan = { ...CLEAN_PLAN, liquidity_invalid_reason: "thin_size" };
+  assert.equal(freshCommitBlockedByPlan(thinPlan), true);
+  assert.equal(freshCommitBlockedByPlan(CLEAN_PLAN), false);
+});
+
 // ── Moneyness re-check (P0 fix, 2026-08-27) ─────────────────────────────────────────────
 // Live-caught: board.ts's deriveZeroDteSetups gates SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT exactly
 // once, before scan.ts's attachContractPlans refreshes otm_pct from a fresher live-spot read —
@@ -979,6 +1135,202 @@ test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", ()
   );
   const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
   assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
+});
+
+// ── G-23 · qualification-to-commit dislocation circuit-breaker ─────────────────────
+// Distinct from G-8 (anchored to the flow print's fill, never re-examines the underlying) and
+// the moneyness re-check just above (only re-tests the FINAL strike distance, never the SPEED
+// of the move) — see qualificationDislocationGateBlocks's module doc in gates.ts.
+
+const QUAL_AT_MS = Date.parse("2026-09-09T14:00:00Z");
+
+test("qualificationDislocationGateBlocks: abnormal move (>=1.5%) inside the window → BLOCKED", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 102, // +2% — past the 1.5% default
+    currentAsOfMs: QUAL_AT_MS + 90_000, // 90s later — well inside the 5-min window
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "qualification_dislocation");
+  assert.match(blocks[0]!.reason, /2\.00% in 1\.5 min/);
+  assert.equal(blocks[0]!.threshold, QUALIFICATION_DISLOCATION_MAX_PCT);
+});
+
+test("qualificationDislocationGateBlocks: same magnitude move but over a LONG window (ordinary drift) → no block", () => {
+  // Same 2% final move as the abnormal case above, but it took 20 minutes to get there —
+  // ordinary intraday drift, not a violent dislocation. Confirms the gate is genuinely
+  // velocity-gated, not just a magnitude cap duplicating the moneyness re-check.
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 102,
+    currentAsOfMs: QUAL_AT_MS + 20 * 60_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: small/normal drift inside the window → no false positive", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100.5, // 0.5% — well under the 1.5% cap
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: a crossed book at commit time → BLOCKED regardless of price move", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100.1, // negligible move
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.5, ask: 2.0, mark: 2.2 }, // bid > ask — crossed
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "qualification_dislocation");
+  assert.match(blocks[0]!.reason, /crossed/);
+});
+
+test("qualificationDislocationGateBlocks: a locked book at commit time → BLOCKED", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100,
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.0, ask: 2.0, mark: 2.0 }, // zero-width book
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.match(blocks[0]!.reason, /locked/);
+});
+
+test("qualificationDislocationGateBlocks: a CONDOR is exempt from the crossed/locked quote check", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100,
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.0, ask: 2.0, mark: 2.0 },
+    isCondor: true,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: fails OPEN when the qualification-time snapshot is missing", () => {
+  // No qualification_underlying_price on the setup (never touched by enrichSetup, e.g. a
+  // hand-built fixture/test) — must NOT fabricate a block from data that was never captured.
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: null,
+      qualificationAsOfMs: null,
+      currentPrice: 200, // a huge apparent move — irrelevant, there is nothing to compare it to
+      currentAsOfMs: QUAL_AT_MS + 60_000,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: 100,
+      qualificationAsOfMs: undefined,
+      currentPrice: 200,
+      currentAsOfMs: QUAL_AT_MS + 60_000,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+});
+
+test("qualificationDislocationGateBlocks: fails OPEN when the current-side snapshot is missing", () => {
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: 100,
+      qualificationAsOfMs: QUAL_AT_MS,
+      currentPrice: null,
+      currentAsOfMs: null,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+});
+
+test("qualificationDislocationGateBlocks: a non-positive elapsed window never manufactures a block (clock-skew guard)", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 110, // 10% move — would otherwise trip
+    currentAsOfMs: QUAL_AT_MS - 5_000, // "current" is BEFORE qualification — skew, not a real window
+    quote: null,
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("evaluateZeroDteGates: existing gate behavior is UNCHANGED when qualification/current fields are simply not supplied", () => {
+  // The base input() fixture never sets these — every pre-existing gate test in this file
+  // relies on that being a true no-op, same guard as the moneyness otmPct test above.
+  const v = evaluateZeroDteGates(input());
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+test("evaluateZeroDteGates: an abnormal fast underlying dislocation since qualification BLOCKS a fresh commit", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      qualificationUnderlyingPrice: 100,
+      qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS,
+      currentUnderlyingPrice: 102.5, // +2.5% since qualification
+      currentUnderlyingPriceAsOfMs: QUAL_AT_MS + 60_000, // 1 minute later
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "qualification_dislocation"), true);
+});
+
+test("evaluateZeroDteGates: ordinary drift over qualification/current does NOT block (no false positive)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      qualificationUnderlyingPrice: 100,
+      qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS,
+      currentUnderlyingPrice: 100.3,
+      currentUnderlyingPriceAsOfMs: QUAL_AT_MS + 60_000,
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "qualification_dislocation"), false);
+});
+
+test("refreshQualificationDislocationGateBlocks: re-applies G-23 after a deferred (thesis-first) contract-plan attach", () => {
+  // Gates ran first (thesis-first order) with no current-side data yet attached — no block.
+  const preRefresh = evaluateZeroDteGates(
+    input({ qualificationUnderlyingPrice: 100, qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS, score: 80 })
+  );
+  assert.equal(preRefresh.verdict, "COMMIT");
+  assert.equal(preRefresh.blocks.some((b) => b.code === "qualification_dislocation"), false);
+
+  // attachContractPlans now runs and the underlying has, in fact, dislocated violently.
+  const postRefresh = refreshQualificationDislocationGateBlocks(preRefresh, {
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 103,
+    currentAsOfMs: QUAL_AT_MS + 45_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.equal(postRefresh.verdict, "BLOCKED");
+  assert.equal(postRefresh.blocks.some((b) => b.code === "qualification_dislocation"), true);
 });
 
 // Bug found 2026-08-26 alongside the plan_no_quote fix: G-5's premium-budget check runs with
@@ -1146,14 +1498,8 @@ test("WS-04: absolute-dollar spread over cap → blocked (wide_dollars); a propo
   assert.equal(ok, null);
 });
 
-test("WS-04: min-size only enforced when the provider reports size (conditional)", () => {
-  // Absent size → not enforced (absent size is not proof of illiquidity).
+test("G-9/G-21 split (2026-09-09): evaluateQuoteValidity no longer takes/enforces size — moved to G-21's evaluateContractLiquidity", () => {
   assert.equal(evaluateQuoteValidity({ bid: 2.3, ask: 2.5, mark: 2.4 }), null);
-  // Present but below floor → blocked.
-  assert.equal(
-    evaluateQuoteValidity({ bid: 2.3, ask: 2.5, mark: 2.4, bidSize: 0.5, askSize: 5 }),
-    "thin_size"
-  );
 });
 
 // ── G-12 · confluence floor (Phase 1) ────────────────────────────────────────────
@@ -1372,53 +1718,46 @@ test("G-3: score 64.999 blocks, exactly 65 commits — the floor comparison is o
 test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly 20 is extreme", () => {
   // 16.999 → normal regime, no floor bump; a flat-tape 70 commits.
   assert.equal(evaluateZeroDteGates(input({ vixDayOpen: 16.999, score: 70, bias: "flat" })).calibration.g4_vix.tier, "normal");
-  // Exactly 17 (>= elevated) → flat-tape 70 clears G-4's OWN floor (flat = aligned, 65 floor).
-  // (G-17 also applies at 70 with no discovery_origin set — check vix_elevated specifically.)
+  // Exactly 17 (>= elevated) → CANONICALIZED: uniform 75 floor, so a 70 now BLOCKS regardless
+  // of tape state (flat here, null below — both behave identically).
   const at17 = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: "flat" }));
   assert.equal(at17.calibration.g4_vix.tier, "elevated");
-  assert.ok(!at17.blocks.some((b) => b.code === "vix_elevated"));
-  // Exactly 17 with null bias (unknown tape) at 70 < 75 → blocked.
+  assert.ok(at17.blocks.some((b) => b.code === "vix_elevated"));
   const at17null = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: null }));
   assert.equal(at17null.calibration.g4_vix.tier, "elevated");
   assert.ok(at17null.blocks.some((b) => b.code === "vix_elevated"));
-  // 19.999 → still elevated (a single name at 90 clears the 75 elevated floor).
+  // 19.999 → still elevated (a single name at 78 clears the uniform 75 elevated floor).
   const nvdaHi = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 19.999, score: 78, bias: "flat" }));
   assert.equal(nvdaHi.calibration.g4_vix.tier, "elevated");
   assert.equal(nvdaHi.verdict, "COMMIT");
-  // Exactly 20 (>= extreme) → the same single name is blocked outright (index/ETF only).
+  // Exactly 20 (>= extreme) → the same single name is blocked outright (index/ETF only) —
+  // the extreme tier is UNCHANGED by the canonicalization.
   const nvdaExtreme = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 20, score: 90, bias: "flat" }));
   assert.equal(nvdaExtreme.calibration.g4_vix.tier, "extreme");
   assert.ok(nvdaExtreme.blocks.some((b) => b.code === "vix_extreme"));
 });
 
-test("G-4: elevated flat-tape score floor is 65 (same as aligned) — 64 blocks, 65 clears", () => {
-  const at64 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 64, bias: "flat" }));
-  assert.ok(at64.blocks.some((b) => b.code === "vix_elevated"));
-  // G-17 also applies at 65 with no discovery_origin set — check vix_elevated specifically.
-  const at65 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 65, bias: "flat" }));
-  assert.ok(!at65.blocks.some((b) => b.code === "vix_elevated"));
-  // Null bias triggers G-1 no_market_bias first (can't reach G-4), so the 75 elevated
-  // floor for unknown tape is tested via the calibration path and fail-closed tests.
+test("G-4 CANONICALIZED: elevated-tier score floor is a uniform 75 for every ticker — 74 blocks, 75 clears", () => {
+  const at74 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 74, bias: "flat" }));
+  assert.ok(at74.blocks.some((b) => b.code === "vix_elevated"));
+  const at75 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 75, bias: "flat" }));
+  assert.ok(!at75.blocks.some((b) => b.code === "vix_elevated"));
 });
 
-// ── G-4: elevated-VIX tape scoping must match G-1's (index/ETF only) ─────────────────
-// Bug found 2026-08-26: the elevated-VIX floor read `input.bias` vs `input.direction`
-// unconditionally, so a single name (which G-1 already exempts from tape alignment
-// entirely) with a disagreeing SPY bias was silently held to the stricter 75 floor —
-// re-imposing exactly the SPY-tape constraint G-1 was written to remove for single names.
-test("G-4: a single name with a DISAGREEING SPY bias still gets the standard 65 floor (G-1 exempts it from tape alignment)", () => {
-  // NVDA long, SPY tape DOWN (disagreeing) — G-1 never fires for single names, so this
-  // must reach G-4 and clear at the standard 65 floor, not the 75 elevated-counter-tape floor.
-  // (G-17 also applies at score 70 with no discovery_origin set — check vix_elevated specifically
-  // rather than the overall verdict.)
-  const v = evaluateZeroDteGates(
+// ── G-4 CANONICALIZED (2026-09-09): single names get NO carve-out from the elevated floor ──
+// Pre-canonicalization, a single name (G-1-exempt from tape alignment) always got the standard
+// 65 floor at elevated VIX regardless of score/tape — a full bypass of G-4's own regime throttle
+// for that instrument class. The canonical rule removes it: every ticker/instrument type needs
+// score >= 75 at VIX >= 17, full stop.
+test("G-4 CANONICALIZED: a single name at elevated VIX with score 70 (<75) now BLOCKS regardless of tape state", () => {
+  const disagreeing = evaluateZeroDteGates(
     input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
   );
-  assert.equal(v.calibration.g4_vix.tier, "elevated");
-  assert.ok(!v.blocks.some((b) => b.code === "vix_elevated"));
+  assert.equal(disagreeing.calibration.g4_vix.tier, "elevated");
+  assert.ok(disagreeing.blocks.some((b) => b.code === "vix_elevated"));
 
-  // The same score/VIX/disagreeing-bias combination on an INDEX ETF must still block —
-  // this fix must not loosen the elevated floor for the instrument class it actually protects.
+  // Index ETF at the same score/VIX/disagreeing-bias combo is ALSO blocked (unchanged from
+  // before — this fix does not loosen anything for the instrument class the floor protects).
   const vEtf = evaluateZeroDteGates(
     input({ ticker: "QQQ", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
   );
@@ -1426,24 +1765,30 @@ test("G-4: a single name with a DISAGREEING SPY bias still gets the standard 65 
   assert.ok(vEtf.blocks.some((b) => b.code === "tape_alignment"), "index ETF counter-tape still blocked by G-1 before G-4 is reached");
 });
 
-test("computeGateCalibration: a single name's g4_vix.tier ignores SPY bias the same way the live gate does", () => {
+test("computeGateCalibration: a single name's g4_vix uses the SAME uniform 75 floor as an index ETF, no tape-aligned note", () => {
   const v = evaluateZeroDteGates(
     input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
   );
-  assert.equal(v.calibration.g4_vix.would_block, false);
-  assert.match(v.calibration.g4_vix.note, /tape-aligned/);
+  assert.equal(v.calibration.g4_vix.would_block, true);
+  assert.doesNotMatch(v.calibration.g4_vix.note, /tape-aligned/);
 });
 
-// ── G-4 fail-closed couldBlock narrowing: index/ETF flat at EXACTLY the 65 floor ──────
-test("G-4 fail-closed: an index/ETF flat-tape at 65+ could NOT have been blocked → unavailable VIX passes it", () => {
-  // couldBlock = !isIndexEtf || (!tapeAlignedOrFlat && score < 75). QQQ flat → tapeAlignedOrFlat=true → couldBlock false.
-  // (G-17 also applies at 65 with no discovery_origin set — check vix_unavailable specifically.)
-  const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 65, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
+// ── G-4 fail-closed couldBlock narrowing: uniform 75 floor, no tape-alignment carve-out ──
+test("G-4 fail-closed: an index/ETF at 75+ could NOT have been blocked → unavailable VIX passes it; below 75 fails closed", () => {
+  // couldBlock = !isIndexEtf || score < 75 (canonicalized — no tape-alignment term).
+  const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 75, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
-  // Null bias (unknown tape) at 74 < 75 → a present elevated VIX COULD have blocked it → fails closed.
+  // 74 < 75 → a present elevated VIX COULD have blocked it → fails closed, regardless of tape.
   const vNull74 = evaluateZeroDteGates(input({ ticker: "QQQ", score: 74, bias: null, vixDayOpen: null, vixUnavailable: true }));
   assert.equal(vNull74.verdict, "BLOCKED");
   assert.ok(vNull74.blocks.some((b) => b.code === "vix_unavailable"));
+  // A single name (non-index/ETF) can ALSO be blocked by extreme VIX now regardless of score —
+  // couldBlock = !isIndexEtf is unconditionally true — so it fails closed even at a high score.
+  const vSingleHighScore = evaluateZeroDteGates(
+    input({ ticker: "NVDA", score: 90, bias: "flat", vixDayOpen: null, vixUnavailable: true })
+  );
+  assert.equal(vSingleHighScore.verdict, "BLOCKED");
+  assert.ok(vSingleHighScore.blocks.some((b) => b.code === "vix_unavailable"));
 });
 
 // ── Stacked firewalls: every fail-closed signal at once surfaces every code ───────────
@@ -1731,8 +2076,36 @@ test("regime_blind blocks fresh commit when regime plane is blind", () => {
   assert.ok(v.blocks.some((b) => b.code === "regime_blind"));
 });
 
-test("G-13 flow_accumulation_conflict blocks when aligned === false", () => {
-  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false }));
+// G-13 (2026-09-09, operator-approved CTO gate-architecture review): DOWNGRADED from an
+// unconditional hard block to an ELEVATED QUALITY REQUIREMENT — a conflicted setup can
+// still proceed if it clears score >= 75 AND confluence confirmations >= 2.
+
+test("G-13: aligned === false BLOCKS when the setup does NOT clear the elevated quality bar (low score)", () => {
+  // score 70 < 75 elevated floor, even with confluence(2) confirming — still blocked.
+  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false, score: 70 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: aligned === false BLOCKS when score clears 75 but confluence confirmations < 2", () => {
+  const v = evaluateZeroDteGates(
+    input({ flowAccumulationAligned: false, score: 80, confluence: confluence(1) })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: aligned === false does NOT block once score >= 75 AND confluence confirmations >= 2 (elevated quality clears the conflict)", () => {
+  const v = evaluateZeroDteGates(
+    input({ flowAccumulationAligned: false, score: 75, confluence: confluence(2) })
+  );
+  assert.ok(!v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: a missing confluence read cannot satisfy the >=2 confirmation requirement — still blocks even at a high score", () => {
+  // Elevated-quality override requires MEASURED confirmation, not the ordinary G-12
+  // fail-open — absence of a read is not evidence the conflict is resolved.
+  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false, score: 90, confluence: null }));
   assert.equal(v.verdict, "BLOCKED");
   assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
 });
@@ -1742,12 +2115,16 @@ test("G-13 reason names the ACTUAL blocked ticker/direction, not a hardcoded exa
   // example with no interpolation at all — every blocked setup, regardless of its real
   // ticker or direction, rendered that identical sentence (confirmed live: SPXW/SPY/QQQ/NVDA
   // all showed "(MU-long/bearish-acc class)" verbatim on 2026-08-04).
-  const nvda = evaluateZeroDteGates(input({ ticker: "NVDA", direction: "long", flowAccumulationAligned: false }));
+  const nvda = evaluateZeroDteGates(
+    input({ ticker: "NVDA", direction: "long", flowAccumulationAligned: false, score: 60 })
+  );
   const block1 = nvda.blocks.find((b) => b.code === "flow_accumulation_conflict");
   assert.ok(block1?.reason.includes("NVDA-long"), `expected NVDA-long in reason, got: ${block1?.reason}`);
   assert.ok(!block1?.reason.includes("MU-long"), "must not carry the stale hardcoded example ticker");
 
-  const tsla = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", flowAccumulationAligned: false }));
+  const tsla = evaluateZeroDteGates(
+    input({ ticker: "TSLA", direction: "short", flowAccumulationAligned: false, score: 60 })
+  );
   const block2 = tsla.blocks.find((b) => b.code === "flow_accumulation_conflict");
   assert.ok(block2?.reason.includes("TSLA-short"), `expected TSLA-short in reason, got: ${block2?.reason}`);
 });
@@ -1757,20 +2134,19 @@ test("G-13 does not block when flow accumulation aligned or absent", () => {
   assert.equal(evaluateZeroDteGates(input({ flowAccumulationAligned: null })).verdict, "COMMIT");
 });
 
-test("stack fix: VIX unavailable without regime_blind — index ETF flat at 70 commits (G-4 narrowing)", () => {
+test("stack fix: VIX unavailable without regime_blind — index ETF at 75 (uniform floor) commits (G-4 narrowing)", () => {
+  // CANONICALIZED: the couldBlock narrowing no longer has a tape-alignment term, so this
+  // needs score >= 75 (not the old 70) to demonstrate "no present VIX could have blocked it".
   const v = evaluateZeroDteGates(
     input({
       ticker: "QQQ",
-      score: 70,
+      score: 75,
       bias: "flat",
       vixDayOpen: null,
       vixUnavailable: true,
       regimeBlockFreshCommits: false,
     }),
   );
-  // G-17 (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also fires at
-  // score 70 with no discovery_origin set here, so the overall verdict is BLOCKED — this test
-  // is about G-4's OWN narrowing, so check those two codes specifically clear instead.
   assert.ok(!v.blocks.some((b) => b.code === "regime_blind"));
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
 });
@@ -1802,26 +2178,45 @@ test("G-18: early window sub-prime score (70) is BLOCKED", () => {
   assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
 });
 
+test("G-18 CANONICALIZED (2026-09-09): a Vector exemption no longer clears the early-window block — unconditional 75+ in this window", () => {
+  // vector_g17_exempt used to bypass G-18's own block condition (borrowed from G-17's
+  // predicate) — that borrowed exemption is now REMOVED from G-18 specifically. G-17's OWN
+  // exemption (a separate code path) is untouched — see the next test block.
+  const v = evaluateZeroDteGates(
+    input({ score: 70, nowEtMinutes: EARLY_ET, vector_g17_exempt: true })
+  );
+  assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
 test("G-18: early window prime score (78) commits", () => {
   const v = evaluateZeroDteGates(input({ score: 78, nowEtMinutes: EARLY_ET }));
   assert.ok(!v.blocks.some((b) => b.code === "early_window_prime_score"));
 });
 
-test("G-19: score 88+ is BLOCKED without Vector winner", () => {
+// G-19 (2026-09-09, operator-approved CTO gate-architecture review): DOWNGRADED from a
+// hard block to non-blocking telemetry (`topBandInversionFlag`). score>=85 FLOW-origin now
+// proceeds normally through the rest of the stack; the flag marks the exact population the
+// old hard gate used to block, for recurrence analysis, but never gates a commit.
+
+test("G-19 TELEMETRY: score 88+ FLOW-origin, no Vector alignment — COMMITS, topBandInversionFlag true", () => {
   const v = evaluateZeroDteGates(input({ score: 88 }));
-  assert.ok(v.blocks.some((b) => b.code === "score_top_band"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "score_top_band"), false);
+  assert.equal(v.topBandInversionFlag, true);
 });
 
-test("G-19: score 88+ BREAKOUT-only origin is not blocked (F-5 measured on FLOW)", () => {
+test("G-19 TELEMETRY: score 88+ BREAKOUT-only origin — flag false (F-5 measured on FLOW only)", () => {
   const v = evaluateZeroDteGates(input({ score: 88, discovery_origin: ["BREAKOUT"] }));
-  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.topBandInversionFlag, false);
 });
 
-test("G-19: score 88+ Vector winner aligned commits", () => {
+test("G-19 TELEMETRY: score 88+ Vector winner aligned — flag false (was the exemption population)", () => {
   const v = evaluateZeroDteGates(
     input({
       score: 88,
       direction: "long",
+      bias: "up",
       vector_pulse: {
         premium_pct: 80,
         peak_premium_pct: 90,
@@ -1837,14 +2232,16 @@ test("G-19: score 88+ Vector winner aligned commits", () => {
       },
     })
   );
-  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.topBandInversionFlag, false);
 });
 
-test("G-19: score 88+ Vector runner aligned at 68+ commits (not only winners)", () => {
+test("G-19 TELEMETRY: score 88+ Vector runner aligned at 68+ — flag false (not only winners)", () => {
   const v = evaluateZeroDteGates(
     input({
       score: 88,
       direction: "long",
+      bias: "up",
       vector_pulse: {
         premium_pct: 28,
         peak_premium_pct: 35,
@@ -1860,7 +2257,18 @@ test("G-19: score 88+ Vector runner aligned at 68+ commits (not only winners)", 
       },
     })
   );
-  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.topBandInversionFlag, false);
+});
+
+test("G-19 TELEMETRY: a CONDOR never sets topBandInversionFlag (mirrors the live gate's own !isCondor scoping)", () => {
+  const v = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", score: 90 }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.equal(v.topBandInversionFlag, false);
 });
 
 test("runnerConfluenceCount: uses pinned confirmations when higher than gate leg count", async () => {

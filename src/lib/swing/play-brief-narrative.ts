@@ -370,6 +370,48 @@ function breakTrigger(play: TerminalPlay, focal: FocalLevel[], flip: number | nu
   return null;
 }
 
+/**
+ * The real, per-ticker technical break level (put wall / dark pool / gamma flip for LONG,
+ * call wall for SHORT) — the same staleness-guarded spot/flip/focal-level computation
+ * `tradeManagerNarrativeSection` uses to build its "Break watch" bullet (see `breakTrigger`
+ * above), exposed standalone so `play-brief.ts`'s headline `envelope.invalidation` field can use
+ * it instead of falling straight to a raw commit-gate reason.
+ *
+ * WHY THIS EXISTS: play-brief.ts's `invalidation` fallback used to go straight from
+ * `thesisBreak.level === "break"` to `play.gateBlocks?.[0]?.reason` — but for a WATCH/pending
+ * play with no thesis-break event yet, the first blocking gate is very often a SYSTEM-WIDE
+ * operational gate (e.g. G-S12 "trading-halt feed unavailable"), not anything specific to the
+ * ticker. That gate reason is IDENTICAL across every gate-blocked ticker in the board at once
+ * (confirmed live 2026-09-09: NBIS, CRCL and MU — three different setups, three different
+ * archetypes — all showed the literal same "Trading-halt feed unavailable — desk will not open
+ * until halt/LULD data recovers." string in the UI's labeled "Invalidation" callout), even though
+ * a real per-ticker level (gamma flip / put wall) was already computed and displayed elsewhere in
+ * the very same brief. Preferring this technical level keeps `invalidation` a genuine,
+ * differentiating trade fact per the Largo product contract's precision principle, rather than a
+ * copy-pasted infra caveat that tells a trader nothing about the setup in front of them.
+ *
+ * Returns null (never fabricates) when no live spot or no real level is computable — callers keep
+ * falling back to the gate reason / premium stop in that case, same as before this existed.
+ */
+export function resolveBreakInvalidation(ctx: SwingPlayBriefContext): string | null {
+  const { play } = ctx;
+  const vec = vectorOf(ctx);
+  const readMs = Date.now();
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const gex = ctx.ecosystem?.gex_positioning;
+  const gexStale = gexMatrixStale(gex, readMs);
+  const spot = fin(vectorStale ? undefined : vec?.spot) ?? fin(gexStale ? undefined : gex?.spot);
+  if (spot == null) return null;
+
+  const vecFlipRaw = vectorStale ? undefined : vec?.gammaFlip;
+  const flipRaw = fin(vecFlipRaw) ?? fin(gex?.flip);
+  const flipFromStaleGex = vecFlipRaw == null && gex?.flip != null && gexStale;
+  const flip = flipFromStaleGex ? null : flipRaw;
+
+  const focal = collectFocalLevels(ctx, spot);
+  return breakTrigger(play, focal, flip);
+}
+
 function railsFallback(play: TerminalPlay): string | null {
   const ep = play.exitPolicy;
   if (!ep) return null;
