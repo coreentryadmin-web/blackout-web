@@ -150,6 +150,7 @@ import {
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
+  INDEX_ETF_TICKERS,
 } from "./gates";
 import {
   fetchZeroDteVectorPulseByTicker,
@@ -1268,6 +1269,18 @@ export function computeQuoteAgeMs(
   return age > 0 ? age : 0;
 }
 
+/** G-21 (2026-09-09): ticker-class bucket for plan.ts's per-class min-quote-size floor.
+ *  SPX/SPXW have no underlying ETF share (they trade a cash-settled index directly), so
+ *  they aren't in gates.ts's `INDEX_ETF_TICKERS` — added explicitly here since, measured
+ *  2026-09-09 (`scripts/audit/zerodte-contract-liquidity-measure.mjs`), SPX's near-the-money
+ *  0DTE ask-size depth (median 15.5, n=294) sits in the same deep-liquidity regime as
+ *  SPY/QQQ, not with single names. */
+export function zeroDteLiquidityTickerClass(ticker: string): "index_etf" | "single" {
+  const t = ticker.toUpperCase();
+  if (t === "SPX" || t === "SPXW" || INDEX_ETF_TICKERS.has(t)) return "index_etf";
+  return "single";
+}
+
 /** One batched quote snapshot for every find's top-strike contract, then a pure
  *  plan per find. Soft-deadlined: a slow quote provider degrades to evidence-only
  *  cards (plan stays null), never a stalled scan. */
@@ -1384,6 +1397,12 @@ async function attachContractPlans(
       openInterest: snap?.openInterest ?? null,
       dayVolume: snap?.dayVolume ?? null,
       quoteAgeMs: computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
+      // G-21 (2026-09-09): per-class min-quote-size floor (plan.ts's CONTRACT_LIQUIDITY) —
+      // computed here (not in plan.ts, which is a dependency-free leaf) using the SAME
+      // INDEX_ETF_TICKERS set G-1/G-9 already use. SPX/SPXW have no ETF share and aren't in
+      // that set, so they're added explicitly — both are the deepest, most continuously
+      // quoted options markets that exist and belong in the stricter bucket.
+      tickerClass: zeroDteLiquidityTickerClass(s.ticker),
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
       vwap: s.vwap,
@@ -1505,6 +1524,7 @@ async function applyLiquidStrikeFallback(
       vwap: s.vwap,
       chasePct,
       illiquidSpreadPct,
+      tickerClass: zeroDteLiquidityTickerClass(s.ticker),
       quoteAgeMsFor: (snap) => computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
     });
     if (!picked) continue;
