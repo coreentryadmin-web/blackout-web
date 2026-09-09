@@ -929,6 +929,13 @@ export type ZeroDteGateFailure =
 export type ZeroDteGateRejection = {
   ticker: string;
   gate_failed: ZeroDteGateFailure;
+  /** EVERY gate code that failed this evaluation (gate_failed is only blocks[0] — the
+   *  first/primary code). Added 2026-09-09: prerequisite for gate-ablation/marginal-value
+   *  analysis, which needs to know the FULL set of gates a rejected candidate failed, not
+   *  just the one that happened to be checked first. Null/empty for the four evidence
+   *  gates (board.ts's own min_gross/min_aggr_share/min_dominance/moneyness checks, which
+   *  predate the hard-gate stack and only ever produce one code per candidate anyway). */
+  blocks?: ZeroDteGateFailure[] | null;
   /** Human-readable block sentence (hard-gate rows; the UI's SKIP card copy). Null for
    *  the four evidence gates, whose numeric columns already carry the whole story. */
   reason?: string | null;
