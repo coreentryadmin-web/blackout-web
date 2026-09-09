@@ -118,6 +118,12 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
   if (dteMatch) {
     const dte = Number(dteMatch[1]);
     if (dte <= 7) parts.push(`**${dte} DTE** — theta accelerating; don't over-hold`);
+    // Runway context for DTE > 7 too — play-brief-intel.ts's holdPlanSection carries the same
+    // fact unconditionally as "Contract runway", but collapseRedundantIntelSections drops that
+    // whole section whenever this narrative is present, on the claim its content is "folded into
+    // Trade manager read above". That claim was only true for dte<=7 — above it, the DTE runway
+    // fact was silently deleted with nothing standing in for it (found live on a 9DTE CRWD brief).
+    else parts.push(`**${dte} DTE** remaining`);
   }
 
   if (!parts.length) return null;
