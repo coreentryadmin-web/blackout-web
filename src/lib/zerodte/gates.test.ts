@@ -16,6 +16,8 @@ import {
   refreshPlanQualityGateBlocks,
   moneynessGateBlocks,
   refreshMoneynessGateBlocks,
+  qualificationDislocationGateBlocks,
+  refreshQualificationDislocationGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
@@ -953,6 +955,160 @@ test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", ()
   );
   const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
   assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
+});
+
+// ── G-23 · qualification-to-commit dislocation (PURELY fast+large underlying move — no
+// crossed/locked branch; that scenario is exclusively G-9's own quote-integrity concern,
+// covered by its own tests) ──────────────────────────────────────────────────────────
+
+test("qualificationDislocationGateBlocks: a fast, large move (>0.75% inside 5 min) blocks", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: t0,
+    commitPrice: 101.5, // +1.5%
+    commitAsOfMs: t0 + 60_000, // 1 minute later
+  });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "qualification_dislocation");
+  assert.match(blocks[0]!.reason, /1\.50%/);
+});
+
+test("qualificationDislocationGateBlocks: a large move that happened SLOWLY (outside the window) does NOT block — drift, not dislocation", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: t0,
+    commitPrice: 105, // +5%, well past the move threshold
+    commitAsOfMs: t0 + 60 * 60_000, // but over a full hour — not "fast"
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: a fast move that is too SMALL does not block", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: t0,
+    commitPrice: 100.5, // +0.5%, under the 0.75% floor
+    commitAsOfMs: t0 + 60_000,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: exactly at the move threshold does NOT block (strict >)", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: t0,
+    commitPrice: 100.75,
+    commitAsOfMs: t0 + 60_000,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: NEVER inspects a quote — a crossed/locked-shaped scenario is out of its scope entirely (that is exclusively G-9's job)", () => {
+  // This function's input type doesn't even accept bid/ask — there is no way to construct a
+  // "crossed/locked" case for it. The only way it blocks is a fast+large UNDERLYING move.
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: t0,
+    commitPrice: 100, // literally unchanged
+    commitAsOfMs: t0 + 30_000,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: fails OPEN on any missing input (null/undefined price or timestamp)", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const base = { qualificationPrice: 100, qualificationAsOfMs: t0, commitPrice: 105, commitAsOfMs: t0 + 60_000 };
+  assert.deepEqual(qualificationDislocationGateBlocks({ ...base, qualificationPrice: null }), []);
+  assert.deepEqual(qualificationDislocationGateBlocks({ ...base, qualificationAsOfMs: null }), []);
+  assert.deepEqual(qualificationDislocationGateBlocks({ ...base, commitPrice: undefined }), []);
+  assert.deepEqual(qualificationDislocationGateBlocks({ ...base, commitAsOfMs: undefined }), []);
+  assert.deepEqual(qualificationDislocationGateBlocks({ ...base, qualificationPrice: 0 }), []);
+});
+
+test("qualificationDislocationGateBlocks: a clock-disordered pair (commit before qualification) never manufactures a block", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: t0,
+    commitPrice: 110,
+    commitAsOfMs: t0 - 60_000, // before qualification — a caller bug, not a real dislocation
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("evaluateZeroDteGates: G-23 wires through — a fast, large qualification-to-commit move blocks a fresh commit", () => {
+  const t0 = Date.parse("2026-07-13T15:00:00Z"); // matches NOW_MS
+  const v = evaluateZeroDteGates(
+    input({
+      score: 78,
+      qualificationUnderlyingPrice: 100,
+      qualificationUnderlyingAsOfMs: t0 - 60_000,
+      commitUnderlyingPrice: 102,
+      commitUnderlyingAsOfMs: t0,
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "qualification_dislocation"));
+});
+
+test("evaluateZeroDteGates: G-23 does not fire when qualification/commit fields are absent (default fixture unaffected)", () => {
+  const v = evaluateZeroDteGates(input());
+  assert.ok(!v.blocks.some((b) => b.code === "qualification_dislocation"));
+});
+
+test("evaluateZeroDteGates: G-23 is exempt for a CONDOR (no single-strike geometry to dislocate)", () => {
+  const t0 = Date.parse("2026-07-13T15:00:00Z");
+  const v = evaluateZeroDteGates({
+    ...input({
+      ticker: "QQQ",
+      score: 78,
+      qualificationUnderlyingPrice: 100,
+      qualificationUnderlyingAsOfMs: t0 - 60_000,
+      commitUnderlyingPrice: 105,
+      commitUnderlyingAsOfMs: t0,
+    }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.ok(!v.blocks.some((b) => b.code === "qualification_dislocation"));
+});
+
+test("refreshQualificationDislocationGateBlocks: re-applies G-23 after a deferred (thesis-first) commit-price attach", () => {
+  const t0 = Date.parse("2026-07-13T15:00:00Z");
+  // Gates ran first (thesis-first order) with no commit-time reading yet — no block.
+  const preRefresh = evaluateZeroDteGates(
+    input({ score: 78, qualificationUnderlyingPrice: 100, qualificationUnderlyingAsOfMs: t0 - 60_000 })
+  );
+  assert.equal(preRefresh.verdict, "COMMIT");
+  assert.ok(!preRefresh.blocks.some((b) => b.code === "qualification_dislocation"));
+
+  // attachContractPlans now runs and the live spot has moved fast and large since qualification.
+  const postRefresh = refreshQualificationDislocationGateBlocks(
+    preRefresh,
+    { qualificationPrice: 100, qualificationAsOfMs: t0 - 60_000, commitPrice: 102, commitAsOfMs: t0 },
+    false
+  );
+  assert.equal(postRefresh.verdict, "BLOCKED");
+  assert.ok(postRefresh.blocks.some((b) => b.code === "qualification_dislocation"));
+});
+
+test("refreshQualificationDislocationGateBlocks: a CONDOR stays exempt through the refresh", () => {
+  const t0 = Date.parse("2026-07-13T15:00:00Z");
+  const gate = evaluateZeroDteGates(
+    input({ play_type: "CONDOR", condorPlan: null, score: 80 })
+  );
+  const refreshed = refreshQualificationDislocationGateBlocks(
+    gate,
+    { qualificationPrice: 100, qualificationAsOfMs: t0 - 60_000, commitPrice: 110, commitAsOfMs: t0 },
+    true
+  );
+  assert.ok(!refreshed.blocks.some((b) => b.code === "qualification_dislocation"));
 });
 
 // Bug found 2026-08-26 alongside the plan_no_quote fix: G-5's premium-budget check runs with

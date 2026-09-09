@@ -143,6 +143,7 @@ import {
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
   refreshMoneynessGateBlocks,
+  refreshQualificationDislocationGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
@@ -603,6 +604,20 @@ export async function scanZeroDteBoard(flags?: {
 
   const thesisEnv = thesisFirstEnv();
   const thesisLive = thesisEnv.enabled;
+  // G-23 (qualification-to-commit dislocation): snapshot each setup's underlying price/as-of
+  // BEFORE attachContractPlans's live-spot refresh (refreshUnderlyingFromLiveSpot) can move
+  // it — this is the ONLY point in the ordinary pipeline where `underlying_price` still holds
+  // the QUALIFICATION-time reading. Captured unconditionally (cheap — just two field reads
+  // per setup) so it is available regardless of which pipeline runs.
+  const qualificationByTicker = new Map<string, { price: number | null; asOfMs: number | null }>(
+    setups.map((s) => [
+      s.ticker.toUpperCase(),
+      {
+        price: s.underlying_price ?? null,
+        asOfMs: s.underlying_price_as_of ? Date.parse(s.underlying_price_as_of) : null,
+      },
+    ])
+  );
   if (!thesisLive) {
     await attachContractPlans(setups, vectorPulseByTicker, marketState);
   }
@@ -652,7 +667,8 @@ export async function scanZeroDteBoard(flags?: {
     tape.biasAsOfMs,
     nowEtMinutes,
     vectorPulseByTicker,
-    marketState
+    marketState,
+    qualificationByTicker
   );
 
   // Live thesis-first: contract engine picks expression AFTER thesis + gates + Cortex.
@@ -692,6 +708,20 @@ export async function scanZeroDteBoard(flags?: {
               vectorRunnerOtmRelax(s.direction, s.score, vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction))
             ),
           }
+        );
+        // G-23: attachContractPlans (above) has now refreshed s.underlying_price to the
+        // COMMIT-time live spot — pair it with the qualification-time snapshot captured
+        // before this pipeline's own attachContractPlans ran (qualificationByTicker), same
+        // "re-apply once the refresh has happened" discipline as refreshMoneynessGateBlocks.
+        s.gate = refreshQualificationDislocationGateBlocks(
+          s.gate,
+          {
+            qualificationPrice: qualificationByTicker.get(s.ticker.toUpperCase())?.price ?? null,
+            qualificationAsOfMs: qualificationByTicker.get(s.ticker.toUpperCase())?.asOfMs ?? null,
+            commitPrice: s.underlying_price ?? null,
+            commitAsOfMs: s.underlying_price_as_of ? Date.parse(s.underlying_price_as_of) : null,
+          },
+          s.play_type === "CONDOR"
         );
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
@@ -840,7 +870,15 @@ async function attachGateVerdicts(
   biasAsOfMs: number | null,
   nowEtMinutes: number,
   vectorPulseByTicker: ZeroDteVectorPulseByTicker = {},
-  marketState?: MarketStateSnapshot
+  marketState?: MarketStateSnapshot,
+  /** G-23 qualification-time snapshot, keyed by uppercased ticker — captured by the caller
+   *  BEFORE attachContractPlans's live-spot refresh could move `underlying_price` (see the
+   *  call site: in the ORDINARY, non-thesis-first pipeline attachContractPlans already ran
+   *  by the time this function executes, so `s.underlying_price` here is already the
+   *  COMMIT-time value; this map is the only surviving record of what it was at
+   *  qualification). Absent/missing entries leave G-23 dormant for that ticker (fail-open,
+   *  same discipline as every other optional gate input). */
+  qualificationByTicker: Map<string, { price: number | null; asOfMs: number | null }> = new Map()
 ): Promise<{
   governorPremiumAtRisk: number;
   governorSnapshot: GovernorSnapshot | null;
@@ -1112,6 +1150,17 @@ async function attachGateVerdicts(
       // value — refreshMoneynessGateBlocks (below) re-applies the same caps once the refresh has
       // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
       otmPct: s.otm_pct ?? null,
+      // G-23 (qualification-to-commit dislocation): the ORDINARY (non-thesis-first) pipeline
+      // has already refreshed s.underlying_price/underlying_price_as_of to the COMMIT-time
+      // live spot by the time this function runs (attachContractPlans ran first — see the
+      // caller) — so both readings are available in this SAME call, no refresh needed here.
+      // The thesis-first pipeline defers attachContractPlans until AFTER this call, so its
+      // commit price is still unknown here; refreshQualificationDislocationGateBlocks
+      // re-applies this check once that refresh has actually happened (see that call site).
+      qualificationUnderlyingPrice: qualificationByTicker.get(s.ticker.toUpperCase())?.price ?? null,
+      qualificationUnderlyingAsOfMs: qualificationByTicker.get(s.ticker.toUpperCase())?.asOfMs ?? null,
+      commitUnderlyingPrice: s.underlying_price ?? null,
+      commitUnderlyingAsOfMs: s.underlying_price_as_of ? Date.parse(s.underlying_price_as_of) : null,
       intradayConflict: s.intraday_conflict,
       market_aligned: s.market_aligned ?? null,
       regime_structure: marketState?.regime_structure ?? null,

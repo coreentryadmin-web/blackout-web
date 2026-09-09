@@ -518,6 +518,23 @@ export type ZeroDteGateInput = {
   market_state_confidence?: number | null;
   /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
   max_otm_pct?: number | null;
+  /**
+   * G-23 (qualification-to-commit dislocation) — the underlying price at the moment this
+   * setup first QUALIFIED as a candidate (the evidence-gate/discovery-time read, BEFORE any
+   * later live-spot refresh — see refreshUnderlyingFromLiveSpot, board.ts), paired with its
+   * as-of timestamp. Compared against `commitUnderlyingPrice`/`commitUnderlyingAsOfMs` below
+   * to detect a FAST, LARGE move between qualification and commit — real information the
+   * setup's original geometry (score, confluence, otm_pct) never priced in. Fails OPEN on
+   * null/undefined (like every other optional gate input here): a caller that doesn't supply
+   * both qualification and commit readings is unaffected. DIRECTIONAL ONLY — mirrors the
+   * moneyness re-check's own scoping (a CONDOR has no single-strike geometry to dislocate).
+   */
+  qualificationUnderlyingPrice?: number | null;
+  qualificationUnderlyingAsOfMs?: number | null;
+  /** G-23: the underlying price at COMMIT time (the live-refreshed spot) + its as-of
+   *  timestamp, paired with the qualification-time fields above. */
+  commitUnderlyingPrice?: number | null;
+  commitUnderlyingAsOfMs?: number | null;
 };
 
 /** Build chase-exempt context from a gate evaluation input. */
@@ -792,6 +809,24 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     ...moneynessGateBlocks(input.otmPct, isCondor, {
       maxOtmPct: input.max_otm_pct ?? null,
     })
+  );
+
+  // G-23 — qualification-to-commit dislocation. DIRECTIONAL ONLY (mirrors the moneyness
+  // re-check's own condor scoping): purely the fast+large underlying-move check — it never
+  // inspects a quote at all, so it cannot duplicate G-9's own crossed/locked detection
+  // (evaluateQuoteValidity is the ONLY place that ever checks quote integrity in this
+  // stack). Pure pass-through to qualificationDislocationGateBlocks, also exported
+  // standalone so scan.ts can re-run it after a deferred (thesis-first) commit-price
+  // attach — see refreshQualificationDislocationGateBlocks below.
+  blocks.push(
+    ...(isCondor
+      ? []
+      : qualificationDislocationGateBlocks({
+          qualificationPrice: input.qualificationUnderlyingPrice,
+          qualificationAsOfMs: input.qualificationUnderlyingAsOfMs,
+          commitPrice: input.commitUnderlyingPrice,
+          commitAsOfMs: input.commitUnderlyingAsOfMs,
+        }))
   );
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).
@@ -1324,6 +1359,96 @@ export function refreshMoneynessGateBlocks(
 ): ZeroDteGateVerdict {
   const rest = gate.blocks.filter((b) => !MONEYNESS_GATE_CODES.has(b.code));
   const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor, opts)];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
+// ── G-23 · qualification-to-commit dislocation ──────────────────────────────────────────
+// PURELY the fast+large underlying-move check — deliberately does NOT inspect a quote at
+// all (no crossed/locked branch), since that is exclusively G-9's concern
+// (evaluateQuoteValidity, plan.ts). A duplicated crossed/locked check here would silently
+// re-run the same predicate under a different gate code the moment the two functions'
+// bounds ever drifted apart — this function structurally cannot do that; it only ever reads
+// the underlying's own price at two points in time.
+export const QUALIFICATION_DISLOCATION = {
+  /** Underlying move (%, absolute) since qualification that counts as "large" — a move
+   *  bigger than this materially changes moneyness/target-distance beyond what the setup's
+   *  original geometry (score, confluence, otm_pct) ever priced in. */
+  max_move_pct: 0.75,
+  /** How fast (ms) that move must occur to count as "fast" — a move spread over a whole
+   *  session is drift, not a dislocation. A big move landing inside a SHORT window is the
+   *  genuinely stale-geometry risk: qualification is snapshotted well before commit, so
+   *  a real dislocation is one that happens FAST relative to that gap, not merely a move
+   *  that happens to be large by the time commit rolls around hours later. */
+  max_window_ms: 5 * 60 * 1000,
+} as const;
+
+export type QualificationDislocationInput = {
+  qualificationPrice: number | null | undefined;
+  qualificationAsOfMs: number | null | undefined;
+  commitPrice: number | null | undefined;
+  commitAsOfMs: number | null | undefined;
+};
+
+/**
+ * G-23 verdict — pure, unit-testable, SIBLING to moneynessGateBlocks (not a branch of the
+ * quote-integrity/liquidity checks). Fails OPEN whenever any of the four inputs is missing —
+ * like every other optional gate input in this file, a caller that doesn't supply both a
+ * qualification-time AND a commit-time reading is unaffected (this is a SUPPLEMENTARY
+ * re-check on top of the evidence gates' own no_underlying_price fail-closed guard, not a
+ * replacement for it). A clock-disordered pair (commit timestamp before qualification
+ * timestamp — a caller bug, not a real dislocation) never manufactures a block either.
+ */
+export function qualificationDislocationGateBlocks(
+  input: QualificationDislocationInput
+): ZeroDteGateBlock[] {
+  const { qualificationPrice, qualificationAsOfMs, commitPrice, commitAsOfMs } = input;
+  if (
+    qualificationPrice == null ||
+    !(qualificationPrice > 0) ||
+    commitPrice == null ||
+    !(commitPrice > 0) ||
+    qualificationAsOfMs == null ||
+    commitAsOfMs == null
+  ) {
+    return [];
+  }
+  const elapsedMs = commitAsOfMs - qualificationAsOfMs;
+  if (elapsedMs < 0) return [];
+  const movePct = Math.abs(((commitPrice - qualificationPrice) / qualificationPrice) * 100);
+  const fast = elapsedMs <= QUALIFICATION_DISLOCATION.max_window_ms;
+  const large = movePct > QUALIFICATION_DISLOCATION.max_move_pct;
+  if (!(fast && large)) return [];
+  return [
+    {
+      code: "qualification_dislocation",
+      reason:
+        `Underlying moved ${movePct.toFixed(2)}% in ${(elapsedMs / 60_000).toFixed(1)} min ` +
+        "since this setup qualified — a fast, large move the setup's original geometry never " +
+        "priced in (G-23).",
+      threshold: QUALIFICATION_DISLOCATION.max_move_pct,
+      unlock_et: null,
+    },
+  ];
+}
+
+const QUALIFICATION_DISLOCATION_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "qualification_dislocation",
+]);
+
+/** Re-apply G-23 after a deferred (thesis-first) commit-price attach (scan.ts) — mirrors
+ *  refreshMoneynessGateBlocks exactly, same reason: thesis-first defers the live-spot
+ *  refresh until AFTER evaluateZeroDteGates has already run once. */
+export function refreshQualificationDislocationGateBlocks(
+  gate: ZeroDteGateVerdict,
+  input: QualificationDislocationInput,
+  isCondor: boolean
+): ZeroDteGateVerdict {
+  const rest = gate.blocks.filter((b) => !QUALIFICATION_DISLOCATION_GATE_CODES.has(b.code));
+  const blocks = [...rest, ...(isCondor ? [] : qualificationDislocationGateBlocks(input))];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",

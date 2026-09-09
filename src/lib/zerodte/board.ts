@@ -895,6 +895,7 @@ export type ZeroDteGateFailure =
   | "earnings_unavailable" // G-11 fail-closed: earnings FEED read failed (not "none report today") — can't rule out a print today
   | "halt_feed_stale" // G-11 fail-closed (D2): halt feed cold — BOTH UW + LULD halt sources stale — can't rule out a halted underlying
   | "max_otm_pct" // far-OTM lotto cap: top strike is more than SETUP_MAX_OTM_PCT% OTM
+  | "qualification_dislocation" // G-23: fast+large underlying move between qualification and commit (PURELY this — no crossed/locked branch, that is exclusively G-9's concern)
   // ── WS-21 source-recovery gate (default-OFF; ZERODTE_REQUIRE_HEALTHY_SOURCE=1 to arm) ──────
   // Only fires when the flag is ON and the WS data source is mid-recovery (not yet HEALTHY): a
   // reconnect gap may not be reconciled, so a fresh source-dependent commit is withheld. Flag OFF
