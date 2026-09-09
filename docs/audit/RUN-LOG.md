@@ -3278,3 +3278,19 @@ would fix (the guards that exist are working; the tail is the guarded jobs' own 
 not an unbounded overlap).** No code change, no `findings-staging` entry per this mandate's own
 "root cause, not fix-shaped" discipline — logged here as a GREEN measurement pass. Re-check if
 `vector-dark-pool-warm`'s own elapsed trend grows toward its 600s schedule ceiling.
+
+## 2026-09-09 — Core Web Vitals (CLS) sweep on homepage + pricing, desktop + mobile — all GREEN, no regression
+
+Standing performance mandate pass using the repo's own `scripts/audit/cls-measure.cjs` (not yet run
+this session). Measured live via the CONNECT-tunnel Chromium (`Routed: N ok, 0 fail` on every run,
+so no unpainted asset could be silently skewing the number):
+
+- `/` desktop 1440×900: **CLS 0.0002** (67 requests routed).
+- `/` mobile 430×932: **CLS 0.0324** (66 requests routed).
+- `/pricing` desktop 1440×900: **CLS 0** (32 requests routed).
+- `/pricing` mobile 430×932: **CLS 0** (32 requests routed).
+
+All four comfortably under the 0.1 "GOOD" threshold — consistent with the 2026-08-21 homepage
+baseline (0.0002 desktop/mobile) validating #2453, extended here to `/pricing` (not previously
+measured) with the same clean result. No regression, no fix needed — logged as a GREEN pass per
+the standing performance mandate's "keep measuring, cycle after cycle" discipline.
