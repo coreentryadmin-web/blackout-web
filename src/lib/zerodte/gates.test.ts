@@ -531,37 +531,63 @@ test("G-7 fail-closed: 'fetched, zero events' (empty array, macroUnavailable NOT
   assert.equal(v.blocks.some((b) => b.code === "macro_unavailable"), false);
 });
 
-// ── G-6 · cross-system conflict (HARD GATE — promoted from calibration 2026-07-16) ──
+// ── G-6 · cross-system conflict — DOWNGRADED to informational/telemetry-only ─────────
+// (2026-09-09, operator-approved CTO gate-architecture review). Root cause:
+// CONFLICT_SCORE_FLOOR (55) sits strictly below ZERODTE_SCORE_FLOOR (G-3's 65 floor),
+// so a conflicted setup could only ever be "saved" by clearing G-6 in the [55,65) score
+// band — which G-3 already blocks regardless. G-6 was structurally unable to change any
+// outcome since the 2026-09-08 loosening pass; it no longer pushes a block. The
+// determination itself remains real and now surfaces as the non-blocking
+// `crossSystemConflict` verdict field for telemetry.
 
-test("G-6: opposing Night Hawk's take with score < 55 BLOCKS (was calibration-only)", () => {
-  // CONFLICT_SCORE_FLOOR lowered 65→55 on 2026-09-08.
+test("G-6 telemetry (2026-09-09): opposing Night Hawk's take no longer blocks — surfaces as crossSystemConflict instead", () => {
   const v = evaluateZeroDteGates(
     input({
       ticker: "META",
       direction: "short",
-      score: 50,
+      score: 78, // clears every other gate (G-3/G-17/G-18/G-19) so only G-6 is under test
       nighthawkTake: { direction: "long", edition_for: "2026-07-10" },
     })
   );
-  assert.equal(v.verdict, "BLOCKED");
-  assert.equal(v.blocks.some((b) => b.code === "cross_system_conflict"), true);
-  assert.match(
-    v.blocks.find((b) => b.code === "cross_system_conflict")!.reason,
-    /Night Hawk/
-  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "cross_system_conflict"), false);
+  assert.equal(v.crossSystemConflict?.conflict, true);
+  assert.deepEqual(v.crossSystemConflict?.against, ["nighthawk_edition"]);
+  // Calibration ledger column is unaffected — still measures what the old hard gate
+  // WOULD have done, for ongoing evidence.
   assert.equal(v.calibration.g6_conflict.conflict, true);
   assert.deepEqual(v.calibration.g6_conflict.against, ["nighthawk_edition"]);
-  assert.equal(v.calibration.g6_conflict.would_block, true);
+  // score 78 already clears the old CONFLICT_SCORE_FLOOR (55) — would_block is false here;
+  // see the next test for a score that WOULD have tripped the old hard gate.
+  assert.equal(v.calibration.g6_conflict.would_block, false);
 });
 
-test("G-6: opposing the live Slayer play on an SPX-correlated ticker BLOCKS at score < 55", () => {
-  // CONFLICT_SCORE_FLOOR lowered 65→55 on 2026-09-08.
+test("G-6 telemetry: opposing the live Slayer play on an SPX-correlated ticker no longer blocks — crossSystemConflict flags it", () => {
   const slayerLive = { direction: "long" as const };
-  const spy = evaluateZeroDteGates(input({ ticker: "SPY", direction: "short", score: 50, slayerLive }));
-  assert.equal(spy.verdict, "BLOCKED");
-  assert.equal(spy.blocks.some((b) => b.code === "cross_system_conflict"), true);
+  const spy = evaluateZeroDteGates(input({ ticker: "SPY", direction: "short", score: 78, slayerLive }));
+  assert.equal(spy.verdict, "COMMIT");
+  assert.equal(spy.blocks.some((b) => b.code === "cross_system_conflict"), false);
+  assert.equal(spy.crossSystemConflict?.conflict, true);
+  assert.deepEqual(spy.crossSystemConflict?.against, ["spx_slayer"]);
   assert.equal(spy.calibration.g6_conflict.conflict, true);
   assert.deepEqual(spy.calibration.g6_conflict.against, ["spx_slayer"]);
+});
+
+test("G-6 telemetry: a CONDOR gets crossSystemConflict: null (inapplicable — delta-neutral, mirrors calibration's applicable:false)", () => {
+  const slayerLive = { direction: "long" as const };
+  const v = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", direction: "short", score: 50, slayerLive }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.equal(v.crossSystemConflict, null);
+});
+
+test("G-6 telemetry: no conflict when neither Slayer nor Night Hawk oppose the direction", () => {
+  const v = evaluateZeroDteGates(input({ score: 78 }));
+  assert.equal(v.crossSystemConflict?.conflict, false);
+  assert.deepEqual(v.crossSystemConflict?.against, []);
 });
 
 test("G-6: single-name short is NOT correlated exposure to Slayer's SPX book — no conflict", () => {
@@ -1443,20 +1469,17 @@ test("stacked firewalls: vix + macro + earnings + halt-feed unavailable all bloc
 });
 
 // ── G-6 correlated-ticker set + conflict-score EXACT boundary ─────────────────────────
-test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflicts; score 54 blocks, 55 clears", () => {
-  // CONFLICT_SCORE_FLOOR lowered 65→55 on 2026-09-08.
+test("G-6 telemetry: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long never blocks, at ANY score — flagged in calibration + crossSystemConflict regardless", () => {
   const slayerLive = { direction: "long" as const };
   for (const ticker of ["QQQ", "NDX"]) {
-    const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 54, slayerLive }));
-    assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 54 should block`);
-    assert.ok(conflict.blocks.some((b) => b.code === "cross_system_conflict"));
-    // Exactly 55 overrides the conflict (CONFLICT_SCORE_FLOOR is 55, comparison is `< 55`). G-17
-    // (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also applies at this
-    // score since discovery_origin isn't set here, so the overall verdict is BLOCKED overall —
-    // check cross_system_conflict specifically clears rather than the full verdict.
-    const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 55, slayerLive }));
-    assert.ok(!cleared.blocks.some((b) => b.code === "cross_system_conflict"), `${ticker} at 55 should override the conflict`);
-    assert.equal(cleared.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
+    const low = evaluateZeroDteGates(input({ ticker, direction: "short", score: 54, slayerLive }));
+    assert.ok(!low.blocks.some((b) => b.code === "cross_system_conflict"), `${ticker} at 54 must never block via G-6`);
+    assert.equal(low.crossSystemConflict?.conflict, true);
+    assert.equal(low.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
+    const high = evaluateZeroDteGates(input({ ticker, direction: "short", score: 78, slayerLive }));
+    assert.equal(high.verdict, "COMMIT");
+    assert.ok(!high.blocks.some((b) => b.code === "cross_system_conflict"));
+    assert.equal(high.crossSystemConflict?.conflict, true);
   }
 });
 
