@@ -91,20 +91,30 @@ export const CHASE_PCT = (() => {
  *  Distinct, additive to the plan_illiquid/plan_no_quote taxonomy. Back-compat:
  *  the field is optional on ContractPlan so historical/hand-built plans that omit
  *  it read as "no explicit invalidity" (the legacy illiquid/no_quote checks still
- *  govern them). */
+ *  govern them).
+ *
+ * SCOPE (G-9/G-21 split, 2026-09-09 — operator-approved CTO gate-architecture review):
+ * this type owns ONLY quote-INTEGRITY defects — is the book itself a real, sane,
+ * fresh two-sided market. `thin_size` (a resting-size/depth concern, not an integrity
+ * one) moved OUT to {@link ContractLiquidityInvalidReason} / {@link evaluateContractLiquidity}
+ * (G-21) — a book can be perfectly well-formed (real bid, real ask, in-band mark) and
+ * still be too THIN to fill without moving the market, which is a distinct failure
+ * mode from a crossed/locked/malformed book. Conflating the two under one reason type
+ * made it impossible for gates.ts to surface genuinely distinct gate codes for "this
+ * quote is broken" vs "this quote is real but too shallow". */
 export type QuoteInvalidReason =
   | "zero_bid" // bid ≤ 0 / null, or a missing/zero ask (a one-sided, non-committable book)
   | "crossed" // bid > ask — an impossible/erroneous book
   | "locked" // bid == ask — a zero-width book (no real two-sided market)
   | "mark_out_of_band" // mark sits outside [bid, ask] — malformed/stale print
   | "wide_dollars" // absolute ask−bid spread over the dollar cap (backstop to the % check)
-  | "thin_size" // resting quote size below the floor (only when the provider reports size)
   | "stale" // quote age beyond the freshness bound (only when a timestamp is available)
   | null;
 
-/** Fail-closed quote-validity bounds. Numeric bounds are NEW (the % check had none).
+/** Fail-closed quote-INTEGRITY bounds (G-9). Numeric bounds are NEW (the % check had none).
  *  Tunable — a TRADES change, so conservative defaults that reject only the clearly
- *  malformed / untradeable, never a legitimate 0DTE book. */
+ *  malformed / untradeable, never a legitimate 0DTE book. See {@link CONTRACT_LIQUIDITY}
+ *  for the separate depth/liquidity bounds (G-21). */
 export const QUOTE_VALIDITY = {
   /** Absolute bid/ask spread cap ($). Backstop to spread_pct>15: a proportionally
    *  OK but absolutely huge spread (e.g. $14 on a $100 premium = 14% < 15% → passes
@@ -116,29 +126,25 @@ export const QUOTE_VALIDITY = {
    *  last_quote.last_updated, which often stamps prior close on an otherwise live NBBO).
    *  Absence of age leaves the bound dormant (absence is not staleness). */
   max_quote_age_ms: 60_000,
-  /** Minimum resting quote size (contracts) on BOTH sides. ONLY enforced when the
-   *  provider actually reports size (bidSize/askSize non-null) — absent size is not
-   *  proof of illiquidity, so it does not fail closed here (the one conditional-on-
-   *  availability predicate, same rule as quote age). */
-  min_quote_size: 1,
 } as const;
 
 /**
- * WS-04 quote-validity verdict — a pure predicate over a contract's live quote.
+ * WS-04 quote-INTEGRITY verdict (G-9) — a pure predicate over a contract's live quote.
  * Returns the FIRST failing reason (checked most-degenerate-first) or null when the
  * quote is valid. Fail-closed: a null/zero/degenerate input yields a reason (BLOCK),
- * never null (pass). `bidSize`/`askSize`/`quoteAgeMs` are conditional — only enforced
- * when actually supplied by the provider (see the field docs on QUOTE_VALIDITY).
+ * never null (pass). `quoteAgeMs` is conditional — only enforced when actually supplied
+ * by the provider (see the field doc on QUOTE_VALIDITY). Depth/size checks (thin_size,
+ * no_volume_or_oi) live in {@link evaluateContractLiquidity} (G-21) — this function no
+ * longer takes bidSize/askSize; a caller that still passes them is a compile error, not
+ * a silent no-op, so the split can't regress unnoticed.
  */
 export function evaluateQuoteValidity(input: {
   bid: number | null;
   ask: number | null;
   mark: number | null;
-  bidSize?: number | null;
-  askSize?: number | null;
   quoteAgeMs?: number | null;
 }): QuoteInvalidReason {
-  const { bid, ask, mark, bidSize, askSize, quoteAgeMs } = input;
+  const { bid, ask, mark, quoteAgeMs } = input;
   // A committable book needs a real two-sided quote. A null/≤0 side is where the
   // percent-spread check silently computed null and read null as "liquid" — the
   // core loophole. Here it BLOCKS.
@@ -152,16 +158,64 @@ export function evaluateQuoteValidity(input: {
   if (mark == null || mark < bid || mark > ask) return "mark_out_of_band";
   // Absolute-dollar backstop (the % check alone can pass an absolutely huge spread).
   if (ask - bid > QUOTE_VALIDITY.max_spread_dollars) return "wide_dollars";
-  // Conditional: min resting size, only when the provider reported both sides.
+  // Conditional: quote age, only when a timestamp/age is available.
+  if (quoteAgeMs != null && quoteAgeMs > QUOTE_VALIDITY.max_quote_age_ms) return "stale";
+  return null;
+}
+
+/** G-21 — why a contract's DEPTH is not committable, distinct from quote integrity (G-9,
+ *  above). `null` = liquidity is adequate (or the inputs needed to judge it were never
+ *  supplied — this predicate is conditional-on-availability throughout, same discipline
+ *  as G-9's quoteAgeMs: absence is not proof of illiquidity). */
+export type ContractLiquidityInvalidReason =
+  | "thin_size" // resting bid/ask size below the floor (only when the provider reports size)
+  | "no_volume_or_oi" // BOTH day volume and open interest read zero/absent (only when both were actually supplied)
+  | null;
+
+/** Fail-closed contract-LIQUIDITY/depth bounds (G-21). Distinct constant from
+ *  QUOTE_VALIDITY (G-9) — these gate DEPTH, not book integrity. */
+export const CONTRACT_LIQUIDITY = {
+  /** Minimum resting quote size (contracts) on BOTH sides. ONLY enforced when the
+   *  provider actually reports size (bidSize/askSize non-null) — absent size is not
+   *  proof of illiquidity, so it does not fail closed here. */
+  min_quote_size: 1,
+  /** Minimum of (day volume, open interest) — a contract with real depth has SOME
+   *  trading history or standing interest; a strike with BOTH at zero on the same
+   *  snapshot is a listed-but-dead contract (no real market to fill against), even
+   *  if its quote happens to look well-formed. ONLY enforced when BOTH fields were
+   *  actually supplied (non-null) — a provider that doesn't report one of them is not
+   *  proof of illiquidity either. */
+  min_volume_or_oi: 1,
+} as const;
+
+/**
+ * G-21 contract-liquidity verdict — a pure predicate, SIBLING to evaluateQuoteValidity
+ * (G-9), not a branch of it. Checks resting size and day-volume/open-interest depth —
+ * concerns a well-formed, in-band quote can still fail. Conditional-on-availability
+ * throughout: a field the provider didn't report is never treated as proof of thinness.
+ */
+export function evaluateContractLiquidity(input: {
+  bidSize?: number | null;
+  askSize?: number | null;
+  openInterest?: number | null;
+  dayVolume?: number | null;
+}): ContractLiquidityInvalidReason {
+  const { bidSize, askSize, openInterest, dayVolume } = input;
   if (
     bidSize != null &&
     askSize != null &&
-    (bidSize < QUOTE_VALIDITY.min_quote_size || askSize < QUOTE_VALIDITY.min_quote_size)
+    (bidSize < CONTRACT_LIQUIDITY.min_quote_size || askSize < CONTRACT_LIQUIDITY.min_quote_size)
   ) {
     return "thin_size";
   }
-  // Conditional: quote age, only when a timestamp/age is available (none today).
-  if (quoteAgeMs != null && quoteAgeMs > QUOTE_VALIDITY.max_quote_age_ms) return "stale";
+  if (
+    openInterest != null &&
+    dayVolume != null &&
+    openInterest < CONTRACT_LIQUIDITY.min_volume_or_oi &&
+    dayVolume < CONTRACT_LIQUIDITY.min_volume_or_oi
+  ) {
+    return "no_volume_or_oi";
+  }
   return null;
 }
 
@@ -190,12 +244,20 @@ export type ContractPlan = {
   illiquid: boolean;
   /** Spread cap (%) used when `illiquid` was judged — for G-9 block copy. */
   illiquid_spread_cap?: number;
-  /** WS-04: fail-closed malformed-quote verdict. null = quote valid; a non-null reason
-   *  is translated to a distinct plan_quote_invalid / plan_quote_stale block in
+  /** WS-04: fail-closed malformed-quote verdict (G-9, quote INTEGRITY only — see the
+   *  type doc for the 2026-09-09 split). null = quote valid; a non-null reason is
+   *  translated to a distinct plan_quote_invalid / plan_quote_stale block in
    *  planQualityGateBlocks (gates.ts). OPTIONAL for back-compat — a historical/hand-built
    *  plan that omits it is read as "no explicit invalidity" (the legacy illiquid /
    *  no_quote checks still govern it). */
   quote_invalid_reason?: QuoteInvalidReason;
+  /** G-21: fail-closed contract-LIQUIDITY/depth verdict (2026-09-09 split OUT of
+   *  quote_invalid_reason — see ContractLiquidityInvalidReason's doc). null = liquidity
+   *  adequate or unmeasured. A non-null reason is translated to a distinct
+   *  plan_thin_size / plan_no_volume_or_oi block in contractLiquidityGateBlocks
+   *  (gates.ts), a SIBLING check to G-9's plan-quality blocks, not a branch of it.
+   *  OPTIONAL for back-compat, same discipline as quote_invalid_reason. */
+  liquidity_invalid_reason?: ContractLiquidityInvalidReason;
   /** Premium exits from PLAN_RULES applied to entry_max. */
   stop_premium: number | null;
   target_premium: number | null;
@@ -220,10 +282,17 @@ export function buildContractPlan(input: {
   bid: number | null;
   ask: number | null;
   mark: number | null;
-  /** Top-of-book resting sizes (contracts), when the provider reports them — feeds the
-   *  WS-04 min-size predicate (conditional-on-availability). Absent → not enforced. */
+  /** Top-of-book resting sizes (contracts), when the provider reports them — feeds G-21's
+   *  min-size predicate (evaluateContractLiquidity, conditional-on-availability). Absent
+   *  → not enforced. */
   bidSize?: number | null;
   askSize?: number | null;
+  /** G-21 depth inputs — open interest and today's traded volume on this contract, when
+   *  the provider reports them (OptionSnapshot.openInterest/dayVolume). Conditional-on-
+   *  availability like bidSize/askSize: absence of either is never treated as proof of
+   *  illiquidity, only BOTH present and both below the floor blocks. */
+  openInterest?: number | null;
+  dayVolume?: number | null;
   /** Age (ms) of the quote at plan time, when a quote timestamp is available. WS-04
    *  quote_age is only enforced when this is supplied. As of D3 the 0DTE scan threads it
    *  through (OptionSnapshot.quoteUpdatedMs → scan.ts computeQuoteAgeMs → here), so the
@@ -260,18 +329,24 @@ export function buildContractPlan(input: {
       : PLAN_ILLIQUID_SPREAD_PCT;
   const illiquid = spreadPct != null && spreadPct > illiquidSpreadCap;
 
-  // WS-04: explicit fail-closed malformed-quote verdict, computed BESIDE the legacy
-  // percent-spread check (which is kept untouched). This catches the books the % test
-  // waved through — zero/null bid (null %), crossed (negative %), locked (0 %), mark
-  // out of band, and an absolutely-huge dollar spread — plus the two conditional bounds
-  // (size, age) when the provider supplies them.
+  // WS-04: explicit fail-closed malformed-quote verdict (G-9, INTEGRITY only), computed
+  // BESIDE the legacy percent-spread check (which is kept untouched). This catches the
+  // books the % test waved through — zero/null bid (null %), crossed (negative %),
+  // locked (0 %), mark out of band, and an absolutely-huge dollar spread — plus the
+  // conditional age bound when the provider supplies it.
   const quoteInvalidReason = evaluateQuoteValidity({
     bid,
     ask,
     mark,
+    quoteAgeMs: input.quoteAgeMs ?? null,
+  });
+  // G-21 (2026-09-09 split): DEPTH/liquidity verdict, a SIBLING check to the above, not a
+  // branch of it — a well-formed, in-band quote can still be too thin to fill.
+  const liquidityInvalidReason = evaluateContractLiquidity({
     bidSize: input.bidSize ?? null,
     askSize: input.askSize ?? null,
-    quoteAgeMs: input.quoteAgeMs ?? null,
+    openInterest: input.openInterest ?? null,
+    dayVolume: input.dayVolume ?? null,
   });
 
   const chasePct =
@@ -314,6 +389,7 @@ export function buildContractPlan(input: {
     illiquid,
     illiquid_spread_cap: illiquidSpreadCap,
     quote_invalid_reason: quoteInvalidReason,
+    liquidity_invalid_reason: liquidityInvalidReason,
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,
     time_stop_et: zerodteTimeStopEtLabel(),

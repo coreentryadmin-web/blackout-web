@@ -991,6 +991,12 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         chaseExempt: planChaseExempt(planChaseContextFromGateInput(input)),
       })
     );
+    // G-21 — contract liquidity/depth (2026-09-09 split OUT of G-9's plan_quote_invalid):
+    // a SIBLING check, not a branch — a well-formed, in-band quote can still be too thin
+    // to fill. Evaluated alongside G-8/G-9, same deferPlanQualityGates gating (a plan
+    // attached AFTER gates under thesis-first needs the same refresh treatment — see
+    // refreshContractLiquidityGateBlocks below, mirroring refreshPlanQualityGateBlocks).
+    blocks.push(...contractLiquidityGateBlocks(input.plan ?? null));
 
     // G-10 — intraday structure conflict: DEMOTED back to score-only (2026-07-27).
     // Evidence: flow precedes trend changes, and the hard block (promoted 2026-07-18) was
@@ -1291,9 +1297,9 @@ export function planQualityGateBlocks(
   return blocks;
 }
 
-/** Human-readable sentence per malformed-quote reason (WS-04). Keyed by the
- *  QuoteInvalidReason values that map to plan_quote_invalid (stale is handled
- *  separately as plan_quote_stale). */
+/** Human-readable sentence per malformed-quote reason (WS-04, G-9 quote INTEGRITY only —
+ *  see the 2026-09-09 G-9/G-21 split). Keyed by the QuoteInvalidReason values that map to
+ *  plan_quote_invalid (stale is handled separately as plan_quote_stale). */
 const QUOTE_INVALID_SENTENCE: Record<
   Exclude<NonNullable<ContractPlan["quote_invalid_reason"]>, "stale">,
   string
@@ -1303,8 +1309,36 @@ const QUOTE_INVALID_SENTENCE: Record<
   locked: "Contract quote is locked (bid == ask — zero-width book)",
   mark_out_of_band: "Contract mark sits outside its own bid/ask",
   wide_dollars: "Contract bid/ask dollar spread is over the cap",
-  thin_size: "Contract resting quote size is below the floor",
 };
+
+/** Human-readable sentence per contract-liquidity reason (G-21, 2026-09-09 split OUT of
+ *  QUOTE_INVALID_SENTENCE — see ContractLiquidityInvalidReason's doc). */
+const LIQUIDITY_INVALID_SENTENCE: Record<NonNullable<ContractPlan["liquidity_invalid_reason"]>, string> = {
+  thin_size: "Contract resting quote size is below the floor",
+  no_volume_or_oi: "Contract has no real trading activity (zero day volume AND zero open interest)",
+};
+
+/**
+ * G-21 contract-liquidity gate blocks — pure, unit-testable, SIBLING to
+ * planQualityGateBlocks (G-8/G-9), not a branch of it. A plan can pass G-9's quote-
+ * integrity check (real, in-band, fresh two-sided market) and still fail here because
+ * the book is too THIN to fill without moving the market — a distinct failure mode with
+ * its own distinct gate codes (plan_thin_size / plan_no_volume_or_oi), per the 2026-09-09
+ * G-9/G-21 split (operator-approved CTO gate-architecture review).
+ */
+export function contractLiquidityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlock[] {
+  if (plan == null || plan.liquidity_invalid_reason == null) return [];
+  const reason = plan.liquidity_invalid_reason;
+  const code = reason === "thin_size" ? "plan_thin_size" : "plan_no_volume_or_oi";
+  return [
+    {
+      code,
+      reason: `${LIQUIDITY_INVALID_SENTENCE[reason]} — thin liquidity fails closed (G-21).`,
+      threshold: null,
+      unlock_et: null,
+    },
+  ];
+}
 
 /**
  * Moneyness cap re-check — pure, unit-testable, reused by the deferred (thesis-first) refresh
@@ -1398,12 +1432,38 @@ export function refreshPlanQualityGateBlocks(
   };
 }
 
-/** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
+const CONTRACT_LIQUIDITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "plan_thin_size",
+  "plan_no_volume_or_oi",
+]);
+
+/** Re-apply G-21 after thesis-first deferred plan attach (scan.ts) — SIBLING to
+ *  refreshPlanQualityGateBlocks (G-8/G-9), same reason: a plan attached AFTER gates
+ *  never got a chance to fire this check on the first pass. */
+export function refreshContractLiquidityGateBlocks(
+  gate: ZeroDteGateVerdict,
+  plan: ContractPlan | null
+): ZeroDteGateVerdict {
+  const nonLiquidity = gate.blocks.filter((b) => !CONTRACT_LIQUIDITY_GATE_CODES.has(b.code));
+  const blocks = [...nonLiquidity, ...contractLiquidityGateBlocks(plan)];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
+/** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. Checks BOTH
+ *  G-8/G-9 (quote quality) and G-21 (contract liquidity/depth) — a plan can slip past the
+ *  first pass on either axis. */
 export function freshCommitBlockedByPlan(
   plan: ContractPlan | null | undefined,
   opts?: PlanQualityGateOpts
 ): boolean {
-  return planQualityGateBlocks(plan ?? null, opts).length > 0;
+  return (
+    planQualityGateBlocks(plan ?? null, opts).length > 0 ||
+    contractLiquidityGateBlocks(plan ?? null).length > 0
+  );
 }
 
 /**

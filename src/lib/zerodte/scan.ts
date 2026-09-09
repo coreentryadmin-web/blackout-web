@@ -141,7 +141,9 @@ import {
   gateRejectionFor,
   runnerConfluenceCount,
   planQualityGateBlocks,
+  contractLiquidityGateBlocks,
   refreshPlanQualityGateBlocks,
+  refreshContractLiquidityGateBlocks,
   refreshMoneynessGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
@@ -683,6 +685,7 @@ export async function scanZeroDteBoard(flags?: {
         const planGateOpts = { chaseExempt: planChaseExempt(chaseCtx) };
         s.plan_chase_exempt = planGateOpts.chaseExempt;
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null, planGateOpts);
+        s.gate = refreshContractLiquidityGateBlocks(s.gate, s.plan ?? null);
         s.gate = refreshMoneynessGateBlocks(
           s.gate,
           s.otm_pct ?? null,
@@ -1329,6 +1332,8 @@ async function attachContractPlans(
       mark: snap?.mark ?? null,
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
+      openInterest: snap?.openInterest ?? null,
+      dayVolume: snap?.dayVolume ?? null,
       quoteAgeMs: computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
@@ -1568,7 +1573,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       verdict = {
         ...s.gate,
         verdict: "BLOCKED",
-        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null, planGateOpts)],
+        blocks: [
+          ...s.gate.blocks,
+          ...planQualityGateBlocks(s.plan ?? null, planGateOpts),
+          ...contractLiquidityGateBlocks(s.plan ?? null),
+        ],
       };
     }
     gateRejections.push(gateRejectionFor(s, verdict ?? null));
