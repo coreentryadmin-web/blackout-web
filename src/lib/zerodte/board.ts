@@ -884,6 +884,10 @@ export type ZeroDteGateFailure =
   // ── WS-04 malformed-quote validation (fail-closed; additive to plan_illiquid/plan_no_quote) ──
   | "plan_quote_invalid" // G-9: malformed book — zero/null bid, crossed, locked, mark out of band, or $-spread over cap
   | "plan_quote_stale" // G-9: quote age beyond the freshness bound (only when a quote timestamp is available)
+  // ── G-21 contract liquidity/depth (2026-09-09 split OUT of G-9's plan_quote_invalid) —
+  // a well-formed, in-band quote can still be too THIN to fill; distinct from quote integrity.
+  | "plan_thin_size" // G-21: resting bid/ask size below the floor (only when the provider reports size)
+  | "plan_no_volume_or_oi" // G-21: BOTH day volume and open interest read zero (only when both were supplied)
   | "intraday_conflict" // G-10: VWAP + 5m trend oppose the play direction
   | "halted" // G-11: underlying trading halt
   | "earnings" // G-11: reports today/next session — different trade than 0DTE scalp

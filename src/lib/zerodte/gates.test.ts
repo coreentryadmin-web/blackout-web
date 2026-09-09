@@ -15,6 +15,9 @@ import {
   INPUT_SYNC_MAX_SKEW_MS,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
+  contractLiquidityGateBlocks,
+  refreshContractLiquidityGateBlocks,
+  freshCommitBlockedByPlan,
   moneynessGateBlocks,
   refreshMoneynessGateBlocks,
   qualificationDislocationGateBlocks,
@@ -944,6 +947,66 @@ test("refreshPlanQualityGateBlocks: drops stale plan_no_quote after deferred att
   assert.equal(blocked.blocks.some((b) => b.code === "plan_no_quote"), true);
 });
 
+// ── G-21 · contract liquidity/depth (2026-09-09 split OUT of G-9's plan_quote_invalid) ──
+// A well-formed, in-band quote (clears G-9) can still be too THIN to fill — a SIBLING
+// check with its own distinct gate codes, not a branch of plan_quote_invalid.
+
+test("contractLiquidityGateBlocks: exported helper matches gate evaluation, clean plan passes", () => {
+  assert.deepEqual(contractLiquidityGateBlocks(CLEAN_PLAN), []);
+  assert.deepEqual(contractLiquidityGateBlocks(null), []);
+});
+
+test("G-21: thin_size fails closed with the DISTINCT plan_thin_size code, not plan_quote_invalid", () => {
+  const plan: ContractPlan = { ...CLEAN_PLAN, liquidity_invalid_reason: "thin_size" };
+  const blocks = contractLiquidityGateBlocks(plan);
+  assert.equal(blocks.some((b) => b.code === "plan_thin_size"), true);
+  assert.equal(blocks.some((b) => b.code === "plan_quote_invalid"), false);
+  const v = evaluateZeroDteGates(input({ plan, score: 80 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_thin_size"), true);
+});
+
+test("G-21: no_volume_or_oi fails closed with its own DISTINCT code, and is independent of quote_invalid_reason", () => {
+  const plan: ContractPlan = { ...CLEAN_PLAN, liquidity_invalid_reason: "no_volume_or_oi" };
+  const v = evaluateZeroDteGates(input({ plan, score: 80 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_no_volume_or_oi"), true);
+  assert.equal(v.blocks.some((b) => b.code === "plan_quote_invalid"), false);
+});
+
+test("G-21: a plan that is BOTH quote-invalid (G-9) AND thin (G-21) surfaces BOTH distinct codes at once", () => {
+  const plan: ContractPlan = {
+    ...CLEAN_PLAN,
+    quote_invalid_reason: "crossed",
+    liquidity_invalid_reason: "thin_size",
+  };
+  const v = evaluateZeroDteGates(input({ plan, score: 80 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "plan_quote_invalid"), true);
+  assert.equal(v.blocks.some((b) => b.code === "plan_thin_size"), true);
+});
+
+test("refreshContractLiquidityGateBlocks: drops/applies G-21 after deferred plan attach (thesis-first)", () => {
+  const stale = evaluateZeroDteGates(
+    input({ plan: null, deferPlanQualityGates: true, score: 80 })
+  );
+  assert.equal(stale.blocks.some((b) => b.code === "plan_thin_size"), false);
+
+  const cleared = refreshContractLiquidityGateBlocks(stale, CLEAN_PLAN);
+  assert.equal(cleared.blocks.some((b) => b.code === "plan_thin_size"), false);
+
+  const thinPlan: ContractPlan = { ...CLEAN_PLAN, liquidity_invalid_reason: "thin_size" };
+  const blocked = refreshContractLiquidityGateBlocks(stale, thinPlan);
+  assert.equal(blocked.verdict, "BLOCKED");
+  assert.equal(blocked.blocks.some((b) => b.code === "plan_thin_size"), true);
+});
+
+test("freshCommitBlockedByPlan: true for a G-21 liquidity defect even when G-8/G-9 are clean", () => {
+  const thinPlan: ContractPlan = { ...CLEAN_PLAN, liquidity_invalid_reason: "thin_size" };
+  assert.equal(freshCommitBlockedByPlan(thinPlan), true);
+  assert.equal(freshCommitBlockedByPlan(CLEAN_PLAN), false);
+});
+
 // ── Moneyness re-check (P0 fix, 2026-08-27) ─────────────────────────────────────────────
 // Live-caught: board.ts's deriveZeroDteSetups gates SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT exactly
 // once, before scan.ts's attachContractPlans refreshes otm_pct from a fresher live-spot read —
@@ -1409,14 +1472,8 @@ test("WS-04: absolute-dollar spread over cap → blocked (wide_dollars); a propo
   assert.equal(ok, null);
 });
 
-test("WS-04: min-size only enforced when the provider reports size (conditional)", () => {
-  // Absent size → not enforced (absent size is not proof of illiquidity).
+test("G-9/G-21 split (2026-09-09): evaluateQuoteValidity no longer takes/enforces size — moved to G-21's evaluateContractLiquidity", () => {
   assert.equal(evaluateQuoteValidity({ bid: 2.3, ask: 2.5, mark: 2.4 }), null);
-  // Present but below floor → blocked.
-  assert.equal(
-    evaluateQuoteValidity({ bid: 2.3, ask: 2.5, mark: 2.4, bidSize: 0.5, askSize: 5 }),
-    "thin_size"
-  );
 });
 
 // ── G-12 · confluence floor (Phase 1) ────────────────────────────────────────────
