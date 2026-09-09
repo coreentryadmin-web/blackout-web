@@ -17,6 +17,9 @@ import {
   refreshPlanQualityGateBlocks,
   moneynessGateBlocks,
   refreshMoneynessGateBlocks,
+  qualificationDislocationGateBlocks,
+  refreshQualificationDislocationGateBlocks,
+  QUALIFICATION_DISLOCATION_MAX_PCT,
   refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
@@ -1045,6 +1048,202 @@ test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", ()
   );
   const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
   assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
+});
+
+// ── G-23 · qualification-to-commit dislocation circuit-breaker ─────────────────────
+// Distinct from G-8 (anchored to the flow print's fill, never re-examines the underlying) and
+// the moneyness re-check just above (only re-tests the FINAL strike distance, never the SPEED
+// of the move) — see qualificationDislocationGateBlocks's module doc in gates.ts.
+
+const QUAL_AT_MS = Date.parse("2026-09-09T14:00:00Z");
+
+test("qualificationDislocationGateBlocks: abnormal move (>=1.5%) inside the window → BLOCKED", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 102, // +2% — past the 1.5% default
+    currentAsOfMs: QUAL_AT_MS + 90_000, // 90s later — well inside the 5-min window
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "qualification_dislocation");
+  assert.match(blocks[0]!.reason, /2\.00% in 1\.5 min/);
+  assert.equal(blocks[0]!.threshold, QUALIFICATION_DISLOCATION_MAX_PCT);
+});
+
+test("qualificationDislocationGateBlocks: same magnitude move but over a LONG window (ordinary drift) → no block", () => {
+  // Same 2% final move as the abnormal case above, but it took 20 minutes to get there —
+  // ordinary intraday drift, not a violent dislocation. Confirms the gate is genuinely
+  // velocity-gated, not just a magnitude cap duplicating the moneyness re-check.
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 102,
+    currentAsOfMs: QUAL_AT_MS + 20 * 60_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: small/normal drift inside the window → no false positive", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100.5, // 0.5% — well under the 1.5% cap
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: a crossed book at commit time → BLOCKED regardless of price move", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100.1, // negligible move
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.5, ask: 2.0, mark: 2.2 }, // bid > ask — crossed
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "qualification_dislocation");
+  assert.match(blocks[0]!.reason, /crossed/);
+});
+
+test("qualificationDislocationGateBlocks: a locked book at commit time → BLOCKED", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100,
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.0, ask: 2.0, mark: 2.0 }, // zero-width book
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.match(blocks[0]!.reason, /locked/);
+});
+
+test("qualificationDislocationGateBlocks: a CONDOR is exempt from the crossed/locked quote check", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 100,
+    currentAsOfMs: QUAL_AT_MS + 60_000,
+    quote: { bid: 2.0, ask: 2.0, mark: 2.0 },
+    isCondor: true,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("qualificationDislocationGateBlocks: fails OPEN when the qualification-time snapshot is missing", () => {
+  // No qualification_underlying_price on the setup (never touched by enrichSetup, e.g. a
+  // hand-built fixture/test) — must NOT fabricate a block from data that was never captured.
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: null,
+      qualificationAsOfMs: null,
+      currentPrice: 200, // a huge apparent move — irrelevant, there is nothing to compare it to
+      currentAsOfMs: QUAL_AT_MS + 60_000,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: 100,
+      qualificationAsOfMs: undefined,
+      currentPrice: 200,
+      currentAsOfMs: QUAL_AT_MS + 60_000,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+});
+
+test("qualificationDislocationGateBlocks: fails OPEN when the current-side snapshot is missing", () => {
+  assert.deepEqual(
+    qualificationDislocationGateBlocks({
+      qualificationPrice: 100,
+      qualificationAsOfMs: QUAL_AT_MS,
+      currentPrice: null,
+      currentAsOfMs: null,
+      quote: null,
+      isCondor: false,
+    }),
+    []
+  );
+});
+
+test("qualificationDislocationGateBlocks: a non-positive elapsed window never manufactures a block (clock-skew guard)", () => {
+  const blocks = qualificationDislocationGateBlocks({
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 110, // 10% move — would otherwise trip
+    currentAsOfMs: QUAL_AT_MS - 5_000, // "current" is BEFORE qualification — skew, not a real window
+    quote: null,
+    isCondor: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("evaluateZeroDteGates: existing gate behavior is UNCHANGED when qualification/current fields are simply not supplied", () => {
+  // The base input() fixture never sets these — every pre-existing gate test in this file
+  // relies on that being a true no-op, same guard as the moneyness otmPct test above.
+  const v = evaluateZeroDteGates(input());
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+test("evaluateZeroDteGates: an abnormal fast underlying dislocation since qualification BLOCKS a fresh commit", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      qualificationUnderlyingPrice: 100,
+      qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS,
+      currentUnderlyingPrice: 102.5, // +2.5% since qualification
+      currentUnderlyingPriceAsOfMs: QUAL_AT_MS + 60_000, // 1 minute later
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "qualification_dislocation"), true);
+});
+
+test("evaluateZeroDteGates: ordinary drift over qualification/current does NOT block (no false positive)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      qualificationUnderlyingPrice: 100,
+      qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS,
+      currentUnderlyingPrice: 100.3,
+      currentUnderlyingPriceAsOfMs: QUAL_AT_MS + 60_000,
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "qualification_dislocation"), false);
+});
+
+test("refreshQualificationDislocationGateBlocks: re-applies G-23 after a deferred (thesis-first) contract-plan attach", () => {
+  // Gates ran first (thesis-first order) with no current-side data yet attached — no block.
+  const preRefresh = evaluateZeroDteGates(
+    input({ qualificationUnderlyingPrice: 100, qualificationUnderlyingPriceAsOfMs: QUAL_AT_MS, score: 80 })
+  );
+  assert.equal(preRefresh.verdict, "COMMIT");
+  assert.equal(preRefresh.blocks.some((b) => b.code === "qualification_dislocation"), false);
+
+  // attachContractPlans now runs and the underlying has, in fact, dislocated violently.
+  const postRefresh = refreshQualificationDislocationGateBlocks(preRefresh, {
+    qualificationPrice: 100,
+    qualificationAsOfMs: QUAL_AT_MS,
+    currentPrice: 103,
+    currentAsOfMs: QUAL_AT_MS + 45_000,
+    quote: { bid: 1.9, ask: 2.1, mark: 2 },
+    isCondor: false,
+  });
+  assert.equal(postRefresh.verdict, "BLOCKED");
+  assert.equal(postRefresh.blocks.some((b) => b.code === "qualification_dislocation"), true);
 });
 
 // Bug found 2026-08-26 alongside the plan_no_quote fix: G-5's premium-budget check runs with
