@@ -6,7 +6,7 @@
 |-------|-------|
 | **Status** | FIXED |
 | **Area** | Ask Largo swing play-brief, `chartLevelsSection` ("Levels on chart" section), `src/lib/swing/play-brief-intel.ts` |
-| **PR** | (pending — `fix/swing-brief-gex-king-narrative-precedence`) |
+| **PR** | `fix/swing-brief-gex-king-chart-levels-precedence` |
 
 ### Symptom
 
