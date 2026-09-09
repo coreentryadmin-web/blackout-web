@@ -522,15 +522,22 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
   return { title: "Hold plan", body: lines.join("\n\n") };
 }
 
-/** Post-mortem for closed plays — MFE capture + archetype learning loop. */
-export function lessonsSection(play: TerminalPlay): RichSection | null {
+/** Post-mortem for closed plays — MFE capture + archetype learning loop.
+ *  `roundTripAlreadyNoted` — closedCoaching (play-brief-narrative-coaching.ts, feeds the "Trade
+ *  manager read" section built earlier in buildIntelSections) independently derives the identical
+ *  round-trip-past-breakeven fact from the same peak/exitPnlPct inputs via the same
+ *  mfeCaptureOutcome() call, and states it first. Same restatement class as the "thesis health"
+ *  advisory two sections up in this file — see that comment. */
+export function lessonsSection(play: TerminalPlay, roundTripAlreadyNoted?: boolean): RichSection | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
   if (play.peak != null && play.exitPnlPct != null) {
     const outcome = mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct);
     lines.push(`Peak was **${fmtPct(play.peak)}** · exited **${fmtPct(play.exitPnlPct)}**`);
     if (outcome?.kind === "round_trip") {
-      lines.push(`**Round-tripped past breakeven** — up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**.`);
+      if (!roundTripAlreadyNoted) {
+        lines.push(`**Round-tripped past breakeven** — up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**.`);
+      }
       lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
     } else if (outcome?.kind === "capture") {
       const capture = outcome.capturePct;
@@ -883,7 +890,8 @@ export function buildIntelSections(
   }
 
   if (bucket === "closed") {
-    const lessons = lessonsSection(play);
+    const roundTripAlreadyNoted = narrative?.body?.includes("Round-tripped past breakeven") ?? false;
+    const lessons = lessonsSection(play, roundTripAlreadyNoted);
     if (lessons) out.push(lessons);
   }
 

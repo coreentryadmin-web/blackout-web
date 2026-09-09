@@ -480,6 +480,30 @@ test("lessonsSection: a round-trip past breakeven never renders a nonsensical ne
   assert.match(section!.body, /round-tripped past breakeven/i);
 });
 
+test("lessonsSection: omits the round-trip sentence when the Trade manager read section already stated it, but keeps the rest", () => {
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 1.3,
+    exitPnlPct: -56.2,
+    mfeCapturePct: null,
+    closedReason: "stopped",
+    archetype: "PULLBACK_CONTINUATION",
+  });
+
+  const withoutSuppression = lessonsSection(play);
+  assert.ok(withoutSuppression);
+  assert.match(withoutSuppression!.body, /round-tripped past breakeven/i);
+
+  const suppressed = lessonsSection(play, true);
+  assert.ok(suppressed);
+  assert.doesNotMatch(suppressed!.body, /round-tripped past breakeven/i);
+  // The rest of the post-mortem (peak/exit line, "gave back the move", exit reason, archetype tag)
+  // is independent evidence and must survive the suppression, not just the duplicated sentence.
+  assert.match(suppressed!.body, /gave back the move/i);
+  assert.match(suppressed!.body, /stop loss/i);
+  assert.match(suppressed!.body, /pullback continuation/i);
+});
+
 function fixtureVec(overrides: Partial<VectorFullState> = {}): VectorFullState {
   return {
     spot: 100,
