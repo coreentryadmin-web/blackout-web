@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-09T15:27:15.562Z",
+  "updated_at": "2026-09-09T19:26:39.323Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,36 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a4098bde0fd7edf912faa96b5a343334c4edf963",
+    "last_main_sha": "dd226e421f07b17a8804c45ce63c9c7ca3fd7b85",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-05T19:35:19.110Z",
-      "type": "pr_review",
-      "pr": 4037,
-      "head_sha": "2c4363b2c",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T19:35:19.109Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-05T19:35:26.152Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-09-05T19:35:26.152Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
-    },
     {
       "at": "2026-09-05T20:41:08.341Z",
       "type": "context_sync",
@@ -1305,6 +1282,24 @@
     },
     {
       "at": "2026-09-09T15:27:15.562Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T19:26:38.375Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T19:26:38.989Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T19:26:39.323Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
