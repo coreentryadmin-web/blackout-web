@@ -124,7 +124,16 @@ export function applyCortexCommitRelief(
  */
 export function gexWallsVetoWasRelieved(assessment: ZeroDteCortexAssessment): boolean {
   if (assessment.abstained) return false;
-  const stillVetoed = assessment.verdict.vetoes.some((v) => v.source === GEX_WALLS_SOURCE);
+  const vetoes = assessment.verdict.vetoes;
+  const narrative = assessment.verdict.narrative;
+  // Defensive, not merely defensive-in-spirit: a hand-built fixture (scan.test.ts's
+  // "A-tier + Vector winner" case, found live when this crashed it) can construct a
+  // partial CortexVerdict that omits `narrative` — real compose.ts output always sets
+  // it, but nothing enforces that at this call site. Missing/malformed narrative means
+  // "no positive evidence a veto was relieved", so this returns false (the same
+  // fail-safe default as every other read in this feature), never throws.
+  if (!Array.isArray(vetoes) || !Array.isArray(narrative)) return false;
+  const stillVetoed = vetoes.some((v) => v.source === GEX_WALLS_SOURCE);
   if (stillVetoed) return false;
-  return assessment.verdict.narrative.some((line) => line.startsWith(`VETO [${GEX_WALLS_SOURCE}]`));
+  return narrative.some((line) => line.startsWith(`VETO [${GEX_WALLS_SOURCE}]`));
 }

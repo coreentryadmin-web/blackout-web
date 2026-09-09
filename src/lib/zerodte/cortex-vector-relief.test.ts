@@ -177,3 +177,20 @@ test("gexWallsVetoWasRelieved: false when the veto is still active (not relieved
 test("gexWallsVetoWasRelieved: false for an abstained assessment", () => {
   assert.equal(gexWallsVetoWasRelieved({ decision: "VETO_BLIND", abstained: true, reason: "no data" }), false);
 });
+
+// Live crash found via scan.test.ts's full-suite run: a hand-built PASS verdict with
+// `vetoes: []` but no `narrative` field at all (a valid partial fixture — narrative is
+// only load-bearing for THIS detector, nothing else in cortex-gate.ts's contract
+// requires it) must never throw; it must read as "not relieved" like any other
+// missing-evidence case.
+test("gexWallsVetoWasRelieved: false (never throws) when narrative is absent from the verdict", () => {
+  const noNarrative = {
+    decision: "PASS" as const,
+    abstained: false as const,
+    verdict: verdict({ vetoes: [] }),
+  };
+  // The `verdict()` fixture defaults narrative to [], so force the omission directly —
+  // this is what a hand-built partial fixture elsewhere in the codebase looks like.
+  delete (noNarrative.verdict as { narrative?: string[] }).narrative;
+  assert.equal(gexWallsVetoWasRelieved(noNarrative), false);
+});
