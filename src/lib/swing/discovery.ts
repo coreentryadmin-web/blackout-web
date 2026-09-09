@@ -138,8 +138,11 @@ export interface SwingDiscoveryConfig {
 
 export const DEFAULT_SWING_DISCOVERY_CONFIG: SwingDiscoveryConfig = {
   flowWindowHours: 120,
-  maxStructureMovers: 40,
-  tier1Cap: 40,
+  // 2026-09-08: raised 40→60 (operator directive, whole-market volume complaint) — admits more
+  // STRUCTURE-origin (breakout) candidates into Tier-0 merge before the dynamic Tier-1 cap
+  // (swingTier1CapCeiling, v2/config.ts) applies its own breadth-scaled limit downstream.
+  maxStructureMovers: 60,
+  tier1Cap: 40, // legacy/fallback budget only — superseded by the dynamic Tier-1 cap when V2 is on
   minPersistenceSessions: MIN_PERSISTENCE_SESSIONS,
   intendedDte: 14,
   enrichConcurrency: 8,

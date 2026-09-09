@@ -166,12 +166,12 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
     fetchSpyCloses: async () => closesFor("SPY"),
     // V2 POSITIONING origin — GEX/walls screen on Vector leader tickers (fail-soft).
     fetchPositioningTickers: async () => {
-      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const rows = await fetchVectorPickLeaderRows({ limit: 110 }).catch(() => []);
       const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
       return positioningTickersFromVectorLeaders(tickers);
     },
     fetchPositioningHits: async () => {
-      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const rows = await fetchVectorPickLeaderRows({ limit: 110 }).catch(() => []);
       const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
       return positioningHitsFromVectorLeaders(tickers);
     },
@@ -191,7 +191,7 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
         })),
       );
     },
-    fetchVectorTickers: async () => vectorTickersFromPickLeaders({ sessionDate: sessionDay, limit: 80 }),
+    fetchVectorTickers: async () => vectorTickersFromPickLeaders({ sessionDate: sessionDay, limit: 110 }),
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
         {

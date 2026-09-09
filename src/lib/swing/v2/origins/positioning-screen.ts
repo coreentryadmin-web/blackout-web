@@ -12,7 +12,9 @@ export async function screenPositioningFromTickers(
   tickers: string[],
   opts: { concurrency?: number } = {},
 ): Promise<PositioningOriginCandidate[]> {
-  const uniq = [...new Set(tickers.map((t) => t.toUpperCase()).filter(Boolean))].slice(0, 60);
+  // 2026-09-08: raised 60→90 (operator directive, volume complaint) alongside the vector-leader
+  // fetch limit (80→110) that feeds this screen, so the wider upstream pool isn't truncated here.
+  const uniq = [...new Set(tickers.map((t) => t.toUpperCase()).filter(Boolean))].slice(0, 90);
   if (uniq.length === 0) return [];
 
   const concurrency = Math.max(1, Math.min(opts.concurrency ?? 6, 12));
