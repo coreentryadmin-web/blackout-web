@@ -293,6 +293,8 @@ const GATE_LABELS: Record<string, string> = {
   vix_elevated: "G-4 · VIX elevated",
   vix_extreme: "G-4 · VIX extreme",
   cross_system_conflict: "G-6 · cross-system conflict",
+  plan_thin_size: "G-21 · thin resting size",
+  plan_no_volume_or_oi: "G-21 · no volume or OI",
   // Cortex wire-in codes (#318). cortex_veto carries a `:<source>` suffix — handled
   // by the prefix branch in zeroDteGateLabel below.
   cortex_net_negative: "cortex · net-negative",
