@@ -240,6 +240,47 @@ test("buildContractPlan: illiquidSpreadPct override widens G-9 cap", () => {
   assert.equal(wide.illiquid_spread_cap, 22);
 });
 
+test("buildContractPlan: threads tickerClass/dayVolume/openInterest into quote_invalid_reason (G-21)", () => {
+  const commonInput = {
+    occ: "O:TEST",
+    direction: "long" as const,
+    price: 100,
+    flowAvgFill: 2,
+    bid: 1.9,
+    ask: 2.1,
+    mark: 2,
+    bidSize: 2,
+    askSize: 2,
+    keySupports: [],
+    keyResistances: [],
+    vwap: null,
+  };
+
+  // A size-2 book with no tickerClass passed (legacy floor 1) is fine.
+  assert.equal(buildContractPlan(commonInput).quote_invalid_reason, null);
+
+  // The SAME size-2 book fails closed for an index/ETF ticker (floor 3) but passes for a
+  // single name (floor 2) — the whole point of the recalibration.
+  assert.equal(
+    buildContractPlan({ ...commonInput, tickerClass: "index_etf" }).quote_invalid_reason,
+    "thin_size"
+  );
+  assert.equal(
+    buildContractPlan({ ...commonInput, tickerClass: "single" }).quote_invalid_reason,
+    null
+  );
+
+  // dayVolume/openInterest both zero → no_volume_or_oi, threaded through unchanged.
+  assert.equal(
+    buildContractPlan({ ...commonInput, dayVolume: 0, openInterest: 0 }).quote_invalid_reason,
+    "no_volume_or_oi"
+  );
+  assert.equal(
+    buildContractPlan({ ...commonInput, dayVolume: 0, openInterest: 50 }).quote_invalid_reason,
+    null
+  );
+});
+
 // ════════════════════════════════════════════════════════════════════════════════════
 // evaluateQuoteValidity — every fail-closed QuoteInvalidReason + the valid pass.
 // Checked most-degenerate-first: zero_bid → crossed → locked → mark_out_of_band →
@@ -290,6 +331,62 @@ test("evaluateQuoteValidity: thin_size — enforced ONLY when the provider repor
   assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1 }), null);
   // At the floor is fine.
   assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 1, askSize: 1 }), null);
+});
+
+// G-21 (2026-09-09): per-class min-quote-size floor, recalibrated from real measured
+// distributions (scripts/audit/zerodte-contract-liquidity-measure.mjs, 2026-09-09) —
+// see QUOTE_VALIDITY.min_quote_size_by_class's comment for the evidence.
+test("evaluateQuoteValidity: thin_size — index_etf floor is 3, single is 2, legacy (omitted) is 1", () => {
+  assert.equal(QUOTE_VALIDITY.min_quote_size_by_class.index_etf, 3);
+  assert.equal(QUOTE_VALIDITY.min_quote_size_by_class.single, 2);
+  assert.equal(QUOTE_VALIDITY.min_quote_size, 1);
+
+  // Legacy behavior unchanged when tickerClass is omitted — a size-1 book still passes.
+  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 1, askSize: 1 }), null);
+
+  // index_etf: size 1 and 2 now fail (below the floor of 3); size 3 passes.
+  assert.equal(
+    evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 1, askSize: 5, tickerClass: "index_etf" }),
+    "thin_size"
+  );
+  assert.equal(
+    evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 2, askSize: 5, tickerClass: "index_etf" }),
+    "thin_size"
+  );
+  assert.equal(
+    evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 3, askSize: 5, tickerClass: "index_etf" }),
+    null
+  );
+
+  // single: size 1 fails (below the floor of 2); size 2 passes.
+  assert.equal(
+    evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 1, askSize: 5, tickerClass: "single" }),
+    "thin_size"
+  );
+  assert.equal(
+    evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 2, askSize: 5, tickerClass: "single" }),
+    null
+  );
+
+  // Absent size is still not proof of illiquidity, per-class or otherwise.
+  assert.equal(
+    evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: null, askSize: 5, tickerClass: "index_etf" }),
+    null
+  );
+});
+
+test("evaluateQuoteValidity: no_volume_or_oi — a genuinely dead contract (zero volume AND zero OI) fails closed", () => {
+  assert.equal(
+    evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, dayVolume: 0, openInterest: 0 }),
+    "no_volume_or_oi"
+  );
+  // Either one alone (real signal, just thin) does NOT fail — this is a narrow "both zero"
+  // dead-contract backstop, not a tuned percentile floor (see the code comment for why).
+  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, dayVolume: 0, openInterest: 5 }), null);
+  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, dayVolume: 5, openInterest: 0 }), null);
+  // Conditional-on-availability — a missing field is not proof of a dead contract.
+  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, dayVolume: null, openInterest: 0 }), null);
+  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1 }), null);
 });
 
 test("evaluateQuoteValidity: stale — enforced ONLY when a quote age is supplied, boundary at the cap is fresh", () => {

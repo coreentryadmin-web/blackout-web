@@ -99,8 +99,18 @@ export type QuoteInvalidReason =
   | "mark_out_of_band" // mark sits outside [bid, ask] — malformed/stale print
   | "wide_dollars" // absolute ask−bid spread over the dollar cap (backstop to the % check)
   | "thin_size" // resting quote size below the floor (only when the provider reports size)
+  | "no_volume_or_oi" // contract shows ZERO day volume AND ZERO open interest — dead/untraded
   | "stale" // quote age beyond the freshness bound (only when a timestamp is available)
   | null;
+
+/** Ticker-class bucket for the per-class liquidity floor (G-21 recalibration, 2026-09-09).
+ *  Deliberately just two buckets, computed by the CALLER (scan.ts already has gates.ts's
+ *  `INDEX_ETF_TICKERS` in scope) rather than re-imported here: plan.ts is the pure/dependency-
+ *  free leaf module (see file header) and gates.ts already imports FROM plan.ts, so plan.ts
+ *  importing gates.ts back would be circular. `"index_etf"` = SPX/SPXW + INDEX_ETF_TICKERS
+ *  (SPY/QQQ/IWM/DIA) — the deepest, most continuously-quoted options markets that exist;
+ *  `"single"` = everything else. Omitted → the legacy uniform floor (back-compat). */
+export type LiquidityTickerClass = "index_etf" | "single";
 
 /** Fail-closed quote-validity bounds. Numeric bounds are NEW (the % check had none).
  *  Tunable — a TRADES change, so conservative defaults that reject only the clearly
@@ -119,9 +129,50 @@ export const QUOTE_VALIDITY = {
   /** Minimum resting quote size (contracts) on BOTH sides. ONLY enforced when the
    *  provider actually reports size (bidSize/askSize non-null) — absent size is not
    *  proof of illiquidity, so it does not fail closed here (the one conditional-on-
-   *  availability predicate, same rule as quote age). */
+   *  availability predicate, same rule as quote age). LEGACY/back-compat default (used
+   *  only when the caller omits `tickerClass`) — see `min_quote_size_by_class` below for
+   *  the recalibrated, class-differentiated floors this gate now actually enforces. */
   min_quote_size: 1,
+  /**
+   * G-21 recalibration (2026-09-09) — MEASURED, not guessed. `min_quote_size: 1` above
+   * accepted a SINGLE resting contract on each side as "liquid enough" for every ticker
+   * alike — SPX and an obscure single name held to the identical bar. Measured real
+   * near-the-money (±5% of spot) 0DTE/nearest-expiry option-chain snapshots via
+   * `scripts/audit/zerodte-contract-liquidity-measure.mjs` on 2026-09-09 (session closed,
+   * ~10pm ET — see caveat below), SPX/SPY/QQQ + NVDA/TSLA/AAPL:
+   *   ask_size  INDEX(SPX)  p10=1  p25=6   median=15.5   (n=294)
+   *   ask_size  ETF(SPY/QQQ) p10=2 p25=3-3.75 median=85-98.5 (n=154,144)
+   *   ask_size  SINGLE(NVDA/TSLA/AAPL) p10=2.7-6.3 min=1(NVDA) median=9.5-39 (n=18,28,24)
+   *   bid_size  SINGLE min=1 (zero NEVER observed) vs INDEX/ETF ~49% zero-bid-size even ATM
+   * The bid_size split above is why INDEX/ETF get a floor CLOSE to (not far past) 1 rather
+   * than a floor tuned off their own bid_size percentiles: that ~49% zero-bid-size figure was
+   * measured ~2 hours after the 4pm ET close (last-quote-of-session artifact — market makers
+   * routinely pull resting bid size after the bell while ask often still shows a stale
+   * quote), NOT during RTH, so it is very likely a post-close artifact rather than a true
+   * RTH liquidity signal — tuning a floor off it risks blocking real RTH commits, a
+   * correctness regression strictly worse than the toothless floor this replaces. The chosen
+   * floors below are therefore a MODEST, evidence-anchored tightening (median depth for
+   * INDEX/ETF is 15.5-98.5, so asking for 3 is trivial relative to normal depth) rather than
+   * an aggressive one tuned to this snapshot's contaminated tail — re-run the same script
+   * during RTH to sharpen further (see the staged finding for the exact command).
+   *   index_etf: SPX/SPXW + SPY/QQQ/IWM/DIA — the deepest, most liquid options markets that
+   *     exist; a resting size of 1-2 there is anomalous, not merely thin.
+   *   single: every other ticker — measured naturally thinner (ask p10 as low as 1.4), so
+   *     held to a smaller floor to avoid over-rejecting genuinely thin-but-real single-name
+   *     books the way a shared index-grade floor would.
+   */
+  min_quote_size_by_class: {
+    index_etf: 3,
+    single: 2,
+  } as const,
 } as const;
+
+/** Resolve the enforced min-quote-size floor for `evaluateQuoteValidity`. `tickerClass`
+ *  omitted (back-compat) → the legacy uniform `QUOTE_VALIDITY.min_quote_size` (1). */
+export function minQuoteSizeForClass(tickerClass?: LiquidityTickerClass): number {
+  if (tickerClass == null) return QUOTE_VALIDITY.min_quote_size;
+  return QUOTE_VALIDITY.min_quote_size_by_class[tickerClass];
+}
 
 /**
  * WS-04 quote-validity verdict — a pure predicate over a contract's live quote.
@@ -137,8 +188,17 @@ export function evaluateQuoteValidity(input: {
   bidSize?: number | null;
   askSize?: number | null;
   quoteAgeMs?: number | null;
+  /** G-21: bucket for the per-class min-quote-size floor. Omitted → legacy uniform floor. */
+  tickerClass?: LiquidityTickerClass;
+  /** G-21: day/session volume, when the provider reports it (OptionSnapshot.dayVolume).
+   *  Conditional-on-availability, same rule as size/age — absence is not proof of a dead
+   *  contract. Only used together with `openInterest` (see `no_volume_or_oi` below). */
+  dayVolume?: number | null;
+  /** G-21: open interest, when reported (OptionSnapshot.openInterest). */
+  openInterest?: number | null;
 }): QuoteInvalidReason {
-  const { bid, ask, mark, bidSize, askSize, quoteAgeMs } = input;
+  const { bid, ask, mark, bidSize, askSize, quoteAgeMs, dayVolume, openInterest } = input;
+  const minQuoteSize = minQuoteSizeForClass(input.tickerClass);
   // A committable book needs a real two-sided quote. A null/≤0 side is where the
   // percent-spread check silently computed null and read null as "liquid" — the
   // core loophole. Here it BLOCKS.
@@ -153,12 +213,18 @@ export function evaluateQuoteValidity(input: {
   // Absolute-dollar backstop (the % check alone can pass an absolutely huge spread).
   if (ask - bid > QUOTE_VALIDITY.max_spread_dollars) return "wide_dollars";
   // Conditional: min resting size, only when the provider reported both sides.
-  if (
-    bidSize != null &&
-    askSize != null &&
-    (bidSize < QUOTE_VALIDITY.min_quote_size || askSize < QUOTE_VALIDITY.min_quote_size)
-  ) {
+  if (bidSize != null && askSize != null && (bidSize < minQuoteSize || askSize < minQuoteSize)) {
     return "thin_size";
+  }
+  // Conditional: day volume + open interest, only when the provider reports BOTH (never
+  // fabricated). Deliberately a narrow "both zero" backstop, not a tuned percentile floor —
+  // the 2026-09-09 measurement (see QUOTE_VALIDITY.min_quote_size_by_class's comment) found
+  // ZERO real near-the-money contracts hitting this combination across 447 measured rows, so
+  // it is a rare, unambiguous dead-contract catch (no open interest AND no trades all day),
+  // not a lever that trims a meaningful slice of real plays — a genuine gap volume/OI could
+  // fill (see the plan-quality gate stack) rather than a guessed threshold.
+  if (dayVolume != null && openInterest != null && dayVolume === 0 && openInterest === 0) {
+    return "no_volume_or_oi";
   }
   // Conditional: quote age, only when a timestamp/age is available (none today).
   if (quoteAgeMs != null && quoteAgeMs > QUOTE_VALIDITY.max_quote_age_ms) return "stale";
@@ -229,6 +295,15 @@ export function buildContractPlan(input: {
    *  through (OptionSnapshot.quoteUpdatedMs → scan.ts computeQuoteAgeMs → here), so the
    *  stale predicate is LIVE; undefined (no timestamp on the snapshot) leaves it dormant. */
   quoteAgeMs?: number | null;
+  /** G-21 (2026-09-09): index/ETF vs single-name bucket for the per-class min-quote-size
+   *  floor — the caller (scan.ts) already has gates.ts's INDEX_ETF_TICKERS in scope, so it
+   *  is computed there and passed in rather than re-imported here (plan.ts stays the
+   *  dependency-free leaf; gates.ts already imports FROM plan.ts). Omitted → legacy floor. */
+  tickerClass?: LiquidityTickerClass;
+  /** Day/session volume from OptionSnapshot.dayVolume, when reported. */
+  dayVolume?: number | null;
+  /** Open interest from OptionSnapshot.openInterest, when reported. */
+  openInterest?: number | null;
   keySupports: number[];
   keyResistances: number[];
   vwap: number | null;
@@ -272,6 +347,9 @@ export function buildContractPlan(input: {
     bidSize: input.bidSize ?? null,
     askSize: input.askSize ?? null,
     quoteAgeMs: input.quoteAgeMs ?? null,
+    tickerClass: input.tickerClass,
+    dayVolume: input.dayVolume ?? null,
+    openInterest: input.openInterest ?? null,
   });
 
   const chasePct =

@@ -1432,6 +1432,22 @@ test("G-9 observation clock: just-fetched book stays fresh even when exchange la
   assert.equal(computeQuoteAgeMs(observedAtMs ?? exchangeUpdatedMs, now), 500);
 });
 
+// ── G-21 · per-class liquidity-floor ticker classification ──────────────────────
+// zeroDteLiquidityTickerClass is the bridge between gates.ts's INDEX_ETF_TICKERS (SPY/QQQ/
+// IWM/DIA) + SPX/SPXW (added explicitly — no ETF share, so not in that set) and plan.ts's
+// per-class QUOTE_VALIDITY.min_quote_size_by_class floor. Measured 2026-09-09
+// (scripts/audit/zerodte-contract-liquidity-measure.mjs) — see plan.ts's comment for evidence.
+
+test("G-21 zeroDteLiquidityTickerClass: SPX/SPXW + INDEX_ETF_TICKERS → index_etf, everything else → single", async () => {
+  const { zeroDteLiquidityTickerClass } = await mod();
+  for (const t of ["SPX", "SPXW", "spx", "SPY", "QQQ", "IWM", "DIA", "spy"]) {
+    assert.equal(zeroDteLiquidityTickerClass(t), "index_etf", `${t} should be index_etf`);
+  }
+  for (const t of ["NVDA", "TSLA", "AAPL", "AMD", "META"]) {
+    assert.equal(zeroDteLiquidityTickerClass(t), "single", `${t} should be single`);
+  }
+});
+
 test("D3 integration: computeQuoteAgeMs(quoteUpdatedMs) drives buildContractPlan's stale verdict", async () => {
   const { computeQuoteAgeMs } = await mod();
   const { buildContractPlan, QUOTE_VALIDITY } = await import("./plan");

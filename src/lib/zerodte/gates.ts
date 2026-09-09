@@ -1260,6 +1260,7 @@ const QUOTE_INVALID_SENTENCE: Record<
   mark_out_of_band: "Contract mark sits outside its own bid/ask",
   wide_dollars: "Contract bid/ask dollar spread is over the cap",
   thin_size: "Contract resting quote size is below the floor",
+  no_volume_or_oi: "Contract shows zero volume and zero open interest today (dead/untraded)",
 };
 
 /**
