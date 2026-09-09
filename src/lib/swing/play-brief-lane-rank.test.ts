@@ -81,7 +81,6 @@ test("computeLaneRank: disambiguates same-ticker WATCH rows by contract", () => 
 });
 
 test("computeLaneRank: deltaFromMedian is rounded, not a raw float subtraction artifact", () => {
-  const lanes = [row("NRG", 45.4, "COMMIT"), row("CRWD", 70, "COMMIT")];
   const snap = computeLaneRank(play({ ticker: "AMZN", score: 57.2, status: "WATCH" }), [
     row("AMZN", 57.2, "WATCH"),
     row("FSLR", 45.4, "WATCH"),
