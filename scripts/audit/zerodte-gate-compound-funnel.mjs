@@ -26,8 +26,8 @@
  *     funnel (min_gross/min_aggr_share/min_dominance/max_itm_pct) AND the real score formula.
  *   - extractChainFieldsFromRaw / askPctFromRaw (flow-raw-fields.ts) — the real per-print
  *     ask_pct/underlying_price/open_interest recovery (mirrors the SQL fetchRecentFlows uses).
- *   - computeIntradayRead / marketBias / marketAlignAdjust / intradayScoreAdjust (intraday.ts)
- *     — the real VWAP/trend/opening-range read, fed REAL Polygon minute bars per ticker + SPY.
+ *   - computeIntradayRead / marketBias / intradayScoreAdjust (intraday.ts) — the real VWAP/trend/
+ *     opening-range read, fed REAL Polygon minute bars per ticker + SPY.
  *   - computeConfluence (confluence.ts) — the real G-12 confluence tier, fed the real intraday
  *     read above (this is the exact function attachConfluence calls in the live scan).
  *   - evaluateZeroDteGates (gates.ts) — the REAL, unmodified gate stack. Every block this script
@@ -107,16 +107,12 @@ const { dteFromExpiry } = await import(`${SRC}lib/flow-dte.ts`);
 const { deriveZeroDteSetups } = await import(`${SRC}lib/zerodte/board.ts`);
 const { evaluateZeroDteGates } = await import(`${SRC}lib/zerodte/gates.ts`);
 const { computeConfluence } = await import(`${SRC}lib/zerodte/confluence.ts`);
-const { computeIntradayRead, marketBias, marketAlignAdjust, intradayScoreAdjust } = await import(
+const { computeIntradayRead, marketBias, intradayScoreAdjust } = await import(
   `${SRC}lib/zerodte/intraday.ts`
 );
 const { fetchStockMinuteBars } = await import(`${SRC}lib/providers/polygon.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
 
-const num = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-};
 const fmtUsd = (n) =>
   n == null ? "—" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}k` : `$${n.toFixed(0)}`;
 const pad = (s, w) => String(s).padEnd(w);
