@@ -500,6 +500,32 @@ test("collectCoachingBullets: stale Vector suppresses VEX/magnet/flow coaching l
   assert.doesNotMatch(joined, /VEX lens|Gamma magnet|Large print|Vector desk:/i);
 });
 
+// FINDINGS 2026-09-09 (live NRG repro): crossDeskCoaching's "Cross-desk friction" bullet and
+// vectorPlayCoaching's own bullet both fired for the same Vector-vs-swing misalignment, each citing
+// the identical headline as a separate fact — a bullet-dump duplicate, not two independent reads.
+test("collectCoachingBullets: crossDeskCoaching's Vector-conflict bullet suppresses vectorPlayCoaching's redundant cross-check clause", () => {
+  const bullets = collectCoachingBullets(
+    ctx({
+      vector: {
+        spot: 100,
+        play: { bias: "short", headline: "Fade the rip", invalidation: "102.00", thesis: "mean reversion" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+    100,
+  );
+  const joined = bullets.join("\n");
+  const friction = bullets.filter((b) => /Cross-desk friction/i.test(b));
+  const vectorDesk = bullets.filter((b) => /^• Vector desk:/i.test(b));
+  assert.equal(friction.length, 1, `expected exactly one Cross-desk friction bullet, got: ${joined}`);
+  assert.match(friction[0]!, /Fade the rip/);
+  assert.equal(vectorDesk.length, 1, `expected exactly one Vector desk bullet, got: ${joined}`);
+  // The Vector desk bullet keeps its own non-duplicative content (headline/invalidation) but must
+  // NOT repeat the "cross-check" framing already delivered by the Cross-desk friction bullet above.
+  assert.match(vectorDesk[0]!, /Fade the rip/);
+  assert.doesNotMatch(vectorDesk[0]!, /cross-check/i);
+});
+
 test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {
   assert.equal(vectorPlayCoaching(null, play()), null);
   assert.equal(
@@ -521,6 +547,26 @@ test("vectorPlayCoaching: uses play.bias not thesis substring (long-gamma thesis
   assert.ok(line);
   assert.match(line!, /cross-check/i);
   assert.doesNotMatch(line!, /aligned with swing lane/i);
+});
+
+// FINDINGS 2026-09-09 (live NRG repro): crossDeskCoaching and vectorPlayCoaching independently
+// derive the SAME misalignment (vp.bias vs play.direction) from the SAME vec.play input — when
+// crossDeskCoaching already fires (its "Cross-desk friction" bullet names this exact headline),
+// vectorPlayCoaching's own "cross-check" framing repeats the identical fact as a second bullet.
+test("vectorPlayCoaching: omits the redundant cross-check clause when the conflict was already noted elsewhere, but keeps the headline/invalidation", () => {
+  const vec = {
+    play: {
+      bias: "short",
+      headline: "Fade into wall",
+      thesis: "Long gamma (spot pinned)",
+      invalidation: "102.00",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }), undefined, true);
+  assert.ok(line);
+  assert.doesNotMatch(line!, /cross-check/i);
+  assert.match(line!, /Fade into wall/);
+  assert.match(line!, /102\.00/);
 });
 
 test("vectorPlayCoaching: returned line has an EVEN count of ** bold markers (no unpaired marker corrupting markdown)", () => {

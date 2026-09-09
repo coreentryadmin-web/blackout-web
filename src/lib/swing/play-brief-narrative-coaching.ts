@@ -239,11 +239,21 @@ export function wallIntegrityCoaching(
   return null;
 }
 
-/** Vector desk play thesis / invalidation alignment. */
+/** Vector desk play thesis / invalidation alignment.
+ *  `conflictAlreadyNoted` — crossDeskCoaching (this same file) independently derives the identical
+ *  misalignment (vp.bias vs play.direction) from the identical vec.play input and, when it fires,
+ *  already names this exact headline in its "Cross-desk friction" bullet. Without this flag both
+ *  functions render the same "Vector bearish/bullish (<headline>)" fact as two separate bullets —
+ *  live repro: NRG brief 2026-09-09, "Cross-desk friction — Vector bearish (...)" immediately
+ *  followed later by "Vector desk: ... — cross-check Vector thesis vs swing direction", both citing
+ *  the identical headline. This function still surfaces its own non-duplicative content (headline,
+ *  invalidation, starred level) when the flag is set — only the redundant "cross-check" framing
+ *  clause is dropped, since crossDeskCoaching already told the reader desks disagree. */
 export function vectorPlayCoaching(
   vec: VectorFullState | null,
   play: TerminalPlay,
   sessionDate?: string | null,
+  conflictAlreadyNoted?: boolean,
 ): string | null {
   const vp = vec?.play;
   if (!vp?.headline && !vp?.invalidation) return null;
@@ -264,7 +274,7 @@ export function vectorPlayCoaching(
   if (nextStarred) parts.push(`starred level **${nextStarred}**`);
 
   let line = parts.join(" · ");
-  if (!aligned && vp.thesis) {
+  if (!aligned && vp.thesis && !conflictAlreadyNoted) {
     line += " — **cross-check** Vector thesis vs swing direction.";
   } else if (aligned) {
     line += " — **aligned** with swing lane.";
@@ -740,7 +750,10 @@ export function collectCoachingBullets(
   // Meridian peer earnings live in meridianPeerSection (play-brief-intel.ts) — not here.
   // Duplicating meridianPeerEarningsCoaching in both places re-shipped the #4110/#4116
   // book-context failure mode when MAX_BULLETS had room.
-  push(crossDeskCoaching(ctx, play));
+  const crossDesk = crossDeskCoaching(ctx, play);
+  push(crossDesk);
+  // Threaded into vectorPlayCoaching below — see that function's own doc comment for why.
+  const vectorConflictAlreadyNoted = crossDesk != null && /Vector (bearish|bullish)/.test(crossDesk);
   push(laneRankCoaching(play, ctx.laneRows));
   push(macroTapeCoaching(ctx));
   push(scorecardCoaching(play));
@@ -764,7 +777,7 @@ export function collectCoachingBullets(
     push(flowPrintsCoaching(vec, play, ctx.sessionDate));
   }
 
-  push(vectorPlayCoaching(vec, play, ctx.sessionDate));
+  push(vectorPlayCoaching(vec, play, ctx.sessionDate, vectorConflictAlreadyNoted));
   push(dataHonestyCoaching(ctx, play));
 
   return out;
