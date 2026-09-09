@@ -25,6 +25,8 @@ import {
   QUALIFICATION_DISLOCATION_MAX_PCT,
   inputDesyncUnderlyingGateBlocks,
   refreshInputDesyncUnderlyingGateBlocks,
+  liveCommitPreconditionsUnmet,
+  liveCommitPreconditionBlock,
   refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
@@ -477,6 +479,129 @@ test("inputDesyncUnderlyingGateBlocks (pure): desynced reads produce exactly one
   assert.equal(blocks[0]!.code, "input_desync_underlying");
   assert.equal(blocks[0]!.threshold, INPUT_SYNC_MAX_SKEW_MS);
   assert.equal(blocks[0]!.unlock_et, null);
+});
+
+// ── Item 9 (2026-09-09 CTO gate-architecture review) · live-commit-path preconditions ──
+// evaluateZeroDteGates above correctly stays fail-OPEN on four specific data points (G-9's
+// quote-age timestamp, G-12's confluence read, both G-20 legs' cross-input timestamps) so a
+// generic/test/fixture caller isn't penalized for a gap that was never real. These tests
+// prove the SEPARATE, STRICTER liveCommitPreconditionsUnmet check — used only by scan.ts's
+// live-commit call site — correctly identifies each of those gaps independently, and that
+// evaluateZeroDteGates's own behavior is untouched by any of this.
+
+/** A LIVE plan — CLEAN_PLAN plus a real quoteAgeMs, so the default precondition fixture
+ *  below has every read present unless a test explicitly knocks one out. */
+const LIVE_PLAN: ContractPlan = { ...CLEAN_PLAN, quoteAgeMs: 5_000 };
+
+/** Every live-commit precondition present by default (index/ETF ticker, so BOTH G-20 legs
+ *  are exercised) — each test flips exactly the dimension it exercises, same convention as
+ *  the `input()` helper above. */
+function preconditionInput(
+  overrides: Partial<{
+    ticker: string;
+    play_type: "CONDOR" | undefined;
+    plan: ContractPlan | null;
+    confluence: ZeroDteConfluence | null;
+    nowMs: number;
+    biasAsOfMs: number | null;
+    underlyingQuoteAsOfMs: number | null;
+  }> = {}
+) {
+  return {
+    ticker: "QQQ",
+    play_type: undefined as "CONDOR" | undefined,
+    plan: LIVE_PLAN,
+    confluence: confluence(2),
+    nowMs: NOW_MS,
+    biasAsOfMs: NOW_MS - 60_000, // 1min-old bias — well inside the 5min G-20 tolerance
+    underlyingQuoteAsOfMs: NOW_MS - (LIVE_PLAN.quoteAgeMs ?? 0), // same instant as the quote
+    ...overrides,
+  };
+}
+
+test("liveCommitPreconditionsUnmet: every precondition present → no gaps", () => {
+  assert.deepEqual(liveCommitPreconditionsUnmet(preconditionInput()), []);
+});
+
+test("liveCommitPreconditionsUnmet: plan.quoteAgeMs missing cascades to G-9 AND both G-20 legs — all three reconstruct the SAME missing observation instant", () => {
+  const gaps = liveCommitPreconditionsUnmet(
+    preconditionInput({ plan: { ...LIVE_PLAN, quoteAgeMs: undefined } })
+  );
+  assert.deepEqual(
+    gaps.slice().sort(),
+    ["input_desync_underlying_unmeasured", "input_desync_unmeasured", "quote_age_unknown"].sort()
+  );
+});
+
+test("liveCommitPreconditionsUnmet: confluence missing → ONLY confluence_unread (independent of the quote-age reads)", () => {
+  const gaps = liveCommitPreconditionsUnmet(preconditionInput({ confluence: null }));
+  assert.deepEqual(gaps, ["confluence_unread"]);
+});
+
+test("liveCommitPreconditionsUnmet: bias timestamp missing (quote age known) → ONLY the SPY-tape G-20 leg", () => {
+  const gaps = liveCommitPreconditionsUnmet(preconditionInput({ biasAsOfMs: null }));
+  assert.deepEqual(gaps, ["input_desync_unmeasured"]);
+});
+
+test("liveCommitPreconditionsUnmet: underlying-quote timestamp missing (quote age known) → ONLY the option-vs-underlying G-20 leg", () => {
+  const gaps = liveCommitPreconditionsUnmet(preconditionInput({ underlyingQuoteAsOfMs: null }));
+  assert.deepEqual(gaps, ["input_desync_underlying_unmeasured"]);
+});
+
+test("liveCommitPreconditionsUnmet: single-name ticker skips the SPY-tape leg (mirrors G-1's own scoping) but still needs the option-vs-underlying leg", () => {
+  const gaps = liveCommitPreconditionsUnmet(
+    preconditionInput({ ticker: "NVDA", biasAsOfMs: null, underlyingQuoteAsOfMs: null })
+  );
+  assert.deepEqual(gaps, ["input_desync_underlying_unmeasured"]);
+});
+
+test("liveCommitPreconditionsUnmet: no plan at all → quote_age_unknown does NOT fire (a different, already fail-CLOSED case via plan_no_quote) but both applicable G-20 legs report unmeasured", () => {
+  const gaps = liveCommitPreconditionsUnmet(preconditionInput({ plan: null }));
+  assert.deepEqual(
+    gaps.slice().sort(),
+    ["input_desync_underlying_unmeasured", "input_desync_unmeasured"].sort()
+  );
+});
+
+test("liveCommitPreconditionsUnmet: a CONDOR never flags ANY precondition, even with every read missing — mirrors every other condor exemption in this stack", () => {
+  const gaps = liveCommitPreconditionsUnmet(
+    preconditionInput({
+      play_type: "CONDOR",
+      plan: null,
+      confluence: null,
+      biasAsOfMs: null,
+      underlyingQuoteAsOfMs: null,
+    })
+  );
+  assert.deepEqual(gaps, []);
+});
+
+test("liveCommitPreconditionBlock: names every missing read in the human reason and uses the distinct live_commit_precondition_unmet code", () => {
+  const block = liveCommitPreconditionBlock(["quote_age_unknown", "confluence_unread"]);
+  assert.equal(block.code, "live_commit_precondition_unmet");
+  assert.equal(block.threshold, null);
+  assert.match(block.reason, /option quote age/);
+  assert.match(block.reason, /confluence read/);
+});
+
+test("REGRESSION (item 9): evaluateZeroDteGates's own verdict is COMPLETELY UNCHANGED when every live-commit precondition is missing — liveCommitPreconditionsUnmet is a separate, additional function, never a mutation of the gate itself", () => {
+  const missingEverything = input({
+    plan: { ...CLEAN_PLAN, quoteAgeMs: undefined },
+    confluence: null,
+    underlyingQuoteAsOfMs: null,
+  });
+  const v = evaluateZeroDteGates(missingEverything);
+  // The pure gate library stays fail-OPEN on all four, exactly as every other fail-open
+  // test in this file already proves for each gate individually — byte-identical verdict.
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+  // ...yet the SEPARATE, stricter live-commit-path check correctly catches every one of
+  // them on the SAME input — proving the two are additive, not the same function twice.
+  const gaps = liveCommitPreconditionsUnmet(missingEverything);
+  assert.deepEqual(
+    gaps.slice().sort(),
+    ["confluence_unread", "input_desync_underlying_unmeasured", "input_desync_unmeasured", "quote_age_unknown"].sort()
+  );
 });
 
 // ── G-2 · opening window (worst first 30 min, unlock 10:00 — user-authorized 2026-07-23) ──

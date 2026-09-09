@@ -283,6 +283,7 @@ const GATE_LABELS: Record<string, string> = {
   no_market_bias: "G-1 · tape unreadable",
   input_desync: "G-20 · quote/tape desync",
   input_desync_underlying: "G-20 · quote/underlying desync",
+  live_commit_precondition_unmet: "live-commit · precondition unmet",
   opening_window: "G-2 · opening window",
   score_floor: "G-3 · score floor",
   single_rail_corroboration: "G-17 · prime band floor (65-74)",
