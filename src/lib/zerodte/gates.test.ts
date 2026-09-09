@@ -636,6 +636,10 @@ test("gateRejectionFor: one row per blocked setup — primary code, ALL reasons 
   assert.equal(row.gate_failed, "tape_alignment", "primary = first-evaluated failing gate");
   assert.match(String(row.reason), /fights the DOWN market tape/);
   assert.match(String(row.reason), /10:00 ET/, "second block's sentence rides the same row");
+  // blocks_json (2026-09-09) carries EVERY failing code, not just the primary one — the
+  // prerequisite for gate-ablation/marginal-value analysis, which needs to know G-2 also
+  // fired underneath G-1, not just whichever evaluated first.
+  assert.deepEqual(row.blocks, ["tape_alignment", "opening_window"]);
   // Evidence-gate columns carry through so both gate families are comparable rows.
   assert.equal(row.gross_premium, 2_400_000);
   assert.equal(row.direction, "long");
@@ -646,6 +650,7 @@ test("gateRejectionFor: a null verdict (gate context unreadable) is itself a fai
   const row = gateRejectionFor(rejectionSource, null);
   assert.equal(row.gate_failed, "gate_context_unavailable");
   assert.match(String(row.reason), /fail closed/);
+  assert.deepEqual(row.blocks, ["gate_context_unavailable"], "single synthetic block, not empty");
 });
 
 // ── G-7..G-11 (precision gates, 2026-07-18 audit) ────────────────────────────────

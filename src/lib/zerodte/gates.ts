@@ -1704,6 +1704,11 @@ export function gateRejectionFor(
   return {
     ticker: setup.ticker,
     gate_failed: primary.code,
+    // Every failing code, not just the primary one — see the field's own doc comment
+    // (board.ts) for why: primary-only made unique/redundant-rejection and gate-ablation
+    // analysis impossible to compute from history (a setup that failed both G-1 and G-12
+    // only ever recorded whichever evaluated first).
+    blocks: verdict && verdict.blocks.length > 0 ? verdict.blocks.map((b) => b.code) : [primary.code],
     reason: verdict && verdict.blocks.length > 0
       ? verdict.blocks.map((b) => b.reason).join(" ")
       : primary.reason,
