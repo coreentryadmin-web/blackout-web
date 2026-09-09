@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-08T21:42:57.149Z",
+  "updated_at": "2026-09-09T03:08:19.378Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "67dc17b4748b3ac6f781ae594ef45473bad2a66a",
+    "last_main_sha": "5e327308e676002368efc309f774eb743f91f7b2",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
@@ -1165,9 +1165,286 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T02:26:20.688Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T02:26:21.432Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T02:26:21.754Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:08:17.731Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 24
+    },
+    {
+      "at": "2026-09-09T03:08:18.786Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T03:08:19.378Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 24
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4634,
+      "title": "fix(0dte): G-13 flow-accumulation conflict downgraded to elevated quality bar",
+      "branch": "fix/g13-accum-conflict-elevated-quality",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T03:06:32Z"
+    },
+    {
+      "number": 4633,
+      "title": "fix(0dte): G-9/G-21 clean separation — quote integrity vs liquidity/depth",
+      "branch": "fix/g9-g21-quote-liquidity-split",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T03:03:13Z"
+    },
+    {
+      "number": 4632,
+      "title": "fix(0dte): G-6 cross-system conflict downgraded to telemetry-only",
+      "branch": "fix/g6-conflict-telemetry-only",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:55:40Z"
+    },
+    {
+      "number": 4631,
+      "title": "fix(0dte): G-4 VIX-elevated tier canonicalized, no tape/instrument bypass",
+      "branch": "fix/g4-vix-elevated-canonicalize",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:50:28Z"
+    },
+    {
+      "number": 4630,
+      "title": "docs(zerodte): reconcile G-5 governor concurrency vs correlated-cap comments",
+      "branch": "docs/g5-governor-concurrency-reconciliation",
+      "author": "claude[bot]",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:46:00Z"
+    },
+    {
+      "number": 4629,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/sync-heartbeat-state-2026-09-09d",
+      "author": "claude[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:35Z"
+    },
+    {
+      "number": 4628,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/sync-heartbeat-state-2026-09-09c",
+      "author": "claude[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:33Z"
+    },
+    {
+      "number": 4627,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/sync-heartbeat-state-2026-09-09b",
+      "author": "claude[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:20Z"
+    },
+    {
+      "number": 4626,
+      "title": "docs(audit): log composePlaySuggestRead as dead code, superseded by formatPlaySuggestTable",
+      "branch": "docs/largo-play-suggest-read-dead-code-2026-09-09",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:47:35Z"
+    },
+    {
+      "number": 4625,
+      "title": "docs(audit): disclose G-20/G-21/G-23 as not-measured in the gate-compound funnel",
+      "branch": "docs/funnel-script-g20-g21-g23-disclosure",
+      "author": "claude[bot]",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:32Z"
+    },
+    {
+      "number": 4624,
+      "title": "fix(swing): Ask Largo unavailableSources no longer mislabels Night Hawk Legacy as \"Night Hawk swings\"",
+      "branch": "fix/nighthawk-legacy-source-label-swing-brief",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:11:00Z"
+    },
+    {
+      "number": 4623,
+      "title": "fix(zerodte): recalibrate contract-liquidity floor with measured per-class thresholds",
+      "branch": "fix/zerodte-contract-liquidity-floor",
+      "author": "claude[bot]",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:31Z"
+    },
+    {
+      "number": 4622,
+      "title": "fix(zerodte): add G-23 qualification-to-commit price dislocation gate",
+      "branch": "fix/zerodte-g23-qualification-dislocation",
+      "author": "claude[bot]",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:29Z"
+    },
+    {
+      "number": 4621,
+      "title": "fix(zerodte): add G-20 hard gate for cross-input quote/tape desync",
+      "branch": "fix/zerodte-g20-input-desync-gate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:28Z"
+    },
+    {
+      "number": 4620,
+      "title": "fix(largo): swing play-brief now surfaces the gamma magnet as a structured envelope level",
+      "branch": "fix/swing-play-brief-gamma-magnet-missing-level",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:27Z"
+    },
+    {
+      "number": 4619,
+      "title": "fix(largo): swing play-brief no longer echoes the Vector headline back as a \"starred level\" / \"Watch now\" item",
+      "branch": "fix/swing-play-brief-vector-starred-headline-duplicate",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:25Z"
+    },
+    {
+      "number": 4618,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/sync-heartbeat-state-2026-09-09",
+      "author": "claude[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T02:37:24Z"
+    },
+    {
+      "number": 4617,
+      "title": "fix(zerodte): persist full gate-block set on rejection rows, not just primary",
+      "branch": "fix/zerodte-rejection-blocks-json-2026-09-09",
+      "author": "claude[bot]",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T01:45:39Z"
+    },
+    {
+      "number": 4569,
+      "title": "chore(state): autopilot handoff after #4561-4563 merge wave",
+      "branch": "cursor/autopilot-handoff-post-4563",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T01:06:20Z"
+    },
+    {
+      "number": 4480,
+      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:24:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:11:04Z"
+    },
+    {
+      "number": 4476,
+      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
+      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T19:18:12Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
