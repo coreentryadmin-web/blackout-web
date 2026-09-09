@@ -252,7 +252,11 @@ export function vectorPlayCoaching(
   const parts: string[] = [];
   if (vp.headline) parts.push(`Vector desk: **${vp.headline}**`);
   if (vp.invalidation) parts.push(`invalidation **${vp.invalidation}**`);
-  if (vp.starred?.[0]) parts.push(`starred level **${vp.starred[0]}**`);
+  // `starred[0]` is documented (VectorPlayEmit.starred, vector-play-engine.ts) to ALWAYS be the
+  // headline itself — skip it here since the headline is already rendered above; showing it again
+  // under "starred level" duplicated the exact same text verbatim (live repro: NRG brief 2026-09-08).
+  const nextStarred = vp.starred?.slice(1)?.find(Boolean);
+  if (nextStarred) parts.push(`starred level **${nextStarred}**`);
 
   let line = parts.join(" · ");
   if (!aligned && vp.thesis) {

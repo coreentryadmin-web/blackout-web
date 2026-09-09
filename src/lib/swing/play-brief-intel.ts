@@ -753,8 +753,12 @@ export function vectorDeskSection(
   if (p.entryZone) lines.push(`Entry zone: **${p.entryZone}**`);
   if (p.targets.length) lines.push(`Targets: ${p.targets.map((t) => `**${t}**`).join(" · ")}`);
   if (p.invalidation) lines.push(`Invalidation: **${p.invalidation}**`);
-  if (p.starred.length) {
-    lines.push("**Watch now:**\n" + p.starred.slice(0, 4).map((s) => `• ${s}`).join("\n"));
+  // `starred[0]` is documented (VectorPlayEmit.starred, vector-play-engine.ts) to ALWAYS be the
+  // headline itself — already rendered above, so skip it here. Slicing from 0 duplicated the
+  // headline as the first "Watch now" bullet (live repro: NRG brief 2026-09-08).
+  const watchNow = p.starred.slice(1, 5);
+  if (watchNow.length) {
+    lines.push("**Watch now:**\n" + watchNow.map((s) => `• ${s}`).join("\n"));
   }
   // Largo C2 — stale Vector play.bias must not badge bullish/bearish (early return above handles stale body).
   const bias =

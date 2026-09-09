@@ -620,6 +620,54 @@ test("vectorDeskSection: live Vector play.bias badges bullish/bearish", () => {
   assert.equal(live?.bias, "bullish");
 });
 
+// FINDINGS 2026-09-09 (live NRG repro): VectorPlayEmit.starred is documented (vector-play-engine.ts)
+// to ALWAYS have the headline as its first element. The section rendered the headline once via
+// `p.headline`, then rendered `p.starred.slice(0, 4)` as "Watch now:" — re-showing the same headline
+// text as the first "watch now" bullet.
+test("vectorDeskSection: 'Watch now' list does not repeat the headline (starred[0] IS the headline)", () => {
+  const section = vectorDeskSection(
+    fixtureVec({
+      freshness: "live",
+      play: {
+        bias: "long",
+        headline: "POSITION · pivot at the 119.71 gamma flip",
+        grade: "B",
+        conviction: 60,
+        thesis: "",
+        entryZone: "",
+        targets: [],
+        invalidation: "",
+        starred: ["POSITION · pivot at the 119.71 gamma flip", "Flip cross imminent — watch 119.71"],
+      },
+    } as Partial<VectorFullState>),
+  );
+  assert.ok(section);
+  const headlineOccurrences = (section!.body.match(/POSITION · pivot at the 119\.71 gamma flip/g) ?? []).length;
+  assert.equal(headlineOccurrences, 1, `headline must appear once, not repeated in "Watch now": ${section!.body}`);
+  assert.match(section!.body, /\*\*Watch now:\*\*\n• Flip cross imminent — watch 119\.71/);
+});
+
+test("vectorDeskSection: omits 'Watch now' entirely when starred has only the headline", () => {
+  const section = vectorDeskSection(
+    fixtureVec({
+      freshness: "live",
+      play: {
+        bias: "long",
+        headline: "Ride momentum",
+        grade: "A",
+        conviction: "high",
+        thesis: "",
+        entryZone: "",
+        targets: [],
+        invalidation: "",
+        starred: ["Ride momentum"],
+      },
+    } as Partial<VectorFullState>),
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Watch now/);
+});
+
 test("vectorDeskSection: CLOSED bucket suppresses the live entry/targets/invalidation/watch-now directive block (bucket-blind Vector desk, 2026-09-07)", () => {
   // Live production repro (CCI/AMZN/GLW/NOW closed positions, 2026-09-07): vectorDeskSection had
   // no bucket parameter at all and rendered the FULL live, current-moment Vector recommendation
@@ -638,7 +686,10 @@ test("vectorDeskSection: CLOSED bucket suppresses the live entry/targets/invalid
       entryZone: "long on strength / pullback hold",
       targets: ["1sigma 264.84", "call wall 270"],
       invalidation: "5m close < 266.06",
-      starred: ["POSITION · momentum long on continuation -> target 1sigma 264.84"],
+      // starred[0] is always the headline (VectorPlayEmit convention) — a second real item is
+      // needed here so the open-bucket assertion below exercises "Watch now" actually rendering
+      // something, not the headline echoed back at itself.
+      starred: ["POSITION · momentum long on continuation -> target 1sigma 264.84", "Flip cross imminent — watch 266.06"],
     },
   } as Partial<VectorFullState>);
 
