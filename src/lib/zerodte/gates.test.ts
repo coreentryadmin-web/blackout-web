@@ -16,6 +16,9 @@ import {
   refreshPlanQualityGateBlocks,
   moneynessGateBlocks,
   refreshMoneynessGateBlocks,
+  evaluateInputDesync,
+  refreshInputDesyncGateBlocks,
+  liveCommitPreconditionsUnmet,
   refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
@@ -953,6 +956,114 @@ test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", ()
   );
   const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
   assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
+});
+
+// ── G-20 · input-desync (broadened 2026-09-09) ──────────────────────────────────────────
+
+test("evaluateInputDesync: option vs underlying desync blocks for EVERY directional ticker (broadened — not index-ETF-only)", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const blocks = evaluateInputDesync({
+    optionQuoteAsOfMs: t0,
+    underlyingQuoteAsOfMs: t0 + 120_000, // 2 min apart — past the 90s bound
+    biasAsOfMs: null,
+    isIndexEtf: false, // single name — the broadened leg still applies
+  });
+  assert.equal(blocks.some((b) => b.code === "input_desync"), true);
+});
+
+test("evaluateInputDesync: option vs underlying WITHIN the bound does not block", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const blocks = evaluateInputDesync({
+    optionQuoteAsOfMs: t0,
+    underlyingQuoteAsOfMs: t0 + 30_000,
+    biasAsOfMs: null,
+    isIndexEtf: false,
+  });
+  assert.deepEqual(blocks, []);
+});
+
+test("evaluateInputDesync: underlying vs SPY/tape desync blocks ONLY for index/ETF tickers", () => {
+  const t0 = Date.parse("2026-07-13T14:00:00Z");
+  const etfBlocks = evaluateInputDesync({
+    optionQuoteAsOfMs: null,
+    underlyingQuoteAsOfMs: t0,
+    biasAsOfMs: t0 + 120_000,
+    isIndexEtf: true,
+  });
+  assert.equal(etfBlocks.some((b) => b.code === "input_desync"), true);
+
+  const singleNameBlocks = evaluateInputDesync({
+    optionQuoteAsOfMs: null,
+    underlyingQuoteAsOfMs: t0,
+    biasAsOfMs: t0 + 120_000,
+    isIndexEtf: false, // a single name's underlying has no business being compared to SPY's clock
+  });
+  assert.deepEqual(singleNameBlocks, []);
+});
+
+test("evaluateInputDesync: fails OPEN on missing timestamps, per leg independently", () => {
+  assert.deepEqual(
+    evaluateInputDesync({ optionQuoteAsOfMs: null, underlyingQuoteAsOfMs: null, biasAsOfMs: null, isIndexEtf: true }),
+    []
+  );
+});
+
+test("evaluateZeroDteGates: G-20 wires through — a desynced option/underlying pair blocks a fresh commit", () => {
+  const t0 = Date.parse("2026-07-13T15:00:00Z"); // matches NOW_MS
+  const v = evaluateZeroDteGates(
+    input({
+      score: 78,
+      optionQuoteAsOfMs: t0 - 180_000,
+      underlyingQuoteAsOfMs: t0,
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "input_desync"));
+});
+
+test("evaluateZeroDteGates: G-20 is exempt for a CONDOR", () => {
+  const t0 = Date.parse("2026-07-13T15:00:00Z");
+  const v = evaluateZeroDteGates({
+    ...input({
+      ticker: "QQQ",
+      score: 78,
+      optionQuoteAsOfMs: t0 - 180_000,
+      underlyingQuoteAsOfMs: t0,
+    }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.ok(!v.blocks.some((b) => b.code === "input_desync"));
+});
+
+test("refreshInputDesyncGateBlocks: re-applies G-20 after a deferred (thesis-first) attach", () => {
+  const t0 = Date.parse("2026-07-13T15:00:00Z");
+  const preRefresh = evaluateZeroDteGates(input({ score: 78 }));
+  assert.ok(!preRefresh.blocks.some((b) => b.code === "input_desync"));
+  const postRefresh = refreshInputDesyncGateBlocks(
+    preRefresh,
+    { optionQuoteAsOfMs: t0 - 180_000, underlyingQuoteAsOfMs: t0, biasAsOfMs: null, isIndexEtf: false },
+    false
+  );
+  assert.ok(postRefresh.blocks.some((b) => b.code === "input_desync"));
+});
+
+// ── Cross-cutting: LIVE COMMIT PATH preconditions (2026-09-09) ───────────────────────────
+
+test("liveCommitPreconditionsUnmet: names every missing precondition; empty when all present", () => {
+  assert.deepEqual(
+    liveCommitPreconditionsUnmet({ quoteAgeKnown: true, confluenceRead: true, inputDesyncTimestampsKnown: true }),
+    []
+  );
+  assert.deepEqual(
+    liveCommitPreconditionsUnmet({ quoteAgeKnown: false, confluenceRead: true, inputDesyncTimestampsKnown: true }),
+    ["quote_age_unknown"]
+  );
+  assert.deepEqual(
+    liveCommitPreconditionsUnmet({ quoteAgeKnown: false, confluenceRead: false, inputDesyncTimestampsKnown: false }),
+    ["quote_age_unknown", "confluence_unread", "input_desync_timestamps_unknown"]
+  );
 });
 
 // Bug found 2026-08-26 alongside the plan_no_quote fix: G-5's premium-budget check runs with

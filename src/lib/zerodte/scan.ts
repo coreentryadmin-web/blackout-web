@@ -143,6 +143,9 @@ import {
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
   refreshMoneynessGateBlocks,
+  refreshInputDesyncGateBlocks,
+  liveCommitPreconditionsUnmet,
+  isIndexEtfTicker,
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
@@ -693,6 +696,29 @@ export async function scanZeroDteBoard(flags?: {
             ),
           }
         );
+        // G-20: attachContractPlans (above) has now attached option_quote_as_of_ms and
+        // refreshed underlying_price_as_of — re-apply the same "already refreshed / still
+        // pre-refresh" discipline as refreshMoneynessGateBlocks just above.
+        s.gate = refreshInputDesyncGateBlocks(
+          s.gate,
+          {
+            optionQuoteAsOfMs: s.option_quote_as_of_ms ?? null,
+            underlyingQuoteAsOfMs: s.underlying_price_as_of ? Date.parse(s.underlying_price_as_of) : null,
+            biasAsOfMs: tape.biasAsOfMs,
+            isIndexEtf: isIndexEtfTicker(s.ticker),
+          },
+          s.play_type === "CONDOR"
+        );
+        // Recompute the live-commit preconditions now that the deferred data has landed —
+        // the first pass (attachGateVerdicts) saw option_quote_as_of_ms as null (pre-refresh)
+        // and would have recorded quote_age_unknown/input_desync_timestamps_unknown even
+        // though the data arrives moments later under thesis-first.
+        s.live_commit_preconditions_missing = liveCommitPreconditionsUnmet({
+          quoteAgeKnown: s.option_quote_as_of_ms != null,
+          confluenceRead: s.confluence != null,
+          inputDesyncTimestampsKnown:
+            s.option_quote_as_of_ms != null && s.underlying_price_as_of != null,
+        });
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
@@ -1112,6 +1138,13 @@ async function attachGateVerdicts(
       // value — refreshMoneynessGateBlocks (below) re-applies the same caps once the refresh has
       // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
       otmPct: s.otm_pct ?? null,
+      // G-20 (input-desync, broadened 2026-09-09): same "already refreshed in the ordinary
+      // pipeline, still pre-refresh under thesis-first" split as otmPct above.
+      // option_quote_as_of_ms is set by attachContractPlans (where the live snapshot is in
+      // scope) — in the ordinary pipeline that has already run; under thesis-first it hasn't,
+      // so this reads null here and refreshInputDesyncGateBlocks re-applies it later.
+      optionQuoteAsOfMs: s.option_quote_as_of_ms ?? null,
+      underlyingQuoteAsOfMs: s.underlying_price_as_of ? Date.parse(s.underlying_price_as_of) : null,
       intradayConflict: s.intraday_conflict,
       market_aligned: s.market_aligned ?? null,
       regime_structure: marketState?.regime_structure ?? null,
@@ -1144,6 +1177,18 @@ async function attachGateVerdicts(
       vector_g17_exempt: postBoost.g17_exempt,
       vector_confluence_credit: postBoost.confluence_credit,
       max_otm_pct: runnerOtmRelax ? effectiveMaxOtmPct(true) : null,
+    });
+    // Cross-cutting fix (2026-09-09): the LIVE COMMIT PATH's own stricter precondition
+    // check — evaluateZeroDteGates itself stays permissive on all three of these (G-9
+    // quote-staleness, G-12 confluence-unknown, G-20 missing-timestamp all fail OPEN), but
+    // a REAL fresh commit should never proceed when the desk genuinely never verified them.
+    // Checked/recorded on EVERY setup (not just gate survivors) so a later refresh
+    // (thesis-first) can recompute it once its own deferred data lands. See the final
+    // commit-decision loop (persistZeroDteScan) for where this actually blocks a commit.
+    s.live_commit_preconditions_missing = liveCommitPreconditionsUnmet({
+      quoteAgeKnown: s.option_quote_as_of_ms != null,
+      confluenceRead: s.confluence != null,
+      inputDesyncTimestampsKnown: s.option_quote_as_of_ms != null && s.underlying_price_as_of != null,
     });
     s.regime_plane = regimePlane;
     if (s.thesis_gate_blocks?.length && !regimeBypassesThesisBlocks(reliefCtx)) {
@@ -1337,6 +1382,11 @@ async function attachContractPlans(
       illiquidSpreadPct,
     });
     s.plan_chase_exempt = planChaseExempt(chaseCtx);
+    // G-20 input-desync input: the option contract's own quote-observation timestamp,
+    // captured HERE (not re-derived later) because `snap` — the live options-unified
+    // snapshot — is only in scope inside this loop. Mirrors the quoteAgeMs computation
+    // immediately above (same source, same null-if-provider-omitted discipline).
+    s.option_quote_as_of_ms = snap?.observedAtMs ?? snap?.quoteUpdatedMs ?? null;
   }
 
   await applyLiquidStrikeFallback(setups, chains, vectorPulseByTicker, marketState, nowMs);
@@ -1559,7 +1609,15 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     const planGateOpts = { chaseExempt };
     const planBlocked =
       s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan, planGateOpts);
-    if (s.gate?.verdict === "COMMIT" && !planBlocked) {
+    // Cross-cutting fix (2026-09-09): THIS is the actual live commit call site — the one
+    // place a fresh find becomes a real ledger row. evaluateZeroDteGates itself stays
+    // permissive when quote-age/confluence/input-desync timestamps are absent (so replay
+    // fixtures and unit tests aren't penalized for data they never had); a REAL commit
+    // is held to a stricter standard — refuse it outright if the desk never actually
+    // verified those three inputs, rather than let a COMMIT verdict built on unmeasured
+    // inputs write a ledger row.
+    const preconditionsMissing = s.live_commit_preconditions_missing ?? [];
+    if (s.gate?.verdict === "COMMIT" && !planBlocked && preconditionsMissing.length === 0) {
       committedFresh.push(s);
       continue;
     }
@@ -1569,6 +1627,23 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
         ...s.gate,
         verdict: "BLOCKED",
         blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null, planGateOpts)],
+      };
+    } else if (s.gate?.verdict === "COMMIT" && !planBlocked && preconditionsMissing.length > 0) {
+      verdict = {
+        ...s.gate,
+        verdict: "BLOCKED",
+        blocks: [
+          ...s.gate.blocks,
+          {
+            code: "live_commit_precondition_unmet",
+            reason:
+              `Live commit refused — ${preconditionsMissing.join(", ")} never verified present ` +
+              "(evaluateZeroDteGates itself stays permissive on missing data for other callers; " +
+              "a real commit does not).",
+            threshold: null,
+            unlock_et: null,
+          },
+        ],
       };
     }
     gateRejections.push(gateRejectionFor(s, verdict ?? null));

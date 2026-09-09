@@ -895,6 +895,8 @@ export type ZeroDteGateFailure =
   | "earnings_unavailable" // G-11 fail-closed: earnings FEED read failed (not "none report today") — can't rule out a print today
   | "halt_feed_stale" // G-11 fail-closed (D2): halt feed cold — BOTH UW + LULD halt sources stale — can't rule out a halted underlying
   | "max_otm_pct" // far-OTM lotto cap: top strike is more than SETUP_MAX_OTM_PCT% OTM
+  | "input_desync" // G-20 (broadened 2026-09-09): option-quote vs underlying-quote (all directional) + underlying vs SPY/tape (index/ETF only) cross-input temporal coherence
+  | "live_commit_precondition_unmet" // cross-cutting fix (2026-09-09): the LIVE commit path refuses to commit when quote-age/confluence/input-desync timestamps were never actually verified present — see gates.ts's liveCommitPreconditionsUnmet
   // ── WS-21 source-recovery gate (default-OFF; ZERODTE_REQUIRE_HEALTHY_SOURCE=1 to arm) ──────
   // Only fires when the flag is ON and the WS data source is mid-recovery (not yet HEALTHY): a
   // reconnect gap may not be reconciled, so a fresh source-dependent commit is withheld. Flag OFF
@@ -1562,6 +1564,25 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  block is clock-based). Null = not evaluated (already-committed ticker, or the
    *  gate context couldn't be built — persist fails closed on that). */
   gate: ZeroDteGateVerdict | null;
+  /**
+   * LIVE COMMIT PATH preconditions (2026-09-09 cross-cutting fix, gates.ts's
+   * liveCommitPreconditionsUnmet) — the names of any of {quote-age timestamp, confluence
+   * read, G-20 input-desync timestamps} that were NOT actually present when this setup's
+   * contract plan was built. `evaluateZeroDteGates` itself stays permissive on all three
+   * (fail-OPEN) so generic/test/fixture callers are never penalized for data they never
+   * had — this field is the SEPARATE, STRICTER live-commit-only assertion: a real fresh
+   * commit refuses to proceed if any of these three came back missing, even though the
+   * pure gate function alone would have let it through. Empty array/undefined = every
+   * precondition was present (safe to commit on this front — other gates still apply).
+   */
+  live_commit_preconditions_missing?: string[] | null;
+  /** G-20 input-desync input — the option contract's own quote-observation timestamp
+   *  (OptionSnapshot.observedAtMs, falling back to quoteUpdatedMs), attached alongside the
+   *  contract plan (scan.ts's attachContractPlans, where the live snapshot is in scope).
+   *  Paired against `underlying_price_as_of` (already on ZeroDteSetup) to detect option-vs-
+   *  underlying cross-input desync. Null = not attached (evidence-only setup, or the batch
+   *  snapshot fetch missed this contract). */
+  option_quote_as_of_ms?: number | null;
   /** Night Hawk Cortex assessment (./cortex-gate.ts) — evaluated ONLY for a fresh
    *  find that survived the hard gate stack. Null = Cortex never ran for this
    *  setup this cycle (gate-blocked before the Cortex layer, or an

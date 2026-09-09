@@ -518,6 +518,22 @@ export type ZeroDteGateInput = {
   market_state_confidence?: number | null;
   /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
   max_otm_pct?: number | null;
+  /**
+   * G-20 (input_desync) — general cross-input TEMPORAL COHERENCE, broadened 2026-09-09
+   * (operator-approved CTO gate-architecture review) beyond an index-ETF-only option-quote-
+   * vs-SPY-tape comparison: option-quote-timestamp vs UNDERLYING-quote-timestamp now applies
+   * to EVERY directional setup (not just index/ETF), and the pre-existing underlying-vs-SPY/
+   * tape check is KEPT for index/ETF setups specifically (SPY is a stand-in for the whole
+   * tape only for correlated instruments — a single name's own underlying quote has no
+   * business being compared to SPY's clock). Fails OPEN on any missing timestamp — like
+   * every other optional gate input here, a caller that doesn't supply both readings for a
+   * given leg is unaffected on that leg specifically. DIRECTIONAL ONLY.
+   */
+  optionQuoteAsOfMs?: number | null;
+  /** G-20: the underlying's own quote-observation timestamp (paired with optionQuoteAsOfMs
+   *  for the general cross-input check, and with `biasAsOfMs` for the index/ETF-only
+   *  underlying-vs-tape check). */
+  underlyingQuoteAsOfMs?: number | null;
 };
 
 /** Build chase-exempt context from a gate evaluation input. */
@@ -792,6 +808,20 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     ...moneynessGateBlocks(input.otmPct, isCondor, {
       maxOtmPct: input.max_otm_pct ?? null,
     })
+  );
+
+  // G-20 — input-desync (broadened 2026-09-09, see the field docs above). DIRECTIONAL ONLY —
+  // mirrors the moneyness re-check's own condor scoping (a condor's liquidity is judged by
+  // its own 4-leg gate, not a single option-vs-underlying comparison).
+  blocks.push(
+    ...(isCondor
+      ? []
+      : evaluateInputDesync({
+          optionQuoteAsOfMs: input.optionQuoteAsOfMs,
+          underlyingQuoteAsOfMs: input.underlyingQuoteAsOfMs,
+          biasAsOfMs: input.biasAsOfMs,
+          isIndexEtf: isIndexEtfG1,
+        }))
   );
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).
@@ -1329,6 +1359,121 @@ export function refreshMoneynessGateBlocks(
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
     blocks,
   };
+}
+
+// ── G-20 · input-desync (broadened 2026-09-09) ──────────────────────────────────────────
+/** Max gap (ms) between two cross-input timestamps before they count as desynced. Reads
+ *  pulled in the same scan cycle should land within a few tens of seconds of each other;
+ *  90s gives real margin against a slow batch fetch without waving through a genuinely
+ *  stale cross-input pairing. */
+export const INPUT_DESYNC_MAX_MS = 90_000;
+
+export type InputDesyncInput = {
+  /** The option contract's own quote-observation timestamp. */
+  optionQuoteAsOfMs: number | null | undefined;
+  /** The underlying's own quote-observation timestamp. */
+  underlyingQuoteAsOfMs: number | null | undefined;
+  /** The SPY/tape bias read's as-of (index/ETF-only leg). */
+  biasAsOfMs: number | null | undefined;
+  /** Whether this ticker is an index/ETF (G-1's own scoping) — gates the SPY-tape leg. */
+  isIndexEtf: boolean;
+};
+
+/**
+ * G-20 verdict — pure, unit-testable, SIBLING to the moneyness/qualification-dislocation
+ * re-checks. Two independent legs:
+ *   1. option-quote vs underlying-quote — ALL directional setups (broadened 2026-09-09;
+ *      previously index-ETF-only in an earlier, narrower design).
+ *   2. underlying-quote vs SPY/tape — index/ETF setups ONLY (a single name's own quote has
+ *      no business being compared to SPY's clock — mirrors G-1's own tape-alignment scoping).
+ * Fails OPEN per-leg on a missing timestamp (never manufactures a block from an unmeasured
+ * input) — the STRICTER live-commit-path assertion that these timestamps are actually
+ * present lives separately in `liveCommitPreconditionsUnmet`, below.
+ */
+export function evaluateInputDesync(input: InputDesyncInput): ZeroDteGateBlock[] {
+  const { optionQuoteAsOfMs, underlyingQuoteAsOfMs, biasAsOfMs, isIndexEtf } = input;
+  const blocks: ZeroDteGateBlock[] = [];
+  if (optionQuoteAsOfMs != null && underlyingQuoteAsOfMs != null) {
+    const gapMs = Math.abs(optionQuoteAsOfMs - underlyingQuoteAsOfMs);
+    if (gapMs > INPUT_DESYNC_MAX_MS) {
+      blocks.push({
+        code: "input_desync",
+        reason:
+          `Option quote and underlying quote are ${(gapMs / 1000).toFixed(0)}s apart — ` +
+          "cross-input reads are desynced, the option premium and the underlying it's priced " +
+          "off may no longer describe the same instant (G-20).",
+        threshold: INPUT_DESYNC_MAX_MS,
+        unlock_et: null,
+      });
+    }
+  }
+  if (isIndexEtf && underlyingQuoteAsOfMs != null && biasAsOfMs != null) {
+    const gapMs = Math.abs(underlyingQuoteAsOfMs - biasAsOfMs);
+    if (gapMs > INPUT_DESYNC_MAX_MS) {
+      blocks.push({
+        code: "input_desync",
+        reason:
+          `Underlying quote and SPY tape read are ${(gapMs / 1000).toFixed(0)}s apart — ` +
+          "index/ETF cross-input reads are desynced, the G-1 tape-alignment check may be " +
+          "judging a stale tape against a fresher underlying (G-20).",
+        threshold: INPUT_DESYNC_MAX_MS,
+        unlock_et: null,
+      });
+    }
+  }
+  return blocks;
+}
+
+const INPUT_DESYNC_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set(["input_desync"]);
+
+/** Re-apply G-20 after a deferred (thesis-first) commit-time attach (scan.ts) — mirrors
+ *  refreshMoneynessGateBlocks exactly. */
+export function refreshInputDesyncGateBlocks(
+  gate: ZeroDteGateVerdict,
+  input: InputDesyncInput,
+  isCondor: boolean
+): ZeroDteGateVerdict {
+  const rest = gate.blocks.filter((b) => !INPUT_DESYNC_GATE_CODES.has(b.code));
+  const blocks = [...rest, ...(isCondor ? [] : evaluateInputDesync(input))];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
+// ── Cross-cutting: LIVE COMMIT PATH preconditions (2026-09-09) ──────────────────────────
+// evaluateZeroDteGates itself stays PERMISSIVE on three inputs — G-9's quote-staleness
+// check (dormant without a quote-age timestamp), G-12's confluence-unknown fail-open, and
+// G-20's missing-timestamp fail-open above — deliberately, so a generic/test/fixture caller
+// that never had this data isn't penalized for a gap that was never real. The LIVE
+// PRODUCTION COMMIT PATH is a different question: for a REAL fresh commit, these three
+// inputs being absent isn't "no evidence of a problem", it's "we don't actually know" — and
+// a desk that can't verify its own commit-time inputs shouldn't commit blind. This function
+// is the shared precondition check scan.ts's live commit call site runs BEFORE trusting a
+// COMMIT verdict — it changes nothing about evaluateZeroDteGates's own permissive behavior
+// for any other caller (replay fixtures, unit tests, calibration back-tests all keep working
+// exactly as before); it is an ADDITIONAL gate outside the pure function, specific to the
+// one call site that writes a real ledger row.
+export type LiveCommitPreconditions = {
+  /** The plan's quote-age timestamp (the source computeQuoteAgeMs needs — OptionSnapshot's
+   *  observedAtMs/quoteUpdatedMs) was actually available when the plan was built. */
+  quoteAgeKnown: boolean;
+  /** A confluence read was attached (non-null) before this candidate reached the gate stack. */
+  confluenceRead: boolean;
+  /** G-20's own cross-input timestamps (option-quote vs underlying-quote) were both known. */
+  inputDesyncTimestampsKnown: boolean;
+};
+
+/** Returns the names of every MISSING precondition (empty = every precondition present,
+ *  safe to trust a COMMIT verdict on this front — every other gate still applies). Pure,
+ *  deterministic, no IO — the caller supplies already-resolved booleans. */
+export function liveCommitPreconditionsUnmet(input: LiveCommitPreconditions): string[] {
+  const missing: string[] = [];
+  if (!input.quoteAgeKnown) missing.push("quote_age_unknown");
+  if (!input.confluenceRead) missing.push("confluence_unread");
+  if (!input.inputDesyncTimestampsKnown) missing.push("input_desync_timestamps_unknown");
+  return missing;
 }
 
 const PLAN_QUALITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
