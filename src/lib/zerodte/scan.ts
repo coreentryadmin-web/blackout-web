@@ -146,6 +146,7 @@ import {
   refreshContractLiquidityGateBlocks,
   refreshMoneynessGateBlocks,
   refreshQualificationDislocationGateBlocks,
+  refreshInputDesyncUnderlyingGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
@@ -708,6 +709,15 @@ export async function scanZeroDteBoard(flags?: {
           quote: s.plan ? { bid: s.plan.bid, ask: s.plan.ask, mark: s.plan.mark } : null,
           isCondor: s.play_type === "CONDOR",
         });
+        // G-20 broadening (item 10): same reasoning as the G-23 refresh just above — under
+        // thesis-first attachContractPlans (and its refreshUnderlyingFromLiveSpot) has now run,
+        // so s.plan.quoteAgeMs and s.underlying_price_as_of are the real post-refresh values.
+        s.gate = refreshInputDesyncUnderlyingGateBlocks(s.gate, {
+          plan: s.plan ?? null,
+          underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
+          nowMs: reconcileNowMs,
+          isCondor: s.play_type === "CONDOR",
+        });
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
@@ -1101,6 +1111,15 @@ async function attachGateVerdicts(
       nowMs,
       bias,
       biasAsOfMs,
+      // G-20 broadening (item 10): the underlying's own live-quote observation instant, for
+      // the option-vs-underlying leg (ALL directional setups, not just index/ETF — see
+      // gates.ts's inputDesyncUnderlyingGateBlocks doc). In the ORDINARY (non-thesis-first)
+      // pipeline attachContractPlans has already run above (same ordering the otmPct/G-23
+      // comments describe), so underlying_price_as_of here is already the live-refreshed
+      // value; under thesis-first it is still pre-refresh and
+      // refreshInputDesyncUnderlyingGateBlocks (below) re-applies against the real refreshed
+      // value once that pass has happened, mirroring refreshQualificationDislocationGateBlocks.
+      underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
       governor,
       committedThisCycle,
       governorPremiumAtRisk,

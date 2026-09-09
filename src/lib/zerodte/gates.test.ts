@@ -23,6 +23,8 @@ import {
   qualificationDislocationGateBlocks,
   refreshQualificationDislocationGateBlocks,
   QUALIFICATION_DISLOCATION_MAX_PCT,
+  inputDesyncUnderlyingGateBlocks,
+  refreshInputDesyncUnderlyingGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
@@ -261,6 +263,220 @@ test("G-20 bypass: single-name stocks skip cross-input sync entirely (same scope
     })
   );
   assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync"), []);
+});
+
+// ── G-20 REGRESSION: the SPY-tape leg above is completely UNCHANGED by the broadening ──────
+// This is the exact same assertion as the very first G-20 test above, re-run here to pin the
+// SPY-tape leg's behavior as a regression guard against the broadened leg introduced below —
+// it was passing before that leg existed and must keep passing after.
+test("G-20 REGRESSION: quote-vs-SPY-tape desync still blocks with the ORIGINAL input_desync code, unaffected by the broadened leg", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      biasAsOfMs: NOW_MS - 12 * 60 * 1000,
+      // No underlyingQuoteAsOfMs supplied at all — the broadened leg must stay silent (fail
+      // open) while the original leg still fires on its own, completely independent input.
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.length, 1, "only the original SPY-tape leg should fire here");
+  assert.equal(v.blocks[0]!.code, "input_desync");
+  assert.equal(v.blocks[0]!.threshold, INPUT_SYNC_MAX_SKEW_MS);
+});
+
+// ── G-20 broadening (item 10, 2026-09-09) · option quote vs its OWN underlying quote ───────
+// Distinct data-integrity concern from the SPY-tape leg above (see gates.ts's module doc):
+// no dependency on G-1's index-ETF scoping — applies to EVERY directional setup, single
+// names included, because every setup has both an option quote and an underlying quote
+// that can desync from each other independently of any SPY tape read.
+
+test("G-20 broadening: option quote and underlying quote desynced BLOCKS a single name (not index/ETF)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA", // single name — the ORIGINAL SPY-tape leg bypasses this ticker entirely
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 }, // option quote observed 5s ago
+      underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000, // underlying quote observed 12min ago
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks[0]!.code, "input_desync_underlying");
+  assert.equal(v.blocks[0]!.threshold, INPUT_SYNC_MAX_SKEW_MS);
+  assert.match(v.blocks[0]!.reason, /apart/);
+  assert.match(v.blocks[0]!.reason, /Independent of any SPY tape/);
+});
+
+test("G-20 broadening: option quote and underlying quote synchronized does not block", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 }, // 5s old
+      underlyingQuoteAsOfMs: NOW_MS - 60_000, // 1min old — 55s skew, well under the 5min tolerance
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync_underlying"), []);
+});
+
+test("G-20 broadening: exactly at the sync tolerance boundary is still fresh (exclusive boundary)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 0 },
+      underlyingQuoteAsOfMs: NOW_MS - INPUT_SYNC_MAX_SKEW_MS,
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync_underlying"), []);
+
+  const overByOne = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 0 },
+      underlyingQuoteAsOfMs: NOW_MS - INPUT_SYNC_MAX_SKEW_MS - 1,
+    })
+  );
+  assert.equal(overByOne.blocks[0]!.code, "input_desync_underlying");
+});
+
+test("G-20 broadening fail-open: no quote timestamp (plan omits quoteAgeMs) never blocks", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: CLEAN_PLAN, // no quoteAgeMs — the live scan always supplies one; fixtures may not
+      underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync_underlying"), []);
+});
+
+test("G-20 broadening fail-open: no plan at all never blocks", () => {
+  const v = evaluateZeroDteGates(
+    input({ ticker: "NVDA", direction: "long", plan: null, underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000 })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync_underlying"), []);
+});
+
+test("G-20 broadening fail-open: missing underlying-quote timestamp never blocks (each timestamp fails open independently)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      underlyingQuoteAsOfMs: null,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync_underlying"), []);
+});
+
+test("G-20 broadening applies to index/ETF setups too, ALONGSIDE (not instead of) the SPY-tape leg", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "QQQ", // index ETF — the original SPY-tape leg also applies here
+      direction: "short",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000, // desynced from the option quote
+      biasAsOfMs: NOW_MS - 5_000, // synced with the option quote — keeps the ORIGINAL leg quiet
+    })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.deepEqual(
+    v.blocks.filter((b) => b.code === "input_desync"),
+    [],
+    "the SPY-tape leg must stay quiet — its own input (bias) is synced with the quote"
+  );
+  assert.equal(v.blocks.filter((b) => b.code === "input_desync_underlying").length, 1);
+});
+
+test("G-20 broadening: a CONDOR never fires the option-vs-underlying leg (mirrors the moneyness re-check's own condor exemption)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "SPY",
+      play_type: "CONDOR",
+      condorPlan: null,
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.deepEqual(v.blocks.filter((b) => b.code === "input_desync_underlying"), []);
+});
+
+test("refreshInputDesyncUnderlyingGateBlocks: re-applies the option-vs-underlying leg after a deferred (thesis-first) contract-plan attach", () => {
+  // Gates ran first (thesis-first order) with NO plan and no underlying-quote timestamp yet —
+  // both fail open, so no block (deferPlanQualityGates:true mirrors the real thesis-first call
+  // site, so the unrelated G-8/G-9 plan-quality gates don't fire on the still-null plan either —
+  // isolates this test to the leg actually under test, same as scan.ts's real ordering).
+  const preRefresh = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: null,
+      underlyingQuoteAsOfMs: null,
+      deferPlanQualityGates: true,
+    })
+  );
+  assert.equal(preRefresh.verdict, "COMMIT");
+  assert.equal(preRefresh.blocks.some((b) => b.code === "input_desync_underlying"), false);
+
+  // attachContractPlans now runs — the real plan (with quoteAgeMs) and the real underlying-quote
+  // timestamp are both attached, and they are desynced.
+  const postRefresh = refreshInputDesyncUnderlyingGateBlocks(preRefresh, {
+    plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+    underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000,
+    nowMs: NOW_MS,
+    isCondor: false,
+  });
+  assert.equal(postRefresh.verdict, "BLOCKED");
+  assert.equal(postRefresh.blocks.some((b) => b.code === "input_desync_underlying"), true);
+
+  // And the inverse: a candidate that started BLOCKED clears once the refreshed reads are
+  // actually in sync.
+  const badPreRefresh = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      direction: "long",
+      plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+      underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000,
+    })
+  );
+  assert.equal(badPreRefresh.verdict, "BLOCKED");
+  const goodPostRefresh = refreshInputDesyncUnderlyingGateBlocks(badPreRefresh, {
+    plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+    underlyingQuoteAsOfMs: NOW_MS - 60_000,
+    nowMs: NOW_MS,
+    isCondor: false,
+  });
+  assert.equal(goodPostRefresh.blocks.some((b) => b.code === "input_desync_underlying"), false);
+});
+
+test("refreshInputDesyncUnderlyingGateBlocks: a CONDOR stays exempt through the refresh", () => {
+  const gate = evaluateZeroDteGates(
+    input({ ticker: "SPY", play_type: "CONDOR", condorPlan: null, plan: null, underlyingQuoteAsOfMs: null })
+  );
+  const refreshed = refreshInputDesyncUnderlyingGateBlocks(gate, {
+    plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+    underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000,
+    nowMs: NOW_MS,
+    isCondor: true,
+  });
+  assert.equal(refreshed.blocks.some((b) => b.code === "input_desync_underlying"), false);
+});
+
+test("inputDesyncUnderlyingGateBlocks (pure): desynced reads produce exactly one block with the expected shape", () => {
+  const blocks = inputDesyncUnderlyingGateBlocks({
+    plan: { ...CLEAN_PLAN, quoteAgeMs: 5_000 },
+    underlyingQuoteAsOfMs: NOW_MS - 12 * 60 * 1000,
+    nowMs: NOW_MS,
+    isCondor: false,
+  });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "input_desync_underlying");
+  assert.equal(blocks[0]!.threshold, INPUT_SYNC_MAX_SKEW_MS);
+  assert.equal(blocks[0]!.unlock_et, null);
 });
 
 // ── G-2 · opening window (worst first 30 min, unlock 10:00 — user-authorized 2026-07-23) ──
