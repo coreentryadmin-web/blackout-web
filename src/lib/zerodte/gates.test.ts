@@ -1708,8 +1708,36 @@ test("regime_blind blocks fresh commit when regime plane is blind", () => {
   assert.ok(v.blocks.some((b) => b.code === "regime_blind"));
 });
 
-test("G-13 flow_accumulation_conflict blocks when aligned === false", () => {
-  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false }));
+// G-13 (2026-09-09, operator-approved CTO gate-architecture review): DOWNGRADED from an
+// unconditional hard block to an ELEVATED QUALITY REQUIREMENT — a conflicted setup can
+// still proceed if it clears score >= 75 AND confluence confirmations >= 2.
+
+test("G-13: aligned === false BLOCKS when the setup does NOT clear the elevated quality bar (low score)", () => {
+  // score 70 < 75 elevated floor, even with confluence(2) confirming — still blocked.
+  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false, score: 70 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: aligned === false BLOCKS when score clears 75 but confluence confirmations < 2", () => {
+  const v = evaluateZeroDteGates(
+    input({ flowAccumulationAligned: false, score: 80, confluence: confluence(1) })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: aligned === false does NOT block once score >= 75 AND confluence confirmations >= 2 (elevated quality clears the conflict)", () => {
+  const v = evaluateZeroDteGates(
+    input({ flowAccumulationAligned: false, score: 75, confluence: confluence(2) })
+  );
+  assert.ok(!v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
+});
+
+test("G-13: a missing confluence read cannot satisfy the >=2 confirmation requirement — still blocks even at a high score", () => {
+  // Elevated-quality override requires MEASURED confirmation, not the ordinary G-12
+  // fail-open — absence of a read is not evidence the conflict is resolved.
+  const v = evaluateZeroDteGates(input({ flowAccumulationAligned: false, score: 90, confluence: null }));
   assert.equal(v.verdict, "BLOCKED");
   assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
 });
@@ -1719,12 +1747,16 @@ test("G-13 reason names the ACTUAL blocked ticker/direction, not a hardcoded exa
   // example with no interpolation at all — every blocked setup, regardless of its real
   // ticker or direction, rendered that identical sentence (confirmed live: SPXW/SPY/QQQ/NVDA
   // all showed "(MU-long/bearish-acc class)" verbatim on 2026-08-04).
-  const nvda = evaluateZeroDteGates(input({ ticker: "NVDA", direction: "long", flowAccumulationAligned: false }));
+  const nvda = evaluateZeroDteGates(
+    input({ ticker: "NVDA", direction: "long", flowAccumulationAligned: false, score: 60 })
+  );
   const block1 = nvda.blocks.find((b) => b.code === "flow_accumulation_conflict");
   assert.ok(block1?.reason.includes("NVDA-long"), `expected NVDA-long in reason, got: ${block1?.reason}`);
   assert.ok(!block1?.reason.includes("MU-long"), "must not carry the stale hardcoded example ticker");
 
-  const tsla = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", flowAccumulationAligned: false }));
+  const tsla = evaluateZeroDteGates(
+    input({ ticker: "TSLA", direction: "short", flowAccumulationAligned: false, score: 60 })
+  );
   const block2 = tsla.blocks.find((b) => b.code === "flow_accumulation_conflict");
   assert.ok(block2?.reason.includes("TSLA-short"), `expected TSLA-short in reason, got: ${block2?.reason}`);
 });
