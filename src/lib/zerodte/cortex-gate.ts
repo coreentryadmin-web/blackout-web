@@ -431,10 +431,18 @@ export type ZeroDteCortexEntryContext =
       opposes: EvidenceItem[];
       absent: string[];
       narrative: string[];
+      /** True when commit relief (`applyCortexCommitRelief`) stripped a `gex-walls` veto to
+       *  let this play commit — the wall fact itself didn't change, only whether the desk
+       *  blocked on it. The exit-time thesis check reads this to avoid immediately re-vetoing
+       *  on the exact condition relief overrode (see `gexWallsVetoWasRelieved`,
+       *  cortex-vector-relief.ts, live-monitor finding 2026-09-09). Defaults to `false` for
+       *  every caller that doesn't pass it, so pre-existing rows/tests are unaffected. */
+      gex_walls_veto_relieved: boolean;
     };
 
 export function cortexEntryContextFor(
-  assessment: ZeroDteCortexAssessment | null
+  assessment: ZeroDteCortexAssessment | null,
+  gexWallsVetoRelieved = false
 ): ZeroDteCortexEntryContext | null {
   if (assessment == null) return null; // Cortex never ran (refresh lane) — no blob, never a fake one
   if (assessment.abstained) return { abstained: true, reason: assessment.reason };
@@ -450,6 +458,7 @@ export function cortexEntryContextFor(
     opposes: v.opposes,
     absent: v.absent,
     narrative: v.narrative,
+    gex_walls_veto_relieved: gexWallsVetoRelieved,
   };
 }
 

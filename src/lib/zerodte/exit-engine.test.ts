@@ -867,6 +867,35 @@ test("detectThesisBreak: skipGexWallsVeto ignores gex-walls veto when GEX qualit
   assert.equal(b, null);
 });
 
+// Live-monitor finding, 2026-09-09 (SHOP/MSTR): a play whose entry relieved its ONLY
+// veto (a gex-walls wall fact, via applyCortexCommitRelief) got immediately re-vetoed
+// on the exact same fact by the live exit-time thesis check — both closed within 1
+// second of entry, net ~0%. evaluateExitState now threads
+// `entryGexWallsVetoRelieved` into the same `skipGexWallsVeto` grace period
+// `gexQualityDegraded` already had.
+test("evaluateExitState: a play entered via gex-walls relief does not instantly re-veto on the same wall", () => {
+  const wallVeto = evidence([
+    { stance: "veto", source: "gex-walls", weight: 1, detail: "short target path crosses dominant wall" },
+  ]);
+  // RED (pre-fix behavior): without the flag, the SAME still-standing wall the entry
+  // relieved closes the position immediately.
+  const withoutFix = evaluateExitState(
+    input({ cortexEvidence: wallVeto, entryGexWallsVetoRelieved: false })
+  );
+  assert.equal(withoutFix.action, "EXIT");
+  assert.equal(withoutFix.reason, "thesis_break:gex-walls");
+  // GREEN (the fix): flagging the play as relieved at entry gives it the same grace
+  // period gexQualityDegraded already gets — it holds instead of self-vetoing.
+  const withFix = evaluateExitState(
+    input({ cortexEvidence: wallVeto, entryGexWallsVetoRelieved: true })
+  );
+  assert.notEqual(withFix.action, "EXIT");
+  assert.ok(
+    !withFix.reason.startsWith("thesis_break"),
+    `expected no thesis_break exit, got reason=${withFix.reason}`
+  );
+});
+
 // ── trim_scale trimsTaken latch clamping ─────────────────────────────────────────────
 test("trim_scale: trimsTaken is clamped/floored to 0..2 — an over-count runs the runner, a negative starts fresh", () => {
   // trimsTaken 5 (> 2) → clamped to 2 → the last third RUNS (not another trim).

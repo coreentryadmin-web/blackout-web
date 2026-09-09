@@ -171,6 +171,13 @@ export type ExitEngineInput = {
   trimsTaken?: number;
   /** When GEX is on UW fallback (not Polygon chain), skip gex-walls thesis-break exits. */
   gexQualityDegraded?: boolean;
+  /** True when this play's entry was committed by RELIEVING its only veto (a `gex-walls`
+   *  wall fact) rather than the wall being genuinely clear — same live-thesis grace period
+   *  as `gexQualityDegraded` above, so the exit check doesn't immediately re-veto on the
+   *  exact fact relief overrode (entry_context.cortex.gex_walls_veto_relieved,
+   *  cortex-vector-relief.ts's `gexWallsVetoWasRelieved`; live-monitor finding 2026-09-09,
+   *  SHOP/MSTR both closed within 1 second of entry on this exact veto). */
+  entryGexWallsVetoRelieved?: boolean;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -388,7 +395,7 @@ function decideTrimScale(
   // 2. Thesis break: the play is WRONG → dump the WHOLE remaining position at any P&L
   //    (outranks banking another third — same veto asymmetry as the ratchet path).
   const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore, {
-    skipGexWallsVeto: input.gexQualityDegraded === true,
+    skipGexWallsVeto: input.gexQualityDegraded === true || input.entryGexWallsVetoRelieved === true,
   });
   if (broken) {
     return {
@@ -546,7 +553,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
 
   // ── 2. Thesis break: unconditional, fires at ANY P&L (including a loss). ───────
   const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore, {
-    skipGexWallsVeto: input.gexQualityDegraded === true,
+    skipGexWallsVeto: input.gexQualityDegraded === true || input.entryGexWallsVetoRelieved === true,
   });
   if (broken) {
     return {
