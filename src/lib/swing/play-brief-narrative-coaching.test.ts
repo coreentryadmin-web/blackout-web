@@ -743,6 +743,45 @@ test("technicalsCoaching: aligned LONG + bullish tape notes alignment without ec
   assert.match(line!, /aligns with swing direction/i);
 });
 
+test("technicalsCoaching: VWAP-vs-spot wording is not inverted (2026-09-09 live POET repro)", () => {
+  // Root cause: `const above = vec.spot >= t.vwap` computes whether SPOT is at/above VWAP, but the
+  // label it fed — `VWAP (${above ? "above" : "below"} spot)` — describes where VWAP sits relative
+  // to spot, which is the OPPOSITE fact. "spot at/above vwap" means VWAP is BELOW spot, not above.
+  // Live repro (POET, 2026-09-09 00:26 ET): spot 8.38 < vwap 8.44, so VWAP is genuinely ABOVE spot —
+  // the shipped narrative printed "VWAP 8.44 (below spot)", stating the reverse of the real
+  // relationship, directly contradicting the correct "Chart technicals" section's own "price below
+  // session VWAP" line two blocks away in the same brief.
+  const spotBelowVwap = {
+    spot: 8.38,
+    technicals: {
+      vwap: 8.44,
+      emaStack: "down",
+      rsi: 52,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "down", level: 8.35 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line1 = technicalsCoaching(spotBelowVwap, play({ direction: "LONG", ticker: "POET" }));
+  // spot (8.38) is below vwap (8.44) => VWAP sits ABOVE spot.
+  assert.match(line1!, /VWAP \*\*8\.44\*\* \(above spot\)/i);
+
+  const spotAboveVwap = {
+    spot: 95,
+    technicals: {
+      vwap: 90,
+      emaStack: "up",
+      rsi: 60,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "up", level: 92 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line2 = technicalsCoaching(spotAboveVwap, play({ direction: "LONG", ticker: "NVDA" }));
+  // spot (95) is above vwap (90) => VWAP sits BELOW spot.
+  assert.match(line2!, /VWAP \*\*90\.00\*\* \(below spot\)/i);
+});
+
 test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => {
   const vec = {
     spot: 95,
