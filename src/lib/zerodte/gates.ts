@@ -45,7 +45,6 @@ import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } 
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
 import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 import {
-  vectorExemptsG17PrimeBand,
   vectorExemptsG19TopBand,
   vectorExemptsPlanChase,
   vectorPulseAlignsDirection,
@@ -655,30 +654,29 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-17 — the 65-74 band requires the PRIME floor (75) for EVERY origin combo, not just
-  // single-rail-without-flow. Extended 2026-08-28: multi-rail/FLOW commits in this band measured
-  // WORSE (35.7% WR, n=34) than single-rail-without-flow at the 75+ floor (41.0% WR, n=89) — the
-  // FLOW/multi-rail exemption was never buying safety, the whole 65-74 band is weak EV on its own
-  // score regardless of corroboration. See ZERODTE_SINGLE_RAIL_PRIME_MIN doc comment for the full
-  // measurement.
-  if (
-    !isCondor &&
-    input.score >= scoreFloorForOrigins(input.discovery_origin) &&
-    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN &&
-    !(
-      input.vector_g17_exempt === true ||
-      vectorExemptsG17PrimeBand(input.direction, input.score, input.vector_pulse)
-    )
-  ) {
-    const single = isSingleRailWithoutFlow(input.discovery_origin);
-    const rail = single ? ((input.discovery_origin ?? [])[0] ?? "whole-market") : "multi-rail/FLOW";
+  // G-17 — RESTRUCTURED (2026-09-09, operator-approved CTO gate-architecture review) from a
+  // flat "65-74 needs >=75 regardless of corroboration" rule into a three-band architecture:
+  //   <65     REJECT (G-3's own floor, above — untouched)
+  //   65-69   REJECT unconditionally — no admission path at all
+  //   70-74   CONDITIONAL — eligible ONLY with confluence>=2 AND clean tape/VIX/execution
+  //           (see the end-of-function check below, which needs G-1/G-4/G-8/G-9/G-21's
+  //           results already collected in `blocks`)
+  //   75+     PRIME, unrestricted here (unchanged)
+  // Rationale: the 2026-08-28 measurement (multi-rail/FLOW in 65-74 ran 35.7% WR, WORSE than
+  // single-rail at 75+) showed an UNCONFIRMED 65-74 setup is weak EV — it never showed that a
+  // GENUINELY well-confirmed 70-74 setup (real confluence, clean tape, clean VIX regime, clean
+  // execution) is equally weak. The flat rule conflated "unconfirmed" with "sub-75", rejecting
+  // a narrow admission window the evidence never actually closed. 65-69 keeps the flat reject —
+  // no evidence supports admitting that lower sub-band under any condition.
+  if (!isCondor && input.score >= 65 && input.score < 70) {
     blocks.push({
       code: "single_rail_corroboration",
       reason:
-        `${rail} setup scored ${Math.round(input.score)} — the 65-74 band needs ≥${ZERODTE_SINGLE_RAIL_PRIME_MIN} ` +
-        "regardless of rail corroboration (measured 2026-08-28: multi-rail/FLOW in this band ran " +
-        "35.7% WR, worse than single-rail at the 75+ floor).",
-      threshold: ZERODTE_SINGLE_RAIL_PRIME_MIN,
+        `Score ${Math.round(input.score)} sits in the 65-69 band — rejected outright, no ` +
+        "admission path (measured 2026-08-28: the unconfirmed 65-74 band ran weak EV; only the " +
+        "70-74 sub-band has a narrow conditional path, gated on real confirmation — see the " +
+        "conditional-band check).",
+      threshold: 70,
       unlock_et: null,
     });
   }
@@ -690,10 +688,8 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // the SPECIFIC replay-measured worst-timed slice of the session (E2's own evidence is about
   // TIMING, not about whether Vector happens to agree), and Vector alignment was never itself
   // measured as curing that early-window effect — it was borrowed verbatim from G-17's own
-  // exemption predicate. G-17's OWN Vector exemption (a SEPARATE code path, `single_rail_
-  // corroboration`, further below) is explicitly UNTOUCHED by this change — be precise about
-  // which gate is being read: both G-17 and G-19 still reference `vectorExemptsG17PrimeBand`/
-  // their own exemption predicates; only G-18's block condition drops it.
+  // (now-removed, see the 2026-09-09 G-17 restructure above) Vector exemption predicate.
+  // G-19 still references its own `vectorExemptsG19TopBand` exemption predicate, untouched.
   if (
     !isCondor &&
     input.nowEtMinutes >= OPENING_WINDOW_UNLOCK_ET_MINUTES &&
@@ -1148,6 +1144,61 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
           auth.reason ??
           "Data source recovering — new commits withheld until the source warms back to HEALTHY.",
         threshold: null,
+        unlock_et: null,
+      });
+    }
+  }
+
+  // G-17 — 70-74 CONDITIONAL BAND admission check (2026-09-09 restructure, see the doc
+  // comment on the 65-69 reject above). Deliberately evaluated HERE, at the very end of the
+  // function, because "clean tape/VIX/execution" needs G-1/G-4/G-8/G-9/G-21's results
+  // already collected in `blocks` — this is the ONLY gate in the stack whose eligibility is
+  // itself defined in terms of every OTHER gate's outcome, rather than its own independent
+  // read. Eligible only if ALL of:
+  //   (a) confluence confirmations >= 2 — this band's OWN bar, via g12ConfirmationCount,
+  //       regardless of time-of-day (separate from G-12's own ordinary floor above, which
+  //       can be as low as 1 via ZERODTE_CONFLUENCE_MIN). An UNKNOWN/missing confluence read
+  //       does NOT satisfy this — see the G-12 fix note below.
+  //   (b) tape alignment satisfied where applicable (no G-1 tape_alignment/no_market_bias
+  //       block already fired — condors and single names are exempt from G-1 to begin with,
+  //       so they trivially pass this leg).
+  //   (c) VIX-regime requirements met (no vix_elevated/vix_extreme/vix_unavailable block
+  //       already fired — the canonicalized G-4 uniform-floor rule, 2026-09-09).
+  //   (d) every other execution/safety gate (G-8/G-9 plan quality, G-21 contract liquidity)
+  //       clean — no code in EXECUTION_SAFETY_GATE_CODES already fired.
+  // Any failing leg blocks with the distinct `conditional_band_unmet` code (never conflated
+  // with the unconditional 65-69 reject or with the specific gate that actually failed —
+  // those already carry their own block/code in `blocks`; this one names the BAND decision).
+  //
+  // G-12 FIX (bundled with this restructure): the elevated >=2 bar above is asked "is this
+  // confirmed enough to admit at a sub-prime score" — a genuinely different question from
+  // G-12's own ordinary floor, which fails OPEN on a missing read (never manufactures a
+  // block from an unmeasured factor elsewhere in this file). Here, absence of measurement
+  // cannot answer "yes, confirmed" — so a null confluence read counts as 0 confirmations for
+  // THIS check ONLY, distinct from a measured 0 or 1 (which already fail this bar the same
+  // way). G-12's own fail-open behavior everywhere else in this file is UNCHANGED.
+  if (!isCondor && input.score >= 70 && input.score < 75) {
+    const confirmCount =
+      input.confluence != null ? g12ConfirmationCount(input.confluence, input.ticker) : 0;
+    const confluenceOk = confirmCount >= 2;
+    const tapeOk = !blocks.some((b) => b.code === "tape_alignment" || b.code === "no_market_bias");
+    const vixOk = !blocks.some(
+      (b) => b.code === "vix_elevated" || b.code === "vix_extreme" || b.code === "vix_unavailable"
+    );
+    const executionOk = !blocks.some((b) => EXECUTION_SAFETY_GATE_CODES.has(b.code));
+    if (!(confluenceOk && tapeOk && vixOk && executionOk)) {
+      const unmet: string[] = [];
+      if (!confluenceOk) unmet.push(`confluence ${confirmCount}/2`);
+      if (!tapeOk) unmet.push("tape misaligned");
+      if (!vixOk) unmet.push("VIX regime");
+      if (!executionOk) unmet.push("execution/safety");
+      blocks.push({
+        code: "conditional_band_unmet",
+        reason:
+          `Score ${Math.round(input.score)} sits in the 70-74 conditional band — admission needs ` +
+          `confluence>=2 AND clean tape AND clean VIX regime AND clean execution/safety, all at ` +
+          `once. Unmet: ${unmet.join(", ")}.`,
+        threshold: 2,
         unlock_et: null,
       });
     }
