@@ -14,6 +14,7 @@ import {
   ivRankCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
+  progressRatchetCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
   vectorPlayCoaching,
@@ -183,6 +184,26 @@ test("manageLifecycleCoaching: trim ladder + time stop", () => {
   assert.match(line!, /1\/2 trims banked/i);
   assert.match(line!, /15:50 ET/i);
   assert.match(line!, /25% runner/i);
+});
+
+test("progressRatchetCoaching: stop/target rails render sign-free absolute prices (2026-09-09 blast-radius fix)", () => {
+  // Same root cause as play-brief.ts's fmtUsd / play-brief-narrative.ts's fmtOptionUsd: this
+  // file's own file-local fmtUsd carried the identical signed-delta "+" on an absolute premium
+  // PRICE (stop_premium/target_premium are never negative deltas — see terminal-ladder.ts).
+  const line = progressRatchetCoaching(
+    play({
+      exitModel: "RATCHET",
+      progress: 0.4,
+      exitPolicy: {
+        trim_levels: [],
+        stop_premium: 2.1,
+        target_premium: 8,
+      },
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /rails \*\*\$2\.10\*\*.*\*\*\$8\.00\*\*/);
+  assert.doesNotMatch(line!, /\*\*\+\$/, "stop_premium/target_premium are absolute prices, never signed deltas");
 });
 
 test("watchGateCoaching: includes reasons", () => {
