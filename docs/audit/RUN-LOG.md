@@ -11,7 +11,26 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
-## 2026-09-09 (06:18 UTC) — [SEO] Lane heartbeat: prod re-validated, sweep clean, GSC data unchanged since last cycle
+## 2026-09-09 (12:20 UTC) — [SEO] Lane heartbeat: prod re-validated, sweep clean, llms.txt link audit (all 73 URLs healthy)
+
+**Severity.** — (no defect found)
+
+STEP 1 — no homepage-affecting commits since the last real CLS measurement (0.0319, GOOD; `git log
+5e63554e6..origin/main -- src/app/page.tsx src/components/home` empty), still stands. `/api/og`
+re-fetched with a Googlebot UA: HTTP 200, `image/png` — still crawlable.
+
+STEP 2 — `agent-pr-sweep.mjs`: 4 open agent PRs, none SEO-lane (#4653/#4652/#4651/#4650, all
+swing/largo brief copy fixes, all MERGEABLE). Nothing to rebase.
+
+STEP 3 — GSC's opportunity report still hasn't refreshed past the same window as the last two
+cycles, so instead did a full **llms.txt link audit** (GEO surface, not checked recently this
+window): pulled every URL listed in `llms.txt` (73 links across Product/Academy/Curriculum/Guides)
+and curled each for a 200. First pass showed 2 apparent 404s (`/feed`, `/sitemap`) — traced to a
+bug in my own extraction regex (it stopped at `.`, truncating `/feed.xml` and `/sitemap.xml`), not
+a site defect; re-checked the real URLs and both return 200. All 73 llms.txt links genuinely
+healthy. Sitemap (76/76) and `/api/og` both already covered above this cycle.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
 
 **Severity.** — (no defect found)
 
