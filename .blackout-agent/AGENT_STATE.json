@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-09T05:09:57.165Z",
+  "updated_at": "2026-09-09T15:27:15.562Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,50 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "5e327308e676002368efc309f774eb743f91f7b2",
+    "last_main_sha": "a4098bde0fd7edf912faa96b5a343334c4edf963",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-05T19:07:30.161Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-05T19:07:42.137Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-05T19:34:21.505Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
-    {
-      "at": "2026-09-05T19:34:45.361Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-09-05T19:34:45.361Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
-    },
-    {
-      "at": "2026-09-05T19:35:03.828Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
     {
       "at": "2026-09-05T19:35:19.110Z",
       "type": "pr_review",
@@ -1288,6 +1251,60 @@
     },
     {
       "at": "2026-09-09T05:09:57.165Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:12:33.031Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:12:33.684Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:12:33.975Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:19:14.265Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:19:14.891Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:19:15.241Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:27:14.562Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:27:15.229Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T15:27:15.562Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
