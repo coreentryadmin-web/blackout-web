@@ -130,6 +130,87 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   assert.deepEqual(brief.flowSnapshot, { callPremium: 1_200_000, putPremium: 400_000 });
 });
 
+test("composeSwingPlayBrief: invalidation prefers a real per-ticker technical break level over a generic system-wide commit-gate reason", () => {
+  // Regression for the live defect found 2026-09-09: NBIS, CRCL and MU — three different
+  // gate-blocked WATCH setups, three different archetypes — all showed the LITERAL SAME
+  // "Trading-halt feed unavailable..." string in the UI's labeled "Invalidation" callout,
+  // because play-brief.ts fell straight from thesisBreak to `gateBlocks?.[0]?.reason` without
+  // ever checking whether a real technical level (put wall/gamma flip, already computed for
+  // the "Trade manager read" narrative's own "Break watch" bullet) was available. Timestamps
+  // are relative to Date.now() so this does not depend on the sandbox's wall clock matching a
+  // hardcoded fixture date (gexMatrixStale/vectorSnapshotStale are real-Date.now()-based).
+  const recentIso = new Date(Date.now() - 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      direction: "LONG",
+      gateBlocks: [
+        { code: "G-S12", reason: "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers." },
+      ],
+      thesisBreak: { level: "intact", note: "Structure holding" },
+    }),
+    asOf: recentIso,
+    sessionDate: "2026-09-09",
+    scanAsOf: recentIso,
+    scanSessionDay: "2026-09-09",
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      recent_flow: null,
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      spx_desk_convergence: null,
+      flow_feed_fresh: true,
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        change_pct: 1.2,
+        asof: recentIso,
+        as_of_et: "recent",
+        session_date_et: "2026-09-09",
+        market_phase: "open",
+        call_wall: 26,
+        put_wall: 22,
+        flip: 24,
+        gex_king_strike: 25,
+        net_gex: null,
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
+        gamma_posture: "long",
+        vanna_posture: null,
+        delta_posture: null,
+        charm_posture: null,
+      },
+      vector_full_state: null,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    },
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "**Break watch** — lose **22.00** on a closing basis → structural support failed; exit or cut size.",
+  );
+  assert.doesNotMatch(
+    brief.envelope.invalidation ?? "",
+    /Trading-halt feed unavailable/,
+    "a system-wide gate reason must not stand in for a real per-ticker invalidation level when one is computable",
+  );
+});
+
 test("composeSwingPlayBrief: dossier regime stays in Why this setup, not unlabeled Verdict", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ regime: "Sector rotation · regime 0.82", archetype: "BREAKOUT" }),
