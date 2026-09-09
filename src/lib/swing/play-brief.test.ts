@@ -1227,6 +1227,61 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   );
 });
 
+test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) never carry a '+' sign (live NN repro 2026-09-09)", () => {
+  // Live repro: GET /api/market/swing/play-brief?ticker=NN&positionId=32&... rendered
+  // "Entry: **+$1.95**" / "Mark: **+$1.35**" / "Rails: stop +$0.78 · target +$3.90" even
+  // though the position is DOWN 30.8% (mark 1.35 < entry 1.95, well below the 0.78 stop).
+  // `fmtUsd` in play-brief.ts (the file-local one used only for these four absolute premium
+  // fields) is a signed-DELTA formatter (`n >= 0 ? "+" : ""`) misapplied to an absolute PRICE
+  // level, which is never negative to begin with — so every open swing brief shows a "+" on
+  // its entry/mark/stop/target regardless of whether the position is up or down, and the
+  // stop-loss trigger price in particular reads like a gain.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 9.7,
+      pnlPct: 98,
+      peak: 98,
+      manageAction: "HOLD",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 50, fraction: 0.33, premium: 7.35, fired: true }],
+        runner_fraction: 0.34,
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(position, "expected Position section");
+  assert.ok(management, "expected Management section");
+
+  assert.match(position!.body, /Entry: \*\*\$4\.90\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /Mark: \*\*\$9\.70\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /\$\+|\+\$/, `Position must never sign an absolute price, got: ${position!.body}`);
+
+  assert.match(management!.body, /Rails: stop \$1\.96 · target \$9\.80/, `got: ${management!.body}`);
+  assert.doesNotMatch(
+    management!.body,
+    /\$\+|\+\$/,
+    `Management must never sign an absolute premium price, got: ${management!.body}`,
+  );
+});
+
 test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD", direction: "LONG" }),
