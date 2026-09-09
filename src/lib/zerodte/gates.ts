@@ -853,37 +853,27 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         });
       }
     } else if (vix >= VIX_ELEVATED_THRESHOLD) {
-      // G-1 already hard-blocks counter-tape entries — but ONLY for index ETFs (isIndexEtfG1
-      // above); single names bypass G-1 entirely and move on their own catalysts, independently
-      // of SPY direction. This branch must mirror that same scoping: a single name's `bias`
-      // vs `direction` comparison means nothing about ITS OWN tape, only SPY's — so judging a
-      // single name against the tape here re-imposes exactly the constraint G-1 was written to
-      // exempt it from. Found 2026-08-26: a single-name long at VIX 18 with a disagreeing SPY
-      // tape was silently held to the stricter 75 floor though nothing in the design intends
-      // single names to be judged against SPY direction at all. Non-index/ETF tickers therefore
-      // always get the standard 65 floor here, exactly as if tape-aligned/flat, regardless of
-      // `input.bias` — the F-1 69% vs 25% WR evidence backing the 75 floor was never measured
-      // as a single-name-vs-SPY-tape effect, and G-1's own comment already establishes that
-      // relationship holds for index ETFs only.
-      //
-      // For index ETFs: the 75 floor only applies to the residual unknown-tape case (bias ==
-      // null / stale — G-1's no_market_bias already blocked these, so 75 here is
-      // belt-and-suspenders if G-1 is ever disabled via ZERODTE_GATE_DISABLE). FLAT tape: no
-      // directional fight with the market, so it keeps the standard 65 floor — the same
-      // treatment as tape-aligned (see prior fix note: treating flat as non-aligned produced
-      // zero-commit sessions on choppy/range-bound VIX 17-20 days, the most common regime).
-      const tapeAlignedOrFlat =
-        !isIndexEtfG1 ||
-        (input.bias != null &&
-          (input.bias === "flat" || (input.bias === "up") === (input.direction === "long")));
-      const elevatedFloor = tapeAlignedOrFlat ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
+      // G-4 CANONICALIZED (2026-09-09, operator-approved CTO gate-architecture review):
+      // VIX ≥ 17 (elevated, <20) → required score ≥ 75, FULL STOP, for EVERY ticker and
+      // instrument type — no tape-alignment relief, no single-name carve-out. This replaces
+      // the previous two-way exemption: single names always got the standard 65 floor
+      // regardless of VIX (bypassing G-4 entirely — found 2026-08-26, the single-name-vs-
+      // SPY-tape scoping bug that produced the `tapeAlignedOrFlat` branch this comment used
+      // to describe), and index ETFs got 65 when tape-aligned/flat vs 75 when counter-tape.
+      // Both exemptions are REMOVED: the F-1 evidence backing this floor (69.2% WR at VIX<17
+      // vs 25.0% WR at VIX≥17, the strongest per-play split in the whole forensics dataset)
+      // was never measured as a tape-alignment- or ticker-type-conditional effect — it is a
+      // VIX-REGIME effect, full stop, so the score floor now applies uniformly. The ≥20
+      // extreme-VIX single-name block (index/ETF-only survival, at reduced size) below is
+      // explicitly PRESERVED UNCHANGED — this only simplifies the elevated (17-20) tier.
+      const elevatedFloor = VIX_ELEVATED_SCORE_FLOOR;
       if (input.score < elevatedFloor) {
         blocks.push({
           code: "vix_elevated",
-          reason: tapeAlignedOrFlat
-            ? `VIX ${vixR} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — tape-aligned score ${Math.round(input.score)} needs ≥${elevatedFloor} to commit (standard floor when G-1 clears).`
-            : `VIX ${vixR} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — score ${Math.round(input.score)} ` +
-              `needs ≥${VIX_ELEVATED_SCORE_FLOOR} to commit. The 17-20 VIX regime ran 25% WR vs 69% below 17 (F-1).`,
+          reason:
+            `VIX ${vixR} in the elevated regime (≥${VIX_ELEVATED_THRESHOLD}) — score ${Math.round(input.score)} ` +
+            `needs ≥${elevatedFloor} to commit, for every ticker/instrument type (no tape-alignment or ` +
+            "single-name relief). The 17-20 VIX regime ran 25% WR vs 69% below 17 (F-1).",
           threshold: elevatedFloor,
           unlock_et: null,
         });
@@ -899,18 +889,14 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     // board:
     //   • non-index/ETF single name → a present VIX ≥ 20 would block it outright (extreme
     //     regime, index/ETF only) → could-block = true;
-    //   • index/ETF → extreme never blocks it, and elevated (17–20) only blocks below its
-    //     floor: 65 when tape-aligned (G-3 already guarantees ≥65), else 75. So a present
-    //     VIX could only have blocked an index/ETF that is NOT tape-aligned and sits below
-    //     the 75 elevated floor. A tape-aligned index/ETF (or one already ≥75) clears any
-    //     VIX regime → NOT blocked here (no spurious empty).
+    //   • index/ETF → extreme never blocks it, and elevated (17–20) now blocks uniformly
+    //     below the canonical 75 floor (no tape-alignment relief, per the 2026-09-09
+    //     canonicalization above) — so a present VIX could only have blocked an index/ETF
+    //     sitting below that floor. An index/ETF already ≥75 clears any VIX regime → NOT
+    //     blocked here (no spurious empty).
     const tickerUp = input.ticker.toUpperCase();
     const isIndexEtf = INDEX_ETF_TICKERS.has(tickerUp);
-    // Mirror the G-4 elevated logic: flat tape is treated as aligned (standard 65 floor).
-    const tapeAlignedOrFlat =
-      input.bias != null &&
-      (input.bias === "flat" || (input.bias === "up") === (input.direction === "long"));
-    const couldBlock = !isIndexEtf || (!tapeAlignedOrFlat && input.score < VIX_ELEVATED_SCORE_FLOOR);
+    const couldBlock = !isIndexEtf || input.score < VIX_ELEVATED_SCORE_FLOOR;
     if (couldBlock) {
       blocks.push({
         code: "vix_unavailable",
@@ -1497,20 +1483,10 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
   // directional play, so both calibration verdicts below must branch on it the same way the
   // live gate does, or a condor row gets a directional verdict the live gate never computed.
   const isCondor = input.play_type === "CONDOR";
-  // Flat tape = no directional opposition (same treatment as aligned in G-4). Single names are
-  // scoped OUT of the SPY-tape comparison here, mirroring the live gate's own G-1 scoping
-  // (INDEX_ETF_TICKERS-only) — a single name's bias-vs-direction comparison says nothing about
-  // its own tape, only SPY's, so an ungated non-index/ETF ticker reads as unconditionally
-  // "aligned" (found alongside the same bug in the live elevated-VIX gate, 2026-08-26).
-  const aligned: boolean | null = !INDEX_ETF_TICKERS.has(ticker)
-    ? true
-    : input.bias == null
-      ? null
-      : input.bias === "flat"
-        ? true
-        : (input.bias === "up") === (input.direction === "long");
 
-  // G-4 — VIX regime throttle verdict.
+  // G-4 — VIX regime throttle verdict. Canonicalized 2026-09-09: the elevated (17-20) tier's
+  // score floor is now uniform across every ticker/instrument type, so this function no longer
+  // needs a tape-alignment ("aligned") read to compute it — see the live gate's own comment.
   const vix = input.vixDayOpen ?? null;
   // Display-rounded for the persisted calibration notes (raw `vix` still used for comparisons + day_open_vix).
   const vixR = vix == null ? null : Math.round(vix * 100) / 100;
@@ -1561,21 +1537,17 @@ export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCali
         note: `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD} (< ${VIX_EXTREME_THRESHOLD} extreme): a condor's best regime — fatter premium while the range holds; condor G-4 only blocks at extreme.`,
       };
     } else {
-      const elevatedFloor =
-        aligned === true ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
-      const clears = aligned === true ? input.score >= ZERODTE_SCORE_FLOOR : input.score >= VIX_ELEVATED_SCORE_FLOOR;
+      // Mirrors the canonicalized live gate (2026-09-09): uniform ≥75 floor for every
+      // ticker/instrument type, no tape-alignment or single-name relief.
+      const clears = input.score >= VIX_ELEVATED_SCORE_FLOOR;
       g4 = {
         day_open_vix: vix,
         tier: "elevated",
         would_block: !clears,
         would_halve_size: false,
         note: clears
-          ? aligned === true
-            ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned with score ≥ ${ZERODTE_SCORE_FLOOR} — clears hardened G-4.`
-            : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: score ≥ ${VIX_ELEVATED_SCORE_FLOOR} — clears hardened G-4.`
-          : aligned === true
-            ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: tape-aligned setups need score ≥ ${ZERODTE_SCORE_FLOOR} under hardened G-4.`
-            : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: hardened G-4 needs tape alignment AND score ≥ ${VIX_ELEVATED_SCORE_FLOOR} (17-20 regime ran 25% WR vs 69% at 15-17).`,
+          ? `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: score ≥ ${VIX_ELEVATED_SCORE_FLOOR} — clears canonicalized G-4 (uniform floor, every ticker/instrument type).`
+          : `VIX ${vixR} ≥ ${VIX_ELEVATED_THRESHOLD}: canonicalized G-4 needs score ≥ ${VIX_ELEVATED_SCORE_FLOOR} for every ticker/instrument type (17-20 regime ran 25% WR vs 69% at 15-17).`,
       };
     }
   } else {
