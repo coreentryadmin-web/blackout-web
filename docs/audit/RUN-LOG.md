@@ -3361,3 +3361,32 @@ All four comfortably under the 0.1 "GOOD" threshold — consistent with the 2026
 baseline (0.0002 desktop/mobile) validating #2453, extended here to `/pricing` (not previously
 measured) with the same clean result. No regression, no fix needed — logged as a GREEN pass per
 the standing performance mandate's "keep measuring, cycle after cycle" discipline.
+
+## 2026-09-09 (14:20 UTC) — [DISCOVERY] Live RTH validation: four swing/Largo play-brief fixes confirmed correct under real market-open data
+
+Market opened at 09:30 ET; per `MARKET-OPEN-VALIDATION.md`'s queued RTH-check items #74 and #75
+(both from this session), pulled a real live `GET /api/market/swing/play-brief?playId=SWING:NRG:34`
+during RTH (10:15 ET, fresh mark) — the same open position used throughout this session's audit
+cycle, now trading live rather than off-hours/stale.
+
+- **#75 (premium sign fix, `fix/swing-brief-premium-sign-format`):** Position section showed
+  `Entry: **$4.90**` / `Mark: **$9.25**` and Management showed `Rails: stop $1.96 · target $9.80`
+  — no spurious `+` sign anywhere, on a position that IS up (+88.8%), confirming the fix removed
+  the sign unconditionally rather than only suppressing it on losers.
+- **#74 (VWAP-spot label, `fix/swing-brief-vwap-spot-label-inverted`):** Chart technicals showed
+  spot **118.18** / VWAP **118.23** / "price below session VWAP"; the separate Trade-manager-read
+  "Chart read" clause showed `VWAP **118.23** (above spot)` — the two facts now agree (spot below
+  vwap ⇔ vwap above spot), where before the fix they contradicted each other.
+- **#4619 (Vector starred/headline duplication, this session):** the Vector desk bullet read
+  `POSITION · momentum short on continuation → target 1σ 113.29 · invalidation 5m close > 120.31`
+  with NO trailing `starred level **...**` clause — this live case had no starred item beyond the
+  headline, so the fix's "omit when nothing beyond headline" branch fired correctly (the pre-fix
+  code would have appended the identical headline text a second time under a "starred level" label).
+- **#4620 (gamma magnet missing from structured levels, this session):** `envelope.levels` now
+  carries `{"label":"gamma magnet","price":120.16}`, matching the "Gamma magnet 120.16 (+1.7% from
+  spot)" bullet narrated in Trade manager read — the exact value that was narrative-only before the
+  fix is now present in the structured array.
+
+All four hold under real live RTH conditions with fresh data (not just the off-hours/synthetic
+fixtures the original unit tests used) — GREEN pass, no follow-up needed. `MARKET-OPEN-VALIDATION.md`
+items #74/#75 can be considered validated as of this entry.
