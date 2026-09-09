@@ -83,7 +83,10 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
     medianScore,
     topTicker: top?.ticker ?? null,
     topScore: top?.score ?? null,
-    deltaFromMedian: playScore - medianScore,
+    // Rounded here, not at each narrative call site — a raw float subtraction (e.g. 57.2 - 45.4)
+    // produces IEEE754 artifacts like 11.800000000000004 that read straight into the "vs median"
+    // narrative line unrounded (live repro: AMZN brief showed "+11.799999999999997 vs median").
+    deltaFromMedian: Math.round((playScore - medianScore) * 10) / 10,
   };
 }
 
