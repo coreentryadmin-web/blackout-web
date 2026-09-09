@@ -537,6 +537,7 @@ test("composeSwingPlayBrief: stale Vector snapshot envelope levels must not cite
       maxPain: 23.5,
       confluenceZones: [{ center: 25, kinds: ["gex"], score: 80 }],
       darkPoolLevels: [{ strike: 24.8, premium: 1_200_000, pct: 35 }],
+      magnet: { strike: 27, distancePct: 10.2, pull: "up" },
     } as SwingPlayBriefContext["vector"],
   };
   const brief = composeSwingPlayBrief(ctx);
@@ -551,6 +552,7 @@ test("composeSwingPlayBrief: stale Vector snapshot envelope levels must not cite
   assert.ok(!labels.includes("max pain"), "stale Vector max pain must be suppressed");
   assert.ok(!labels.some((l) => l.startsWith("confluence")), "stale Vector confluence must be suppressed");
   assert.ok(!labels.includes("dark pool"), "stale Vector dark pool must be suppressed");
+  assert.ok(!labels.includes("gamma magnet"), "stale Vector gamma magnet must be suppressed");
   const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
   assert.equal(postureEvidence, undefined, "stale Vector regime must not ground envelope dealer posture");
 });
@@ -1293,6 +1295,34 @@ test("composeSwingPlayBrief: dark pool envelope levels attribute Vector provenan
     "Vector",
     "dark pool levels come from Vector full-state, not HELIX tape",
   );
+});
+
+// FINDINGS 2026-09-09: the "Trade manager read" narrative (magnetCoaching) names the gamma
+// magnet as a decision-relevant price ("pull up toward this node"), but levelsFromContext never
+// surfaced it in the structured envelope.levels array — a "show on chart" follow-up or any other
+// Largo consumer of structured levels had no way to see the value the prose was pointing at.
+test("composeSwingPlayBrief: gamma magnet is surfaced as a structured envelope level, not narrative-only", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-09-05 16:00 ET",
+      spot: 120,
+      magnet: { strike: 134.06, distancePct: 11.7, pull: "up" },
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const magnet = brief.envelope.levels?.find((l) => l.label === "gamma magnet");
+  assert.ok(magnet, "gamma magnet level must be present");
+  assert.equal(magnet?.price, 134.06);
+  assert.equal(magnet?.provenance?.source, "Vector");
 });
 
 test("composeSwingPlayBrief: envelope level provenance uses ET stamps, not raw UTC ISO (C1)", () => {
