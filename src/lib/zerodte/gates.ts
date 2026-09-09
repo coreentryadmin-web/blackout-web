@@ -389,6 +389,17 @@ export type ZeroDteGateBlock = {
   unlock_et: string | null;
 };
 
+/** G-6 (2026-09-09, downgraded to informational/telemetry-only): the cross-system
+ *  conflict determination for this candidate, visible on the verdict for telemetry —
+ *  never blocks. `null` when the check does not apply (a CONDOR is delta-neutral and
+ *  has no directional side to oppose another desk's take with — mirrors the calibration
+ *  record's own `applicable: false`). */
+export type ZeroDteCrossSystemConflict = {
+  conflict: boolean;
+  /** Which system(s) this setup opposes (empty when clear). */
+  against: Array<"spx_slayer" | "nighthawk_edition">;
+};
+
 export type ZeroDteGateVerdict = {
   verdict: "COMMIT" | "BLOCKED";
   /** Every hard gate that failed — ALL of them, not just the first, so the SKIP
@@ -397,6 +408,8 @@ export type ZeroDteGateVerdict = {
   /** G-4/G-6 calibration verdict (logged on every evaluation, pinned to the ledger
    *  row on commit; NEVER blocks while in calibration mode). */
   calibration: ZeroDteGateCalibration;
+  /** G-6 cross-system conflict — non-blocking telemetry (see {@link ZeroDteCrossSystemConflict}). */
+  crossSystemConflict: ZeroDteCrossSystemConflict | null;
   /** G-19 (2026-09-09, downgraded from hard block to telemetry): true when this candidate
    *  is score>=85, FLOW-origin, and NOT Vector-winner/runner-aligned — the exact population
    *  the old F-5 top-band-inversion hard gate used to block. Never gates a commit; persisted
@@ -1215,36 +1228,38 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     );
   }
 
-  // G-6 — cross-system conflict hard gate (promoted from calibration 2026-07-16).
-  // A 0DTE entry opposing a live Slayer play or Night Hawk take on a correlated
-  // ticker needs score ≥ 80 to override the desk disagreement. DIRECTIONAL ONLY: a
-  // condor is delta-neutral, so it can't "oppose" another desk's directional take —
-  // there is no side to conflict with.
+  // G-6 — cross-system conflict: DOWNGRADED from hard gate to informational/telemetry-only
+  // (2026-09-09, operator-approved CTO gate-architecture review). Root cause: the
+  // 2026-09-08 loosening pass dropped CONFLICT_SCORE_FLOOR to 55, strictly BELOW
+  // ZERODTE_SCORE_FLOOR (G-3's own 65 floor). Since every gate in this stack evaluates
+  // independently and the overall verdict is BLOCKED if ANY gate fails, a conflicted
+  // setup can only ever have its score sit in [55, 65) to be "saved" by clearing G-6's
+  // floor — but a score in that range already fails G-3 regardless of G-6. G-6 has been
+  // STRUCTURALLY UNABLE to change any outcome since that pass: it never independently
+  // blocks anything G-3 doesn't already block, and never independently ADMITS anything
+  // G-3 already blocks. A hard gate that can't change the verdict is not a gate, it's
+  // dead weight with delusions of authority — so it no longer pushes a block. The
+  // conflict determination itself remains real and useful (Vector/Slayer/Night Hawk
+  // cross-desk disagreement is genuine information), so it now surfaces as a
+  // non-blocking `crossSystemConflict` field on the verdict for telemetry — visible on
+  // the ledger row (persisted below), never gating a commit. DIRECTIONAL ONLY: a condor
+  // is delta-neutral, so it can't "oppose" another desk's directional take — there is no
+  // side to conflict with (mirrors every other condor exemption in this stack).
+  let crossSystemConflict: ZeroDteCrossSystemConflict | null = null;
   if (!isCondor) {
     const tickerUp = input.ticker.toUpperCase();
-    const conflictSources: string[] = [];
+    const against: Array<"spx_slayer" | "nighthawk_edition"> = [];
     if (
       input.slayerLive != null &&
       SPX_CORRELATED_TICKERS.has(tickerUp) &&
       input.slayerLive.direction !== input.direction
     ) {
-      conflictSources.push(`live SPX Slayer ${input.slayerLive.direction}`);
+      against.push("spx_slayer");
     }
     if (input.nighthawkTake != null && input.nighthawkTake.direction !== input.direction) {
-      conflictSources.push(
-        `Night Hawk ${input.nighthawkTake.direction} take (edition ${input.nighthawkTake.edition_for})`
-      );
+      against.push("nighthawk_edition");
     }
-    if (conflictSources.length > 0 && input.score < CONFLICT_SCORE_FLOOR) {
-      blocks.push({
-        code: "cross_system_conflict",
-        reason:
-          `${input.direction === "long" ? "Long" : "Short"} opposes ${conflictSources.join(" and ")} — ` +
-          `score ${Math.round(input.score)} needs ≥${CONFLICT_SCORE_FLOOR} to override a cross-system conflict.`,
-        threshold: CONFLICT_SCORE_FLOOR,
-        unlock_et: null,
-      });
-    }
+    crossSystemConflict = { conflict: against.length > 0, against };
   }
 
   // WS-21 — source-recovery gate. DEFAULT-OFF: `requireHealthySource` is only true when
@@ -1331,6 +1346,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
     blocks,
     calibration: computeGateCalibration(input),
+    crossSystemConflict,
     topBandInversionFlag,
   };
 }
