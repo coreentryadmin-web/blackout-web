@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-09T17:48:45.744Z",
+  "updated_at": "2026-09-09T23:49:15.835Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "dd226e421f07b17a8804c45ce63c9c7ca3fd7b85",
+    "last_main_sha": "16883dbd2aaa5b87dc76d415df54c9bd4458aa2c",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-05T20:41:08.341Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T20:41:08.976Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T20:41:09.263Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-05T21:21:57.295Z",
       "type": "context_sync",
@@ -1303,9 +1285,178 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T23:49:14.570Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T23:49:15.263Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T23:49:15.835Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 15
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4672,
+      "title": "fix(zerodte): conviction field falls back to merit tier for BREAKOUT/PIN plays",
+      "branch": "fix/zerodte-conviction-null-breakout-pin",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T23:46:26Z"
+    },
+    {
+      "number": 4671,
+      "title": "fix(swing): gate counter-thesis fading-pillar read on thesisHealthUncalibrated",
+      "branch": "fix/swing-counter-thesis-uncalibrated-pillar",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T23:44:43Z"
+    },
+    {
+      "number": 4670,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/sync-heartbeat-state-2026-09-09l",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T23:37:40Z"
+    },
+    {
+      "number": 4669,
+      "title": "fix(audit): remove two phantom tools from largo-truncation-probe LANE_TOOLS",
+      "branch": "fix/largo-truncation-probe-phantom-swing-discovery-tool",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T23:28:12Z"
+    },
+    {
+      "number": 4668,
+      "title": "docs(audit): correct duplicate stale-OPEN entry for the already-fixed Meridian week-analytics finding",
+      "branch": "docs/meridian-week-analytics-duplicate-entry-2026-09-09",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T23:18:32Z"
+    },
+    {
+      "number": 4667,
+      "title": "docs(audit): correct stale OPEN status on the 2026-08-18 Meridian estimates/history finding",
+      "branch": "docs/meridian-estimates-history-stale-status-2026-09-09",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T23:06:53Z"
+    },
+    {
+      "number": 4663,
+      "title": "fix(swing): bound play-brief's upstream reads so a stall degrades instead of hanging",
+      "branch": "fix/swing-play-brief-source-timeout",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T21:06:09Z"
+    },
+    {
+      "number": 4662,
+      "title": "docs(audit): log RTH validation follow-up for three more swing fixes",
+      "branch": "docs/rth-validation-followup-2026-09-09",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T21:06:14Z"
+    },
+    {
+      "number": 4660,
+      "title": "fix(sse): stop unhandled promise rejections escaping stream tick sends",
+      "branch": "fix/sse-stream-tick-unhandled-rejection",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T18:47:54Z"
+    },
+    {
+      "number": 4658,
+      "title": "docs: document a third Node-test phantom-failure trap (--experimental-test-module-mocks)",
+      "branch": "docs/experimental-test-module-mocks-trap-2026-09-09",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T18:17:05Z"
+    },
+    {
+      "number": 4480,
+      "title": "chore(deps): bump next from 15.5.23 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:24:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:11:04Z"
+    },
+    {
+      "number": 4476,
+      "title": "chore(deps): bump the minor-and-patch group with 11 updates",
+      "branch": "dependabot/npm_and_yarn/minor-and-patch-0f6d4a5e5e",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T19:18:12Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
