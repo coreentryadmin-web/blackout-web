@@ -141,8 +141,12 @@ import {
   gateRejectionFor,
   runnerConfluenceCount,
   planQualityGateBlocks,
+  contractLiquidityGateBlocks,
   refreshPlanQualityGateBlocks,
+  refreshContractLiquidityGateBlocks,
   refreshMoneynessGateBlocks,
+  refreshQualificationDislocationGateBlocks,
+  refreshInputDesyncUnderlyingGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
@@ -684,6 +688,7 @@ export async function scanZeroDteBoard(flags?: {
         const planGateOpts = { chaseExempt: planChaseExempt(chaseCtx) };
         s.plan_chase_exempt = planGateOpts.chaseExempt;
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null, planGateOpts);
+        s.gate = refreshContractLiquidityGateBlocks(s.gate, s.plan ?? null);
         s.gate = refreshMoneynessGateBlocks(
           s.gate,
           s.otm_pct ?? null,
@@ -694,6 +699,26 @@ export async function scanZeroDteBoard(flags?: {
             ),
           }
         );
+        // G-23: attachContractPlans (and its refreshUnderlyingFromLiveSpot) has now run above —
+        // s.underlying_price/_as_of and s.plan are the real post-refresh values, so re-apply the
+        // dislocation circuit-breaker against them, mirroring the moneyness refresh just above.
+        s.gate = refreshQualificationDislocationGateBlocks(s.gate, {
+          qualificationPrice: s.qualification_underlying_price ?? null,
+          qualificationAsOfMs: parseIsoMs(s.qualification_underlying_price_as_of),
+          currentPrice: s.underlying_price ?? null,
+          currentAsOfMs: parseIsoMs(s.underlying_price_as_of),
+          quote: s.plan ? { bid: s.plan.bid, ask: s.plan.ask, mark: s.plan.mark } : null,
+          isCondor: s.play_type === "CONDOR",
+        });
+        // G-20 broadening (item 10): same reasoning as the G-23 refresh just above — under
+        // thesis-first attachContractPlans (and its refreshUnderlyingFromLiveSpot) has now run,
+        // so s.plan.quoteAgeMs and s.underlying_price_as_of are the real post-refresh values.
+        s.gate = refreshInputDesyncUnderlyingGateBlocks(s.gate, {
+          plan: s.plan ?? null,
+          underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
+          nowMs: reconcileNowMs,
+          isCondor: s.play_type === "CONDOR",
+        });
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
@@ -1087,6 +1112,15 @@ async function attachGateVerdicts(
       nowMs,
       bias,
       biasAsOfMs,
+      // G-20 broadening (item 10): the underlying's own live-quote observation instant, for
+      // the option-vs-underlying leg (ALL directional setups, not just index/ETF — see
+      // gates.ts's inputDesyncUnderlyingGateBlocks doc). In the ORDINARY (non-thesis-first)
+      // pipeline attachContractPlans has already run above (same ordering the otmPct/G-23
+      // comments describe), so underlying_price_as_of here is already the live-refreshed
+      // value; under thesis-first it is still pre-refresh and
+      // refreshInputDesyncUnderlyingGateBlocks (below) re-applies against the real refreshed
+      // value once that pass has happened, mirroring refreshQualificationDislocationGateBlocks.
+      underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
       governor,
       committedThisCycle,
       governorPremiumAtRisk,
@@ -1113,6 +1147,16 @@ async function attachGateVerdicts(
       // value — refreshMoneynessGateBlocks (below) re-applies the same caps once the refresh has
       // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
       otmPct: s.otm_pct ?? null,
+      // G-23 (same ordinary-vs-thesis-first split as otmPct above): qualification_underlying_price
+      // was frozen in enrichSetup BEFORE any refresh ever ran, so it always reflects the true
+      // qualification moment regardless of pipeline. underlying_price/_as_of, by contrast, are
+      // already live-refreshed here in the ordinary pipeline (attachContractPlans ran above) and
+      // still pre-refresh under thesis-first — refreshQualificationDislocationGateBlocks (below)
+      // re-applies against the real refreshed values once that pass has happened.
+      qualificationUnderlyingPrice: s.qualification_underlying_price ?? null,
+      qualificationUnderlyingPriceAsOfMs: parseIsoMs(s.qualification_underlying_price_as_of),
+      currentUnderlyingPrice: s.underlying_price ?? null,
+      currentUnderlyingPriceAsOfMs: parseIsoMs(s.underlying_price_as_of),
       intradayConflict: s.intraday_conflict,
       market_aligned: s.market_aligned ?? null,
       regime_structure: marketState?.regime_structure ?? null,
@@ -1195,6 +1239,14 @@ async function attachGateVerdicts(
     committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
   }
   return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
+}
+
+/** Parse an ISO-8601 as-of stamp to epoch-ms, or null on absence/malformed input — never NaN,
+ *  which would otherwise silently poison the G-23 dislocation-window arithmetic downstream. */
+function parseIsoMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
 }
 
 /**
@@ -1342,15 +1394,15 @@ async function attachContractPlans(
       mark: snap?.mark ?? null,
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
+      openInterest: snap?.openInterest ?? null,
+      dayVolume: snap?.dayVolume ?? null,
       quoteAgeMs: computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
-      // G-21 (2026-09-09): per-class min-quote-size floor (plan.ts's QUOTE_VALIDITY) —
+      // G-21 (2026-09-09): per-class min-quote-size floor (plan.ts's CONTRACT_LIQUIDITY) —
       // computed here (not in plan.ts, which is a dependency-free leaf) using the SAME
       // INDEX_ETF_TICKERS set G-1/G-9 already use. SPX/SPXW have no ETF share and aren't in
       // that set, so they're added explicitly — both are the deepest, most continuously
       // quoted options markets that exist and belong in the stricter bucket.
       tickerClass: zeroDteLiquidityTickerClass(s.ticker),
-      dayVolume: snap?.dayVolume ?? null,
-      openInterest: snap?.openInterest ?? null,
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
       vwap: s.vwap,
@@ -1590,7 +1642,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       verdict = {
         ...s.gate,
         verdict: "BLOCKED",
-        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null, planGateOpts)],
+        blocks: [
+          ...s.gate.blocks,
+          ...planQualityGateBlocks(s.plan ?? null, planGateOpts),
+          ...contractLiquidityGateBlocks(s.plan ?? null),
+        ],
       };
     }
     gateRejections.push(gateRejectionFor(s, verdict ?? null));
@@ -1758,7 +1814,15 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
     // setups carry gate=null and pass null here — the upsert's COALESCE pin keeps
     // the original commit-time verdict untouched either way.
-    gate_calibration_json: s.gate ? ({ ...s.gate.calibration } as unknown as Record<string, unknown>) : null,
+    // G-19 (2026-09-09): topBandInversionFlag rides alongside the G-4/G-6 calibration
+    // columns so the ledger can check for a recurrence of the F-5 top-band-inversion
+    // pattern without needing to re-derive it from raw score/origin after the fact.
+    gate_calibration_json: s.gate
+      ? ({
+          ...s.gate.calibration,
+          top_band_inversion_flag: s.gate.topBandInversionFlag,
+        } as unknown as Record<string, unknown>)
+      : null,
     // entry_context.cortex pins the FULL evidence vector (or the honest abstain
     // record) at commit — the §3.1 calibration loop's raw material. Refresh-lane
     // setups never ran the Cortex (s.cortex null → blob field null), and the

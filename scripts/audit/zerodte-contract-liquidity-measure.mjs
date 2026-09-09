@@ -1,6 +1,6 @@
 /**
  * 0DTE CONTRACT-LIQUIDITY MEASUREMENT — real bid/ask size + volume/OI distributions,
- * split by ticker class, so `QUOTE_VALIDITY.min_quote_size` (plan.ts) can be recalibrated
+ * split by ticker class, so `CONTRACT_LIQUIDITY.min_quote_size` (plan.ts, G-21) can be recalibrated
  * from EVIDENCE instead of the current universal floor of 1 (a single resting contract on
  * each side — the same bar for SPX and for a random single name).
  *

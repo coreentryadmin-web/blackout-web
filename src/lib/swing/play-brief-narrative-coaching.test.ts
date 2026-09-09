@@ -520,6 +520,43 @@ test("vectorPlayCoaching: returned line has an EVEN count of ** bold markers (no
   assert.doesNotMatch(line!, /^\*\*Vector desk: \*\*/);
 });
 
+// FINDINGS 2026-09-09 (live NRG repro): VectorPlayEmit.starred is documented (vector-play-engine.ts)
+// to ALWAYS have the headline as its first element. This coaching bullet rendered the headline once
+// via `vp.headline`, then rendered `vp.starred[0]` a second time under a separate "starred level"
+// label — duplicating the exact same text verbatim in one bullet.
+test("vectorPlayCoaching: does not duplicate the headline as a 'starred level' (starred[0] IS the headline)", () => {
+  const vec = {
+    play: {
+      headline: "POSITION · pivot at the 119.71 gamma flip — long above / short below",
+      invalidation: "5m close back through 119.71",
+      starred: [
+        "POSITION · pivot at the 119.71 gamma flip — long above / short below",
+        "Flip cross imminent — watch 119.71",
+      ],
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  const headlineOccurrences = (
+    line!.match(/POSITION · pivot at the 119\.71 gamma flip — long above \/ short below/g) ?? []
+  ).length;
+  assert.equal(headlineOccurrences, 1, `headline must appear once, not duplicated as "starred level": ${line}`);
+  assert.match(line!, /starred level \*\*Flip cross imminent — watch 119\.71\*\*/);
+});
+
+test("vectorPlayCoaching: omits the 'starred level' clause when there is no starred item beyond the headline", () => {
+  const vec = {
+    play: {
+      headline: "Ride momentum",
+      invalidation: "below 100",
+      starred: ["Ride momentum"],
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  assert.doesNotMatch(line!, /starred level/);
+});
+
 test("vexCoaching: narrates vanna flip", () => {
   const line = vexCoaching(
     {
@@ -704,6 +741,45 @@ test("technicalsCoaching: aligned LONG + bullish tape notes alignment without ec
   const line = technicalsCoaching(vec, play({ direction: "LONG" }));
   assert.match(line!, /chart reads bullish/i);
   assert.match(line!, /aligns with swing direction/i);
+});
+
+test("technicalsCoaching: VWAP-vs-spot wording is not inverted (2026-09-09 live POET repro)", () => {
+  // Root cause: `const above = vec.spot >= t.vwap` computes whether SPOT is at/above VWAP, but the
+  // label it fed — `VWAP (${above ? "above" : "below"} spot)` — describes where VWAP sits relative
+  // to spot, which is the OPPOSITE fact. "spot at/above vwap" means VWAP is BELOW spot, not above.
+  // Live repro (POET, 2026-09-09 00:26 ET): spot 8.38 < vwap 8.44, so VWAP is genuinely ABOVE spot —
+  // the shipped narrative printed "VWAP 8.44 (below spot)", stating the reverse of the real
+  // relationship, directly contradicting the correct "Chart technicals" section's own "price below
+  // session VWAP" line two blocks away in the same brief.
+  const spotBelowVwap = {
+    spot: 8.38,
+    technicals: {
+      vwap: 8.44,
+      emaStack: "down",
+      rsi: 52,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "down", level: 8.35 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line1 = technicalsCoaching(spotBelowVwap, play({ direction: "LONG", ticker: "POET" }));
+  // spot (8.38) is below vwap (8.44) => VWAP sits ABOVE spot.
+  assert.match(line1!, /VWAP \*\*8\.44\*\* \(above spot\)/i);
+
+  const spotAboveVwap = {
+    spot: 95,
+    technicals: {
+      vwap: 90,
+      emaStack: "up",
+      rsi: 60,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "up", level: 92 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line2 = technicalsCoaching(spotAboveVwap, play({ direction: "LONG", ticker: "NVDA" }));
+  // spot (95) is above vwap (90) => VWAP sits BELOW spot.
+  assert.match(line2!, /VWAP \*\*90\.00\*\* \(below spot\)/i);
 });
 
 test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => {

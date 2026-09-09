@@ -252,7 +252,11 @@ export function vectorPlayCoaching(
   const parts: string[] = [];
   if (vp.headline) parts.push(`Vector desk: **${vp.headline}**`);
   if (vp.invalidation) parts.push(`invalidation **${vp.invalidation}**`);
-  if (vp.starred?.[0]) parts.push(`starred level **${vp.starred[0]}**`);
+  // `starred[0]` is documented (VectorPlayEmit.starred, vector-play-engine.ts) to ALWAYS be the
+  // headline itself — skip it here since the headline is already rendered above; showing it again
+  // under "starred level" duplicated the exact same text verbatim (live repro: NRG brief 2026-09-08).
+  const nextStarred = vp.starred?.slice(1)?.find(Boolean);
+  if (nextStarred) parts.push(`starred level **${nextStarred}**`);
 
   let line = parts.join(" · ");
   if (!aligned && vp.thesis) {
@@ -569,8 +573,17 @@ export function technicalsCoaching(
   if (!t) return null;
   const parts: string[] = [];
   if (t.vwap != null && vec?.spot != null) {
-    const above = vec.spot >= t.vwap;
-    parts.push(`VWAP **${t.vwap.toFixed(2)}** (${above ? "above" : "below"} spot)`);
+    // BUG (found 2026-09-09 live POET repro): this used to read `above = spot >= vwap` and then
+    // label `(${above ? "above" : "below"} spot)` — but `above` answers "is SPOT at/above VWAP",
+    // which is the OPPOSITE fact from "is VWAP above/below spot". Spot at/above VWAP means VWAP is
+    // BELOW spot, not above. Every brief therefore printed the inverse of reality: live POET had
+    // spot 8.38 < vwap 8.44 (VWAP genuinely above spot) and the narrative said "(below spot)" —
+    // directly contradicting the correct wording ("price below session VWAP") the separate "Chart
+    // technicals" section renders two blocks away in the same brief. `technicalsBias()` below
+    // (play-brief-technicals.ts) computes the bull/bear VOTE from the same `spot >= vwap` test
+    // correctly — only this display label had the sense flipped.
+    const vwapAtOrBelowSpot = vec.spot >= t.vwap;
+    parts.push(`VWAP **${t.vwap.toFixed(2)}** (${vwapAtOrBelowSpot ? "below" : "above"} spot)`);
   }
   if (t.rsi != null) {
     const zone = t.rsi > 70 ? "overbought" : t.rsi < 30 ? "oversold" : "neutral";

@@ -1435,7 +1435,7 @@ test("G-9 observation clock: just-fetched book stays fresh even when exchange la
 // ── G-21 · per-class liquidity-floor ticker classification ──────────────────────
 // zeroDteLiquidityTickerClass is the bridge between gates.ts's INDEX_ETF_TICKERS (SPY/QQQ/
 // IWM/DIA) + SPX/SPXW (added explicitly — no ETF share, so not in that set) and plan.ts's
-// per-class QUOTE_VALIDITY.min_quote_size_by_class floor. Measured 2026-09-09
+// per-class CONTRACT_LIQUIDITY.min_quote_size_by_class floor. Measured 2026-09-09
 // (scripts/audit/zerodte-contract-liquidity-measure.mjs) — see plan.ts's comment for evidence.
 
 test("G-21 zeroDteLiquidityTickerClass: SPX/SPXW + INDEX_ETF_TICKERS → index_etf, everything else → single", async () => {
