@@ -1736,7 +1736,15 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
     // setups carry gate=null and pass null here — the upsert's COALESCE pin keeps
     // the original commit-time verdict untouched either way.
-    gate_calibration_json: s.gate ? ({ ...s.gate.calibration } as unknown as Record<string, unknown>) : null,
+    // G-19 (2026-09-09): topBandInversionFlag rides alongside the G-4/G-6 calibration
+    // columns so the ledger can check for a recurrence of the F-5 top-band-inversion
+    // pattern without needing to re-derive it from raw score/origin after the fact.
+    gate_calibration_json: s.gate
+      ? ({
+          ...s.gate.calibration,
+          top_band_inversion_flag: s.gate.topBandInversionFlag,
+        } as unknown as Record<string, unknown>)
+      : null,
     // entry_context.cortex pins the FULL evidence vector (or the honest abstain
     // record) at commit — the §3.1 calibration loop's raw material. Refresh-lane
     // setups never ran the Cortex (s.cortex null → blob field null), and the

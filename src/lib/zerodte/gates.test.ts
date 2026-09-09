@@ -1794,21 +1794,30 @@ test("G-18: early window prime score (78) commits", () => {
   assert.ok(!v.blocks.some((b) => b.code === "early_window_prime_score"));
 });
 
-test("G-19: score 88+ is BLOCKED without Vector winner", () => {
+// G-19 (2026-09-09, operator-approved CTO gate-architecture review): DOWNGRADED from a
+// hard block to non-blocking telemetry (`topBandInversionFlag`). score>=85 FLOW-origin now
+// proceeds normally through the rest of the stack; the flag marks the exact population the
+// old hard gate used to block, for recurrence analysis, but never gates a commit.
+
+test("G-19 TELEMETRY: score 88+ FLOW-origin, no Vector alignment — COMMITS, topBandInversionFlag true", () => {
   const v = evaluateZeroDteGates(input({ score: 88 }));
-  assert.ok(v.blocks.some((b) => b.code === "score_top_band"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "score_top_band"), false);
+  assert.equal(v.topBandInversionFlag, true);
 });
 
-test("G-19: score 88+ BREAKOUT-only origin is not blocked (F-5 measured on FLOW)", () => {
+test("G-19 TELEMETRY: score 88+ BREAKOUT-only origin — flag false (F-5 measured on FLOW only)", () => {
   const v = evaluateZeroDteGates(input({ score: 88, discovery_origin: ["BREAKOUT"] }));
-  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.topBandInversionFlag, false);
 });
 
-test("G-19: score 88+ Vector winner aligned commits", () => {
+test("G-19 TELEMETRY: score 88+ Vector winner aligned — flag false (was the exemption population)", () => {
   const v = evaluateZeroDteGates(
     input({
       score: 88,
       direction: "long",
+      bias: "up",
       vector_pulse: {
         premium_pct: 80,
         peak_premium_pct: 90,
@@ -1824,14 +1833,16 @@ test("G-19: score 88+ Vector winner aligned commits", () => {
       },
     })
   );
-  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.topBandInversionFlag, false);
 });
 
-test("G-19: score 88+ Vector runner aligned at 68+ commits (not only winners)", () => {
+test("G-19 TELEMETRY: score 88+ Vector runner aligned at 68+ — flag false (not only winners)", () => {
   const v = evaluateZeroDteGates(
     input({
       score: 88,
       direction: "long",
+      bias: "up",
       vector_pulse: {
         premium_pct: 28,
         peak_premium_pct: 35,
@@ -1847,7 +1858,18 @@ test("G-19: score 88+ Vector runner aligned at 68+ commits (not only winners)", 
       },
     })
   );
-  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.topBandInversionFlag, false);
+});
+
+test("G-19 TELEMETRY: a CONDOR never sets topBandInversionFlag (mirrors the live gate's own !isCondor scoping)", () => {
+  const v = evaluateZeroDteGates({
+    ...input({ ticker: "QQQ", score: 90 }),
+    play_type: "CONDOR",
+    condorPlan: null,
+    plan: null,
+  });
+  assert.equal(v.topBandInversionFlag, false);
 });
 
 test("runnerConfluenceCount: uses pinned confirmations when higher than gate leg count", async () => {

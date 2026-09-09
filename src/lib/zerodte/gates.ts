@@ -375,6 +375,11 @@ export type ZeroDteGateVerdict = {
   /** G-4/G-6 calibration verdict (logged on every evaluation, pinned to the ledger
    *  row on commit; NEVER blocks while in calibration mode). */
   calibration: ZeroDteGateCalibration;
+  /** G-19 (2026-09-09, downgraded from hard block to telemetry): true when this candidate
+   *  is score>=85, FLOW-origin, and NOT Vector-winner/runner-aligned — the exact population
+   *  the old F-5 top-band-inversion hard gate used to block. Never gates a commit; persisted
+   *  for recurrence analysis. */
+  topBandInversionFlag: boolean;
 };
 
 export type ZeroDteGateInput = {
@@ -706,36 +711,31 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-19 — F-5 top-band inversion hard block (85+ measured 33% WR vs 63.6% at 75–84).
-  // FLOW-origin only — BREAKOUT/PIN score on independent scales where 85+ is normal.
-  // Vector winner OR runner (≥68 score) alignment exempts — same predicate as G-17/G-18.
+  // G-19 — F-5 top-band inversion: DOWNGRADED from hard block to non-blocking telemetry
+  // (2026-09-09, operator-approved CTO gate-architecture review). Previously blocked
+  // FLOW-origin score>=85 unless Vector confirmed winner/runner. Removed as a hard block —
+  // score>=85 FLOW-origin now proceeds normally through the rest of the stack. The
+  // determination itself (would this candidate have been in the population the old hard
+  // gate targeted?) remains real signal, so it now surfaces as the non-blocking
+  // `topBandInversionFlag` field on the verdict — true precisely for the population that
+  // WOULD have been blocked under the old logic (score>=85 AND FLOW-origin AND NOT
+  // Vector-winner/runner-aligned) — persisted to the ledger (gate_calibration_json,
+  // scan.ts) so future analysis can check for a recurrence of the F-5 inversion pattern
+  // without needing to re-derive it from raw scores/origins after the fact.
   const g19Origins = input.discovery_origin ?? [];
   const g19FlowBacked = g19Origins.length === 0 || g19Origins.includes("FLOW");
-  if (
-    !isCondor &&
-    g19FlowBacked &&
-    input.score >= 85 &&
-    !(
-      input.vector_g17_exempt === true ||
-      vectorExemptsG19TopBand(input.direction, input.score, input.vector_pulse) ||
-      planG19Exempt(input.direction, input.score, input.vector_pulse, {
-        discovery_origin: input.discovery_origin,
-        gamma_regime: input.gamma_regime ?? null,
-        market_aligned: input.market_aligned ?? null,
-        regime_structure: input.regime_structure ?? null,
-        market_state_confidence: input.market_state_confidence,
-      })
-    )
-  ) {
-    blocks.push({
-      code: "score_top_band",
-      reason:
-        `Score ${Math.round(input.score)} sits in the 85+ band where measured WR inverted ` +
-        "(33% vs 63.6% prime band, F-5) — only Vector-confirmed winners/runners commit here.",
-      threshold: 85,
-      unlock_et: null,
+  const g19WouldHaveExempted =
+    input.vector_g17_exempt === true ||
+    vectorExemptsG19TopBand(input.direction, input.score, input.vector_pulse) ||
+    planG19Exempt(input.direction, input.score, input.vector_pulse, {
+      discovery_origin: input.discovery_origin,
+      gamma_regime: input.gamma_regime ?? null,
+      market_aligned: input.market_aligned ?? null,
+      regime_structure: input.regime_structure ?? null,
+      market_state_confidence: input.market_state_confidence,
     });
-  }
+  const topBandInversionFlag =
+    !isCondor && g19FlowBacked && input.score >= 85 && !g19WouldHaveExempted;
 
   // G-12 — confluence floor (Phase 1, 2026-07-24). DIRECTIONAL ONLY: confluence counts how many of
   // {VWAP-side, market-aligned} agree with the setup's DIRECTION — a delta-neutral condor has no
@@ -1171,6 +1171,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
     blocks,
     calibration: computeGateCalibration(input),
+    topBandInversionFlag,
   };
 }
 

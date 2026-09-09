@@ -862,7 +862,7 @@ export type ZeroDteGateFailure =
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
   | "horizon_weekly_fallback" // G-15: WEEKLY_FALLBACK excluded — not same-day gradable on 0DTE ledger
   | "score_floor" // G-3: post-edge-layer score below origin-aware floor (65 FLOW / looser BREAKOUT·PIN)
-  | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse)
+  | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse) — DOWNGRADED 2026-09-09 to non-blocking telemetry (ZeroDteGateVerdict.topBandInversionFlag); this code is retained as a historical/type value only and is never pushed by evaluateZeroDteGates anymore
   | "early_window_prime_score" // G-18: sub-prime scores in early window
   | "single_rail_corroboration" // G-17: the 65-74 band needs the prime floor (≥75), any origin combo
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
