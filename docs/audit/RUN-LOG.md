@@ -11,7 +11,26 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
-## 2026-09-09 (12:20 UTC) — [SEO] Lane heartbeat: prod re-validated, sweep clean, llms.txt link audit (all 73 URLs healthy)
+## 2026-09-09 (13:33 UTC / Wed 2026-09-09 09:33 ET) — [SEO] RTH wake: gamma-snapshot liveness + live-data CLS both confirmed
+
+**Severity.** — (no defect found)
+
+Clock self-check: Wed 2026-09-09 09:33 ET, not in `US_MARKET_HOLIDAYS` — genuine trading day,
+inside the 09:30-13:00 ET window, so did the narrower public-surface job instead of normal SEO
+work.
+
+`/api/public/gex-snapshot?ticker=SPX` polled twice ~6s apart: `spot` ticking (7648.68 → 7647.94),
+`call_wall` moved 8000 → 7800 (wall levels themselves update, not just spot), `session: OPEN`,
+`degraded: false`, staleness 22-24s. `flip: null` again this session with the same honest `read`
+explanation (dealers net short gamma at every strike) — consistent, not a fluke.
+
+Purged the Cloudflare edge (`purge_cache` for `/` and `/tools/gamma-snapshot`), confirmed
+`cf-cache-status: MISS` on the next fetch, then measured CLS with real RTH data actively
+rendering: homepage **0.0299 GOOD** (consistent with the 13:33 UTC 09-08 reading of 0.0319 — same
+order of magnitude, confirms that was a real measurement, not noise), `/tools/gamma-snapshot`
+itself **0 GOOD**.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
 
 **Severity.** — (no defect found)
 
