@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T06:52:00Z",
+  "lastUpdated": "2026-09-10T07:20:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -74,6 +74,12 @@
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
   "checkIns": [
+    {
+      "at": "2026-09-10T07:20:00Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, next hourly cycle)",
+      "result": "REAL FIX SHIPPED. PR #4714 (another lane's follow-up sweep to my own #4703) landed on main just before this cycle and flagged src/features/nighthawk/lib/edition-stale.ts's publishedAtEtMeta() as 'confirmed likely REAL, same ICU midnight-as-24 shape as #4703' -- squarely my lane's file. Verified the reachability claim myself (publishedAtEtMeta has no time-of-day gate on the STAMP it parses, unlike its isInEditionWindow/inNighthawkEditionCatchupAlertWindow siblings in the same file which ARE confirmed latent), confirmed it's a real bug: a published_at genuinely stamped 00:00-00:59 ET on 'today' would compute minutes=1440-1499 instead of 0-59, making shouldRebuildStalePublishedEdition wrongly skip a rebuild it should trigger. Branched (fix/edition-stale-midnight-hour24), RED->GREEN (2 new tests, both failed pre-fix), applied the same %24 normalisation #4703 used, full Night Hawk suite 1358/1358 pass, tsc clean. PR #4715 opened (draft), subscribed. Per the now-rescinded CARVE-OUT, will merge directly once CI is green -- no Cursor sign-off wait.",
+      "prOpened": "https://github.com/coreentryadmin-web/blackout-web/pull/4715"
+    },
     {
       "at": "2026-09-10T06:09:00Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, base v3 template -- v4/v5 already logged above)",
