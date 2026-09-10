@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T12:42:38.247Z",
+  "lastUpdated": "2026-09-10T12:52:20.988Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -216,6 +216,11 @@
       "at": "2026-09-10T12:42:38.247Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "Re-ran npm run healthcheck:legacy (all GREEN, no change). OUTCOME-HONESTY FORENSICS: examined the record's failure-mode debrief (GET /api/market/nighthawk/record's debrief field, and the admin analytics debrief_report.improvement_queue) -- found a real, live 'pulled_wrongly' tag (n=1, below 3-instance threshold, correctly not escalated) confirming the pull-decision counterfactual grading mechanism is honest and self-critical (catches its own mistakes, not just a rubber stamp). Then found something bigger: the improvement_queue's #1 item (failure_mode:wrong_direction:dominant, n=15, 53.6% share) carried a suggestion telling readers to 'add a book-vs-tape alignment veto at publish' -- cross-checked FINDINGS.md and found that exact gate (G-N4 book_tape_conflict, publish-gates.ts) shipped 2026-08-03, over a month ago, SPECIFICALLY in response to this same signal. The static suggestion string was never updated after the fix landed -- a real, live-production documentation-accuracy defect that actively misdirects anyone (human or a future Claude/Cursor session) reading the queue into thinking a shipped fix is missing. FIXED: PR #4725 (fix/nighthawk-wrong-direction-suggestion-stale, draft, CI pending) -- text-only change, rewrote the suggestion to name G-N4 as already live/deliberately-narrow and point at gate_validation.blocked_value as the right measurement before touching gate scope (no gate logic touched, staying inside the repo's 'measure before changing a gate' discipline). RED test built from the live signal + FINDINGS.md cross-check failed pre-fix, passes post-fix. Full debrief-aggregate suite 27/27, full Night Hawk suite 1361/1361, tsc clean, eslint clean. Flagged in the PR/finding: the other 10 FAILURE_MODE_SUGGESTION entries were only spot-checked, not fully staleness-audited -- worth a dedicated follow-up sweep, not done this cycle. Subscribed to PR activity."
+    },
+    {
+      "at": "2026-09-10T12:52:20.988Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
+      "result": "Re-ran npm run healthcheck:legacy (all GREEN, no change -- same 3 open picks). PR #4725: verify now GREEN (completed 12:51:35Z), CodeQL/Analyze/dispatch/triage all green, mergeable. Undraft attempts x2 this cycle both hit the same documented budget-#4 AGENT_RELEASE_TOKEN rate limit as PR #4722 hit earlier today (which eventually cleared and merged cleanly on retry a few cycles later) -- same expected/known pattern, continuing to retry once per cycle rather than escalating. Last of today's 4-trigger ~15-min-cadence set; cycle wraps to the :06 offset next, where the undraft will be retried again."
     }
   ],
   "knownOpenItems": {
