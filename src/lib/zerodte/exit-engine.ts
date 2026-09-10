@@ -218,21 +218,39 @@ export function protectiveFloorMark(entryPremium: number, floorPnlPct: number): 
  * The mark to persist on an engine EXIT. Ratchet/runner floor exits honor the floor
  * (a gap-through between poll ticks cannot finish red when breakeven was armed).
  * Thesis/plan/flat exits use the observed mark.
+ *
+ * `honored` reflects whether the FLOOR MECHANISM actually determined the outcome —
+ * i.e. whether the floor (computed from the RAW `observedMark`, before any
+ * cent-rounding) was strictly better than the raw print — not whether the final
+ * ROUNDED `mark` happens to differ from the rounded `observedMark`. Those two
+ * questions usually agree, but diverge at a rounding boundary: when the raw
+ * observed mark is just below the floor by less than half a cent, both round to
+ * the SAME cent value, so a post-rounding comparison reads "not honored" even
+ * though the floor is what determined `mark`. (Found live 2026-09-10, QQQ:
+ * observed 3.995 vs a 4.00 breakeven floor on ENTRY 4.0 — the floor correctly won
+ * via `Math.max`, but the old `mark !== markObserved` check saw two rounded 4.00s
+ * and called it "not honored", which routed `pnl_pct` in `buildExitContext` down
+ * the RAW-observed-mark branch and persisted a red exit for a trade the engine's
+ * own `exit_detail` said "cannot finish red".)
  */
 export function resolveExitMark(
   decision: ExitDecision,
   entryPremium: number,
   observedMark: number
-): number {
+): { mark: number; honored: boolean } {
   const floor = decision.floorPnlPct;
   if (
     decision.action === "EXIT" &&
     floor != null &&
     (decision.reason.startsWith("ratchet") || decision.reason.startsWith("runner_floor"))
   ) {
-    return round2(Math.max(observedMark, protectiveFloorMark(entryPremium, floor)));
+    const floorMark = protectiveFloorMark(entryPremium, floor);
+    // Raw, unrounded comparison — the same values Math.max below actually compares —
+    // so `honored` can never disagree with which value determined the fill.
+    const honored = floorMark > observedMark;
+    return { mark: round2(Math.max(observedMark, floorMark)), honored };
   }
-  return round2(observedMark);
+  return { mark: round2(observedMark), honored: false };
 }
 
 /** The snake_case reason for a floor breach/arm at this floor level. */
@@ -736,14 +754,14 @@ export function buildExitContext(
   nowMs: number
 ): ZeroDteExitContext {
   const markObserved = round2(observedMark);
-  const mark =
+  // Provenance: `honored` comes straight from resolveExitMark's own raw-value comparison — the
+  // single source of truth for whether the floor mechanism determined the fill — rather than
+  // being re-derived here by comparing the two ROUNDED values, which can disagree with it at a
+  // rounding boundary (see resolveExitMark's doc comment / the QQQ finding it fixes).
+  const { mark, honored: markHonored } =
     entryPremium != null && entryPremium > 0
       ? resolveExitMark(decision, entryPremium, observedMark)
-      : markObserved;
-  // Provenance: `mark` differs from the observed print ONLY when resolveExitMark honored a
-  // protective floor/stop. Compare the two resolved values directly rather than re-deriving the
-  // floor condition, so this flag cannot drift from what resolveExitMark actually did.
-  const markHonored = mark !== markObserved;
+      : { mark: markObserved, honored: false };
   return {
     reason: decision.reason,
     detail: decision.detail,

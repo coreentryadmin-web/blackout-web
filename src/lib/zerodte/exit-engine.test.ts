@@ -391,9 +391,37 @@ test("buildExitContext: a thesis exit's pnl_pct must not be erased by cent-round
   );
 });
 
+// Live finding, 2026-09-10 (QQQ short): peak +47.73% armed the breakeven floor (0%,
+// floor mark 4.00 on ENTRY=4.0), the observed print was 3.995 — RAW below the floor,
+// so `Math.max` correctly picked the floor for `mark`. But 3.995 cent-rounds to 4.00,
+// the SAME rounded value as the floor, so the OLD `mark !== markObserved` honored-check
+// (comparing two already-rounded numbers) read "not honored" — sending pnl_pct down the
+// RAW-observed-mark branch and persisting exit_pnl_pct -0.13% for a trade whose own
+// exit_detail said "the protective floor exits so the green trade cannot finish red".
+// honored must come from the RAW (pre-rounding) comparison the floor mechanism itself
+// used, not from comparing the two post-rounding values.
+test("buildExitContext: a floor mark that rounds to the same cent as the raw observed print is still honored", () => {
+  const decision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.995 })); // peak +20%, observed −0.125%
+  assert.equal(decision.reason, "ratchet_breakeven_floor");
+  const ctx = buildExitContext(decision, ENTRY, 3.995, 4.8, Date.UTC(2026, 6, 14, 15, 0, 0));
+  assert.equal(ctx.mark, 4.0, "the floor (4.00) still wins over the raw observed 3.995");
+  assert.equal(
+    ctx.mark_honored,
+    true,
+    "the floor determined the fill even though round2(3.995) coincidentally also reads 4.00"
+  );
+  assert.equal(
+    ctx.pnl_pct,
+    0,
+    "a floor-honored exit must price off the floor mark, not the raw observed print that lost to it"
+  );
+});
+
 test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed", () => {
   const floorDecision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.5 }));
-  assert.equal(resolveExitMark(floorDecision, ENTRY, 3.5), 4.0);
+  const floorResolved = resolveExitMark(floorDecision, ENTRY, 3.5);
+  assert.equal(floorResolved.mark, 4.0);
+  assert.equal(floorResolved.honored, true);
   const thesisDecision = evaluateExitState(
     input({
       currentMark: 3.2,
@@ -401,7 +429,9 @@ test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed
       cortexEvidence: evidence([{ stance: "veto", source: "wall-trend" }]),
     })
   );
-  assert.equal(resolveExitMark(thesisDecision, ENTRY, 3.2), 3.2);
+  const thesisResolved = resolveExitMark(thesisDecision, ENTRY, 3.2);
+  assert.equal(thesisResolved.mark, 3.2);
+  assert.equal(thesisResolved.honored, false);
 });
 
 test("protectiveFloorMark: entry-scaled floor premium", () => {
