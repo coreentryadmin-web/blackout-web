@@ -700,3 +700,39 @@ test("realized_pct is always carried, so a peak can never be shown without its d
     if (v.is_peak) assert.notEqual(v.realized_pct, null);
   }
 });
+
+// ── exit_pnl_pct wins over a stale live_pnl_pct on CLOSED rows ─────────────────────────
+//
+// live_pnl_pct FREEZES once a row closes (the live-marks poller stops re-quoting a dead
+// contract), so it can lag the real exit tick. Measured live 2026-09-10: QQQ's board row read
+// live_pnl_pct: 0 (entry 0.22 rounded == last poll's rounded mark 0.22) while its own
+// exit_pnl_pct: -2.27 (raw mark 0.215) was the true, final result.
+test("a peak that banked tranches discloses the TRUE exit result, not the frozen pre-exit live mark", () => {
+  const v = closedPnlDisplay({
+    status: "CLOSED",
+    peak_pnl_pct: 47.73,
+    live_pnl_pct: 0,
+    exit_pnl_pct: -2.27,
+  });
+  assert.equal(v.is_peak, true, "47.73 peak arms at least one tranche under any regime");
+  assert.equal(v.pct, 47.73, "the peak badge itself is unchanged by this fix");
+  assert.equal(v.realized_pct, -2.27, "disclosure must show the real exit, not the frozen 0%");
+});
+
+test("an UNBANKED closed row displays the true exit result too, not the frozen pre-exit live mark", () => {
+  const v = closedPnlDisplay({
+    status: "CLOSED",
+    peak_pnl_pct: null,
+    live_pnl_pct: 5,
+    exit_pnl_pct: -10,
+  });
+  assert.equal(v.is_peak, false);
+  assert.equal(v.pct, -10, "the PRIMARY badge must show the real exit, not a stale +5%");
+  assert.equal(v.realized_pct, -10);
+});
+
+test("older payloads without exit_pnl_pct are unaffected — falls back to live_pnl_pct exactly as before", () => {
+  const v = closedPnlDisplay({ status: "CLOSED", peak_pnl_pct: null, live_pnl_pct: -50 });
+  assert.equal(v.pct, -50);
+  assert.equal(v.realized_pct, -50);
+});

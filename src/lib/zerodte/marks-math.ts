@@ -284,21 +284,31 @@ export function trimScaleTranchesArmed(
  *
  * `is_peak` is returned rather than inferred by the caller so the disclosure and the number can
  * never drift apart: any surface showing the peak is obliged to show `realized_pct` too.
+ *
+ * `live_pnl_pct` FREEZES once a row closes — the live-marks poller stops re-quoting a dead
+ * contract, so it holds whatever was last observed BEFORE the exit tick, not the exit itself.
+ * `exit_pnl_pct` (when the exit engine recorded one) is the true final result, computed off the
+ * same raw pre-rounding values #4737 fixed for `mark_honored`/`pnl_pct`. Prefer it for both the
+ * displayed number and the disclosure so a closed row can't show a stale pre-exit snapshot —
+ * measured live 2026-09-10: QQQ's board row read `live_pnl_pct: 0` (entry 0.22 == last poll's
+ * rounded mark 0.22) while its own `exit_pnl_pct: -2.27` (raw mark 0.215) was the real result.
  */
 export function closedPnlDisplay(row: {
   status?: string | null;
   peak_pnl_pct?: number | null;
   live_pnl_pct?: number | null;
+  exit_pnl_pct?: number | null;
   trim_regime?: TrimScaleRegime | null;
 }): { pct: number | null; is_peak: boolean; tranches_armed: number; realized_pct: number | null } {
   const regime = row.trim_regime ?? "neutral";
   const armed = trimScaleTranchesArmed(row.peak_pnl_pct ?? null, regime);
   const isPeak = row.status === "CLOSED" && row.peak_pnl_pct != null && armed > 0;
+  const realized = row.exit_pnl_pct ?? row.live_pnl_pct ?? null;
   return {
-    pct: isPeak ? (row.peak_pnl_pct ?? null) : (row.live_pnl_pct ?? null),
+    pct: isPeak ? (row.peak_pnl_pct ?? null) : realized,
     is_peak: isPeak,
     tranches_armed: armed,
-    realized_pct: row.live_pnl_pct ?? null,
+    realized_pct: realized,
   };
 }
 

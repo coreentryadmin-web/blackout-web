@@ -82,6 +82,9 @@ type LedgerRow = {
   floor_pnl_pct?: number | null;
   exit_reason?: "ratchet" | "thesis" | "flat" | "target" | "stop" | null;
   exit_detail?: string | null;
+  /** The exit engine's own final P&L % at close — the true realized result, unlike
+   *  `live_pnl_pct` which freezes at the last live-marks poll BEFORE the exit tick. */
+  exit_pnl_pct?: number | null;
   /** B-9: quote timestamp/provenance when the live-marks lane served last_mark. */
   mark_as_of?: string | null;
   mark_source?: ZeroDteMarkSource | null;
@@ -253,6 +256,8 @@ type PlayRow = {
   floor_pnl_pct: number | null;
   exit_reason: "ratchet" | "thesis" | "flat" | "target" | "stop" | null;
   exit_detail: string | null;
+  /** The exit engine's own final P&L % at close — see LedgerRow. */
+  exit_pnl_pct: number | null;
   plan_outcome: string | null;
   plan_pnl_pct: number | null;
   first_flagged_at: string | null;
@@ -358,6 +363,7 @@ export function mergePlays(
     floor_pnl_pct: r.floor_pnl_pct ?? null,
     exit_reason: r.exit_reason ?? null,
     exit_detail: r.exit_detail ?? null,
+    exit_pnl_pct: r.exit_pnl_pct ?? null,
     plan_outcome: r.plan_outcome,
     plan_pnl_pct: r.plan_pnl_pct,
     first_flagged_at: r.first_flagged_at,
@@ -420,6 +426,7 @@ export function mergePlays(
       floor_pnl_pct: null,
       exit_reason: null,
       exit_detail: null,
+      exit_pnl_pct: null,
       plan_outcome: null,
       plan_pnl_pct: null,
       first_flagged_at: s.first_seen,
@@ -759,7 +766,7 @@ function StatsCell({ row }: { row: PlayRow }) {
               // closed rows carry "thesis" and "flat", so on 2026-08-20 it rendered on NONE of
               // the seven and the member had no way to reach the realized figure at all.
               showPeak
-              ? `Peak excursion after ${tranchesArmed} trim tranche${tranchesArmed === 1 ? "" : "s"} banked — as-managed realized ${row.live_pnl_pct != null ? `${row.live_pnl_pct >= 0 ? "+" : ""}${row.live_pnl_pct.toFixed(1)}%` : "—"}`
+              ? `Peak excursion after ${tranchesArmed} trim tranche${tranchesArmed === 1 ? "" : "s"} banked — as-managed realized ${pnlView.realized_pct != null ? `${pnlView.realized_pct >= 0 ? "+" : ""}${pnlView.realized_pct.toFixed(1)}%` : "—"}`
               : undefined
         }
       >
