@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T09:38:00Z",
+  "lastUpdated": "2026-09-10T09:53:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -74,6 +74,11 @@
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
   "checkIns": [
+    {
+      "at": "2026-09-10T09:53:00Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "PR #4718 RESOLVED. Rate limit cleared, MCP undraft succeeded. automerge.yml did NOT auto-merge it (mergeable_state went clean but merged stayed false, no enable-automerge run fired post-undraft within the check window) -- per CLAUDE.md's own documented automerge.yml token-scope gap, merged it manually via GitHub MCP merge_pull_request (squash). Verified per 'a merge is not a verification': git show origin/main confirms both the script and the package.json npm-script entry landed; re-ran `npm run healthcheck:legacy` from the freshly-synced main checkout -- GREEN/GREEN/GREEN, matching everything manually verified all session. Unsubscribed (fully closed). healthcheck:legacy is now live and usable from main -- future cycles should run it instead of the ad-hoc one-liners."
+    },
     {
       "at": "2026-09-10T09:38:00Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
