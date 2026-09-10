@@ -4,6 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-10 (20:38 UTC) — [DISCOVERY] Legacy `healthcheck:legacy` AMBER on stage A investigated and ruled out — pre-5:30pm-ET, not a bug
+
+`npm run healthcheck:legacy` returned overall AMBER: stage A (EDITION) flagged `edition is stale
+(served an older date than requested)`. Stage B (MARKS, 3/3 OCC marks within bid/ask) and stage C
+(RECORD, resolved=31, buckets sum consistently) both GREEN.
+
+Checked `nighthawk-playbook` in `cron-registry.ts`: scheduled `5:30 PM ET weekdays`
+(`stale_after_min: 240`). Real time at check was ~16:37 ET — before the edition cron's own
+scheduled fire time. The route has nothing to serve yet for today; the "stale" flag is the honest,
+correct behavior of a next-day digest board checked before its own daily publish window, same
+shape as the `vector-universe-snapshot` ruled-out alarm earlier this session (PR #4748) — a
+health check run before a cron's scheduled time reads a not-yet-generated state as staleness, not
+as a defect. No code change. Re-check after 5:30 PM ET / within the 240-min stale window if AMBER
+persists past that.
+
 New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling policy, which
 already forbids opening docs-only PRs for GREEN audit logs.
 
