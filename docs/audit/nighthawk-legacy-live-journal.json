@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T07:20:00Z",
+  "lastUpdated": "2026-09-10T07:23:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -74,6 +74,11 @@
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
   "checkIns": [
+    {
+      "at": "2026-09-10T07:23:00Z",
+      "via": "PR #4715 subscription events (both were just subscription.created confirmations)",
+      "result": "PR #4715 CI: verify still in_progress, other checks (CodeQL/triage/dispatch) green. Tried to undraft via GitHub MCP update_pull_request (my own code review already done and recorded in the PR body) -- got 'API rate limit already exceeded for user ID 284440397', the budget-#4/#3 constraint CLAUDE.md documents (GitHub MCP / AGENT_RELEASE_TOKEN PAT limiter, separate pool from the session's own REST quota which I confirmed healthy at 14161/15000). Per the DRAFT DEADLOCK section, REST PATCH silently no-ops on draft so this is the only working undraft path -- transient, will retry next check-in rather than hammering it."
+    },
     {
       "at": "2026-09-10T07:20:00Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, next hourly cycle)",
