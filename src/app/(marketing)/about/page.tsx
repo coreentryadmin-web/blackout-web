@@ -8,7 +8,7 @@ import { MarkdownBody } from "@/components/learn/MarkdownBody";
 
 export const metadata: Metadata = publicPageMetadata(
   "About BlackOut Trades | Options Analytics Platform",
-  "BlackOut Trades maps dealer gamma exposure, options flow, and dark pool activity to give traders the positioning picture the desks trade on. Analytics and education only.",
+  "BlackOut maps dealer gamma exposure, options flow, and dark pool activity — the positioning picture the desks trade on. Analytics and education only.",
   "/about"
 );
 

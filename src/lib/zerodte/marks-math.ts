@@ -510,6 +510,10 @@ export function advancePlayLatch(
     deferPlanStop?: boolean;
     targetPct?: number | null;
     stopPct?: number | null;
+    /** trim_scale's OWN first-tranche trigger (exit-sync.ts's playRailsFromRow) — see
+     *  derivePlayStatus's param of the same name. Omitted → the ratchet's +100% target
+     *  literal, byte-identical to the prior behavior. */
+    trimScaleFirstTranchePct?: number | null;
     isCondor?: boolean;
   }
 ): PlayLatch {
@@ -527,6 +531,7 @@ export function advancePlayLatch(
     deferPlanStop: opts?.deferPlanStop,
     targetPct: opts?.targetPct,
     stopPct: opts?.stopPct,
+    trimScaleFirstTranchePct: opts?.trimScaleFirstTranchePct,
     isCondor,
   });
   return { peak, trough, status: state.status };

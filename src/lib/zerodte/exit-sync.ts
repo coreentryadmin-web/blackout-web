@@ -31,6 +31,7 @@ import {
   evaluateExitState,
   trimTranchesArmed,
   DEFAULT_EXIT_MODE,
+  TRIM_SCALE_RULES,
   type ExitDecision,
   type ZeroDteExitContext,
   type ZeroDteExitMode,
@@ -241,7 +242,22 @@ export function readFrozenExitPolicy(
 export function playRailsFromRow(row: {
   entry_context?: Record<string, unknown> | null;
   plan_json?: Record<string, unknown> | null;
-}): { targetPct: number; stopPct: number; regime: ZeroDteRegime | null } {
+}): {
+  targetPct: number;
+  stopPct: number;
+  regime: ZeroDteRegime | null;
+  /** The row's OWN first trim-scale tranche trigger (peak P&L %) — see plan.ts's
+   *  derivePlayStatus `trimScaleFirstTranchePct` param, which this feeds. Resolved the
+   *  SAME way the live exit engine resolves its own threshold table (TRIM_SCALE_RULES
+   *  gated by resolveTrimRegimeLive's kill switch — NOT the frozen exit_policy_snapshot's
+   *  own trim_levels, which the live engine does not actually read for its threshold
+   *  table). Keeping the badge in lockstep with what the engine will actually do is the
+   *  point: a badge that could flip before/after the engine's own arming would just be a
+   *  different flavor of the 2026-09-09 lag bug. null for a ratchet row (or a legacy row
+   *  with no identifiable exit-policy pin) — those keep the pre-existing +100%-target
+   *  TRIM behavior via plan.ts's fallback to `targetPct`. */
+  trimScaleFirstTranchePct: number | null;
+} {
   const frozen = readFrozenExitPolicy(row.entry_context ?? null);
   const plan = row.plan_json ?? null;
   const ctx = row.entry_context ?? null;
@@ -253,10 +269,15 @@ export function playRailsFromRow(row: {
     ctx?.session_regime === "trend" || ctx?.session_regime === "neutral" || ctx?.session_regime === "range"
       ? (ctx.session_regime as ZeroDteRegime)
       : null;
+  const exitModeAtCommit = frozen?.policy ?? readFrozenExitMode(ctx);
+  const engineRegime: ZeroDteRegime = resolveTrimRegimeLive() ? (regime ?? "neutral") : "neutral";
+  const trimScaleFirstTranchePct =
+    exitModeAtCommit === "trim_scale" ? TRIM_SCALE_RULES.tranches_by_regime[engineRegime][0] : null;
   return {
     targetPct: frozen?.target_pct ?? runnerTarget ?? PLAN_RULES.target_pct,
     stopPct: frozen?.hard_stop_pct ?? PLAN_RULES.stop_pct,
     regime,
+    trimScaleFirstTranchePct,
   };
 }
 

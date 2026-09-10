@@ -153,7 +153,17 @@ export type ExitEngineInput = {
   planTarget: number | null;
   /** Current lifecycle status (derivePlayStatus). CLOSED rows are never re-decided. */
   status: string | null;
-  /** True once the play has trimmed (status TRIM is sticky via the peak latch). */
+  /** RATCHET MODE ONLY: true once the play has trimmed (status TRIM is sticky via the
+   *  peak latch — the ratchet's own single trim event, `peak >= target`). Ignored in
+   *  trim_scale mode: decideTrimScale re-derives the equivalent "peak cleared the
+   *  target" fact directly from `planTarget`/peak (ratchetTargetReached below), never
+   *  from this field or from `status`. This split matters because the (badge) `status`
+   *  field now flips to TRIM at trim_scale's OWN, much lower, first-tranche threshold
+   *  (plan.ts's derivePlayStatus, `trimScaleFirstTranchePct`) — before this split
+   *  existed, wiring `status === "TRIM"` straight into this field would have forced the
+   *  +50% runner floor the instant ONE of trim_scale's TWO tranches banked, which the
+   *  2026-09-09 finding traced through to a same-tick EXIT of the whole remaining
+   *  position on a mild pullback, well before the schedule's actual second tranche. */
   trimmed: boolean;
   /** The entry's committed Cortex score (entry_context.cortex.score) — the cushion
    *  the thesis was bought with; opposing weight must exceed it to break the thesis.
@@ -245,6 +255,37 @@ export function trimTranchesArmed(peakPnlPct: number | null, regime: ZeroDteRegi
   let n = 0;
   for (const t of thresholds) if (peakPnlPct >= t) n += 1;
   return n;
+}
+
+/**
+ * True once a row's LATCHED PEAK has cleared its OWN frozen profit target — the fact
+ * that forces the shared ratchet-style runner floor (ratchetFloorPct's `trimmed` arg,
+ * +50% regardless of peak), derived DIRECTLY from peak/target rather than from the
+ * (badge) `status` field or a caller-supplied `trimmed` boolean.
+ *
+ * WHY THIS EXISTS (2026-09-09 finding): `peak >= target` IS what `status === "TRIM"`
+ * has always meant for a RATCHET row (plan.ts's derivePlayStatus) — the badge and this
+ * floor-forcing fact were the same thing by construction. For a TRIM_SCALE row the two
+ * used to coincide too, but only by ACCIDENT: before this fix, `status` only ever
+ * reached "TRIM" at the ratchet's +100% target literal (derivePlayStatus had no
+ * trim_scale-specific threshold), and every regime's two real tranches always finish
+ * arming well below that (thresholds top out at 40/50/80) — so "badge says TRIM" and
+ * "peak cleared the +100% target" happened to be the same tick. Fixing the BADGE lag
+ * (flipping a trim_scale row's status at its OWN, much lower, first-tranche threshold
+ * instead) breaks that accidental equivalence: `status === "TRIM"` now fires after
+ * banking just ONE of two tranches, far below the target. Wiring that straight into
+ * this floor's `trimmed` arg would force +50% at that point and, per the trace behind
+ * this fix, EXIT the whole remaining position on the very next mild pullback — well
+ * before the schedule's real second tranche. Recomputing the ORIGINAL "peak >= target"
+ * fact directly — independent of whatever the (now decoupled) badge says — is the
+ * "equivalent correct condition": every existing row's floor behavior stays
+ * BYTE-IDENTICAL (ratchet rows: unchanged; trim_scale rows: unchanged for every peak
+ * that never reached the ratchet's own target, which is the entire population this bug
+ * report is about), and a trim_scale runner that ALSO clears that same target still
+ * gets the same +50% "don't give it all back" protection it always has.
+ */
+export function ratchetTargetReached(peakPnlPct: number | null, targetPct: number): boolean {
+  return peakPnlPct != null && peakPnlPct >= targetPct;
 }
 
 export type ThesisBreak = {
@@ -345,10 +386,11 @@ function decideTrimScale(
   //    where the trim schedule deliberately runs later and the floor is the only
   //    protection — see the PR write-up for why that residual gap is not a bug).
   //    The fix: once a tranche is armed but not yet taken, bank it INSTEAD of letting
-  //    the coarse floor dump everything — banking also flips `input.trimmed` for the
-  //    next tick, which raises the shared floor to the +50% runner floor for the
-  //    remainder (strictly better protection than riding the breakeven floor to the
-  //    finish). Only suppresses the floor EXIT action below.
+  //    the coarse floor dump everything — banking raises `taken` for the next tick, so
+  //    `trimAvailable` (below) is only ever true for the ONE tick a NEW tranche is
+  //    pending, never forever. The shared floor itself stays the ordinary peak-based
+  //    ratchet table here (see ratchetTargetReached below for when it jumps to +50%).
+  //    Only suppresses the floor EXIT action below.
   //
   //    STOP-BREACH CARVE-OUT (2026-09-04, live-again per resolveTrimBankLive defaulting
   //    ON 2026-09-03 — see docs/audit/findings-staging/2026-09-04-trim-scale-stop-fallthrough.md):
@@ -365,7 +407,18 @@ function decideTrimScale(
   //    strictly worse than the pre-2026-08-27 dump-to-floor behavior it replaced.
   const stopAlreadyBreached = input.planStop != null && currentMark <= input.planStop;
   const trimAvailable = armed > taken && !stopAlreadyBreached;
-  const sharedFloor = ratchetFloorPct(peakPnlPct, input.trimmed);
+  // "Trimmed" for the shared floor's purposes means "peak cleared the ratchet's own
+  // +100%-target literal" — derived HERE directly from peak/planTarget, NOT from
+  // `input.trimmed`/the caller's `status`. See ratchetTargetReached's own doc for why:
+  // the (badge) status field now flips to TRIM at trim_scale's OWN, much lower,
+  // first-tranche threshold, so trusting `input.trimmed` here would force this +50%
+  // floor after banking only ONE of two tranches — exactly the 2026-09-09 finding this
+  // decouples, while leaving every row whose peak genuinely clears the target (ratchet
+  // or trim_scale alike) with the SAME protection it always had.
+  const targetPnlPct =
+    input.planTarget != null ? ((input.planTarget - ctx.entryPremium) / ctx.entryPremium) * 100 : null;
+  const peakClearedTarget = targetPnlPct != null && ratchetTargetReached(peakPnlPct, targetPnlPct);
+  const sharedFloor = ratchetFloorPct(peakPnlPct, peakClearedTarget);
   const floorBreached = sharedFloor != null && pnlPct <= sharedFloor && !trimAvailable;
   if (input.planStop != null && currentMark <= input.planStop) {
     const floorMark = sharedFloor != null ? protectiveFloorMark(ctx.entryPremium, sharedFloor) : null;
@@ -381,7 +434,7 @@ function decideTrimScale(
     }
   }
   if (floorBreached && sharedFloor != null) {
-    const reason = floorReason(sharedFloor, input.trimmed);
+    const reason = floorReason(sharedFloor, peakClearedTarget);
     return {
       action: "EXIT",
       floorPnlPct: sharedFloor,

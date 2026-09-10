@@ -35,6 +35,34 @@ import type { VectorUniverseRow } from "@/features/vector/lib/vector-universe";
 /** Screener rows returned to Largo. The panel paginates; an LLM read does not need the tail. */
 const MAX_SCREENER_ROWS = 15;
 
+/**
+ * Compact a universe row for the screener/comparison payloads Largo serves. `flip_reason` is only
+ * included when `gamma_flip` is null (mirrors the canonical GEX heatmap contract and
+ * `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s "absence" point) — a resolved flip has nothing to
+ * explain, and an invented reason there would misrepresent a clean read as an edge case.
+ */
+export function compactVectorScreenerRow(r: {
+  ticker: string;
+  spot: number | null;
+  gammaFlip: number | null;
+  flipReason: string | null;
+  topCallWall: number | null;
+  topPutWall: number | null;
+  topCallPct: number | null;
+  topPutPct: number | null;
+}) {
+  return {
+    ticker: r.ticker,
+    spot: r.spot,
+    gamma_flip: r.gammaFlip,
+    flip_reason: r.gammaFlip == null ? r.flipReason : undefined,
+    top_call_wall: r.topCallWall,
+    top_put_wall: r.topPutWall,
+    top_call_pct: r.topCallPct,
+    top_put_pct: r.topPutPct,
+  };
+}
+
 export type VectorAnalyticsOptions = {
   timeframeMin?: number;
   openingRangeMinutes?: number;
@@ -84,15 +112,6 @@ export async function vectorAnalyticsForLargo(
         import("@/features/vector/lib/vector-screener"),
         import("@/features/vector/lib/vector-ticker-comparison"),
       ]);
-      const compact = (r: { ticker: string; spot: number | null; gammaFlip: number | null; topCallWall: number | null; topPutWall: number | null; topCallPct: number | null; topPutPct: number | null }) => ({
-        ticker: r.ticker,
-        spot: r.spot,
-        gamma_flip: r.gammaFlip,
-        top_call_wall: r.topCallWall,
-        top_put_wall: r.topPutWall,
-        top_call_pct: r.topCallPct,
-        top_put_pct: r.topPutPct,
-      });
       /**
        * Serve ONE preset with the two numbers a ranked list is meaningless without: how many rows
        * the preset's filter actually matched, and how many of those could be ranked at all.
@@ -138,7 +157,7 @@ export async function vectorAnalyticsForLargo(
           /** True when the list is a top-N of a longer ranking. `returned` is then NOT a count of anything real. */
           truncated: ranked.length > served.length,
           max_rows: MAX_SCREENER_ROWS,
-          rows: served.map(compact),
+          rows: served.map(compactVectorScreenerRow),
           empty_reason: ranked.length
             ? null
             : matched.length

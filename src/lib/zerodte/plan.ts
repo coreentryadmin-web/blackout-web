@@ -876,8 +876,10 @@ export type LivePlayState = {
 /**
  * Derive the play's lifecycle state. `peak`/`trough` are the latched extremes of
  * the mark SINCE the flag (persisted by the scanner each tick), so transitions
- * are sticky: trough ≤ stop → CLOSED forever; peak ≥ target → TRIM until close.
- * OPEN means "still enterable": mark within 10% of entry and before the cutoff.
+ * are sticky: trough ≤ stop → CLOSED forever; peak ≥ target → TRIM until close
+ * (or, for a trim_scale row, peak ≥ its OWN first-tranche trigger — see
+ * `trimScaleFirstTranchePct`). OPEN means "still enterable": mark within 10% of
+ * entry and before the cutoff.
  */
 export function derivePlayStatus(input: {
   entryPremium: number | null;
@@ -889,6 +891,22 @@ export function derivePlayStatus(input: {
   targetPct?: number | null;
   /** Frozen plan stop %. Defaults to PLAN_RULES.stop_pct (−50%). */
   stopPct?: number | null;
+  /** trim_scale rows bank their FIRST real tranche far below the ratchet's +100%
+   *  `targetPct` literal (TRIM_SCALE_RULES.tranches_by_regime — e.g. +20% neutral,
+   *  +15% range, +40% trend). When the caller identifies this row as trim_scale
+   *  (exit-sync.ts's playRailsFromRow, resolved the SAME way the live exit engine
+   *  resolves its own threshold table) and supplies that regime-conditioned trigger
+   *  here, TRIM fires at THIS peak level instead of `targetPct` — fixing the
+   *  2026-09-09 finding where a trim_scale row that had already genuinely banked a
+   *  real tranche via the exit engine still showed OPEN/HOLD on the member-facing
+   *  badge, because this function only ever knew the ratchet's own +100% literal.
+   *  Omitted (ratchet rows, and any legacy/untiered caller with no identifiable
+   *  exit-policy pin) → falls back to `targetPct`, byte-identical to the prior
+   *  behavior. Does NOT change the floor-forcing exit-engine logic (ratchetFloorPct's
+   *  `trimmed` arg) — that is now derived independently, from trims_taken/regime, so
+   *  it can never mis-fire off this earlier badge flip; see exit-engine.ts's
+   *  trimScaleAllTranchesBanked. */
+  trimScaleFirstTranchePct?: number | null;
   /** When true, skip the latched plan-stop close so the exit engine can honor a
    *  protective floor first (scan.ts / live-marks.ts run the engine on this pass). */
   deferPlanStop?: boolean;
@@ -917,17 +935,26 @@ export function derivePlayStatus(input: {
   }
   const stop = entryPremium * (1 + stopPct / 100);
   const target = entryPremium * (1 + targetPct / 100);
+  // The peak level that flips the badge to TRIM: the ratchet's own `target` UNLESS the
+  // caller identifies this row as trim_scale, in which case its OWN, much lower,
+  // regime-conditioned first-tranche trigger applies instead — see
+  // `trimScaleFirstTranchePct`'s doc above.
+  const trimTrigger =
+    input.trimScaleFirstTranchePct != null
+      ? entryPremium * (1 + input.trimScaleFirstTranchePct / 100)
+      : target;
 
-  // Target checked BEFORE stop. peak/trough are latched extremes with no timestamp,
-  // so a naive stop-first check can't tell "hit stop, never recovered" apart from
-  // "hit target first, THEN craters" — both eventually show trough <= stop. But peak
-  // only ever grows once set, so checking peak first makes a target hit STICKY: once
-  // any tick pushes peak >= target, every future tick (this function is re-evaluated
-  // every scan cycle against the still-open row) keeps returning TRIM regardless of
-  // what trough does afterward — matching gradePlanFromBars' chronological "first
-  // touch wins" grading and this file's own "peak >= target -> TRIM until close" doc
-  // comment. A genuine stop-first case is unaffected: peak can't have reached target
-  // yet when the row closes, so it still falls through to the stop check below.
+  // Trim trigger checked BEFORE stop. peak/trough are latched extremes with no
+  // timestamp, so a naive stop-first check can't tell "hit stop, never recovered"
+  // apart from "hit target first, THEN craters" — both eventually show trough <= stop.
+  // But peak only ever grows once set, so checking peak first makes a trim-trigger hit
+  // STICKY: once any tick pushes peak >= trimTrigger, every future tick (this function
+  // is re-evaluated every scan cycle against the still-open row) keeps returning TRIM
+  // regardless of what trough does afterward — matching gradePlanFromBars' chronological
+  // "first touch wins" grading and this file's own "peak >= target -> TRIM until close"
+  // doc comment (trimTrigger === target for every ratchet row, unchanged). A genuine
+  // stop-first case is unaffected: peak can't have reached trimTrigger yet when the row
+  // closes, so it still falls through to the stop check below.
   //
   // INTENTIONAL, GUARDED divergence from gradePlanFromBars' same-bar tie-break (see
   // that function's doc + the "already-doubled stays TRIM" P0 test): the live card is
@@ -938,7 +965,7 @@ export function derivePlayStatus(input: {
   // exit — the trim/ratchet that this TRIM card actually guides), so what the member is
   // shown and what is booked to their record agree; the mechanical grade is kept beside
   // it only as a labeled hold-to-stop/target comparison.
-  if (!isCondor && peak != null && peak >= target) {
+  if (!isCondor && peak != null && peak >= trimTrigger) {
     return { status: "TRIM", live_pnl_pct: pnl, closed_reason: null };
   }
   if (!isCondor && !deferPlanStop && trough != null && trough <= stop) {

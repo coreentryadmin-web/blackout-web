@@ -43,6 +43,11 @@ export type VectorUniverseRow = {
   ticker: string;
   spot: number | null;
   gammaFlip: number | null;
+  /** Why gammaFlip is null (e.g. 'net_short_everywhere') — omitted/null when a flip was found or
+   *  the upstream heatmap didn't report a reason. Same field the canonical GEX heatmap route and
+   *  Thermal's regime strip already forward; the universe row previously discarded it, so a null
+   *  flip here read as unexplained where the equivalent Thermal/Largo reads already explain it. */
+  flipReason: string | null;
   vexFlip: number | null;
   topCallWall: number | null;
   topPutWall: number | null;
@@ -243,6 +248,7 @@ async function buildVectorUniverseRow(
       ticker,
       spot,
       gammaFlip: hm?.gex?.flip ?? null,
+      flipReason: hm?.gex?.flip_reason ?? null,
       vexFlip: hm?.vex?.flip ?? null,
       topCallWall: gexWalls.callWalls[0]?.strike ?? null,
       topPutWall: gexWalls.putWalls[0]?.strike ?? null,

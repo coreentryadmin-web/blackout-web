@@ -392,6 +392,169 @@ test("crossDeskCoaching: desk alignment omits undefined NH conviction and junk 0
   assert.equal(line, null, "thin aligned desks must not emit Desk alignment with undefined tokens");
 });
 
+// crossDeskCoaching used to render every conflict as a flat `conflicts.join(" · ")` behind one
+// fixed generic closing line ("Size down until desks agree.") — it never said WHY the desks
+// disagree (different timeframe/evidence base?), which disagreement is more load-bearing for THIS
+// setup, or what would actually resolve it. The tests below prove the rewritten narrative reasons
+// about the SOURCE of the disagreement (evidence kind + archetype fit), not just its existence —
+// and that two different conflict sources produce two genuinely different readings, not the same
+// template with names swapped in. (docs/audit/LARGO-PRODUCT-CONTRACT.md / CLAUDE.md's standing Ask
+// Largo mandate names this exact gap as a scoped-but-not-yet-built item.)
+
+test("crossDeskCoaching: Vector conflict on a structure-led archetype names the archetype and gives a structure-specific resolution, with the old generic instruction gone", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: { bias: "short", headline: "Fade the rip", grade: "B" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", archetype: "BREAKOUT" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /Vector bearish \(Fade the rip\)/);
+  assert.match(line!, /live price structure/i);
+  assert.match(line!, /\*\*Breakout continuation\*\* setup leans on/i, "must name the archetype, not just the desk");
+  assert.match(line!, /trim rail/i, "structure conflicts resolve on the next trim rail, not a flow/digest timeline");
+  assert.doesNotMatch(
+    line!,
+    /Size down until desks agree\./,
+    "the old flat generic closer must be gone — replaced by a reasoned, kind-specific resolution",
+  );
+});
+
+test("crossDeskCoaching: HELIX flow conflict on a flow-led archetype (FLOW_ACCUMULATION) reasons about order flow persistence, not price structure", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "XYZ",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 40,
+          call_premium: 400_000,
+          put_premium: 1_600_000,
+          unknown_premium: 0,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG", archetype: "FLOW_ACCUMULATION" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /HELIX put-led/);
+  assert.match(line!, /same-session options order flow, not price structure/i);
+  assert.match(line!, /\*\*Multi-day flow accumulation\*\* setup leans on/i);
+  assert.match(line!, /give it another session/i, "flow conflicts resolve on persistence across sessions, not a trim rail");
+  assert.doesNotMatch(line!, /trim rail/i, "must not reuse Vector's structure-specific resolution for a flow conflict");
+});
+
+test("crossDeskCoaching: two different conflict sources produce two differently reasoned readings, not the same template with names swapped in", () => {
+  const structureLine = crossDeskCoaching(
+    ctx({
+      vector: { play: { bias: "short", headline: "Fade the rip", grade: "B" } } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", archetype: "BREAKOUT" }),
+  )!;
+  const flowLine = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "XYZ",
+        recent_flow: { window_hours: 24, print_count: 40, call_premium: 400_000, put_premium: 1_600_000, unknown_premium: 0 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG", archetype: "FLOW_ACCUMULATION" }),
+  )!;
+  assert.notEqual(structureLine, flowLine);
+  assert.match(structureLine, /trim rail/i);
+  assert.doesNotMatch(structureLine, /give it another session/i);
+  assert.match(flowLine, /give it another session/i);
+  assert.doesNotMatch(flowLine, /trim rail/i);
+});
+
+test("crossDeskCoaching: 0DTE-only conflict reasons about its mismatched hours-long clock, never claims to be 'the most direct read'", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    // Archetype set to a structure-led one on purpose — 0DTE's evidenceKind never matches
+    // ARCHETYPE_LEAD_EVIDENCE, so this proves the fallback reasoning (not an archetype bonus).
+    play({ direction: "LONG", archetype: "BREAKOUT" }),
+  );
+  assert.match(line!, /0DTE short \(score 78\)/);
+  assert.match(line!, /hours-long 0DTE clock, not this swing's multi-day one/i);
+  assert.match(line!, /tape noise/i);
+  assert.doesNotMatch(line!, /most direct read of the four/i, "an hours-long 0DTE clock is the LEAST direct read here, never the most");
+});
+
+test("crossDeskCoaching: Night-Hawk-only conflict (digest) reasons about the overnight cadence, not a live override", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: 80,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play(),
+  );
+  assert.match(line!, /Night Hawk bearish/i);
+  assert.match(line!, /overnight next-day digest, not a live read/i);
+  assert.match(line!, /secondary sanity check, not a live override/i);
+});
+
+// Live repro (MSFT WATCH brief, 2026-09-09/10): the desk read carried BOTH a Night Hawk (digest)
+// and a Vector (structure) conflict for the same SHORT swing, and the OLD code rendered them as a
+// flat "Night Hawk bullish · Vector bullish (...)" list in PUSH order (Night Hawk first, since it's
+// checked first in the function body) with one generic closer. The new code must rank by
+// load-bearing WEIGHT, not push order — Vector (live structure) outranks Night Hawk (an overnight
+// digest) regardless of which was detected first.
+test("crossDeskCoaching: multiple conflicting desks — ranks by load-bearing weight, not detection order, and demotes the rest to a lighter-weight mention", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "MSFT",
+        nighthawk_recent: {
+          edition_for: "2026-09-09",
+          direction: "long",
+          conviction: "B",
+          outcome: "open",
+          score: null,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      sessionDate: "2026-09-09",
+      vector: {
+        spot: 492.6,
+        play: {
+          bias: "long",
+          headline: "POSITION · momentum long on continuation → target call wall 500",
+          invalidation: "5m close < 448.49",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "SHORT", archetype: "EVENT_DRIVEN" }),
+  );
+  assert.ok(line);
+  // Vector — the higher-weight, live structural read — must lead the sentence even though Night
+  // Hawk is checked first in the function body (push order != rank order).
+  assert.match(line!, /^\*\*Cross-desk friction\*\* — Vector bullish \(POSITION/);
+  assert.match(line!, /so weight it heaviest/i, "a real multi-conflict comparison, not a solo reading");
+  assert.match(line!, /Night Hawk also reads bullish \(B\)/);
+  assert.match(line!, /lighter weight here/i);
+});
+
 test("catalystCoaching: earnings within 14d", () => {
   const line = catalystCoaching(
     ctx({

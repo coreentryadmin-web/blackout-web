@@ -6,6 +6,7 @@ import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import type { SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
 import type { PortfolioPosition } from "./portfolio";
+import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 
 /** Inputs gathered server-side for deterministic swing play brief composition. */
 export type SwingPlayBriefContext = {
@@ -39,6 +40,15 @@ export type SwingPlayBriefContext = {
    */
   ecosystemFetchFailed?: boolean;
   vectorFetchFailed?: boolean;
+  /**
+   * The distilled per-archetype/sub-lane graduation snapshot (calibration-cache.ts) — feeds the
+   * "Track record" section's ONLY-WHEN-GRADUATED citation (Largo C10 historical context). `null`
+   * on a cold cache, a timed-out read, or a persistence failure on the writer side; `undefined`
+   * only in fixtures that predate this field (treated identically to `null` — "no citation this
+   * cycle", never an error). Optional/best-effort by design: the brief must compose the same
+   * whether this landed or not.
+   */
+  archetypeTrackRecord?: SwingArchetypeTrackRecordSnapshot | null;
 };
 
 export type SwingPlayBriefResult = {
