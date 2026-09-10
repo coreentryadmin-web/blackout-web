@@ -1,10 +1,11 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T07:25:00Z",
+  "last_updated": "2026-09-10T07:50:00Z",
   "notes": [
-    "v6 item 3 (score-calibration reliability diagram) SHIPPED this tick: swing-score-calibration.mjs (PR #4716, open/draft, blocked only on the same shared-PAT undraft rate limit seen all cycle -- retry next wake). First live result: SPREAD WITHOUT ORDER at n=31/10 buckets (n=3-4 each, thin -- disclosed clearly in the PR/tool output as a first look, not a conclusion). Middle score band (49-57, 66.7% WR) outperformed every high-score band (60-86, flat at 33.3% WR). No gate/scoring changed -- correctly held to the same evidence bar as swing-early-trim-ab.mjs.",
-    "v6 remaining items, priority order for next ticks: (2) correlated-risk-beyond-theme-direction on the ~94-position committed book (checkPortfolioOverlap only catches a NEW candidate vs book, not already-committed cross-ticker correlation) -- next up. (4) fill-quality check on illiquid names. (5) fast circuit-breaker authority -- standing, not a build task, applies whenever a real mid-week streak is found. (1) regime/archetype/sub-lane segmentation of the loss taxonomy and G-S4 question -- largest lift, needs its own dedicated tick(s).",
+    "v6 item 3 (score-calibration reliability diagram) SHIPPED: swing-score-calibration.mjs (PR #4716). verify+CodeQL GREEN, mergeable_state clean, standing-down comment posted -- blocked only on the recurring shared-PAT undraft rate limit (also hit by at least one other lane's session this same window, per its own main-branch commit -- fleet-wide, not specific to this lane). Retry undraft+merge first thing next wake. First live result: SPREAD WITHOUT ORDER at n=31/10 buckets (n=3-4 each, thin -- disclosed clearly as a first look, not a conclusion). Middle score band (49-57, 66.7% WR) outperformed every high-score band (60-86, flat at 33.3% WR). No gate/scoring changed.",
+    "v6 item 2 (correlated-risk-beyond-theme-direction) CHECKED this cycle and correctly deferred -- see v6_item2_correlated_risk_CHECKED_BLOCKED below. Not a build task right now.",
+    "v6 remaining items, priority order for next ticks: (4) fill-quality check on illiquid names (SKHL/IREZ/MULL etc -- does the 5-truth grader's entry premium reflect a realistic bid/ask fill or an idealized mid?) -- next up, not yet started. (5) fast circuit-breaker authority -- standing, not a build task, applies whenever a real mid-week streak is found. (1) regime/archetype/sub-lane segmentation of the loss taxonomy and G-S4 question -- largest lift, needs its own dedicated tick(s).",
     "P0 RESOLVED (prior tick): #4713 (postgres health-check fleet-wide CI fix) + #4712 (early-trim A/B tool) both merged and verified on origin/main.",
     "MANDATE v5 (2026-09-10 05:59 UTC): loss/win taxonomy + calibration authority + weekly scorecard + cross-pollination -- taxonomy built, tool shipped (#4712, INCONCLUSIVE, correctly no gate change).",
     "MANDATE v4/v3: 24/7 firing, CARVE-OUT rescinded, ~15-min cadence via 4 offset triggers.",
@@ -18,7 +19,7 @@
     { "id": "swing-play-brief-source-timeout", "pr": 4663, "status": "MERGED, verified on main." },
     { "id": "swing-early-trim-ab-tool", "pr": 4712, "kind": "TOOLING", "status": "MERGED, verified on main." },
     { "id": "ci-postgres-healthcheck-role-root", "pr": 4713, "kind": "P0 INFRA FIX", "status": "MERGED, verified on main." },
-    { "id": "swing-score-calibration-tool", "pr": 4716, "kind": "TOOLING", "status": "PR open, draft (undraft blocked by shared-PAT rate limit -- retry next wake). verify not yet checked this tick." }
+    { "id": "swing-score-calibration-tool", "pr": 4716, "kind": "TOOLING", "status": "verify+CodeQL GREEN, mergeable_state clean, ready. Blocked only on undraft rate limit -- standing-down comment posted, retry next wake." }
   ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
