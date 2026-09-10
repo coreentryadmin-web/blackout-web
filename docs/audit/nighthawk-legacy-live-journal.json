@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T07:23:00Z",
+  "lastUpdated": "2026-09-10T07:26:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -74,6 +74,11 @@
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
   "checkIns": [
+    {
+      "at": "2026-09-10T07:26:00Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "PR #4715: verify still in_progress (CodeQL/Analyze/triage/dispatch all green) -- deliberately did NOT retry the MCP undraft yet since nothing would merge with verify still pending anyway; will attempt once verify completes, not before. Edition unchanged (SIG/ASO/FICO still open). Re-confirmed the other 9 sites #4714's sweep flagged (useSwingPlayBrief/useSpxPowerHour/useSpxLotto/largo-status-route/spx-market-session x3/vector-session-hours x2/spx-session/largo-terminal/largo-product-reads/largo-helix-thermal-compare) are ALL outside Night Hawk Legacy's file ownership -- confirmed no more work for this lane from that sweep beyond the edition-stale.ts fix already shipped."
+    },
     {
       "at": "2026-09-10T07:23:00Z",
       "via": "PR #4715 subscription events (both were just subscription.created confirmations)",
