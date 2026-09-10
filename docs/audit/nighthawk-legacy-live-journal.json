@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T18:42:47.239Z",
+  "lastUpdated": "2026-09-10T18:53:07.609Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -336,6 +336,11 @@
       "at": "2026-09-10T18:42:47.239Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy GREEN. PR #4742 (pulled-play scorecard phantom-win fix) undraft hit the MCP rate limit, will retry next cycle. Rate-limiter incident: same intermittent pattern, not re-investigating. Committed 5 unrelated heartbeat/x-intel state files that had accumulated as uncommitted local changes across several prior cycles (.blackout-agent/AGENT_STATE.json, HEARTBEAT/claude.json, HEARTBEAT/cursor.json, data/x-intel/*.json) -- confirmed via git log this matches an established repo convention ('chore(state): heartbeat/autopilot state sync', seen repeatedly throughout this session from other lanes/processes), committed under that same message rather than continuing to stash-and-restore them every cycle. Quiet cycle otherwise -- no new findings, main investigative energy this hour already spent on the pulled-play scorecard fix (PR #4742) and the live-UI sweep that surfaced it."
+    },
+    {
+      "at": "2026-09-10T18:53:07.610Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
+      "result": "healthcheck:legacy GREEN. PR #4742 undraft retried, still hits the MCP rate limit (3rd cycle in a row now, started ~18:41) -- retrying once per cycle as standard, not hammering it. Rate-limiter incident unchanged. FOLLOW-UP CHECK on this hour's main finding: read vectorBoardTimeline() (same vector-board-row-utils.ts file as the scorecard fix) to see if the per-row detail timeline has a related honesty gap -- it does, but SOFTER: a pulled Legacy play's kind='closed' routes it to the generic 'Closed' timeline event (tone:up since ASO's counterfactual premiumPct is positive) plus row.reason (which is play.recNote/thesis text, NOT the actual pulled_reason) -- so the mini-timeline doesn't explicitly say 'pulled pre-open' the way the per-play card badge does elsewhere. Did NOT confirm whether this is meaningfully misleading in practice, since LegacyPickLogBoard.tsx doesn't call vectorBoardTimeline directly (must be a shared detail sub-component not yet located) and the 'PULLED' statusLabel badge likely renders prominently elsewhere on the same detail view regardless. FLAGGING, not building this cycle -- lower priority than the scorecard fix, needs more tracing to confirm real user impact before treating as a genuine finding, and PR #4742 is still mid-flight (avoid opening a second parallel branch in the same shared file while capacity is rate-limit-constrained)."
     }
   ],
   "knownOpenItems": {
@@ -351,6 +356,10 @@
     "legacyFactorBreakdownNeverRendered_2026_09_10": {
       "status": "CLOSED",
       "note": "Built and PR opened this cycle (feat/legacy-factor-breakdown-briefing) once #4736 (the prerequisite tier-factors PR touching the same file/location) merged. See the :21 UTC checkIn for details."
+    },
+    "legacyTimelinePulledReasonSoftGap_2026_09_10": {
+      "status": "OPEN_UNVERIFIED",
+      "note": "vectorBoardTimeline's row.reason for a pulled Legacy play is thesis/recNote text, not the real pulled_reason -- the mini-timeline shows a generic green 'Closed' event rather than explicitly disclosing the pull. Not yet confirmed as real user-facing impact (statusLabel='PULLED' badge may already cover this elsewhere on the same detail view) -- needs tracing which component actually calls vectorBoardTimeline for Legacy before treating as a genuine finding. Lower priority than the scorecard fix (PR #4742)."
     }
   },
   "toolingGaps": {
