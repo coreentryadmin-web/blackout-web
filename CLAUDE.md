@@ -59,12 +59,22 @@ PRs with a stale allowlist entry). Corrected against `main` directly, not agains
   `envelope.unavailableSources` (and therefore never reached the UI's existing `UnavailableChip`)
   because the shared `buildRichEnvelope()` helper never forwarded the field — fixed at that shared
   layer, so every rich Largo answer benefits, not just swing.
-- Scoped but not yet built: historical archetype/sub-lane win-rate context (blocked on a cache
-  layer — the cron-side `analyzeArchetypeRecord`/`analyzeSubLaneRecord` compute is cheap but
-  nothing persists a reusable report for the brief's request path to read, same shape as the
-  `APLUS_UNLOCKED = false` TODO already on record in `ZeroDteBoard.tsx` for the analogous 0DTE
-  case); narrating the live "what changed" diff the same trade-manager way instead of numeric
-  deltas; narrating cross-desk disagreement instead of listing it; steelmanning the counter-thesis.
+- **SHIPPED since this list was last written, caught stale 2026-09-10:** historical archetype/
+  sub-lane win-rate context (Largo C10) — the line below describing it as "blocked on a cache
+  layer" was itself exactly the staleness trap this section warns about two paragraphs down.
+  `#4685` (2026-09-09) shipped `calibration-cache.ts` (`sharedCacheGet`/`sharedCacheSet`,
+  written every RTH tick by `swing-active-refresh`'s `analyzeSwingCalibration`) +
+  `archetypeTrackRecordSection`/`graduatedArchetypeEntry` in `play-brief-intel.ts`, wired into
+  `composeSwingPlayBrief` unconditionally (not bucket-gated — WATCH/OPEN/CLOSED all get it).
+  Verified live 2026-09-10: correctly renders nothing on every real committed position and WATCH
+  candidate checked so far (CG/NRG/CRWD/SLV/PLTR/ORCL/MSFT/BE/COPX) — traced this to the honest
+  C6 omission gate (`graduated:true` required, Wilson-LB + point-Δ≥15pt), not a wiring gap: the
+  live closed-swing population is only ~31-37 trades total split across ~5-6 archetypes, nowhere
+  near enough per-bucket n to graduate yet. Re-check once the closed population grows — this
+  section should start firing on its own once an archetype bucket clears the bar, no code change
+  needed. Still genuinely open: narrating the live "what changed" diff the same trade-manager way
+  instead of numeric deltas; narrating cross-desk disagreement instead of listing it; steelmanning
+  the counter-thesis.
 
 **A fresh session must verify against `main` (PR state via the API), never trust a "shipped so
 far" list here at face value** — that is exactly how the previous version of this section went
