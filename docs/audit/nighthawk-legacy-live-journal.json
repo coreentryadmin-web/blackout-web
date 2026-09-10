@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T20:08:25.058Z",
+  "lastUpdated": "2026-09-10T20:18:02.678Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -366,6 +366,11 @@
       "at": "2026-09-10T20:08:25.058Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hour's cycle set)",
       "result": "healthcheck:legacy GREEN. PR #4746 (Net premium/calendar-tile pulled-play fix) undrafted cleanly this time (no rate-limit wait), CI still running (verify/CodeQL in_progress from the fresh undraft-triggered run), mergeable_state 'blocked' pending checks -- 0 review comments, nothing else blocking. Will re-check next cycle. Rate-limiter incident: same intermittent pattern, not re-investigating. Quiet cycle otherwise -- three real fixes shipped and two fully verified live this session (tier-factors, factor_breakdown, G-N4 mirror all merged+deployed; pulled-play scorecard confirmed live; Net premium/calendar-tile fix mid-CI). No new investigative threads opened this cycle -- prioritizing getting the in-flight PR to green over starting new work."
+    },
+    {
+      "at": "2026-09-10T20:18:02.678Z",
+      "via": "PR-activity wake (check_suite.completed -> pull_request.closed events on #4746, between scheduled triggers)",
+      "result": "PR #4746 (Net premium/calendar-tile pulled-play fix) MERGED (d7023ea) -- CI went green (verify + CodeQL) shortly after the :06 cycle, merged via a dispatched agent per the same merge-authorization policy used all session (green CI + clean mergeable state, no separate sign-off needed). Verified directly against origin/main per the standing 'a merge is not a verification' discipline: isNeverEnteredPull is exported from vector-board-row-utils.ts and correctly imported/wired into legacy-board-table-utils.ts's legacyBoardCalendarBuckets. healthcheck:legacy re-run, GREEN. All four PRs from this session's Legacy work are now merged: #4722 (gap-fill tag), #4733 (G-N4 mirror), #4736 (tier factors), #4739 (factor_breakdown), #4742 (pulled-play scorecard, confirmed live), #4746 (Net premium/calendar tile, just merged -- deploy+live-verification still pending, will check ECS rollout next scheduled cycle). No open PRs remain in this lane right now."
     }
   ],
   "knownOpenItems": {
