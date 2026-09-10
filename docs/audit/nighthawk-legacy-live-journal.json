@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T17:53:29.537Z",
+  "lastUpdated": "2026-09-10T18:07:59.163Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -321,6 +321,11 @@
       "at": "2026-09-10T17:53:29.537Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
       "result": "healthcheck:legacy GREEN. PR #4739 undraft retried, still hits the MCP rate-limit budget (now 15+ min straight this occurrence), will keep retrying next cycle. EDITION CORRECTNESS check (narrative consistent with marks, the mission item not deep-dived yet this session): pulled the live recap_summary/market_recap and spotted 'Market tide unavailable.. SPX 7636.36...' -- a DOUBLE period, which looked alarming since a parallel lane's PR #4728 ('recap_summary double-periods when market tide unavailable') merged today claiming to fix exactly this string. Traced it properly before treating it as a regression: read format.ts's tideSummary()/buildMarketRecap() directly -- the CURRENT code is correct (tideSummary returns no trailing period, buildMarketRecap's template appends exactly one: `${tide}. ${spx}.`, single period as designed). The live double-period is STALE content -- #4728 merged 2026-09-10 14:11:15 UTC, but today's Legacy edition (edition_for=2026-09-10) is a next-day digest built the EVENING BEFORE (~21:30-23:45 UTC on 2026-09-09), hours before the fix existed. Same 'won't validate until tonight's rebuild' pattern already tracked for this session's own gap-fill-tag fix (#4722, MARKET-OPEN-VALIDATION.md #87). CONFIRMED CLEAN -- not a new bug, not a regression, just pre-fix persisted content that resolves at tonight's build. 5th instance this session of a plausible-looking lead tracing to already-correct behavior (after R:R labeling, UI field-surfacing, ASO pulled-play badge, banger risk_note). Noting for continuity so a future cycle doesn't re-flag the same stale string as new."
+    },
+    {
+      "at": "2026-09-10T18:07:59.163Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hour's cycle set)",
+      "result": "healthcheck:legacy GREEN. PR #4739 undraft budget cleared, successfully undrafted -- but the undraft itself kicked off a fresh dispatch/triage CI run (mergeable_state 'unstable' while it settles), so NOT merged yet -- will re-check next cycle once that run completes and mergeable_state flips to clean. Rate-limiter incident: same intermittent pattern, slightly calmer this window (max p99 61.20 vs earlier windows hitting 90+) but still not a sustained baseline -- not re-investigating. OUTCOME-HONESTY spot-check: pulled the 14d debrief summary (28 graded/9 sessions) -- wrong_direction still dominant at 15/28 (53.6%), consistent with every prior observation this session across multiple windows -- already thoroughly tracked (FINDINGS.md 2026-08-06 P1, G-N4 shipped in response), correctly not re-escalating. Quiet cycle otherwise -- no new bugs or enhancement leads found; most fruitful angles (tier.factors, factor_breakdown, PlaybookPlay field sweep, FAILURE_MODE_SUGGESTION staleness) already worked through in prior cycles this session."
     }
   ],
   "knownOpenItems": {
