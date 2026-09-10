@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T19:22:36.092Z",
+  "lastUpdated": "2026-09-10T19:42:08.317Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -351,6 +351,11 @@
       "at": "2026-09-10T19:22:36.092Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy GREEN. ECS rollout (deployment :1428, PR #4742's fix) still IN_PROGRESS (desired 7/running 6 on new, 2/2 draining old) -- checked via direct ecs describe_services, not yet complete, re-check next cycle before re-screenshotting (screenshotting mid-rollout would likely still catch stale traffic and waste a check). Rate-limiter incident: same pattern, one spike to 110.54 at 19:11 roughly coinciding with the deploy swap -- plausible but not conclusive correlation, not chasing further. RESOLVED last cycle's flagged follow-up (legacyTimelinePulledReasonSoftGap): traced which component actually renders Legacy's play-detail view -- LegacyPickLogBoard.tsx uses its OWN LegacyPlayTechnicalsRail component (line 504), NOT the shared VectorPlayDetailPanel/vectorBoardTimeline() I was worried about (that combo is Vector-only, grep confirmed vectorBoardTimeline has exactly one caller, VectorPlayDetailPanel.tsx, never imported by any Legacy component). LegacyPlayTechnicalsRail.tsx DOES explicitly render a 'Pulled' bullet with the real play.pulledReason text and a down/warning tone when set (line 94-95) -- the detail view already discloses pulls honestly. CLOSING that open item as a false alarm, not a real gap -- the only genuine issue this session's pulled-play investigation found was the scorecard aggregate (PR #4742, already fixed), not the per-play detail view."
+    },
+    {
+      "at": "2026-09-10T19:42:08.317Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy GREEN. ECS rollout for PR #4742 (pulled-play scorecard fix) CONFIRMED COMPLETE (deployment :1428, rolloutState COMPLETED, 8/8 running, single deployment -- old :1427 fully drained). Re-ran the live UI sweep and the fix is CONFIRMED LIVE: the Legacy scorecard now reads 'Hit rate 0%' (was the fabricated 100% driven entirely by the pulled ASO) and 'Best: FICO +28.53%' (a real, genuinely open play -- the pulled ASO's phantom +306% counterfactual no longer wins bestPick). 'Closed (1)' tab count unchanged as designed (tab-count parity with the raw closed counter, deliberately preserved). This closes the loop on this session's most significant finding with definitive before/after live proof, not just unit-test evidence -- full lifecycle: found via live UI sweep -> root-caused -> fixed with RED/GREEN tests -> shipped -> merged -> deployed -> re-verified live. Nothing else new this cycle; quiet otherwise."
     }
   ],
   "knownOpenItems": {
