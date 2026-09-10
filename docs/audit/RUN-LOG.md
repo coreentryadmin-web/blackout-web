@@ -3639,3 +3639,21 @@ position, and diffing against that earlier snapshot:
   case the fix targeted).
 
 All three confirmed correct under real live data — GREEN pass, no follow-up needed.
+
+## 2026-09-10 (18:10 UTC) — [DISCOVERY] 5-engine cycle: 0DTE record grading-math cross-check, live RTH data
+
+Fresh verification angle for the standing 5-engine monitor (not previously checked this session):
+`GET /api/market/zerodte/record?days=30` against production, one temp Clerk premium session
+(`mintClerkPremiumSession`, deleted after). Cross-checked the aggregate `wins+losses+breakeven==
+graded` invariant AND, one level deeper, that the `by_outcome` per-bucket breakdown sums to the
+same top-level aggregate — a stronger check than the bare identity, since a bucketing bug could
+preserve the top-level sum while misattributing individual plays to the wrong bucket.
+
+Live snapshot (30-day window, 22 sessions, through 2026-09-10): `graded=193, wins=62, losses=85,
+breakeven=46` → `62+85+46=193` ✓. `by_outcome` buckets (doubled/ratchet/stopped/time_stop/
+thesis_break/flat_scratch) sum to `n: 4+53+23+2+75+36=193` ✓, `wins: 4+24+0+2+25+7=62` ✓,
+`losses: 0+1+21+0+39+24=85` ✓, `breakeven: 0+28+2+0+11+5=46` ✓ — every bucket total ties out
+exactly, both dimensions. `total_flagged=194`, `ungraded=1` (the one open, un-graded play), so
+`graded+ungraded=total_flagged` also holds. No discrepancy found — GREEN pass, no follow-up
+needed. PR queue swept same cycle: 0 open agent PRs (only 5 pre-existing Dependabot bumps, left
+untouched per standing policy).
