@@ -1,8 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T15:52:00Z",
+  "last_updated": "2026-09-10T16:20:00Z",
   "notes": [
+    "Shipped a genuine AGGRESSIVE-MODE enhancement (not a bug fix): PR #4734, 'premium stop rail shows live cushion percentage'. watchForSection's OPEN-bucket stop-rail line showed only the raw dollar stop level; added a cushion percentage ((mark-stop)/mark*100, same framing fmtDist already uses for gamma-flip/wall distances) so a member sees at a glance how much room remains before the stop, not just the bare dollar figure. Idea came directly out of last cycle's full 10-point CRWD contract audit. RED->GREEN via 2 new tests (real numbers: mark $19.575, stop $6.66 -> 66% cushion; plus an omission-path test for missing mark). Full npm test (background run) came back 13636 pass / 0 fail / 3 skipped, tsc clean. PR hit a REAL merge conflict on MARKET-OPEN-VALIDATION.md against a concurrent Vector-lane entry (#4732's own #89) -- resolved by renumbering mine to #90 and keeping both entries (append-only log, no real content conflict), merged main into the branch per the standing merge-conflict procedure, re-validated (tsc + targeted tests both clean post-merge), pushed. Draft opened then undrafted; subscribed to PR activity. Two unrelated heartbeat/rotation files (.blackout-agent/*, data/x-intel/*) kept getting modified in the working tree by other concurrent processes on this shared container mid-merge -- stashed them (not committed) rather than let them block the merge or pollute this PR's diff; they remain in git stash, harmless since those files regenerate live.",
     "Full ten-point LARGO-PRODUCT-CONTRACT pass on CRWD (11:47 ET, expandIntel=1, 11 sections) -- the lane leader, previously only spot-checked, never given the same deep pass CG got earlier. All 10 points clean: C1 time (ET asOf stamp present), C2 freshness (option mark vs swing-scan timestamps distinguished), C3 absence (unavailableSources correctly reasons ecosystem/Vector fetch failures + thesis-health inputs-not-wired, Meridian catalysts explicitly 'quiet, not missing'), C4 identity (ticker/positionId/playId all present), C5 direction (LONG), C6 confidence-omission (Thesis health correctly withholds a score rather than fabricate one; Track record section correctly absent per the already-confirmed graduation-population gap), C7 evidence (2 FACT entries), C8 provenance (source+asOf+freshness on each), C9 precision -- full arithmetic re-derivation: P&L (19.575/16.65-1)*100=17.57%->17.6% match, peak (38.25/16.65-1)*100=129.7% match, mfeCaptureOutcome 'gave back 86%' = 100-(17.6/129.7*100)=86.4%->86% match, Lane rank '+24 vs median' = 87-63 match exactly, C10 historical context (Track record correctly omitted, consistent with this session's earlier CLAUDE.md correction). One genuinely NEW confirmation not previously observed live: play-brief-intel.ts's Executable-P&L bullet (only renders when |execPnlPct-exitPnlPct|>5) correctly self-suppressed here -- mid +17.6% vs exec +13.5%, a 4.1pp gap, below the 5pp threshold -- every prior live sighting this session had a >5pp gap (8-46%) so this is the first confirmed boundary case where the threshold correctly held its ground and stayed silent rather than firing on a small, uninteresting gap. No bug found.",
     "NRG live EXIT->HOLD transition observed (15:30 UTC): pnl recovered -5.1%->11.2%->25.5% across three reads this session; manage engine correspondingly moved EXIT (expiry_risk, then time_stop) -> back to no-manage-action/HOLD, recommendation now 'HOLD' not 'SELL', narrative back to capture-branch 'Hold the line...Gave back 81% of peak' (consistent with mfeCaptureOutcome, pnl positive again). Positive confirmation the manage engine is NOT sticky/one-way -- a time-based force-manage signal correctly cleared once conditions no longer warranted it, rather than latching EXIT permanently once fired. No bug. #4730 (CLOSED AAPL coaching run-on-bullet fix) re-checked live -- still shows the OLD joined text, not yet deployed ~10min post-merge; expected propagation delay, will re-check next cycle rather than re-poll immediately.",
     "Helped merge PR #4730 (sibling Claude Night Hawk Swings session's fix -- Claude-Session session_01Qtnftc16CuWyVLxR8LaMoC, the SAME parallel session behind #4729) -- closedCoaching()'s run-on bullet fix (3 post-mortem points joined with a bare space instead of ' \\n\\u2022 ', reading as one confusing sentence on a real CLOSED AAPL brief). Found it green (verify+CodeQL success) and mergeable_state:clean but sitting idle ~20+ min since checks completed -- exactly the 'green PR nobody merges' pattern CLAUDE.md's draft-deadlock section warns about. Merged per the standing merge-authorization policy (applies to self-authored fix/*/feat/*/docs/* PRs as a class under the shared account, not scoped to only-this-session's-own-PRs) rather than leave it stuck. Verified directly on origin/main (git show): play-brief-narrative-coaching.ts:873 now reads lines.join(\"\\n\\u2022 \"). Two sibling Claude sessions appear to be running the Night Hawk Swings mandate in parallel today (this one, session_01ThDiEa7iE7mM1twas1e6Kg, and session_01Qtnftc16CuWyVLxR8LaMoC) -- both producing real, non-duplicate findings so far (#4729/#4730 vs my #4727/#4731), consistent with the collaboration protocol's capacity-sharing discipline rather than a wasteful race; noting this explicitly so a future session recognizes the pattern rather than being surprised by it.",
@@ -179,6 +180,12 @@
       "pr": 4730,
       "kind": "CROSS-LANE MERGE ASSIST",
       "status": "MERGED 15:24 UTC (squash, sha dcdcd5f73) by this session -- opened/authored by a sibling Night Hawk Swings session (session_01Qtnftc16CuWyVLxR8LaMoC), merged here because it was green and idle. Verified on origin/main directly."
+    },
+    {
+      "id": "swing-stop-rail-cushion-pct",
+      "pr": 4734,
+      "kind": "ENHANCEMENT",
+      "status": "OPEN, undrafted, merge conflict resolved (MARKET-OPEN-VALIDATION.md renumbered vs #4732's entry), pushed, awaiting CI. Subscribed to PR activity."
     }
   ],
   "loss_taxonomy": {
@@ -257,8 +264,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T15:24:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-10T16:20:00Z",
+    "swing_prs": [
+      {
+        "pr": 4734,
+        "branch": "feat/swing-brief-stop-rail-cushion-pct",
+        "status": "open, non-draft, CI pending after merge-conflict resolution"
+      }
+    ]
   },
   "tickers_seen": {
     "NRG": {
