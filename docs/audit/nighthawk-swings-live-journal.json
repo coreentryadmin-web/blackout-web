@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T09:45:00Z",
+  "last_updated": "2026-09-10T10:05:00Z",
   "notes": [
     "AGGRESSIVE MODE follow-through: the earlier n=1 WATCH-staleness observation (AMD/FSLR/PLTR sitting below scoreFloor for 9-45 days) escalated to a real, shipped finding this cycle -- confirmed AMD specifically at 45 days (firstSeenAt 2026-07-27) via a live re-check, clearing the 3-instance threshold. Traced the code: fadeStaleSwingCandidates (accumulation-store.ts) DOES fade a candidate that stops re-qualifying, so persistence isn't a pruning bug -- it's a genuine re-qualifying signal. But TerminalPlay.detectedAt (the WATCH 'Published clock', already on the Command Deck UI) was NEVER read by play-brief.ts's watchEntrySection -- the Largo narrative for a WATCH play never said how long it had been building. Shipped as #4721 (feat/swing-watch-age-narrative): one new conditional line, 'First flagged N days ago... still on WATCH, not yet graduated' -- purely additive, no plumbing changes, detectedAt was already populated end-to-end.",
     "v6 item 1 (regime/archetype/sub-lane loss-taxonomy segmentation) SHIPPED as TOOLING: #4719 (feat/swing-loss-taxonomy-segmentation), open/draft, CI in flight. swing-loss-taxonomy-segment.mjs mechanically re-classifies the full 31-chain closed population (27 usable) and segments by archetype/subLane/reconstructed-regime. CLOSES the standing G-S4 regime-gate question: RISK_ON 47.4%(n=19) vs RISK_OFF 50.0%(n=12) loss rate -- no meaningful gap, no recalibration evidence. Archetype: nothing diverges >=20pp at n>=5. Sub-lane: TACTICAL genuinely diverges -- n=5 (clears both the n>=5 bar and this lane's 3-instance noise floor), 80% loss rate (1 BAD_EXIT+3 BAD_ENTRY), +31.6pp vs the 44.4% aggregate. Flagged as a real signal worth watching, NOT acted on -- re-run as TACTICAL population grows past 5 before considering any calibration change. No gate touched.",
@@ -30,8 +30,8 @@
     { "id": "ci-postgres-healthcheck-role-root", "pr": 4713, "kind": "P0 INFRA FIX", "status": "MERGED, verified on main." },
     { "id": "swing-score-calibration-tool", "pr": 4716, "kind": "TOOLING", "status": "MERGED, verified on main." },
     { "id": "swing-entry-fill-quality-capture", "pr": 4717, "kind": "DATA-CAPTURE FIX", "status": "MERGED 09:01 UTC (7th undraft attempt cleared the shared rate limit) and squash-merged via GitHub MCP since automerge.yml doesn't match feat/* branches. Verified on origin/main directly (git show, not trusted from the merge response alone): fillQualityAtCommit present at commit.ts:264, wired at both call sites. Unsubscribed from PR activity." },
-    { "id": "swing-loss-taxonomy-segmentation-tool", "pr": 4719, "kind": "TOOLING", "status": "CI fully GREEN, mergeable_state clean. 4 undraft attempts across 3 cycles all hit the shared rate limit (fleet busy -- 4 draft PRs on this account right now incl. #4718/#4720 from other lanes). Retry next wake." },
-    { "id": "swing-brief-watch-age-never-narrated", "pr": 4721, "status": "CI fully GREEN as of 09:50 UTC (verify/CodeQL/Analyze all success). Undraft attempted, also hit the shared rate limit -- retry next wake alongside #4719." }
+    { "id": "swing-loss-taxonomy-segmentation-tool", "pr": 4719, "kind": "TOOLING", "status": "MERGED 10:02 UTC (rate limit finally cleared, 5th attempt). Verified on origin/main directly: scripts/audit/swing-loss-taxonomy-segment.mjs present." },
+    { "id": "swing-brief-watch-age-never-narrated", "pr": 4721, "status": "MERGED 10:02 UTC. Verified on origin/main directly: play-brief.ts's watchEntrySection reads play.detectedAt via daysOnWatch. MARKET-OPEN-VALIDATION.md entry added for next-session RTH check." }
   ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -63,11 +63,11 @@
     {
       "week_of": "2026-09-10",
       "trailing_30d_from_record": { "win_rate_pct": 16.7, "avg_compounded_return_pct": 30.9, "chains": 6, "note": "pull 90d summary.win_rate_pct directly next week" },
-      "shipped_this_period": ["#4704 merged (trim-ladder bug)", "#4663 merged (play-brief timeout)", "#4712 merged (early-trim A/B tool)", "#4713 merged (P0 CI fix)", "#4716 merged (score-calibration tool)", "#4717 open (fill-quality capture fix)"],
-      "moved_the_needle": "too early to tell -- this week's work is correctness/tooling/infra + two honest measurement tools (both found no calibration change yet justified) + one forward-looking data-capture fix that unblocks a future measurement. That IS the scorecard entry for this week: real measurement infrastructure shipped, no premature calibration changes made."
+      "shipped_this_period": ["#4704 merged (trim-ladder bug)", "#4663 merged (play-brief timeout)", "#4712 merged (early-trim A/B tool)", "#4713 merged (P0 CI fix)", "#4716 merged (score-calibration tool)", "#4717 merged (fill-quality capture fix)", "#4719 merged (loss-taxonomy segmentation tool -- closes G-S4 regime question, flags TACTICAL sub-lane)", "#4721 merged (watch-age narrative -- Ask Largo now says how long a WATCH thesis has been building)"],
+      "moved_the_needle": "correctness/tooling/infra + THREE honest measurement tools (early-trim, score-calibration, loss-taxonomy-segmentation) + one data-capture fix (fill-quality) + one narrative/UX enhancement (watch-age). The loss-taxonomy segmentation tool is the first result with real actionable signal: TACTICAL sub-lane's 80% loss rate (n=5) diverges from the 44.4% aggregate -- watching, not yet acted on. That IS the scorecard entry for this week: measurement infrastructure + one genuine enhancement shipped, no premature calibration changes made, one real signal now being tracked."
     }
   ],
-  "known_open_prs_snapshot": { "as_of": "2026-09-10T09:05:00Z", "swing_prs": [] },
+  "known_open_prs_snapshot": { "as_of": "2026-09-10T10:02:00Z", "swing_prs": [] },
   "tickers_seen": {
     "NRG": { "last_status": "OPEN/HOLD", "last_seen": "2026-09-10T04:06:00Z", "note": "trim-ladder display bug subject, fixed in #4704" },
     "CRWD": { "last_status": "OPEN/TRIM", "last_seen": "2026-09-10T04:06:00Z" },
