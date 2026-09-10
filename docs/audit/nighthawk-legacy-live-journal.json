@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T11:37:40.265Z",
+  "lastUpdated": "2026-09-10T11:52:00.560Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -196,6 +196,11 @@
       "at": "2026-09-10T11:37:40.265Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "Re-ran npm run healthcheck:legacy (all GREEN, no change). PR #4722: verify is now GREEN (completed at 11:22:57Z, ~9min run), all other checks green, mergeable_state=clean, no conflict, no review comments. Attempted to undraft via mcp__github__update_pull_request (draft:false) x2 -- both failed 'API rate limit already exceeded for user ID 284440397', matching CLAUDE.md's documented budget #4 (AGENT_RELEASE_TOKEN PAT, shared 5000/hr pool across that user's PATs). pull_request_read calls succeeded fine in the same cycle, so this is specifically the write-path limiter, not a general outage. Not giving up after one attempt per the standing guidance -- will retry the undraft next cycle (and the one after, until it clears). PR is otherwise fully ready to merge the moment it undrafts."
+    },
+    {
+      "at": "2026-09-10T11:52:00.560Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
+      "result": "Re-ran npm run healthcheck:legacy (all GREEN, no change -- same 3 open picks). PR #4722: still green/mergeable (head SHA unchanged 070e97d, no new commits, no review comments), mergeable_state read 'unknown' on this cycle's fetch (main has moved several times since branch point via other lanes' journal commits -- GitHub recomputing, not a real conflict signal on a single-file-touching PR like this one). Undraft attempts via mcp__github__update_pull_request(draft:false): 4 consecutive failures across this and the prior 2 cycles (~11:36, ~11:38, ~11:51 x2), all 'API rate limit already exceeded for user ID 284440397' -- the documented budget #4 (AGENT_RELEASE_TOKEN PAT, shared 5000/hr pool across that user's PATs, starves 'precisely when the fleet is busy' per CLAUDE.md). This is expected/documented behavior, not a new failure mode -- continuing to retry once per cycle (not spamming within a cycle) rather than escalating; CLAUDE.md is explicit this needs org/account-owner action to fix at the root, not something fixable from this sandbox. Last of today's 4-trigger ~15-min-cadence set; cycle wraps to the :06 offset next."
     }
   ],
   "knownOpenItems": {
