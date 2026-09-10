@@ -102,6 +102,26 @@ export function PlaybookBriefingPanel({ play, mode, morningConfirm }: Props) {
         )}
       </BriefingSection>
 
+      {play.tier?.factors?.length ? (
+        <BriefingSection title="Why this tier" accent="sky">
+          <ul className="space-y-1.5">
+            {play.tier.factors.map((f, i) => (
+              <li key={`${f.label}-${i}`} className="flex items-start gap-2 rounded-md px-1.5 py-1">
+                <span
+                  className={clsx(
+                    "mt-px shrink-0 font-mono text-[10px] font-semibold",
+                    f.direction === "up" ? "text-bull/80" : "text-bear/80"
+                  )}
+                >
+                  {f.direction === "up" ? "▲" : "▼"} {f.label}
+                </span>
+                <span className="min-w-0 flex-1 text-[11px] leading-snug text-sky-100">{f.detail}</span>
+              </li>
+            ))}
+          </ul>
+        </BriefingSection>
+      ) : null}
+
       <BriefingSection title="Factor inputs" accent="green">
         <ul className="nh-v2-factor-list">
           <li>
