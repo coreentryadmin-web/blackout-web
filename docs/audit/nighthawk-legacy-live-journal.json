@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T07:38:00Z",
+  "lastUpdated": "2026-09-10T07:52:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -74,6 +74,11 @@
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
   "checkIns": [
+    {
+      "at": "2026-09-10T07:52:00Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "PR #4715 RESOLVED. Rate limit cleared, MCP undraft succeeded, automerge.yml picked it up instantly (merged 07:51:18Z, same instant as the undraft). Verified per 'a merge is not a verification' discipline: git show origin/main:.../edition-stale.ts confirms the %24 fix is actually on main, not just a green PR claim. Unsubscribed from PR activity (fully closed out). Edition re-checked, unchanged (SIG/ASO/FICO still open)."
+    },
     {
       "at": "2026-09-10T07:38:00Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
