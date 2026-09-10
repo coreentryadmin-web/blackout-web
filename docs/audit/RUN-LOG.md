@@ -11,6 +11,34 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-10 (15:33 UTC) — [RTH — SEO] Second market-hours check: gamma-snapshot healthy, CLS not re-measured
+
+**Severity.** — (no defect found)
+
+Second RTH wake this window. Confirmed genuine market hours again by self-check:
+`TZ=America/New_York date` → Thu Sep 10 11:34:24 EDT, within Mon-Fri 09:30-13:00 ET on a
+non-holiday trading day.
+
+`/tools/gamma-snapshot`'s live API re-fetched fresh (not reused from the 13:33 UTC check):
+`GET /api/public/gex-snapshot?ticker=SPX` → spot 7607.28, change_pct -0.38 (now populated —
+was null at the earlier check), market_session OPEN, snapshot_data_age_seconds 12 (fresh).
+`flip: null` with `posture: "short"` and the same honest-absence `read` explanation (dealers
+net short gamma at every strike) as every prior check this window — confirmed correct, not a
+defect.
+
+CLS/CWV deliberately NOT re-measured this cycle: the 13:33 UTC pass (same day, ~2 hours
+earlier) already confirmed GOOD on both viewports (0.0002 desktop / 0.0328 mobile) post-purge,
+and nothing since suggests a regression (no deploy, no layout-affecting merge). Re-running the
+full Cloudflare-purge + `cls-measure.cjs` cycle here would be pure repetition, not a fresh
+check — per the standing "monitor, don't churn" discipline. GSC opportunity window and 28-day
+totals were already checked fresh at the 14:06 UTC growth-cycle entry below; not re-pulled here
+since GSC's own reporting lag (2-3 days) means nothing new could have landed in the ~90 minutes
+since.
+
+No defects found. Returning to normal search/authority work per the RTH brief (still within the
+RTH window as of this check, so the 13:00 ET handoff point has not yet been reached).
+
+---
 ## 2026-09-10 (14:06 UTC) — [SEO] Daily growth cycle: no new striking-distance queries, small real 28d uptick
 
 **Severity.** — (no defect found)
