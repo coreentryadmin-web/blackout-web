@@ -15,6 +15,7 @@ import {
   type VectorBoardMeter,
 } from "@/features/nighthawk/lib/vector-board-table-utils";
 import type { VectorBoardTab } from "@/features/nighthawk/lib/vector-board-table-utils";
+import { isNeverEnteredPull } from "@/features/nighthawk/lib/vector-board-row-utils";
 
 export type LegacyBoardTableRow = VectorBoardTableRow & { play: TerminalPlay };
 
@@ -163,14 +164,20 @@ export function legacyBoardCalendarBuckets(
   }
   return editionDates.map((session_date) => {
     const day = byDate.get(session_date) ?? [];
-    const net = day.reduce((s, r) => s + (r.premiumPct ?? 0), 0);
-    const winners = day.filter((r) => (r.premiumPct ?? 0) >= 50).length;
+    // A pulled play's premiumPct is a hypothetical counterfactual, not an achieved result — it
+    // must never inflate the day's blended "Net premium" or count as a "winner" tile, same
+    // reasoning (and the same statusLabel:"PULLED" check) as vectorBoardScorecard's fix. Measured
+    // live, 2026-09-10: with real SIG -82% and FICO +29%, this tile read +109.7% before the fix,
+    // driven entirely by blending in a pulled ASO's +300%-range counterfactual.
+    const resolved = day.filter((r) => !isNeverEnteredPull(r));
+    const net = resolved.reduce((s, r) => s + (r.premiumPct ?? 0), 0);
+    const winners = resolved.filter((r) => (r.premiumPct ?? 0) >= 50).length;
     const closed = day.filter((r) => r.kind === "closed").length;
     const tone = net > 2 ? "up" : net < -2 ? "down" : "flat";
     return {
       session_date,
       tone,
-      net_premium_pct: day.length ? net / day.length : 0,
+      net_premium_pct: resolved.length ? net / resolved.length : 0,
       n: day.length,
       winners,
       closed,

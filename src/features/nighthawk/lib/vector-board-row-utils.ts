@@ -51,8 +51,11 @@ export function vectorBoardRowGivebackPct(row: VectorBoardTableRow): number | nu
  *  morning-confirm latch withdrew before the open, which therefore never had real capital at
  *  risk. Distinct from Vector's own `status: "invalidated"` (a live position whose thesis broke
  *  mid-trade, real exposure, a real result) even though both share the same generic `status`
- *  value — `statusLabel` is what actually tells them apart. */
-function isNeverEnteredPull(row: VectorBoardTableRow): boolean {
+ *  value — `statusLabel` is what actually tells them apart. Exported so every rollup that blends
+ *  `premiumPct` across rows (the scorecard here, the calendar buckets in the sibling
+ *  vector-board-table-utils.ts/legacy-board-table-utils.ts) shares ONE definition rather than
+ *  each guessing at its own copy. */
+export function isNeverEnteredPull(row: VectorBoardTableRow): boolean {
   return row.statusLabel === "PULLED";
 }
 
@@ -121,14 +124,16 @@ export function vectorBoardScorecard(rows: VectorBoardTableRow[]): VectorBoardSc
 
   for (const row of rows) {
     const neverEntered = isNeverEnteredPull(row);
-    if (row.premiumPct != null && Number.isFinite(row.premiumPct)) {
+    // A pulled play never had a real fill, so its premiumPct is a hypothetical "would have
+    // happened" number, not an achieved result — it must never contribute to "Net premium" (a
+    // blended average across today's rows) or win "Best pick". Measured live, 2026-09-10: with
+    // SIG at -82% and FICO at +29% (real, open), "Net premium" read +110% and the day's calendar
+    // tile read +109.7% — both driven entirely by blending in a pulled ASO's +300%-range
+    // counterfactual; excluding it, the honest blended figure for that session was -26.5%.
+    if (!neverEntered && row.premiumPct != null && Number.isFinite(row.premiumPct)) {
       sumPct += row.premiumPct;
       pctN += 1;
-      // A pulled play never had a real fill, so its premiumPct is a hypothetical "would have
-      // happened" number, not an achieved result — it must never win "Best pick" (measured live,
-      // 2026-09-10: a pulled ASO's +277.78% counterfactual outranked two genuinely open plays and
-      // was headlined as the session's best pick).
-      if (!neverEntered && (!best || (row.premiumPct ?? -Infinity) > (best.premiumPct ?? -Infinity))) {
+      if (!best || (row.premiumPct ?? -Infinity) > (best.premiumPct ?? -Infinity)) {
         best = row;
       }
     }

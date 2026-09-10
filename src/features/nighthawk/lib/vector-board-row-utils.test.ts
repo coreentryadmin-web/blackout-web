@@ -105,6 +105,18 @@ test("vectorBoardScorecard: Vector's OWN invalidated (real position, thesis brok
   assert.equal(sc.hitRate, 100, "and must still count toward Hit rate — this was a real, resolved trade");
 });
 
+test("vectorBoardScorecard: a PULLED row's phantom return never dilutes Net premium either — same live evidence as bestPick/hitRate", () => {
+  const sc = vectorBoardScorecard([
+    row({ ticker: "ASO", kind: "closed", status: "invalidated", statusLabel: "PULLED", premiumPct: 306.67 }),
+    row({ ticker: "SIG", kind: "live", status: "open", premiumPct: -82 }),
+    row({ ticker: "FICO", kind: "live", status: "open", premiumPct: 29 }),
+  ]);
+  // Honest blended average over the two REAL rows: (-82 + 29) / 2 = -26.5, rounds to -27 or -26
+  // depending on rounding direction — assert it's negative and nowhere near the phantom-inflated
+  // +110% the live bug produced by including ASO's counterfactual.
+  assert.ok(sc.netPremiumPct != null && sc.netPremiumPct < 0, `expected a negative honest average, got ${sc.netPremiumPct}`);
+});
+
 test("vectorBoardSparklinePoints returns entry-to-mark path", () => {
   const pts = vectorBoardSparklinePoints(row({ premiumPct: 20, peakPct: 40 }));
   assert.ok(pts.length >= 3);
