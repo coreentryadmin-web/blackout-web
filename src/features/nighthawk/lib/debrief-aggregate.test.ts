@@ -338,6 +338,77 @@ test("gatePublishedMirror: buckets resolved current rows by retro verdict; unfil
   assert.equal(band.would_block.low_n, true);
 });
 
+// ── G-N4's own mirror (book_tape_conflict) ────────────────────────────────────────────
+// Built 2026-09-10 in direct response to the improvement queue's own wrong_direction
+// suggestion ("measure via gate_validation.blocked_value before widening G-N4's scope"):
+// blocked_value only sees the rare REJECTED-by-G-N4 population (n=3 live in a 30d prod
+// window — too thin to answer anything). published_mirror already answers the identical
+// question for band_detached/target_unreachable over the much larger PUBLISHED
+// population; G-N4 was simply never wired into it, even though publish-gates.ts pins the
+// exact same {code, passed, value, threshold} shape for book_tape_conflict as it does for
+// the other two gates (publish-gates.ts:270-272).
+
+test("retroWouldBlock: book_tape_conflict reads the pinned `passed` bit directly — no threshold to recompute", () => {
+  const conflicted = row({
+    publish_context: {
+      context_version: 2,
+      gates: {
+        checks: [{ code: "book_tape_conflict", passed: false, value: "bearish", threshold: "not bearish" }],
+      },
+    },
+  });
+  const aligned = row({
+    publish_context: {
+      context_version: 2,
+      gates: {
+        checks: [{ code: "book_tape_conflict", passed: true, value: "bullish", threshold: "not bearish" }],
+      },
+    },
+  });
+  assert.equal(retroWouldBlock(conflicted, "book_tape_conflict"), true);
+  assert.equal(retroWouldBlock(aligned, "book_tape_conflict"), false);
+  // A pin that predates G-N4 (shipped 2026-08-03) has no checks[] entry for this code —
+  // unlike band_detached/target_unreachable, there is no live-constant fallback to guess
+  // with (the gate didn't exist), so this must be null, never a silent false.
+  assert.equal(retroWouldBlock(row({ publish_context: { context_version: 2 } }), "book_tape_conflict"), null);
+  assert.equal(retroWouldBlock(row({ publish_context: null }), "book_tape_conflict"), null);
+  // Corrupt pin: entry present but `passed` isn't a boolean.
+  const corrupt = row({
+    publish_context: { context_version: 2, gates: { checks: [{ code: "book_tape_conflict", passed: "yes" }] } },
+  });
+  assert.equal(retroWouldBlock(corrupt, "book_tape_conflict"), null);
+});
+
+test("gatePublishedMirror: covers book_tape_conflict over the PUBLISHED population, not just G-N4's rare rejections", () => {
+  const conflictGeo = {
+    context_version: 2,
+    gates: { checks: [{ code: "book_tape_conflict", passed: false, value: "bearish", threshold: "not bearish" }] },
+  };
+  const alignedGeo = {
+    context_version: 2,
+    gates: { checks: [{ code: "book_tape_conflict", passed: true, value: "bullish", threshold: "not bearish" }] },
+  };
+  const rows = [
+    row({ outcome: "stop", publish_context: conflictGeo }),
+    row({ outcome: "stop", publish_context: conflictGeo }),
+    row({ outcome: "target", publish_context: conflictGeo }),
+    row({ outcome: "target", publish_context: alignedGeo }),
+    row({ outcome: "stop", publish_context: alignedGeo }),
+    row({ outcome: "stop", publish_context: alignedGeo }),
+    row({ outcome: "open", publish_context: null }), // pre-G-N4 pin — no geometry
+  ];
+  const mirror = gatePublishedMirror(rows);
+  const tape = mirror.find((l) => l.gate === "book_tape_conflict")!;
+  assert.equal(tape.would_block.n, 3); // the 3 rows whose pinned tape read CONFLICTED
+  assert.equal(tape.would_block.win_rate_pct, 33.3); // 1 of 3 decided
+  assert.equal(tape.would_pass.n, 3);
+  assert.equal(tape.would_pass.win_rate_pct, 33.3);
+  assert.equal(tape.no_geometry_n, 1);
+  // band_detached/target_unreachable still get their own lines — this is additive.
+  assert.ok(mirror.find((l) => l.gate === "band_detached"));
+  assert.ok(mirror.find((l) => l.gate === "target_unreachable"));
+});
+
 // ── The never-filled record defect (2026-08-06) ──────────────────────────────────────
 
 test("gatePublishedMirror: an all-unfilled would_block bucket is VISIBLE and carries no win rate", () => {
@@ -543,7 +614,9 @@ test("analyzeNighthawkDebriefs: report shape, per-conviction records, empty-tier
   assert.equal(b.unfilled, 1);
   assert.equal(b.pulled, 1);
   assert.deepEqual(report.by_tier, []); // no tier pinned anywhere yet — empty, not invented
-  assert.equal(report.gate_validation.published_mirror.length, 2);
+  // band_detached, target_unreachable, book_tape_conflict (2026-09-10: the mirror now
+  // covers G-N4 too, not just the two numeric-threshold gates).
+  assert.equal(report.gate_validation.published_mirror.length, 3);
 });
 
 // ── Pinned target-ATR distribution ───────────────────────────────────────────────────
