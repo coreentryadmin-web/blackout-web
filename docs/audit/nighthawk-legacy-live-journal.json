@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T23:33:29.726Z",
+  "lastUpdated": "2026-09-10T23:37:10.020Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -431,6 +431,11 @@
       "at": "2026-09-10T23:33:29.726Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "FOLLOWED UP on last cycle's flagged-but-not-escalated lead (calendar strip missing a SEP 11 tile) -- traced it fully and it IS a real bug, not by-design. Root cause: legacyEditionSessionDates (legacy-board-calendar.ts) anchors its date walk-back on literal Date.now(), but Legacy rows are tagged sessionDate=editionFor, and editionFor is computed by the API as nextTradingDayEt(todayEt()) -- ONE CALENDAR DAY AHEAD of 'now' for the entire evening-to-midnight-ET window. So the freshest edition's date was NEVER in the calendar-date list the strip walks over, silently dropping those rows from every tile -- reproducible EVERY evening, not just today. The pick table itself is unaffected (filters by editionFor directly, not through the calendar-date list), which is exactly why this hid behind an otherwise-normal-looking default view. Fixed by anchoring the walk-back on nextTradingDayEt(todayEt()) instead -- the exact same anchor the edition route itself uses, so the two can never disagree. +3 regression tests (Thu-evening includes tomorrow, Fri-evening correctly skips weekend to Monday -- caught a real Labor Day holiday edge case while writing the test, had to swap the example date -- and a full ordered walk matches the live 2026-09-10 scenario exactly). RED confirmed via git-stash (all 3 fail pre-fix); GREEN post-fix. Full suite 13678/13678, tsc clean. Opened PR #4754 (fix/legacy-calendar-strip-missing-fresh-edition-tile), draft, subscribed, awaiting CI. Also noted in the PR write-up (not touched): legacyEditionCalendarBuckets in the same file has zero live call sites -- dead code, out of scope for this fix. healthcheck:legacy still fully GREEN."
+    },
+    {
+      "at": "2026-09-10T23:37:10.021Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "PR #4754 CI still verify/CodeQL in_progress (~10min elapsed, within this session's normal range). healthcheck:legacy steady GREEN, no changes since last cycle. Quiet cycle otherwise -- just fixed the calendar-strip bug last cycle, not forcing a new finding immediately after; staying quiet per the mandate's own noise discipline."
     }
   ],
   "knownOpenItems": {
