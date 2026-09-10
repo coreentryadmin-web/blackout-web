@@ -161,12 +161,16 @@ export function tideBias(tide: Record<string, unknown> | null): TideBias {
   return callPct > 55 ? "BULLISH" : callPct < 45 ? "BEARISH" : "NEUTRAL";
 }
 
+// No trailing period on any branch — callers own sentence-ending punctuation. buildMarketRecap's
+// `summary` template appends its own period (`${tide}. ${spx}.`); a period baked in here doubled
+// up into "Market tide unavailable.." whenever ctx.tide was null (recap_summary served that to
+// every member/Largo caller of GET /api/market/nighthawk/edition until this fix).
 function tideSummary(tide: Record<string, unknown> | null): string {
-  if (!tide) return "Market tide unavailable.";
+  if (!tide) return "Market tide unavailable";
   const call = Number(tide.call_premium ?? tide.total_call_premium ?? 0);
   const put = Number(tide.put_premium ?? tide.total_put_premium ?? 0);
   const total = call + put;
-  if (total <= 0) return "Market tide flat / no premium.";
+  if (total <= 0) return "Market tide flat / no premium";
   const callPct = (call / total) * 100;
   const bias = tideBias(tide);
   return `${bias} — calls ${callPct.toFixed(0)}% (${fmtPremium(call)}) vs puts ${fmtPremium(put)}`;
@@ -222,7 +226,7 @@ function formatEtfTides(ctx: MarketWideContext): string {
   const entries = Object.entries(ctx.etf_tides);
   if (!entries.length) return "ETF tides unavailable.";
   return entries
-    .map(([sym, tide]) => (tide ? `${sym}: ${tideSummary(tide)}` : `${sym}: n/a`))
+    .map(([sym, tide]) => (tide ? `${sym}: ${tideSummary(tide)}.` : `${sym}: n/a`))
     .join("\n");
 }
 

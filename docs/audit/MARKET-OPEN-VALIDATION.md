@@ -118,6 +118,28 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-10 Night Hawk Legacy recap text fix (read this before the routine pass)
+
+### Overnight edition `recap_summary` double-periods whenever market tide is unavailable — fix/legacy-recap-tide-double-period
+
+**What was broken:** live capture from `GET /api/market/nighthawk/edition` during the standing
+5-engine live monitor cycle (pre-open, ~13:52 UTC) showed `"recap_summary": "Market tide
+unavailable.. SPX 7636.36 (-0.48%) ..."` — a double period right after "unavailable". Root cause:
+`tideSummary()` (`src/features/nighthawk/lib/format.ts`) baked its own trailing period into the
+null and flat-tide branches, and `buildMarketRecap()`'s summary template appended a second period
+after it. See `docs/audit/findings-staging/2026-09-10-legacy-recap-tide-double-period.md`.
+
+**Fix:** `tideSummary()` no longer self-punctuates on any branch; the two call sites
+(`buildMarketRecap()`'s summary template, `formatEtfTides()`'s per-ETF tide line) now each own
+their own trailing period.
+
+**Check at the open:** re-pull `GET /api/market/nighthawk/edition` on a morning where UW tide data
+is genuinely absent/flat (the honest absence case, not a bug) and confirm `recap_summary` reads
+`"Market tide unavailable. SPX ..."` / `"Market tide flat / no premium. SPX ..."` — single period,
+no `".."`. Also spot-check a session with real tide data (`recap_summary` should start
+`"BULLISH — calls NN% ($X) vs puts $Y. SPX ..."`) to confirm the real-data branch is unaffected,
+and confirm any `etf_tides` line still ends in exactly one period.
+
 ## WATCH LIST — 2026-09-10 Night Hawk Swings live audit (read this before the routine pass)
 
 ### Swing Command Deck + Ask Largo play-brief showed a false "trim banked" on a position still fully exposed at HOLD — fix/swing-trim-ladder-enforced-gate
