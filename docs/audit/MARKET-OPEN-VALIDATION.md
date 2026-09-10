@@ -146,6 +146,27 @@ NRG's situation) — its play-brief and Command Deck panel should now show the l
 (e.g. CRWD, FSLY, SRPT as of 2026-09-10) still shows its ladder correctly fired — this fix must not
 suppress the real, enforced case.
 
+### Ask Largo's WATCH play-brief never said how long a thesis had been building — feat/swing-watch-age-narrative (#4721)
+
+**What was missing:** live sweep of the WATCH lane found real rows sitting well below the
+60-point commit score floor for extended periods with zero narrative distinction from a
+freshly-flagged candidate: AMD (score 20.6, `firstSeenAt` 2026-07-27 — 45 days), FSLR (score
+59.1, 10 days), PLTR (score 34.3, 10 days). A member asking Largo about any of these got no
+"how long has this been building without graduating" context, even though the same timestamp
+(`TerminalPlay.detectedAt`) was already rendered on the Command Deck panel — just never narrated
+in the play-brief text itself.
+
+**Fix:** `watchEntrySection` (`src/lib/swing/play-brief.ts`) now emits `"First flagged **N days
+ago** (ET date) — still on WATCH, not yet graduated to a real position."` whenever `detectedAt` is
+present on a WATCH-status play; omitted (never fabricated) when absent. Purely additive — no new
+data plumbing, `detectedAt` was already populated end-to-end.
+
+**Check at the open:** pull `GET /api/market/swing/play-brief?playId=SWING:<ticker>&ticker=<ticker>`
+for any current WATCH-lane name (e.g. AMD, or whichever has the oldest `firstSeenAt` at open) and
+confirm the "Entry" section's body now contains a "First flagged N days ago" line matching the
+board's own `firstSeenAt`. Also confirm a WATCH row with no `firstSeenAt` (should be rare/none in
+practice) omits the line rather than showing "First flagged 0 days ago" or similar fabricated text.
+
 ---
 
 ## WATCH LIST — 2026-09-08 evidence-based gate loosening (read this before the routine pass)
