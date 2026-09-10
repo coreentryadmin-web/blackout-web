@@ -46,6 +46,16 @@ export function vectorBoardRowGivebackPct(row: VectorBoardTableRow): number | nu
   return Math.max(0, Math.round(row.peakPct - row.premiumPct));
 }
 
+/** True only for Legacy's pre-open pull (legacy-board-table-utils.ts's `legacyVectorStatus`
+ *  stamps this exact label on a SKIP/pulled play, and no other lane produces it) — a play the
+ *  morning-confirm latch withdrew before the open, which therefore never had real capital at
+ *  risk. Distinct from Vector's own `status: "invalidated"` (a live position whose thesis broke
+ *  mid-trade, real exposure, a real result) even though both share the same generic `status`
+ *  value — `statusLabel` is what actually tells them apart. */
+function isNeverEnteredPull(row: VectorBoardTableRow): boolean {
+  return row.statusLabel === "PULLED";
+}
+
 export function vectorBoardTimeline(row: VectorBoardTableRow): VectorBoardTimelineEvent[] {
   const events: VectorBoardTimelineEvent[] = [];
   const pct = row.premiumPct;
@@ -95,6 +105,10 @@ export function vectorBoardScorecard(rows: VectorBoardTableRow[]): VectorBoardSc
   let runners = 0;
   let open = 0;
   let closed = 0;
+  // Real resolutions only (excludes never-entered pulls) — the honest hit-rate denominator.
+  // Kept separate from `closed` (which stays inclusive of pulls, matching the "Closed (N)" tab
+  // count elsewhere on the board) so the two numbers don't silently drift apart.
+  let closedResolved = 0;
   let sumPct = 0;
   let pctN = 0;
   let closedWinners = 0;
@@ -106,17 +120,29 @@ export function vectorBoardScorecard(rows: VectorBoardTableRow[]): VectorBoardSc
   let best: VectorBoardTableRow | null = null;
 
   for (const row of rows) {
+    const neverEntered = isNeverEnteredPull(row);
     if (row.premiumPct != null && Number.isFinite(row.premiumPct)) {
       sumPct += row.premiumPct;
       pctN += 1;
-      if (!best || (row.premiumPct ?? -Infinity) > (best.premiumPct ?? -Infinity)) best = row;
+      // A pulled play never had a real fill, so its premiumPct is a hypothetical "would have
+      // happened" number, not an achieved result — it must never win "Best pick" (measured live,
+      // 2026-09-10: a pulled ASO's +277.78% counterfactual outranked two genuinely open plays and
+      // was headlined as the session's best pick).
+      if (!neverEntered && (!best || (row.premiumPct ?? -Infinity) > (best.premiumPct ?? -Infinity))) {
+        best = row;
+      }
     }
     if (row.status === "winner") winners += 1;
     if (row.status === "runner") runners += 1;
     if (row.status === "open" || row.status === "caution") open += 1;
     if (row.kind === "closed" || row.status === "closed" || row.status === "invalidated") {
       closed += 1;
-      if (row.premiumPct != null && row.premiumPct >= 50) closedWinners += 1;
+      if (!neverEntered) {
+        closedResolved += 1;
+        // Same reasoning as `best` above: a pulled play's counterfactual return must never count
+        // toward "Hit rate" — no capital was ever live on it, so it cannot have been "hit".
+        if (row.premiumPct != null && row.premiumPct >= 50) closedWinners += 1;
+      }
     }
     if (row.kind !== "closed") {
       openTotal += 1;
@@ -130,8 +156,8 @@ export function vectorBoardScorecard(rows: VectorBoardTableRow[]): VectorBoardSc
     }
   }
 
-  const hitDenom = closed > 0 ? closed : rows.length;
-  const hitNum = closed > 0 ? closedWinners : winners;
+  const hitDenom = closedResolved > 0 ? closedResolved : rows.length;
+  const hitNum = closedResolved > 0 ? closedWinners : winners;
 
   return {
     total: rows.length,
