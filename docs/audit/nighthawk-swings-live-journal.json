@@ -1,8 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T12:22:00Z",
+  "last_updated": "2026-09-10T13:45:00Z",
   "notes": [
+    "RTH-open live forensic pass (13:31 UTC snapshot, first genuinely fresh intraday marks in several cycles — prior cycles only showed stale 09/09 16:00 ET close marks). All 4 real OPEN positions (NRG/NN/CG/CRWD) re-pulled via live play-brief (playId+positionId, not ticker-only). CG made a genuine NEW peak at open (peakPremium 5.75->6.40, pnl 117.3%->146.2%) — the most interesting single data point this cycle, since it is exactly the shape of bug #4704 fixed earlier today (mechanical trim-ladder fired flag vs enforced liveStatus). Checked CG's live brief directly: liveStatus HOLD (board), brief shows trimsFired:0, \"Trim ladder +100%\" WITHOUT a checkmark, Management recommends TRIM as advisory only (Recommended: TRIM / Manage engine TAKE_PARTIAL) while the enforced status stays HOLD — confirms adapters.ts:857-860's status===\"TRIM\" gate (added by #4704) correctly holds fired:false on a not-yet-enforced row even against a brand new same-day peak, not just the stale peak that originally exposed the bug. Cross-checked all 4: NRG (peak +132.7%, live +29.6%, HOLD, trimsFired:0 — the literal repro example from #4704's own code comment, now independently reproduced live and confirmed correctly un-fired) / NN (peak +24.4%, live -30.8%, HOLD, round-tripped, trimsFired:0, correct) / CRWD (status genuinely TRIM, peak +129.7%, live -20.1%, trimsFired:1, \"Trim ladder +100% checked\", all trims banked — runner only, correctly enforced). No new bug found — this is a real-money confirmation that #4704's fix generalizes beyond the single ticker it was found on.",
     "AGGRESSIVE MODE follow-through: the earlier n=1 WATCH-staleness observation (AMD/FSLR/PLTR sitting below scoreFloor for 9-45 days) escalated to a real, shipped finding this cycle -- confirmed AMD specifically at 45 days (firstSeenAt 2026-07-27) via a live re-check, clearing the 3-instance threshold. Traced the code: fadeStaleSwingCandidates (accumulation-store.ts) DOES fade a candidate that stops re-qualifying, so persistence isn't a pruning bug -- it's a genuine re-qualifying signal. But TerminalPlay.detectedAt (the WATCH 'Published clock', already on the Command Deck UI) was NEVER read by play-brief.ts's watchEntrySection -- the Largo narrative for a WATCH play never said how long it had been building. Shipped as #4721 (feat/swing-watch-age-narrative): one new conditional line, 'First flagged N days ago... still on WATCH, not yet graduated' -- purely additive, no plumbing changes, detectedAt was already populated end-to-end.",
     "v6 item 1 (regime/archetype/sub-lane loss-taxonomy segmentation) SHIPPED as TOOLING: #4719 (feat/swing-loss-taxonomy-segmentation), open/draft, CI in flight. swing-loss-taxonomy-segment.mjs mechanically re-classifies the full 31-chain closed population (27 usable) and segments by archetype/subLane/reconstructed-regime. CLOSES the standing G-S4 regime-gate question: RISK_ON 47.4%(n=19) vs RISK_OFF 50.0%(n=12) loss rate -- no meaningful gap, no recalibration evidence. Archetype: nothing diverges >=20pp at n>=5. Sub-lane: TACTICAL genuinely diverges -- n=5 (clears both the n>=5 bar and this lane's 3-instance noise floor), 80% loss rate (1 BAD_EXIT+3 BAD_ENTRY), +31.6pp vs the 44.4% aggregate. Flagged as a real signal worth watching, NOT acted on -- re-run as TACTICAL population grows past 5 before considering any calibration change. No gate touched.",
     "AGGRESSIVE MODE cycle (09:01 UTC v3 brief): PR #4717 MERGED. Checked staged findings for a fleet colleague's already-shipped enhancement in this exact space: 2026-09-10-swing-brief-archetype-track-record-cache.md (the v5-scoped 'historical archetype/sub-lane win-rate context' item) turned out to already be built AND merged -- calibration-cache.ts/brief-source-timeout.ts both present on main, archetypeTrackRecordSection wired into play-brief-intel.ts. Its own staged-file 'Status' line is stale (says 'holding for Cursor sign-off' -- pre-rescission wording never updated post-merge, cosmetic only, not worth a fix PR). Validated it live across all 4 real positions (NRG/CRWD/CG/NN): none show a 'Track record' section, which is CORRECT not a bug -- the section only renders when a bucket graduates (n>=30), and the whole swing closed population is only 31 chains/90d (per this lane's own swing-score-calibration.mjs run), so no archetype x sub-lane combo can possibly have reached n=30 yet. Confirmed the omit-until-graduated design is itself the right call per LARGO-PRODUCT-CONTRACT.md's confidence-omission principle -- showing a preliminary n=3 citation would violate it. No further action -- feature is correctly dormant until real volume accrues, worth a periodic live re-check as the population grows rather than a code change now.",
@@ -17,49 +18,156 @@
     "v2 field corrections confirmed by direct code read: HorizonPlay.status IS the real lifecycle field. Real swing exit-management surface is manage-sync.ts + exit-policy.ts."
   ],
   "checked_this_cycle_no_bug_found": [
-    { "topic": "'Vector dark pool: not present on this read' also crosses 3 instances (CRWD/CG/NN) -- lighter follow-up check after the HELIX investigation above", "verdict": "very likely a legitimate per-ticker absence, not escalated. Traced to vector-absent-sections.ts: fires purely on `!input.darkPoolLevels?.length` -- an empty/undefined array, i.e. no qualifying large-block dark-pool prints found for that name in the lookback window. Unlike the HELIX case this isn't cluster-wide (no single shared flag explains all 3), and dark-pool block prints are inherently rare for CRWD/CG/NN-sized names -- did not pursue a full admin-instrument verification here given the much weaker prior (three different mid-cap tickers legitimately having zero qualifying prints is unsurprising, vs. HELIX's single shared cluster-wide heartbeat explaining all 3 at once). Logged as watching, not proven clean the same rigorous way -- worth a real check (e.g. cross-referencing a UW dark-pool feed directly) only if a mega-cap/heavily-traded swing name also shows this same absence." },
-    { "topic": "'HELIX flow: pipeline stale' appearing on every committed swing play-brief checked this session (CRWD/CG/NN, 3 instances of the identical reason string -- crosses this lane's own 3-instance threshold) -- investigated as a possible real cluster-wide infra outage", "verdict": "NOT a bug, NOT an outage -- verified via the real admin instrument (GET /api/admin/helix/health, admin-tier temp session) rather than stopping at pattern-matching: flow-ingest cron itself reports status='healthy', status_label='Idle (market closed)', 3 ok/0 failed/430 skipped in 24h (skips are BY DESIGN off-hours) -- and tape.heartbeat_present=false/fresh=false is the CORRECT expected state right now (12:13 UTC = pre-market, no live WS flow frames expected before RTH open). Traced the full chain: flow_feed_fresh (ecosystem-context.ts) <- isFlowFrameFreshAnywhere() (flow-liveness.ts, checks a 120s-window Redis WS heartbeat) <- the SAME cluster-wide heartbeat the admin health route surfaces. The play-brief's 'pipeline stale... not evidence of quiet flow' framing is honest and correct -- this pattern will most likely self-clear once RTH begins and should NOT be re-investigated as a recurring bug by a future off-hours cycle. Good methodological note: verified with the real admin instrument rather than escalating off 3 repeated string matches alone." },
-    { "topic": "Cross-lane awareness: PR #4723 (Legacy lane, 'flag same giveback percentage-point bug in Vector/Legacy') opened 2026-09-10 11:4x UTC -- checked whether swing's OWN instance of this exact bug class is still live", "verdict": "already fully fixed, confirmed twice over: (1) the staged finding 2026-09-10-swing-live-giveback-percentage-point-bug.md is Status:FIXED across all 4 call sites; (2) independently cross-checked against this session's own earlier live NRG capture ('Gave back 70% from peak', peak=132.7/pnl=39.8) -- 70% is the CORRECT relative-retracement value ((132.7-39.8)/132.7), not the buggy raw-subtraction 93% the finding's own repro shows; (3) grepped src/lib/swing/*.ts fresh this cycle for the raw '.peak - pnlPct' subtraction pattern -- zero remaining hits. Nothing to cross-pollinate back to Legacy beyond what #4723 already found independently; their bug is in Vector/Legacy's own code, not shared with swing's (already-fixed) implementation." },
-    { "topic": "MFE-capture correctness on a real round-tripped CLOSED play (AMZN positionId=27, entry 6.15->peak 8.70->exit -52.6%, 2026-09-10 11:35 UTC) -- standing mission item, explicitly named in the v2/v3 brief ('relative retracement not raw pp delta')", "verdict": "CONFIRMED CORRECT, already fixed by another session (mfe-capture.ts's own header cites FINDINGS 2026-09-10). Live Outcome/Trade-manager-read text reads 'Round-tripped past breakeven -- was up +41.5% at peak, closed at -52.6%' -- exactly mfeCaptureOutcome()'s round_trip branch, never the nonsensical 'captured -127%' a naive pnl/peak ratio would produce on a round-tripped loss. Peak math verified by hand: (8.70-6.15)/6.15=41.46% matches the displayed +41.5% exactly. Mission item closed clean -- no further action, logged so a future cycle doesn't re-derive the mfe-capture.ts logic from scratch." },
-    { "topic": "#4721 live production validation (2026-09-10 11:20 UTC) -- deploy for a9a6c2c2 (which includes the watch-age narrative fix) completed successfully", "verdict": "CONFIRMED WORKING LIVE -- AMD's real WATCH play-brief (GET /api/market/swing/play-brief?playId=SWING:AMD&ticker=AMD) now shows 'First flagged 44 days ago (2026-07-27 10:30 ET) -- still on WATCH, not yet graduated to a real position.' in the Entry section, exactly as designed. Closes the loop from the earlier 'not yet deployed' non-bug finding this same cycle window -- the deploy-pipeline timing explanation was correct, and the fix itself is now verified end-to-end in production, not just unit tests." },
-    { "topic": "Full ten-point LARGO-PRODUCT-CONTRACT pass on CG's play-brief + complete arithmetic re-derivation of every number in the envelope (2026-09-10 11:08 UTC) -- deepest single-play audit this session", "verdict": "clean, no bug -- all 10 points (time/freshness/absence/identity/direction/confidence/evidence/provenance/precision/historical-context) hold. Every displayed number independently re-derived by hand and matched exactly: P&L +117.3% = (5.65-2.60)/2.60, peak +121.2% implies peak premium $5.75 (matches raw board peakPremium), stop $1.04 = entry*(1-0.60) (the shipped -60% hard stop) and target $5.20 = entry*(1+1.00) (the +100% trim trigger), gamma-magnet/max-pain/put-wall/call-wall %-from-spot all match spot=44.11 arithmetic to 0.1pp, expected-move half-width matches band width exactly. Exec P&L 100.0% < mid P&L 117.3% (-17pp) is directionally correct for a long-puts (SHORT-thesis) position closing at the bid, not an error. Genuinely GOOD contract compliance spotted, not just absence of bugs: Chart-read section explicitly flags 'chart reads bullish (CONFLICTS with swing direction)' and Vector desk flags 'no clean edge -- cross-check vs swing direction' -- real cross-desk disagreement surfaced honestly, never silently reconciled, exactly per LARGO-PRODUCT-CONTRACT.md's disagreement principle. No 'Desk context'/Track-record sections shown (both correctly absent -- no prior Legacy swing on CG, no graduated archetype bucket yet)." },
-    { "topic": "NN headline shows 'TRIM 100%' / Management shows 'Recommended: TRIM' while board liveStatus=HOLD (2026-09-10 10:35 UTC) -- initially looked like a #4704-shaped regression, investigated fully", "verdict": "NOT a bug -- correctly traced through swingActionDisplay (play-card-lifecycle.ts:298-301) and recommendationFromManageAction (adapters.ts:174): the raw manageAction='TAKE_PARTIAL' the server sent correctly maps to recommendation='TRIM', and 'TRIM 100%' just NAMES the still-unfired ladder rung (the only rung, at +100%) -- it does NOT claim price has reached +100%, and 'TRIM'/liveStatus='HOLD' is the SAME intentional advisory-vs-enforced split #4704 already fixed (manage-sync's TAKE_PARTIAL is advisory until latched). Checked whether the terse headline alone could mislead a member into thinking 'up 100%, take profit' when NN actually round-tripped +24.4% peak -> -43.6% now -- the full 'Trade manager read' narrative immediately disambiguates ('Desk says TRIM -- next rail at +100%... Round-tripped past breakeven -- was up 24% at peak, now -44%'), so the compact label + detailed narrative is a defensible design, not dead-wired or misleading. Bonus: NN's Exec P&L -87.2% vs mid P&L -43.6% (-44pp slippage) is a live, real-world illustration of exactly the v6 item 4 fill-quality gap (NN's known 154.5%-of-mid spread) -- confirms that finding's magnitude concretely." },
-    { "topic": "Live post-merge validation of #4721 on AMD's real WATCH play-brief (2026-09-10 10:20 UTC) -- Entry section did NOT show the new 'First flagged N days ago' line", "verdict": "NOT a code bug -- deploy-pipeline timing. Checked ecr-push-production.yml runs: my #4721 commit's own deploy (babe4020, run 34463943021) was CANCELLED because #4718's merge (04cd6902) landed and re-triggered the workflow before it finished; #4718's own run is still in_progress; #4720's merge (a9a6c2c2, which DOES include my #4721 fix in its tree) has a run QUEUED/pending behind it. Last COMPLETED prod deploy is still sha 324c7d93 (#4717, 09:02 UTC) -- production has not redeployed since before #4721 merged. Same trap CLAUDE.md's depth-live-check.mjs already documents ('a check run seconds after a deploy proves nothing'). Re-verify AMD's play-brief again next cycle once a later deploy run actually completes." },
-    { "topic": "5-truth grader spot-check (GET /api/market/swing/record?days=14, AAPL chain rootPositionId=36, 2026-09-10 09:50 UTC)", "verdict": "no bug -- composite chain math internally consistent (1 leg/1 graded/0 wins/1 loss, worst/sum/compounded all correctly equal the single leg's -56.19% since there's only one leg). Leg grade entry_premium 5.9 -> exit_mark 2.59 implies -56.10% by hand-calc vs the reported -56.19%, a 0.09pp gap -- almost certainly 2dp DISPLAY rounding on entry_premium/exit_mark vs the raw values the percentage was actually computed from, not a real defect. n=1, well within normal floating-point/display tolerance -- not escalated, would need a much larger or more consistent gap across multiple chains to be worth investigating." },
-    { "topic": "NRG HOLD vs CRWD TRIM despite similar peak-to-now round trips", "verdict": "not a bug -- intentional graduated-calibration design." },
-    { "topic": "Live play-brief spot-check (GET /api/market/swing/play-brief?playId=SWING:NRG&ticker=NRG&positionId=34, 2026-09-10 08:20 UTC)", "verdict": "no bug -- confirms #4704 fix live in prod: NRG is HOLD and trimsFired=0 (not falsely fired despite peak +132.7%). Contract compliance spot-checked clean: absence handled honestly (thesis health / Meridian catalysts distinguish 'not wired' and 'quiet' from missing; unavailableSources lists 5 real reasons incl. 2x 'fetch failed' -- single observation, not yet 3+ instances, logged not escalated), confidence correctly OMITTED (consistent with v6 item 3's SPREAD WITHOUT ORDER finding -- score isn't calibrated), freshness/provenance/evidence all present and stale-labeled correctly. Bonus: brief already surfaces its OWN executable-vs-mid slippage per play ('Exec P&L +24.5% vs mid +39.8%, -15% slippage') via the existing WS-10/WS-11 executable lane (OUTCOME-GRADING-SPEC.md) -- a live, per-play version of the same fill-quality concern v6 item 4 addressed at the commit-capture layer; the two are complementary, not overlapping." },
-    { "topic": "WATCH lane scan (12 rows, 2026-09-10 08:22 UTC): FSLR score 59.1 stuck below scoreFloor=60 since firstSeenAt 2026-08-31 (10 days); PLTR score 34.3 since 2026-09-01 (9 days), well below floor", "verdict": "ESCALATED this cycle -- see swing-brief-watch-age-never-narrated / PR #4721 above. AMD confirmed at 45 days (firstSeenAt 2026-07-27) clears the 3-instance threshold. Not a pruning bug (fadeStaleSwingCandidates works correctly) -- was a narrative gap, now fixed." },
-    { "topic": "Live play-brief spot-check on CRWD (TRIM status, playId=SWING:CRWD&positionId=19, 2026-09-10 08:46 UTC) -- second real position checked this session, different status path than NRG", "verdict": "no bug -- confirms trimsFired=1 correctly on a TRIM row (complements the earlier NRG HOLD=0 check -- #4704 fix now validated live on BOTH sides of the enforced-gate branch). Numeric cross-checks all correct: confluence/gamma-magnet/call-wall %-from-spot all match spot=208.24 arithmetic exactly, expected-move half-width matches band width, VWAP/gamma-flip directional labels ('above spot'/'spot below') both correct. Absence handled honestly again: 'Desk context' section surfaces a stale prior Night Hawk Legacy swing (2026-08-28) but explicitly caveats it as unresolved/weigh-before-sizing rather than presenting it as fresh; unavailableSources lists 2 more distinct new reasons (HELIX pipeline stale, Vector dark pool not present) -- each still n=1 on its own failure mode, not yet a repeat of anything already logged, so not escalated." }
+    {
+      "topic": "'Vector dark pool: not present on this read' also crosses 3 instances (CRWD/CG/NN) -- lighter follow-up check after the HELIX investigation above",
+      "verdict": "very likely a legitimate per-ticker absence, not escalated. Traced to vector-absent-sections.ts: fires purely on `!input.darkPoolLevels?.length` -- an empty/undefined array, i.e. no qualifying large-block dark-pool prints found for that name in the lookback window. Unlike the HELIX case this isn't cluster-wide (no single shared flag explains all 3), and dark-pool block prints are inherently rare for CRWD/CG/NN-sized names -- did not pursue a full admin-instrument verification here given the much weaker prior (three different mid-cap tickers legitimately having zero qualifying prints is unsurprising, vs. HELIX's single shared cluster-wide heartbeat explaining all 3 at once). Logged as watching, not proven clean the same rigorous way -- worth a real check (e.g. cross-referencing a UW dark-pool feed directly) only if a mega-cap/heavily-traded swing name also shows this same absence."
+    },
+    {
+      "topic": "'HELIX flow: pipeline stale' appearing on every committed swing play-brief checked this session (CRWD/CG/NN, 3 instances of the identical reason string -- crosses this lane's own 3-instance threshold) -- investigated as a possible real cluster-wide infra outage",
+      "verdict": "NOT a bug, NOT an outage -- verified via the real admin instrument (GET /api/admin/helix/health, admin-tier temp session) rather than stopping at pattern-matching: flow-ingest cron itself reports status='healthy', status_label='Idle (market closed)', 3 ok/0 failed/430 skipped in 24h (skips are BY DESIGN off-hours) -- and tape.heartbeat_present=false/fresh=false is the CORRECT expected state right now (12:13 UTC = pre-market, no live WS flow frames expected before RTH open). Traced the full chain: flow_feed_fresh (ecosystem-context.ts) <- isFlowFrameFreshAnywhere() (flow-liveness.ts, checks a 120s-window Redis WS heartbeat) <- the SAME cluster-wide heartbeat the admin health route surfaces. The play-brief's 'pipeline stale... not evidence of quiet flow' framing is honest and correct -- this pattern will most likely self-clear once RTH begins and should NOT be re-investigated as a recurring bug by a future off-hours cycle. Good methodological note: verified with the real admin instrument rather than escalating off 3 repeated string matches alone."
+    },
+    {
+      "topic": "Cross-lane awareness: PR #4723 (Legacy lane, 'flag same giveback percentage-point bug in Vector/Legacy') opened 2026-09-10 11:4x UTC -- checked whether swing's OWN instance of this exact bug class is still live",
+      "verdict": "already fully fixed, confirmed twice over: (1) the staged finding 2026-09-10-swing-live-giveback-percentage-point-bug.md is Status:FIXED across all 4 call sites; (2) independently cross-checked against this session's own earlier live NRG capture ('Gave back 70% from peak', peak=132.7/pnl=39.8) -- 70% is the CORRECT relative-retracement value ((132.7-39.8)/132.7), not the buggy raw-subtraction 93% the finding's own repro shows; (3) grepped src/lib/swing/*.ts fresh this cycle for the raw '.peak - pnlPct' subtraction pattern -- zero remaining hits. Nothing to cross-pollinate back to Legacy beyond what #4723 already found independently; their bug is in Vector/Legacy's own code, not shared with swing's (already-fixed) implementation."
+    },
+    {
+      "topic": "MFE-capture correctness on a real round-tripped CLOSED play (AMZN positionId=27, entry 6.15->peak 8.70->exit -52.6%, 2026-09-10 11:35 UTC) -- standing mission item, explicitly named in the v2/v3 brief ('relative retracement not raw pp delta')",
+      "verdict": "CONFIRMED CORRECT, already fixed by another session (mfe-capture.ts's own header cites FINDINGS 2026-09-10). Live Outcome/Trade-manager-read text reads 'Round-tripped past breakeven -- was up +41.5% at peak, closed at -52.6%' -- exactly mfeCaptureOutcome()'s round_trip branch, never the nonsensical 'captured -127%' a naive pnl/peak ratio would produce on a round-tripped loss. Peak math verified by hand: (8.70-6.15)/6.15=41.46% matches the displayed +41.5% exactly. Mission item closed clean -- no further action, logged so a future cycle doesn't re-derive the mfe-capture.ts logic from scratch."
+    },
+    {
+      "topic": "#4721 live production validation (2026-09-10 11:20 UTC) -- deploy for a9a6c2c2 (which includes the watch-age narrative fix) completed successfully",
+      "verdict": "CONFIRMED WORKING LIVE -- AMD's real WATCH play-brief (GET /api/market/swing/play-brief?playId=SWING:AMD&ticker=AMD) now shows 'First flagged 44 days ago (2026-07-27 10:30 ET) -- still on WATCH, not yet graduated to a real position.' in the Entry section, exactly as designed. Closes the loop from the earlier 'not yet deployed' non-bug finding this same cycle window -- the deploy-pipeline timing explanation was correct, and the fix itself is now verified end-to-end in production, not just unit tests."
+    },
+    {
+      "topic": "Full ten-point LARGO-PRODUCT-CONTRACT pass on CG's play-brief + complete arithmetic re-derivation of every number in the envelope (2026-09-10 11:08 UTC) -- deepest single-play audit this session",
+      "verdict": "clean, no bug -- all 10 points (time/freshness/absence/identity/direction/confidence/evidence/provenance/precision/historical-context) hold. Every displayed number independently re-derived by hand and matched exactly: P&L +117.3% = (5.65-2.60)/2.60, peak +121.2% implies peak premium $5.75 (matches raw board peakPremium), stop $1.04 = entry*(1-0.60) (the shipped -60% hard stop) and target $5.20 = entry*(1+1.00) (the +100% trim trigger), gamma-magnet/max-pain/put-wall/call-wall %-from-spot all match spot=44.11 arithmetic to 0.1pp, expected-move half-width matches band width exactly. Exec P&L 100.0% < mid P&L 117.3% (-17pp) is directionally correct for a long-puts (SHORT-thesis) position closing at the bid, not an error. Genuinely GOOD contract compliance spotted, not just absence of bugs: Chart-read section explicitly flags 'chart reads bullish (CONFLICTS with swing direction)' and Vector desk flags 'no clean edge -- cross-check vs swing direction' -- real cross-desk disagreement surfaced honestly, never silently reconciled, exactly per LARGO-PRODUCT-CONTRACT.md's disagreement principle. No 'Desk context'/Track-record sections shown (both correctly absent -- no prior Legacy swing on CG, no graduated archetype bucket yet)."
+    },
+    {
+      "topic": "NN headline shows 'TRIM 100%' / Management shows 'Recommended: TRIM' while board liveStatus=HOLD (2026-09-10 10:35 UTC) -- initially looked like a #4704-shaped regression, investigated fully",
+      "verdict": "NOT a bug -- correctly traced through swingActionDisplay (play-card-lifecycle.ts:298-301) and recommendationFromManageAction (adapters.ts:174): the raw manageAction='TAKE_PARTIAL' the server sent correctly maps to recommendation='TRIM', and 'TRIM 100%' just NAMES the still-unfired ladder rung (the only rung, at +100%) -- it does NOT claim price has reached +100%, and 'TRIM'/liveStatus='HOLD' is the SAME intentional advisory-vs-enforced split #4704 already fixed (manage-sync's TAKE_PARTIAL is advisory until latched). Checked whether the terse headline alone could mislead a member into thinking 'up 100%, take profit' when NN actually round-tripped +24.4% peak -> -43.6% now -- the full 'Trade manager read' narrative immediately disambiguates ('Desk says TRIM -- next rail at +100%... Round-tripped past breakeven -- was up 24% at peak, now -44%'), so the compact label + detailed narrative is a defensible design, not dead-wired or misleading. Bonus: NN's Exec P&L -87.2% vs mid P&L -43.6% (-44pp slippage) is a live, real-world illustration of exactly the v6 item 4 fill-quality gap (NN's known 154.5%-of-mid spread) -- confirms that finding's magnitude concretely."
+    },
+    {
+      "topic": "Live post-merge validation of #4721 on AMD's real WATCH play-brief (2026-09-10 10:20 UTC) -- Entry section did NOT show the new 'First flagged N days ago' line",
+      "verdict": "NOT a code bug -- deploy-pipeline timing. Checked ecr-push-production.yml runs: my #4721 commit's own deploy (babe4020, run 34463943021) was CANCELLED because #4718's merge (04cd6902) landed and re-triggered the workflow before it finished; #4718's own run is still in_progress; #4720's merge (a9a6c2c2, which DOES include my #4721 fix in its tree) has a run QUEUED/pending behind it. Last COMPLETED prod deploy is still sha 324c7d93 (#4717, 09:02 UTC) -- production has not redeployed since before #4721 merged. Same trap CLAUDE.md's depth-live-check.mjs already documents ('a check run seconds after a deploy proves nothing'). Re-verify AMD's play-brief again next cycle once a later deploy run actually completes."
+    },
+    {
+      "topic": "5-truth grader spot-check (GET /api/market/swing/record?days=14, AAPL chain rootPositionId=36, 2026-09-10 09:50 UTC)",
+      "verdict": "no bug -- composite chain math internally consistent (1 leg/1 graded/0 wins/1 loss, worst/sum/compounded all correctly equal the single leg's -56.19% since there's only one leg). Leg grade entry_premium 5.9 -> exit_mark 2.59 implies -56.10% by hand-calc vs the reported -56.19%, a 0.09pp gap -- almost certainly 2dp DISPLAY rounding on entry_premium/exit_mark vs the raw values the percentage was actually computed from, not a real defect. n=1, well within normal floating-point/display tolerance -- not escalated, would need a much larger or more consistent gap across multiple chains to be worth investigating."
+    },
+    {
+      "topic": "NRG HOLD vs CRWD TRIM despite similar peak-to-now round trips",
+      "verdict": "not a bug -- intentional graduated-calibration design."
+    },
+    {
+      "topic": "Live play-brief spot-check (GET /api/market/swing/play-brief?playId=SWING:NRG&ticker=NRG&positionId=34, 2026-09-10 08:20 UTC)",
+      "verdict": "no bug -- confirms #4704 fix live in prod: NRG is HOLD and trimsFired=0 (not falsely fired despite peak +132.7%). Contract compliance spot-checked clean: absence handled honestly (thesis health / Meridian catalysts distinguish 'not wired' and 'quiet' from missing; unavailableSources lists 5 real reasons incl. 2x 'fetch failed' -- single observation, not yet 3+ instances, logged not escalated), confidence correctly OMITTED (consistent with v6 item 3's SPREAD WITHOUT ORDER finding -- score isn't calibrated), freshness/provenance/evidence all present and stale-labeled correctly. Bonus: brief already surfaces its OWN executable-vs-mid slippage per play ('Exec P&L +24.5% vs mid +39.8%, -15% slippage') via the existing WS-10/WS-11 executable lane (OUTCOME-GRADING-SPEC.md) -- a live, per-play version of the same fill-quality concern v6 item 4 addressed at the commit-capture layer; the two are complementary, not overlapping."
+    },
+    {
+      "topic": "WATCH lane scan (12 rows, 2026-09-10 08:22 UTC): FSLR score 59.1 stuck below scoreFloor=60 since firstSeenAt 2026-08-31 (10 days); PLTR score 34.3 since 2026-09-01 (9 days), well below floor",
+      "verdict": "ESCALATED this cycle -- see swing-brief-watch-age-never-narrated / PR #4721 above. AMD confirmed at 45 days (firstSeenAt 2026-07-27) clears the 3-instance threshold. Not a pruning bug (fadeStaleSwingCandidates works correctly) -- was a narrative gap, now fixed."
+    },
+    {
+      "topic": "Live play-brief spot-check on CRWD (TRIM status, playId=SWING:CRWD&positionId=19, 2026-09-10 08:46 UTC) -- second real position checked this session, different status path than NRG",
+      "verdict": "no bug -- confirms trimsFired=1 correctly on a TRIM row (complements the earlier NRG HOLD=0 check -- #4704 fix now validated live on BOTH sides of the enforced-gate branch). Numeric cross-checks all correct: confluence/gamma-magnet/call-wall %-from-spot all match spot=208.24 arithmetic exactly, expected-move half-width matches band width, VWAP/gamma-flip directional labels ('above spot'/'spot below') both correct. Absence handled honestly again: 'Desk context' section surfaces a stale prior Night Hawk Legacy swing (2026-08-28) but explicitly caveats it as unresolved/weigh-before-sizing rather than presenting it as fresh; unavailableSources lists 2 more distinct new reasons (HELIX pipeline stale, Vector dark pool not present) -- each still n=1 on its own failure mode, not yet a repeat of anything already logged, so not escalated."
+    },
+    {
+      "topic": "RTH-open fresh-peak stress test of #4704 enforced-gate fix (CG new intraday high 5.75->6.40)",
+      "verdict": "CLEAN — fired stays false on CG/NRG/NN (all HOLD) and correctly flips true+banked on CRWD (actual TRIM). Verified against playId+positionId-scoped live play-brief fetches, not just the board summary."
+    }
   ],
   "findings_filed_this_cycle": [
-    { "id": "swing-trim-ladder-fired-ignores-enforced-gate", "pr": 4704, "status": "MERGED, verified on main." },
-    { "id": "swing-play-brief-source-timeout", "pr": 4663, "status": "MERGED, verified on main." },
-    { "id": "swing-early-trim-ab-tool", "pr": 4712, "kind": "TOOLING", "status": "MERGED, verified on main." },
-    { "id": "ci-postgres-healthcheck-role-root", "pr": 4713, "kind": "P0 INFRA FIX", "status": "MERGED, verified on main." },
-    { "id": "swing-score-calibration-tool", "pr": 4716, "kind": "TOOLING", "status": "MERGED, verified on main." },
-    { "id": "swing-entry-fill-quality-capture", "pr": 4717, "kind": "DATA-CAPTURE FIX", "status": "MERGED 09:01 UTC (7th undraft attempt cleared the shared rate limit) and squash-merged via GitHub MCP since automerge.yml doesn't match feat/* branches. Verified on origin/main directly (git show, not trusted from the merge response alone): fillQualityAtCommit present at commit.ts:264, wired at both call sites. Unsubscribed from PR activity." },
-    { "id": "swing-loss-taxonomy-segmentation-tool", "pr": 4719, "kind": "TOOLING", "status": "MERGED 10:02 UTC (rate limit finally cleared, 5th attempt). Verified on origin/main directly: scripts/audit/swing-loss-taxonomy-segment.mjs present." },
-    { "id": "swing-brief-watch-age-never-narrated", "pr": 4721, "status": "MERGED 10:02 UTC. Verified on origin/main directly: play-brief.ts's watchEntrySection reads play.detectedAt via daysOnWatch. MARKET-OPEN-VALIDATION.md entry added for next-session RTH check." }
+    {
+      "id": "swing-trim-ladder-fired-ignores-enforced-gate",
+      "pr": 4704,
+      "status": "MERGED, verified on main."
+    },
+    {
+      "id": "swing-play-brief-source-timeout",
+      "pr": 4663,
+      "status": "MERGED, verified on main."
+    },
+    {
+      "id": "swing-early-trim-ab-tool",
+      "pr": 4712,
+      "kind": "TOOLING",
+      "status": "MERGED, verified on main."
+    },
+    {
+      "id": "ci-postgres-healthcheck-role-root",
+      "pr": 4713,
+      "kind": "P0 INFRA FIX",
+      "status": "MERGED, verified on main."
+    },
+    {
+      "id": "swing-score-calibration-tool",
+      "pr": 4716,
+      "kind": "TOOLING",
+      "status": "MERGED, verified on main."
+    },
+    {
+      "id": "swing-entry-fill-quality-capture",
+      "pr": 4717,
+      "kind": "DATA-CAPTURE FIX",
+      "status": "MERGED 09:01 UTC (7th undraft attempt cleared the shared rate limit) and squash-merged via GitHub MCP since automerge.yml doesn't match feat/* branches. Verified on origin/main directly (git show, not trusted from the merge response alone): fillQualityAtCommit present at commit.ts:264, wired at both call sites. Unsubscribed from PR activity."
+    },
+    {
+      "id": "swing-loss-taxonomy-segmentation-tool",
+      "pr": 4719,
+      "kind": "TOOLING",
+      "status": "MERGED 10:02 UTC (rate limit finally cleared, 5th attempt). Verified on origin/main directly: scripts/audit/swing-loss-taxonomy-segment.mjs present."
+    },
+    {
+      "id": "swing-brief-watch-age-never-narrated",
+      "pr": 4721,
+      "status": "MERGED 10:02 UTC. Verified on origin/main directly: play-brief.ts's watchEntrySection reads play.detectedAt via daysOnWatch. MARKET-OPEN-VALIDATION.md entry added for next-session RTH check."
+    }
   ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
-    "BAD_EXIT_n5": ["AMZN score45.1 +41.5%mfe->-52.6%", "TSM score64.9 +42.2%mfe->-62.26%", "INTC(SECTOR_ROTATION) score0 +25.7%mfe->-40.83%", "IGV score80.9 +14.6%mfe->-39.49%", "EWZ score48.5 +20.6%mfe->-34.16%"],
-    "BAD_ENTRY_n3": ["MSTR score2.9", "CCI score33.3", "PYPL score5 instant-breakeven"],
-    "VARIANCE_possible_CLEAN_n3_not_root_caused": ["AAPL score75.8", "NVDA score82.2", "INTC(LONG) score84.0"],
+    "BAD_EXIT_n5": [
+      "AMZN score45.1 +41.5%mfe->-52.6%",
+      "TSM score64.9 +42.2%mfe->-62.26%",
+      "INTC(SECTOR_ROTATION) score0 +25.7%mfe->-40.83%",
+      "IGV score80.9 +14.6%mfe->-39.49%",
+      "EWZ score48.5 +20.6%mfe->-34.16%"
+    ],
+    "BAD_ENTRY_n3": [
+      "MSTR score2.9",
+      "CCI score33.3",
+      "PYPL score5 instant-breakeven"
+    ],
+    "VARIANCE_possible_CLEAN_n3_not_root_caused": [
+      "AAPL score75.8",
+      "NVDA score82.2",
+      "INTC(LONG) score84.0"
+    ],
     "measurement_shipped": "swing-early-trim-ab.mjs (PR #4712, merged) -- INCONCLUSIVE at n=31. No calibration change shipped.",
     "v6_item1_segmentation": "swing-loss-taxonomy-segment.mjs (PR #4719) -- SIMPSON'S-PARADOX CHECK DONE. Archetype/regime: no divergence >=20pp at n>=5. Sub-lane: TACTICAL diverges real (n=5, 80% loss rate, +31.6pp vs 44.4% aggregate) -- watching, not acted on. G-S4 regime-gate question CLOSED: RISK_ON 47.4%(n=19) vs RISK_OFF 50.0%(n=12), no meaningful gap.",
     "next_step": "re-run swing-loss-taxonomy-segment.mjs periodically as the closed population grows, especially TACTICAL sub-lane (currently n=5, the exact noise floor)."
   },
   "win_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
-    "standouts": ["EWZ score64.8 +438.79%", "RKLB score19.2 +79.37% (low score, big win)", "GLW score44.7 +5.52% (peak+44.7%, possible BAD-EXIT-shaped WIN)"],
+    "standouts": [
+      "EWZ score64.8 +438.79%",
+      "RKLB score19.2 +79.37% (low score, big win)",
+      "GLW score44.7 +5.52% (peak+44.7%, possible BAD-EXIT-shaped WIN)"
+    ],
     "measurement_shipped": "swing-score-calibration.mjs (PR #4716, merged) -- SPREAD WITHOUT ORDER at n=31, thin per-bucket (n=3-4). Preliminary, re-run as population grows."
   },
   "open_experiments_scoped_not_yet_run": [
-    { "id": "g-s4-regime-gate-calibration", "status": "CLOSED via swing-loss-taxonomy-segment.mjs (PR #4719) -- no meaningful RISK_ON vs RISK_OFF loss-rate gap at n=19/n=12. No recalibration warranted on this evidence." },
-    { "id": "v6-fill-quality-realized-slippage-backtest", "status": "blocked on population growth -- capture fix (#4717) now pins entry_bid/entry_ask/entry_spread_fraction going forward; re-attempt once enough real swing_positions rows post-fix have closed to measure realized entry slippage vs a mid-only counterfactual." },
-    { "id": "swing-tactical-sublane-watch", "status": "TACTICAL sub-lane loss rate (80%, n=5) diverges from aggregate per swing-loss-taxonomy-segment.mjs. Not actionable yet (n=5 is the noise floor). PULLED THE 5 RAW CHAINS for a root-cause look (2026-09-10 10:25 UTC): AAPL PULLBACK_CONTINUATION (entry 5.9->peak 5.98, +1.4% MFE, -56.19% stopped in <24h), INTC SECTOR_ROTATION (entry 2.26->peak 2.84, +25.7% MFE, -40.83% stopped in exactly 24h -- the one real BAD_EXIT here), EWZ PULLBACK_CONTINUATION (the +438.79% WIN, already in win_taxonomy), NVDA EVENT_DRIVEN (entry 4.2->peak 4.4, +4.8% MFE, -60.6% stopped in <48h), INTC EVENT_DRIVEN (entry 4.32->peak 4.32, 0% MFE, -4.62% stopped in 13 MINUTES). 4/5 losses resolved (for better or worse) within 13min-48h -- checked taxonomy.ts's SWING_SUB_LANES spec for a structural explanation rather than assuming a broken model: TACTICAL is the 5-7 DTE lane (vs STANDARD's 8-21d) with thetaSensitivity=1.0 (harshest) and earningsHazard=1.0 (highest binary-gap multiplier), both maxed vs STANDARD's 0.6/0.6 -- by design the shortest-runway, most theta-exposed sub-lane. The SAME SCALE_OUT exit primitive/stop-loss level applies across all sub-lanes (not a tighter stop specifically), so the higher loss rate plausibly reflects less time-to-recover from an adverse move rather than a miscalibrated model -- a real structural hypothesis, not proof the 80% rate is fine. Still watching, still not actionable at n=5 -- re-run the segmentation tool as TACTICAL population grows." }
+    {
+      "id": "g-s4-regime-gate-calibration",
+      "status": "CLOSED via swing-loss-taxonomy-segment.mjs (PR #4719) -- no meaningful RISK_ON vs RISK_OFF loss-rate gap at n=19/n=12. No recalibration warranted on this evidence."
+    },
+    {
+      "id": "v6-fill-quality-realized-slippage-backtest",
+      "status": "blocked on population growth -- capture fix (#4717) now pins entry_bid/entry_ask/entry_spread_fraction going forward; re-attempt once enough real swing_positions rows post-fix have closed to measure realized entry slippage vs a mid-only counterfactual."
+    },
+    {
+      "id": "swing-tactical-sublane-watch",
+      "status": "TACTICAL sub-lane loss rate (80%, n=5) diverges from aggregate per swing-loss-taxonomy-segment.mjs. Not actionable yet (n=5 is the noise floor). PULLED THE 5 RAW CHAINS for a root-cause look (2026-09-10 10:25 UTC): AAPL PULLBACK_CONTINUATION (entry 5.9->peak 5.98, +1.4% MFE, -56.19% stopped in <24h), INTC SECTOR_ROTATION (entry 2.26->peak 2.84, +25.7% MFE, -40.83% stopped in exactly 24h -- the one real BAD_EXIT here), EWZ PULLBACK_CONTINUATION (the +438.79% WIN, already in win_taxonomy), NVDA EVENT_DRIVEN (entry 4.2->peak 4.4, +4.8% MFE, -60.6% stopped in <48h), INTC EVENT_DRIVEN (entry 4.32->peak 4.32, 0% MFE, -4.62% stopped in 13 MINUTES). 4/5 losses resolved (for better or worse) within 13min-48h -- checked taxonomy.ts's SWING_SUB_LANES spec for a structural explanation rather than assuming a broken model: TACTICAL is the 5-7 DTE lane (vs STANDARD's 8-21d) with thetaSensitivity=1.0 (harshest) and earningsHazard=1.0 (highest binary-gap multiplier), both maxed vs STANDARD's 0.6/0.6 -- by design the shortest-runway, most theta-exposed sub-lane. The SAME SCALE_OUT exit primitive/stop-loss level applies across all sub-lanes (not a tighter stop specifically), so the higher loss rate plausibly reflects less time-to-recover from an adverse move rather than a miscalibrated model -- a real structural hypothesis, not proof the 80% rate is fine. Still watching, still not actionable at n=5 -- re-run the segmentation tool as TACTICAL population grows."
+    }
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
     "as_of": "2026-09-10T07:32:00Z",
@@ -70,15 +178,43 @@
   "weekly_scorecard": [
     {
       "week_of": "2026-09-10",
-      "trailing_30d_from_record": { "win_rate_pct": 16.7, "avg_compounded_return_pct": 30.9, "chains": 6, "note": "pull 90d summary.win_rate_pct directly next week" },
-      "shipped_this_period": ["#4704 merged (trim-ladder bug)", "#4663 merged (play-brief timeout)", "#4712 merged (early-trim A/B tool)", "#4713 merged (P0 CI fix)", "#4716 merged (score-calibration tool)", "#4717 merged (fill-quality capture fix)", "#4719 merged (loss-taxonomy segmentation tool -- closes G-S4 regime question, flags TACTICAL sub-lane)", "#4721 merged (watch-age narrative -- Ask Largo now says how long a WATCH thesis has been building)"],
+      "trailing_30d_from_record": {
+        "win_rate_pct": 16.7,
+        "avg_compounded_return_pct": 30.9,
+        "chains": 6,
+        "note": "pull 90d summary.win_rate_pct directly next week"
+      },
+      "shipped_this_period": [
+        "#4704 merged (trim-ladder bug)",
+        "#4663 merged (play-brief timeout)",
+        "#4712 merged (early-trim A/B tool)",
+        "#4713 merged (P0 CI fix)",
+        "#4716 merged (score-calibration tool)",
+        "#4717 merged (fill-quality capture fix)",
+        "#4719 merged (loss-taxonomy segmentation tool -- closes G-S4 regime question, flags TACTICAL sub-lane)",
+        "#4721 merged (watch-age narrative -- Ask Largo now says how long a WATCH thesis has been building)"
+      ],
       "moved_the_needle": "correctness/tooling/infra + THREE honest measurement tools (early-trim, score-calibration, loss-taxonomy-segmentation) + one data-capture fix (fill-quality) + one narrative/UX enhancement (watch-age). The loss-taxonomy segmentation tool is the first result with real actionable signal: TACTICAL sub-lane's 80% loss rate (n=5) diverges from the 44.4% aggregate -- watching, not yet acted on. That IS the scorecard entry for this week: measurement infrastructure + one genuine enhancement shipped, no premature calibration changes made, one real signal now being tracked."
     }
   ],
-  "known_open_prs_snapshot": { "as_of": "2026-09-10T10:02:00Z", "swing_prs": [] },
+  "known_open_prs_snapshot": {
+    "as_of": "2026-09-10T10:02:00Z",
+    "swing_prs": []
+  },
   "tickers_seen": {
-    "NRG": { "last_status": "OPEN/HOLD", "last_seen": "2026-09-10T04:06:00Z", "note": "trim-ladder display bug subject, fixed in #4704" },
-    "CRWD": { "last_status": "OPEN/TRIM", "last_seen": "2026-09-10T04:06:00Z" },
-    "NN": { "last_status": "OPEN", "last_seen": "2026-09-10T08:10:00Z", "note": "154.5% spread-as-%-of-mid live -- spread wider than mid itself, headline evidence for v6 item 4" }
+    "NRG": {
+      "last_status": "OPEN/HOLD",
+      "last_seen": "2026-09-10T04:06:00Z",
+      "note": "trim-ladder display bug subject, fixed in #4704"
+    },
+    "CRWD": {
+      "last_status": "OPEN/TRIM",
+      "last_seen": "2026-09-10T04:06:00Z"
+    },
+    "NN": {
+      "last_status": "OPEN",
+      "last_seen": "2026-09-10T08:10:00Z",
+      "note": "154.5% spread-as-%-of-mid live -- spread wider than mid itself, headline evidence for v6 item 4"
+    }
   }
 }
