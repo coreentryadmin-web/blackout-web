@@ -1,11 +1,45 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // Set a deterministic threshold BEFORE the target module loads (it reads the env at
 // load time). The import is dynamic + inside each async test to avoid top-level await,
 // which this project's CJS transform does not support. uw-rate-limiter.ts has no
 // @/lib/* imports, so it loads cleanly under `npx tsx --test`.
 process.env.UW_CIRCUIT_429_THRESHOLD = "5";
+
+// acquireGlobalRedisSlot() is not exported (it depends on getSharedRedis()'s dynamic
+// ../make-redis import + REDIS_URL env, not worth mocking here), so the composition itself is
+// checked by reading the source rather than calling it — the same convention this repo already
+// uses for scripts that can't be safely imported (e.g. largo-truncation-probe.test.ts). This is
+// the regression guard for the 2026-09-09 live incident: acquireSlidingWindowRedisSlot's own
+// reservation semantics are proven generically in provider-rate-limiter-shared.test.ts, but
+// nothing proved this SPECIFIC call site actually passes the reduced ceiling rather than the raw
+// GLOBAL_MAX_RPS — which is exactly the gap that let a background sweep starve live traffic's RPS
+// budget while the concurrency-side reservation (already wired in below) sat unaffected.
+test("acquireGlobalRedisSlot passes the RESERVED ceiling to the RPS sliding window, not the raw GLOBAL_MAX_RPS", () => {
+  const src = readFileSync(fileURLToPath(new URL("./uw-rate-limiter.ts", import.meta.url)), "utf8");
+  const callLine = src.split("\n").find((line) => line.includes('"blackout:uw:rps"'));
+  assert.ok(callLine, "expected to find the blackout:uw:rps acquireSlidingWindowRedisSlot call site");
+  assert.ok(
+    callLine!.includes("reserveForLiveTraffic(GLOBAL_MAX_RPS)"),
+    `the RPS ceiling must be reservation-aware, mirroring acquireGlobalRedisConcurrencySlot's reserveForLiveTraffic(GLOBAL_MAX_CONCURRENCY) below it — got: ${callLine}`
+  );
+  assert.ok(
+    !callLine!.includes(", GLOBAL_MAX_RPS)"),
+    "the raw unreserved GLOBAL_MAX_RPS must not be passed directly any more"
+  );
+});
+
+test("acquireGlobalRedisConcurrencySlot (the pre-existing concurrency reservation) is unchanged by this fix", () => {
+  const src = readFileSync(fileURLToPath(new URL("./uw-rate-limiter.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /acquireRedisConcurrencySlot\(\s*client,\s*UW_CONCURRENCY_REDIS_KEY,\s*reserveForLiveTraffic\(GLOBAL_MAX_CONCURRENCY\)/,
+    "the concurrency-side reservation this fix mirrors must still be intact"
+  );
+});
 
 test("breaker trips at exactly THRESHOLD distinct 429s, not half (the double-count regression guard)", async () => {
   const { noteUw429, isUwCircuitOpen, resetUwCircuitForTest } = await import("./uw-rate-limiter");

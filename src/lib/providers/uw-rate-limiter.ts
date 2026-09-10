@@ -327,7 +327,17 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   if (!client) return true;
 
   try {
-    return await acquireSlidingWindowRedisSlot(client, "blackout:uw:rps", GLOBAL_MAX_RPS);
+    // reserveForLiveTraffic mirrors the concurrency reservation below (see the block comment on
+    // backgroundUwSweepStore): a background-sweep-tagged caller compares the SAME shared sliding-
+    // window counter against a ceiling reduced by one, so it can never claim the last RPS unit —
+    // live traffic (which always checks the full GLOBAL_MAX_RPS) can still take it. Added
+    // 2026-09-09 after a live incident where queue waits blew the 20s admission budget specifically
+    // at THIS stage ("waited 20001ms of 20000ms" logged as global_rps, not global_concurrency) —
+    // the concurrency-only reservation from the original fix didn't help because UW's RPS ceiling
+    // (GLOBAL_MAX_RPS, default 2) is low enough to be the real bottleneck on its own, independent
+    // of concurrency. Polygon's equivalent limiter has no analogous gap: its GLOBAL_MAX_RPS
+    // defaults to 150, so RPS-level contention was never the binding constraint there.
+    return await acquireSlidingWindowRedisSlot(client, "blackout:uw:rps", reserveForLiveTraffic(GLOBAL_MAX_RPS));
   } catch {
     // Redis died mid-session: arm the backoff so getSharedRedis() falls back to
     // local-only pacing for SHARED_REDIS_RETRY_BACKOFF_MS instead of awaiting a
