@@ -327,8 +327,19 @@ the PR is open and mergeable — the repo's `automerge.yml` does this automatica
 and `claude/*` branches; agent branches named `fix/*` must still be merged by the agent if CI
 passes before the workflow fires.
 
-**CARVE-OUT — PRs a Claude session OPENS ITSELF wait for Cursor's peer-review sign-off before
-merging (operator instruction, 2026-09-04).** Green CI alone is no longer sufficient for a
+**CARVE-OUT — RESCINDED (operator instruction, 2026-09-10).** The Cursor peer-review-sign-off
+requirement below (added 2026-09-04) is **cancelled**. The operator explicitly directed removing
+this dependency after it produced a large backlog of green, tested, self-authored PRs stuck
+waiting on Cursor reviews that never arrived. **Current rule: self-authored PRs (`fix/*`/`feat/*`/
+`docs/*` branches) merge under the same "Merge authorization" policy above as everything else —
+green CI + clean mergeable state is sufficient, no Cursor sign-off required.** The struck-through
+text immediately below, and the two "MIRROR FAILURE" sections after it, are kept as historical
+record of why the carve-out existed and how it failed in practice — they no longer describe
+current policy. Do not reinstate the Cursor-sign-off gate without a fresh, explicit operator
+instruction to do so.
+
+~~PRs a Claude session OPENS ITSELF wait for Cursor's peer-review sign-off before
+merging (operator instruction, 2026-09-04). Green CI alone is no longer sufficient for a
 self-authored PR: hold the merge until Cursor's peer-review comment on the PR posts an explicit
 approval (its `✅ GO AHEAD MERGE` verdict, or equivalent unambiguous sign-off) — not just its
 `⏳ WAIT` status. This is narrower than it sounds: it applies to PRs the Claude session itself
@@ -338,7 +349,7 @@ is green and the reviewing session's own scrutiny is satisfied, per the rest of 
 If Cursor's review flags a real, non-cosmetic issue, fix it and re-request rather than merging
 around the finding. If Cursor's peer-review pass hasn't posted anything yet after a reasonable
 wait, that is a stuck PR to chase (per the standing chase-the-lanes discipline), not a green light
-to merge without it.
+to merge without it.~~
 
 **THE MIRROR FAILURE — a Cursor PR can self-merge PAST an outstanding Claude `⏳ WAIT` (observed
 2026-09-06, PR #4110).** The carve-out above protects Claude's own PRs; the same protection is
