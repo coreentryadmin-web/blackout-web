@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T22:22:06.515Z",
+  "lastUpdated": "2026-09-10T22:37:41.389Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -411,6 +411,11 @@
       "at": "2026-09-10T22:22:06.538Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "PR #4752 CONFIRMED MERGED (6a8b424) -- verify took ~11.5min (slower than this session's typical ~7-9min but completed clean, no re-run needed), CodeQL/triage/dispatch all green. Merged by a parallel session on the account (same pattern as #4750) before this session's own scheduled undraft step ran. Verified directly against origin/main per the standing 'a merge is not a verification' discipline: legacyVectorStatus's winner/runner upgrade block is present exactly as authored. This closes the FULL Legacy scorecard-honesty chain found and fixed today: PR #4742 (bestPick/hitRate pulled-play exclusion) -> #4746 (calendar tile pulled-play exclusion) -> #4750 (calendar tile rounding) -> #4752 (winner/runner status classification, the deepest/most structural of the four). All four confirmed live via direct origin/main verification. The Legacy scorecard's winners/runners/hit-rate/net-premium/calendar-tile figures are now honest end-to-end. healthcheck:legacy this cycle: AMBER (A_edition stale, documented expected post-close state), B_marks/C_record GREEN, resolved=31. No new issues this cycle."
+    },
+    {
+      "at": "2026-09-10T22:37:41.389Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "EDITION ROLLED OVER: healthcheck:legacy now fully GREEN (editionFor=2026-09-11, 2 fresh plays AAPL/SWKS, not stale) -- the documented expected AMBER window (post-4pm-ET-close, pre-tonight's-build) closed exactly as predicted, no escalation needed. Confirms knownOpenItems.legacyPostCloseStaleEditionExpected's model was correct. Did a fresh improvement-hunting pass on the new edition's playbook-card content (an area not yet deep-checked today): (1) recap_summary now reads 'Market tide flat / no premium. SPX 7591.70...' -- single period, confirming the earlier-traced double-period bug (already fixed in code, format.ts) was purely stale pre-fix content baked into the OLD persisted edition row, not a live defect -- tonight's fresh build proves the fix holds. (2) Spot-checked AAPL's rr_ratio (0.55) against its own stop/target/entry_range (302.57/344.57/323.56-329.58) by hand -- initially looked off against a naive midpoint calc, but re-derived using computeRiskReward's actual fill-edge formula (play-levels.ts, band TOP for LONG = 329.58): (344.57-329.58)/(329.58-302.57) = 14.99/27.01 = 0.555 -> matches the displayed 0.55 exactly. This was MY OWN arithmetic error (used the entry-range midpoint instead of the fill edge), not a bug -- the code already has a well-documented, deliberate fix for this exact class of discrepancy (fixed 2026-08-06, full worked example in the function's own comment block). Correctly did NOT file a false finding. No new issues this cycle. healthcheck fully GREEN across all three stages."
     }
   ],
   "knownOpenItems": {
