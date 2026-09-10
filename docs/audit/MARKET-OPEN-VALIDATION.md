@@ -118,6 +118,26 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-10 Ask Largo CLOSED-play run-on bullet fix (read this before the routine pass)
+
+### CLOSED-play "Trade manager read" jammed 2-3 post-mortem points into one illegible bullet — fix/swing-closed-coaching-run-on-bullet
+
+**What was broken:** live capture from `GET /api/market/swing/play-brief?playId=SWING:AAPL&ticker=AAPL&positionId=36`
+showed one `•` bullet reading "Exited -56.2% vs peak +1.3% Round-tripped past breakeven — was up
++1.3% at peak, closed at -56.2%; tighten at first trim rail next time. Stop fired (stopped) —
+check if entry was extended past invalidation." — three distinct facts with no separator. See
+`docs/audit/findings-staging/2026-09-10-swing-closed-coaching-run-on-bullet.md`.
+
+**Fix:** `closedCoaching()` (`play-brief-narrative-coaching.ts`) now joins its internal points
+with `\n• ` instead of a bare space, so each renders as its own bullet — matching every other
+coaching point in the system (one `push()` call = one bullet).
+
+**Check at the open:** re-pull any CLOSED swing play-brief whose position has both a peak/exit P&L
+outcome AND a `closedReason` (e.g. a stopped-out or thesis-broken position) and confirm "Trade
+manager read" shows 2-3 separate `•` lines, not one run-on sentence. Also confirm a closed play
+with only ONE of those inputs (e.g. no `closedReason`) still renders a single clean bullet, not an
+empty leading `•`.
+
 ## WATCH LIST — 2026-09-10 Night Hawk Legacy recap text fix (read this before the routine pass)
 
 ### Overnight edition `recap_summary` double-periods whenever market tide is unavailable — fix/legacy-recap-tide-double-period

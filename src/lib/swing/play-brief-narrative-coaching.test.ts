@@ -601,6 +601,30 @@ test("closedCoaching: a round-trip past breakeven never renders a nonsensical ne
   assert.match(line!, /round-tripped past breakeven/i);
 });
 
+// Regression for the run-on "Trade manager read" bullet (live repro AAPL:36, 2026-09-10, found
+// during the standing Ask Largo deep-dive): closedCoaching joined its 2-3 distinct post-mortem
+// points (outcome, MFE-capture/round-trip verdict, exit-reason lesson) with a bare space, and
+// collectCoachingBullets wraps whatever closedCoaching returns as ONE "• " bullet — so a closed
+// play with both an MFE-capture note and a closedReason rendered as one illegible run-on sentence
+// instead of separate bullets, unlike every OPEN/WATCH coaching point (each gets its own push()).
+test("closedCoaching: outcome + exit-reason are separate bullet points, not one run-on sentence", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 1.3,
+      exitPnlPct: -56.2,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(line);
+  const points = line!.split("\n• ");
+  assert.equal(points.length, 3, `expected 3 separate bullet points, got: ${JSON.stringify(line)}`);
+  assert.match(points[0], /^Exited \*\*-56\.2%\*\* vs peak \*\*\+1\.3%\*\*$/);
+  assert.match(points[1], /^\*\*Round-tripped past breakeven\*\*/);
+  assert.match(points[2], /^\*\*Stop fired\*\* \(stopped\)/);
+});
+
 // ─── underlyingExcursionCoaching ────────────────────────────────────────────
 // FINDINGS 2026-09-10 (live NRG repro): the "option gave back X% from peak" aside used
 // `play.peak - play.pnlPct` (percentage-POINT subtraction of two already-percentage numbers).
