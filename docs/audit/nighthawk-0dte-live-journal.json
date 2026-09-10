@@ -108,6 +108,9 @@
     },
     "2026-09-10T17:38Z": {
       "note": "4th commit: RDDT long, score80/tierB, cortex PASS +0.39 no vetoes, triple-confirmed confluence, trim_scale. Coherent at entry, no red flags. Currently OPEN at -1.72% (trivial noise this early). Not tracking further unless it develops into something notable."
+    },
+    "2026-09-10T17:45Z": {
+      "note": "Routine cycle. QQQ CLOSED row still shows frozen pre-fix entry_context (mark_honored:false, exit_pnl_pct:-2.27, managed_pnl_pct:-2.27) as expected \u2014 the ratchet-floor-honor fix (PR #4737, merged this session) only affects FUTURE exit computations, not this already-closed row, so this is the same already-diagnosed historical snapshot, not a new bug. Traced the board-level live_pnl_pct:0 vs nested exit_pnl_pct:-2.27 divergence on the same row down to reconcileLedgerLivePnlPct() using entry_premium vs last_mark (both 0.22, giving 0% display) independently of exit_pnl_pct (frozen from entry_context.exit, still the buggy -2.27%) \u2014 this is a PRE-EXISTING, already-understood quirk (last_mark happened to equal entry_premium for this row), not new evidence either way about the fix; the real validation still needs a FRESH ratchet-floor-boundary close after deploy. New observation, not yet escalated (single session-day counter, not a 3-instance cross-cycle pattern): board veto_shadow reports vector_winner_misses:3 / vector_runner_misses:3 (\"3 Vector winners gate-blocked today\") \u2014 consistent with the already-documented gate-compound-funnel finding (0/26 setups cleared every hard gate jointly in a full RTH session), so read as expected strict-gate behavior for now, not miscalibration. Session state: 4 commits total (SPXW stopped -50%, RDDT open -1.72%, QQQ closed frozen -2.27%/display 0%, SPCX closed -4.09% thesis), governor not halted, discovery health OK (BREAKOUT 107 setups, PIN 0)."
     }
   },
   "sessions": {
