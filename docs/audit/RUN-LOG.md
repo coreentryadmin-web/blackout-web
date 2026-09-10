@@ -11,6 +11,30 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-10 (06:18 UTC) — [SEO] Lane heartbeat: prod validated, sweep clean, GA4→Ads gap re-confirmed unchanged
+
+**Severity.** — (no defect found)
+
+STEP 1 — homepage 200, `/api/og` 200, both healthy.
+
+STEP 2 — `agent-pr-sweep.mjs`: 1 open agent PR (#4711, mine — the squash-merge marketing-dates
+fix), READY-BUT-DRAFT with green CI, correctly awaiting the coordinator's mark-ready. No
+conflicted PRs to rebase.
+
+STEP 3 — re-ran `node --import tsx scripts/audit/google-ads-conversion-verify.mjs`: unchanged
+from every prior cycle since 2026-08-27 — 0 pass / 1 warn / 4 FAIL, verdict `DO NOT LAUNCH`.
+Traced the exact missing piece this cycle (not previously localized this precisely): the four
+`NEXT_PUBLIC_GOOGLE_ADS_*` vars are wired as Docker build-args in `ecr-push-production.yml`,
+sourced from **GitHub Actions repository secrets** — not AWS Secrets Manager (confirmed no
+matching secret exists there either). Confirmed no AWS Secrets Manager or ECS task-definition
+env var holds a real value that's simply unwired. GitHub Actions secrets endpoints are blocked
+outright at this sandbox's proxy (`"Access to this GitHub Actions path is not permitted"`), so
+this cannot be read or set from here even if a value existed — genuinely blocked on the operator
+creating real conversion actions in a Google Ads account and setting the resulting `AW-<id>` +
+per-action labels as GitHub Actions secrets. Same conclusion as every prior cycle, now with the
+exact blocking layer identified rather than just "environment variables missing."
+
+---
 ## 2026-09-10 (03:52 UTC) — [SEO] Deep-dive continuation: PR #4701 checked, sweep clean, GSC unchanged
 
 **Severity.** — (no defect found)

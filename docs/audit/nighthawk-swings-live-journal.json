@@ -1,38 +1,50 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T05:55:00Z",
+  "last_updated": "2026-09-10T06:50:00Z",
   "notes": [
-    "MANDATE v4 (2026-09-10 05:53 UTC): now firing 24/7 (was RTH-weekdays-only), 4 triggers changed 1/16/31/46 13-20 * * 1-5 -> 1/16/31/46 * * * *. Off-hours focus: overnight/weekend gap risk + staleness labeling on OPEN positions, Largo audit applies unchanged off-hours, do NOT manufacture 'no price action' findings from a closed market, check upcoming BMO/AMC catalysts. ALSO: the Cursor peer-review CARVE-OUT is RESCINDED — merge own green/clean self-authored PRs directly, no more holding for Cursor sign-off.",
-    "Cold start 2026-09-10 ~04:00 UTC — journal did not exist on main prior to this cycle.",
-    "v2 corrections confirmed by direct code read this cycle: HorizonPlay.status (PlayStatus 'COMMIT'|'WATCH', src/lib/horizon-plays.ts:69,77) IS the real lifecycle field. Real swing exit-management surface is src/lib/swing/manage-sync.ts + src/lib/swing/exit-policy.ts, NOT zerodte/exit-sync.ts.",
-    "Board scale at this cycle: 94 COMMIT (OPEN) rows, 12 WATCH rows (horizons?view=swings). Per already-open PR #4700 (draft, design proposal), ~90/94 of those committed rows are Banger-lane merges, not real swing_positions DB rows — book-context concentration checks are blind to them. Not re-litigated this cycle, already scoped.",
-    "swing/record 14d window: 6 roll-chains, 1 win / 5 losses (16.7% WR), avg compounded return +30.9%. Single-play sample per chain mostly (n=1 each) — noise-discipline threshold (3+ same-failure-mode) not met for any specific gate/pillar miscalibration claim this cycle."
+    "P0 STATUS (still open at this update): #4713 (postgres health-check fix for the fleet-wide CI outage) has GREEN verify + mergeable_state:clean, confirmed working (job log shows the role-root error gone, full suite ran). BLOCKED ONLY on undrafting -- GitHub MCP update_pull_request (the one path that can undraft per CLAUDE.md's own documented findings) is hitting the shared AGENT_RELEASE_TOKEN rate limit (budget #4). Posted status comment on #4713 flagging this for any session with a fresher rate-limit budget. NEXT WAKE: retry update_pull_request(draft:false) on #4713 first, then merge_pull_request, before anything else -- this is the highest-priority open item, blocking the whole fleet's CI.",
+    "A second session independently commented on #4713 confirming the same root-cause analysis and noting #4711 (marketing-dates regen) was in flight -- no conflict, my own push already carried a fresh regen so #4713 is self-contained and ready.",
+    "#4712 (early-trim A/B tool) is still open, draft, blocked the same way as #4713 was (CI outage) -- should re-verify its `verify` run once #4713 merges (my earlier standing-down comment on #4712 is still accurate) and merge it too.",
+    "MANDATE v6 (2026-09-10 06:18 UTC, additive to v5): 5 new angles -- NOT YET STARTED, deferred behind the P0. (1) Segment loss/win taxonomy AND G-S4 question by regime/archetype/sub-lane, not aggregate. (2) checkPortfolioOverlap only catches theme/direction for a NEW candidate -- check correlated risk across DIFFERENT tickers in the already-committed ~94-position book. (3) Score-calibration reliability diagram (decile vs realized win rate) -- highest-priority next-tick item. (4) Fill-quality check on illiquid names (SKHL/IREZ/MULL etc). (5) Fast circuit-breaker authority for a mid-week real losing streak.",
+    "MANDATE v5 (2026-09-10 05:59 UTC): loss/win taxonomy + calibration authority + weekly scorecard + cross-pollination. See loss_taxonomy/win_taxonomy below.",
+    "MANDATE v4/v3: 24/7 firing, CARVE-OUT rescinded (now confirmed in writing in CLAUDE.md itself, not just the trigger prompt), ~15-min cadence via 4 offset triggers.",
+    "v2 field corrections confirmed by direct code read: HorizonPlay.status IS the real lifecycle field. Real swing exit-management surface is manage-sync.ts + exit-policy.ts."
   ],
   "checked_this_cycle_no_bug_found": [
-    {
-      "topic": "NRG HOLD vs CRWD TRIM despite similar peak-to-now round trips",
-      "verdict": "not a bug — intentional graduated-calibration design (manage-sync.ts's `enforced` flag, PR-16 ladder). Different from the trimsFired/narrative bug below, which WAS real."
-    }
+    { "topic": "NRG HOLD vs CRWD TRIM despite similar peak-to-now round trips", "verdict": "not a bug -- intentional graduated-calibration design." }
   ],
   "findings_filed_this_cycle": [
-    {
-      "id": "swing-trim-ladder-fired-ignores-enforced-gate",
-      "pr": 4704,
-      "severity": "P1",
-      "summary": "Command Deck terminal panel + Ask Largo play-brief both showed 'Trim ladder +100% ✓' / 'all trims banked — runner only' for NRG (positionId 34) while the board's own liveStatus stayed HOLD (manage-sync never enforced a trim). Root cause: terminalPlayFromHorizon used buildTerminalExitLadder's raw mechanical fired flag (peak>=level) unconditionally; that flag is only status-equivalent for 0DTE, not swing. Fixed by gating fired on status==='TRIM'.",
-      "status": "MERGED to main 2026-09-10T05:00:34Z (merged_by coreentryadmin-web, all checks green: verify/CodeQL/triage). Verified fix content present in origin/main directly (rawExitPolicy gating), not just trusted PR status. CARVE-OUT that was holding this was rescinded before/around the merge (v4 mandate).",
-      "filed_at": "2026-09-10T04:20:00Z",
-      "merged_at": "2026-09-10T05:00:34Z"
-    }
+    { "id": "swing-trim-ladder-fired-ignores-enforced-gate", "pr": 4704, "status": "MERGED, verified on main." },
+    { "id": "swing-play-brief-source-timeout", "pr": 4663, "status": "MERGED, verified on main." },
+    { "id": "swing-early-trim-ab-tool", "pr": 4712, "kind": "TOOLING", "status": "PR open, draft. Blocked by the CI outage (below), not its own content. Standing-down comment posted. Re-verify + merge once #4713 lands." },
+    { "id": "ci-postgres-healthcheck-role-root", "pr": 4713, "kind": "P0 INFRA FIX, fleet-wide blast radius", "status": "verify GREEN, mergeable_state:clean, confirmed working. BLOCKED on undraft rate limit only -- see notes above. Highest priority for next wake." }
   ],
-  "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T05:57:00Z",
-    "note": "Backlog CLEARED as of this timestamp: CARVE-OUT rescinded 2026-09-10 (v4 mandate) and the whole prior swing PR backlog (4662,4663,4671,4676,4679,4682,4683,4685,4689,4693,4695,4696,4700) merged to main within the same hour, mix of other sessions + this one (#4663 merged directly by this session at 05:56 UTC once CARVE-OUT lifted, verified via git log on origin/main, not just PR status). No open swing PRs remain as of this snapshot.",
-    "swing_prs": []
+  "loss_taxonomy": {
+    "as_of": "2026-09-10T06:20:00Z",
+    "window": "90d, 31 closed chains",
+    "BAD_EXIT_n5": ["AMZN +41.5%mfe->-52.6%", "TSM +42.2%mfe->-62.26%", "INTC(SECTOR_ROTATION) +25.7%mfe->-40.83%", "IGV +14.6%mfe->-39.49%", "EWZ +20.6%mfe->-34.16%"],
+    "BAD_ENTRY_n3": ["MSTR score2.9", "CCI score33.3", "PYPL score5 instant-breakeven"],
+    "VARIANCE_possible_CLEAN_n3_not_root_caused": ["AAPL score75.8", "NVDA score82.2", "INTC(LONG) score84.0"],
+    "next_step": "v6 item 1: re-split by regime/archetype/sub-lane. Tool built for the BAD-EXIT pattern: swing-early-trim-ab.mjs (see PR #4712) -- result was INCONCLUSIVE at n=31, no calibration change shipped."
   },
+  "win_taxonomy": {
+    "as_of": "2026-09-10T06:20:00Z",
+    "standouts": ["EWZ score64.8 +438.79%", "RKLB score19.2 +79.37% (low score, big win)", "GLW score44.7 +5.52% (peak+44.7%, possible BAD-EXIT-shaped WIN)"],
+    "next_step": "superseded by v6 item 3 (score calibration reliability diagram) -- build that instead of a separate win-size study, next tick."
+  },
+  "open_experiments_scoped_not_yet_run": [
+    { "id": "g-s4-regime-gate-calibration", "status": "not started, needs regime-segmentation per v6 item 1" },
+    { "id": "v6-score-calibration-curve", "status": "not started -- top priority once P0 clears" },
+    { "id": "v6-correlated-risk-beyond-theme-direction", "status": "not started" },
+    { "id": "v6-fill-quality-check", "status": "not started" }
+  ],
+  "weekly_scorecard": [
+    { "week_of": "2026-09-10", "trailing_30d_from_record": { "win_rate_pct": 16.7, "avg_compounded_return_pct": 30.9, "chains": 6 }, "shipped_this_period": ["#4704 merged", "#4663 merged", "#4712 open (blocked)", "#4713 open (blocked, P0 CI fix)"], "moved_the_needle": "too early to tell" }
+  ],
+  "known_open_prs_snapshot": { "as_of": "2026-09-10T06:50:00Z", "swing_prs": [4712, 4713] },
   "tickers_seen": {
-    "NRG": { "last_status": "OPEN/HOLD", "last_seen": "2026-09-10T04:06:00Z", "note": "trim-ladder display bug subject, see findings_filed_this_cycle" },
+    "NRG": { "last_status": "OPEN/HOLD", "last_seen": "2026-09-10T04:06:00Z", "note": "trim-ladder display bug subject, fixed in #4704" },
     "CRWD": { "last_status": "OPEN/TRIM", "last_seen": "2026-09-10T04:06:00Z" }
   }
 }
