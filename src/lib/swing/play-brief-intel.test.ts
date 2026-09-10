@@ -526,6 +526,12 @@ test("holdPlanSection: round-tripped-past-breakeven note fires when current pnl 
     section!.body,
     /Round-tripped past breakeven.*was up \*\*133%\*\* at peak, now \*\*-10%\*\*/,
   );
+  // The round-trip bullet must NOT claim "into strength" — the play just round-tripped past
+  // breakeven into a loss, so there is no strength left to trim into. Same contradiction class
+  // fixed in actionNarrative's TRIM branch (FINDINGS 2026-09-10) but this sibling call site was
+  // missed by that fix's blast-radius check — live reproduction on SWING:NN:32, 2026-09-10.
+  assert.doesNotMatch(section!.body, /consider trim into strength/);
+  assert.match(section!.body, /consider protecting what's left/);
 });
 
 test("holdPlanSection: null when no unique hold-plan content beyond Management", () => {
