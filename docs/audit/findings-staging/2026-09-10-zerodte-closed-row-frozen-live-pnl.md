@@ -1,4 +1,4 @@
-# 0DTE board — CLOSED rows disclose a frozen pre-exit live_pnl_pct instead of the true exit_pnl_pct — FIXED
+# 0DTE board — CLOSED rows disclose a rounding-distorted live_pnl_pct instead of the true exit_pnl_pct — FIXED
 
 > **kind:** FINDING
 
@@ -29,37 +29,60 @@ disclosure tooltip actually renders.
 
 ## Root cause
 
-`live_pnl_pct` is computed live, per poll, from the CURRENT mark
-(`livePnlPctFor(isCondor, entryPremium, pnlMark)`, `live-marks.ts:859`). Once a row's status becomes
-CLOSED, the live-marks poller stops re-quoting the now-dead contract (confirmed live: this row's
-`mark_as_of` is `null`) — so `live_pnl_pct` FREEZES at whatever the last live poll computed, which
-can predate the actual exit tick. For this row: entry premium and the last live poll's mark both
-happened to round to the same display value (`0.22` == `0.22`), giving a naive `0%`, while the real
-exit fired on the RAW, unrounded print (`0.215`, `-2.27%`) — the exact rounding-boundary shape
-already fixed once this session in the exit engine itself (#4737, "ratchet floor's `mark_honored`
-flag breaks at a cent-rounding boundary"), but recurring here in a sibling field (`live_pnl_pct`)
-that #4737 never touched.
+**Corrected mid-investigation** (see the note at the end) — the first-pass diagnosis of "the
+live-marks poller stops re-quoting a dead contract, so `live_pnl_pct` freezes stale" was WRONG.
+Traced the real mechanism in `zerodte-service.ts` directly: for a non-`"stopped"` `closed_reason`
+(a "ratchet"/"thesis"/"flat"/"target" engine exit — everything except the mechanical -50% hard
+stop), `live_pnl_pct` is DELIBERATELY RECOMPUTED post-`roundFloats()` from the ROUNDED,
+member-visible `entry_premium`/`last_mark` (`reconcileLedgerLivePnlPct` → falls through to
+`pinnedLivePnlPct(entry_premium, last_mark)` on the already-rounded pair), with the code's own
+comment stating why: *"roundFloats() rounds entry_premium/last_mark independently; recompute PnL
+from the member-visible rounded premiums so live_pnl_pct always matches its structure's formula"*
+(`zerodte-service.ts:834-838`). **That is correct, intentional design for `live_pnl_pct`'s own
+purpose** — a member computing `(mark-entry)/entry` by hand from the two rounded numbers shown on
+the same row gets the same answer `live_pnl_pct` shows.
 
-`closedPnlDisplay` (`marks-math.ts`) — the ONE shared function that decides what a CLOSED row
-displays, and whose own doc comment already warns "an unbanked peak is a loss shown as a gain" —
-had exactly this same class of bug baked into BOTH its outputs:
+For this QQQ row: `entry_premium` and `last_mark` both display as `0.22` (the real exit print was
+`0.215`, which rounds to `0.22` for display — same value as entry), so the rounded-pair formula
+gives exactly `0%`. The RAW, pre-rounding exit computation (`0.215` vs the raw entry) gives the true
+`-2.27%` — the same rounding-boundary shape already fixed once this session in the exit engine
+itself (#4737, "ratchet floor's `mark_honored` flag breaks at a cent-rounding boundary"), recurring
+here in a sibling, still-correct-for-its-own-purpose field.
+
+The actual bug is one layer up: `closedPnlDisplay` (`marks-math.ts`) — the ONE shared function that
+decides what a CLOSED row displays, whose own doc comment already warns "an unbanked peak is a loss
+shown as a gain" — serves a DIFFERENT purpose than `live_pnl_pct`'s live-monitoring self-consistency:
+it answers "what did this position actually realize," where the answer must be the raw-precision
+result, not a number that's merely consistent with two other rounded numbers on the same row. It had
+this category mismatch baked into BOTH its outputs:
 - `pct` (the primary badge, shown when no trim tranche armed) fell back to `row.live_pnl_pct`.
 - `realized_pct` (the disclosure paired with a shown peak — the field this function's own comment
   says "any surface showing the peak is obliged to show... too") ALSO used `row.live_pnl_pct`.
 
 Neither ever consulted `row.exit_pnl_pct` — a field the exit engine populates with the real final
-result (`entry_context.exit.pnl_pct`, forwarded to the board API's ledger row), because
-`closedPnlDisplay`'s row type never declared it, and the client `LedgerRow`/`PlayRow` types in
-`ZeroDteBoard.tsx` never mapped it through from the raw API response in the first place — `mergePlays`
-copied `exit_reason`/`exit_detail` from the ledger row but silently dropped `exit_pnl_pct` sitting
-right beside them.
+result at RAW precision (`entry_context.exit.pnl_pct`, forwarded to the board API's ledger row),
+because `closedPnlDisplay`'s row type never declared it, and the client `LedgerRow`/`PlayRow` types
+in `ZeroDteBoard.tsx` never mapped it through from the raw API response in the first place —
+`mergePlays` copied `exit_reason`/`exit_detail` from the ledger row but silently dropped
+`exit_pnl_pct` sitting right beside them.
+
+**Note on a same-day, same-mechanism cross-check that looked like a contradiction and wasn't:** a
+parallel Legacy-lane cycle independently traced this exact `live_pnl_pct` vs `exit_pnl_pct`
+divergence on a DIFFERENT ticker (RDDT, a smaller 0.43pp gap) the same day and logged it as
+"confirmed by-design, not a bug" (`docs/audit/nighthawk-0dte-live-journal.json`, `2026-09-10T19:07Z`
+entry). That conclusion is correct and does not conflict with this fix — they were asking "is
+`live_pnl_pct`'s own computation wrong?" (no, it's working as designed) while this finding asks "is
+`closedPnlDisplay`'s CONSUMPTION of `live_pnl_pct` for a 'what actually happened' purpose correct?"
+(no — a field designed for display self-consistency is the wrong source for a realized-outcome
+disclosure, regardless of how correctly that field computes what it's designed to compute).
 
 ## Evidence
 
 Live capture (one temp Clerk premium session, deleted after), `GET /api/market/zerodte/board`
 ledger row for QQQ vs `GET /api/market/zerodte/record?days=1`'s matching play — both routes carry
 `exit_pnl_pct`/`entry_context.exit.pnl_pct` reading `-2.27`, and the board row's own separate
-`live_pnl_pct` field reads `0`.
+`live_pnl_pct` field reads `0`. Mechanism confirmed by reading `zerodte-service.ts:536,834-843`
+directly (`reconcileLedgerLivePnlPct`), not inferred.
 
 RED→GREEN, `src/lib/zerodte/marks-math.test.ts` (3 new tests using the exact live QQQ numbers,
 plus a synthetic no-tranche-armed case for the PRIMARY badge — not just the tooltip): `git stash
@@ -93,7 +116,8 @@ reach-around was itself a second, independent bug: even a caller who wanted the 
 couldn't get it from `closedPnlDisplay`'s return value before this fix, because `realized_pct` was
 computed wrong at the source.
 
-Deliberately left `live_pnl_pct`'s OWN computation (`live-marks.ts`) untouched — it is correct for
-what it is (a live poll snapshot), and freezing after the position closes is itself correct/expected
-behavior (there is nothing left to poll). The bug was purely in which field the DISPLAY layer
-reached for once a row closes, not in how either field is computed.
+Deliberately left `live_pnl_pct`'s OWN computation (`reconcileLedgerLivePnlPct`, `zerodte-service.ts`)
+untouched — it is correct, intentional design for its own live-monitoring-consistency purpose (the
+RDDT cross-check above confirms this independently). The bug was purely in which field
+`closedPnlDisplay` reached for when reporting a CLOSED row's realized result, not in how either
+field is computed.

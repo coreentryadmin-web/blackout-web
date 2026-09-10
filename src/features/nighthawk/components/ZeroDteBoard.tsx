@@ -82,8 +82,10 @@ type LedgerRow = {
   floor_pnl_pct?: number | null;
   exit_reason?: "ratchet" | "thesis" | "flat" | "target" | "stop" | null;
   exit_detail?: string | null;
-  /** The exit engine's own final P&L % at close — the true realized result, unlike
-   *  `live_pnl_pct` which freezes at the last live-marks poll BEFORE the exit tick. */
+  /** The exit engine's own final P&L % at close, at raw precision — the true realized
+   *  result, unlike `live_pnl_pct`, which is deliberately recomputed from the ROUNDED
+   *  member-visible entry/mark for live-monitoring self-consistency (see marks-math.ts's
+   *  `closedPnlDisplay`) and can round two close values to the same display figure. */
   exit_pnl_pct?: number | null;
   /** B-9: quote timestamp/provenance when the live-marks lane served last_mark. */
   mark_as_of?: string | null;

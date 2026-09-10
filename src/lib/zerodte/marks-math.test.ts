@@ -701,13 +701,19 @@ test("realized_pct is always carried, so a peak can never be shown without its d
   }
 });
 
-// ── exit_pnl_pct wins over a stale live_pnl_pct on CLOSED rows ─────────────────────────
+// ── exit_pnl_pct wins over a rounded-down-to-zero live_pnl_pct on CLOSED rows ──────────
 //
-// live_pnl_pct FREEZES once a row closes (the live-marks poller stops re-quoting a dead
-// contract), so it can lag the real exit tick. Measured live 2026-09-10: QQQ's board row read
-// live_pnl_pct: 0 (entry 0.22 rounded == last poll's rounded mark 0.22) while its own
-// exit_pnl_pct: -2.27 (raw mark 0.215) was the true, final result.
-test("a peak that banked tranches discloses the TRUE exit result, not the frozen pre-exit live mark", () => {
+// live_pnl_pct is deliberately RECOMPUTED post-roundFloats() from the ROUNDED, member-visible
+// entry_premium/last_mark (zerodte-service.ts's reconcileLedgerLivePnlPct) — correct, intentional
+// design so the field stays self-consistent with the two numbers shown on the same row (confirmed
+// by a separate live trace the same day: RDDT case, RUN-LOG/journal 2026-09-10 19:07Z, a small
+// 0.43pp gap from this exact mechanism, ruled not-a-bug for live_pnl_pct itself). But rounding two
+// already-close numbers to the SAME display value can zero out a real result entirely — measured
+// live 2026-09-10: QQQ's board row read live_pnl_pct: 0 (entry_premium/last_mark both rounded to
+// 0.22) while its own exit_pnl_pct: -2.27 (raw exit print 0.215, pre-rounding) was the true result.
+// closedPnlDisplay serves a DIFFERENT purpose than live_pnl_pct's live-monitoring self-consistency —
+// "what did this position actually realize" — so it should prefer the raw-precision exit_pnl_pct.
+test("a peak that banked tranches discloses the TRUE exit result, not the rounded-to-zero live figure", () => {
   const v = closedPnlDisplay({
     status: "CLOSED",
     peak_pnl_pct: 47.73,
@@ -716,10 +722,10 @@ test("a peak that banked tranches discloses the TRUE exit result, not the frozen
   });
   assert.equal(v.is_peak, true, "47.73 peak arms at least one tranche under any regime");
   assert.equal(v.pct, 47.73, "the peak badge itself is unchanged by this fix");
-  assert.equal(v.realized_pct, -2.27, "disclosure must show the real exit, not the frozen 0%");
+  assert.equal(v.realized_pct, -2.27, "disclosure must show the real exit, not the rounded 0%");
 });
 
-test("an UNBANKED closed row displays the true exit result too, not the frozen pre-exit live mark", () => {
+test("an UNBANKED closed row displays the true exit result too, not a rounding-distorted live figure", () => {
   const v = closedPnlDisplay({
     status: "CLOSED",
     peak_pnl_pct: null,
@@ -727,7 +733,7 @@ test("an UNBANKED closed row displays the true exit result too, not the frozen p
     exit_pnl_pct: -10,
   });
   assert.equal(v.is_peak, false);
-  assert.equal(v.pct, -10, "the PRIMARY badge must show the real exit, not a stale +5%");
+  assert.equal(v.pct, -10, "the PRIMARY badge must show the real exit, not a rounding-distorted +5%");
   assert.equal(v.realized_pct, -10);
 });
 

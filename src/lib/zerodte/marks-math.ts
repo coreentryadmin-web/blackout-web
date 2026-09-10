@@ -285,13 +285,19 @@ export function trimScaleTranchesArmed(
  * `is_peak` is returned rather than inferred by the caller so the disclosure and the number can
  * never drift apart: any surface showing the peak is obliged to show `realized_pct` too.
  *
- * `live_pnl_pct` FREEZES once a row closes — the live-marks poller stops re-quoting a dead
- * contract, so it holds whatever was last observed BEFORE the exit tick, not the exit itself.
- * `exit_pnl_pct` (when the exit engine recorded one) is the true final result, computed off the
- * same raw pre-rounding values #4737 fixed for `mark_honored`/`pnl_pct`. Prefer it for both the
- * displayed number and the disclosure so a closed row can't show a stale pre-exit snapshot —
- * measured live 2026-09-10: QQQ's board row read `live_pnl_pct: 0` (entry 0.22 == last poll's
- * rounded mark 0.22) while its own `exit_pnl_pct: -2.27` (raw mark 0.215) was the real result.
+ * `live_pnl_pct` is NOT the raw live poll for a closed row — zerodte-service.ts deliberately
+ * RECOMPUTES it post-`roundFloats()` from the ROUNDED, member-visible `entry_premium`/`last_mark`
+ * (`reconcileLedgerLivePnlPct`), so it stays self-consistent with the two numbers shown alongside
+ * it on the same row — a correct, intentional design for THAT field's own monitoring purpose
+ * (confirmed by a separate live trace the same day, RDDT case, RUN-LOG/journal 2026-09-10 19:07Z:
+ * a small 0.43pp gap from this exact mechanism, ruled not-a-bug for `live_pnl_pct` itself). But
+ * `closedPnlDisplay` serves a DIFFERENT purpose — "what did this position actually realize" — and
+ * rounding two already-close numbers to the same display value can zero out (or invert the sign
+ * of) a real result entirely, same rounding-boundary shape as #4737's `mark_honored` bug.
+ * `exit_pnl_pct` (when the exit engine recorded one) is computed at raw, pre-rounding precision and
+ * is the true final result — prefer it here. Measured live 2026-09-10: QQQ's board row read
+ * `live_pnl_pct: 0` (`entry_premium`/`last_mark` both rounded to `0.22`) while its own
+ * `exit_pnl_pct: -2.27` (raw exit print `0.215`) was the real result.
  */
 export function closedPnlDisplay(row: {
   status?: string | null;
