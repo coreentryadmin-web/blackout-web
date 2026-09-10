@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T06:05:00Z",
+  "lastUpdated": "2026-09-10T06:09:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -65,6 +65,14 @@
     "status": "schema defined this cycle; no resolved picks classified yet (the 3 open picks above are all still PENDING). Populate as picks resolve in upcoming cycles.",
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
+  "checkIns": [
+    {
+      "at": "2026-09-10T06:09:00Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, base v3 template -- v4/v5 already logged above)",
+      "result": "LEAN CHECK, no new issues. Re-pulled edition live at 06:08 UTC (02:08 ET): stale:false, carry_until_close:true -- confirms the PR #4703 fix is deployed and the carry_until_close mechanism generally works. NOTE: 02:08 ET is outside the specific 00:00-00:59 ET bug window, so this does NOT yet directly prove the midnight-hour fix itself in prod -- needs a direct re-check during that exact window (next occurrence: tonight ~00:00-00:59 ET, i.e. ~22h from this check). Marks/record unchanged from last cycle (3 open picks still PENDING, no new resolutions). Scanned market_recap/news feed for sanity -- populated, no defects. No new enhancement idea manufactured this cycle -- did a real look (recap fields, news feed) and found nothing above the bar; per mandate, this is fine for a single cycle, not yet 'several consecutive cycles of nothing.'",
+      "midnightWindowReverificationPending": true
+    }
+  ],
   "knownOpenItems": {
     "legacyDte5Gap_2026-08-06": "FINDINGS.md 2026-08-06 P1 'Legacy->Swing promotion path admits dte<5 contracts' -- verified 2026-09-10 via code read of legacy-confirm-promote.ts (lines ~56-69): a minDte/maxDte filter against HORIZONS.SWING.dteMin/dteMax now exists at the chain-row filtering step, with an in-code comment referencing this exact finding. Appears FIXED since the 08-06 entry; FINDINGS.md itself was not updated to reflect this (still shows NOT FIXED). Live-confirmed clean 2026-09-10: only one Legacy-origin play currently on the Swing board (IREN, dte 8, well inside [5,30]), consistent with the fix holding (n=1, not yet a large sample). Not escalating a FINDINGS.md status correction as its own PR -- low priority, noted here for correlation; revisit if this file needs touching for another reason anyway."
   },
