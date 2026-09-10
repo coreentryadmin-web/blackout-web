@@ -32,6 +32,9 @@
         "read": "On its own economic merits this looks like a REASONABLE, defensible block -- a real gamma wall sitting in the breakout's path is genuine resistance, not an obviously-wrong veto. NOT calling this a bug.",
         "open_question_not_resolved": "thesis_first.desk_evidence shows VECTOR status='aligned' on this same structural breakout -- Vector-confirming-direction is exactly the condition PR #4656's applyCortexCommitRelief checks to strip a gex-walls veto at COMMIT time. Could not confirm from this WATCH-stage board snapshot alone whether relief logic even runs at this pre-commit display path or only inside the deeper persistZeroDteScan commit pipeline -- did not trace further this cycle (would need a code read of where board.ts's gate display sources its verdict vs where scan.ts applies relief). Single instance -- noise threshold (3+) not met, not escalating. Logging for correlation: watch for the SAME shape (Vector-aligned, gex-walls-vetoed, sits WATCH indefinitely, never relieved) recurring on other tickers."
       }
+    },
+    "2026-09-10T15:16Z": {
+      "note": "AAPL follow-up: 8min later, score dropped 86->72 and the block set is now COMPLETELY DIFFERENT (thesis_rank_reject, thesis_archetype_block, vix_elevated, conditional_band_unmet -- the single gex-walls veto from last cycle is gone). Naturally resolves last cycle's open question: gate verdicts recompute fresh each scan pass (matches the documented stateless-Cortex-veto design), AAPL wasn't 'stuck' on one block, its whole picture just changed. Not a finding. Still 0 new commits (2 total, both closed)."
     }
   },
   "sessions": {
