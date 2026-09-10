@@ -27,9 +27,9 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T04:05:00Z",
-    "note": "Large concurrent backlog on this surface from prior cycles/lanes, all green/non-draft/mergeable, ZERO Cursor engagement observed on every one checked (4663,4671,4676,4679,4682,4685,4689,4696,4700) — already flagged twice on #4076 (23:39 UTC and 01:20 UTC 2026-09-09/10) by a prior cycle. Do not re-post unless new information.",
-    "swing_prs": [4662, 4663, 4671, 4676, 4679, 4682, 4683, 4685, 4689, 4693, 4695, 4696, 4700, 4704]
+    "as_of": "2026-09-10T05:57:00Z",
+    "note": "Backlog CLEARED as of this timestamp: CARVE-OUT rescinded 2026-09-10 (v4 mandate) and the whole prior swing PR backlog (4662,4663,4671,4676,4679,4682,4683,4685,4689,4693,4695,4696,4700) merged to main within the same hour, mix of other sessions + this one (#4663 merged directly by this session at 05:56 UTC once CARVE-OUT lifted, verified via git log on origin/main, not just PR status). No open swing PRs remain as of this snapshot.",
+    "swing_prs": []
   },
   "tickers_seen": {
     "NRG": { "last_status": "OPEN/HOLD", "last_seen": "2026-09-10T04:06:00Z", "note": "trim-ladder display bug subject, see findings_filed_this_cycle" },
