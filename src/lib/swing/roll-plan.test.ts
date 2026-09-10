@@ -122,6 +122,71 @@ test("resolveParentGradeMark: prefers the live read; falls back to a FRESH latch
   assert.equal(resolveParentGradeMark(parentRow({ last_mark: null, last_mark_at: null }), null, now), null);
 });
 
+// ─── expired-contract escape hatch (2026-09-10: 28 real rows found stuck OPEN/HOLD/TRIM forever, expiries
+// 6-27 days past — an option that has expired can never produce a fresher quote, so the ordinary staleness
+// bound above would defer this grade FOREVER, not just for a while) ──────────────────────────────────────
+
+test("resolveParentGradeMark: a STALE latched mark is used anyway once the contract has expired (dte < 0) — never defers forever", () => {
+  const now = Date.parse("2026-09-10T15:00:00.000Z");
+  const staleAt = new Date(now - 27 * 24 * 60 * 60_000).toISOString(); // 27 days old, same shape as the live find
+
+  // Without dte (unchanged legacy call shape) → still defers, exactly as before this fix.
+  assert.equal(resolveParentGradeMark(parentRow({ last_mark: 0.42, last_mark_at: staleAt }), null, now), null);
+
+  // dte >= 0 (contract not yet expired) → still defers. The escape hatch is expiry-specific, not a general
+  // widening of the staleness bound.
+  assert.equal(resolveParentGradeMark(parentRow({ last_mark: 0.42, last_mark_at: staleAt }), null, now, 0), null);
+  assert.equal(resolveParentGradeMark(parentRow({ last_mark: 0.42, last_mark_at: staleAt }), null, now, 5), null);
+
+  // dte < 0 (contract has definitively expired) → the stale latched mark is used, tagged with a distinct
+  // source so a reader can never mistake this for a normal in-window latch.
+  const resolved = resolveParentGradeMark(parentRow({ last_mark: 0.42, last_mark_at: staleAt }), null, now, -27);
+  assert.ok(resolved, "resolves instead of deferring forever once the contract is expired");
+  assert.equal(resolved!.mark, 0.42);
+  assert.equal(resolved!.source.source, "latched_last_mark_expired");
+  assert.equal(resolved!.source.observedAt, staleAt);
+  assert.equal(resolved!.source.ageMs, 27 * 24 * 60 * 60_000);
+
+  // A FRESH latch (under the bound) with dte < 0 takes the ordinary "latched_last_mark" path unchanged —
+  // the expired-escape only ever fires once the ordinary bound has actually been exceeded.
+  const freshAt = new Date(now - 5 * 60_000).toISOString();
+  const freshExpired = resolveParentGradeMark(parentRow({ last_mark: 0.42, last_mark_at: freshAt }), null, now, -1);
+  assert.equal(freshExpired!.source.source, "latched_last_mark");
+});
+
+test("gradeParentFromMark: an expired-latch source grades with the same honest 'latched' basis as a normal latch", () => {
+  const g = gradeParentFromMark(parentRow({ entry_premium: 5 }), 0.42, {
+    source: "latched_last_mark_expired",
+    observedAt: "2026-08-14T20:00:00.000Z",
+    ageMs: 27 * 24 * 60 * 60_000,
+  });
+  assert.equal(g!.grade_json.basis, "latched_last_mark_vs_entry_premium");
+  assert.equal(g!.grade_json.mark_source, "latched_last_mark_expired");
+  assert.equal(g!.grade_json.realized_pnl_pct, (0.42 - 5) / 5 * 100);
+});
+
+test("buildSwingRollPlan: a CLOSE-gated position with an expired contract + stale latch now closes instead of deferring forever", async () => {
+  const staleAt = "2026-08-14T20:00:00.000Z"; // 27 days before the 2026-09-10 read below
+  const expiredRow = parentRow({
+    contract_expiry: "2026-08-14",
+    last_mark: 0.42,
+    last_mark_at: staleAt,
+  });
+  const closeVerdict = verdict({ action: "EXIT", rung: "expiry_risk", rollIntent: { roll: false, reason: "past expiry, no roll" } });
+  const nowReads = reads({ mark: null, dte: -27 });
+
+  const plan = await buildSwingRollPlan(expiredRow, closeVerdict, nowReads, deps());
+  assert.ok(plan, "closes instead of deferring — this is the exact live bug: without the dte escape hatch this returned null forever");
+  assert.equal(plan!.childSpec, undefined, "a CLOSE-decided verdict never opens a child leg");
+  assert.equal(plan!.parentGrade.grade_json.mark_source, "latched_last_mark_expired");
+
+  // Sanity: the SAME row/verdict with a live-mark-shaped `reads.dte` omitted (undefined) reproduces the
+  // pre-fix stuck-forever defer, proving this test would have failed RED before the fix.
+  const preFixShapedReads = reads({ mark: null, dte: undefined });
+  const deferred = await buildSwingRollPlan(expiredRow, closeVerdict, preFixShapedReads, deps());
+  assert.equal(deferred, null, "without a usable dte, the stale latch still defers — confirms the escape hatch is what closes it above");
+});
+
 // ─── ROLL happy path ────────────────────────────────────────────────────────────
 
 test("ROLL: grades the parent + builds a gated, further-out child leg", async () => {
