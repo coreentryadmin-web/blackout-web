@@ -19,6 +19,9 @@
     "2026-09-10T14:17Z": {
       "note": "SPCX CLOSED: entry 3.18, mark 3.05, final pnl -4.09%, peak was only +2.2% -- never crossed the 40% trim_scale first-trigger, so no trim ever fired, CORRECT (peak too small for the rule to engage), small round-trip loss from noise-level gain, not mismanagement. SPXW still HOLD, worsening: entry 14.5, mark 8, live pnl -44.83%, peak_pnl -21.03% (never once profitable). trim_scale trim_levels correctly show fired=False on BOTH (they're GAIN triggers, irrelevant to a losing trade) -- the only loss-side protection is the flat -50% hard stop and 15:50 ET time stop, so HOLD at -44.83% is CORRECT current behavior, not a bug. This is a single in-flight loser, not a 3-instance pattern -- watching, not escalating.",
       "watch_next_cycle": "Does SPXW's -50% stop fire correctly if it breaches, or does it round-trip back? (also: keep an eye out for the QQQ-style instant-phantom-stop shape if it DOES stop out -- this one committed at 10:02 and has been live for real elapsed time with a real gradual decay, so it does NOT look like that bug, but worth confirming the stop math is clean when/if it fires.)"
+    },
+    "2026-09-10T14:37Z": {
+      "note": "SPXW CLOSED, exit_pnl exactly -50.00%, closed_reason=stopped, mark 7.25 = precisely half of 14.5 entry -- clean, correctly-computed hard stop after a real ~35min gradual decay. POSITIVE confirmation: the stop mechanism itself is sound for a genuinely-decaying position (contrast with the QQQ open finding, which is specifically about a STALE ENTRY PRICE causing an instant false stop, not about the stop-math/trigger logic). Both of today's first 2 commits now closed: SPCX -4.09% (thesis), SPXW -50% (stopped) -- a rough start, nothing mechanically wrong on either. 102 WATCH setups now (normal RTH churn), 0 new commits since 10:02."
     }
   },
   "sessions": {
