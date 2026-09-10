@@ -3485,3 +3485,26 @@ cycle, now trading live rather than off-hours/stale.
 All four hold under real live RTH conditions with fresh data (not just the off-hours/synthetic
 fixtures the original unit tests used) — GREEN pass, no follow-up needed. `MARKET-OPEN-VALIDATION.md`
 items #74/#75 can be considered validated as of this entry.
+
+## 2026-09-09 (19:16 UTC) — [DISCOVERY] Live RTH validation follow-up: three more swing/Largo fixes confirmed correct (#4650, #4651, #4653)
+
+Same-day follow-up to the entry above — three more swing/Largo fixes merged mid-session
+(#4650, #4651, #4653), each confirmed live by re-pulling `GET /api/market/swing/play-brief?
+playId=SWING:NRG:34` at 11:15 ET, ~1 hour after the first RTH check on the identical still-open
+position, and diffing against that earlier snapshot:
+
+- **#4650 (dedupe triple-restated Vector conflict):** the earlier (10:15 ET) snapshot's "Vector
+  desk: ..." bullet ended with `— **cross-check** Vector thesis vs swing direction`, restating a
+  fact the "Cross-desk friction — Vector bearish (...)" bullet earlier in the same brief already
+  named. The newer (11:15 ET, post-merge) snapshot's "Vector desk: ..." bullet has NO trailing
+  cross-check clause — the redundant framing is correctly dropped now that the earlier bullet
+  already flagged the conflict, while the "Vector desk" bullet's own non-duplicative content
+  (headline, invalidation) is unchanged.
+- **#4651 (round lane-rank median delta):** "Below lane median — **#90/92** (score **27**, **-37**
+  vs median)" — a clean integer, not a raw unrounded float (the bug this fix removed).
+- **#4653 (restore DTE-runway context for DTE > 7):** "Manage plan" now includes "**9 DTE**
+  remaining" for this still-9DTE position, folded correctly into the "Trade manager read"
+  narrative even though this brief has no separate "Hold plan" section (exactly the collapsed-away
+  case the fix targeted).
+
+All three confirmed correct under real live data — GREEN pass, no follow-up needed.

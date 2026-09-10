@@ -114,6 +114,86 @@ test("diffBriefSnapshots: omits thesis health delta when uncalibrated (extends #
   assert.ok(lines.some((l) => l.includes("P&L")), "P&L diff still fires on uncalibrated rows");
 });
 
+function thesisPayload(health: number, overrides: Record<string, unknown> = {}) {
+  return {
+    health,
+    rungLabel: "ok",
+    pillars: [],
+    moves: [],
+    advisory: "",
+    entryIndex: 60,
+    currentIndex: health,
+    delta: health - 60,
+    rung: "OK",
+    committedAtEt: "",
+    computedAtEt: "",
+    ...overrides,
+  };
+}
+
+test("diffBriefSnapshots: cross-field synthesis — thesis fade + FAVORABLE price move stay independent", () => {
+  // Thesis fades AND spot moves, but UP (favorable for a LONG) — the two facts pull in
+  // different directions, so this must read as two separate bullets, never a forced
+  // "thesis fading AND price moved" causal line (see synthesizeThesisAndPrice's doc comment).
+  const prev = snapshotFromBrief(
+    env(),
+    play({ direction: "LONG", thesisHealth: thesisPayload(60) as any }),
+    { spot: 100, putWall: 95 },
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({ direction: "LONG", thesisHealth: thesisPayload(54, { rungLabel: "fade", rung: "DEGRADED" }) as any }),
+    { spot: 103, putWall: 95 },
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Thesis fading")), `expected an independent thesis line, got: ${JSON.stringify(lines)}`);
+  assert.ok(lines.some((l) => l.includes("Spot drifted higher")), `expected an independent spot line, got: ${JSON.stringify(lines)}`);
+  assert.ok(
+    !lines.some((l) => l.includes("Thesis fading") && l.includes("Spot drifted")),
+    "a favorable price move must never be stitched to a fading thesis as one causal line",
+  );
+});
+
+test("diffBriefSnapshots: cross-field synthesis — thesis fade + adverse price drift reads as one connected line naming the downgrade", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({ direction: "LONG", recommendation: "HOLD", thesisHealth: thesisPayload(60) as any }),
+    { spot: 100, putWall: 95, gammaFlip: 99 },
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({ direction: "LONG", recommendation: "TRIM", thesisHealth: thesisPayload(54, { rungLabel: "fade", rung: "DEGRADED" }) as any }),
+    { spot: 97, putWall: 95, gammaFlip: 99 },
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  const combined = lines.find((l) => l.includes("Thesis fading") && l.includes("put wall"));
+  assert.ok(combined, `expected one connected thesis+price line, got: ${JSON.stringify(lines)}`);
+  assert.match(combined!, /through the gamma flip toward/, "spot crossed the flip on the way to the wall — the connected line should say so");
+  assert.match(combined!, /desk downgraded to \*\*TRIM\*\*/);
+  assert.equal(
+    lines.filter((l) => l.includes("Thesis")).length,
+    1,
+    "the thesis fact must not ALSO appear as its own separate bullet once synthesized",
+  );
+  assert.ok(
+    !lines.some((l) => l.startsWith("**Desk action shifted**")),
+    "the downgrade is folded into the connected line, not repeated as its own bullet",
+  );
+});
+
+test("diffBriefSnapshots: cross-field synthesis — P&L building + desk upgrade reads as one connected line", () => {
+  const prev = snapshotFromBrief(env(), play({ recommendation: "HOLD", pnlPct: 8 }));
+  const next = snapshotFromBrief(env(), play({ recommendation: "BUY", pnlPct: 14 }));
+  const lines = diffBriefSnapshots(prev, next);
+  const combined = lines.find((l) => l.includes("P&L building") && l.includes("desk upgraded"));
+  assert.ok(combined, `expected one connected P&L+upgrade line, got: ${JSON.stringify(lines)}`);
+  assert.match(combined!, /\*\*HOLD\*\* → \*\*BUY\*\*/);
+  assert.ok(
+    !lines.some((l) => l.startsWith("**Desk action shifted**")),
+    "the upgrade is folded into the connected line, not repeated as its own bullet",
+  );
+});
+
 test("envelopeWithDiffSection: prepends change section", () => {
   const out = envelopeWithDiffSection(env(), ["Spot moved"]);
   assert.equal(out.sections[0]?.title, "What changed");

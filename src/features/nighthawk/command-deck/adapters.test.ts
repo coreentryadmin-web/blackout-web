@@ -1799,6 +1799,32 @@ test("0DTE adapter: WATCH row projects runner target from Vector + confluence", 
   assert.match(play.recNote ?? "", /if committed/);
 });
 
+test("horizon adapter: swing trim ladder is NOT fired while liveStatus is still HOLD (peak crossed +100% but manage-sync never enforced it)", () => {
+  // Live production reproduction, 2026-09-10: NRG entry 4.90, peak 11.40 (+132.7%, past the
+  // +100% trim trigger) but liveStatus still HOLD — manage-sync.ts's own comment explains why:
+  // "to TRIM here would be fabricating a scale-out that never happened" until the PR-16
+  // calibration ladder graduates that rung. buildTerminalExitLadder's `fired` flag is purely
+  // mechanical (peak >= level) and previously ignored that gate entirely, so both the Command
+  // Deck panel and Ask Largo's play-brief showed "Trim ladder: +100% ✓" / "all trims banked —
+  // runner only" for a position that was still fully exposed.
+  const stillHeld = terminalPlayFromHorizon({
+    ticker: "nrg", direction: "LONG", horizon: "SWING", score: 27.2, liveStatus: "HOLD",
+    contract: { strike: 110, right: "C", expiry: "2026-09-18", dte: 8, mid: 6.85 },
+    entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
+  });
+  assert.equal(stillHeld.status, "HOLD");
+  assert.equal(stillHeld.exitPolicy!.trim_levels[0]!.fired, false);
+
+  // Once manage-sync actually enforces the trim (status flips to TRIM), the same mechanical
+  // crossing is real and should render as fired.
+  const actuallyTrimmed = terminalPlayFromHorizon({
+    ticker: "nrg", direction: "LONG", horizon: "SWING", score: 27.2, liveStatus: "TRIM",
+    contract: { strike: 110, right: "C", expiry: "2026-09-18", dte: 8, mid: 6.85 },
+    entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
+  });
+  assert.equal(actuallyTrimmed.exitPolicy!.trim_levels[0]!.fired, true);
+});
+
 test("0DTE adapter: closed row surfaces mfeCapturePct and frozen runner profile", () => {
   const play = terminalPlayFromZeroDte({
     ticker: "CRCL",

@@ -51,6 +51,10 @@ import {
   graduatedEdgeRungsFromReport,
   swingCalibrationRowFromLedger,
 } from "@/lib/swing/calibration";
+import {
+  distillSwingCalibrationReport,
+  persistSwingArchetypeTrackRecord,
+} from "@/lib/swing/calibration-cache";
 import type { SwingManageRung } from "@/lib/swing/manage";
 import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
@@ -239,6 +243,26 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
       const graded = await fetchGradedSwingFeatureRows(5000);
       const report = analyzeSwingCalibration(graded.map(swingCalibrationRowFromLedger));
       graduatedRungs = graduatedEdgeRungsFromReport(report);
+
+      // Ask Largo / Largo product-contract C10 (historical context): the SAME report also carries
+      // the per-archetype/sub-lane graduation verdicts — persist a DISTILLED copy so the swing
+      // play-brief's request path (play-brief-context.ts, which cannot reach the DB flow window
+      // this report is computed from) can cite a ticker's own historical track record. Distilling
+      // from the report already in hand here (rather than a second analyzeArchetypeRecord/
+      // analyzeSubLaneRecord pass) avoids recomputing work analyzeSwingCalibration just did. This
+      // write is best-effort and independent of the graduated-rungs read above: a persistence
+      // failure here must never regress live rung enforcement, so it gets its own try/catch rather
+      // than sharing the one above.
+      try {
+        const wrote = await persistSwingArchetypeTrackRecord(distillSwingCalibrationReport(report));
+        if (!wrote) {
+          console.warn(
+            "[cron/swing-active-refresh] archetype track-record cache write FAILED — brief citation stays absent this cycle",
+          );
+        }
+      } catch (err) {
+        console.error("[cron/swing-active-refresh] archetype track-record distill/persist FAILED (non-fatal)", err);
+      }
     } catch (err) {
       console.error("[cron/swing-active-refresh] graduated-rungs load FAILED — edge rungs stay advisory", err);
       graduatedRungs = [];

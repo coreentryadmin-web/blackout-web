@@ -51,6 +51,10 @@ export type ZeroDteRecordPlay = {
   /** Peak evidence score for the session (score_max) — the committed score, when the
    *  row carries entry_context, lives in entry_context.score. */
   score: number;
+  /** Dossier-scored Night Hawk letter when the row's origin has options-flow evidence to
+   *  score (FLOW), else the PR-F merit tier as a real fallback (toPlay's own doc comment
+   *  has the full mechanism) — never a bare null when SOME rank exists for the play. Null
+   *  only when the row genuinely carries no pinned evidence at all (pre-C-2 rows). */
   conviction: string | null;
   /** MECHANICAL plan grade (fixed -50/+100/15:50) — the labeled comparison, not the
    *  headline. Kept per-play so the desk can show "managed vs held" side by side. */
@@ -590,6 +594,9 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
       ? `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")} ET`
       : "";
   const managed = managedGradeView(r);
+  // Computed once, reused for both `conviction`'s fallback and `tier` below — same
+  // adapter, same pinned blob, one call.
+  const tierAssignment = tierFromEntryContext(r.entry_context);
   return {
     session_date: r.session_date,
     ticker: r.ticker,
@@ -597,7 +604,36 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
     flagged_at: r.first_flagged_at,
     flagged_et: flaggedEt,
     score: r.score_max,
-    conviction: r.conviction,
+    // `r.conviction` is the dossier-scored Night Hawk letter (scoreCandidate/assignNighthawkTier
+    // over flow/tech/pos/news/smart-money) — board.ts's enrichSetup(setup, dossier) stamps it
+    // from `dossier.scored.conviction`. BREAKOUT/PIN-origin setups are discovered from a bare
+    // price/volume breakout or a GEX pin, with no options-flow evidence to score, so BOTH
+    // discovery call sites (breakout-source.ts, pin-source.ts) pass enrichSetup a hardcoded
+    // `null` dossier — there is no flow to fetch a dossier FOR. The column is null for these
+    // origins not because the play is unranked, but because this ONE ranking method doesn't
+    // apply to them: measured live 2026-09-09, 36/57 (63.2%) committed plays over a 14-day
+    // window carried `conviction: null`, essentially all BREAKOUT-origin, vs 18/18 FLOW-origin
+    // plays with a real letter — a silent per-origin gap, a direct violation of the Largo
+    // product contract's C3 absence principle (a consumer that cannot tell "unranked" from
+    // "not this kind of play" reports absence as a finding).
+    //
+    // A real, already-computed, origin-agnostic signal exists one layer down: the PR-F merit
+    // tier (assignZeroDteTier via tierFromEntryContext, right below) is derived from evidence
+    // EVERY committed origin pins at commit — score, day-open VIX, Cortex, commit-time —
+    // regardless of discovery_origin (buildZeroDteEntryContext, entry-context.ts, runs
+    // unconditionally on every commit). It is not a re-derivation of the same dossier letter
+    // (different formula, different evidence, deliberately excludes A+ — see tiers.ts's own
+    // doc comment) but it IS a real, calibrated, non-fabricated rank for this exact play, on
+    // the same A/B/C vocabulary the vocabulary checks elsewhere in this codebase already
+    // accept (nighthawk-verifier.ts's VALID_CONVICTION). Falling back to it beats a bare null:
+    // omission is honest only when no signal exists at all, and one does here.
+    //
+    // Read-time fallback (not a commit-time backfill) so this ALSO fixes the 36 already-
+    // committed historical rows the live measurement found, the same way `tier` below is
+    // already recomputed from the pinned blob rather than trusted from a frozen column.
+    // Rows with genuinely no entry_context (pre-C-2, or the rare fail-soft failure) keep a
+    // real null here — zero pinned evidence is honestly "unrankable", not a fabricated grade.
+    conviction: r.conviction ?? tierAssignment?.tier ?? null,
     // The per-play "plan" column reflects the OFFICIAL (executable, WS-10) lane so the public
     // record shows the return a member could have exited at; mid stays on the live board.
     plan_outcome: officialPlanOutcome(r),
@@ -608,7 +644,7 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
     direction_hit: r.direction_hit,
     move_pct: r.move_pct != null ? round2(r.move_pct) : null,
     entry_context: r.entry_context,
-    tier: tierFromEntryContext(r.entry_context)?.tier ?? null,
+    tier: tierAssignment?.tier ?? null,
   };
 }
 
