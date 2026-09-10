@@ -1735,3 +1735,70 @@ test("watchForSection: watch/open buckets are unchanged — still show live thes
   assert.match(section.body, /Reclaim gamma flip \*\*99\.31\*\* — invalidates short thesis/);
   assert.equal(section.title, "Watch levels");
 });
+
+// Premium stop rail showed only the absolute dollar level ("thesis breaks if mark closes below
+// $6.66"), forcing a member to mentally compute how much room the current mark still has before
+// invalidation. Added a cushion percentage alongside the dollar level, computed the same way
+// fmtDist already frames a spot-vs-level distance elsewhere in this file — additive only, the
+// existing dollar level and "thesis breaks if..." wording are unchanged.
+test("watchForSection: Premium stop rail shows the live cushion percentage above the stop, not just the dollar level", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 19.575,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 6.66,
+        },
+      }),
+      asOf: "2026-09-10 11:47 ET",
+      sessionDate: "2026-09-10",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (19.575 - 6.66) / 19.575 * 100 = 65.96% -> 66%
+  assert.match(section.body, /Premium stop rail: \*\*\$6\.66\*\* — 66% cushion from current mark/);
+});
+
+test("watchForSection: Premium stop rail omits the cushion note when mark is unavailable (never fabricated)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 6.66,
+        },
+      }),
+      asOf: "2026-09-10 11:47 ET",
+      sessionDate: "2026-09-10",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Premium stop rail: \*\*\$6\.66\*\* — thesis breaks if mark closes below/);
+  assert.doesNotMatch(section.body, /cushion/);
+});
