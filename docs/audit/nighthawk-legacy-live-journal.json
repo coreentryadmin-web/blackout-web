@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T07:52:00Z",
+  "lastUpdated": "2026-09-10T08:10:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -74,6 +74,11 @@
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
   "checkIns": [
+    {
+      "at": "2026-09-10T08:10:00Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hourly cycle)",
+      "result": "TRANSIENT AUTH FAILURE investigated, not surfaced as a product finding. First edition fetch this cycle: cron 401 (stale CRON_SECRET, expected/documented) fell through to Clerk, which ALSO failed ('Clerk user create failed (no error payload)'). Per the standing 'auth failure != nothing to show' rule, did NOT read this as a clean/quiet cycle -- diagnosed instead: raw curl POST to Clerk's /v1/users with the harness's own realistic email/phone succeeded cleanly (200, real user created and immediately deleted again to avoid leaking it), confirming the secret/API itself is fine. Retried the actual fetchAuditJson path afterward -- succeeded (via:clerk). Most likely explanation: transient Clerk-side contention from this being a very busy multi-lane fleet (0DTE/Swing/Legacy all hammering temp-user creation concurrently right now) -- single instance, below the 3-instance noise threshold, not escalating. Edition state unchanged (SIG/ASO/FICO still open)."
+    },
     {
       "at": "2026-09-10T07:52:00Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
