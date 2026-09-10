@@ -862,7 +862,15 @@ export function closedCoaching(play: TerminalPlay): string | null {
   }
 
   if (!lines.length) return null;
-  return lines.join(" ");
+  // Each pushed line above is its own distinct post-mortem point (outcome, MFE-capture verdict,
+  // exit-reason lesson) — joining with a bare space ran up to three of them together into one
+  // illegible sentence (live repro: AAPL:36, "Exited -56.2% vs peak +1.3% Round-tripped past
+  // breakeven — was up +1.3% at peak, closed at -56.2%; tighten at first trim rail next time.
+  // Stop fired (stopped) — check if entry was extended past invalidation." — no boundary between
+  // three separate facts). collectCoachingBullets's `push()` prefixes the FIRST line with "• "
+  // (it only sees closedCoaching's return as one string); joining the rest with "\n• " here
+  // gives every point its own bullet, matching the OPEN/WATCH buckets' one-push-per-point pattern.
+  return lines.join("\n• ");
 }
 
 /** Collect prioritized coaching bullets for narrative assembly. */
