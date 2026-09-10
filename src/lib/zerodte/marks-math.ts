@@ -284,21 +284,37 @@ export function trimScaleTranchesArmed(
  *
  * `is_peak` is returned rather than inferred by the caller so the disclosure and the number can
  * never drift apart: any surface showing the peak is obliged to show `realized_pct` too.
+ *
+ * `live_pnl_pct` is NOT the raw live poll for a closed row — zerodte-service.ts deliberately
+ * RECOMPUTES it post-`roundFloats()` from the ROUNDED, member-visible `entry_premium`/`last_mark`
+ * (`reconcileLedgerLivePnlPct`), so it stays self-consistent with the two numbers shown alongside
+ * it on the same row — a correct, intentional design for THAT field's own monitoring purpose
+ * (confirmed by a separate live trace the same day, RDDT case, RUN-LOG/journal 2026-09-10 19:07Z:
+ * a small 0.43pp gap from this exact mechanism, ruled not-a-bug for `live_pnl_pct` itself). But
+ * `closedPnlDisplay` serves a DIFFERENT purpose — "what did this position actually realize" — and
+ * rounding two already-close numbers to the same display value can zero out (or invert the sign
+ * of) a real result entirely, same rounding-boundary shape as #4737's `mark_honored` bug.
+ * `exit_pnl_pct` (when the exit engine recorded one) is computed at raw, pre-rounding precision and
+ * is the true final result — prefer it here. Measured live 2026-09-10: QQQ's board row read
+ * `live_pnl_pct: 0` (`entry_premium`/`last_mark` both rounded to `0.22`) while its own
+ * `exit_pnl_pct: -2.27` (raw exit print `0.215`) was the real result.
  */
 export function closedPnlDisplay(row: {
   status?: string | null;
   peak_pnl_pct?: number | null;
   live_pnl_pct?: number | null;
+  exit_pnl_pct?: number | null;
   trim_regime?: TrimScaleRegime | null;
 }): { pct: number | null; is_peak: boolean; tranches_armed: number; realized_pct: number | null } {
   const regime = row.trim_regime ?? "neutral";
   const armed = trimScaleTranchesArmed(row.peak_pnl_pct ?? null, regime);
   const isPeak = row.status === "CLOSED" && row.peak_pnl_pct != null && armed > 0;
+  const realized = row.exit_pnl_pct ?? row.live_pnl_pct ?? null;
   return {
-    pct: isPeak ? (row.peak_pnl_pct ?? null) : (row.live_pnl_pct ?? null),
+    pct: isPeak ? (row.peak_pnl_pct ?? null) : realized,
     is_peak: isPeak,
     tranches_armed: armed,
-    realized_pct: row.live_pnl_pct ?? null,
+    realized_pct: realized,
   };
 }
 
