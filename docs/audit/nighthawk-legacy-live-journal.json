@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T19:42:08.317Z",
+  "lastUpdated": "2026-09-10T20:04:27.515Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -356,6 +356,11 @@
       "at": "2026-09-10T19:42:08.317Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy GREEN. ECS rollout for PR #4742 (pulled-play scorecard fix) CONFIRMED COMPLETE (deployment :1428, rolloutState COMPLETED, 8/8 running, single deployment -- old :1427 fully drained). Re-ran the live UI sweep and the fix is CONFIRMED LIVE: the Legacy scorecard now reads 'Hit rate 0%' (was the fabricated 100% driven entirely by the pulled ASO) and 'Best: FICO +28.53%' (a real, genuinely open play -- the pulled ASO's phantom +306% counterfactual no longer wins bestPick). 'Closed (1)' tab count unchanged as designed (tab-count parity with the raw closed counter, deliberately preserved). This closes the loop on this session's most significant finding with definitive before/after live proof, not just unit-test evidence -- full lifecycle: found via live UI sweep -> root-caused -> fixed with RED/GREEN tests -> shipped -> merged -> deployed -> re-verified live. Nothing else new this cycle; quiet otherwise."
+    },
+    {
+      "at": "2026-09-10T20:04:27.515Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
+      "result": "healthcheck:legacy GREEN. Follow-up to PR #4742: the same post-deploy verification screenshot that confirmed bestPick/hitRate were correctly fixed ALSO showed the scorecard's 'Net premium +110%' and the calendar strip's SEP-10 tile '+109.7%' still blending in the pulled ASO's phantom counterfactual (SIG -82%/FICO +29% real average is -26.5%, not +110%). Revisited my own earlier scope decision to leave netPremiumPct untouched in #4742 ('a more debatable design question') -- concrete live evidence of an 85-point swing is no longer debatable, it's the same dishonesty class, just not yet fixed. Also traced a SECOND, Legacy-exclusive instance: legacyBoardCalendarBuckets (legacy-board-table-utils.ts, NOT shared with Vector) has its own independent net/winners computation with the identical unfiltered-blend bug, powering the calendar-strip tiles directly. FIXED both: exported isNeverEnteredPull (previously private to #4742's fix) as the one shared definition, applied to vectorBoardScorecard's netPremiumPct accumulation and to legacyBoardCalendarBuckets's net/winners -- raw n/closed counts stay inclusive of pulls (tab-count parity, same as #4742). Deliberately did NOT touch the sibling Vector-shared vectorBoardCalendarBuckets (vector-board-table-utils.ts) -- would create a genuine circular module import (vector-board-row-utils.ts already imports FROM vector-board-table-utils.ts at runtime), and Vector never produces a PULLED row today, so documented as a deferred latent-bug note rather than forced through. RED->GREEN via git-stash on both source files (3/3 new tests fail pre-fix, reproducing the exact live ~84.6/+306.67 figures). Full nighthawk lib+components suite 974/974, full repo suite 13661/13661, tsc clean, eslint clean. PR opened as draft (fix/legacy-net-premium-pulled-play), subscribed to PR activity -- number/URL pending via background agent."
     }
   ],
   "knownOpenItems": {
