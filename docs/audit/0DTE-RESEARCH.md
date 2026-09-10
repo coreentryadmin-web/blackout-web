@@ -18,6 +18,7 @@ win-rate. Rigor rule: validate wide (≥20 sessions) before trusting — small s
 | E1 | Multi-day (d=5) vs single-day (d=1) accumulation as discovery | 5 | **Wash** — 32% vs 36% WR, n≈30. No standalone edge for lookback window. |
 | E2 | Entry-time × strike × stop/target geometry sweep | 7 → **25** | 7-session screamed "+43% EV @ 11:00"; **25-session corrected to +1.5%.** (Overfit caught.) |
 | E3 | Confluence: 0/1/2 confirmations (VWAP-side + SPY-aligned) @ 11:00 | 25 | **CONFIRMED edge** — see below. |
+| E6 | Thesis-first `thesis_rank_reject` outcome A/B, whole-market BREAKOUT/BREAKDOWN | 10 (n=599) | **⚠ REJECT graded BETTER than PASS** (64.3% vs 52.3% WR) — see below. |
 
 ### E2 — entry timing (25 sessions, opening-drive, held-to-close)
 ```
@@ -199,6 +200,61 @@ than 0-3 real trend samples. **Re-run `npm run ab:regime-dead-zone -- --days=90`
 `session_regime`-stamped trend rows have accumulated — the script is built, live-auth-tested, and ready;
 it just needs a population that doesn't exist yet.
 
+### E6 — thesis-first `thesis_rank_reject` outcome A/B (whole-market BREAKOUT/BREAKDOWN, 2026-09-10)
+
+`ZERODTE_THESIS_FIRST` is live. On 2026-09-09 its `thesis_rank_reject` gate (the archetype/rank
+quality floor `resolveThesisRankTier` fires when `evaluateArchetypeGates` returns `BLOCK`,
+`thesis/live-pipeline.ts`) alone accounted for 218/1,705 gate-blocked events that session — more
+than any single hard-gate code — yet `zerodte-gate-compound-funnel.mjs` explicitly scoped to
+FLOW-origin setups and listed "BREAKOUT/PIN origins" under its own NOT MEASURED THIS RUN. Nobody
+had asked the outcome question: does REJECTing these solo-BREAKOUT/PIN setups actually improve
+forward results?
+
+Built `scripts/audit/thesis-rank-reject-outcome-ab.mjs` (`npm run ab:thesis-rank-reject`): real
+`screenBreakoutMovers`/`screenBreakdownMovers` (the real whole-market screen) → real dynamic
+cap/momentum-rank (`resolveBreakoutCandidateCap`/`rankMoversForChainFetch`) → real per-ticker
+intraday read (`computeIntradayRead`, real Polygon minute bars) → the REAL, unmodified
+`attachThesisFirstLive` (the exact function scan.ts calls live, real rail scoring/archetype
+classification/gates/rank-tier resolver) → favorable-first forward grade on real Polygon minute
+bars from a fixed ET entry checkpoint (same proxy convention as `discovery-recall-probe.mjs`).
+Setup construction omits `key_resistances`/`key_supports`/`rel_volume` (disclosed in the script
+header, and verified NOT a shortcut: `buildBreakoutSetup`/`enrichSetup` leave these null/empty
+for BREAKOUT-origin setups in production too, since no technicals dossier is passed for that
+origin — this tool matches production exactly on these fields, not a weaker approximation of it).
+
+**First live run, 10 sessions (2026-08-26…2026-09-09), entry=10:30 ET: 599 graded — REJECT n=129
+(64.3% win rate, avg maxRet +1.3%) vs PASS (control, non-REJECT) n=470 (52.3% WR, +1.2%).**
+**⚠ The gate REJECTED setups that graded BETTER than the ones it let through**, the opposite of
+what a quality floor should do. Breakdown: 115/129 REJECTs fire on `momentum_abs_floor`
+(archetype `MOMENTUM_CONTINUATION`, `rail_scores.MOMENTUM < 60`) — only 14/129 on
+`breakout_score_floor`. **Sensitivity check at entry=10:00 ET (same 10 sessions): REJECT 72.9%
+WR (n=133) vs PASS 52.4% (n=466)** — same direction, larger gap; not an artifact of the specific
+entry-time choice. This systematizes, at n=129/599 across 10 sessions, the exact concern
+`archetype-gates.ts`'s own code comment already flagged from a single live anecdote (2026-08-28,
+INTC 92P REJECTed on `momentum_abs_floor`, later ran +275%) — the anecdote generalizes.
+
+**Read carefully before acting on this:** the dominant rejection reason (`momentum_abs_floor`)
+is really testing "did this BREAKOUT-origin name ALSO clear a `MOMENTUM` rail floor of 60"
+(`scoreMomentumRail`: base 40 + up to 12 for 5m-trend-aligned + up to 10 for VWAP-aligned, capped
+at 62 without `rel_vol`/`change_pct` — neither ever populated for a BREAKOUT-origin setup in
+production) — i.e. it demotes/rejects a clean BREAKOUT/BREAKDOWN print for lacking a SEPARATE,
+narrow momentum confirmation, not for being a weak breakout. That reads as a real candidate for
+recalibration (the floor, or requiring a second rail at all for this archetype), but this A/B is
+evidence, not a verdict on ONE session's worth of extra confirmation — **no gate changed here.**
+
+Extended `zerodte-gate-compound-funnel.mjs` with a new "BREAKOUT/PIN THESIS-RANK-REJECT" section
+(clearly labeled a DIFFERENT pipeline from its own hard-gate stack): a live, single-snapshot
+isolated `thesis_rank_reject` rate for today's BREAKOUT/BREAKDOWN screen, plus a live
+`discoverPinSetups` attempt. **PIN has no reachable measurement path from this sandbox at all**
+— two independent blockers, either alone sufficient: `discoverPinSetups` needs a live GEX-heatmap
+snapshot (server-side UW product, cache-only, no historical replay, same limitation
+`wall-temporal-stability.mjs` already documents), AND importing `pin-discovery.ts` from a plain
+Node script throws `"This module cannot be imported from a Client Component module"` — a Next.js
+client/server module-boundary marker in `resolveTickerChainRows`'s dependency graph. Reported as
+INSUFFICIENT DATA, not fabricated; a PIN measurement needs to run where that module's full server
+graph already loads (inside the app, admin-gated) or a poller built the way
+`gex-wall-snapshot-poll.mjs` is (authenticate through the live app's own API route).
+
 ---
 
 ### Board status badge: the TRIM threshold bug is real, and the earlier deferral was correct (2026-08-28)
@@ -357,6 +413,77 @@ platform-wide skip-grading gap — re-run `node --import tsx scripts/audit/zerod
 --days=90` once that gap is investigated/fixed** (a distinct piece of work, flagged as a follow-up
 suggestion rather than attempted inline here). Until it is, neither the primary-gate-only nor a future
 full `blocks_json`-based ablation can produce a real Blocked WR/EV number for any gate.
+### E6 — does `score_floor` (65) actually rank forward outcome? An independent re-check (2026-09-10)
+
+**The open question.** `zerodte-gate-compound-funnel.mjs` measured twice (2026-09-08 off-hours n=15,
+2026-09-09 RTH n=26) that `score_floor` (G-3, `ZERODTE_SCORE_FLOOR = 65`) is the dominant ISOLATED-
+rejection gate on FLOW-origin whole-market 0DTE setups — 84.6% isolated failure at RTH, the clear
+chokepoint on play COUNT the operator has repeatedly complained about live — and left open whether 65
+itself is miscalibrated or the score formula genuinely underscores tradeable setups. "Needs a backtest
+of the score distribution against forward outcomes before touching the threshold," per that script's
+own header.
+
+**Why 65 was set in the first place (F-2, `NIGHTHAWK-0DTE-DECISION.md`, 2026-07-13, n=16, real option
+premium graded):** the engine's own 14-day calibration at the time found the 55–64 score band ran
+**18.8% WR / avg −24.5% premium** — below the 33.3% breakeven line on the −50%/+100% payoff — while
+65–74 ran 50% WR/+21.1% and 75+ ran 50% WR/+9.9%. That is the evidence the 65 floor exists on. It is
+also ~2 months old, n=16 in the load-bearing band, and measured against the THEN-current engine, not
+today's `deriveZeroDteSetups`/`gates.ts`.
+
+**This re-check (`zerodte-score-floor-outcome-backtest.mjs`).** Re-derives the REAL FLOW-origin score
+for 18 real historical trading days (2026-08-13…2026-09-08, chosen as the most recent complete sessions
+UW's flow-alerts `older_than` pagination reaches from this sandbox — confirmed live back to at least
+2026-08-14 with zero errors) directly from UW flow-alerts (same re-fetch precedent as
+`zerodte-gate-compound-funnel.mjs`: same alerts, different pipe from the Postgres table production
+reads from), runs the REAL `deriveZeroDteSetups` (board.ts) per day with that day's own 3-day
+accumulation window and as-of clock (so `dte`/expiry filtering is correct for each historical day, not
+just "now"), and grades every scored setup's forward move on REAL Polygon minute bars with the
+favorable-first underlying-continuation proxy `discovery-recall-probe.mjs`/`merge-precedence-ab.mjs`
+already use (fixed 10:00 ET entry, +1.5%/−0.75% favorable/adverse) — **NOT real option premium like
+F-2 used**, a materially different and coarser grading rule, stated here so the two measurements are
+never conflated as directly comparable. Bucketed into bands fixed BEFORE looking at any result,
+straddling 65 exactly (`lib/score-floor-backtest-eval.mjs`).
+
+**Result — 18 sessions, 393 setups sampled, 392 graded:**
+```
+score band              n     win%     avg maxRet%
+0-39                    47    19.1%     0.75%
+40-54                  206    20.4%     0.72%
+55-64 (blocked today)   78    25.6%     0.76%
+65-74 (clears today)    55    14.5%     0.57%
+75-84                    6    33.3%     0.91%   (excluded, n<30)
+85-100                   0     —         —
+```
+**The headline comparison this re-check exists to answer — does the population score_floor lets
+through beat the population it blocks?** **NO, not in this sample:** 55–64 (blocked) graded **25.6%**
+vs 65–74 (clears) at **14.5%** — a **−11.1pp delta AGAINST the floor's implied ordering**, the opposite
+direction from F-2's 55–64-underperforms finding.
+
+**Verdict (same discipline `helix-score-signal.mjs` uses — requires a real spread AND a monotonic
+Spearman trend, never a spread alone): `SPREAD WITHOUT ORDER`** — spread 11.1pp, rank correlation
+ρ = −0.20 (short of the ±0.6 threshold for RANKS/INVERTED). The bands differ but do not trend with
+score; the two directly-comparable bands (n=78, n=55, both ≥30) sit in the "wrong" order and the two
+lower bands (0-39, 40-54) both under-perform 55-64 too. This is the same verdict shape HELIX's own
+conviction-score probe reached for an analogous question — a second, independent instance of a
+BlackOut scoring formula whose ordering does not survive an outcome check, worth noting for anyone
+building a NEW score elsewhere in the product.
+
+**Does this REFUTE F-2 or justify removing the floor? No — read the scope before acting on this.**
+This measures a favorable-first UNDERLYING-continuation proxy at a FIXED synthetic 10:00 ET entry, not
+real option P&L (no strike, no premium decay, no exit-management rule) — a different, coarser
+instrument than F-2's real-premium grading. It also measures `score` ALONE, never jointly with the
+other ~14 hard gates (VIX regime, confluence, governor, Cortex — see `zerodte-gate-compound-funnel.mjs`
+for those). A setup graded here as a "65-74 win" may still be blocked live by a different gate, and a
+"55-64 win" here was never exposed to real slippage/spread on the actual option leg. What this DOES
+say: on the specific, narrower question of whether `score` alone ranks a coarse forward-continuation
+proxy, the evidence over a real, well-powered (n=392) recent sample does not support a clean ordering
+around 65 — which means the standing question ("miscalibrated floor, or genuinely weak setups below
+it?") is still open, not closed in either direction, and deserves a real-option-P&L re-run of F-2's
+own methodology at today's larger achievable sample size before anyone touches the threshold.
+
+**No gate changed.** Evidence-gathering only, same discipline as every other calibration A/B in this
+toolkit (`cortex-oppose-magnitude-ab.mjs`, `tier-exit-mode-ab.mjs`, etc.) — this reports a verdict and
+leaves the decision to a human reading it.
 
 ---
 
@@ -440,6 +567,65 @@ turns fleeting whole-market bangers into strongly +EV trades; holding to expiry 
 - **P6 — Learning machinery (PR-A)** — persist accumulation + calibration buckets so P1–P5 graduate on
   live evidence automatically.
 - **P7 — Event-driven scan + unify Night Hawk scorer** — infra + architecture.
+
+## BREAKOUT `gain_over_range` ranking — real committed option-P&L validation, SCOPED BUT BLOCKED (2026-09-10)
+
+The 2026-08-07 finding (`FINDINGS.md`) measured `gain_over_range` beating the shipped `momentum`
+BREAKOUT ranking on an underlying-continuation proxy and explicitly recommended, before shipping:
+*"Re-rank with gain_over_range behind a flag and A/B it on real committed 0DTE plays over >=20
+sessions, measuring realised option P&L rather than the underlying proxy."* What shipped (PR
+#2846, merged 2026-08-25) was a direct unconditional swap — no flag, no A/B. It's now been live
+15+ trading days, so the originally-recommended validation should finally be runnable against real
+data — that was this task.
+
+**Tool built and smoke-tested against real data:** `scripts/audit/breakout-gain-over-range-option-
+pnl-ab.mjs`. Part A pulls every real committed BREAKOUT-origin play since 2026-08-25 via
+`GET /api/admin/zerodte/tier-export` and reports its already-graded REAL option P&L (official
+WS-10/WS-11 executable grade preferred over the mid grade, same precedent as
+`outcome-grading-audit.mjs`) — no reconstruction needed, production already grades every committed
+play against the option's own historical minute bars. Part B re-screens each play's real historical
+session date with the REAL `screenBreakoutMovers`/`screenBreakdownMovers` + the REAL dynamic cap
+(`resolveBreakoutCandidateCap`), then runs the shared, already-tested `splitBreakoutCohorts` helper
+twice over the identical pool — once with the REAL shipped `rankMoversForChainFetch` (gain_over_
+range) and once with a re-implemented `momentumRank` (the ranking it replaced, reproduced from the
+original finding's own recorded formula since it no longer exists in `src/`) — to partition real
+committed plays into MOMENTUM_ALSO (the old ranking would have prioritized this ticker too — the
+swap isn't why it's on the board) vs GAIN_OVER_RANGE_EXCLUSIVE (exists only because of the swap;
+its real P&L is the swap's own doing). Full methodology/scope caveats are in the script's header.
+
+**BLOCKED — a genuine, confirmed premise gap, not a script defect.** Running the built tool live
+against production (`https://blackouttrades.com/api/admin/zerodte/tier-export?days=19`, 84 total
+committed 0DTE plays since 2026-08-25) found that **`discovery_origin` was never exposed by any
+live route** — not `/record` (aggregate-only, no per-play origin field anywhere in
+`record.ts`/`buildZeroDteRecord`), not `tier-export` (which forwards `entry_premium`/`top_strike`/
+`expiry`/tier but had never forwarded `discovery_origin`, even though `entry_context.discovery_
+origin` has been persisted at commit since before PR #2846 — confirmed live in `scan.ts`'s real
+commit path, `buildZeroDteEntryContext({ ..., discovery_origin: s.discovery_origin }, ...)`). So
+the task's premise ("pull BREAKOUT-origin plays via /record or tier-export") did not hold against
+current production — not specific to BREAKOUT; every origin is equally unidentifiable via any live
+route today. This PR ships the missing forwarding (`ZeroDteTierExportRow.discovery_origin`, additive,
+read-only, unit-tested — mirrors exactly why `entry_premium`/`top_strike`/`expiry` were added to
+this same route for the C-tier/untiered exit-mode A/B). Because `discovery_origin` is a persisted
+`entry_context` column value, not something computed at request time, **once this PR deploys the
+already-existing 19+ days of historical rows immediately become BREAKOUT-attributable** — no new
+data needs to accumulate first.
+
+**Mechanics proven against real live data anyway** (smoke test, not a claim about real BREAKOUT
+attribution): re-screening the real 2026-09-09 grouped-daily snapshot (12,508 rows) for a real
+committed short play reproduced 539 real qualifying short movers, a real dynamic cap of 220, and
+correctly diverging real rankings for that name — gain_over_range rank 56 (KEPT) vs momentum rank
+314 (NOT kept) — the exact mechanism (a decent-gain, weak-close name that momentum's `gain ×
+close_strength` penalizes hard and gain_over_range does not) the 2026-08-07 finding's "mechanism"
+row described. The pipeline works; only the origin tag is missing pre-deploy.
+
+**Re-run once this PR is live:**
+```
+node --import tsx scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --json
+# or, before --min-n=15 real plays accumulate feels safe:
+node --import tsx scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --since=2026-08-25 --json
+```
+No gate/ranking changed by this entry — this is a measurement blocked on its own enabling plumbing,
+not evidence for or against the current ranking either way.
 
 ## Edge cases / scenarios still to simulate
 VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regime (trade toward the

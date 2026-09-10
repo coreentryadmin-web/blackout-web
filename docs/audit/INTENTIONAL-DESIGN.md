@@ -294,6 +294,68 @@ unreadable date all classify as THREATENING. A projected date does not earn the 
 exemption, because that exemption rests entirely on knowing the print lands after the position is
 flat.
 
+**The liquidity/cap-matched single-stock control, measured (2026-09-10).**
+`scripts/audit/g11-earnings-liquidity-control.mjs` (pure matching helpers in
+`lib/liquidity-cap-match.mjs`, 10 unit tests) builds exactly the control the caveat above named as
+the natural next step: for every unique exemptible ticker, it nearest-neighbor-matches (log-space
+distance on market cap **and** average dollar volume — see the script header for the full
+methodology) a real non-earnings single stock, drawn from a candidate pool that (a) reported no
+earnings — confirmed or projected, any importance — anywhere in a ±10-day buffer around the study
+window, (b) is not a broad-market ETF/index product, and (c) passes a live Polygon
+`/v3/reference/tickers/{t}` check requiring `type === "CS"` (ordinary common stock). It then
+measures the SAME realized-RTH-range metric on the matched control, on the SAME calendar date as
+the exemptible row — controlling for that day's market-wide conditions exactly as the original
+SPY/QQQ/IWM baseline already does.
+
+First live run, 2026-08-20…2026-09-09 (20 trading days, importance≥4 — a comparable window to the
+original 4-week run, not the identical dates): 75/75 confirmed rows exemptible (38 after_close, 37
+pre_open_landed, 0 intraday/pending/unknown), all 75 had real bars, 71/75 unique tickers matched to
+a control (4 excluded for missing liquidity data — foreign-listed names absent from the US
+grouped-daily feed, honestly dropped rather than force-matched), yielding 71 paired rows. **Match
+quality was tight**: median `cap_ratio` **0.995**, median `dvol_ratio` **1.005** (1.0 = perfect) —
+the matcher is finding genuinely comparable names, not settling for the nearest thing available.
+
+| | this window (n=71 paired) |
+|---|---|
+| median realized RTH range — exemptible | **8.99%** |
+| median realized RTH range — SPY/QQQ/IWM (same dates, n=33) | **0.72%** |
+| median realized RTH range — liquidity/cap-matched single-stock control | **2.29%** |
+| ratio: exemptible / index baseline | **12.5x** |
+| ratio: liquidity/cap-matched control / index baseline | **3.2x** |
+| **ratio: exemptible / liquidity/cap-matched control** | **3.9x** |
+
+**Read this window-internally, not against the original run's absolute numbers** — the two windows
+have a different reporter mix (this one is heavier on names like BABA/PDD/XPEV/NTES/FUTU/BEKE) and
+the exemptible-vs-index ratio alone moved from 5.6x (original window) to 12.5x (this window), which
+is exactly the window-to-window noise the caveat above was warning could contaminate an
+index-only comparison. The number that answers the actual question is the WITHIN-window
+comparison: **ordinary, non-earnings single stocks realize ~3.2x the RTH range of an index ETF on
+the same day** (a real, structural single-name-vs-index effect, exactly as the caveat predicted) —
+but even after removing that effect by matching on cap and liquidity, **exemptible earnings names
+still realize ~3.9x the RTH range of a comparable non-earnings single stock.** The gap narrows
+sharply once compared against the right baseline, but it does not vanish: a genuine
+earnings-specific elevated-vol effect remains even for prints with zero direct same-day gap risk.
+
+**Verdict: this sharpens, but does not overturn, the original "argues against a naive unblock"
+reading.** Roughly a third of the naive 12.5x-this-window (5.6x-original-window) headline number is
+explained by ordinary single-stock-vs-index volatility — not earnings-specific — exactly the
+confound the caveat flagged. The remaining ~3.9x is the earnings-specific residual, and it is still
+large enough that "zero direct print-gap risk" does not mean "ordinary volatility for that name."
+**No gate touched.** This still does not settle whether some subset (e.g. a small confirmed
+expected-move, or a tighter liquidity/cap floor within the exemptible population itself) could be
+safely exempted — that needs a real graded P&L backtest through the actual pipeline
+(`zerodte-sim.mjs`), which this script deliberately does not attempt (same scope discipline as the
+measurement above).
+
+**What this control does NOT do, stated plainly:** it matches on cap + average dollar volume only —
+not sector, beta, or historical realized volatility, so a structurally more volatile name (e.g. a
+biotech) matched against a same-size, same-liquidity but structurally calmer name (e.g. a utility)
+would still show elevated "control" range for reasons unrelated to earnings; the per-row
+`cap_ratio`/`dvol_ratio` are reported in the tool's output so match quality is auditable per row,
+not just trusted as a single aggregate. Same-ticker reuse across multiple exemptible names is
+allowed (no dedup), exactly like the original tool's SPY/QQQ/IWM reuse — the median across many
+dates is what washes out one reused name's idiosyncratic days.
+
 ---
 
 ## 6. Cortex `gex-walls` oppose MAGNITUDE (within a net-PASS commit) does not cleanly predict outcome
@@ -406,4 +468,84 @@ than a blind global change.
 **Re-run:**
 ```
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-persistence-recall.mjs --days=90 --horizons=1,3,5 --min-n=8
+```
+
+## 8. Swing gate-COMPOUND funnel + discovery-pool loosening pool-size before/after — measured 2026-09-09/10, one genuine gap found and left UNFIXED (documented, not forced)
+
+**Why this was measured.** Two PRs shipped on 2026-09-08 on the same operator complaint about low
+swing play counts — the discovery-pool-loosening finding (raised the dynamic Tier-1 cap
+ceiling/pool-pct, `maxStructureMovers`, BREAKOUT_MIN_VOLUME/GAIN, and two FLOW premium floors) and
+item #7 above (the persistence floor). Neither PR, nor any prior tool, ever measured (a) whether
+the pool-size loosening actually widened the number of names reaching Tier-1, or (b) the JOINT
+pass rate across `v2/gates.ts`'s 5 active commit gates (G-S3 earnings, G-S4 regime, G-S6
+confluence, G-S12 halt, G-S14 Cortex) — the same "each gate looks fine alone, but a setup must
+clear ALL of them at once" question `zerodte-gate-compound-funnel.mjs` was built to answer for
+0DTE. `scripts/audit/swing-gate-compound-funnel.mjs` (CLAUDE.md's audit toolkit has the full
+methodology + caveats) answers both, against REAL production functions and REAL live data.
+
+**(1) Pool size — genuinely reconstructable before/after, because the affected constants are
+either function parameters or env-overridable.** Live run, 2026-09-09, same real Tier-0 pool
+measured under both configs at once:
+
+| | OLD (pre-2026-09-08) | NEW (live) | Δ |
+|---|---|---|---|
+| STRUCTURE movers | 40 | 60 | +20 |
+| Tier-0 merged (FLOW ∪ STRUCTURE) | 209 | 224 | +15 |
+| Tier-1 cap resolved | 80 | 101 | +21 |
+
+The loosening DID widen the pool that reaches Tier-1 scoring — a real, measured +26% on the
+resolved cap, not an assumption. **But** FLOW tickers (directional) were **193 in BOTH eras,
+completely unaffected** — see finding (3) below for why.
+
+**(2) Gate joint pass rate — FRESH BASELINE ONLY, not a before/after** (the 5 commit gates in
+`gates.ts` were untouched by either 2026-09-08 PR, so there is nothing to diff against). Same live
+run, 80 of the 101 real Tier-1 candidates evaluated (harness fetch-budget bound, not production's
+own cap):
+
+| Gate | Isolated failure | % |
+|---|---|---|
+| G-S6 confluence | 79/80 | 98.8% |
+| G-S4 regime | 37/80 | 46.3% |
+| G-S3 earnings | 1/80 | 1.3% |
+| **JOINT (all 3 at once)** | **80/80 blocked** | **0.0% commit-eligible** |
+
+G-S12 (halt) and G-S14 (Cortex) were not run at all (see the script header/toolkit entry for why);
+their absence biases the joint rate UP. Missing POSITIONING/CATALYST/BANGER/VECTOR Tier-0 origins
+bias G-S6 the OPPOSITE way — DOWN, because every candidate here carries fewer independent
+`discoveryPaths` kinds than production's real multi-origin merge would, and G-S6 requires 3
+independent kinds for a standard archetype (2 for EVENT_DRIVEN/POST_EARNINGS_DRIFT). Most
+candidates in this run carry only `["FLOW"]` (1 kind) — an automatic G-S6 fail regardless of
+archetype, which is very likely THIS run's own recall gap more than a fact about live production.
+**Net verdict: the compounding EXISTS (0/80 joint here even before counting G-S12/G-S14), but this
+run does not isolate how much of the G-S6 dominance is real vs. an artifact of the narrower
+Tier-0 origin set measured** — unlike the 0DTE tool's approximations (which were all one-
+directional and therefore a clean upper bound), this one is genuinely mixed. G-S4 regime's 46.3%
+is NOT subject to that particular bias (regime01 is computed from real SPY closes, independent of
+origin count) and is a real, standalone chokepoint worth its own follow-up.
+
+**(3) A genuine gap found, and deliberately left UNFIXED rather than forced.** Building (1) above
+required reading exactly what the discovery-pool-loosening PR's two FLOW premium floors
+(`swingCorroboratedFlowMinPremium`/`swingLegacyFlowMinPremium`, `v2/config.ts`) actually do.
+Answer: **nothing.** Repo-wide grep confirms zero call sites outside their own definitions — not
+even a test references them. Worse, wiring them in exactly as named would still be a no-op:
+`flowAccumulationByTicker`'s `DIRECTION_MIN_NET_PREMIUM = 250_000`
+(`features/nighthawk/lib/flow-accumulation.ts`, shared with 0DTE/Vector/Helix) already classifies
+any ticker under $250k net signed premium as "neutral" — no side to trade, dropped before either
+swing-specific floor would ever see it. Every ticker that reaches `flowTickersDirectional` already
+clears $250k, which trivially clears both the claimed $175k and $100k floors. A literal wire-up
+was drafted, then reverted once this was traced, on the judgment that shipping code which can
+never fire is worse than leaving it dead — it would read as "fixed" in a diff while changing
+nothing measurable. **The real fix needs `DIRECTION_MIN_NET_PREMIUM` to become configurable per
+caller — out of scope here since 0DTE and Vector read the same shared function and constant; a
+change there is a cross-engine risk this PR does not take.** Left open as a scoped follow-up, not
+silently dropped.
+
+**What was NOT done.** No gate changed, no premium floor wired. The pool-size numbers above are
+real and stand on their own; the gate-compound measurement is a fresh baseline whose G-S6 reading
+should NOT be read as "confluence is broken" without a follow-up run that also fetches
+POSITIONING/CATALYST/BANGER/VECTOR origins to remove that bias.
+
+**Re-run:**
+```
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-gate-compound-funnel.mjs --days=5 --max-tickers=101 --json
 ```

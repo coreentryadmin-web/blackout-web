@@ -55,6 +55,7 @@ import { fetchZeroDteSessionContext } from "@/lib/zerodte/entry-context";
 import {
   categorizeExitReason,
   ratchetFloorPct,
+  ratchetTargetReached,
   type ZeroDteExitReasonCategory,
 } from "@/lib/zerodte/exit-engine";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
@@ -467,9 +468,26 @@ function mapLedgerRow(
   // floor). A credit condor has no such ladder — its risk is the defined-loss cap, and its
   // "best" excursion is the LOWEST mark, not the highest — so applying the long-framed floor to
   // it would surface an inverted, meaningless number. Suppress it for condors (null).
+  //
+  // "TRIM status" used to be a safe proxy for "peak cleared the target" here (RATCHET's
+  // own single trim event IS `status === "TRIM"` — peak tagged the ratchet's +100%
+  // target — and that used to be true for trim_scale rows too, since derivePlayStatus
+  // had no trim_scale-specific threshold). It no longer is: a trim_scale row's badge now
+  // flips to TRIM at ITS OWN, much lower, first-tranche threshold (plan.ts's
+  // derivePlayStatus fix, 2026-09-09 finding), so reading `status === "TRIM"` here would
+  // show the member a premature +50% floor after banking only ONE of the two scheduled
+  // tranches. ratchetTargetReached (exit-engine.ts) re-derives the ORIGINAL "peak >=
+  // target" fact directly from the row's own frozen target — the same fact
+  // decideTrimScale's own floor computation now uses — so this display number stays
+  // byte-consistent with both the live engine's behavior AND every row's PRE-fix floor
+  // behavior, for ratchet and trim_scale alike, independent of the (now decoupled)
+  // badge.
   const floorPnlPct = isCondor
     ? null
-    : ratchetFloorPct(pinnedLivePnlPct(r.entry_premium, r.peak_premium), r.status === "TRIM");
+    : ratchetFloorPct(
+        pinnedLivePnlPct(r.entry_premium, r.peak_premium),
+        ratchetTargetReached(pinnedLivePnlPct(r.entry_premium, r.peak_premium), rails.targetPct)
+      );
   // The terminal close label, now distinguishing the exit type: a pinned stop pins (and
   // wins); else an engine exit is categorized; else a plain 15:50 close is "time_stop";
   // else the row is still live (null).

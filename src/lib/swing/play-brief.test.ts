@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { composeSwingPlayBrief } from "./play-brief";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -289,6 +290,62 @@ test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavai
     { source: "GEX positioning", reason: "cold matrix / no positioning read" },
     { source: "Vector desk state", reason: "snapshot unavailable" },
   ]);
+});
+
+test("composeSwingPlayBrief: 'Track record' section appears ONLY when ctx.archetypeTrackRecord has a graduated bucket for the play's archetype (Largo C10 / Ask Largo)", () => {
+  const graduatedSnap: SwingArchetypeTrackRecordSnapshot = {
+    asOf: "2026-09-10T15:00:00.000Z",
+    gradedPlays: 70,
+    archetypes: {
+      BREAKOUT: {
+        tier: "LIMITED",
+        graduated: true,
+        wilsonLbPct: 63.2,
+        pointDeltaPts: 22.4,
+        n: 60,
+        wins: 45,
+        losses: 15,
+        winRatePct: 75,
+      },
+    },
+    subLanes: {},
+  };
+  const baseCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ archetype: "BREAKOUT" }),
+    asOf: "2026-09-10T20:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const withTrackRecord = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: graduatedSnap });
+  const withSection = withTrackRecord.envelope.sections.find((s) => s.title === "Track record");
+  assert.ok(withSection, "expected a Track record section when the archetype bucket has graduated");
+  assert.match(withSection!.body, /45W \/ 15L/);
+
+  // A cold/missing cache read (the timeout/miss degrade path) must not fabricate a section.
+  const withoutTrackRecord = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: undefined });
+  assert.equal(
+    withoutTrackRecord.envelope.sections.some((s) => s.title === "Track record"),
+    false,
+    "no citation when the track-record read is absent",
+  );
+
+  // An ungraduated bucket for the SAME archetype must also omit the section, never caveat it.
+  const ungraduatedSnap: SwingArchetypeTrackRecordSnapshot = {
+    ...graduatedSnap,
+    archetypes: { BREAKOUT: { ...graduatedSnap.archetypes.BREAKOUT!, graduated: false, tier: "RESEARCH" } },
+  };
+  const withUngraduated = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: ungraduatedSnap });
+  assert.equal(
+    withUngraduated.envelope.sections.some((s) => s.title === "Track record"),
+    false,
+    "an ungraduated bucket must be omitted, not shown caveated",
+  );
 });
 
 test("composeSwingPlayBrief: stale GEX matrix surfaces in unavailableSources (Largo C3)", () => {
