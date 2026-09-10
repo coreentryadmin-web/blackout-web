@@ -91,8 +91,12 @@ export const DEFAULT_MIN_ROLL_BUFFER_DAYS = 2;
  */
 export interface ParentMarkSource {
   /** "live_quote" = `reads.mark` this tick; "latched_last_mark" = the ledger's persisted `last_mark`,
-   *  used only because the live read missed THIS tick (see `resolveParentGradeMark`). */
-  source: "live_quote" | "latched_last_mark";
+   *  used only because the live read missed THIS tick (see `resolveParentGradeMark`). "latched_last_mark_expired"
+   *  = the SAME persisted `last_mark`, but past `MAX_LATCHED_MARK_AGE_MS` and used anyway ONLY because the
+   *  contract itself has expired (dte < 0) — an expired option can never produce a fresher quote, so the normal
+   *  staleness bound would defer this grade forever (docs/audit/findings-staging: swing-expired-position-never-
+   *  closes). Still a REAL observed price, never a fabricated one — only the trust window is relaxed. */
+  source: "live_quote" | "latched_last_mark" | "latched_last_mark_expired";
   /** `row.last_mark_at` as of the freeze — null for a live_quote source (this tick's own read has no
    *  persisted observation instant yet; it IS the current instant). */
   observedAt: string | null;
@@ -124,11 +128,25 @@ export const MAX_LATCHED_MARK_AGE_MS = 90 * 60_000; // 90 minutes
  * every time a real quote lands — but this fails CLOSED (defers) rather than trusting an un-timestamped
  * latch if that invariant is ever violated, the same fail-closed posture `isMonotonicSwingStatusTransition`
  * takes on an unrecognized status.
+ *
+ * `dte` (optional, the SAME `reads.dte` active-refresh already computes — no duplicate date math) is the
+ * one deliberate escape from the staleness bound above: once a contract's DTE is negative it has
+ * definitively expired and can never again produce a live or fresher quote, so "too stale to trust" would
+ * otherwise hold FOREVER — the position stays OPEN/HOLD/TRIM indefinitely, re-evaluated every cron tick and
+ * deferred every time, no matter how many days pass (found live 2026-09-10: 28 real rows stuck this way,
+ * expiries 6-27 days past, permanently occupying shared live-marks-pool capacity — see
+ * docs/audit/findings-staging/2026-09-10-swing-expired-position-never-closes.md). When `dte < 0`, the
+ * latched mark is used past the bound instead of deferring — it is still the last REAL price this contract
+ * ever traded at, never a fabricated one, so this does not weaken the "never freeze a fabricated grade"
+ * guarantee; it only recognizes that for an expired contract, "wait for a fresher one" is a guarantee that
+ * can never be kept. Tagged with a distinct `source` so `grade_json.basis`/`mark_source` stays honest about
+ * which trust path produced the freeze.
  */
 export function resolveParentGradeMark(
   row: SwingPositionRow,
   liveMark: number | null | undefined,
   nowMs: number = Date.now(),
+  dte?: number | null,
 ): { mark: number; source: ParentMarkSource } | null {
   if (isFin(liveMark) && liveMark >= 0) {
     return { mark: liveMark, source: { source: "live_quote", observedAt: null, ageMs: null } };
@@ -139,7 +157,11 @@ export function resolveParentGradeMark(
   const observedMs = Date.parse(row.last_mark_at);
   if (!Number.isFinite(observedMs)) return null;
   const ageMs = nowMs - observedMs;
-  if (ageMs > MAX_LATCHED_MARK_AGE_MS) return null; // too stale to trust — defer, do not freeze
+  if (ageMs > MAX_LATCHED_MARK_AGE_MS) {
+    const contractExpired = isFin(dte) && dte < 0;
+    if (!contractExpired) return null; // too stale to trust — defer, do not freeze
+    return { mark: latched, source: { source: "latched_last_mark_expired", observedAt: row.last_mark_at, ageMs } };
+  }
   return { mark: latched, source: { source: "latched_last_mark", observedAt: row.last_mark_at, ageMs } };
 }
 
@@ -218,8 +240,9 @@ export async function buildSwingRollPlan(
   //    that latch is fresh enough to trust (resolveParentGradeMark / MAX_LATCHED_MARK_AGE_MS — FIX (B),
   //    see that function's doc comment). No usable mark (live, or latched-but-stale) → DEFER (never a
   //    fabricated OR silently-stale-passed-off-as-live grade). The live option mark is supplied by the
-  //    active-refresh reads.
-  const resolvedMark = resolveParentGradeMark(row, reads.mark);
+  //    active-refresh reads. `reads.dte` lets a definitively expired contract (dte < 0) use a stale
+  //    latched mark instead of deferring forever — see resolveParentGradeMark's own doc comment.
+  const resolvedMark = resolveParentGradeMark(row, reads.mark, Date.now(), reads.dte);
   if (!resolvedMark) {
     console.info(`[swing-roll] defer ${row.ticker} #${row.id}: no live mark (or only a stale latched last_mark) to freeze the parent grade`);
     return null;
