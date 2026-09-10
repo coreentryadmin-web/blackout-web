@@ -11,6 +11,27 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-10 (18:17 UTC) — [SEO] Lane heartbeat: PR sweep clear, /api/og healthy, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Back to normal search/authority work (14:17 ET, past the RTH cutoff). Three-step heartbeat:
+1. Validate-what-shipped: fresh Googlebot-UA fetch of `/api/og?title=test` → HTTP 200
+   `image/png` — still crawlable, consistent with every prior check. CLS not re-measured a
+   third time today — already confirmed GOOD twice (13:33 UTC full purge+measure, plus two RTH
+   API-health passes) with no deploy/layout-affecting merge since; re-running would be pure
+   repetition.
+2. PR sweep (`agent-pr-sweep.mjs`): 1 open agent PR fleet-wide (#4740, CI-RUNNING, not SEO-lane,
+   not conflicted) — nothing to unblock.
+3. New-work scan: `gsc-opportunities-report.mjs` — same window (2026-06-10 → 2026-09-07), same 2
+   striking-distance queries as every check today (`gamma three trading`, `is 0dte gambling`,
+   both already optimized per SEO-GROWTH-STRATEGY.md §3) — expected GSC reporting lag, no new
+   signal. GA4→Ads gap remains the one known, already-escalated blocked item; not re-investigated
+   this cycle to avoid pure repetition of an already-fully-documented finding.
+
+No defects found.
+
+---
 ## 2026-09-10 (16:34 UTC) — [RTH — SEO] Third market-hours check: gamma-snapshot healthy, refresh confirmed live
 
 **Severity.** — (no defect found)
