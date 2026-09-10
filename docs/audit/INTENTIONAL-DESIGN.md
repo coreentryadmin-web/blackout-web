@@ -294,6 +294,68 @@ unreadable date all classify as THREATENING. A projected date does not earn the 
 exemption, because that exemption rests entirely on knowing the print lands after the position is
 flat.
 
+**The liquidity/cap-matched single-stock control, measured (2026-09-10).**
+`scripts/audit/g11-earnings-liquidity-control.mjs` (pure matching helpers in
+`lib/liquidity-cap-match.mjs`, 10 unit tests) builds exactly the control the caveat above named as
+the natural next step: for every unique exemptible ticker, it nearest-neighbor-matches (log-space
+distance on market cap **and** average dollar volume — see the script header for the full
+methodology) a real non-earnings single stock, drawn from a candidate pool that (a) reported no
+earnings — confirmed or projected, any importance — anywhere in a ±10-day buffer around the study
+window, (b) is not a broad-market ETF/index product, and (c) passes a live Polygon
+`/v3/reference/tickers/{t}` check requiring `type === "CS"` (ordinary common stock). It then
+measures the SAME realized-RTH-range metric on the matched control, on the SAME calendar date as
+the exemptible row — controlling for that day's market-wide conditions exactly as the original
+SPY/QQQ/IWM baseline already does.
+
+First live run, 2026-08-20…2026-09-09 (20 trading days, importance≥4 — a comparable window to the
+original 4-week run, not the identical dates): 75/75 confirmed rows exemptible (38 after_close, 37
+pre_open_landed, 0 intraday/pending/unknown), all 75 had real bars, 71/75 unique tickers matched to
+a control (4 excluded for missing liquidity data — foreign-listed names absent from the US
+grouped-daily feed, honestly dropped rather than force-matched), yielding 71 paired rows. **Match
+quality was tight**: median `cap_ratio` **0.995**, median `dvol_ratio` **1.005** (1.0 = perfect) —
+the matcher is finding genuinely comparable names, not settling for the nearest thing available.
+
+| | this window (n=71 paired) |
+|---|---|
+| median realized RTH range — exemptible | **8.99%** |
+| median realized RTH range — SPY/QQQ/IWM (same dates, n=33) | **0.72%** |
+| median realized RTH range — liquidity/cap-matched single-stock control | **2.29%** |
+| ratio: exemptible / index baseline | **12.5x** |
+| ratio: liquidity/cap-matched control / index baseline | **3.2x** |
+| **ratio: exemptible / liquidity/cap-matched control** | **3.9x** |
+
+**Read this window-internally, not against the original run's absolute numbers** — the two windows
+have a different reporter mix (this one is heavier on names like BABA/PDD/XPEV/NTES/FUTU/BEKE) and
+the exemptible-vs-index ratio alone moved from 5.6x (original window) to 12.5x (this window), which
+is exactly the window-to-window noise the caveat above was warning could contaminate an
+index-only comparison. The number that answers the actual question is the WITHIN-window
+comparison: **ordinary, non-earnings single stocks realize ~3.2x the RTH range of an index ETF on
+the same day** (a real, structural single-name-vs-index effect, exactly as the caveat predicted) —
+but even after removing that effect by matching on cap and liquidity, **exemptible earnings names
+still realize ~3.9x the RTH range of a comparable non-earnings single stock.** The gap narrows
+sharply once compared against the right baseline, but it does not vanish: a genuine
+earnings-specific elevated-vol effect remains even for prints with zero direct same-day gap risk.
+
+**Verdict: this sharpens, but does not overturn, the original "argues against a naive unblock"
+reading.** Roughly a third of the naive 12.5x-this-window (5.6x-original-window) headline number is
+explained by ordinary single-stock-vs-index volatility — not earnings-specific — exactly the
+confound the caveat flagged. The remaining ~3.9x is the earnings-specific residual, and it is still
+large enough that "zero direct print-gap risk" does not mean "ordinary volatility for that name."
+**No gate touched.** This still does not settle whether some subset (e.g. a small confirmed
+expected-move, or a tighter liquidity/cap floor within the exemptible population itself) could be
+safely exempted — that needs a real graded P&L backtest through the actual pipeline
+(`zerodte-sim.mjs`), which this script deliberately does not attempt (same scope discipline as the
+measurement above).
+
+**What this control does NOT do, stated plainly:** it matches on cap + average dollar volume only —
+not sector, beta, or historical realized volatility, so a structurally more volatile name (e.g. a
+biotech) matched against a same-size, same-liquidity but structurally calmer name (e.g. a utility)
+would still show elevated "control" range for reasons unrelated to earnings; the per-row
+`cap_ratio`/`dvol_ratio` are reported in the tool's output so match quality is auditable per row,
+not just trusted as a single aggregate. Same-ticker reuse across multiple exemptible names is
+allowed (no dedup), exactly like the original tool's SPY/QQQ/IWM reuse — the median across many
+dates is what washes out one reused name's idiosyncratic days.
+
 ---
 
 ## 6. Cortex `gex-walls` oppose MAGNITUDE (within a net-PASS commit) does not cleanly predict outcome
