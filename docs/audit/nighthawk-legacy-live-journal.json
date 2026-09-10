@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T14:52:12.178Z",
+  "lastUpdated": "2026-09-10T15:10:21.576Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -261,6 +261,11 @@
       "at": "2026-09-10T14:52:12.179Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
       "result": "healthcheck:legacy GREEN, record unchanged (22 opens, 0 wins/losses -- Legacy plays resolve end-of-session). Rate-limiter incident: mixed signal this check -- briefly dipped near baseline (p99 3.74-5.55 at 14:38-14:41) then bounced back to 10-19s (14:42-14:50). Trending calmer than the 40-83s spikes seen at 13:31-13:45 but not cleanly resolved yet. Not re-investigating further this cycle -- already thoroughly documented (MARKET-OPEN-VALIDATION.md #83 addendum) with a scoped, ready-to-build ops-alert proposal; continuing to monitor passively rather than re-deriving the same finding each cycle. Last trigger of today's 4-cycle ~15-min cadence set."
+    },
+    {
+      "at": "2026-09-10T15:10:21.576Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, wraps to cycle start)",
+      "result": "healthcheck:legacy GREEN. Rate-limiter incident: still bursty (p99 80.38 at 15:01, 60.33 at 15:04) but the latest datapoint (15:07) dropped to 2.12 near baseline -- remains intermittent, not cleanly resolved, not re-investigating further (already fully documented). AGGRESSIVE-HUNT, live-price cross-check: pulled fresh Polygon spot data and noticed ASO's day_high (53.04) already exceeded its stated target (53.01) intraday -- pulled the full play object and found ASO actually carries pulled:true with a real Cortex veto reason ('long target path crosses dominant call wall 51... inside 0.5x expected move') -- SIG and FICO do NOT carry pulled:true (confirmed real, isolated, not a systemic pattern). Initial concern: the member-facing edition API still serves ASO in the plays[] array with a full thesis/entry/target/options_play as if it were a live active recommendation, with pulled/pulled_reason easy to miss in raw JSON. Traced the actual UI consumption to rule this out before escalating: legacy-board-table-utils.ts maps pulled->'closed' status; PlaybookPlayRow.tsx renders an explicit bear-toned Badge with the real pulled_reason as its title plus visible prose ('Pulled pre-open by the morning confirmation check'); PlaybookBriefingPanel.tsx does the same. CONFIRMED CLEAN -- the API's honest inclusion of pulled plays (matching the LARGO-PRODUCT-CONTRACT absence principle) is correctly paired with a clear, distinct UI treatment, not silently presented as active. No bug -- a plausible-looking lead traced to already-correct behavior, same pattern as two earlier investigations this session (R:R labeling, UI field-surfacing). Also confirmed my own healthcheck's checkMarks() doesn't filter pulled plays from its OCC list, but concluded that's fine -- a pulled play's option contract is still real/quotable and checking its mark sanity is still a legitimate check, just not a 'should a member trade this' signal."
     }
   ],
   "knownOpenItems": {
