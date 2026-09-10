@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T22:13:56.757Z",
+  "lastUpdated": "2026-09-10T22:22:06.515Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -406,6 +406,11 @@
       "at": "2026-09-10T22:13:56.757Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3)",
       "result": "PR #4752 CI running longer than this session's typical ~7-9min (now ~13min on `verify`, CodeQL/triage/dispatch all green) -- not red, just slow, likely shared-runner contention given how many lanes are merging to main today. Not escalating, just noting and re-checking. Used the wait productively: light improvement-hunting pass on LegacyMacroStrip.tsx (the MACRO strip: SPX gap/regime/GEX bias/walls/Confirm-C-D-X counts) and legacy-board-columns.tsx -- both read clean, no dead fields or structural gaps found (Confirm 2C-0D-1X in the live screenshot correctly matches SIG+FICO confirmed / ASO pulled=invalidated / 0 degraded). No new finding this pass -- three solid bugs already found+fixed today (PR #4742/#4746/#4750/#4752 chain) is a good haul; not forcing a fourth. healthcheck:legacy steady: AMBER (documented expected post-close state), B_marks/C_record GREEN, resolved=31."
+    },
+    {
+      "at": "2026-09-10T22:22:06.538Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "PR #4752 CONFIRMED MERGED (6a8b424) -- verify took ~11.5min (slower than this session's typical ~7-9min but completed clean, no re-run needed), CodeQL/triage/dispatch all green. Merged by a parallel session on the account (same pattern as #4750) before this session's own scheduled undraft step ran. Verified directly against origin/main per the standing 'a merge is not a verification' discipline: legacyVectorStatus's winner/runner upgrade block is present exactly as authored. This closes the FULL Legacy scorecard-honesty chain found and fixed today: PR #4742 (bestPick/hitRate pulled-play exclusion) -> #4746 (calendar tile pulled-play exclusion) -> #4750 (calendar tile rounding) -> #4752 (winner/runner status classification, the deepest/most structural of the four). All four confirmed live via direct origin/main verification. The Legacy scorecard's winners/runners/hit-rate/net-premium/calendar-tile figures are now honest end-to-end. healthcheck:legacy this cycle: AMBER (A_edition stale, documented expected post-close state), B_marks/C_record GREEN, resolved=31. No new issues this cycle."
     }
   ],
   "knownOpenItems": {
