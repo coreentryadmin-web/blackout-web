@@ -1,36 +1,164 @@
 {
-  "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing — never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 — no prior continuity existed before this file.",
-  "updated_at": "2026-09-10T03:59:32Z",
+  "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
+  "updated_at": "2026-09-10T06:03:35Z",
   "sessions": {
     "2026-09-09": {
       "heat_state_at_last_check": "CLOSED",
       "tickers": {
-        "CIFR": { "direction": "short", "score": 82, "tier": "A", "outcome": "thesis_break", "pnl_pct": -3.12, "flagged_at": "2026-09-09T14:58:06.000Z", "exit_at": "2026-09-09T14:59:14.811Z", "note": "coherent: real gex-walls thesis-break ~69s after entry, cortex decision/narrative agree. No finding." },
-        "SHOP": { "direction": "short", "score": 90, "tier": "A", "outcome": "thesis_break", "pnl_pct": 0, "flagged_at": "2026-09-09T14:22:44.000Z", "exit_at": "2026-09-09T14:22:45.694Z", "note": "instant (1.7s) self-veto, narrative says BLOCKED but decision=PASS/vetoes=[]. Pre-dates PR #4656 fix (merged 16:43:45 UTC same day). Explained, not a new finding." },
-        "MSTR": { "direction": "short", "score": 87, "tier": "A", "outcome": "thesis_break", "pnl_pct": -0.12, "flagged_at": "2026-09-09T14:22:44.000Z", "exit_at": "2026-09-09T14:22:45.694Z", "note": "same instant-self-veto shape as SHOP, same batch tick, pre-#4656. Explained." },
-        "LUNR": { "direction": "short", "score": 78, "tier": "B", "outcome": "thesis_break", "pnl_pct": 0.91, "flagged_at": "2026-09-09T14:22:44.000Z", "exit_at": "2026-09-09T14:44:38.653Z", "note": "22min hold, real thesis_break, coherent. No finding." },
-        "ENPH": { "direction": "short", "score": 88, "tier": "A", "outcome": "ratchet_early_profit_floor", "pnl_pct": 5, "peak_pnl_pct": 18, "flagged_at": "2026-09-09T15:07:55.000Z", "exit_at": "2026-09-09T15:22:52.736Z", "note": "WINNER, exit management verified coherent: peak 18% never reached trim_scale's 20% first-trim trigger, so trims correctly never fired; universal profit-floor locked +5% instead of round-tripping to red. Not mismanagement." },
-        "RKLB": { "direction": "short", "score": 78, "tier": "B", "outcome": "thesis_break", "pnl_pct": -0.43, "flagged_at": "2026-09-09T15:07:55.000Z", "exit_at": "2026-09-09T15:07:58.116Z", "note": "instant (3.1s) self-veto shape, pre-#4656. Explained." },
-        "ASTS": { "direction": "short", "score": 77, "tier": "B", "outcome": "thesis_break", "pnl_pct": 0, "flagged_at": "2026-09-09T15:34:04.000Z", "exit_at": "2026-09-09T15:34:04.163Z", "note": "instant (0.16s) self-veto shape, pre-#4656 (fix merged 16:43:45 UTC same day, this play is ~1hr before). Explained." },
-        "QQQ": { "direction": "short", "score": 85, "tier": "B", "outcome": "stopped", "pnl_pct": -51.42, "flagged_at": "2026-09-09T16:14:39.000Z", "exit_at": "2026-09-09T16:14:39.910Z", "note": "OPEN FINDING — see open_findings[0]. Phantom stale-entry-price stop, NOT a real 51% move. entry_premium(1.76)==flow_avg_fill, but real Polygon 1-min bars show the option was only near $1.76 ~51min earlier (~15:23 UTC); by commit (16:14:39 UTC) it had already decayed to ~0.82-0.97 on a flat underlying. Reported to PR #4076, not fixed (touches live entry-pricing/grading logic)." }
+        "CIFR": {
+          "direction": "short",
+          "score": 82,
+          "tier": "A",
+          "outcome": "thesis_break",
+          "pnl_pct": -3.12,
+          "flagged_at": "2026-09-09T14:58:06.000Z",
+          "exit_at": "2026-09-09T14:59:14.811Z",
+          "note": "coherent: real gex-walls thesis-break ~69s after entry, cortex decision/narrative agree. No finding."
+        },
+        "SHOP": {
+          "direction": "short",
+          "score": 90,
+          "tier": "A",
+          "outcome": "thesis_break",
+          "pnl_pct": 0,
+          "flagged_at": "2026-09-09T14:22:44.000Z",
+          "exit_at": "2026-09-09T14:22:45.694Z",
+          "note": "instant (1.7s) self-veto, narrative says BLOCKED but decision=PASS/vetoes=[]. Pre-dates PR #4656 fix (merged 16:43:45 UTC same day). Explained, not a new finding."
+        },
+        "MSTR": {
+          "direction": "short",
+          "score": 87,
+          "tier": "A",
+          "outcome": "thesis_break",
+          "pnl_pct": -0.12,
+          "flagged_at": "2026-09-09T14:22:44.000Z",
+          "exit_at": "2026-09-09T14:22:45.694Z",
+          "note": "same instant-self-veto shape as SHOP, same batch tick, pre-#4656. Explained."
+        },
+        "LUNR": {
+          "direction": "short",
+          "score": 78,
+          "tier": "B",
+          "outcome": "thesis_break",
+          "pnl_pct": 0.91,
+          "flagged_at": "2026-09-09T14:22:44.000Z",
+          "exit_at": "2026-09-09T14:44:38.653Z",
+          "note": "22min hold, real thesis_break, coherent. No finding."
+        },
+        "ENPH": {
+          "direction": "short",
+          "score": 88,
+          "tier": "A",
+          "outcome": "ratchet_early_profit_floor",
+          "pnl_pct": 5,
+          "peak_pnl_pct": 18,
+          "flagged_at": "2026-09-09T15:07:55.000Z",
+          "exit_at": "2026-09-09T15:22:52.736Z",
+          "note": "WINNER, exit management verified coherent: peak 18% never reached trim_scale's 20% first-trim trigger, so trims correctly never fired; universal profit-floor locked +5% instead of round-tripping to red. Not mismanagement."
+        },
+        "RKLB": {
+          "direction": "short",
+          "score": 78,
+          "tier": "B",
+          "outcome": "thesis_break",
+          "pnl_pct": -0.43,
+          "flagged_at": "2026-09-09T15:07:55.000Z",
+          "exit_at": "2026-09-09T15:07:58.116Z",
+          "note": "instant (3.1s) self-veto shape, pre-#4656. Explained."
+        },
+        "ASTS": {
+          "direction": "short",
+          "score": 77,
+          "tier": "B",
+          "outcome": "thesis_break",
+          "pnl_pct": 0,
+          "flagged_at": "2026-09-09T15:34:04.000Z",
+          "exit_at": "2026-09-09T15:34:04.163Z",
+          "note": "instant (0.16s) self-veto shape, pre-#4656 (fix merged 16:43:45 UTC same day, this play is ~1hr before). Explained."
+        },
+        "QQQ": {
+          "direction": "short",
+          "score": 85,
+          "tier": "B",
+          "outcome": "stopped",
+          "pnl_pct": -51.42,
+          "flagged_at": "2026-09-09T16:14:39.000Z",
+          "exit_at": "2026-09-09T16:14:39.910Z",
+          "note": "OPEN FINDING \u2014 see open_findings[0]. Phantom stale-entry-price stop, NOT a real 51% move. entry_premium(1.76)==flow_avg_fill, but real Polygon 1-min bars show the option was only near $1.76 ~51min earlier (~15:23 UTC); by commit (16:14:39 UTC) it had already decayed to ~0.82-0.97 on a flat underlying. Reported to PR #4076, not fixed (touches live entry-pricing/grading logic)."
+        }
       }
     },
     "2026-09-08": {
       "tickers": {
-        "ASTS": { "direction": "long", "score": 65, "tier": "B", "outcome": "flat_theta_bleed", "pnl_pct": -9.62, "flagged_at": "2026-09-08T14:23:33.000Z", "exit_at": "2026-09-08T14:56:28.624Z", "note": "coherent: peak never left +/-10% band in 32min, cut for a small scratch loss. No mechanical finding. Score 65 == score_floor exactly (marginal pass) -- single data point, log for future score_floor correlation, do NOT escalate alone (noise-discipline threshold is 3+)." }
+        "ASTS": {
+          "direction": "long",
+          "score": 65,
+          "tier": "B",
+          "outcome": "flat_theta_bleed",
+          "pnl_pct": -9.62,
+          "flagged_at": "2026-09-08T14:23:33.000Z",
+          "exit_at": "2026-09-08T14:56:28.624Z",
+          "note": "coherent: peak never left +/-10% band in 32min, cut for a small scratch loss. No mechanical finding. Score 65 == score_floor exactly (marginal pass) -- single data point, log for future score_floor correlation, do NOT escalate alone (noise-discipline threshold is 3+)."
+        }
       }
     }
   },
   "open_findings": [
     {
       "id": "2026-09-10-qqq-stale-entry-premium",
-      "session_date": "2026-09-09",
-      "ticker": "QQQ",
-      "summary": "entry_premium falls back to stale flow_avg_fill (no fresh option quote required) when planEntryMax is null; CHASE_PCT no-chase guard (55%) is wider than the play's own hard stop (-50%), so a 'not chasing' entry can already be past its own stop the instant a fresh mark is taken at commit. Produced a mechanically-false 'stopped -51.42%' 0.91s after entry -- verified against real Polygon bars, not a real market move.",
-      "root_cause_files": ["src/lib/zerodte/plan.ts:511-524 (resolveLedgerEntryPremium, CHASE_PCT)", "src/lib/zerodte/gates.ts:1730-1736 (liveCommitPreconditionsUnmet quote_age_unknown -- didn't catch this one, untraced why)"],
-      "status": "reported_2026-09-10T04:00Z_awaiting_direction",
-      "evidence_ref": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5612702686",
-      "next_step_if_asked": "pull full population of FLOW-origin plays where entry_premium==flow_avg_fill AND input_age_manifest.option_quote==null to size blast radius before any fix is decided"
+      "status": "CONFIRMED SYSTEMIC (upgraded 2026-09-10T06:03:35Z from single-instance to 7-instance pattern via 90-day record backtest)",
+      "summary": "Near-instant (<5s of commit) 'stopped' exits at catastrophic P&L (-51% to -90%) are a recurring, mechanical, NOT-real-trade artifact, distinct from and NOT fixed by PR #4656 (which only addressed the near-zero thesis_break self-veto shape). Root cause: entry_premium falls back to stale flow_avg_fill (src/lib/zerodte/plan.ts:511-524, resolveLedgerEntryPremium) when planEntryMax is null and no fresh quote is required; CHASE_PCT's 55% no-chase guard is wider than the play's own -50% hard stop, so a 'not chasing' entry (48-54% already decayed) can already be past its own stop the instant a fresh mark is taken at commit.",
+      "evidence_90d_backtest": {
+        "source": "GET /api/market/zerodte/record?days=90 (382 plays, 47 sessions, 2026-06-12..2026-09-10)",
+        "confirmed_instances_stopped_lt_-10pct_within_5s": [
+          "SPXW 2026-08-12 long score72 pnl-52.96% delta1.73s",
+          "QQQ 2026-08-26 long score76 pnl-89.99% delta1.86s",
+          "SPXW 2026-08-26 short score80 pnl-63.55% delta0.92s",
+          "NVDA 2026-08-27 long score86 pnl-52.90% delta1.25s",
+          "QQQ 2026-08-27 long score83 pnl-77.06% delta0.36s",
+          "MSFT 2026-08-28 long score75 pnl-52.07% delta3.20s",
+          "QQQ 2026-09-09 short score85 pnl-51.42% delta0.91s (the original single-instance find)"
+        ],
+        "separate_already-explained_bug_bucket": "14 more near-instant exits in [-5%,+5%] pnl band match the OTHER known shape (thesis_break, cortex narrative says BLOCKED while decision=PASS/vetoes=[]) -- all pre-date PR #4656 (16:43:45 UTC 2026-09-09), consistent with that fix, not evidence of a gap.",
+        "track_record_impact": "raw (as currently reported, includes both mechanical-shape buckets): n=371 valid, WR 40.4%, avg pnl -4.06%. Excluding all 24 near-instant (<5s) exits: n=347, WR 41.6%, avg pnl -3.04%. The 7-instance catastrophic-stop bucket alone drags avg P&L materially given its severity (-51% to -90% each) despite being only ~1.8% of all commits -- disproportionate weight on the headline number."
+      },
+      "root_cause_files": [
+        "src/lib/zerodte/plan.ts:511-524 (resolveLedgerEntryPremium, CHASE_PCT)",
+        "src/lib/zerodte/gates.ts:1730-1736 (liveCommitPreconditionsUnmet quote_age_unknown -- didn't catch any of these 7, untraced why -- either plan.quoteAgeMs was non-null while tracking a DIFFERENT quote than the one that became entry_premium, or this precondition check isn't wired into whatever commit path FLOW/aggressor-flow-origin plays take)"
+      ],
+      "evidence_ref": [
+        "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5612702686 (original single-instance report)",
+        "follow-up comment posted 2026-09-10 with the 7-instance backtest -- see PR #4076 comment thread for latest"
+      ],
+      "why_not_fixed_yet": "Touches live commit/entry-pricing logic directly (resolveLedgerEntryPremium + the quote_age_unknown precondition gate). Root cause of WHY the existing guard doesn't catch this is only partially traced (haven't confirmed whether plan.quoteAgeMs was populated-but-wrong vs the precondition check being skipped entirely for this commit path) -- shipping a fix without that final trace risks making live pricing logic worse, not better. Per mandate: report with evidence and hold for direction on anything ambiguous/architecturally significant, even though v5 grants standing authority for MEASURED calibration changes -- this is a data-integrity/entry-sourcing bug, not a threshold-tuning question, so it stays in the 'hold for direction' lane.",
+      "next_step": "If greenlit: (1) finish tracing plan.quoteAgeMs propagation for a FLOW/aggressor-flow-origin commit to find exactly why quote_age_unknown didn't fire on these 7; (2) once root cause is nailed, the fix is likely either (a) require a fresh in-bound quote (not just flowAvgFill) before ANY directional commit, independent of CHASE_PCT, or (b) tighten CHASE_PCT below hard_stop_pct so a 'not chasing' entry can never already be past its own stop; (3) A/B backtest the candidate fix against this same 90-day window before shipping, same rigor as tier-exit-mode-ab.mjs."
+    }
+  ],
+  "win_loss_taxonomy": {
+    "as_of": "2026-09-10T06:03:35Z (90-day window, 382 plays, 47 sessions)",
+    "caveat": "Preliminary pass only -- classification below is heuristic (peak_pnl_pct vs final pnl, score vs score_floor, cortex decision), not a full evaluateZeroDteGates replay. origin/tier metadata is NULL for most pre-August rows (schema rolled out later), so origin/tier-based win-pattern reads are only reliable for the August-onward subset -- flagged, not yet corrected for.",
+    "loss_bucket_seed": {
+      "MECHANICAL_not_a_real_trade": "24 near-instant (<5s) exits -- 7 catastrophic 'stopped' (see open_findings above, NOT yet fixed) + 14 near-zero thesis_break self-veto (explained, resolved by #4656) + a few in between. EXCLUDE these from any real win/loss-pattern analysis until fixed -- they are pipeline artifacts, not trading outcomes.",
+      "note": "Real BAD-ENTRY / BAD-EXIT / CLEAN-STOP-OUT / VARIANCE bucketing of the ~178 remaining real losses NOT yet done -- needs the same care as the mechanical-exclusion pass above (each loss needs its own entry_context read, not a bulk heuristic). Scoped as next cycle's work, not attempted this cycle given time already spent on the mechanical-pattern confirmation."
+    },
+    "win_bucket_seed": {
+      "top_quartile_winners_n31_of_127_clean_wins": "score range spans 30-100 with no visible clean cutoff (matches helix-score-signal.mjs's prior finding that raw score doesn't cleanly separate outcomes for Helix -- open question whether 0DTE score has the same 'spread without order' shape, NOT yet conclusively answered here since half this sample predates tier/origin metadata rollout).",
+      "data_quality_gap": "25 of 31 top-quartile winners (mostly July 2026) have origin=null and tier=null -- these fields didn't exist yet in entry_context at commit time for those rows. Restrict any origin/tier-based win analysis to August-onward data until this is accounted for."
+    }
+  },
+  "next_specific_experiments_scoped": [
+    {
+      "id": "score-floor-rejected-outcome-backtest",
+      "question": "Open since zerodte-gate-compound-funnel.mjs's 2026-09-09 RTH run: is score_floor's threshold (65) miscalibrated, or is the score formula underscoring setups that are actually tradeable?",
+      "method": "Same cohort-split approach as discovery-recall-probe.mjs (KEPT vs DROPPED), adapted to score_floor's cutoff: pull setups that scored BELOW score_floor at scan time (needs zerodte_scan_rejections table or a re-run of the scan pipeline against historical UW flow -- NOT reachable via the public /board or /record API, same data-access gap discovery-recall-probe.mjs already solved for its own cohort split), grade their counterfactual forward outcome on real Polygon minute bars same as every other *-outcome-ab.mjs tool in this toolkit.",
+      "status": "NOT STARTED -- scoped only. This is a substantial build (new script under scripts/audit/, matching the rigor of the existing outcome-ab tools) that deserves its own dedicated cycle rather than being rushed alongside this cycle's other work.",
+      "why_deferred_this_cycle": "This cycle's time went to confirming the mechanical stopped-exit pattern is systemic (7 instances) rather than a one-off -- that felt like the higher-value use of a limited cycle given its direct, currently-live impact on the reported win rate. Picking this up next."
+    },
+    {
+      "id": "real-loss-taxonomy-non-mechanical",
+      "question": "Of the ~178 real (non-mechanical) losses in the 90-day window, how many are BAD-ENTRY vs BAD-EXIT vs CLEAN-STOP-OUT vs VARIANCE?",
+      "status": "NOT STARTED -- seeded bucket definitions only, see win_loss_taxonomy above.",
+      "why_deferred_this_cycle": "Same reason as above -- requires per-play entry_context reads at a scale (178 plays) that's a dedicated-cycle job, not a rushed pass."
     }
   ],
   "known_explained_patterns": [
