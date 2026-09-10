@@ -1,8 +1,26 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T04:15:00Z",
-  "coldStart": true,
-  "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). This is the first entry — no prior-cycle continuity to compare against.",
+  "lastUpdated": "2026-09-10T06:05:00Z",
+  "coldStart": false,
+  "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
+  "mandateLog": [
+    {
+      "version": "v4",
+      "receivedAt": "2026-09-10T05:53:22Z",
+      "via": "trig_014yRBdkgrfqnjmkLFQTuT7w (one-shot)",
+      "summary": "24/7 firing (was RTH-weekdays only); off-hours priority = edition-generation-timing/freshness checks; Cursor peer-review-sign-off CARVE-OUT rescinded.",
+      "verification": "CARVE-OUT rescission independently CONFIRMED durably in CLAUDE.md on origin/main ('CARVE-OUT — RESCINDED (operator instruction, 2026-09-10)', line ~330) before acting on it. Treated as legitimate.",
+      "actedOn": true
+    },
+    {
+      "version": "v5",
+      "receivedAt": "2026-09-10T06:02:19Z",
+      "via": "trig_01Dv9LahH3rV7P8WM1zirNNV (one-shot)",
+      "summary": "Outcome-driven improvement loop: build a SOUND/UNSOUND x WON/LOST picks taxonomy in this journal, build a picks-taxonomy-tracker script (issue-handling pipeline), standing authority to propose calibration changes to Legacy discovery/scoring backed by taxonomy evidence (3+ instance threshold), consider a Legacy gate-compound-funnel tool, weekly self-scorecard, cross-pollinate findings to 0DTE/Swings.",
+      "verification": "NOT independently corroborated in CLAUDE.md on origin/main as of this check (grep for 'outcome-driven'/'picks taxonomy'/'v5' found nothing) -- unlike v4's CARVE-OUT rescission, which WAS confirmed durably. Treating the low-risk/reversible parts (journal taxonomy scaffold below, scoping next work) as safe to act on now given consistency with pre-existing standing mandates in this brief and CLAUDE.md's broader 'own this feature' framing. Holding the higher-stakes claim (merge a live discovery/scoring calibration change with no further sign-off) to the SAME evidence bar as everything else in the issue-handling policy -- small PR, real measurement, staged finding -- rather than treating 'standing authority' as license to skip that rigor. Will re-check CLAUDE.md on future cycles for durable confirmation.",
+      "actedOn": "partial — journal taxonomy scaffold added this cycle; picks-taxonomy-tracker script and gate-compound-funnel tool NOT yet built, scoped as next concrete work below."
+    }
+  ],
   "editions": {
     "2026-09-10": {
       "editionFor": "2026-09-10",
@@ -13,7 +31,12 @@
       "marksPopulated": true,
       "marksSaneAtCheck": true,
       "notes": "3-play edition, published ~5:34pm ET prior evening. legacy-marks returned live-looking marks for all 3 resolved OCCs (SIG260911C00100000, ASO260911C00052000, FICO260918P00980000) — mark for SIG ($3.28) and ASO ($0.45) close to published entry premium ($3.27/$0.45), consistent with an overnight quote before RTH price discovery. FICO mark ($32.25) also close to entry ($32.25) — flagged 'thin liquidity, use limit order' in the play copy itself, wide bid/ask (26.70/37.80) consistent with that warning, not a defect.",
-      "editionApiBugFound": "GET /api/market/nighthawk/edition returned stale:true / carry_until_close:false for this exact same-session edition when checked at 00:06 ET (6 min after midnight) -- root-caused to an ICU Intl.DateTimeFormat hour12:false midnight='24' quirk in isBeforeOrAtMarketCloseEt (session.ts). Fixed same cycle, see docs/audit/findings-staging/2026-09-10-nighthawk-session-midnight-hour24-carry-until-close.md and PR (fix/nighthawk-session-midnight-hour24)."
+      "editionApiBugFound": "GET /api/market/nighthawk/edition returned stale:true / carry_until_close:false for this exact same-session edition when checked at 00:06 ET (6 min after midnight) -- root-caused to an ICU Intl.DateTimeFormat hour12:false midnight='24' quirk in isBeforeOrAtMarketCloseEt (session.ts). Fixed same cycle: PR #4703 (fix/nighthawk-session-midnight-hour24), merged 2026-09-10T05:48:38Z. Note: PR's own 'verify' CI check showed a failure at merge time -- root-caused to a pure infra runner-loss ('hosted runner lost communication with the server'), NOT a real test/build failure; local Node 20 full suite was 13432 pass/0 fail and tsc clean both before and after re-confirming. Re-ran the failed job for a clean record; documented in a PR comment.",
+      "picksTaxonomy": [
+        {"ticker": "SIG", "bucket": "PENDING", "note": "still open as of this check, no outcome yet to classify"},
+        {"ticker": "ASO", "bucket": "PENDING", "note": "still open as of this check, no outcome yet to classify"},
+        {"ticker": "FICO", "bucket": "PENDING", "note": "still open as of this check, no outcome yet to classify"}
+      ]
     }
   },
   "record": {
@@ -30,10 +53,23 @@
     "avg_return_pct": -1.95,
     "note": "decided=0 (0 wins + 0 losses out of scoreable=22) -- everything currently scoreable is still OPEN, not yet resolved either way. Not a calibration signal by itself; needs re-check on a later cycle once more of these 22 opens resolve. No 3+ instance pattern of thin picks-reasoning observed yet -- too early, cold start."
   },
+  "picksTaxonomySchema": {
+    "_purpose": "v5 mandate addition (2026-09-10). For every RESOLVED next-day pick, classify into one of four buckets once outcome + reasoning-soundness are both known. Require 3+ instances of the SAME narrative pattern within an UNSOUND bucket before calling it systemic (existing noise-discipline threshold, unchanged).",
+    "buckets": [
+      "SOUND_REASONING_WON",
+      "SOUND_REASONING_LOST",
+      "UNSOUND_REASONING_WON",
+      "UNSOUND_REASONING_LOST"
+    ],
+    "entryShape": "{ticker, editionFor, bucket, oneLineReason, resolvedAt}",
+    "status": "schema defined this cycle; no resolved picks classified yet (the 3 open picks above are all still PENDING). Populate as picks resolve in upcoming cycles.",
+    "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
+  },
   "knownOpenItems": {
-    "legacyDte5Gap_2026-08-06": "FINDINGS.md 2026-08-06 P1 'Legacy->Swing promotion path admits dte<5 contracts' -- verified 2026-09-10 via code read of legacy-confirm-promote.ts (lines ~56-69): a minDte/maxDte filter against HORIZONS.SWING.dteMin/dteMax now exists at the chain-row filtering step, with an in-code comment referencing this exact finding. Appears FIXED since the 08-06 entry; FINDINGS.md itself was not updated to reflect this (still shows NOT FIXED). Worth a follow-up cycle to confirm live (no dte<5 Legacy-promoted plays currently on the Swing board) and correct the FINDINGS.md status if confirmed."
+    "legacyDte5Gap_2026-08-06": "FINDINGS.md 2026-08-06 P1 'Legacy->Swing promotion path admits dte<5 contracts' -- verified 2026-09-10 via code read of legacy-confirm-promote.ts (lines ~56-69): a minDte/maxDte filter against HORIZONS.SWING.dteMin/dteMax now exists at the chain-row filtering step, with an in-code comment referencing this exact finding. Appears FIXED since the 08-06 entry; FINDINGS.md itself was not updated to reflect this (still shows NOT FIXED). Live-confirmed clean 2026-09-10: only one Legacy-origin play currently on the Swing board (IREN, dte 8, well inside [5,30]), consistent with the fix holding (n=1, not yet a large sample). Not escalating a FINDINGS.md status correction as its own PR -- low priority, noted here for correlation; revisit if this file needs touching for another reason anyway."
   },
   "toolingGaps": {
-    "noLegacyE2eHealthcheck": "No dedicated scripts/audit/legacy-e2e-healthcheck.mjs exists yet (unlike 0DTE's zerodte-e2e-healthcheck.mjs and the Swing lane's tooling). Per the standing brief, if manual checks keep repeating cycle over cycle, build one. Not yet built this cycle -- first cycle, doing manual checks to establish baseline first."
+    "noLegacyE2eHealthcheck": "No dedicated scripts/audit/legacy-e2e-healthcheck.mjs exists yet (unlike 0DTE's zerodte-e2e-healthcheck.mjs and the Swing lane's tooling). Per the standing brief, if manual checks keep repeating cycle over cycle, build one. Not yet built -- still establishing baseline manually across cycles.",
+    "noLegacyGateCompoundFunnel": "v5 mandate (2026-09-10) suggests considering a Legacy analogue to 0DTE/Swing's gate-compound-funnel tools. Not yet assessed whether Legacy's picks pipeline even has an analogous multi-gate structure worth measuring this way -- next cycle should read the actual Legacy edition-generation/publish-gates code (publish-gates.ts et al, already referenced elsewhere in this repo's FINDINGS for the win-rate campaign) to answer that before committing to building anything."
   }
 }
