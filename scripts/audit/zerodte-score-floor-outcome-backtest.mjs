@@ -115,7 +115,6 @@ const { fetchStockMinuteBars } = await import(`${SRC}lib/providers/polygon.ts`);
 const { partitionGradeable, ungradedTickers } = await import("./lib/helix-score-eval.mjs");
 const {
   SCORE_BUCKETS,
-  bucketForScore,
   gradeDirection,
   summarizeByBucket,
   crossFloorComparison,
