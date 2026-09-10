@@ -25,6 +25,24 @@ already forbids opening docs-only PRs for GREEN audit logs.
 New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling policy, which
 already forbids opening docs-only PRs for GREEN audit logs.
 
+## 2026-09-10 (20:50 UTC) — [ASK LARGO] First CLOSED-bucket swing play-brief checked this session — coherent, no new gap
+
+Standing Ask Largo mandate: checked a CLOSED-bucket `GET /api/market/swing/play-brief` this
+cycle (AAPL, `SWING:AAPL:36`, PULLBACK_CONTINUATION/TACTICAL, stopped 2026-09-04 09:45 ET,
+peak +1.3% → exit -56.2%) — not previously checked this session (prior cycles only hit
+OPEN/committed positions, e.g. NRG). CLOSED-only sections present and populated: Outcome, Since
+it closed (dealer regime vs gamma flip post-close), Lessons. `unavailableSources: []`.
+
+**This AAPL row is part of the TACTICAL sub-lane already flagged by
+`swing-loss-taxonomy-segment.mjs`** (80% loss rate, n=5, +31.6pp vs the 44.4% aggregate) —
+confirms rather than contradicts that existing watch item, no new action.
+
+**Lessons section quality**: still short bullet-style lines ("Gave back the move — next time
+tighten at first trim rail or thesis fade") rather than fully trade-manager-narrated prose —
+consistent with the already-tracked open item in this file's Ask Largo section ("narrating the
+live 'what changed' diff the same trade-manager way instead of numeric deltas... still genuinely
+open"). No new gap found this cycle; re-confirms known state.
+
 ---
 ## 2026-09-10 (18:17 UTC) — [SEO] Lane heartbeat: PR sweep clear, /api/og healthy, GSC unchanged
 
