@@ -1,8 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T16:40:00Z",
+  "last_updated": "2026-09-10T16:50:00Z",
   "notes": [
+    "PR #4735 MERGED (16:44 UTC, sha be6f715e3) -- verified directly on origin/main (git show): play-brief-narrative.ts's TRIM branch now reads `giveback?.kind === \"round_trip\" ? \"\" : \" Bank partial into strength; don't give back peak.\"`. Both PRs this cycle (#4734 cushion-pct enhancement, #4735 TRIM contradiction fix) are now merged and confirmed live on main. Unsubscribed from #4735, cleaned up local feature branches.",
     "PR #4734 MERGED (16:23 UTC, sha 849bb4227) -- verified directly on origin/main (git show): play-brief-intel.ts's cushionPct/cushionNote present at line 504-508. PR #4735 hit a REAL merge conflict (mergeable_state:dirty) -- both #4734 and #4735 appended MARKET-OPEN-VALIDATION.md entries at the same location (I'd branched #4735 before #4734 merged, so both PRs independently numbered their new entry #90). Resolved per the standing 'Merge conflict -> merge base into PR head' policy: merged origin/main into the PR branch, kept both entries sequentially (cushion-pct stays #90 since #4734 landed first, TRIM-vs-round-trip renumbered to #91), validated (228 swing tests + tsc clean) before pushing the resolved merge commit. This is exactly the CROSS-PR ORDERING scenario CLAUDE.md warns about -- caught and fixed properly rather than raced.",
     "Background full npm test run for #4735's changes completed clean: 13642 pass / 0 fail / 3 skipped (matches the earlier 13636/0/3 run for #4734 modulo new tests added between the two runs). Both #4734 and #4735 checked -- CI verify in_progress on both (#4734 running ~28min, #4735 just started), CodeQL green on #4734, no failures/conflicts/review comments on either. Nothing actionable this check -- continuing other mandate work per NEVER SIT IDLE rather than poll.",
     "Found and fixed a second real bug this cycle while re-checking OPEN positions (NN, manageAction flipped to TAKE_PARTIAL after another price swing): actionNarrative's TRIM branch always said 'Bank partial into strength; don't give back peak' regardless of the play's actual state, and NN's live brief showed that sentence immediately followed by 'Round-tripped past breakeven -- was up 24% at peak, now -35%' -- directly contradictory (advising to protect a peak the very next clause says is already gone). Filed PR #4735 (draft opened, undrafted, subscribed): moved the existing mfeCaptureOutcome computation earlier so the TRIM branch can check for round_trip and omit the stale clause in that case only (still-profitable TRIM positions keep the original wording, verified with a second test using CRWD-shaped numbers). RED->GREEN via 2 new tests, full swing suite (226 tests) + tsc clean. Same session that shipped PR #4734 (stop-rail cushion enhancement) this cycle -- two PRs open in parallel now, both mine, both from live forensic reads of the same 4 real OPEN positions this cycle.",
@@ -194,7 +195,13 @@
       "id": "swing-trim-strength-line-vs-round-trip",
       "pr": 4735,
       "kind": "FINDING",
-      "status": "OPEN, undrafted, CI pending. Subscribed to PR activity."
+      "status": "MERGED 16:44 UTC (sha be6f715e3). Verified on origin/main directly."
+    },
+    {
+      "id": "swing-brief-stop-rail-cushion-pct",
+      "pr": 4734,
+      "kind": "ENHANCEMENT",
+      "status": "MERGED 16:23 UTC (sha 849bb4227). Verified on origin/main directly."
     }
   ],
   "loss_taxonomy": {
@@ -273,19 +280,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T16:35:00Z",
-    "swing_prs": [
-      {
-        "pr": 4734,
-        "branch": "feat/swing-brief-stop-rail-cushion-pct",
-        "status": "open, non-draft, CI in progress (verify running as of last check)"
-      },
-      {
-        "pr": 4735,
-        "branch": "fix/swing-trim-strength-line-vs-round-trip",
-        "status": "open, non-draft, CI pending"
-      }
-    ]
+    "as_of": "2026-09-10T16:50:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "NRG": {
