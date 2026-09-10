@@ -25,6 +25,17 @@ already forbids opening docs-only PRs for GREEN audit logs.
 New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling policy, which
 already forbids opening docs-only PRs for GREEN audit logs.
 
+## 2026-09-10 (21:02 UTC) — [DISCOVERY] SPX Slayer `direction: null` at low score investigated and ruled out — deliberate neutral-zone threshold
+
+Follow-up on a prior cycle's observation: `GET /api/market/spx/play` returned `score: 4,
+direction: null` (score/factorsSum matched exactly, 4===4, so the additive math itself was never
+in question — only whether `direction: null` at that score was a gap). Traced to
+`computeSpxConfluence` in `src/features/spx/lib/spx-signals.ts:734-751`: `bias` is explicitly set
+to `"neutral"` (and `direction` to `null`) whenever `Math.abs(score) < 10` — a deliberate
+no-conviction threshold, the same "honest absence over fabricated direction" pattern used
+elsewhere in this codebase (Largo's `confidence` omission rule, etc.). Score 4 is well inside that
+neutral band. No code change — confirms intended behavior, not a bug.
+
 ## 2026-09-10 (20:50 UTC) — [ASK LARGO] First CLOSED-bucket swing play-brief checked this session — coherent, no new gap
 
 Standing Ask Largo mandate: checked a CLOSED-bucket `GET /api/market/swing/play-brief` this
