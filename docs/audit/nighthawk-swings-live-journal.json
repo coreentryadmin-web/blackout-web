@@ -36,9 +36,14 @@
   },
   "open_experiments_scoped_not_yet_run": [
     { "id": "g-s4-regime-gate-calibration", "status": "not started, needs regime-segmentation per v6 item 1" },
-    { "id": "v6-correlated-risk-beyond-theme-direction", "status": "not started -- next priority" },
-    { "id": "v6-fill-quality-check", "status": "not started" }
+    { "id": "v6-fill-quality-check", "status": "not started -- next priority" }
   ],
+  "v6_item2_correlated_risk_CHECKED_BLOCKED": {
+    "as_of": "2026-09-10T07:32:00Z",
+    "finding": "Checked live: only 4 of 94 committed swing rows are real (positionId-bearing) swing_positions -- NRG(energy/AI-power), NN, CG(financials/PE), CRWD(software), 3 LONG/1 SHORT. Different sectors, no cluster at n=4 -- too thin to mean anything. The other 90/94 are Banger-lane merges (91 LONG/3 SHORT skew lives THERE), the exact same root cause #4700 already raised and is waiting on a product decision for (should Banger rows count toward swing concentration math).",
+    "conclusion": "NOT a new independent finding -- blocked on the same #4700 decision. Building new correlation logic now would either analyze only 4 real positions (meaningless) or require folding in Banger rows, which is literally the open question #4700 already scoped. No code built this tick; re-check once #4700 resolves (either direction) since that will directly determine whether this item becomes measurable.",
+    "action": "removed from the open-experiments priority queue, logged here instead so a future tick doesn't re-investigate from scratch."
+  },
   "weekly_scorecard": [
     {
       "week_of": "2026-09-10",
