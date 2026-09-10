@@ -500,6 +500,25 @@ test("improvement queue: dominant failure mode signals with its share; convictio
   assert.match(inv.suggestion!, /mis-weighted/);
 });
 
+test("wrong_direction suggestion does not claim the book-vs-tape veto is missing — G-N4 shipped 2026-08-03", () => {
+  // FINDINGS.md 2026-08-03 "G-N4 book-vs-tape alignment veto — built" shipped publish-gates.ts's
+  // book_tape_conflict gate specifically in response to this exact signal, but the suggestion
+  // string here was never updated and still said "add a book-vs-tape alignment veto at publish"
+  // over a month later — live 2026-09-10 data still shows wrong_direction dominant (15/28, 53.6%)
+  // even with the gate live, which makes the stale "add one" text actively misleading to anyone
+  // reading the queue (it reads as an unaddressed gap, not a residual one).
+  const rows = [
+    ...Array.from({ length: 4 }, (_, i) => row({ ticker: `W${i}`, debrief: pin("wrong_direction") })),
+    row({ debrief: pin("clean_win"), outcome: "target" }),
+    row({ debrief: pin("stopped_normal") }),
+  ];
+  const summary = summarizeDebriefPins(rows);
+  const queue = buildImprovementQueue({ summary, blockedValue: [], mirror: [], byConviction: [] });
+  const dom = queue.find((i) => i.signal === "failure_mode:wrong_direction:dominant")!;
+  assert.doesNotMatch(dom.suggestion!, /add a book-vs-tape/i, "G-N4 already shipped — must not read as missing");
+  assert.match(dom.suggestion!, /G-N4/, "must name the gate that already exists");
+});
+
 // ── Full report shape ────────────────────────────────────────────────────────────────
 
 test("analyzeNighthawkDebriefs: report shape, per-conviction records, empty-tier honesty, availability", () => {

@@ -625,7 +625,11 @@ const FAILURE_MODE_SUGGESTION: Record<DebriefFailureMode, string> = {
     "gap-away 'wins' are appearing in a current-methodology segment — grading regression; audit resolveOutcome fillability immediately",
   stopped_normal: "losses are ordinary in-plan stop-outs — the leak, if any, is selection, not execution",
   wrong_direction:
-    "direction calls themselves are failing — add a book-vs-tape alignment veto at publish (decision doc N-4/PR-N9 class)",
+    "direction calls themselves are failing — G-N4 (book_tape_conflict, publish-gates.ts) already " +
+    "vetoes a STRUCTURAL tape contradiction and is deliberately narrow (a 'mixed' trend never " +
+    "blocks); if this stays dominant with the gate live, the residual gap is calls the tape reads " +
+    "as 'mixed' or agreeing but that still miss — measure via gate_validation.blocked_value before " +
+    "widening G-N4's scope on a hunch",
   gap_through_stop:
     "losses are being decided by overnight gaps, not intraday action — publish-time catalyst/gap-risk veto + binding pre-open pull are the levers (N-7/§3.4 class)",
   target_unreachable:
