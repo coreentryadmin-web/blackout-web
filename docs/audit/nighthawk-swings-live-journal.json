@@ -1,120 +1,48 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T06:24:00Z",
+  "last_updated": "2026-09-10T06:50:00Z",
   "notes": [
-    "MANDATE v6 (2026-09-10 06:18 UTC, additive to v5): 5 new angles. (1) Segment loss/win taxonomy AND the G-S4 regime-gate question by regime/archetype/sub-lane, not just aggregate (Simpson's-paradox risk). (2) checkPortfolioOverlap only catches theme/direction for a NEW candidate vs book — check whether correlated risk across DIFFERENT tickers/themes in the ALREADY-COMMITTED ~94-position book goes uncaught (a slower-moving cousin of #4700's Banger-blindspot). (3) Build a score-calibration reliability diagram (decile bucket vs realized win rate) — genuinely new, nothing like it exists yet. (4) Check whether the 5-truth grader's entry premium reflects a realistic bid/ask-respecting fill on illiquid names (SKHL/IREZ/MULL etc in the book), or an idealized mid that inflates measured win rate. (5) Fast circuit-breaker authority: a mid-week real losing STREAK (not just count) in one archetype/sub-lane can get a narrow de-weight/pause PR without waiting for the weekly scorecard. NOT YET STARTED — received and logged this tick, deep work scoped for next tick(s) given a P0 CI outage consumed this tick (below).",
-    "P0 HANDLED THIS TICK: fleet-wide verify CI outage ~06:03-06:19 UTC. Every ci.yml run in that window failed identically (FATAL: role \"root\" does not exist on the postgres service health-check, --health-cmd pg_isready with no -U flag) -- confirmed via list_workflow_runs across MULTIPLE unrelated main-push commits (docs/journal only, zero app code), not just my own #4712. Root-caused and fixed in #4713 (pin health-check to -U postgres). Posted to #4076 for fleet awareness (other lanes' red CI in this window is not their fault either). #4712 (early-trim A/B tool) was blocked by this outage, not by its own content -- one standing-down comment posted on it referencing #4713, will re-verify once #4713 merges.",
-    "MANDATE v5 (2026-09-10 05:59 UTC, additive to v4): outcome-driven improvement loop. Build/maintain a persisted LOSS TAXONOMY (BAD-ENTRY/BAD-EXIT/CLEAN STOP-OUT/VARIANCE, 3+ same-bucket instances before calling it systemic) and a WIN TAXONOMY (does score/origin predict BIG winners). Full authority to ship CALIBRATION changes when backed by real before/after measurement. Weekly self-scorecard. Cross-pollinate shared-root-cause findings to NIGHT HAWK OWNER lane / #4076.",
-    "MANDATE v3 (2026-09-10 06:02 UTC): cadence now ~15-min during RTH via 4 offset triggers (:01/:16/:31/:46), aggressive enhancement-hunting even absent bugs. Don't re-run full swing-e2e-healthcheck.mjs every tick if nothing's changed per journal.",
-    "MANDATE v4 (2026-09-10 05:53 UTC): 24/7 firing (was RTH-weekdays-only). Off-hours: gap-risk/staleness labeling on OPEN positions matters MORE, Largo audit unchanged, don't manufacture 'no price action' findings from a closed market. CARVE-OUT RESCINDED -- merge own green/clean PRs directly.",
-    "Cold start 2026-09-10 ~04:00 UTC -- journal did not exist on main prior to this cycle's first firing.",
-    "v2 field corrections confirmed by direct code read: HorizonPlay.status (PlayStatus 'COMMIT'|'WATCH', src/lib/horizon-plays.ts:69,77) IS the real lifecycle field. Real swing exit-management surface is src/lib/swing/manage-sync.ts + src/lib/swing/exit-policy.ts, NOT zerodte/exit-sync.ts.",
-    "Board scale ~04:06 UTC: 94 COMMIT (OPEN) rows, 12 WATCH rows (horizons?view=swings). Per PR #4700 (merged, design doc), ~90/94 of those committed rows are Banger-lane merges, not real swing_positions DB rows -- directly relevant to v6 item 2 above.",
-    "swing/record 90d window (checked ~06:20 UTC, used for the early-trim A/B): 31 closed chains -- see loss/win taxonomy below."
+    "P0 STATUS (still open at this update): #4713 (postgres health-check fix for the fleet-wide CI outage) has GREEN verify + mergeable_state:clean, confirmed working (job log shows the role-root error gone, full suite ran). BLOCKED ONLY on undrafting -- GitHub MCP update_pull_request (the one path that can undraft per CLAUDE.md's own documented findings) is hitting the shared AGENT_RELEASE_TOKEN rate limit (budget #4). Posted status comment on #4713 flagging this for any session with a fresher rate-limit budget. NEXT WAKE: retry update_pull_request(draft:false) on #4713 first, then merge_pull_request, before anything else -- this is the highest-priority open item, blocking the whole fleet's CI.",
+    "A second session independently commented on #4713 confirming the same root-cause analysis and noting #4711 (marketing-dates regen) was in flight -- no conflict, my own push already carried a fresh regen so #4713 is self-contained and ready.",
+    "#4712 (early-trim A/B tool) is still open, draft, blocked the same way as #4713 was (CI outage) -- should re-verify its `verify` run once #4713 merges (my earlier standing-down comment on #4712 is still accurate) and merge it too.",
+    "MANDATE v6 (2026-09-10 06:18 UTC, additive to v5): 5 new angles -- NOT YET STARTED, deferred behind the P0. (1) Segment loss/win taxonomy AND G-S4 question by regime/archetype/sub-lane, not aggregate. (2) checkPortfolioOverlap only catches theme/direction for a NEW candidate -- check correlated risk across DIFFERENT tickers in the already-committed ~94-position book. (3) Score-calibration reliability diagram (decile vs realized win rate) -- highest-priority next-tick item. (4) Fill-quality check on illiquid names (SKHL/IREZ/MULL etc). (5) Fast circuit-breaker authority for a mid-week real losing streak.",
+    "MANDATE v5 (2026-09-10 05:59 UTC): loss/win taxonomy + calibration authority + weekly scorecard + cross-pollination. See loss_taxonomy/win_taxonomy below.",
+    "MANDATE v4/v3: 24/7 firing, CARVE-OUT rescinded (now confirmed in writing in CLAUDE.md itself, not just the trigger prompt), ~15-min cadence via 4 offset triggers.",
+    "v2 field corrections confirmed by direct code read: HorizonPlay.status IS the real lifecycle field. Real swing exit-management surface is manage-sync.ts + exit-policy.ts."
   ],
   "checked_this_cycle_no_bug_found": [
-    {
-      "topic": "NRG HOLD vs CRWD TRIM despite similar peak-to-now round trips",
-      "verdict": "not a bug -- intentional graduated-calibration design (manage-sync.ts's `enforced` flag, PR-16 ladder)."
-    }
+    { "topic": "NRG HOLD vs CRWD TRIM despite similar peak-to-now round trips", "verdict": "not a bug -- intentional graduated-calibration design." }
   ],
   "findings_filed_this_cycle": [
-    {
-      "id": "swing-trim-ladder-fired-ignores-enforced-gate",
-      "pr": 4704,
-      "severity": "P1",
-      "status": "MERGED to main 2026-09-10T05:00:34Z. Verified fix content present in origin/main directly."
-    },
-    {
-      "id": "swing-play-brief-source-timeout",
-      "pr": 4663,
-      "status": "MERGED to main 2026-09-10T05:56Z (commit c08e850). Verified via git log on origin/main."
-    },
-    {
-      "id": "swing-early-trim-ab-tool",
-      "pr": 4712,
-      "kind": "TOOLING, not a bug fix",
-      "status": "PR open, draft. verify FAILED due to the fleet-wide CI outage above, not its own content -- standing-down comment posted, will re-verify once #4713 merges.",
-      "filed_at": "2026-09-10T06:35:00Z"
-    },
-    {
-      "id": "ci-postgres-healthcheck-role-root",
-      "pr": 4713,
-      "kind": "INFRA FIX, cross-lane blast radius (not swing-specific, but blocked my own PR and every other lane's)",
-      "severity": "P0 -- blocked 100% of fleet CI for ~15+ min",
-      "status": "PR open, draft, CI in progress at time of writing. Posted to #4076 for fleet awareness.",
-      "filed_at": "2026-09-10T06:19:00Z"
-    }
+    { "id": "swing-trim-ladder-fired-ignores-enforced-gate", "pr": 4704, "status": "MERGED, verified on main." },
+    { "id": "swing-play-brief-source-timeout", "pr": 4663, "status": "MERGED, verified on main." },
+    { "id": "swing-early-trim-ab-tool", "pr": 4712, "kind": "TOOLING", "status": "PR open, draft. Blocked by the CI outage (below), not its own content. Standing-down comment posted. Re-verify + merge once #4713 lands." },
+    { "id": "ci-postgres-healthcheck-role-root", "pr": 4713, "kind": "P0 INFRA FIX, fleet-wide blast radius", "status": "verify GREEN, mergeable_state:clean, confirmed working. BLOCKED on undraft rate limit only -- see notes above. Highest priority for next wake." }
   ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
-    "window": "90d, 31 closed chains, GET /api/market/swing/record?days=90",
-    "methodology": "Classified from closedDeck's real score/archetype/entryPremium/peakPremium/exitPnlPct/closedReason. BAD-ENTRY = marginal score (<35) and/or near-zero MFE before stopping. BAD-EXIT = real double-digit MFE (>=14%) fully round-tripped to a steep stop under zero intermediate protection below +100%. CLEAN STOP-OUT = moderate/high score, some real MFE, genuine reversal, exit policy correctly had nothing to fire yet. VARIANCE = high score, thin MFE, violent 1-session reversal. NOT YET segmented by regime/archetype per v6 item 1 -- next tick.",
-    "BAD-EXIT (n=5, crosses noise threshold, tool built+measured -- see swing-early-trim-ab-tool)": [
-      { "ticker": "AMZN", "score": 45.1, "mfe_pct": 41.5, "exit_pct": -52.6 },
-      { "ticker": "TSM", "score": 64.9, "mfe_pct": 42.2, "exit_pct": -62.26 },
-      { "ticker": "INTC", "score": 0, "mfe_pct": 25.7, "exit_pct": -40.83, "note": "SECTOR_ROTATION 2-leg chain, score=0 at 2nd leg (roll) itself odd" },
-      { "ticker": "IGV", "score": 80.9, "mfe_pct": 14.6, "exit_pct": -39.49 },
-      { "ticker": "EWZ", "score": 48.5, "mfe_pct": 20.6, "exit_pct": -34.16 }
-    ],
-    "BAD-ENTRY (n=3)": [
-      { "ticker": "MSTR", "score": 2.9, "mfe_pct": 0, "exit_pct": -61.51 },
-      { "ticker": "CCI", "score": 33.3, "mfe_pct": 3.4, "exit_pct": -35.8 },
-      { "ticker": "PYPL", "score": 5, "mfe_pct": 0, "exit_pct": 0, "note": "breakeven stop within 13min of commit" }
-    ],
-    "VARIANCE_possible_CLEAN (n=3, flagged not yet root-caused)": [
-      { "ticker": "AAPL", "score": 75.8, "mfe_pct": 1.4, "exit_pct": -56.19 },
-      { "ticker": "NVDA", "score": 82.2, "mfe_pct": 4.8, "exit_pct": -60.6 },
-      { "ticker": "INTC", "score": 84.0, "mfe_pct": 19.0, "exit_pct": -61.58, "note": "LONG, different row than the SECTOR_ROTATION short above" }
-    ],
-    "next_step": "v6 item 1: re-split this taxonomy (and the swing-early-trim-ab results) by regime/archetype/sub-lane rather than aggregate only. Also: AAPL/NVDA/INTC(LONG) pattern and near-instant-breakeven cluster both cross noise threshold but aren't root-caused yet."
+    "window": "90d, 31 closed chains",
+    "BAD_EXIT_n5": ["AMZN +41.5%mfe->-52.6%", "TSM +42.2%mfe->-62.26%", "INTC(SECTOR_ROTATION) +25.7%mfe->-40.83%", "IGV +14.6%mfe->-39.49%", "EWZ +20.6%mfe->-34.16%"],
+    "BAD_ENTRY_n3": ["MSTR score2.9", "CCI score33.3", "PYPL score5 instant-breakeven"],
+    "VARIANCE_possible_CLEAN_n3_not_root_caused": ["AAPL score75.8", "NVDA score82.2", "INTC(LONG) score84.0"],
+    "next_step": "v6 item 1: re-split by regime/archetype/sub-lane. Tool built for the BAD-EXIT pattern: swing-early-trim-ab.mjs (see PR #4712) -- result was INCONCLUSIVE at n=31, no calibration change shipped."
   },
   "win_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
-    "window": "90d",
-    "standout_winners": [
-      { "ticker": "EWZ", "score": 64.8, "exit_pct": 438.79 },
-      { "ticker": "RKLB", "score": 19.2, "exit_pct": 79.37, "note": "LOW score, large win" },
-      { "ticker": "GLW", "score": 44.7, "exit_pct": 5.52, "note": "peak +44.7%, closed at only +5.52% -- possible BAD-EXIT-shaped WIN" }
-    ],
-    "next_step": "Not yet a rigorous score-predicts-size test. v6 item 3 (score calibration reliability diagram) supersedes/sharpens this -- build that instead of a separate win-size study."
+    "standouts": ["EWZ score64.8 +438.79%", "RKLB score19.2 +79.37% (low score, big win)", "GLW score44.7 +5.52% (peak+44.7%, possible BAD-EXIT-shaped WIN)"],
+    "next_step": "superseded by v6 item 3 (score calibration reliability diagram) -- build that instead of a separate win-size study, next tick."
   },
   "open_experiments_scoped_not_yet_run": [
-    {
-      "id": "g-s4-regime-gate-calibration",
-      "source": "v5 mandate point 3, sharpened by v6 item 1 (must be regime-segmented, not aggregate)",
-      "question": "swing-gate-compound-funnel.mjs found G-S4 regime gate at 46.3% isolated pass rate. Well-calibrated, or filtering out tradeable setups? Must check per-regime, not in aggregate.",
-      "status": "not started"
-    },
-    {
-      "id": "v6-score-calibration-curve",
-      "question": "Bucket graded plays by score decile, plot realized win rate per decile. Monotonic/diagonal = well-calibrated; flat/inverted/non-monotonic points at the score formula itself.",
-      "status": "not started -- highest-priority next-tick item, genuinely new measurement"
-    },
-    {
-      "id": "v6-correlated-risk-beyond-theme-direction",
-      "question": "Does the committed ~94-position book have real correlated clusters (same macro driver, not just same theme tag) that checkPortfolioOverlap misses?",
-      "status": "not started"
-    },
-    {
-      "id": "v6-fill-quality-check",
-      "question": "Does the 5-truth grader's entry premium on illiquid names (SKHL/IREZ/MULL etc) reflect a realistic bid/ask fill, or an idealized mid that inflates measured win rate?",
-      "status": "not started"
-    }
+    { "id": "g-s4-regime-gate-calibration", "status": "not started, needs regime-segmentation per v6 item 1" },
+    { "id": "v6-score-calibration-curve", "status": "not started -- top priority once P0 clears" },
+    { "id": "v6-correlated-risk-beyond-theme-direction", "status": "not started" },
+    { "id": "v6-fill-quality-check", "status": "not started" }
   ],
   "weekly_scorecard": [
-    {
-      "week_of": "2026-09-10",
-      "trailing_30d_from_record": { "win_rate_pct": 16.7, "avg_compounded_return_pct": 30.9, "chains": 6, "note": "n=6 thin; 90d n=31 used for early-trim tool but summary.win_rate_pct not separately pulled for 90d this cycle -- do that next week" },
-      "shipped_this_period": ["#4704 merged", "#4663 merged", "#4712 open (blocked by CI outage)", "#4713 open (the CI outage fix itself)"],
-      "moved_the_needle": "too early to tell -- correctness/tooling fixes so far, no calibration change shipped yet"
-    }
+    { "week_of": "2026-09-10", "trailing_30d_from_record": { "win_rate_pct": 16.7, "avg_compounded_return_pct": 30.9, "chains": 6 }, "shipped_this_period": ["#4704 merged", "#4663 merged", "#4712 open (blocked)", "#4713 open (blocked, P0 CI fix)"], "moved_the_needle": "too early to tell" }
   ],
-  "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T06:24:00Z",
-    "swing_prs": [4712, 4713]
-  },
+  "known_open_prs_snapshot": { "as_of": "2026-09-10T06:50:00Z", "swing_prs": [4712, 4713] },
   "tickers_seen": {
     "NRG": { "last_status": "OPEN/HOLD", "last_seen": "2026-09-10T04:06:00Z", "note": "trim-ladder display bug subject, fixed in #4704" },
     "CRWD": { "last_status": "OPEN/TRIM", "last_seen": "2026-09-10T04:06:00Z" }
