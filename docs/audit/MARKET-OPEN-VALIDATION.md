@@ -118,6 +118,36 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-10 Night Hawk Swings live audit (read this before the routine pass)
+
+### Swing Command Deck + Ask Largo play-brief showed a false "trim banked" on a position still fully exposed at HOLD — fix/swing-trim-ladder-enforced-gate
+
+**What was broken:** live-caught during the hourly Night Hawk Swings audit, positionId 34
+(NRG, LONG, STANDARD sub-lane, entry $4.90, peak $11.40 = +132.7%, mark $6.85 = +39.8%). The
+board's own `liveStatus` (`GET /api/market/nighthawk/horizons?view=swings`) correctly reported
+`HOLD` — manage-sync.ts's calibration-gated `enforced` flag had never actually banked a trim on
+this row. But both the Command Deck terminal panel and Ask Largo's play-brief
+(`GET /api/market/swing/play-brief?playId=SWING:NRG...`) rendered `Trim ladder: +100% ✓` /
+"**all trims banked** — runner only" for the same position at the same instant — a mechanical
+peak-vs-trigger check (`buildTerminalExitLadder`) that ignored manage-sync's enforcement gate
+entirely. A member reading either surface would reasonably believe half the position had already
+been de-risked when 100% of it was still exposed to the original stop.
+
+**Fix:** `terminalPlayFromHorizon` (`src/features/nighthawk/command-deck/adapters.ts`) now forces
+every trim rung's `fired` flag to `false` unless the row's resolved `status` has actually reached
+`TRIM` — the mechanical ladder read is only trusted once manage-sync's enforcement gate agrees
+with it. See `docs/audit/findings-staging/2026-09-10-swing-trim-ladder-fired-ignores-enforced-gate.md`
+for the full root cause and blast-radius (one shared code path feeds both consumers).
+
+**Check at the open:** re-pull `GET /api/market/nighthawk/horizons?view=swings` for any OPEN swing
+row whose `liveStatus` is `HOLD` but `peakPremium` has cleared its +100% trim level (i.e. exactly
+NRG's situation) — its play-brief and Command Deck panel should now show the ladder as un-fired
+("next trim at +100%"), not "✓"/"banked". Also confirm a row that HAS genuinely reached `TRIM`
+(e.g. CRWD, FSLY, SRPT as of 2026-09-10) still shows its ladder correctly fired — this fix must not
+suppress the real, enforced case.
+
+---
+
 ## WATCH LIST — 2026-09-08 evidence-based gate loosening (read this before the routine pass)
 
 ### 0a-3a. Swing cross-session persistence floor loosened for 5 standard archetypes — fix/swing-persistence-loosen-standard-archetypes
