@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T12:52:20.988Z",
+  "lastUpdated": "2026-09-10T13:10:56.994Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -221,6 +221,11 @@
       "at": "2026-09-10T12:52:20.988Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
       "result": "Re-ran npm run healthcheck:legacy (all GREEN, no change -- same 3 open picks). PR #4725: verify now GREEN (completed 12:51:35Z), CodeQL/Analyze/dispatch/triage all green, mergeable. Undraft attempts x2 this cycle both hit the same documented budget-#4 AGENT_RELEASE_TOKEN rate limit as PR #4722 hit earlier today (which eventually cleared and merged cleanly on retry a few cycles later) -- same expected/known pattern, continuing to retry once per cycle rather than escalating. Last of today's 4-trigger ~15-min-cadence set; cycle wraps to the :06 offset next, where the undraft will be retried again."
+    },
+    {
+      "at": "2026-09-10T13:10:56.994Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, wraps to cycle start)",
+      "result": "PR #4725 undraft retry SUCCEEDED (rate limit cleared). mergeable_state read 'unstable' right after undraft with no fresh automerge run -- matches CLAUDE.md's documented automerge.yml token-scope gap, so merged manually via mcp__github__merge_pull_request (squash, expectedHeadSha pinned) -- merged clean as ef67b1f. Re-verified against origin/main directly: fix present. Immediate self-review of the merged text (the standing 'a merge is not a verification' discipline) caught a real defect in my OWN fix: the replacement suggestion string had a broken/ungrammatical clause ('the residual gap is calls the tape reads as mixed or agreeing but that still miss'). Fixed with a small follow-up PR #4726 (draft, CI pending) rather than silently living with sloppy shipped text -- correctly went through the full branch+test+stage+PR pipeline rather than pushing the trivial fix straight to main. debrief-aggregate suite 27/27 pass (unchanged, tests cover substance not full prose), tsc/eslint clean. Unsubscribed from #4725 (done), subscribed to #4726. Re-ran npm run healthcheck:legacy (all GREEN, no change -- same 3 open picks)."
     }
   ],
   "knownOpenItems": {
