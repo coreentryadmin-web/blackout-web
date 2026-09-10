@@ -31,6 +31,7 @@ import {
   beadCenterSpacingPx,
   ROW_HALO_BAR_SPACING_FILL,
   ROW_SWELL_FLOOR,
+  sidePctMaxima,
 } from "./vector-wall-rail-core";
 
 // ── withA ────────────────────────────────────────────────────────────────────
@@ -170,6 +171,98 @@ test("targetHalfPx: ordering is monotonic in pct when no notional is recorded", 
   for (let i = 1; i < radii.length; i++) {
     assert.ok(radii[i] >= radii[i - 1], `radius must not shrink as pct grows: ${radii.join(", ")}`);
   }
+});
+
+// ── sidePctMaxima / per-side denominator (2026-09-10 member report) ────────────────────────────
+// Live SPX 0DTE, RTH, screenshot + API repro: put walls dominated the book (16.3/6.26/6.21/5.73%
+// ...) while call walls sat far below (0.89/0.45/0.4/0.35% ...). Every call bead was sized/coloured
+// against the COMBINED maxPct (16.3, the put king), so the whole call side clamped to the sizing
+// floor and one alpha shade — "all beads look the same", true only of the weaker side.
+
+test("sidePctMaxima: each side's own peak, not the combined book peak", () => {
+  const callTrails = [{ points: [{ pct: 0.89 }] }, { points: [{ pct: 0.45 }] }];
+  const putTrails = [{ points: [{ pct: 16.3 }] }, { points: [{ pct: 6.26 }] }];
+  const { callMaxPct, putMaxPct, maxPct } = sidePctMaxima(callTrails, putTrails);
+  assert.equal(callMaxPct, 0.89);
+  assert.equal(putMaxPct, 16.3);
+  assert.equal(maxPct, 16.3, "combined max still used for overall rail visibility gating");
+});
+
+test("sidePctMaxima: an empty side reports 0, never NaN or the other side's peak", () => {
+  const { callMaxPct, putMaxPct, maxPct } = sidePctMaxima([], [{ points: [{ pct: 4 }] }]);
+  assert.equal(callMaxPct, 0);
+  assert.equal(putMaxPct, 4);
+  assert.equal(maxPct, 4);
+});
+
+// REGRESSION GUARD for the 2026-09-10 member report ("current model all beads look same .. cant
+// differentiate", live SPX 0DTE screenshot). Real measured shares from that session: call walls
+// 0.89/0.45/0.4/0.35/0.22% (top 5), put walls 16.3/6.26/6.21/5.73/5.72% (top 5).
+//
+// TWO channels feed off the book-peak denominator, and fixing it helps them differently:
+//  - COLOUR (fillAlpha) is the decisive fix — see the next test. Its sub-linear curve (REL_ALPHA_EXP
+//    0.8) was built specifically so a super-linear curve wouldn't "pin every non-king row near the
+//    floor" (its own doc comment), and it does not.
+//  - SIZE, via targetHalfPx's rowPeakPct/rowSwellMul path, has an ABSOLUTE visibility floor
+//    (BEAD_VISIBLE_MIN_HALF_PX = 2.0px, "measured against a member's eyes") that a sub-2.0 swelled
+//    result clamps UP to — a real, DOCUMENTED, and intentional limit (targetHalfPx's own comment:
+//    "below roughly the floor/ceiling ratio, the fade has to be carried by a channel other than
+//    radius"). Swelling this particular narrow, sub-1%-share call cluster against its own 0.89% max
+//    still pushes 3 of 5 beads below that floor — own-side swelling is still strictly correct (the
+//    KING call bead is now visibly the largest, where the combined denominator flattened it too),
+//    it just cannot single-handedly restore size differentiation to a range this tight. That is
+//    exactly the "carried by a channel other than radius" case the code already documents, and
+//    colour is that channel — see the next test for the size of that improvement.
+test("targetHalfPx: own-side swell makes the side's own king visibly the largest — combined swell does not", () => {
+  const callPcts = [0.89, 0.45, 0.4, 0.35, 0.22];
+  const putPcts = [16.3, 6.26, 6.21, 5.73, 5.72];
+  const { callMaxPct, maxPct } = sidePctMaxima(
+    callPcts.map((pct) => ({ points: [{ pct }] })),
+    putPcts.map((pct) => ({ points: [{ pct }] }))
+  );
+
+  const combinedKing = targetHalfPx(0.89, undefined, maxPct, BEAD_TUNING_DEFAULT, { rowPeakPct: maxPct });
+  const combinedWeakest = targetHalfPx(0.22, undefined, maxPct, BEAD_TUNING_DEFAULT, { rowPeakPct: maxPct });
+  assert.ok(
+    combinedKing - combinedWeakest < 0.5,
+    `expected the combined denominator to flatten king vs weakest (documents the bug) — king ${combinedKing.toFixed(2)} vs weakest ${combinedWeakest.toFixed(2)}`
+  );
+
+  const ownKing = targetHalfPx(0.89, undefined, callMaxPct, BEAD_TUNING_DEFAULT, { rowPeakPct: callMaxPct });
+  const ownWeakest = targetHalfPx(0.22, undefined, callMaxPct, BEAD_TUNING_DEFAULT, { rowPeakPct: callMaxPct });
+  assert.ok(
+    ownKing - ownWeakest >= 1.5,
+    `own-side king must visibly outsize the weakest call bead — king ${ownKing.toFixed(2)} vs weakest ${ownWeakest.toFixed(2)}`
+  );
+});
+
+// THE DECISIVE FIX for the reported symptom. fillAlpha's sub-linear curve does not hit the same
+// absolute floor the size channel's swell does, so per-side normalization restores full, legible
+// differentiation across the WHOLE weak side, not just its king.
+test("fillAlpha: a real-world lopsided book — weak side coloured against its OWN max spans a legible range, against the COMBINED max it does not", () => {
+  const callPcts = [0.89, 0.45, 0.4, 0.35, 0.22];
+  const putPcts = [16.3, 6.26, 6.21, 5.73, 5.72];
+  const { callMaxPct, maxPct } = sidePctMaxima(
+    callPcts.map((pct) => ({ points: [{ pct }] })),
+    putPcts.map((pct) => ({ points: [{ pct }] }))
+  );
+
+  const collapsed = callPcts.map((p) => fillAlpha(p, maxPct, BEAD_TUNING_DEFAULT));
+  const collapsedSpread = collapsed[0]! - collapsed[collapsed.length - 1]!;
+  assert.ok(
+    collapsedSpread < 0.1,
+    `expected the combined-max denominator to compress every call bead's alpha near the floor (documents the bug) — spread ${collapsedSpread.toFixed(3)}: ${collapsed.map((a) => a.toFixed(3)).join(", ")}`
+  );
+
+  const fixed = callPcts.map((p) => fillAlpha(p, callMaxPct, BEAD_TUNING_DEFAULT));
+  for (let i = 1; i < fixed.length; i++) {
+    assert.ok(fixed[i - 1]! > fixed[i]!, `alpha must strictly decrease with pct: ${fixed.map((a) => a.toFixed(3)).join(", ")}`);
+  }
+  const fixedSpread = fixed[0]! - fixed[fixed.length - 1]!;
+  assert.ok(
+    fixedSpread >= 0.35,
+    `call side must span a clearly legible alpha range once coloured against its own peak — spread only ${fixedSpread.toFixed(3)}: ${fixed.map((a) => a.toFixed(3)).join(", ")}`
+  );
 });
 
 test("compare bead profile shrinks radius vs default but keeps weak beads legible", () => {
