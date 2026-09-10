@@ -36,6 +36,14 @@ export type ZeroDteTierExportRow = {
   trough_premium: number | null;
   /** Frozen WS-02 exit policy snapshot — the grader replays under THESE numbers, not current code. */
   exit_policy_snapshot: ResolvedExitPolicy | null;
+  /** Discovery origin set at commit (entry_context.discovery_origin — FLOW/BREAKOUT/PIN, e.g.
+   *  ["BREAKOUT"] or ["FLOW","BREAKOUT"]). Null for a pre-context row (origin was never pinned)
+   *  or when the field isn't an array of strings. Added so an origin-specific historical A/B
+   *  (e.g. did the BREAKOUT ranker swap in PR #2846 help real committed option P&L) can filter
+   *  the population without a raw-Postgres query, mirroring why entry_premium/top_strike/expiry
+   *  were added here in the first place (see this file's route header). Read-only, additive —
+   *  no existing field changes shape or meaning. */
+  discovery_origin: string[] | null;
   /** Condor geometry subset when play_type === CONDOR. */
   condor: {
     breach_lower: number;
@@ -49,6 +57,10 @@ export type ZeroDteTierExportRow = {
 
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function stringArrayOrNull(v: unknown): string[] | null {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : null;
 }
 
 export function buildTierExportRow(row: ZeroDteSetupLogRow): ZeroDteTierExportRow {
@@ -99,5 +111,6 @@ export function buildTierExportRow(row: ZeroDteSetupLogRow): ZeroDteTierExportRo
     trough_premium: row.trough_premium,
     exit_policy_snapshot: frozen,
     condor: condorOk ? condor : null,
+    discovery_origin: stringArrayOrNull(ctx?.discovery_origin),
   };
 }

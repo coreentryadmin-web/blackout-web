@@ -363,6 +363,65 @@ turns fleeting whole-market bangers into strongly +EV trades; holding to expiry 
   live evidence automatically.
 - **P7 — Event-driven scan + unify Night Hawk scorer** — infra + architecture.
 
+## BREAKOUT `gain_over_range` ranking — real committed option-P&L validation, SCOPED BUT BLOCKED (2026-09-10)
+
+The 2026-08-07 finding (`FINDINGS.md`) measured `gain_over_range` beating the shipped `momentum`
+BREAKOUT ranking on an underlying-continuation proxy and explicitly recommended, before shipping:
+*"Re-rank with gain_over_range behind a flag and A/B it on real committed 0DTE plays over >=20
+sessions, measuring realised option P&L rather than the underlying proxy."* What shipped (PR
+#2846, merged 2026-08-25) was a direct unconditional swap — no flag, no A/B. It's now been live
+15+ trading days, so the originally-recommended validation should finally be runnable against real
+data — that was this task.
+
+**Tool built and smoke-tested against real data:** `scripts/audit/breakout-gain-over-range-option-
+pnl-ab.mjs`. Part A pulls every real committed BREAKOUT-origin play since 2026-08-25 via
+`GET /api/admin/zerodte/tier-export` and reports its already-graded REAL option P&L (official
+WS-10/WS-11 executable grade preferred over the mid grade, same precedent as
+`outcome-grading-audit.mjs`) — no reconstruction needed, production already grades every committed
+play against the option's own historical minute bars. Part B re-screens each play's real historical
+session date with the REAL `screenBreakoutMovers`/`screenBreakdownMovers` + the REAL dynamic cap
+(`resolveBreakoutCandidateCap`), then runs the shared, already-tested `splitBreakoutCohorts` helper
+twice over the identical pool — once with the REAL shipped `rankMoversForChainFetch` (gain_over_
+range) and once with a re-implemented `momentumRank` (the ranking it replaced, reproduced from the
+original finding's own recorded formula since it no longer exists in `src/`) — to partition real
+committed plays into MOMENTUM_ALSO (the old ranking would have prioritized this ticker too — the
+swap isn't why it's on the board) vs GAIN_OVER_RANGE_EXCLUSIVE (exists only because of the swap;
+its real P&L is the swap's own doing). Full methodology/scope caveats are in the script's header.
+
+**BLOCKED — a genuine, confirmed premise gap, not a script defect.** Running the built tool live
+against production (`https://blackouttrades.com/api/admin/zerodte/tier-export?days=19`, 84 total
+committed 0DTE plays since 2026-08-25) found that **`discovery_origin` was never exposed by any
+live route** — not `/record` (aggregate-only, no per-play origin field anywhere in
+`record.ts`/`buildZeroDteRecord`), not `tier-export` (which forwards `entry_premium`/`top_strike`/
+`expiry`/tier but had never forwarded `discovery_origin`, even though `entry_context.discovery_
+origin` has been persisted at commit since before PR #2846 — confirmed live in `scan.ts`'s real
+commit path, `buildZeroDteEntryContext({ ..., discovery_origin: s.discovery_origin }, ...)`). So
+the task's premise ("pull BREAKOUT-origin plays via /record or tier-export") did not hold against
+current production — not specific to BREAKOUT; every origin is equally unidentifiable via any live
+route today. This PR ships the missing forwarding (`ZeroDteTierExportRow.discovery_origin`, additive,
+read-only, unit-tested — mirrors exactly why `entry_premium`/`top_strike`/`expiry` were added to
+this same route for the C-tier/untiered exit-mode A/B). Because `discovery_origin` is a persisted
+`entry_context` column value, not something computed at request time, **once this PR deploys the
+already-existing 19+ days of historical rows immediately become BREAKOUT-attributable** — no new
+data needs to accumulate first.
+
+**Mechanics proven against real live data anyway** (smoke test, not a claim about real BREAKOUT
+attribution): re-screening the real 2026-09-09 grouped-daily snapshot (12,508 rows) for a real
+committed short play reproduced 539 real qualifying short movers, a real dynamic cap of 220, and
+correctly diverging real rankings for that name — gain_over_range rank 56 (KEPT) vs momentum rank
+314 (NOT kept) — the exact mechanism (a decent-gain, weak-close name that momentum's `gain ×
+close_strength` penalizes hard and gain_over_range does not) the 2026-08-07 finding's "mechanism"
+row described. The pipeline works; only the origin tag is missing pre-deploy.
+
+**Re-run once this PR is live:**
+```
+node --import tsx scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --json
+# or, before --min-n=15 real plays accumulate feels safe:
+node --import tsx scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --since=2026-08-25 --json
+```
+No gate/ranking changed by this entry — this is a measurement blocked on its own enabling plumbing,
+not evidence for or against the current ranking either way.
+
 ## Edge cases / scenarios still to simulate
 VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regime (trade toward the
 flip / avoid pinned-to-wall); exit-engine replication vs hold-to-close; SPX/NDX index 0DTE; whole-market
