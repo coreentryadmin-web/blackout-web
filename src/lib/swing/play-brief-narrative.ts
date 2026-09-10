@@ -311,6 +311,39 @@ function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string |
   return tape;
 }
 
+// A SELL recommendation used to always render as "thesis or ladder fired" (FINDINGS 2026-09-10,
+// live repro NRG SWING:NRG:34: the manage engine forced EXIT purely on "expiry_risk" — manage.ts's
+// own comment: "too little time / theta cliff... (intact thesis)" — while the same play-brief's own
+// "What to watch" section correctly said "Thesis intact" and the trim ladder showed no rung fired.
+// The generic line asserted a broken thesis or a fired ladder that neither the data nor the rest of
+// the brief supported. manageReason (the deciding manage.ts rung, threaded through live-plays.ts ->
+// horizon-plays.ts -> adapters.ts) lets this state the REAL reason instead of guessing.
+function sellReasonClause(
+  reason: TerminalPlay["manageReason"] | undefined,
+  thesisLevel: TerminalPlay["thesisBreak"] | undefined,
+): string {
+  switch (reason) {
+    case "expiry_risk":
+      return " — time-based: DTE nearing the lane's theta cliff (thesis still intact)";
+    case "structural_stop":
+    case "thesis_stop":
+      return " — thesis broke";
+    case "premium_stop":
+      return " — premium stop hit";
+    case "catalyst_shift":
+      return " — catalyst shifted against the thesis";
+    case "regime_shift":
+      return " — regime shifted against the thesis";
+    case "time_stop":
+      return " — time stop hit";
+    default:
+      // No manage-sync rung yet — fall back to the spot-detected structural break when that's
+      // what actually drove the EXIT (structuralBreakFromSpot in live-plays.ts), otherwise say
+      // nothing rather than guess at a mechanism the data doesn't actually confirm.
+      return thesisLevel?.level === "break" ? " — thesis broke" : "";
+  }
+}
+
 function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
 
@@ -351,7 +384,7 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
         `Bank partial into strength; don't give back peak.`,
     );
   } else if (rec === "SELL") {
-    lines.push("**Exit now** — thesis or ladder fired. Flatten per manage engine.");
+    lines.push(`**Exit now**${sellReasonClause(play.manageReason, play.thesisBreak)}. Flatten per manage engine.`);
   } else {
     lines.push(
       `**Hold the line**${health != null ? ` — thesis health **${health}%**` : ""}. ` +

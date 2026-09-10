@@ -163,7 +163,7 @@ export function structuralBreakFromSpot(
 export function manageObservablesFromEvent(
   manageEvent: Record<string, unknown> | null | undefined,
   spotFallback: { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel },
-): { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel } {
+): { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel; manageReason?: SwingManageRung | null } {
   if (!manageEvent || typeof manageEvent !== "object") return spotFallback;
 
   let manageAction = spotFallback.manageAction;
@@ -194,7 +194,11 @@ export function manageObservablesFromEvent(
     manageAction = manageAction ?? "EXIT";
   }
 
-  return { manageAction, thesisLevel };
+  // Carry the deciding rung forward so narrative text (play-brief-narrative.ts) can state the REAL
+  // reason for a SELL/EXIT recommendation instead of a generic guess — "expiry_risk" in particular
+  // is a time-based force-manage with the thesis still intact (manage.ts's own docs on the rung),
+  // which a generic "thesis or ladder fired" line would misrepresent as a broken thesis.
+  return { manageAction, thesisLevel, manageReason: rung ?? null };
 }
 
 /**
@@ -220,7 +224,7 @@ export function livePlayFromSwingPosition(
     manageAction: broken ? "EXIT" : liveStatus === "TRIM" ? "TAKE_PARTIAL" : undefined,
     thesisLevel: broken ? "break" : "intact",
   });
-  const { manageAction, thesisLevel } = manageObservablesFromEvent(manageEvent, spotObs);
+  const { manageAction, thesisLevel, manageReason } = manageObservablesFromEvent(manageEvent, spotObs);
 
   const score =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
@@ -262,6 +266,7 @@ export function livePlayFromSwingPosition(
     regime,
     liveStatus,
     manageAction,
+    manageReason: manageReason ?? null,
     thesisLevel,
     firstSeenAt: row.first_seen_at ?? undefined,
     committedAt: row.committed_at ?? undefined,

@@ -24,7 +24,7 @@ import {
 import type { SwingSubLane } from "@/lib/swing/taxonomy";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
 import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
-import type { SwingManageAction } from "@/lib/swing/manage";
+import type { SwingManageAction, SwingManageRung } from "@/lib/swing/manage";
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
@@ -712,6 +712,8 @@ export interface HorizonDeckSource {
   markAsOf?: string | null;
   /** Management engine action for live rows (manage.ts). */
   manageAction?: SwingManageAction | null;
+  /** The rung that decided manageAction (manage.ts) — see TerminalPlay's field for why this matters. */
+  manageReason?: SwingManageRung | null;
   /** Ledger position id — disambiguates multiple closed rows on the same ticker. */
   positionId?: number | null;
   exitAt?: string | null;
@@ -921,6 +923,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     exitPolicy,
     thesisHealth,
     manageAction: src.manageAction ?? null,
+    manageReason: src.manageReason ?? null,
     // De-hardcoded (PR-12): the swing serving meta feeds the REAL factors/regime/thesis. Each falls back to
     // the exact pre-PR-12 literal ([] / null / {intact}) when the caller supplies nothing, so LEAPS and any
     // un-enriched caller render identically — the change is additive, never a regression to those lanes.

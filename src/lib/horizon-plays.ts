@@ -29,7 +29,7 @@ import {
 // as a type). These enrich a play with the OBSERVABLE swing state the serving router keys on.
 import type { SwingArchetype, SwingSubLane, SwingSetupState, SwingEntryState } from "./swing/taxonomy";
 import type { SwingServingSection } from "./swing/serving";
-import type { SwingManageAction } from "./swing/manage";
+import type { SwingManageAction, SwingManageRung } from "./swing/manage";
 
 /**
  * A whole-market candidate from discovery, with its full option chain attached.
@@ -129,6 +129,12 @@ export interface HorizonPlay {
   liveStatus?: "OPEN" | "HOLD" | "TRIM";
   /** Management action for a live position (manage.ts) — drives MANAGING/SCALING_OUT/EXITING. */
   manageAction?: SwingManageAction;
+  /** The manage-sync rung that decided manageAction (manage.ts) — e.g. "expiry_risk" (thesis still
+   *  intact, time-based force-manage) vs "structural_stop"/"thesis_stop" (thesis actually broke).
+   *  Null when no manage-sync snapshot has fired yet. Lets narrative text state the REAL reason
+   *  instead of a generic "thesis or ladder fired" that is wrong whenever the real cause is a
+   *  theta-cliff/time-based exit with the thesis fully intact. */
+  manageReason?: SwingManageRung | null;
   /** True when the thesis was observed this scan but has NOT cleared cross-session persistence. */
   persistenceObserved?: boolean;
   /** Honest reason the persistence gate has not promoted this name to WATCH yet. */
