@@ -50,6 +50,61 @@ test("vectorBoardScorecard computes hit rate and meters inputs", () => {
   assert.ok(sc.netPremiumPct != null);
 });
 
+// ── Legacy's pre-open pull: a never-entered counterfactual must never read as an achieved
+// result. Live evidence, 2026-09-10: a pulled ASO's +277.78% counterfactual outranked two
+// genuinely open plays and was headlined "Best: ASO +277.78%" with "Hit rate 100%" driven
+// entirely by that one withdrawn, never-tradeable play — no real position had resolved yet
+// that session. legacy-board-table-utils.ts's legacyVectorStatus() is the only place in the
+// codebase that stamps statusLabel "PULLED" (status: "invalidated", ticker never filled); Vector's
+// OWN "invalidated" rows (a live position whose thesis broke mid-trade — setupInvalidated: true,
+// statusLabel "Invalidated"/"Stressed") are a real result and must keep counting exactly as before.
+
+test("vectorBoardScorecard: a PULLED (never-entered) row can never be bestPick, no matter its premiumPct", () => {
+  const sc = vectorBoardScorecard([
+    row({ ticker: "ASO", kind: "closed", status: "invalidated", statusLabel: "PULLED", premiumPct: 277.78 }),
+    row({ ticker: "SIG", kind: "live", status: "open", premiumPct: -79 }),
+    row({ ticker: "FICO", kind: "live", status: "open", premiumPct: 38 }),
+  ]);
+  assert.equal(sc.bestPick?.ticker, "FICO", "the pulled play's phantom +277.78% must lose to a real +38%");
+});
+
+test("vectorBoardScorecard: a PULLED row never counts toward Hit rate — no capital was ever live on it", () => {
+  // Only a pulled play has "closed" today; nothing has really resolved yet.
+  const sc = vectorBoardScorecard([
+    row({ ticker: "ASO", kind: "closed", status: "invalidated", statusLabel: "PULLED", premiumPct: 277.78 }),
+    row({ ticker: "SIG", kind: "live", status: "open", premiumPct: -79 }),
+    row({ ticker: "FICO", kind: "live", status: "open", premiumPct: 38 }),
+  ]);
+  // Falls through to the live-status read (no real closes) rather than reading a fabricated
+  // 100% off the one pulled row.
+  assert.equal(sc.hitRate, 0, "no play has status:winner yet — never a phantom 100%");
+  assert.equal(sc.closed, 1, "the Closed(1) tab elsewhere on the board still counts the pull");
+});
+
+test("vectorBoardScorecard: a real closed loser after a pull still grades honestly (denominator excludes the pull)", () => {
+  const sc = vectorBoardScorecard([
+    row({ ticker: "ASO", kind: "closed", status: "invalidated", statusLabel: "PULLED", premiumPct: 277.78 }),
+    row({ ticker: "SIG", kind: "closed", status: "closed", premiumPct: -50 }),
+  ]);
+  assert.equal(sc.hitRate, 0, "1 real close, 0 real wins — the pull must not pad the denominator into a false 50%");
+  assert.equal(sc.closed, 2);
+});
+
+test("vectorBoardScorecard: Vector's OWN invalidated (real position, thesis broke) is unaffected — still a real result", () => {
+  const sc = vectorBoardScorecard([
+    row({
+      ticker: "NVDA",
+      kind: "closed",
+      status: "invalidated",
+      statusLabel: "Invalidated",
+      setupInvalidated: true,
+      premiumPct: 65,
+    }),
+  ]);
+  assert.equal(sc.bestPick?.ticker, "NVDA", "a real Vector position must still be eligible for bestPick");
+  assert.equal(sc.hitRate, 100, "and must still count toward Hit rate — this was a real, resolved trade");
+});
+
 test("vectorBoardSparklinePoints returns entry-to-mark path", () => {
   const pts = vectorBoardSparklinePoints(row({ premiumPct: 20, peakPct: 40 }));
   assert.ok(pts.length >= 3);
