@@ -133,6 +133,20 @@ mock.module("../../../lib/providers/polygon-options-gex", {
           },
         };
       }
+      // Regression fixture for the 2026-09-09 audit finding: a null flip's reason
+      // (`gex.flip_reason`) was silently discarded building the universe row — a real market
+      // state (no zero-gamma crossing exists, e.g. net-short dealer book everywhere) rendered
+      // indistinguishable from an upstream gap, on the one surface (the scanner table / Largo's
+      // Vector tool) that already has a `flip_reason` field to show it, the same way the
+      // canonical GEX heatmap route and Thermal's regime strip already do.
+      if (ticker === "NOFLIP") {
+        return {
+          spot: 100,
+          asof: new Date().toISOString(),
+          gex: { flip: null, flip_reason: "net_short_everywhere", strike_totals: { "100": 1 } },
+          vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
+        };
+      }
       return {
         spot: 100,
         asof: new Date().toISOString(),
@@ -250,6 +264,35 @@ test("buildVectorUniverseSnapshot: a heatmap spot of literal 0 renders as null, 
   const row = snap.rows.find((r) => r.ticker === "ZEROSPOT");
   assert.ok(row, "ZEROSPOT row must be present");
   assert.equal(row!.spot, null, "a heatmap spot of literal 0 must render as null, matching every other absent-spot field");
+});
+
+// Regression for the 2026-09-09 audit finding: the universe row discarded `gex.flip_reason`
+// entirely — a null gammaFlip read as an unexplained gap on the scanner table / Largo's Vector
+// tool even when the upstream heatmap route already knew (and reported) exactly why no crossing
+// exists this session, the same fact Thermal's regime strip and the canonical GEX heatmap route
+// already surface.
+test("buildVectorUniverseSnapshot: a null gammaFlip carries its flip_reason through to the row", async () => {
+  dynamicTickers = ["NOFLIP"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "NOFLIP");
+  assert.ok(row, "NOFLIP row must be present");
+  assert.equal(row!.gammaFlip, null);
+  assert.equal(row!.flipReason, "net_short_everywhere");
+});
+
+test("buildVectorUniverseSnapshot: flipReason is null when gammaFlip resolves normally", async () => {
+  dynamicTickers = ["SPY"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "SPY");
+  assert.ok(row, "SPY row must be present");
+  assert.notEqual(row!.gammaFlip, null);
+  assert.equal(row!.flipReason, null, "a resolved flip carries no reason — nothing to explain");
 });
 
 // Bead rail (wall-history) uses unconstrained ranking — Sep 3 desk density. Scanner row

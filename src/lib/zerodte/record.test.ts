@@ -16,6 +16,7 @@ import {
   todBucket,
   ZERODTE_RECORD_METHODOLOGY,
 } from "./record";
+import { tierFromEntryContext } from "./tiers";
 
 function row(overrides: Partial<ZeroDteSetupLogRow>): ZeroDteSetupLogRow {
   return {
@@ -207,6 +208,74 @@ test("scoreBand + scoreForBanding + graded/win predicates", () => {
   assert.equal(isZeroDteWin(row({ plan_pnl_pct: 0 })), false);
   assert.equal(isZeroDteWin(row({ plan_pnl_pct: null })), false);
   assert.equal(LOW_N_THRESHOLD, 5);
+});
+
+// ── conviction:null for BREAKOUT/PIN origins — RED→GREEN for the 2026-09-09 fix ─────────
+// Root cause: board.ts's enrichSetup(setup, dossier) always resolves `conviction` from
+// `dossier?.scored?.conviction`, and breakout-source.ts/pin-source.ts both call it with a
+// hardcoded `null` dossier (no options-flow evidence exists to score for a bare price/volume
+// breakout or a GEX pin) — so the DB `conviction` column is null for every BREAKOUT/PIN
+// commit, forever, regardless of how strong the play was. Measured live 2026-09-09:
+// GET /api/market/zerodte/record?days=14 showed 36/57 (63.2%) committed plays with
+// conviction:null, essentially all BREAKOUT-origin, vs 18/18 FLOW-origin plays with a real
+// letter. Fix: toPlay() falls back to the PR-F merit tier (tierFromEntryContext, the same
+// origin-agnostic adapter the `tier` field already uses) instead of passing the null column
+// straight through — a real signal, not a fabricated one.
+test("toPlay: a null DB conviction (BREAKOUT/PIN, no dossier) falls back to the merit tier, not a bare null", () => {
+  // Same shape a real BREAKOUT/PIN commit pins (buildZeroDteEntryContext runs unconditionally
+  // on every origin) — prime score band + calm VIX + clean Cortex + midday commit → tier A,
+  // the exact PINNED_FULL fixture tiers.test.ts already proves resolves to "A".
+  const entryContext = {
+    vix_open: 16.2,
+    spy_bias: "up",
+    score: 78,
+    committed_at_et: "2026-07-10 12:10 ET",
+    discovery_origin: ["BREAKOUT"],
+    cortex: {
+      abstained: false,
+      score: 1.85,
+      vetoes: [],
+      supports: [{ source: "positioning" }, { source: "flow" }],
+      absent: [],
+    },
+  };
+  // Independently confirm what tier this blob resolves to, rather than hardcoding "A" twice —
+  // a change to tiers.ts's bands would then fail this assertion instead of silently drifting.
+  const expectedTier = tierFromEntryContext(entryContext)?.tier;
+  assert.equal(expectedTier, "A");
+
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "BRKO", conviction: null, entry_context: entryContext })],
+    WINDOW
+  );
+  const play = rec.plays[0]!;
+  assert.equal(play.conviction, "A", "null DB conviction must fall back to the real merit tier, not stay null");
+  assert.equal(play.tier, "A", "conviction's fallback must agree with the independently-rendered tier field");
+});
+
+test("toPlay: a real dossier conviction (FLOW origin) is NEVER overridden by the merit tier", () => {
+  // Same entry_context as above (would tier "A"), but the DB column already carries the
+  // dossier-scored FLOW letter — that letter is the more specific signal and must win.
+  const entryContext = {
+    vix_open: 16.2,
+    score: 78,
+    committed_at_et: "2026-07-10 12:10 ET",
+    cortex: { abstained: false, score: 1.85, vetoes: [], supports: [{ source: "positioning" }, { source: "flow" }], absent: [] },
+  };
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "FLOWX", conviction: "B", entry_context: entryContext })],
+    WINDOW
+  );
+  assert.equal(rec.plays[0]!.conviction, "B");
+});
+
+test("toPlay: a row with genuinely no pinned evidence stays honestly null (never fabricated)", () => {
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "PRECTX", conviction: null, entry_context: null })],
+    WINDOW
+  );
+  assert.equal(rec.plays[0]!.conviction, null);
+  assert.equal(rec.plays[0]!.tier, null);
 });
 
 // ── Fix 5: the graded predicate requires a FINITE plan_pnl_pct (partial-write guard) ──

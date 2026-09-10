@@ -9,7 +9,7 @@ import { buildTrackRecordPagePayload } from "@/lib/track-record-page";
 
 export const metadata: Metadata = publicPageMetadata(
   "Public Track Record & Grading Methodology | BlackOut",
-  "How BlackOut grades SPX Slayer, Night Hawk, and 0DTE Command setups — live aggregate win/loss stats, anti-blend rules, and full transparency on every logged play.",
+  "How BlackOut grades SPX Slayer, Night Hawk, and 0DTE Command setups — live win/loss stats, anti-blend rules, and full transparency on every logged play.",
   "/methodology"
 );
 

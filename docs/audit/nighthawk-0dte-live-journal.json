@@ -1,0 +1,43 @@
+{
+  "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing — never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 — no prior continuity existed before this file.",
+  "updated_at": "2026-09-10T03:59:32Z",
+  "sessions": {
+    "2026-09-09": {
+      "heat_state_at_last_check": "CLOSED",
+      "tickers": {
+        "CIFR": { "direction": "short", "score": 82, "tier": "A", "outcome": "thesis_break", "pnl_pct": -3.12, "flagged_at": "2026-09-09T14:58:06.000Z", "exit_at": "2026-09-09T14:59:14.811Z", "note": "coherent: real gex-walls thesis-break ~69s after entry, cortex decision/narrative agree. No finding." },
+        "SHOP": { "direction": "short", "score": 90, "tier": "A", "outcome": "thesis_break", "pnl_pct": 0, "flagged_at": "2026-09-09T14:22:44.000Z", "exit_at": "2026-09-09T14:22:45.694Z", "note": "instant (1.7s) self-veto, narrative says BLOCKED but decision=PASS/vetoes=[]. Pre-dates PR #4656 fix (merged 16:43:45 UTC same day). Explained, not a new finding." },
+        "MSTR": { "direction": "short", "score": 87, "tier": "A", "outcome": "thesis_break", "pnl_pct": -0.12, "flagged_at": "2026-09-09T14:22:44.000Z", "exit_at": "2026-09-09T14:22:45.694Z", "note": "same instant-self-veto shape as SHOP, same batch tick, pre-#4656. Explained." },
+        "LUNR": { "direction": "short", "score": 78, "tier": "B", "outcome": "thesis_break", "pnl_pct": 0.91, "flagged_at": "2026-09-09T14:22:44.000Z", "exit_at": "2026-09-09T14:44:38.653Z", "note": "22min hold, real thesis_break, coherent. No finding." },
+        "ENPH": { "direction": "short", "score": 88, "tier": "A", "outcome": "ratchet_early_profit_floor", "pnl_pct": 5, "peak_pnl_pct": 18, "flagged_at": "2026-09-09T15:07:55.000Z", "exit_at": "2026-09-09T15:22:52.736Z", "note": "WINNER, exit management verified coherent: peak 18% never reached trim_scale's 20% first-trim trigger, so trims correctly never fired; universal profit-floor locked +5% instead of round-tripping to red. Not mismanagement." },
+        "RKLB": { "direction": "short", "score": 78, "tier": "B", "outcome": "thesis_break", "pnl_pct": -0.43, "flagged_at": "2026-09-09T15:07:55.000Z", "exit_at": "2026-09-09T15:07:58.116Z", "note": "instant (3.1s) self-veto shape, pre-#4656. Explained." },
+        "ASTS": { "direction": "short", "score": 77, "tier": "B", "outcome": "thesis_break", "pnl_pct": 0, "flagged_at": "2026-09-09T15:34:04.000Z", "exit_at": "2026-09-09T15:34:04.163Z", "note": "instant (0.16s) self-veto shape, pre-#4656 (fix merged 16:43:45 UTC same day, this play is ~1hr before). Explained." },
+        "QQQ": { "direction": "short", "score": 85, "tier": "B", "outcome": "stopped", "pnl_pct": -51.42, "flagged_at": "2026-09-09T16:14:39.000Z", "exit_at": "2026-09-09T16:14:39.910Z", "note": "OPEN FINDING — see open_findings[0]. Phantom stale-entry-price stop, NOT a real 51% move. entry_premium(1.76)==flow_avg_fill, but real Polygon 1-min bars show the option was only near $1.76 ~51min earlier (~15:23 UTC); by commit (16:14:39 UTC) it had already decayed to ~0.82-0.97 on a flat underlying. Reported to PR #4076, not fixed (touches live entry-pricing/grading logic)." }
+      }
+    },
+    "2026-09-08": {
+      "tickers": {
+        "ASTS": { "direction": "long", "score": 65, "tier": "B", "outcome": "flat_theta_bleed", "pnl_pct": -9.62, "flagged_at": "2026-09-08T14:23:33.000Z", "exit_at": "2026-09-08T14:56:28.624Z", "note": "coherent: peak never left +/-10% band in 32min, cut for a small scratch loss. No mechanical finding. Score 65 == score_floor exactly (marginal pass) -- single data point, log for future score_floor correlation, do NOT escalate alone (noise-discipline threshold is 3+)." }
+      }
+    }
+  },
+  "open_findings": [
+    {
+      "id": "2026-09-10-qqq-stale-entry-premium",
+      "session_date": "2026-09-09",
+      "ticker": "QQQ",
+      "summary": "entry_premium falls back to stale flow_avg_fill (no fresh option quote required) when planEntryMax is null; CHASE_PCT no-chase guard (55%) is wider than the play's own hard stop (-50%), so a 'not chasing' entry can already be past its own stop the instant a fresh mark is taken at commit. Produced a mechanically-false 'stopped -51.42%' 0.91s after entry -- verified against real Polygon bars, not a real market move.",
+      "root_cause_files": ["src/lib/zerodte/plan.ts:511-524 (resolveLedgerEntryPremium, CHASE_PCT)", "src/lib/zerodte/gates.ts:1730-1736 (liveCommitPreconditionsUnmet quote_age_unknown -- didn't catch this one, untraced why)"],
+      "status": "reported_2026-09-10T04:00Z_awaiting_direction",
+      "evidence_ref": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5612702686",
+      "next_step_if_asked": "pull full population of FLOW-origin plays where entry_premium==flow_avg_fill AND input_age_manifest.option_quote==null to size blast radius before any fix is decided"
+    }
+  ],
+  "known_explained_patterns": [
+    {
+      "pattern": "instant (<4s) thesis_break exit with cortex narrative saying 'BLOCKED by 1 veto' while decision=PASS/vetoes=[]",
+      "status": "resolved_by_pr_4656_merged_2026-09-09T16:43:45Z",
+      "note": "applyCortexCommitRelief strips a veto at commit when Vector confirms direction; live exit-time thesis check recomposed evidence fresh with no memory of the relief and immediately fired thesis_break. All 4 instances observed in the 2026-09-09 ledger (SHOP, MSTR, RKLB, ASTS) are timestamped BEFORE the fix merged -- consistent with, not contradicting, the fix. Watch for a recurrence AFTER 2026-09-09T16:43:45Z on a future cycle; that would mean the fix has a gap."
+    }
+  ]
+}
