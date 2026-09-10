@@ -318,18 +318,24 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
   const lines: string[] = [];
 
   if (bucket === "watch") {
-    const gateLine = play.gateBlocks?.length
-      ? play.gateBlocks
-          .slice(0, 2)
-          .map((g) => `${g.code}: ${g.reason}`)
-          .join(" · ")
-      : null;
+    const gateCount = play.gateBlocks?.length ?? 0;
     const actionLabel =
       swingActionDisplay(play)?.label ?? play.swingEntryAction?.toUpperCase() ?? rec;
     lines.push(
       `**Entry stance** — ${actionLabel}. ` +
-        (gateLine
-          ? `Clear gates: ${gateLine}.`
+        (gateCount > 0
+          ? // Reason text + unlock timing live in watchGateCoaching's own bullet
+            // (play-brief-narrative-coaching.ts), pushed immediately after this one for the SAME
+            // watch bucket (collectCoachingBullets, right after actionNarrative in
+            // tradeManagerNarrativeSection). This used to re-render the first two gates' full
+            // `code: reason` text here too, so a gated watch play's "Trade manager read" carried
+            // the identical gate codes+reasons TWICE back-to-back — once as "Clear gates: ..."
+            // here, once as "Gates blocking entry — ..." in the very next bullet. The section's
+            // own de-dup (`seen`, keyed on each line's first 48 chars) never caught it because the
+            // two bullets open with different wording ("Entry stance —" vs "Gates blocking
+            // entry —"), even though their content was the same (live EWY/NRG WATCH reads,
+            // 2026-09-10). State the count here; the reason text has exactly one home below.
+            `${gateCount} gate${gateCount === 1 ? "" : "s"} blocking entry — see below.`
           : rec === "BUY"
             ? "No mechanical gates blocking — wait for trigger geometry."
             : "Wait for setup maturity before sizing."),
