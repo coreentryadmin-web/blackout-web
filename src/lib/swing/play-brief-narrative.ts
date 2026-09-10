@@ -377,11 +377,26 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
     return lines.join(" ");
   }
 
+  // Honest RELATIVE retracement, not a percentage-POINT subtraction of two already-percentage
+  // numbers (FINDINGS 2026-09-10: "Gave back 93%" on a play still up +39.8% — peak 132.7 minus
+  // pnl 39.8 read as 93 points, which the "gave back X%" phrasing unambiguously misreads as a
+  // near-total round-trip). mfeCaptureOutcome (mfe-capture.ts) is the SAME math already shipped
+  // for CLOSED-play post-mortems, reused here for a LIVE play's CURRENT pnl (mfeCapturePct is
+  // always null pre-close — that field only exists after grading). Computed before the rec-branch
+  // below so the TRIM line itself can check for a round-trip too (see its own comment).
+  const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
+
   if (rec === "TRIM") {
     const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
+    // "Bank partial into strength; don't give back peak" only makes sense while there is still a
+    // peak worth protecting. Once the play has already round-tripped past breakeven into a loss
+    // (live repro: NN SWING:NN:32, 2026-09-10 — TRIM recommendation, peak +24.4%, pnl -34.6%), the
+    // very next bullet already states the peak is gone — "into strength"/"don't give back peak"
+    // then reads as stale advice contradicting the sentence right after it. Drop the strength
+    // clause in that case; the round-trip bullet below already carries the real, current guidance.
     lines.push(
-      `**Desk says TRIM**${next ? ` — next rail at **+${next.trigger_pct}%**` : ""}. ` +
-        `Bank partial into strength; don't give back peak.`,
+      `**Desk says TRIM**${next ? ` — next rail at **+${next.trigger_pct}%**` : ""}.` +
+        (giveback?.kind === "round_trip" ? "" : " Bank partial into strength; don't give back peak."),
     );
   } else if (rec === "SELL") {
     lines.push(`**Exit now**${sellReasonClause(play.manageReason, play.thesisBreak)}. Flatten per manage engine.`);
@@ -394,17 +409,6 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
     );
   }
 
-  // Honest RELATIVE retracement, not a percentage-POINT subtraction of two already-percentage
-  // numbers (FINDINGS 2026-09-10: "Gave back 93%" on a play still up +39.8% — peak 132.7 minus
-  // pnl 39.8 read as 93 points, which the "gave back X%" phrasing unambiguously misreads as a
-  // near-total round-trip). mfeCaptureOutcome (mfe-capture.ts) is the SAME math already shipped
-  // for CLOSED-play post-mortems, reused here for a LIVE play's CURRENT pnl (mfeCapturePct is
-  // always null pre-close — that field only exists after grading).
-  // captureFloor=75 (fire once the play has given back at least a quarter of its peak gain): this
-  // bullet is a standalone recommendation ("consider protecting runner"), so it stays a touch LESS
-  // sensitive than the underlying-excursion aside in play-brief-narrative-coaching.ts (which is a
-  // secondary data point, not its own call to action, and can afford to flag a smaller giveback).
-  const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
   if (giveback?.kind === "round_trip") {
     lines.push(
       `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left.`,
