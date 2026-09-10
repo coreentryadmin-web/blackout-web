@@ -27,6 +27,8 @@ import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
+import { graduatedArchetypeEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 import {
   meridianPeerEarningsCoaching,
   pickEarningsForSwingPeer,
@@ -128,6 +130,47 @@ export function bookContextSection(
   }
 
   return { title: "Book context", body: lines.join("\n\n"), bias: "neutral" };
+}
+
+/**
+ * Track record — cites the ticker's OWN archetype's historical graduation evidence (Largo product
+ * contract C10, "historical context"; calibration-cache.ts's distilled snapshot the swing-
+ * active-refresh cron writes every tick). Renders ONLY when the archetype bucket has actually
+ * GRADUATED (`graduated:true` — LIMITED/BROAD tier, Wilson-LB gate, point-Δ≥15pt all cleared); an
+ * ungraduated bucket is OMITTED rather than shown caveated, per the contract's confidence-omission
+ * principle (C6: "if a product cannot produce a calibrated score, OMIT the field... an invented
+ * score is worse than nothing"). A play with an unclassified/foreign archetype, or a cold/timed-out
+ * cache read (ctx.archetypeTrackRecord null/undefined), also renders nothing — same honest absence,
+ * not an error.
+ *
+ * Scoped to the ARCHETYPE dimension only for this section (sub-lane graduation is distilled and
+ * cached alongside it — calibration-cache.ts's `snapshot.subLanes` — but combining two graduated
+ * dimensions into one citation without double-counting evidence or cluttering the brief is left as
+ * a follow-up; shipping the archetype citation alone is the smaller, correct slice per the standing
+ * "ship less but correct" guidance).
+ */
+export function archetypeTrackRecordSection(
+  play: TerminalPlay,
+  snapshot: SwingArchetypeTrackRecordSnapshot | null | undefined,
+): RichSection | null {
+  const archetype = (SWING_ARCHETYPES as readonly string[]).includes(play.archetype ?? "")
+    ? (play.archetype as (typeof SWING_ARCHETYPES)[number])
+    : null;
+  const entry = graduatedArchetypeEntry(snapshot, archetype);
+  if (!entry || !archetype) return null;
+
+  const label = ARCHETYPE_META[archetype].label;
+  const sampleNote = entry.tier === "BROAD" ? "broad sample" : "limited sample — still evidence, not vibes";
+  const lines: string[] = [
+    `**${label}** — ${entry.wins}W / ${entry.losses}L across **${entry.n}** graded plays (${sampleNote}).`,
+    `Raw win rate **${entry.winRatePct != null ? `${entry.winRatePct.toFixed(0)}%` : "—"}** · Wilson 95% lower bound **${entry.wilsonLbPct.toFixed(0)}%** — the conservative floor this evidence actually supports, not the point estimate.`,
+  ];
+  if (entry.pointDeltaPts != null) {
+    lines.push(
+      `Clears this archetype's provisional score floor by **+${entry.pointDeltaPts.toFixed(0)} pts** win-rate edge vs setups that did not.`,
+    );
+  }
+  return { title: "Track record", body: lines.join("\n\n"), bias: "neutral" };
 }
 
 /** Vector chart technicals — EMA stack, VWAP, RSI, MACD, structure. */
@@ -852,6 +895,9 @@ export function buildIntelSections(
 
   const book = bookContextSection(play, ctx.openBook);
   if (book) out.push(book);
+
+  const trackRecord = archetypeTrackRecordSection(play, ctx.archetypeTrackRecord);
+  if (trackRecord) out.push(trackRecord);
 
   const rank = laneRankSection(play, ctx.laneRows);
   if (rank) out.push(rank);

@@ -18,6 +18,7 @@ import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
+import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -288,6 +289,135 @@ export function vectorPlayCoaching(
   return line;
 }
 
+/**
+ * Cross-desk conflicts are not all the same KIND of disagreement — each desk reads a different
+ * evidence base on a different clock, and that difference is exactly what should drive how much
+ * weight a trader gives it, not just whether it exists. Four kinds show up here:
+ *  - "structure"       — Vector's live price-structure/momentum read, same session, same tape.
+ *  - "flow"             — HELIX's same-session options order flow (can front-run OR lag price).
+ *  - "intraday_scalp"   — 0DTE's own hours-long same-day clock — a genuinely different holding
+ *                          period than a multi-day swing, so a 0DTE disagreement is often just
+ *                          noise for this thesis, not evidence against it.
+ *  - "digest"           — Night Hawk LEGACY's overnight next-day digest (nighthawk_recent reads
+ *                          nighthawk_play_outcomes — see play-brief-absence.ts's own note on why
+ *                          this is Legacy, not this board) — the least live of the four.
+ */
+type CrossDeskEvidenceKind = "structure" | "flow" | "intraday_scalp" | "digest";
+
+interface CrossDeskConflict {
+  /** Kept short and stable — concatenated as `${desk} ${claim}` below to reproduce the exact
+   *  "Vector bearish"/"Vector bullish" substring play-brief-narrative.ts's own
+   *  `counterThesisLine` dedup (`vectorConflictAlreadyNoted`) and this file's `vectorPlayCoaching`
+   *  flag both detect by reading this bullet's RENDERED TEXT (see their doc comments) — changing
+   *  this format would silently break that de-dup and reintroduce the 2026-09-09 triple-restated
+   *  bug (docs/audit/findings-staging/2026-09-09-swing-narrative-vector-conflict-triple-restated.md). */
+  desk: string;
+  /** e.g. "bearish (Fade the rip)", "short (score 78)", "put-led". */
+  claim: string;
+  evidenceKind: CrossDeskEvidenceKind;
+  weight: number;
+}
+
+/** Which evidence kind a swing archetype's OWN thesis leans on hardest, per each archetype's
+ *  `note` in taxonomy.ts's `ARCHETYPE_META` (the single source of truth for what leads each
+ *  archetype's score). EVENT_DRIVEN is deliberately omitted: none of the four desks read the
+ *  catalyst itself, so no desk earns an archetype-specific bump for it — pure evidence-directness
+ *  ordering applies instead (see CROSS_DESK_BASE_WEIGHT). */
+const ARCHETYPE_LEAD_EVIDENCE: Partial<Record<SwingArchetype, CrossDeskEvidenceKind>> = {
+  BREAKOUT: "structure", // "structure + relative strength lead"
+  PULLBACK_CONTINUATION: "structure", // "trend structure + entry geometry lead"
+  MEAN_REVERSION: "structure", // lowest-conviction lane, but still a momentum/structure read
+  FAILED_BREAKDOWN: "structure", // "structure + volume confirmation lead"
+  POST_EARNINGS_DRIFT: "structure", // "continuation structure" leads once the catalyst has fired
+  FLOW_ACCUMULATION: "flow", // "flow persistence + strike concentration lead"
+  SECTOR_ROTATION: "structure", // industry-group RS is itself a relative-price/structure read
+};
+
+/** Base load-bearing weight by evidence directness — live price structure the swing itself trades
+ *  outranks same-session flow (can front-run or lag), which outranks the two slowest/mismatched
+ *  reads (a same-day 0DTE clock and an overnight digest, tied). Archetype match adds a bump on
+ *  top (see crossDeskWeight). */
+const CROSS_DESK_BASE_WEIGHT: Record<CrossDeskEvidenceKind, number> = {
+  structure: 3,
+  flow: 2,
+  intraday_scalp: 1,
+  digest: 1,
+};
+const CROSS_DESK_ARCHETYPE_BONUS = 2;
+
+function crossDeskWeight(evidenceKind: CrossDeskEvidenceKind, archetype: SwingArchetype | null): number {
+  const bonus = archetype != null && ARCHETYPE_LEAD_EVIDENCE[archetype] === evidenceKind ? CROSS_DESK_ARCHETYPE_BONUS : 0;
+  return CROSS_DESK_BASE_WEIGHT[evidenceKind] + bonus;
+}
+
+/** What this desk actually measures, in plain trade-manager language — the SOURCE of the
+ *  disagreement, not just its existence. */
+function crossDeskBasis(kind: CrossDeskEvidenceKind): string {
+  switch (kind) {
+    case "structure":
+      return "live price structure — the same tape this swing itself trades";
+    case "flow":
+      return "same-session options order flow, not price structure";
+    case "intraday_scalp":
+      return "an hours-long 0DTE clock, not this swing's multi-day one";
+    case "digest":
+      return "last night's overnight next-day digest, not a live read";
+  }
+}
+
+/** What would actually resolve THIS kind of disagreement — printed once, for the most
+ *  load-bearing conflict only, so the coaching ends on one concrete next-check instead of N. */
+function crossDeskResolution(kind: CrossDeskEvidenceKind): string {
+  switch (kind) {
+    case "structure":
+      return "watch for it to flip back before your next trim rail — until then, size down";
+    case "flow":
+      return "one session's premium tilt isn't a structural change yet — give it another session before treating this as thesis-invalidating";
+    case "intraday_scalp":
+      return "treat it as tape noise unless it's flagging a same-day reversal right at your entry — it isn't reading the same multi-day setup you are";
+    case "digest":
+      return "treat it as a secondary sanity check, not a live override";
+  }
+}
+
+/** Compose the ranked, reasoned cross-desk narrative — WHY the disagreement exists (evidence
+ *  kind/timeframe), WHICH conflicting read is most load-bearing for this setup's archetype, and
+ *  what would actually resolve it. Replaces a flat `conflicts.join(" · ")` + one fixed generic
+ *  closing line with a real weighing, so two different conflict sources produce two differently
+ *  reasoned readings rather than the same template with names swapped in. */
+function renderCrossDeskConflict(conflicts: CrossDeskConflict[], archetype: SwingArchetype | null): string {
+  const ranked = [...conflicts].sort((a, b) => b.weight - a.weight);
+  const lead = ranked[0]!;
+  const rest = ranked.slice(1);
+
+  const archetypeMeta = archetype != null ? ARCHETYPE_META[archetype] : undefined;
+  const leadMatchesArchetype = archetypeMeta != null && ARCHETYPE_LEAD_EVIDENCE[archetype!] === lead.evidenceKind;
+  // "the most load-bearing disagreement here" is honest whether this is the only conflict (ranked
+  // #1 of 1) or the top of several — unlike claiming it's "the most direct read of the four" by
+  // default, which would be FALSE for a solo 0DTE/digest conflict (the two lowest-weight kinds):
+  // those are the least direct reads on the board, not the most, and a lone conflict from either
+  // must not borrow Vector/HELIX's directness by default phrasing.
+  const leadReason = leadMatchesArchetype
+    ? `exactly the evidence a **${archetypeMeta!.label}** setup leans on`
+    : "the most load-bearing disagreement here";
+  // Only a MULTI-conflict actually has something to rank against — a solo conflict has nothing to
+  // be "heaviest" relative to, so that framing is reserved for when `rest` is non-empty.
+  const weighClause = rest.length ? ", so weight it heaviest" : "";
+
+  let text =
+    `**Cross-desk friction** — ${lead.desk} ${lead.claim}. That's ${crossDeskBasis(lead.evidenceKind)} — ` +
+    `${leadReason}${weighClause}: ${crossDeskResolution(lead.evidenceKind)}.`;
+
+  if (rest.length) {
+    const clauses = rest
+      .slice(0, 2)
+      .map((c) => `${c.desk} also reads ${c.claim} (${crossDeskBasis(c.evidenceKind)}) — lighter weight here`);
+    text += ` ${clauses.join("; ")}.`;
+  }
+
+  return text;
+}
+
 /** Night Hawk + 0DTE + HELIX + Vector friction detection. */
 export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
   const eco = ctx.ecosystem;
@@ -308,22 +438,30 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   const vLong = vectorLive && vp?.bias === "long";
   const vShort = vectorLive && vp?.bias === "short";
 
-  const conflicts: string[] = [];
-  if (play.direction === "LONG" && nhShort) conflicts.push("Night Hawk bearish");
-  if (play.direction === "SHORT" && nhLong) conflicts.push("Night Hawk bullish");
-  if (play.direction === "LONG" && zShort) conflicts.push(`0DTE short (score ${z?.score ?? "—"})`);
-  if (play.direction === "SHORT" && zLong) conflicts.push(`0DTE long (score ${z?.score ?? "—"})`);
+  const archetype = (play.archetype ?? null) as SwingArchetype | null;
+  const conflicts: CrossDeskConflict[] = [];
+  const conflict = (desk: string, claim: string, evidenceKind: CrossDeskEvidenceKind) => {
+    conflicts.push({ desk, claim, evidenceKind, weight: crossDeskWeight(evidenceKind, archetype) });
+  };
+  if (play.direction === "LONG" && nhShort) {
+    conflict("Night Hawk", `bearish${nh?.conviction ? ` (${nh.conviction})` : ""}`, "digest");
+  }
+  if (play.direction === "SHORT" && nhLong) {
+    conflict("Night Hawk", `bullish${nh?.conviction ? ` (${nh.conviction})` : ""}`, "digest");
+  }
+  if (play.direction === "LONG" && zShort) conflict("0DTE", `short (score ${z?.score ?? "—"})`, "intraday_scalp");
+  if (play.direction === "SHORT" && zLong) conflict("0DTE", `long (score ${z?.score ?? "—"})`, "intraday_scalp");
   if (play.direction === "LONG" && vShort) {
-    conflicts.push(`Vector bearish (${vp?.headline ?? vp?.grade ?? "desk read"})`);
+    conflict("Vector", `bearish (${vp?.headline ?? vp?.grade ?? "desk read"})`, "structure");
   }
   if (play.direction === "SHORT" && vLong) {
-    conflicts.push(`Vector bullish (${vp?.headline ?? vp?.grade ?? "desk read"})`);
+    conflict("Vector", `bullish (${vp?.headline ?? vp?.grade ?? "desk read"})`, "structure");
   }
-  if (play.direction === "LONG" && putHeavy) conflicts.push("HELIX put-led");
-  if (play.direction === "SHORT" && callHeavy) conflicts.push("HELIX call-led");
+  if (play.direction === "LONG" && putHeavy) conflict("HELIX", "put-led", "flow");
+  if (play.direction === "SHORT" && callHeavy) conflict("HELIX", "call-led", "flow");
 
   if (conflicts.length) {
-    return `**Cross-desk friction** — ${conflicts.join(" · ")}. Size down until desks agree.`;
+    return renderCrossDeskConflict(conflicts, archetype);
   }
 
   const aligned: string[] = [];

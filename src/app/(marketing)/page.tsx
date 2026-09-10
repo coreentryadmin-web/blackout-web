@@ -10,7 +10,7 @@ export const revalidate = 3600;
 
 export const metadata: Metadata = publicPageMetadata(
   "BlackOut — Live Dealer Gamma & 0DTE SPX Options Flow",
-  "BlackOut gives options traders live dealer gamma, 0DTE flow, and Trade Grade A–F SPX setups. See what the desks see — with quote age and session context on every read.",
+  "Live dealer gamma, 0DTE flow, and Trade Grade A–F SPX setups for options traders. See what the desks see — with quote age and session context on every read.",
   "/"
 );
 

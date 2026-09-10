@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
+  archetypeTrackRecordSection,
   bookContextSection,
   catalystsSection,
   chartLevelsSection,
@@ -24,6 +25,7 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { tradeManagerNarrativeSection } from "./play-brief-narrative";
+import type { SwingArchetypeTrackRecordSnapshot, SwingTrackRecordEntry } from "./calibration-cache";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -92,6 +94,81 @@ test("bookContextSection: reviewing the second of two independent same-ticker ro
   assert.match(section?.body ?? "", /EWZ LONG/);
   assert.doesNotMatch(section?.body ?? "", /26.*26/);
   assert.equal((section?.body ?? "").split("EWZ LONG").length - 1, 1);
+});
+
+// ── archetypeTrackRecordSection (Largo C10 historical context; Ask Largo mandate) ─────────────────
+function trackRecordEntry(over: Partial<SwingTrackRecordEntry> = {}): SwingTrackRecordEntry {
+  return {
+    tier: "LIMITED",
+    graduated: true,
+    wilsonLbPct: 62.5,
+    pointDeltaPts: 22.4,
+    n: 60,
+    wins: 45,
+    losses: 15,
+    winRatePct: 75,
+    ...over,
+  };
+}
+function trackRecordSnapshot(
+  archetypes: SwingArchetypeTrackRecordSnapshot["archetypes"] = {},
+): SwingArchetypeTrackRecordSnapshot {
+  return { asOf: "2026-09-10T15:00:00.000Z", gradedPlays: 70, archetypes, subLanes: {} };
+}
+
+test("archetypeTrackRecordSection: null on a cold/missing snapshot (undefined or null) — never throws", () => {
+  const play = fixturePlay({ archetype: "BREAKOUT" });
+  assert.equal(archetypeTrackRecordSection(play, undefined), null);
+  assert.equal(archetypeTrackRecordSection(play, null), null);
+});
+
+test("archetypeTrackRecordSection: null when the play has no archetype, or an archetype foreign to the taxonomy", () => {
+  const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry() });
+  assert.equal(archetypeTrackRecordSection(fixturePlay({ archetype: null }), snap), null);
+  assert.equal(archetypeTrackRecordSection(fixturePlay({ archetype: "NOT_A_REAL_ARCHETYPE" }), snap), null);
+});
+
+test("archetypeTrackRecordSection: null (OMITTED, not caveated) when the archetype's bucket has NOT graduated — Largo C6", () => {
+  const snap = trackRecordSnapshot({
+    BREAKOUT: trackRecordEntry({ graduated: false, tier: "RESEARCH", n: 4, wins: 3, losses: 1 }),
+  });
+  const play = fixturePlay({ archetype: "BREAKOUT" });
+  assert.equal(archetypeTrackRecordSection(play, snap), null);
+});
+
+test("archetypeTrackRecordSection: null when the SNAPSHOT has no entry at all for this archetype (never fabricates one)", () => {
+  const snap = trackRecordSnapshot({}); // no BREAKOUT key at all
+  assert.equal(archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap), null);
+});
+
+test("archetypeTrackRecordSection: renders a 'Track record' section citing wins/losses/n/win-rate/Wilson-LB/point-Δ when graduated", () => {
+  const snap = trackRecordSnapshot({
+    BREAKOUT: trackRecordEntry({ wins: 45, losses: 15, n: 60, winRatePct: 75, wilsonLbPct: 63.2, pointDeltaPts: 22.4 }),
+  });
+  const section = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap);
+  assert.ok(section);
+  assert.equal(section?.title, "Track record");
+  assert.match(section?.body ?? "", /Breakout continuation/i);
+  assert.match(section?.body ?? "", /45W \/ 15L/);
+  assert.match(section?.body ?? "", /\*\*60\*\* graded plays/);
+  assert.match(section?.body ?? "", /75%/, "raw win rate cited");
+  assert.match(section?.body ?? "", /63%/, "Wilson lower-bound cited (rounded)");
+  assert.match(section?.body ?? "", /\+22 pts/, "point-Δ edge cited");
+});
+
+test("archetypeTrackRecordSection: a BROAD-tier bucket says 'broad sample'; LIMITED says 'limited sample'", () => {
+  const broadPlay = fixturePlay({ archetype: "BREAKOUT" });
+  const broadSnap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ tier: "BROAD", n: 80 }) });
+  assert.match(archetypeTrackRecordSection(broadPlay, broadSnap)?.body ?? "", /broad sample/i);
+
+  const limitedSnap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ tier: "LIMITED", n: 40 }) });
+  assert.match(archetypeTrackRecordSection(broadPlay, limitedSnap)?.body ?? "", /limited sample/i);
+});
+
+test("archetypeTrackRecordSection: omits the point-Δ line when pointDeltaPts is null (no off-signal baseline yet)", () => {
+  const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ pointDeltaPts: null }) });
+  const body = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap)?.body ?? "";
+  assert.doesNotMatch(body, /pts.*edge/);
 });
 
 // SWING-SYSTEM-CTO-AUDIT-style finding (found live 2026-09-06 on NRG SWING_NRG_34): `recNote` is

@@ -1,0 +1,36 @@
+{
+  "lane": "night-hawk-swings",
+  "schema": 1,
+  "last_updated": "2026-09-10T04:30:00Z",
+  "notes": [
+    "Cold start 2026-09-10 ~04:00 UTC — journal did not exist on main prior to this cycle.",
+    "v2 corrections confirmed by direct code read this cycle: HorizonPlay.status (PlayStatus 'COMMIT'|'WATCH', src/lib/horizon-plays.ts:69,77) IS the real lifecycle field. Real swing exit-management surface is src/lib/swing/manage-sync.ts + src/lib/swing/exit-policy.ts, NOT zerodte/exit-sync.ts.",
+    "Board scale at this cycle: 94 COMMIT (OPEN) rows, 12 WATCH rows (horizons?view=swings). Per already-open PR #4700 (draft, design proposal), ~90/94 of those committed rows are Banger-lane merges, not real swing_positions DB rows — book-context concentration checks are blind to them. Not re-litigated this cycle, already scoped.",
+    "swing/record 14d window: 6 roll-chains, 1 win / 5 losses (16.7% WR), avg compounded return +30.9%. Single-play sample per chain mostly (n=1 each) — noise-discipline threshold (3+ same-failure-mode) not met for any specific gate/pillar miscalibration claim this cycle."
+  ],
+  "checked_this_cycle_no_bug_found": [
+    {
+      "topic": "NRG HOLD vs CRWD TRIM despite similar peak-to-now round trips",
+      "verdict": "not a bug — intentional graduated-calibration design (manage-sync.ts's `enforced` flag, PR-16 ladder). Different from the trimsFired/narrative bug below, which WAS real."
+    }
+  ],
+  "findings_filed_this_cycle": [
+    {
+      "id": "swing-trim-ladder-fired-ignores-enforced-gate",
+      "pr": 4704,
+      "severity": "P1",
+      "summary": "Command Deck terminal panel + Ask Largo play-brief both showed 'Trim ladder +100% ✓' / 'all trims banked — runner only' for NRG (positionId 34) while the board's own liveStatus stayed HOLD (manage-sync never enforced a trim). Root cause: terminalPlayFromHorizon used buildTerminalExitLadder's raw mechanical fired flag (peak>=level) unconditionally; that flag is only status-equivalent for 0DTE, not swing. Fixed by gating fired on status==='TRIM'.",
+      "status": "PR open (draft — undraft blocked this cycle by shared-PAT rate limit, budget #4 in CLAUDE.md; retry next cycle), awaiting Cursor sign-off per CARVE-OUT.",
+      "filed_at": "2026-09-10T04:20:00Z"
+    }
+  ],
+  "known_open_prs_snapshot": {
+    "as_of": "2026-09-10T04:05:00Z",
+    "note": "Large concurrent backlog on this surface from prior cycles/lanes, all green/non-draft/mergeable, ZERO Cursor engagement observed on every one checked (4663,4671,4676,4679,4682,4685,4689,4696,4700) — already flagged twice on #4076 (23:39 UTC and 01:20 UTC 2026-09-09/10) by a prior cycle. Do not re-post unless new information.",
+    "swing_prs": [4662, 4663, 4671, 4676, 4679, 4682, 4683, 4685, 4689, 4693, 4695, 4696, 4700, 4704]
+  },
+  "tickers_seen": {
+    "NRG": { "last_status": "OPEN/HOLD", "last_seen": "2026-09-10T04:06:00Z", "note": "trim-ladder display bug subject, see findings_filed_this_cycle" },
+    "CRWD": { "last_status": "OPEN/TRIM", "last_seen": "2026-09-10T04:06:00Z" }
+  }
+}
