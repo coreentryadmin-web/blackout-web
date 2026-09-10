@@ -81,6 +81,23 @@ test("legacyBoardCalendarBuckets excludes a pulled play's counterfactual from ne
   assert.equal(today.winners, 0, "the pulled play's phantom +306% must not count as a winner tile");
 });
 
+// ── The tile's render layer (VectorBoardCalendar.tsx's fmtSigned) interpolates net_premium_pct
+// as-is with no rounding, so an un-rounded average here prints raw float noise. Measured live,
+// 2026-09-10: real SIG/FICO premiums (-80.73%/+24.19%) averaged to a tile reading
+// "-28.2700000000000004%" once the pulled-play fix above landed without this rounding. ─────────
+
+test("legacyBoardCalendarBuckets rounds net_premium_pct to an integer (no float-noise digits)", () => {
+  const plays = [
+    basePlay({ id: "sig", ticker: "SIG", status: "OPEN", pnlPct: -80.73 }),
+    basePlay({ id: "fico", ticker: "FICO", status: "OPEN", pnlPct: 24.19 }),
+  ];
+  const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-10"));
+  const buckets = legacyBoardCalendarBuckets(rows, ["2026-09-10"]);
+  const today = buckets[0]!;
+  assert.equal(today.net_premium_pct, Math.round(today.net_premium_pct), "must be a whole number");
+  assert.equal(today.net_premium_pct, -28);
+});
+
 test("legacyBoardCalendarBuckets: closed count still includes the pull (tab-count parity, same as the scorecard fix)", () => {
   const plays = [basePlay({ id: "aso", ticker: "ASO", status: "SKIP", pnlPct: 306.67 })];
   const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-10"));

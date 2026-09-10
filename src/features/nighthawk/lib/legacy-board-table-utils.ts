@@ -177,7 +177,10 @@ export function legacyBoardCalendarBuckets(
     return {
       session_date,
       tone,
-      net_premium_pct: resolved.length ? net / resolved.length : 0,
+      // Matches vector-board-table-utils.ts's own Math.round(avg) — the tile's render layer
+      // (VectorBoardCalendar.tsx's fmtSigned) interpolates the number as-is with no rounding, so
+      // an un-rounded average here prints raw floating-point noise (e.g. "-28.2700000000...4").
+      net_premium_pct: resolved.length ? Math.round(net / resolved.length) : 0,
       n: day.length,
       winners,
       closed,
