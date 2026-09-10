@@ -38,6 +38,9 @@
     },
     "2026-09-10T16:08Z": {
       "note": "3rd consecutive quiet commit-tick, 0 new commits for ~2h6min (still just SPCX/SPXW, both closed) despite 99-109 WATCH setups churning the whole time. NOT treating this dry spell as anomalous: it is fully consistent with the already-documented zerodte-gate-compound-funnel.mjs finding in CLAUDE.md (RTH re-run 2026-09-09: 0/26 setups cleared every hard gate jointly across a full session with 2235 raw UW alerts). A multi-hour stretch with zero joint-passing setups is the EXPECTED shape of that already-measured compounding, not new evidence of a stuck engine -- logging the connection so a future cycle doesn't re-derive it as if it were novel. No action taken; nothing crosses the reporting bar."
+    },
+    "2026-09-10T16:15Z": {
+      "note": "3rd commit of the day just landed: QQQ short, score77/tierB, committed_at_et 12:12 ET (flagged_at 16:12:52Z, ~3min before this check). GET /record already shows it fully committed (cortex PASS/score0.1/no vetoes, clean entry -- no sign of the earlier QQQ stale-entry-premium pattern so far, but it's brand new, watch its live mark next cycle). BUT: GET /board's ledger array STILL only shows [SPXW, SPCX] -- QQQ is MISSING from ledger and STILL present in the WATCH setups array, as if uncommitted. Read this as Postgres(/record)->Redis-snapshot(/board) cache propagation lag, NOT a bug, given the ~3min freshness and this codebase's documented history of exactly this class of lag (gex-force-rebuild-timing.mjs's own 'a check run seconds after a deploy proves nothing' note). NOT confirmed yet -- verifying next cycle: if /board's ledger still doesn't show QQQ (and it's still sitting in WATCH) after another 15min, that graduates from 'probably cache lag' to a real desync worth escalating."
     }
   },
   "sessions": {
