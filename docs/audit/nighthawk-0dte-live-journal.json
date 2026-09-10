@@ -146,6 +146,25 @@
       "data_quality_gap": "25 of 31 top-quartile winners (mostly July 2026) have origin=null and tier=null -- these fields didn't exist yet in entry_context at commit time for those rows. Restrict any origin/tier-based win analysis to August-onward data until this is accounted for."
     }
   },
+  "v6_mandate_progress_2026-09-10T06:11Z": {
+    "score_calibration_reliability_diagram": {
+      "method": "347 clean (non-mechanical) graded plays from the 90-day record, bucketed by score decile, win rate + avg pnl per bucket.",
+      "result_table": "20-30:n2/WR0%/avg-40.45 | 30-40:n8/WR50%/avg+2.14 | 40-50:n3/WR0%/avg-50.00 | 50-60:n15/WR20%/avg-11.55 | 60-70:n45/WR26.2%/avg-9.09 | 70-80:n80/WR43.7%/avg-0.08 | 80-90:n75/WR37.9%/avg-8.41 | 90-101:n119/WR54.1%/avg+3.19",
+      "finding": "NOT monotonic: win rate dips at 80-90 (37.9%) below both 70-80 (43.7%) and 90-101 (54.1%). This independently REPRODUCES an already-known, already-mitigated finding on record in QQQ's own tier factors ('the measured top-band inversion -- 85+ ran 33.3% WR vs 63.6% at 75-84, F-5' -- already priced in via the G-19 topBandInversionFlag / tier discount). NOT a new discovery.",
+      "unreconciled_discrepancy": "The already-documented F-5 note says 85+ ran 33.3% WR; my 90-101 bucket here shows 54.1% WR on n=119 -- materially different number, likely different bucket boundaries (theirs is 85+, mine is 90-101, and my 80-90 bucket alone is closer at 37.9%) and/or a different/larger time window. Did NOT attempt to reconcile the exact numbers this cycle -- flagging so a future cycle (or whoever owns F-5's calibration doc) checks bucket-boundary and window differences before treating either number as final.",
+      "caveat": "score_floor is documented as 65, yet 50 rows in this sample scored BELOW 65 (2 in 20-30, 8 in 30-40, 3 in 40-50, 15 in 50-60) and still committed -- either score_floor varies by regime/session rather than being a flat 65, or 'score' here is a later-refined value that can differ from the pre-commit gating score. Not resolved this cycle -- worth tracing before trusting the low-score buckets' small-n numbers at all."
+    },
+    "same_session_concentration_check": {
+      "method": "Grouped the 90-day sample by session_date (42 of 47 sessions had 2+ commits), checked for sessions where multiple same-session commits shared direction, and separately checked a rough index/mega-cap beta cluster (SPY/QQQ/SPX/SPXW/IWM/DIA).",
+      "result": "14 of 42 multi-commit sessions had ALL same-session commits in the same direction; only 1 of those (2026-08-06: QQQ short -24.63%, SPXW short -50.21%) had every same-direction commit ALSO lose. Same result restricting to the beta-cluster subset: 17 sessions with 2+ cluster commits, only that same 1 instance was same-direction-and-all-loss.",
+      "verdict": "Investigated per the mandate's evidence-first instruction (do not propose a fix before checking frequency) -- this does NOT appear to be a frequent real problem in this 90-day window (1 instance = below the standing 3+ noise threshold). NOT proposing a same-session concentration gate on this evidence. Worth a periodic re-check, not a standing watch item."
+    },
+    "deferred_this_cycle": [
+      "Item 1 (regime/time-of-day segmentation of the taxonomy + score_floor question) -- needs day-open VIX and commit-time-of-day pulled per play (not yet extracted from entry_context), a real next-cycle task.",
+      "Item 4 (fill-quality: does grading use a realistic bid/ask-respecting fill or an optimistic mid) -- needs a plan.ts grader code trace specifically for spread-awareness, related to but distinct from the already-open stale-entry-premium finding above.",
+      "Item 5 (fast circuit-breaker authority) -- noted as standing authority, not yet actionable: the full non-mechanical loss taxonomy (BAD-ENTRY/BAD-EXIT/CLEAN-STOP-OUT/VARIANCE bucketing) still isn't built, so there's no streak-tracking substrate to trigger it from yet."
+    ]
+  },
   "next_specific_experiments_scoped": [
     {
       "id": "score-floor-rejected-outcome-backtest",
