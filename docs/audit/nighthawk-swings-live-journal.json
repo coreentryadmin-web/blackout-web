@@ -1,11 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T07:50:00Z",
+  "last_updated": "2026-09-10T08:15:00Z",
   "notes": [
-    "v6 item 3 (score-calibration reliability diagram) SHIPPED: swing-score-calibration.mjs (PR #4716). verify+CodeQL GREEN, mergeable_state clean, standing-down comment posted -- blocked only on the recurring shared-PAT undraft rate limit (also hit by at least one other lane's session this same window, per its own main-branch commit -- fleet-wide, not specific to this lane). Retry undraft+merge first thing next wake. First live result: SPREAD WITHOUT ORDER at n=31/10 buckets (n=3-4 each, thin -- disclosed clearly as a first look, not a conclusion). Middle score band (49-57, 66.7% WR) outperformed every high-score band (60-86, flat at 33.3% WR). No gate/scoring changed.",
-    "v6 item 2 (correlated-risk-beyond-theme-direction) CHECKED this cycle and correctly deferred -- see v6_item2_correlated_risk_CHECKED_BLOCKED below. Not a build task right now.",
-    "v6 remaining items, priority order for next ticks: (4) fill-quality check on illiquid names (SKHL/IREZ/MULL etc -- does the 5-truth grader's entry premium reflect a realistic bid/ask fill or an idealized mid?) -- next up, not yet started. (5) fast circuit-breaker authority -- standing, not a build task, applies whenever a real mid-week streak is found. (1) regime/archetype/sub-lane segmentation of the loss taxonomy and G-S4 question -- largest lift, needs its own dedicated tick(s).",
+    "v6 item 4 (fill-quality/realistic-fill on illiquid names) SHIPPED: #4717 (feat/swing-entry-fill-quality). Investigated and found the qualitative gap already honestly disclosed in grade.ts's own header comment (FINDINGS 2026-07-30) -- not a hidden bug. The open question was MAGNITUDE, which was unmeasurable because real bid/ask at commit time was never persisted anywhere past that instant. Live check found only 4/84 committed rows carry real contract pricing (same #4700 Banger-merge root cause as v6 item 2 -- not new) -- n=4 too thin for a proper tool, so shipped the CAPTURE fix instead of a premature statistic: fillQualityAtCommit() now pins entry_context.fill_quality={entry_bid,entry_ask,entry_mid,entry_spread_fraction} on both real and shadow commit rows (additive JSONB, entry_premium unchanged). Evidence: NN live spread 154.5% of mid (WIDER than the mid itself) -- confirms the gap is real on the current book, not theoretical. Infrastructure for a future measurement, not the measurement itself -- no calibration/gate/grading changed. 42/42 commit.test.ts pass, full suite 13582/0/3, tsc clean.",
+    "v6 item 3 (score-calibration reliability diagram) SHIPPED and MERGED: #4716. First live result: SPREAD WITHOUT ORDER at n=31/10 buckets (n=3-4 each, thin -- disclosed clearly as a first look, not a conclusion). Middle score band (49-57, 66.7% WR) outperformed every high-score band (60-86, flat at 33.3% WR). No gate/scoring changed.",
+    "v6 item 2 (correlated-risk-beyond-theme-direction) CHECKED and correctly deferred -- see v6_item2_correlated_risk_CHECKED_BLOCKED below. Same #4700 population blocker independently reconfirmed by v6 item 4's live check (4/84, not 4/94 -- book composition shifted slightly, same root cause).",
+    "v6 remaining items, priority order for next ticks: (5) fast circuit-breaker authority -- standing, not a build task, applies whenever a real mid-week streak is found. (1) regime/archetype/sub-lane segmentation of the loss taxonomy and G-S4 question -- largest lift, needs its own dedicated tick(s). Item 4's capture fix (this cycle) means a FUTURE re-run of the fill-quality question will have real data to work with once the swing_positions population grows past today's n=4.",
     "P0 RESOLVED (prior tick): #4713 (postgres health-check fleet-wide CI fix) + #4712 (early-trim A/B tool) both merged and verified on origin/main.",
     "MANDATE v5 (2026-09-10 05:59 UTC): loss/win taxonomy + calibration authority + weekly scorecard + cross-pollination -- taxonomy built, tool shipped (#4712, INCONCLUSIVE, correctly no gate change).",
     "MANDATE v4/v3: 24/7 firing, CARVE-OUT rescinded, ~15-min cadence via 4 offset triggers.",
@@ -19,7 +20,8 @@
     { "id": "swing-play-brief-source-timeout", "pr": 4663, "status": "MERGED, verified on main." },
     { "id": "swing-early-trim-ab-tool", "pr": 4712, "kind": "TOOLING", "status": "MERGED, verified on main." },
     { "id": "ci-postgres-healthcheck-role-root", "pr": 4713, "kind": "P0 INFRA FIX", "status": "MERGED, verified on main." },
-    { "id": "swing-score-calibration-tool", "pr": 4716, "kind": "TOOLING", "status": "verify+CodeQL GREEN, mergeable_state clean, ready. Blocked only on undraft rate limit -- standing-down comment posted, retry next wake." }
+    { "id": "swing-score-calibration-tool", "pr": 4716, "kind": "TOOLING", "status": "MERGED, verified on main." },
+    { "id": "swing-entry-fill-quality-capture", "pr": 4717, "kind": "DATA-CAPTURE FIX", "status": "OPEN, draft, pushed. Local checks green (tsc clean, 42/42 commit.test.ts, full suite 13582/0/3). Subscribed to PR activity. Next: retry undraft (watch for shared-PAT rate limit) and merge once CI green." }
   ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -33,15 +35,15 @@
   "win_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "standouts": ["EWZ score64.8 +438.79%", "RKLB score19.2 +79.37% (low score, big win)", "GLW score44.7 +5.52% (peak+44.7%, possible BAD-EXIT-shaped WIN)"],
-    "measurement_shipped": "swing-score-calibration.mjs (PR #4716) -- SPREAD WITHOUT ORDER at n=31, thin per-bucket (n=3-4). Preliminary, re-run as population grows."
+    "measurement_shipped": "swing-score-calibration.mjs (PR #4716, merged) -- SPREAD WITHOUT ORDER at n=31, thin per-bucket (n=3-4). Preliminary, re-run as population grows."
   },
   "open_experiments_scoped_not_yet_run": [
     { "id": "g-s4-regime-gate-calibration", "status": "not started, needs regime-segmentation per v6 item 1" },
-    { "id": "v6-fill-quality-check", "status": "not started -- next priority" }
+    { "id": "v6-fill-quality-realized-slippage-backtest", "status": "blocked on population growth -- capture fix (#4717) now pins entry_bid/entry_ask/entry_spread_fraction going forward; re-attempt once enough real swing_positions rows post-fix have closed to measure realized entry slippage vs a mid-only counterfactual." }
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
     "as_of": "2026-09-10T07:32:00Z",
-    "finding": "Checked live: only 4 of 94 committed swing rows are real (positionId-bearing) swing_positions -- NRG(energy/AI-power), NN, CG(financials/PE), CRWD(software), 3 LONG/1 SHORT. Different sectors, no cluster at n=4 -- too thin to mean anything. The other 90/94 are Banger-lane merges (91 LONG/3 SHORT skew lives THERE), the exact same root cause #4700 already raised and is waiting on a product decision for (should Banger rows count toward swing concentration math).",
+    "finding": "Checked live: only 4 of 94 committed swing rows are real (positionId-bearing) swing_positions -- NRG(energy/AI-power), NN, CG(financials/PE), CRWD(software), 3 LONG/1 SHORT. Different sectors, no cluster at n=4 -- too thin to mean anything. The other 90/94 are Banger-lane merges (91 LONG/3 SHORT skew lives THERE), the exact same root cause #4700 already raised and is waiting on a product decision for (should Banger rows count toward swing concentration math). Independently reconfirmed by v6 item 4's own live check same cycle (4/84 that time -- book composition moved slightly, same 4 tickers, same root cause).",
     "conclusion": "NOT a new independent finding -- blocked on the same #4700 decision. Building new correlation logic now would either analyze only 4 real positions (meaningless) or require folding in Banger rows, which is literally the open question #4700 already scoped. No code built this tick; re-check once #4700 resolves (either direction) since that will directly determine whether this item becomes measurable.",
     "action": "removed from the open-experiments priority queue, logged here instead so a future tick doesn't re-investigate from scratch."
   },
@@ -49,13 +51,14 @@
     {
       "week_of": "2026-09-10",
       "trailing_30d_from_record": { "win_rate_pct": 16.7, "avg_compounded_return_pct": 30.9, "chains": 6, "note": "pull 90d summary.win_rate_pct directly next week" },
-      "shipped_this_period": ["#4704 merged (trim-ladder bug)", "#4663 merged (play-brief timeout)", "#4712 merged (early-trim A/B tool)", "#4713 merged (P0 CI fix)", "#4716 open (score-calibration tool)"],
-      "moved_the_needle": "too early to tell -- this week's work is correctness/tooling/infra + two honest measurement tools (both found no calibration change yet justified). That IS the scorecard entry for this week: real measurement infrastructure shipped, no premature calibration changes made."
+      "shipped_this_period": ["#4704 merged (trim-ladder bug)", "#4663 merged (play-brief timeout)", "#4712 merged (early-trim A/B tool)", "#4713 merged (P0 CI fix)", "#4716 merged (score-calibration tool)", "#4717 open (fill-quality capture fix)"],
+      "moved_the_needle": "too early to tell -- this week's work is correctness/tooling/infra + two honest measurement tools (both found no calibration change yet justified) + one forward-looking data-capture fix that unblocks a future measurement. That IS the scorecard entry for this week: real measurement infrastructure shipped, no premature calibration changes made."
     }
   ],
-  "known_open_prs_snapshot": { "as_of": "2026-09-10T07:25:00Z", "swing_prs": [4716] },
+  "known_open_prs_snapshot": { "as_of": "2026-09-10T08:15:00Z", "swing_prs": [4717] },
   "tickers_seen": {
     "NRG": { "last_status": "OPEN/HOLD", "last_seen": "2026-09-10T04:06:00Z", "note": "trim-ladder display bug subject, fixed in #4704" },
-    "CRWD": { "last_status": "OPEN/TRIM", "last_seen": "2026-09-10T04:06:00Z" }
+    "CRWD": { "last_status": "OPEN/TRIM", "last_seen": "2026-09-10T04:06:00Z" },
+    "NN": { "last_status": "OPEN", "last_seen": "2026-09-10T08:10:00Z", "note": "154.5% spread-as-%-of-mid live -- spread wider than mid itself, headline evidence for v6 item 4" }
   }
 }
