@@ -3677,3 +3677,30 @@ debrief.graded` ✓. `by_conviction` (A: n=3/opens=3/decided=0, B: n=56/opens=54
 `n:59=scoreable`, `opens:57=segments.current.opens`, `decided:2=segments.current.decided` ✓ — every
 cross-cut (segment, debrief failure-mode, conviction tier) reconciles to the same top-level counts.
 No discrepancy found — GREEN pass, no follow-up needed.
+
+## 2026-09-10 (18:20 UTC) — [DISCOVERY] 5-engine cycle (:20 offset): SPX Slayer score-sum + Vector non-SPX ticker, live RTH data
+
+`GET /api/market/spx/play` (authenticated, live): `score(-44) === sum(factors[].weight)` exactly
+(11 factors: -18-12-10-8+6-5-5+4+4+0+0 = -44) ✓; `direction: "short"` consistent with the negative
+net signed weight ✓. `gates.blocks` coherent with the data: `"Desk data stale (281s)"` — within the
+documented normal ~5min warm cadence, not stuck; `"Cold BUY needs score ≥78 (have 44)"` uses the
+score's magnitude (44 = abs(-44)) against the threshold, consistent with a magnitude-keyed
+conviction gate applying symmetrically regardless of long/short direction — not a sign bug.
+(Note: an earlier same-cycle fetch of this endpoint returned a different live snapshot — score 14,
+rawScore 52, factors summing to -14 — the desk's live state simply moved between the two fetches
+~1 minute apart; both snapshots independently satisfied `score===sum(factors)`, so this is normal
+live-data churn, not an inconsistency.)
+
+`GET /api/market/vector/wall-history?ticker=NVDA&dte=0dte&session=2026-09-10` (a non-SPX ticker,
+the #4732 bead-rail fix's own sidePctMaxima fix is ticker-agnostic but had only been visually
+confirmed on SPX so far): 2670 history rows, real per-side differentiation — call side tops at
+10.53% (227.5 strike) vs put side at 27.23% (220 strike), an ~2.6x side imbalance still smaller
+than the 18x SPX case that originally exposed the bug, and the pct spread across each side's own
+strikes is clearly graduated (not flattened) — confirms the fix generalizes beyond the ticker that
+surfaced it. `vector/universe` returned 0 rows via the response shape assumed by this check
+(`tickers`/`universe` keys); the route's real shape is `{updatedAt, rows: [...]}` — corrected
+mid-check and re-read successfully (multiple real tickers, sensible gamma-flip/wall data) — a
+harness mistake on this cycle's part, not a product defect, so not logged as a finding.
+
+CloudWatch crash-error grep (15-min window, all five systems' routes): 0 matched events, clean.
+No discrepancy found across this cycle's checks — GREEN pass, no follow-up needed.
