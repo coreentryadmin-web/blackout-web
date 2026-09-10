@@ -118,6 +118,32 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-10 Ask Largo SELL exit-reason accuracy fix (read this before the routine pass)
+
+### Ask Largo's live "Exit now" bullet claimed "thesis or ladder fired" on a genuine time-based (expiry-risk) force-manage — fix/swing-sell-exit-reason-manage-rung
+
+**What was broken:** live capture from `GET /api/market/swing/play-brief?playId=SWING:NRG&ticker=NRG&positionId=34`
+showed "**Exit now** — thesis or ladder fired" in Trade manager read, while the SAME response's
+"What to watch" section said "Thesis intact" and the ladder section showed no rung fired. The real
+reason NRG's manage engine forced EXIT was `expiry_risk` (8 DTE, a purely time-based force-manage
+per `manage.ts`'s own docs — thesis stays intact by definition of that rung), not a broken thesis
+or a fired trim. See `docs/audit/findings-staging/2026-09-10-swing-sell-exit-reason-mislabeled.md`.
+
+**Fix:** `manage.ts`'s deciding rung is now threaded end-to-end (`live-plays.ts` →
+`horizon-plays.ts` → `play-brief-resolve.ts` → `adapters.ts` → `TerminalPlay.manageReason`) so
+`play-brief-narrative.ts`'s SELL bullet states the real reason (`expiry_risk` → time-based,
+thesis intact; `structural_stop`/`thesis_stop` → thesis broke; `premium_stop` → premium stop hit;
+etc.) instead of a single hardcoded, sometimes-false claim.
+
+**Check at the open:** re-pull the same NRG play-brief (or any other live SWING row whose
+`manageAction` is `EXIT`/`STOP_OUT`) and confirm the "Exit now" bullet's stated reason is
+consistent with the rest of the same brief — a row still showing `expiry_risk`-driven EXIT should
+read "time-based ... thesis still intact" and its "What to watch" section should still say
+"Thesis intact"; a row whose thesis has genuinely broken should read "thesis broke" and its "What
+to watch" section should agree. Also spot-check a row with no manage-sync snapshot yet (a pure
+spot-detected structural break) to confirm it still says "thesis broke" via the `thesisLevel`
+fallback, not a blank/generic line.
+
 ## WATCH LIST — 2026-09-10 Night Hawk Legacy recap text fix (read this before the routine pass)
 
 ### Overnight edition `recap_summary` double-periods whenever market tide is unavailable — fix/legacy-recap-tide-double-period

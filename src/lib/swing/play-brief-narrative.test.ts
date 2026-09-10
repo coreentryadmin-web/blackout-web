@@ -1184,3 +1184,49 @@ test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BUL
   assert.match(section!.body, /Break watch/i, "safety-critical break coaching must not starve");
   assert.match(section!.body, /Counter-thesis/i, "counter-thesis must not starve behind MAX_BULLETS");
 });
+
+// Regression for the "thesis or ladder fired" mislabel (FINDINGS 2026-09-10, live repro NRG
+// SWING:NRG:34): a SELL recommendation from a pure expiry_risk force-manage has an intact thesis
+// and an un-fired ladder, so the old hardcoded line was factually wrong. manageReason (threaded
+// from manage.ts's rung through live-plays.ts/adapters.ts) now drives the actual stated reason.
+test("tradeManagerNarrativeSection: SELL from expiry_risk states time-based reason, not a false thesis/ladder claim", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "SELL", manageReason: "expiry_risk", pnlPct: 25.5, peak: 132.7 }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.ok(
+    section!.body.includes(
+      "**Exit now** — time-based: DTE nearing the lane's theta cliff (thesis still intact). Flatten per manage engine.",
+    ),
+  );
+  assert.doesNotMatch(section!.body, /thesis or ladder fired/i);
+});
+
+test("tradeManagerNarrativeSection: SELL from a real thesis break still says thesis broke", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "SELL", manageReason: "structural_stop", pnlPct: -12, peak: 5 }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.ok(section!.body.includes("**Exit now** — thesis broke. Flatten per manage engine."));
+});
+
+test("tradeManagerNarrativeSection: SELL with unknown reason and no detected thesis break states no mechanism", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "SELL", manageReason: null, pnlPct: -8, peak: 3 }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.ok(section!.body.includes("**Exit now**. Flatten per manage engine."));
+  assert.doesNotMatch(section!.body, /thesis or ladder fired/i);
+});
