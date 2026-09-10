@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T20:18:02.678Z",
+  "lastUpdated": "2026-09-10T20:24:30.032Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -371,6 +371,11 @@
       "at": "2026-09-10T20:18:02.678Z",
       "via": "PR-activity wake (check_suite.completed -> pull_request.closed events on #4746, between scheduled triggers)",
       "result": "PR #4746 (Net premium/calendar-tile pulled-play fix) MERGED (d7023ea) -- CI went green (verify + CodeQL) shortly after the :06 cycle, merged via a dispatched agent per the same merge-authorization policy used all session (green CI + clean mergeable state, no separate sign-off needed). Verified directly against origin/main per the standing 'a merge is not a verification' discipline: isNeverEnteredPull is exported from vector-board-row-utils.ts and correctly imported/wired into legacy-board-table-utils.ts's legacyBoardCalendarBuckets. healthcheck:legacy re-run, GREEN. All four PRs from this session's Legacy work are now merged: #4722 (gap-fill tag), #4733 (G-N4 mirror), #4736 (tier factors), #4739 (factor_breakdown), #4742 (pulled-play scorecard, confirmed live), #4746 (Net premium/calendar tile, just merged -- deploy+live-verification still pending, will check ECS rollout next scheduled cycle). No open PRs remain in this lane right now."
+    },
+    {
+      "at": "2026-09-10T20:24:30.032Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy AMBER this cycle (A_edition: 'edition is stale') -- investigated properly rather than dismissing as deploy noise, since it persisted across 4 consecutive direct API checks (not a single-request blip). Traced the full resolution chain in edition/route.ts: the ONLY place .stale gets set is resolveNighthawkEdition's 'latest' fallback branch, gated on edition.edition_for !== editionFor (the server's internally-computed 'current' date, not what I naively assumed). It's now 20:22+ UTC = past 4:22pm ET, just after the 4PM ET market close -- the server's concept of 'current edition date' has rolled forward to expect TOMORROW's edition, but tonight's build hasn't run yet (happens 21:30-23:45 UTC per standing knowledge), so the only edition available is still today's (2026-09-10), correctly flagged stale relative to what's now expected. Matches the UI's own banner seen earlier this session ('CARRYING 2026-09-10 PLAYS UNTIL THEIR SESSION CLOSES AT 4 PM ET'). CONFIRMED CLEAN -- this is the system honestly self-reporting a real, expected state transition (post-close, pre-next-build), not a defect; the AMBER (not RED) verdict is correctly calibrated too. Also confirmed unrelated to the concurrent ECS rollout for PR #4746 (deployment :1429, still IN_PROGRESS) -- the .stale flag comes from DB/date-comparison logic, not from which task instance served the request. NOTING FOR FUTURE CYCLES: AMBER/stale:true in the ~20:00-23:45 UTC window each trading day is EXPECTED, not a fresh finding -- don't re-investigate from scratch next time it's seen in this window; only escalate if it persists well past 23:45 UTC (tonight's build should have landed by then) or shows up in a DIFFERENT time window. Marks/record stages both GREEN, no other issues."
     }
   ],
   "knownOpenItems": {
@@ -394,6 +399,10 @@
     "legacyPulledScorecardFixRolloutVerify_2026_09_10": {
       "status": "PENDING_ROLLOUT",
       "note": "PR #4742 merged 18:57:33 UTC. ECS deployment :1428 confirmed IN_PROGRESS as of 19:03:14 UTC via direct ecs describe_services call. Re-screenshot the Legacy tab (nighthawk-ui-sweep.mjs) next cycle once rolloutState reads COMPLETED to confirm the scorecard no longer shows the pulled play's counterfactual as Hit rate/Best pick."
+    },
+    "legacyPostCloseStaleEditionExpected": {
+      "status": "DOCUMENTED_EXPECTED_BEHAVIOR",
+      "note": "AMBER healthcheck (A_edition: stale:true) in the ~20:00-23:45 UTC window (post-4PM-ET-close, pre-next-edition-build) is expected, honest system behavior -- the server's 'current' edition-date concept rolls forward at close while the last published edition (today's) is correctly flagged stale relative to it. Resolves on its own once the next edition builds. Traced 2026-09-10 20:22 UTC. Only escalate if it persists well past 23:45 UTC."
     }
   },
   "toolingGaps": {
