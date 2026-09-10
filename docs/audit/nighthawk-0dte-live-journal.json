@@ -15,6 +15,10 @@
         "SPXW": {"direction":"short","score":75,"tier":"B","confluence":"triple","committed_et":"10:02"}
       },
       "next_cycle_check": "How are SPCX/SPXW managing? Trim triggers hit and acted on per trim_scale rules? Does SPCX's weaker confluence show up in a worse outcome than SPXW's triple-confirmed one (a single pair, not a pattern -- just an observation to track)?"
+    },
+    "2026-09-10T14:17Z": {
+      "note": "SPCX CLOSED: entry 3.18, mark 3.05, final pnl -4.09%, peak was only +2.2% -- never crossed the 40% trim_scale first-trigger, so no trim ever fired, CORRECT (peak too small for the rule to engage), small round-trip loss from noise-level gain, not mismanagement. SPXW still HOLD, worsening: entry 14.5, mark 8, live pnl -44.83%, peak_pnl -21.03% (never once profitable). trim_scale trim_levels correctly show fired=False on BOTH (they're GAIN triggers, irrelevant to a losing trade) -- the only loss-side protection is the flat -50% hard stop and 15:50 ET time stop, so HOLD at -44.83% is CORRECT current behavior, not a bug. This is a single in-flight loser, not a 3-instance pattern -- watching, not escalating.",
+      "watch_next_cycle": "Does SPXW's -50% stop fire correctly if it breaches, or does it round-trip back? (also: keep an eye out for the QQQ-style instant-phantom-stop shape if it DOES stop out -- this one committed at 10:02 and has been live for real elapsed time with a real gradual decay, so it does NOT look like that bug, but worth confirming the stop math is clean when/if it fires.)"
     }
   },
   "sessions": {
