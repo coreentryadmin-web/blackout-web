@@ -14,7 +14,7 @@ export const MARKETING_DATES: Record<string, string> = {
   "/pricing": "2026-09-04",
   "/faq": "2026-08-08",
   "/why-blackout": "2026-08-08",
-  "/methodology": "2026-09-10",
+  "/methodology": "2026-09-09",
   "/vs/others": "2026-09-09",
   "/tools/gamma-snapshot": "2026-08-23",
   "/about": "2026-09-09",

@@ -13,6 +13,22 @@
 // class of bug, same fix shape as the tailwind/client-server-boundary guards
 // already wired into ci.yml: regenerate in-memory and diff against the
 // committed file rather than trust a human to remember.
+//
+// A SECOND drift source, structural rather than human error (found 2026-09-10): a squash-merge
+// creates a BRAND NEW commit at merge time, with a NEW timestamp and often a different recorded
+// UTC offset than the original PR commit. `generate-marketing-dates.mjs` derives a page's date
+// from `git log -1 --date=short`, which formats using the COMMIT'S OWN offset — so a PR merged
+// late evening Pacific (-07:00) can land as the PREVIOUS calendar day relative to what the same
+// content computed as when generated on a UTC-clocked sandbox pre-merge. Concretely: a PR whose
+// branch carried a freshly-regenerated, checks-passing `marketing-dates.ts` can make this guard
+// FAIL on `main` the moment it merges — not because anything is wrong with the PR, but because
+// the squash-merge commit's timestamp is a fact that doesn't exist until merge time and can't be
+// known in advance. There is no way to pre-empt this from inside a PR; the only real fix is to
+// regenerate again AFTER observing the failure on `main` (see PR #4708 and the redirect/Dataset-
+// schema PRs the same day for three instances of this exact sequence). This is a standing hazard,
+// not a bug in the fix that follows it — if this guard goes red on `main` shortly after ANY PR
+// touching a page in `generate-marketing-dates.mjs`'s `PAGE_FILES` merges, check this first before
+// assuming the merge broke something.
 
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
