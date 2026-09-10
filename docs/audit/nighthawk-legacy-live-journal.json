@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T14:23:09.138Z",
+  "lastUpdated": "2026-09-10T14:38:08.242Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -251,6 +251,11 @@
       "at": "2026-09-10T14:23:09.138Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy still GREEN. Brief re-check of the UW rate-limiter incident (already thoroughly documented the last 3 cycles, not re-deriving in full): ALB p99 still elevated 12-58s through 14:20 UTC (another spike to 58.37 at 14:18) -- still ongoing at ~50min into RTH, no new escalation needed since the pattern and ops-alert gap are already fully documented in MARKET-OPEN-VALIDATION.md. Pivoted to a fresh angle: pulled live Polygon spot snapshots for the 3 open picks (SIG/ASO/FICO) and cross-checked against the system's own marks/levels -- SIG down -6.0% today (LONG, hasn't reached its 100.77-104.19 entry band, moving against thesis), ASO +1.68% (LONG, price ~52.01 already through its 50.41-51.89 entry band toward the 53.01 target, favorable), FICO -2.67% (SHORT, price ~956.97 already through its 961.09-1005.29 entry band toward the 885.00 target, favorable). Confirms the legacy-marks GREEN check from earlier cycles is tracking REAL price action correctly -- SIG's call option mark collapsing (3.28->0.73 over the session) lines up exactly with the underlying falling -6%. Good live data-integrity cross-check, nothing actionable (plays are still open/pending, normal intraday movement, not a bug)."
+    },
+    {
+      "at": "2026-09-10T14:38:08.242Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy GREEN, marks continuing to track real intraday movement (SIG 0.73->0.57 continuing to fall with the stock, ASO 0.88->1.33 and FICO 41.15->42.70 both continuing favorably -- consistent directional continuation from last cycle's cross-check). Rate-limiter incident: ALB p99 still elevated most of the window (12-23s) but the latest datapoint (14:35) read 8.84, closer to the pre-open baseline -- possibly beginning to ease, not conclusively resolved, not re-investigating in full since already thoroughly documented. Checked the member-facing edition's `funnel` field (present in the JSON shape but null on this route) -- confirmed intentional (funnel/candidate detail is admin-only, not a bug). Record unchanged: 22 opens, 0 wins/losses in the 14d window -- Legacy plays resolve end-of-session, nothing new to grade mid-day. Quiet cycle, nothing new to escalate."
     }
   ],
   "knownOpenItems": {
