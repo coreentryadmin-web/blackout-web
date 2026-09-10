@@ -439,6 +439,68 @@ test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not targ
   assert.doesNotMatch(section!.body, /reclaim \*\*\+?\$1/);
 });
 
+// FINDINGS 2026-09-10 (live NRG repro): actionNarrative's peak-giveback bullet used to compute
+// `play.peak - play.pnlPct` — a percentage-POINT subtraction of two already-percentage numbers —
+// and label it "Gave back X% from peak", which a trader unambiguously reads as a RELATIVE
+// retracement. Real production NRG position: peak 132.7, pnlPct 39.8 -> old math printed
+// "Gave back 93% from peak" on a play still up +39.8%, reading as a near-total round-trip when
+// the honest relative retracement is ~70% (30% of the peak gain retained).
+test("tradeManagerNarrativeSection: peak-giveback bullet uses honest relative retracement, not point-difference (live NRG repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "HOLD", recommendation: "HOLD", pnlPct: 39.8, peak: 132.7 }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Gave back \*\*70%\*\* of peak/, `expected ~70% relative giveback, got: ${section!.body}`);
+  assert.doesNotMatch(section!.body, /Gave back \*\*93%\*\*/, "must not regress to the point-difference bug");
+});
+
+test("tradeManagerNarrativeSection: peak-giveback bullet does not fire once retained capture clears the floor", () => {
+  // capture = 98/120*100 ~= 81.7% retained -> NOT below the 75% floor, so no giveback bullet.
+  // (Old point-difference math: 120-98=22 > 20 threshold WOULD have fired here — this is a
+  // deliberate behavior change: 82% retention isn't a meaningful giveback to flag.)
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "HOLD", recommendation: "HOLD", pnlPct: 98, peak: 120 }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Gave back/i);
+});
+
+test("tradeManagerNarrativeSection: round-tripped-past-breakeven bullet fires when current pnl has gone negative after a positive peak", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "HOLD", recommendation: "HOLD", pnlPct: -10, peak: 132.7 }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Round-tripped past breakeven.*was up \*\*133%\*\* at peak, now \*\*-10%\*\*/,
+  );
+});
+
+// FINDINGS 2026-09-10: degradedReadLine (the "Live read" fallback bullet, fires only when Vector
+// spot isn't wired on this tick) independently carried the SAME peak-pnlPct point-difference bug
+// right beside actionNarrative's copy in this same file — a 4th call site found while fixing the
+// three named in the original finding (blast radius).
+test("tradeManagerNarrativeSection: degraded-read 'Live read' giveback clause also uses honest relative retracement (4th call site, live NRG repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "HOLD", recommendation: "HOLD", pnlPct: 39.8, peak: 132.7 }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Live read.*gave back \*\*70%\*\* from peak/, `expected ~70% relative giveback in Live read, got: ${section!.body}`);
+  assert.doesNotMatch(section!.body, /gave back \*\*93%\*\*/, "must not regress to the point-difference bug");
+});
+
 test("describeDarkPoolLevel: support language for long below spot", () => {
   const line = describeDarkPoolLevel({ strike: 95, premium: 5_000_000, pct: 30 }, 100, "LONG");
   assert.match(line, /Watch 95\.00/);

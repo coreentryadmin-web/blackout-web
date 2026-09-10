@@ -480,10 +480,18 @@ export function underlyingExcursionCoaching(play: TerminalPlay): string | null {
   if (stock != null) parts.push(`stock **${fmtPct(stock)}** since flag`);
   if (peak != null) parts.push(`peak **${fmtPct(peak)}**`);
   if (trough != null) parts.push(`trough **${fmtPct(trough)}**`);
+  // Honest relative retracement (mfe-capture.ts), not point-difference — same fix as the sibling
+  // "Trade manager read" bullet (play-brief-narrative.ts) and "Hold plan" bullet
+  // (play-brief-intel.ts), FINDINGS 2026-09-10. captureFloor=80 is the MOST sensitive of the
+  // three call sites: this is a secondary aside appended to the underlying-tape line, not a
+  // standalone recommendation, so it can afford to flag a smaller giveback.
+  const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
   const optGive =
-    play.peak != null && play.pnlPct != null && play.peak - play.pnlPct > 15
-      ? ` · option gave back **${(play.peak - play.pnlPct).toFixed(0)}%** from peak`
-      : "";
+    giveback?.kind === "round_trip"
+      ? ` · option round-tripped past breakeven — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%**`
+      : giveback?.kind === "capture" && giveback.capturePct < 80
+        ? ` · option gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
+        : "";
   return `**Underlying tape** — ${parts.join(" · ")}${optGive}. Trade the stock levels, not just premium.`;
 }
 

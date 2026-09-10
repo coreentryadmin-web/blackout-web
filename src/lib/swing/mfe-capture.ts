@@ -1,13 +1,20 @@
 /**
- * Shared MFE-capture math for closed swing plays.
+ * Shared MFE-capture math for swing plays — CLOSED-play post-mortems (exit pnl vs peak) AND
+ * LIVE/open-play reads (current pnl vs peak, e.g. the "Gave back X% from peak" trade-manager
+ * bullets in play-brief-narrative.ts / play-brief-narrative-coaching.ts / play-brief-intel.ts,
+ * FINDINGS 2026-09-10). The math is identical either way — `exitPnlPct` is really just "the pnl
+ * to compare against peak"; a live call site passes the play's current `pnlPct` and `null` for
+ * `mfeCapturePct` (that field only ever exists post-close).
  *
- * "Captured X% of the peak move" is only a meaningful sentence when the exit itself is still a
- * gain (0% <= exit <= peak, or an overshoot past peak) — the ratio exit/peak then reads as a real
- * fraction of the favorable excursion the member banked. Once the exit goes NEGATIVE the play has
- * round-tripped past breakeven into a realized loss, and exit/peak stops being a "capture" at all:
- * peak +25.7%, exit -40.8% divides to -158.9%, a number with no honest reading as a percentage of
- * anything captured. It is a DIFFERENT event (round-trip to a loss), not a worse version of the
- * same one, so it gets its own outcome rather than being forced through the capture formula.
+ * "Captured X% of the peak move" is only a meaningful sentence when the pnl being compared is
+ * still a gain (0% <= pnl <= peak, or an overshoot past peak) — the ratio pnl/peak then reads as a
+ * real fraction of the favorable excursion the member has banked (closed) or is still holding
+ * (live). Once that pnl goes NEGATIVE the play has round-tripped past breakeven into a loss (or,
+ * for a live play, into a rejoinder to keep — same read either way), and pnl/peak stops being a
+ * "capture" at all: peak +25.7%, pnl -40.8% divides to -158.9%, a number with no honest reading as
+ * a percentage of anything captured. It is a DIFFERENT event (round-trip to a loss), not a worse
+ * version of the same one, so it gets its own outcome rather than being forced through the
+ * capture formula.
  */
 
 export type MfeCaptureOutcome =
