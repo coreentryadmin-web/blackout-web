@@ -233,15 +233,18 @@ async function mapPool(items, concurrency, fn) {
   const out = new Array(items.length);
   let next = 0;
   const workers = Math.max(1, Math.min(concurrency, items.length));
-  await Promise.all(
-    Array.from({ length: workers }, async () => {
-      for (;;) {
-        const idx = next++;
-        if (idx >= items.length) return;
-        out[idx] = await fn(items[idx], idx);
-      }
-    }),
-  );
+  const worker = async () => {
+    for (;;) {
+      const idx = next++;
+      if (idx >= items.length) return;
+      out[idx] = await fn(items[idx], idx);
+    }
+  };
+  // Array.from's mapFn receives (element, index); worker() ignores both (arity 0) since it
+  // tracks progress via the closed-over `next` counter, not the array position — the extra
+  // args are CodeQL's "superfluous trailing arguments" finding. Wrapped as () => worker() to
+  // make the discard explicit; behavior unchanged.
+  await Promise.all(Array.from({ length: workers }, () => worker()));
   return out;
 }
 
