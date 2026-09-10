@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T08:10:00Z",
+  "lastUpdated": "2026-09-10T08:23:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -74,6 +74,11 @@
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
   "checkIns": [
+    {
+      "at": "2026-09-10T08:23:00Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "Auth clean this time (no repeat of last cycle's transient blip). Explicit marks-correctness pass (legacy-marks endpoint directly, not just edition): all 3 OCCs sane -- bid<mark<ask for SIG/ASO/FICO, no NaN/sign errors, fresh asof, stale:false. Values unchanged from hours-ago checks, expected pre-market with no real price discovery yet (~04:23 ET). Edition unchanged."
+    },
     {
       "at": "2026-09-10T08:10:00Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hourly cycle)",
