@@ -29,8 +29,8 @@
     { "id": "ci-postgres-healthcheck-role-root", "pr": 4713, "kind": "P0 INFRA FIX", "status": "MERGED, verified on main." },
     { "id": "swing-score-calibration-tool", "pr": 4716, "kind": "TOOLING", "status": "MERGED, verified on main." },
     { "id": "swing-entry-fill-quality-capture", "pr": 4717, "kind": "DATA-CAPTURE FIX", "status": "MERGED 09:01 UTC (7th undraft attempt cleared the shared rate limit) and squash-merged via GitHub MCP since automerge.yml doesn't match feat/* branches. Verified on origin/main directly (git show, not trusted from the merge response alone): fillQualityAtCommit present at commit.ts:264, wired at both call sites. Unsubscribed from PR activity." },
-    { "id": "swing-loss-taxonomy-segmentation-tool", "pr": 4719, "kind": "TOOLING", "status": "CI fully GREEN, mergeable_state clean. Undraft attempt hit the shared rate limit -- retry next wake. Local checks green (tsc clean, 11/11 new unit tests, full suite 13593/0/3)." },
-    { "id": "swing-brief-watch-age-never-narrated", "pr": 4721, "status": "OPEN, draft, CI in flight. Local checks green (tsc clean, 42/42 play-brief.test.ts incl. 2 new, full suite 13584/0/3). Subscribed to PR activity." }
+    { "id": "swing-loss-taxonomy-segmentation-tool", "pr": 4719, "kind": "TOOLING", "status": "CI fully GREEN, mergeable_state clean. 3 undraft attempts this session all hit the shared rate limit (fleet busy -- 4 draft PRs on this account right now incl. #4718/#4720 from other lanes). Retry next wake. Local checks green (tsc clean, 11/11 new unit tests, full suite 13593/0/3)." },
+    { "id": "swing-brief-watch-age-never-narrated", "pr": 4721, "status": "OPEN, draft, CI in flight (verify+Analyze still running as of 09:37 UTC, nothing red yet). Local checks green (tsc clean, 42/42 play-brief.test.ts incl. 2 new, full suite 13584/0/3). Subscribed to PR activity." }
   ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
