@@ -1,8 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T14:52:00Z",
+  "last_updated": "2026-09-10T15:08:00Z",
   "notes": [
+    "PR #4731 (CLAUDE.md track-record staleness correction) MERGED 15:07 UTC (squash, sha 184830ac7) -- the AGENT_RELEASE_TOKEN rate limit finally cleared on this cycle's first retry. verify+CodeQL both green, triage/dispatch bookkeeping jobs completed after undraft. Verified on origin/main directly (git show): the corrected bullet is present. Unsubscribed (already inactive). #4729's own deploy (ECR push run 34490072258) progressed from pending->in_progress between my last two checks -- will re-verify the NRG SELL-bullet text next cycle rather than assume it's landed.",
     "#4729 deploy check (14:52 UTC): re-pulled NRG's live play-brief directly rather than trusting the merge -- 'Exit now -- thesis or ladder fired' STILL shows verbatim alongside 'What to watch: Thesis intact', confirming the fix has NOT deployed yet. ECR push (production) run 34490072258 (head_sha 8937068bf, the #4729 merge commit) still reads status=pending ~17 min after starting -- consistent with CLAUDE.md's documented concurrency-group behavior (a later push to main can supersede an in-flight deploy run), and I've pushed 2 more commits to main since. Not escalating or re-fixing -- this is another lane's merged PR, correctly implemented per its diff (reviewed), just still propagating; will re-check next cycle rather than assume 'merged' means 'live'. Also noted in passing: PR #4730 ('fix(swing): CLOSED-play coaching ran 2-3 post-mortem points into one bullet') is another swing-lane PR actively in CI from a different session -- not mine to drive, logged for cross-lane awareness per the collaboration protocol's shared-work-board discipline.",
     "CROSS-LANE CATCH -- a parallel Claude session (Claude-Session session_01Qtnftc16CuWyVLxR8LaMoC, different session id than mine) merged PR #4729 at 14:35 UTC fixing the EXACT NRG 'Exit now -- thesis or ladder fired' bullet I captured and logged earlier this cycle (14:16 UTC note) without flagging it. THE BUG THEY FOUND: that bullet is a HARDCODED string in play-brief-narrative.ts's actionNarrative() SELL branch -- it always said 'thesis or ladder fired' regardless of the REAL reason manageAction resolved to EXIT, and for NRG the real reason was expiry_risk (8 DTE, a purely TIME-BASED force-manage per manage.ts's own docs -- thesis stays intact by definition of that rung), not a broken thesis or a fired ladder. Proof it was false: the SAME brief response's own 'What to watch' section said 'Thesis intact' and the ladder section showed the +100% rung un-fired -- directly contradicting the SELL bullet three sections up. THEIR FIX: threaded manage.ts's real deciding rung end-to-end (live-plays.ts -> horizon-plays.ts -> play-brief-resolve.ts -> adapters.ts -> TerminalPlay.manageReason) into a new sellReasonClause() so the bullet states the true mechanism per rung (expiry_risk/structural_stop/thesis_stop/premium_stop/catalyst_shift/regime_shift/time_stop), with an honest no-mechanism fallback when none is known. 3 new RED->GREEN tests, full suite green. SELF-CORRECTION (methodology lesson, logging honestly): I read this exact 'Exit now -- thesis or ladder fired' text on NRG in my own 14:16 UTC OPEN-position forensic pass and treated it as consistent narrative without cross-checking it against the SAME response's 'Thesis intact' text two sections below -- the parallel lane caught what I should have caught myself by actually reading the brief adversarially instead of pattern-matching 'EXIT recommendation -> exit bullet -> looks fine.' Lesson for future cycles: when a brief asserts a REASON (not just an action), verify that reason against every other section of the SAME response, not just that the action itself looks plausible. Will re-verify NRG's live brief once #4729's deploy (ECR push run 34490072258, started 14:35:37 UTC) completes to confirm the fix reads correctly in production.",
     "AGGRESSIVE MODE enhancement/maintenance find (not a bug, a doc-staleness catch): CLAUDE.md's own Ask Largo x Night Hawk Swings mandate section still described the Largo C10 historical archetype/sub-lane win-rate track record as 'Scoped but not yet built -- blocked on a cache layer.' Traced the code: #4685 (2026-09-09) already shipped it in full -- calibration-cache.ts (sharedCacheGet/sharedCacheSet, written every RTH tick by swing-active-refresh's analyzeSwingCalibration) + archetypeTrackRecordSection/graduatedArchetypeEntry in play-brief-intel.ts, wired UNCONDITIONALLY into composeSwingPlayBrief (line 899-900, not bucket-gated). Checked why it never once rendered across 9 different live play-briefs fetched this session (CG/NRG/CRWD/SLV/PLTR/ORCL/MSFT/BE/COPX) -- confirmed it is correctly honoring the C6 confidence-omission gate (graduated:true requires Wilson-LB + point-delta>=15pt), not a wiring/cron gap: the real closed-swing population is only ~31-37 trades across ~5-6 archetypes (per swing-loss-taxonomy-segment.mjs's own count), nowhere near graduation n for any bucket yet. Filed docs(claude-md) correction PR #4731 (draft, subscribed) rewriting the stale bullet with the verification trail so a future session doesn't re-scope already-shipped work as a gap -- exactly the kind of staleness the same CLAUDE.md section already warns about two paragraphs down. Undraft blocked by the known shared AGENT_RELEASE_TOKEN rate limit (budget #4) -- will retry next cycle per standing discipline.",
@@ -155,7 +156,7 @@
       "id": "claude-md-track-record-stale-correction",
       "pr": 4731,
       "kind": "DOCS",
-      "status": "OPEN, draft (undraft blocked by AGENT_RELEASE_TOKEN rate limit, retrying next cycle). Subscribed to PR activity."
+      "status": "MERGED 15:07 UTC (squash, sha 184830ac7). Verified on origin/main directly."
     }
   ],
   "loss_taxonomy": {
@@ -234,17 +235,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T14:52:00Z",
+    "as_of": "2026-09-10T15:08:00Z",
     "swing_prs": [
-      {
-        "pr": 4731,
-        "branch": "docs/claude-md-track-record-correction",
-        "status": "draft, mine, undraft blocked by AGENT_RELEASE_TOKEN rate limit, retrying every cycle"
-      },
       {
         "pr": 4730,
         "branch": "fix/swing-closed-coaching-run-on-bullet",
-        "status": "another lane's PR, CI in progress, not driven by this lane"
+        "status": "another lane's PR, not driven by this lane, watching for cross-lane awareness only"
       }
     ]
   },
