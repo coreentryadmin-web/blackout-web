@@ -102,3 +102,52 @@ test("overview mode never renders the tier-factors section — it belongs to the
   });
   assert.doesNotMatch(html, /Why this tier/);
 });
+
+// ── Score components: the composite-score breakdown (scorer.ts's factor_breakdown) —
+// computed on every play and already rendered for the sibling 0DTE lane (ZeroDteBoard's
+// FactorChips) but, before this fix, never surfaced in any Legacy component either. ────
+
+test("scoring mode renders non-zero factor_breakdown entries, human-labeled, largest magnitude first", async () => {
+  const html = await render({
+    mode: "scoring",
+    play: play({
+      factor_breakdown: { flow: 22, tech: 10, wall_proximity: -5, skew: 0, catalyst: 0 },
+    }),
+  });
+
+  assert.match(html, /Score components/);
+  assert.match(html, /Options flow \+22/);
+  assert.match(html, /Technicals \+10/);
+  assert.match(html, /GEX wall proximity -5/);
+  // Zero-contribution entries explain nothing and are left out.
+  assert.doesNotMatch(html, /Options skew/);
+  assert.doesNotMatch(html, /Catalyst/);
+  // Largest magnitude first: flow (22) before tech (10) before wall_proximity (5).
+  const flowIdx = html.indexOf("Options flow");
+  const techIdx = html.indexOf("Technicals");
+  const wallIdx = html.indexOf("GEX wall proximity");
+  assert.ok(flowIdx < techIdx && techIdx < wallIdx, "expected flow, then tech, then wall_proximity");
+});
+
+test("a negative component gets the bear tone; an unmapped key falls back to its raw name instead of vanishing", async () => {
+  const html = await render({
+    mode: "scoring",
+    play: play({ factor_breakdown: { fundamental: -2, some_future_factor: 3 } }),
+  });
+
+  assert.match(html, /class="[^"]*text-bear[^"]*">Fundamentals -2/);
+  // Unmapped key: never silently dropped, falls back to the raw key so a future scorer
+  // addition is visible even before this label map is updated for it.
+  assert.match(html, /some_future_factor \+3/);
+});
+
+test("no factor_breakdown (or all-zero) → the section is absent, never an empty shell", async () => {
+  const htmlAbsent = await render({ mode: "scoring", play: play({ factor_breakdown: undefined }) });
+  assert.doesNotMatch(htmlAbsent, /Score components/);
+
+  const htmlAllZero = await render({
+    mode: "scoring",
+    play: play({ factor_breakdown: { flow: 0, tech: 0 } }),
+  });
+  assert.doesNotMatch(htmlAllZero, /Score components/);
+});

@@ -15,6 +15,35 @@ type Props = {
   morningConfirmCheckedAt?: string;
 };
 
+/** Human labels for scorer.ts's factor_breakdown keys (composite-score component scores,
+ *  distinct from the trade-mechanics rows in "Factor inputs" below). An unlisted key
+ *  falls back to its raw name rather than being silently dropped — never hide a real
+ *  contributor just because this map hasn't been extended for it yet. */
+const FACTOR_BREAKDOWN_LABELS: Record<string, string> = {
+  flow: "Options flow",
+  tech: "Technicals",
+  positioning: "Dealer positioning",
+  news: "News",
+  smart_money: "Smart money",
+  skew: "Options skew",
+  fundamental: "Fundamentals",
+  short_interest: "Short interest",
+  wall_proximity: "GEX wall proximity",
+  vex: "Vanna exposure",
+  catalyst: "Catalyst",
+  regime_adjustment: "Regime adjustment",
+};
+
+/** Non-zero factor_breakdown entries, largest-magnitude first — a zero contributed
+ *  nothing to the composite score, so it explains nothing and is left out rather than
+ *  padding the list. */
+function scoreComponents(breakdown: Record<string, number> | undefined): Array<[string, number]> {
+  if (!breakdown) return [];
+  return Object.entries(breakdown)
+    .filter(([, v]) => typeof v === "number" && Number.isFinite(v) && v !== 0)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+}
+
 export function PlaybookBriefingPanel({ play, mode, morningConfirm }: Props) {
   const showKeySignal = Boolean(play.key_signal?.trim()) && play.key_signal !== play.thesis;
   const score = play.score != null && Number.isFinite(play.score) ? Math.round(play.score) : null;
@@ -23,6 +52,7 @@ export function PlaybookBriefingPanel({ play, mode, morningConfirm }: Props) {
   // gated. Null (absent pin / unusable multiple) renders nothing — never a fabricated figure.
   const reachability =
     play.target_atr_multiple != null ? targetReachabilityNote(play.target_atr_multiple) : null;
+  const components = scoreComponents(play.factor_breakdown);
 
   if (mode === "overview") {
     return (
@@ -121,6 +151,26 @@ export function PlaybookBriefingPanel({ play, mode, morningConfirm }: Props) {
           </ul>
         </BriefingSection>
       ) : null}
+
+      {components.length > 0 && (
+        <BriefingSection title="Score components" accent="green">
+          <div className="flex flex-wrap gap-1.5">
+            {components.map(([key, v]) => (
+              <span
+                key={key}
+                className={clsx(
+                  "rounded-md border px-1.5 py-0.5 font-mono text-[10px] tabular-nums",
+                  v > 0
+                    ? "border-bull/25 bg-bull/[0.07] text-bull"
+                    : "border-bear/25 bg-bear/[0.07] text-bear"
+                )}
+              >
+                {FACTOR_BREAKDOWN_LABELS[key] ?? key} {v > 0 ? `+${v}` : v}
+              </span>
+            ))}
+          </div>
+        </BriefingSection>
+      )}
 
       <BriefingSection title="Factor inputs" accent="green">
         <ul className="nh-v2-factor-list">
