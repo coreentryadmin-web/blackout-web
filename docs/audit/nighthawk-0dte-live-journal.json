@@ -105,6 +105,9 @@
     },
     "2026-09-10T16:45Z": {
       "note": "REAL FIX SHIPPED. QQQ CLOSED: peaked +47.73%, gave the ENTIRE gain back to close at -2.27% (closed_reason=ratchet). exit_detail literally said 'the protective floor exits so the green trade cannot finish red' -- yet it closed red. Traced root cause in src/lib/zerodte/exit-engine.ts: buildExitContext's mark_honored flag compared two ALREADY-ROUNDED values (mark !== markObserved); the raw observed print (0.215) rounds UP to the exact same cent as the 0% floor (0.22), so the flag read false even though resolveExitMark's own Math.max(raw values) correctly picked the floor. pnl_pct then branched on the wrong flag and used the raw (worse) print instead of the floor-honored mark. Fixed: resolveExitMark now returns {mark, honored} directly from the SAME raw comparison Math.max uses -- single source of truth. RED->GREEN proven (git-stash the production fix, keep the new test: 81/83 pre-fix with 2 real failures reproducing this exact shape; 83/83 post-fix). tsc --noEmit clean. Full npm test (Node 20): 13645 pass/0 fail/3 skipped (pre-existing). Staged finding: docs/audit/findings-staging/2026-09-10-zerodte-ratchet-floor-honor-rounding-boundary.md. MARKET-OPEN-VALIDATION.md #92 added. PR #4737 opened, undrafted, subscribed -- CARVE-OUT is rescinded per current CLAUDE.md so this merges on green CI, no Cursor sign-off needed. Watching for CI to go green."
+    },
+    "2026-09-10T17:38Z": {
+      "note": "4th commit: RDDT long, score80/tierB, cortex PASS +0.39 no vetoes, triple-confirmed confluence, trim_scale. Coherent at entry, no red flags. Currently OPEN at -1.72% (trivial noise this early). Not tracking further unless it develops into something notable."
     }
   },
   "sessions": {
