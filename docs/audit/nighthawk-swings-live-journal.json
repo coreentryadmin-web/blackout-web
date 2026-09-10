@@ -1,8 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T14:20:00Z",
+  "last_updated": "2026-09-10T14:23:00Z",
   "notes": [
+    "PR #4727 (swing brief verdict/headline SKIP mismatch fix) MERGED 14:08 UTC (squash, sha 7245e619b) -- CI took ~11 min (verify job: unit tests 5.5min, next build ~4min, rest fast), all green (verify + CodeQL success, no failures this time, no rate-limit wait on undraft either). Verified on origin/main directly (git show, not trusted from the merge API response alone): play-brief.ts:505 and :546 both now read `action?.label ?? play.recommendation ?? play.status` -- the two fallback chains that used to disagree are now textually identical. Unsubscribed from PR activity (already inactive by the time of the call, presumably auto-cleared post-merge).",
     "WATCH roster diff (14:10 UTC vs the 13:31 UTC snapshot this cycle): watchCount 14->15 (new: SKHY LONG PULLBACK_CONTINUATION, score 59, PRE_TRIGGER, firstSeenAt 2026-09-08 -- a genuinely new entrant to the visible list, not a same-day flag). committedCount 94->82 (Banger-lane merge churn per the known #4700 blindspot, not swing's own 4 real positions -- NRG/NN/CG/CRWD all still present, confirmed via the earlier book-context check this cycle). More interesting: MSFT and PLTR both transitioned entryStatus EXTENDED_CHASE -> AT_TRIGGER with IDENTICAL scores (35.1, 34.3) versus the 13:31 snapshot -- traced this as expected architecture, not a bug: score is frozen from the once-daily 06:07 ET swing scan while entryStatus/servingSection update live intraday as price crosses trigger geometry, so a same-score AT_TRIGGER flip is exactly what should happen when price alone moves through a level. Checked MSFT's live brief: correctly explains the still-WAIT verdict via a real g_s4_regime gate block ('Broad-market regime degraded -- desk will not open new swings (WATCH only)'). Checked whether this reads as a fleet-wide freeze: PLTR (also AT_TRIGGER) shows a DIFFERENT block reason (entry-validity window expired) with no regime mention, and BE/COPX (not AT_TRIGGER) show no gate block or a different one (thesis_invalidated) -- consistent with gates only being evaluated/surfaced once a candidate reaches AT_TRIGGER, so this does NOT prove or disprove a fleet-wide regime freeze from the brief text alone. Not escalated -- the gate itself firing correctly for MSFT is the only claim verified; whether G-S4 regime is currently degraded fleet-wide would need a direct regimeFromSpyTrend recomputation, left as a possible next-cycle follow-up rather than assumed from one brief's text.",
     "5-truth-grader cross-check: INTC (positionId 35) shows exitPnlPct -40.83% on GET /api/market/swing/record's closedDeck list but -33.2% on its own individual play-brief's Outcome section. Initially looked like a real grading disagreement worth escalating. Traced both code paths: record.ts's closedDeck uses closedDeckSourcesFromChains -> record.composite.worstLegPnlPct (the WHOLE roll chain's worst-leg outcome, intentional per the existing Q26 chain-composite design comment) while play-brief-resolve.ts's loadClosedPlay deliberately uses closedDeckSourceFromRow on just the terminal row (this leg's own realized_pnl_pct) -- confirmed INTC's own record row literally says 'chain composite (2 legs)' in its reason string, proving this is a genuine 2-leg roll where the two numbers are SUPPOSED to differ (list view = conservative whole-chain worst case, per-play brief = this specific leg's own fill). Not a bug -- correctly documented intentional design, verified against real 2-leg roll data rather than assumed from the code comment alone.",
     "Ask Largo play-brief ten-point-contract audit on a WATCH/RESEARCH candidate (SLV, top of the 14-name WATCH list, score 60, thesis_invalidated gate blocking entry) found a real, shipped bug: the envelope headline (\"HOLD — SLV 59C 6DTE\") and the Verdict section's own inline line (\"... SKIP\" + \"Desk is passing this setup — no entry recommended.\") disagreed inside the SAME brief response. Root cause: play-brief.ts's Verdict line used a 2-rung fallback (action.label -> status) while the headline two lines below uses 3 rungs (action.label -> recommendation -> status) -- entry-verdict.ts deliberately splits deckStatus:\"SKIP\" (internal) from recommendation:\"HOLD\" (member-facing) for RESEARCH-section rows, and only the headline's fallback chain honored that split. Fixed on branch fix/swing-brief-verdict-skip-headline-mismatch: Verdict line now uses the same 3-rung chain. Regression test added (RED confirmed pre-fix, GREEN post-fix), tsc --noEmit clean, full npm test 13629 pass/0 fail/3 skipped. Staged finding + MARKET-OPEN-VALIDATION.md #88 added. PR #4727 opened, undrafted on the first attempt (no rate-limit wait this time), subscribed for CI/review events.",
@@ -136,7 +137,7 @@
     {
       "id": "swing-brief-verdict-skip-headline-mismatch",
       "pr": 4727,
-      "status": "OPEN, undrafted, CI pending. Subscribed to PR activity — will drive to green/merge per standing carve-out (self-authored PRs merge on green CI alone, no Cursor sign-off required)."
+      "status": "MERGED 14:08 UTC (squash, sha 7245e619b). Verified on origin/main directly: play-brief.ts's Verdict line and headline now share the identical 3-rung fallback chain (action.label -> recommendation -> status)."
     }
   ],
   "loss_taxonomy": {
@@ -215,14 +216,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T14:00:00Z",
-    "swing_prs": [
-      {
-        "pr": 4727,
-        "branch": "fix/swing-brief-verdict-skip-headline-mismatch",
-        "status": "open, non-draft, CI pending"
-      }
-    ]
+    "as_of": "2026-09-10T14:23:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "NRG": {
