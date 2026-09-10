@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T22:37:41.389Z",
+  "lastUpdated": "2026-09-10T22:53:47.378Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -416,6 +416,11 @@
       "at": "2026-09-10T22:37:41.389Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "EDITION ROLLED OVER: healthcheck:legacy now fully GREEN (editionFor=2026-09-11, 2 fresh plays AAPL/SWKS, not stale) -- the documented expected AMBER window (post-4pm-ET-close, pre-tonight's-build) closed exactly as predicted, no escalation needed. Confirms knownOpenItems.legacyPostCloseStaleEditionExpected's model was correct. Did a fresh improvement-hunting pass on the new edition's playbook-card content (an area not yet deep-checked today): (1) recap_summary now reads 'Market tide flat / no premium. SPX 7591.70...' -- single period, confirming the earlier-traced double-period bug (already fixed in code, format.ts) was purely stale pre-fix content baked into the OLD persisted edition row, not a live defect -- tonight's fresh build proves the fix holds. (2) Spot-checked AAPL's rr_ratio (0.55) against its own stop/target/entry_range (302.57/344.57/323.56-329.58) by hand -- initially looked off against a naive midpoint calc, but re-derived using computeRiskReward's actual fill-edge formula (play-levels.ts, band TOP for LONG = 329.58): (344.57-329.58)/(329.58-302.57) = 14.99/27.01 = 0.555 -> matches the displayed 0.55 exactly. This was MY OWN arithmetic error (used the entry-range midpoint instead of the fill edge), not a bug -- the code already has a well-documented, deliberate fix for this exact class of discrepancy (fixed 2026-08-06, full worked example in the function's own comment block). Correctly did NOT file a false finding. No new issues this cycle. healthcheck fully GREEN across all three stages."
+    },
+    {
+      "at": "2026-09-10T22:53:47.378Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
+      "result": "Outcome-honesty forensics on GET /api/market/nighthawk/record?days=14: decided_count=1/win_rate_pct=0 with debrief.failure_modes wrong_direction=16 + target_unreachable=8 + pulled_correctly=3 + pulled_wrongly=2 + unfilled=2 (31 total) -- this is the SAME already-documented, already-escalated pattern as knownOpenItems.geometryWinRateGap_2026-08-06 (FINDINGS.md 2026-08-06 P1, a deliberately-parked design decision from a prior campaign, not this session's to fix unilaterally). Re-confirmed present, not a new finding -- per that item's own re-check cadence (~monthly), no further action needed today. Dead-field check on the fresh AAPL/SWKS plays' remaining unexamined fields (confirming_signals, target_atr_multiple) per this cycle's plan: BOTH trace to real member-visible UI, no dead-wiring. target_atr_multiple feeds PlaybookBriefingPanel.tsx's targetReachabilityNote() (a real reachability sentence). confirming_signals feeds assignNighthawkTier's confirmingSignals param, which becomes the tier.factors 'X of 9 dimensions confirming' detail text -- rendered via the 'Why this tier' section this session's own PR #4736 added earlier today. Confirms that earlier work actually closed the loop on these fields rather than leaving a gap. No new issues found. healthcheck:legacy fully GREEN again this cycle (editionFor=2026-09-11, 2 plays, marks/record all GREEN, resolved=31)."
     }
   ],
   "knownOpenItems": {
