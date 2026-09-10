@@ -115,6 +115,31 @@ test("commit FIRES when contract-present ∧ budget-cleared ∧ caps-cleared ∧
   assert.equal((d.insert!.gate_calibration_json as Record<string, unknown>).graduated, true);
 });
 
+test("commit pins real bid/ask/spread (fill_quality) alongside the mid-only entry_premium — v6 item 4", () => {
+  // entry_premium stays the mid (grade.ts's own disclosed simplification), but entry_context now
+  // ALSO carries the real bid/ask so a future audit can measure realistic-fill slippage without
+  // needing to have been polling live at the exact commit instant.
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ contract: contract({ bid: 5.0, ask: 5.2, mid: 5.1 }) })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  const ctx = plan.decisions[0].insert!.entry_context as Record<string, unknown>;
+  assert.deepEqual(ctx.fill_quality, { entry_bid: 5.0, entry_ask: 5.2, entry_mid: 5.1, entry_spread_fraction: (5.2 - 5.0) / 5.1 });
+});
+
+test("commit's fill_quality is null (never fabricated) when the contract lacks a priceable bid/ask/mid", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ contract: contract({ bid: null, ask: null }) })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  const ctx = plan.decisions[0].insert!.entry_context as Record<string, unknown>;
+  assert.equal(ctx.fill_quality, null);
+});
+
 test("commit pins a feature_vector with static thesis fields (pillars / iv_rank / classification meta)", () => {
   const plan = computeSwingCommitPlan({
     candidates: [
@@ -237,6 +262,10 @@ test("shadow: a budget-blocked-only candidate gets a shadow row, counted in shad
   assert.deepEqual(d.shadowInsert!.blocked_by, ["budget:per_position_loss"]);
   assert.equal(d.shadowInsert!.entry_premium, 22);
   assert.equal((d.shadowInsert!.entry_context as Record<string, unknown>).commit_gate, "swing.commit.shadow.v1");
+  // Shadow rows pin fill_quality too — a shadowed thesis is still real signal worth measuring.
+  const shadowCtx = (d.shadowInsert!.entry_context as Record<string, unknown>).fill_quality as Record<string, unknown>;
+  assert.equal(shadowCtx.entry_bid, 5.0);
+  assert.equal(shadowCtx.entry_ask, 5.2);
 });
 
 test("shadow: an idempotency-blocked (already_open) candidate does NOT get a shadow row — it's already trading for real", () => {
