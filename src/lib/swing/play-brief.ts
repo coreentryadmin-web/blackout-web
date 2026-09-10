@@ -128,7 +128,15 @@ function pnlSection(play: TerminalPlay): RichSection {
   return { title: "Position", body: lines.join("\n") };
 }
 
-function watchEntrySection(play: TerminalPlay): RichSection {
+/** Days between `sinceIso` and `nowMs`, floored, or null when `sinceIso` is missing/unparseable. */
+function daysOnWatch(sinceIso: string | null | undefined, nowMs: number): number | null {
+  if (!sinceIso) return null;
+  const sinceMs = Date.parse(sinceIso);
+  if (!Number.isFinite(sinceMs)) return null;
+  return Math.max(0, Math.floor((nowMs - sinceMs) / 86_400_000));
+}
+
+function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   const lines: string[] = [];
   const label =
     swingActionDisplay(play)?.label ??
@@ -139,6 +147,20 @@ function watchEntrySection(play: TerminalPlay): RichSection {
   if (play.servingSection) lines.push(`Serving section: **${play.servingSection.replace(/_/g, " ")}**`);
   if (play.setupState) lines.push(`Setup: **${play.setupState}**`);
   if (play.entryStatus) lines.push(`Entry geometry: **${play.entryStatus}**`);
+  // Age-on-watch (FINDINGS-worthy gap, 2026-09-10): `detectedAt` (the "WATCH Published clock",
+  // already threaded onto TerminalPlay and rendered on the Command Deck panel) was never read by
+  // any NARRATED play-brief section — a member asking Largo directly about a WATCH play got no
+  // "how long has this been building" context even though the deck UI shows it elsewhere. A thesis
+  // sitting on WATCH for 45+ real days (AMD, confirmed live) read identically in the brief to one
+  // flagged an hour ago. `fadeStaleSwingCandidates` means a persistent row is a genuinely
+  // re-qualifying signal, not an orphaned one — but "still qualifying" and "still fresh" are
+  // different facts, and only the first was ever narrated.
+  const days = daysOnWatch(play.detectedAt, readMs);
+  if (days != null) {
+    lines.push(
+      `First flagged **${days} day${days === 1 ? "" : "s"} ago**${play.detectedAt ? ` (${etStampFromIso(play.detectedAt)})` : ""} — still on WATCH, not yet graduated to a real position.`,
+    );
+  }
   if (play.gateBlocks?.length) {
     lines.push(
       "**Gates blocking entry:**\n" +
@@ -488,7 +510,7 @@ export function composeSwingPlayBrief(
   const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
 
   if (bucket === "watch") {
-    sections.push(watchEntrySection(play));
+    sections.push(watchEntrySection(play, readMs));
   } else if (bucket === "open") {
     sections.push(managementSection(play));
     const th = thesisHealthSection(play);
