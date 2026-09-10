@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import { describeDarkPoolLevel, counterThesisLine, tradeManagerNarrativeSection } from "./play-brief-narrative";
+import { computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -901,6 +902,62 @@ test("counterThesisLine: stale Vector regime posture must not steelman dealer ga
     100,
   );
   assert.equal(line, null, "stale Vector regime must not appear in counter-thesis");
+});
+
+// FINDINGS 2026-09-09 (live repro, 3 committed positions, different tickers/directions/scores):
+// counterThesisLine's fading-pillar reason read play.thesisHealth.pillars[].status with NO
+// thesisHealthUncalibrated() guard, while degradedReadLine (this file, above) and
+// thesisPillarCoaching (play-brief-narrative-coaching.ts) already gate the identical read. Every
+// committed row that has no setup/entry/signal inputs wired gets FORCED default pillar labels
+// (computeSwingThesisHealth's UNCALIBRATED_PILLAR_LABELS) and degradeFromManage() then force-sets
+// the persistence pillar's status straight off the manage action alone (TAKE_PARTIAL/EXIT_RUNNER
+// -> "faded") regardless of calibration — so the unguarded read fabricated a byte-identical
+// "fading pillar **Persistence**" bear/bull case on rows whose OWN Thesis-health section
+// (thesisHealthSection, play-brief.ts) says "pillar breakdown not shown" for that same row.
+test("counterThesisLine: uncalibrated thesisHealth must not fabricate a fading-pillar counter-thesis (Largo C2)", () => {
+  // Built via the REAL computeSwingThesisHealth pipeline (not a hand-rolled fixture) so this test
+  // exercises the exact same code path that produced the live bug: no setupState/entryStatus/
+  // signalKinds wired (the committed-position case) + a scale-out manage action.
+  const thesisHealth = computeSwingThesisHealth({
+    direction: "LONG",
+    status: "HOLD",
+    manageAction: "TAKE_PARTIAL",
+    computedAtEt: "10:00:00",
+  });
+  assert.ok(thesisHealth, "expected a thesis health payload for an OPEN/HOLD/TRIM row");
+  assert.equal(thesisHealthUncalibrated(thesisHealth), true, "sanity: this is the uncalibrated case");
+  const persistencePillar = thesisHealth!.pillars.find((p) => p.label === "Persistence");
+  assert.equal(persistencePillar?.status, "faded", "sanity: manage action still force-fades the pillar");
+
+  const line = counterThesisLine(ctx({}), play({ direction: "LONG", thesisHealth }), null);
+  assert.ok(
+    line == null || !/fading pillar/i.test(line),
+    `counter-thesis fabricated a fading-pillar reason off an uncalibrated thesisHealth: ${line}`,
+  );
+});
+
+test("counterThesisLine: calibrated thesisHealth with a genuinely faded pillar still steelmans it", () => {
+  const thesisHealth = computeSwingThesisHealth({
+    direction: "LONG",
+    status: "HOLD",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    signalKinds: ["FLOW", "VECTOR"],
+    manageAction: "TAKE_PARTIAL",
+    computedAtEt: "10:00:00",
+  });
+  assert.ok(thesisHealth);
+  assert.equal(
+    thesisHealthUncalibrated(thesisHealth),
+    false,
+    "sanity: real commit inputs wired means this IS calibrated",
+  );
+  const persistencePillar = thesisHealth!.pillars.find((p) => p.label === "Persistence");
+  assert.equal(persistencePillar?.status, "faded", "sanity: same manage-driven fade as the case above");
+
+  const line = counterThesisLine(ctx({}), play({ direction: "LONG", thesisHealth }), null);
+  assert.ok(line, "expected a counter-thesis line for a calibrated, genuinely faded pillar");
+  assert.match(line!, /fading pillar \*\*Persistence\*\*/);
 });
 
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {

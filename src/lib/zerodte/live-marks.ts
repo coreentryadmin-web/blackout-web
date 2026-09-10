@@ -34,7 +34,7 @@
 // never come from two different quote lanes.
 
 import { dbConfigured, fetchZeroDteSetupLog, updateZeroDteLiveState, type ZeroDteSetupLogRow } from "@/lib/db";
-import { evaluateLedgerRowExit } from "./exit-sync";
+import { evaluateLedgerRowExit, playRailsFromRow } from "./exit-sync";
 import { condorLegRoles, condorNetDebitToCloseExec, condorNetMarkPerShare, type CondorLegRoleOcc } from "./condor";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -643,45 +643,58 @@ export async function runZeroDteMarkTick(deps?: {
           resolved.mark != null && resolved.asOf > 0 && !isZeroDteMarkStale(resolved.asOf, now)
             ? resolved.mark
             : null;
+        // Frozen rails (target/stop/regime) for this row, if the ledger has one — read
+        // ONCE per tick and reused across both advancePlayLatch calls below, so the
+        // ~1s lane's badge threshold agrees with the ~2min cron sync's (scan.ts) rather
+        // than silently re-persisting a stale one every second (2026-09-09 finding: an
+        // earlier draft of this fix only patched scan.ts, which this lane's own
+        // higher-frequency persist would have kept clobbering back to the old +100%
+        // literal within ~1s of every correct flip). Only `trimScaleFirstTranchePct` is
+        // threaded through here — `targetPct`/`stopPct` deliberately keep this lane's
+        // pre-existing (default PLAN_RULES) behavior, unchanged by this fix, to keep the
+        // diff scoped to the trim_scale badge lag rather than also touching the
+        // separate, narrower extended-runner-target gap this lane already had.
+        const row = rowsByKey.get(key);
+        const rails = row ? playRailsFromRow(row) : null;
         let latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes, {
           deferPlanStop: true,
+          trimScaleFirstTranchePct: rails?.trimScaleFirstTranchePct,
         });
         let finalStatus = latch.status;
         let persistMark = mark;
 
         // B-8 exit engine on the ~1s lane — runs BEFORE the plan-stop latch so a
         // breakeven floor can fire when trough already crossed −50%.
-        if (finalStatus !== "CLOSED") {
-          const row = rowsByKey.get(key);
-          if (row) {
-            const exit = await evalExit(
-              row,
-              { syncMark: engineMark, status: finalStatus },
-              {
-                nowMs: now,
-                // Persist a newly-armed trim_scale tranche immediately (not just at the
-                // heartbeat below) — the NEXT ~1s tick must already see it via
-                // row.trims_taken, or the same tranche could re-arm repeatedly within
-                // the heartbeat window. A no-op while ZERODTE_TRIM_BANK_LIVE is off.
-                onTrimBank: async (trimsTaken) => {
-                  await persist(play.session_date, play.ticker, {
-                    status: finalStatus,
-                    mark: persistMark,
-                    trimsTaken,
-                  }).catch(() => {});
-                },
-              }
-            ).catch(() => null);
-            if (exit) {
-              finalStatus = "CLOSED";
-              persistMark = exit.mark;
-              latch = { ...latch, status: "CLOSED" };
+        if (finalStatus !== "CLOSED" && row) {
+          const exit = await evalExit(
+            row,
+            { syncMark: engineMark, status: finalStatus },
+            {
+              nowMs: now,
+              // Persist a newly-armed trim_scale tranche immediately (not just at the
+              // heartbeat below) — the NEXT ~1s tick must already see it via
+              // row.trims_taken, or the same tranche could re-arm repeatedly within
+              // the heartbeat window. A no-op while ZERODTE_TRIM_BANK_LIVE is off.
+              onTrimBank: async (trimsTaken) => {
+                await persist(play.session_date, play.ticker, {
+                  status: finalStatus,
+                  mark: persistMark,
+                  trimsTaken,
+                }).catch(() => {});
+              },
             }
+          ).catch(() => null);
+          if (exit) {
+            finalStatus = "CLOSED";
+            persistMark = exit.mark;
+            latch = { ...latch, status: "CLOSED" };
           }
         }
 
         if (finalStatus !== "CLOSED") {
-          latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes);
+          latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes, {
+            trimScaleFirstTranchePct: rails?.trimScaleFirstTranchePct,
+          });
           finalStatus = latch.status;
         }
 

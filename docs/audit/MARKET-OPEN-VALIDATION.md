@@ -118,6 +118,36 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-10 Night Hawk Swings live audit (read this before the routine pass)
+
+### Swing Command Deck + Ask Largo play-brief showed a false "trim banked" on a position still fully exposed at HOLD — fix/swing-trim-ladder-enforced-gate
+
+**What was broken:** live-caught during the hourly Night Hawk Swings audit, positionId 34
+(NRG, LONG, STANDARD sub-lane, entry $4.90, peak $11.40 = +132.7%, mark $6.85 = +39.8%). The
+board's own `liveStatus` (`GET /api/market/nighthawk/horizons?view=swings`) correctly reported
+`HOLD` — manage-sync.ts's calibration-gated `enforced` flag had never actually banked a trim on
+this row. But both the Command Deck terminal panel and Ask Largo's play-brief
+(`GET /api/market/swing/play-brief?playId=SWING:NRG...`) rendered `Trim ladder: +100% ✓` /
+"**all trims banked** — runner only" for the same position at the same instant — a mechanical
+peak-vs-trigger check (`buildTerminalExitLadder`) that ignored manage-sync's enforcement gate
+entirely. A member reading either surface would reasonably believe half the position had already
+been de-risked when 100% of it was still exposed to the original stop.
+
+**Fix:** `terminalPlayFromHorizon` (`src/features/nighthawk/command-deck/adapters.ts`) now forces
+every trim rung's `fired` flag to `false` unless the row's resolved `status` has actually reached
+`TRIM` — the mechanical ladder read is only trusted once manage-sync's enforcement gate agrees
+with it. See `docs/audit/findings-staging/2026-09-10-swing-trim-ladder-fired-ignores-enforced-gate.md`
+for the full root cause and blast-radius (one shared code path feeds both consumers).
+
+**Check at the open:** re-pull `GET /api/market/nighthawk/horizons?view=swings` for any OPEN swing
+row whose `liveStatus` is `HOLD` but `peakPremium` has cleared its +100% trim level (i.e. exactly
+NRG's situation) — its play-brief and Command Deck panel should now show the ladder as un-fired
+("next trim at +100%"), not "✓"/"banked". Also confirm a row that HAS genuinely reached `TRIM`
+(e.g. CRWD, FSLY, SRPT as of 2026-09-10) still shows its ladder correctly fired — this fix must not
+suppress the real, enforced case.
+
+---
+
 ## WATCH LIST — 2026-09-08 evidence-based gate loosening (read this before the routine pass)
 
 ### 0a-3a. Swing cross-session persistence floor loosened for 5 standard archetypes — fix/swing-persistence-loosen-standard-archetypes
@@ -3554,3 +3584,9 @@ than an end-of-session patch.
 - **What was broken:** For a WATCH-lane swing candidate with commit gates blocking entry, `tradeManagerNarrativeSection` rendered the SAME gate code+reason text twice back-to-back — `actionNarrative`'s "Entry stance — WAIT. Clear gates: g_s12_...: ... · g_s6_...: ..." bullet, immediately followed by `watchGateCoaching`'s "Gates blocking entry — g_s12_...: ... · g_s6_...: ..." bullet — because the section's own de-dup guard keys on each line's first 48 characters, and the two bullets open with different wording. Live repro: `SWING:EWY` WATCH brief (2 blocking gates: `g_s12_halt_feed_stale`, `g_s6_confluence`).
 - **What changed:** `actionNarrative`'s watch branch now states only the blocking-gate COUNT ("2 gates blocking entry — see below.") instead of re-rendering the first two gates' reason text; `watchGateCoaching`'s bullet (which already covers up to 3 gates plus the `unlock_et` clearing-time hint) stays the single place the reasons are spelled out.
 - **RTH check:** Pull a live WATCH-lane swing brief for any candidate with `gateBlocks` set (e.g. blocked on halt-feed-stale, confluence, or cortex-thin-evidence) and confirm each gate's reason text appears exactly once in "Trade manager read" — the "Entry stance" bullet should name only a count ("N gates blocking entry — see below"), with the full code+reason detail appearing once, in the very next "Gates blocking entry" bullet.
+
+### 83. All three SSE stream routes could throw an unhandled promise rejection on every tick of a live connection — fix/sse-stream-tick-unhandled-rejection — 2026-09-09
+
+- **What was broken (operator-reported):** live production alert (Discord `#website-logs`) — two `🛑 Unhandled promise rejection` alerts ~19 minutes apart, both an async stack bottoming out through `market/vector/stream/route.js`. Root cause: `recheckSseUserEntitlement` re-throws any error that isn't a degraded-mode `TierUnavailableError`, and all three SSE stream routes (`vector/stream`, `zerodte/marks/stream`, `flows/stream`) call it inside a per-tick `send()` invoked fire-and-forget (`void send()`) with no `.catch()` anywhere in the chain. `send()` runs every 1s (or per live event) for the life of a long-lived connection, so a single transient Clerk/Redis hiccup produced a fresh unhandled rejection on every subsequent tick until the client disconnected, not just once.
+- **What changed:** New `runSseTickSafely(tick, routeLabel)` (`src/lib/sse-safe-tick.ts` — a pure, dependency-free file, split out for the same `import "server-only"` testability reason `sse-backpressure.ts` already was) wraps a tick in try/catch and logs instead of letting it escape — the same "skip this tick, try again next tick" treatment the existing `"unavailable"` verdict already gets. All three routes' `send()` (and, in `flows/stream`, its flow-event subscriber callback too) now route through it.
+- **RTH check:** Watch Discord `#website-logs` (or CloudWatch Logs `/ecs/blackout-production` for `[sse-stream:` entries) — a transient tier/tool-access hiccup on a live SSE connection should now show as a normal `console.error` log line (`[sse-stream:<route>] tick failed unexpectedly: ...`) with the connection continuing to serve subsequent ticks, never as another `🛑 Unhandled promise rejection` Discord alert. If one still appears with a stack through any of the three stream routes, the fix isn't reaching that call site and needs re-tracing.

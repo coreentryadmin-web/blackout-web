@@ -12,6 +12,8 @@ import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-br
 import { fetchMeridianForTicker } from "./play-brief-meridian";
 import { fetchMeridianPeerForBrief } from "./play-brief-meridian-peer";
 import type { PortfolioPosition } from "./portfolio";
+import { readSwingArchetypeTrackRecord } from "./calibration-cache";
+import { withBriefSourceTimeout } from "./brief-source-timeout";
 
 /**
  * The member's full open book as `PortfolioPosition[]` for the "Book context" theme-overlap
@@ -55,7 +57,7 @@ export async function loadSwingPlayBriefContext(
   // nothing, or a total upstream failure can still leave confidence.level at "high".
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
-  const [ecosystem, vector, openBook] = await Promise.all([
+  const [ecosystem, vector, openBook, archetypeTrackRecord] = await Promise.all([
     fetchEcosystemContext(ticker).catch(() => {
       ecosystemFetchFailed = true;
       return null;
@@ -65,6 +67,13 @@ export async function loadSwingPlayBriefContext(
       return null;
     }),
     loadOpenBook(),
+    // Ask Largo C10 (historical context) — a plain, best-effort shared-cache read the cron writes
+    // (calibration-cache.ts). Bounded so a wedged Redis hop degrades to "no citation" rather than
+    // blocking the whole brief; unlike ecosystem/vector above this has no dedicated *FetchFailed
+    // flag because a miss here is never surfaced as an absence/error to the member — an ungraduated
+    // or unavailable track record simply omits the "Track record" section (Largo C6: omission, not
+    // fabrication), the same as a play with no track record to cite at all.
+    withBriefSourceTimeout(readSwingArchetypeTrackRecord()),
   ]);
 
   const nowMs = Date.now();
@@ -84,5 +93,6 @@ export async function loadSwingPlayBriefContext(
     openBook,
     ecosystemFetchFailed,
     vectorFetchFailed,
+    archetypeTrackRecord,
   };
 }

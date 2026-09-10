@@ -70,6 +70,13 @@ const LANE_TOOLS = [
   ["get_gate_blocked_value", "days=30"],
   ["get_grader_agreement", "days=90"],
   ["get_banger_board", ""],
+  // Night Hawk Swings' only real tool — its own tool-defs.ts description covers discovery AND
+  // live-position sections in one call. `get_swing_discovery` sat in this list from 2026-08-23
+  // until 2026-09-09 despite never being a real tool (confirmed: zero hits in src/ history) —
+  // every run against it came back INDETERMINATE and FINDINGS.md misattributed that to "needs
+  // compound arguments a generic probe can't synthesize," when the real reason was simpler: the
+  // model correctly said "I don't have a tool called get_swing_discovery." Removed rather than
+  // fixed with a recipe, since there is no second swing tool to probe.
   ["get_swing_horizon", ""],
   // ── HELIX lane (docs/audit/HELIX-MAP.md) ──────────────────────────────────────────────────
   // Market-wide deliberately: no ticker means the whole tape, which is the biggest this gets.
@@ -190,9 +197,10 @@ const LANE_TOOLS = [
   ["get_signal_log", ""],
   ["get_similar_precedents", ""],
   ["get_stock_state", ""],
-  ["get_swing_discovery", ""],
+  // `get_technicals_spx` sat here from 2026-08-23 to 2026-09-09 despite never being a real tool
+  // (zero hits in src/ history, same phantom-name shape as the removed get_swing_discovery above)
+  // — SPX technicals coverage is `get_technicals` called with ticker SPX, not a separate tool.
   ["get_technicals", ""],
-  ["get_technicals_spx", ""],
   ["get_thermal_compare", ""],
   ["get_top_net_impact", ""],
   ["get_trade_history", ""],

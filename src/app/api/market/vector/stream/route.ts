@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { recheckSseUserEntitlement } from "@/lib/sse-stream-entitlement";
+import { runSseTickSafely } from "@/lib/sse-safe-tick";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import {
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       let lastSentFrame: string | null = null;
-      const send = async () => {
+      const sendTick = async () => {
         if (closed) return;
         if (streamUserId) {
           const verdict = await recheckSseUserEntitlement(streamUserId, "premium", "vector");
@@ -122,6 +123,7 @@ export async function GET(req: NextRequest) {
           }
         }
       };
+      const send = () => runSseTickSafely(sendTick, "vector-stream");
 
       attachVectorStreamSubscriber(ticker);
       // Dynamic universe + scanner snapshot: member opened this chart.

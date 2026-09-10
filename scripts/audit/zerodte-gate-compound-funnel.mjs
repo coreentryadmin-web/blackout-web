@@ -61,6 +61,24 @@
  * Every one of these is printed in the report's own "NOT MEASURED THIS RUN" section — never
  * silently absent.
  *
+ * BREAKOUT-ORIGIN THESIS-RANK-REJECT SECTION (added 2026-09-10) — a DIFFERENT PIPELINE
+ * ----------------------------------------------------------------------------------------
+ * Everything above measures gates.ts's hard-gate stack for FLOW-origin setups only, and
+ * previously listed "BREAKOUT/PIN origins" under NOT MEASURED THIS RUN. That gap is now half
+ * closed: a new section below runs TODAY's real BREAKOUT/BREAKDOWN screen (screenBreakoutMovers/
+ * screenBreakdownMovers, the same dynamic-cap/momentum-rank production applies) through the REAL
+ * thesis-first pipeline (attachThesisFirstLive, thesis/live-pipeline.ts — the exact function
+ * scan.ts calls live) and reports the ISOLATED `thesis_rank_reject` rate for that population,
+ * clearly labeled as a SEPARATE pipeline from the hard-gate stack above (thesis-first is an
+ * archetype/rank quality gate evaluated on the discovery side, not one of gates.ts's G-1..G-23).
+ * See `scripts/audit/thesis-rank-reject-outcome-ab.mjs` for the dedicated, multi-day, graded
+ * OUTCOME measurement (does REJECT actually correlate with worse forward results) — this
+ * section only reports the isolated rejection rate for TODAY's live snapshot, same scope
+ * discipline as the FLOW section above. PIN is attempted live (discoverPinSetups) but — same as
+ * the dedicated tool — has no reachable measurement path from this sandbox (a live-only GEX-
+ * heatmap snapshot AND a Next.js client/server module-boundary marker in its import chain);
+ * reported honestly as INSUFFICIENT DATA / error, never fabricated.
+ *
  * USAGE
  *   POLYGON_API_BASE=https://api.massive.com \
  *   env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
@@ -76,6 +94,8 @@
  *                     Use this to see the RTH-window bottleneck when running off-hours; the
  *                     report labels this clearly so it's never mistaken for a live reading.
  *   --json            also print a machine-readable JSON block at the end
+ *   --max-breakout=N  cap on BREAKOUT/BREAKDOWN candidates fed through the thesis-first section
+ *                      (default 40 — a live snapshot, not a backtest, so this stays small)
  *
  * Secrets come from env only (UW_API_KEY, POLYGON_API_KEY). Nothing is written or committed.
  */
@@ -83,6 +103,7 @@
 if (!process.env.POLYGON_API_BASE || !/^https?:\/\//.test(process.env.POLYGON_API_BASE)) {
   process.env.POLYGON_API_BASE = "https://api.massive.com";
 }
+process.env.ZERODTE_THESIS_FIRST = "1"; // exercise the LIVE rank-tier → thesis_rank_reject mapping
 
 const SRC = new URL("../../src/", import.meta.url).pathname;
 
@@ -95,6 +116,7 @@ const argv = Object.fromEntries(
 const DAYS = Math.max(1, Number(argv.days ?? 3));
 const MIN_PREMIUM = Math.max(0, Number(argv["min-premium"] ?? 250_000));
 const MAX_TICKERS = Math.max(1, Number(argv["max-tickers"] ?? 40));
+const MAX_BREAKOUT = Math.max(1, Number(argv["max-breakout"] ?? 40));
 const EMIT_JSON = Boolean(argv.json);
 const NOW_ET_OVERRIDE = (() => {
   if (!argv["now-et"] || argv["now-et"] === "true") return null;
@@ -112,8 +134,19 @@ const { computeConfluence } = await import(`${SRC}lib/zerodte/confluence.ts`);
 const { computeIntradayRead, marketBias, intradayScoreAdjust } = await import(
   `${SRC}lib/zerodte/intraday.ts`
 );
-const { fetchStockMinuteBars } = await import(`${SRC}lib/providers/polygon.ts`);
+const { fetchStockMinuteBars, fetchDailyMarketSummary } = await import(`${SRC}lib/providers/polygon.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
+// BREAKOUT-origin thesis-rank-reject section (2026-09-10) — a DIFFERENT pipeline, see header.
+const { screenBreakoutMovers, screenBreakdownMovers } = await import(`${SRC}features/nighthawk/lib/candidates.ts`);
+const {
+  rankMoversForChainFetch,
+  BREAKOUT_MAX_CANDIDATES,
+  BREAKOUT_MAX_CANDIDATES_CEILING,
+  BREAKOUT_SCREEN_POOL,
+} = await import(`${SRC}lib/zerodte/breakout-discovery.ts`);
+const { resolveBreakoutCandidateCap } = await import(`${SRC}lib/zerodte/breakout-cap.ts`);
+const { breakoutScoreBreakdown } = await import(`${SRC}lib/zerodte/breakout-source.ts`);
+const { attachThesisFirstLive } = await import(`${SRC}lib/zerodte/thesis/live-pipeline.ts`);
 
 const fmtUsd = (n) =>
   n == null ? "—" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}k` : `$${n.toFixed(0)}`;
@@ -342,11 +375,117 @@ console.log(`    G-20 input_desync (2026-09-09) — needs plan.quoteAgeMs; no li
 console.log(`    G-21 quote thin_size/no_volume_or_oi (2026-09-09 recalibration) — lives inside plan-quality (planQualityGateBlocks), SKIPPED here same as G-8/G-9`);
 console.log(`    G-23 qualification_dislocation (2026-09-09) — needs a qualification-time underlying snapshot this offline harness never captures → fail-open, never fires here`);
 console.log(`    Cortex veto layer (cortex-gate.ts) — evaluated AFTER these hard gates in production, not run here`);
-console.log(`    BREAKOUT/PIN origins — this run measures FLOW-origin setups only`);
+console.log(`    BREAKOUT/PIN origins — the hard-gate stack above measures FLOW-origin setups only;`);
+console.log(`      see the BREAKOUT/PIN THESIS-RANK-REJECT section below (a DIFFERENT pipeline)`);
+
+// ── BREAKOUT/PIN THESIS-RANK-REJECT — a DIFFERENT PIPELINE (added 2026-09-10) ───────────────
+// thesis-first (thesis/live-pipeline.ts) is an archetype/rank QUALITY gate evaluated on the
+// discovery side, not one of gates.ts's G-1..G-23 above — reported separately, never folded into
+// the joint hard-gate numbers. See the dedicated `thesis-rank-reject-outcome-ab.mjs` for the
+// multi-day GRADED outcome measurement; this section is a live, single-snapshot isolated-rate
+// check only (same "today, whatever's live" scope as the FLOW section above).
+console.log(`\n${line()}`);
+console.log(`  BREAKOUT/PIN THESIS-RANK-REJECT — DIFFERENT PIPELINE (thesis-first archetype/rank gate, not a gates.ts hard gate)`);
+console.log(line());
+let breakoutThesis = { attempted: false, error: null, graded: 0, reject: 0, blockCounts: {} };
+try {
+  const summary = await fetchDailyMarketSummary(today).catch(() => null);
+  const grouped = summary?.results ?? [];
+  if (!grouped.length) {
+    console.log(`  no live grouped-daily snapshot for ${today} (off-hours/provider miss) — INSUFFICIENT DATA this run.`);
+  } else {
+    const screenPool = Math.max(BREAKOUT_MAX_CANDIDATES_CEILING * 4, BREAKOUT_SCREEN_POOL);
+    const longMovers = screenBreakoutMovers(grouped, screenPool);
+    const shortMovers = screenBreakdownMovers(grouped, screenPool);
+    const qualifying = longMovers.length + shortMovers.length;
+    if (qualifying === 0) {
+      console.log(`  0 qualifying BREAKOUT/BREAKDOWN movers today — INSUFFICIENT DATA this run.`);
+    } else {
+      const cap = resolveBreakoutCandidateCap({ qualifyingMovers: qualifying, floor: BREAKOUT_MAX_CANDIDATES, ceiling: BREAKOUT_MAX_CANDIDATES_CEILING });
+      const perSide = Math.max(1, Math.floor(MAX_BREAKOUT / 2));
+      const rankedLong = rankMoversForChainFetch(longMovers, Math.min(cap, perSide), "long");
+      const longTickers = new Set(rankedLong.map((m) => m.ticker.toUpperCase()));
+      const rankedShort = rankMoversForChainFetch(shortMovers, cap, "short").filter((m) => !longTickers.has(m.ticker.toUpperCase())).slice(0, perSide);
+      const longMaxDollar = longMovers.reduce((m, x) => Math.max(m, x.dollar), 0);
+      const shortMaxDollar = shortMovers.reduce((m, x) => Math.max(m, x.dollar), 0);
+      const candidates = [
+        ...rankedLong.map((m) => ({ mover: m, direction: "long", dollarNorm: longMaxDollar > 0 ? m.dollar / longMaxDollar : 0 })),
+        ...rankedShort.map((m) => ({ mover: m, direction: "short", dollarNorm: shortMaxDollar > 0 ? m.dollar / shortMaxDollar : 0 })),
+      ];
+      console.log(`  ${qualifying} qualifying (${longMovers.length}L/${shortMovers.length}S) → cap ${cap} → ${candidates.length} candidate(s) fed to the thesis-first pipeline`);
+      const btSetups = [];
+      for (const cand of candidates) {
+        const bars = await fetchStockMinuteBars(cand.mover.ticker.toUpperCase(), today, today).catch(() => []);
+        if (!bars.length) continue;
+        const upToNow = bars.filter((b) => Number.isFinite(b.t) && etMinutesOf(b.t) <= nowEtMinutes);
+        const intraday = computeIntradayRead(upToNow.map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c, v: b.v })));
+        if (intraday.last == null) continue;
+        const { score } = breakoutScoreBreakdown(cand.mover, cand.dollarNorm, cand.direction);
+        btSetups.push({
+          ticker: cand.mover.ticker.toUpperCase(),
+          direction: cand.direction,
+          discovery_origin: ["BREAKOUT"],
+          score,
+          gross_premium: 0,
+          prints: 0,
+          underlying_price: intraday.last,
+          intraday,
+          rel_volume: null,
+          key_resistances: [],
+          key_supports: [],
+          gamma_regime: null,
+          rsi14: null,
+          catalyst_flags: [],
+          news_hot: null,
+          earnings: null,
+          flow_quality: null,
+        });
+      }
+      attachThesisFirstLive(btSetups, nowEtMinutes, {}, undefined);
+      const btRows = btSetups.map((s) => ({
+        ticker: s.ticker,
+        rank_tier: s.thesis_first?.rank_tier ?? null,
+        blocks: s.thesis_first?.archetype_gates?.blocks ?? [],
+      }));
+      const rejectCount = btRows.filter((r) => r.rank_tier === "REJECT").length;
+      const blockCounts = new Map();
+      for (const r of btRows) if (r.rank_tier === "REJECT") for (const b of r.blocks) blockCounts.set(b, (blockCounts.get(b) ?? 0) + 1);
+      breakoutThesis = { attempted: true, error: null, graded: btRows.length, reject: rejectCount, blockCounts: Object.fromEntries(blockCounts) };
+      console.log(`  ${btRows.length} graded through attachThesisFirstLive — thesis_rank_reject isolated rate: ${rejectCount}/${btRows.length} (${btRows.length ? ((rejectCount / btRows.length) * 100).toFixed(1) : "0"}%)`);
+      if (blockCounts.size) {
+        for (const [code, n] of [...blockCounts.entries()].sort((a, b) => b[1] - a[1])) {
+          console.log(`    ${pad(code, 32)}${padL(n, 5)} / ${rejectCount}`);
+        }
+      }
+    }
+  }
+} catch (e) {
+  breakoutThesis.error = e instanceof Error ? e.message : String(e);
+  console.log(`  BREAKOUT thesis-first section FAILED: ${breakoutThesis.error}`);
+}
+
+console.log(`\n  PIN (live attempt only — no historical replay path from this sandbox, see header):`);
+let pinThesis = { attempted: false, error: null, setups: 0 };
+try {
+  const { discoverPinSetups } = await import(`${SRC}lib/zerodte/pin-discovery.ts`);
+  const pinSetups = await discoverPinSetups({ today, nowEtMinutes, excludeTickers: new Set() });
+  pinThesis = { attempted: true, error: null, setups: pinSetups.length };
+  if (pinSetups.length === 0) {
+    console.log(`    0 live PIN setups this run (off-hours or no clean pin regime) — INSUFFICIENT DATA, expected.`);
+  } else {
+    attachThesisFirstLive(pinSetups, nowEtMinutes, {}, undefined);
+    const rejectCount = pinSetups.filter((s) => s.thesis_first?.rank_tier === "REJECT").length;
+    console.log(`    ${pinSetups.length} live PIN setup(s) — thesis_rank_reject: ${rejectCount}/${pinSetups.length}`);
+  }
+} catch (e) {
+  pinThesis.error = e instanceof Error ? e.message : String(e);
+  console.log(`    PIN discovery attempt FAILED: ${pinThesis.error} (same Next.js module-boundary/live-GEX-only limitation documented in thesis-rank-reject-outcome-ab.mjs)`);
+}
 
 console.log(`\n${line("═")}`);
 console.log(`  SUMMARY: ${flowRows.length} rows → ${rawSetups.length} setups (evidence gates) → ${jointPass} commit-eligible (hard gates, partial context)`);
 console.log(`  The single biggest isolated gate this run: ${sortedGates[0] ? `${sortedGates[0][0]} (${sortedGates[0][1]}/${results.length})` : "none fired"}`);
+console.log(`  BREAKOUT thesis_rank_reject (different pipeline): ${breakoutThesis.graded ? `${breakoutThesis.reject}/${breakoutThesis.graded}` : "INSUFFICIENT DATA/error this run"}`);
 console.log(line("═"));
 
 if (EMIT_JSON) {
@@ -366,5 +505,7 @@ if (EMIT_JSON) {
     },
     isolatedFailureByGate: Object.fromEntries(sortedGates),
     perSetup: results.map((r) => ({ ticker: r.ticker, direction: r.direction, score: r.score, verdict: r.verdict.verdict, blocks: r.verdict.blocks.map((b) => b.code) })),
+    breakoutThesisRankReject: breakoutThesis,
+    pinThesisRankReject: pinThesis,
   }, null, 2));
 }
