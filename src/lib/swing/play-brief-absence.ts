@@ -14,6 +14,7 @@ import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
 
@@ -374,12 +375,36 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // today's edition yet". That is exactly the C4 violation the product contract calls out (SPX
   // vs SPY): a plausible-looking wrong identity is worse than an obviously-missing one, and it
   // reaches Largo verbatim as this string, so the model would reason about it as the wrong product.
+  //
+  // BUG (found 2026-09-10, live GOOG brief): unlike the 0DTE/scan checks above, this query has NO
+  // date filter (`ORDER BY edition_for DESC LIMIT 1` with no WHERE on date) — it is "the last time
+  // THIS TICKER appeared in a Legacy edition," which for most tickers is not today or yesterday,
+  // it is however long ago Legacy last happened to feature this specific name. Comparing that
+  // per-ticker date to `ctx.sessionDate` and claiming "today's edition not yet run" was itself a
+  // false, unverifiable system-wide claim from per-ticker data: live evidence the same cycle this
+  // was found — GOOG's `nighthawk_recent.edition_for` read `2026-08-03` (5+ weeks old) while
+  // `GET /api/market/nighthawk/edition` confirmed the real Legacy edition was freshly published
+  // `2026-09-09T21:34:32Z`. The pipeline was fine; only GOOG hadn't been featured recently. A gap
+  // this large says "this ticker isn't in Legacy's recent editions," not "the edition hasn't run" —
+  // exactly the C4 wrong-identity-is-worse-than-missing failure this file's own history warns about
+  // two paragraphs up, just on the freshness axis instead of the product-label axis. Bound the
+  // "not yet run" claim to a small window (a normal within-week gap, incl. weekends) where it is
+  // still a plausible same-cycle read; beyond that, report the per-ticker fact honestly instead of
+  // asserting an unverified system-wide state.
   const nh = ctx.ecosystem?.nighthawk_recent;
-  if (!isClosed && nh && ctx.sessionDate && nh.edition_for !== ctx.sessionDate) {
-    out.push({
-      source: "Night Hawk Legacy",
-      reason: `prior session (${nh.edition_for}) — today's edition not yet run`,
-    });
+  if (!isClosed && nh && ctx.sessionDate) {
+    const gapDays = daysBetweenYmd(nh.edition_for, ctx.sessionDate);
+    if (gapDays !== null && gapDays > 0 && gapDays <= 4) {
+      out.push({
+        source: "Night Hawk Legacy",
+        reason: `prior session (${nh.edition_for}) — today's edition not yet run`,
+      });
+    } else if (gapDays !== null && gapDays > 4) {
+      out.push({
+        source: "Night Hawk Legacy",
+        reason: `no recent Legacy edition for this ticker (last featured ${nh.edition_for})`,
+      });
+    }
   }
   // Committed positions compute thesis health without setup/entry/signal inputs — the aggregate
   // % collapses to a generic default. Surface that honestly (Largo C3/C6) rather than showing 46%.
