@@ -11,6 +11,25 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-10 (16:34 UTC) — [RTH — SEO] Third market-hours check: gamma-snapshot healthy, refresh confirmed live
+
+**Severity.** — (no defect found)
+
+Third RTH wake this window. Self-checked clock: `TZ=America/New_York date` → Thu Sep 10 12:34:00
+EDT, still within Mon-Fri 09:30-13:00 ET.
+
+`/tools/gamma-snapshot`'s live API polled twice, 6s apart, to directly confirm the claimed 5s
+refresh isn't sitting on a stale snapshot: `asof`/`calculation_id` both advanced
+(`SPX:1789058045258` → `SPX:1789058055451`), spot moved (7595.65 → 7595.11),
+`snapshot_data_age_seconds` stayed low both times (1s, 2s) — genuine live refresh, not cached.
+`flip: null` / `posture: "short"` with the same honest-absence `read` explanation as every prior
+check this window — correct, not a defect.
+
+CLS not re-measured again this cycle — same reasoning as the 15:33 UTC entry below (confirmed
+GOOD twice already today post-purge, no deploy or layout-affecting merge since, re-running would
+be pure repetition). No defects found.
+
+---
 ## 2026-09-10 (15:33 UTC) — [RTH — SEO] Second market-hours check: gamma-snapshot healthy, CLS not re-measured
 
 **Severity.** — (no defect found)
