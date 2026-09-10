@@ -237,13 +237,16 @@ async function mapPool(items, concurrency, fn) {
     for (;;) {
       const idx = next++;
       if (idx >= items.length) return;
-      out[idx] = await fn(items[idx], idx);
+      // The sole caller's `fn` is `async (seed) => {...}` (arity 1) and never reads an index --
+      // order is already preserved via `out[idx]`, not by handing the index to `fn` -- so passing
+      // one is CodeQL's second "superfluous trailing arguments" finding on this helper. Dropped.
+      out[idx] = await fn(items[idx]);
     }
   };
   // Array.from's mapFn receives (element, index); worker() ignores both (arity 0) since it
   // tracks progress via the closed-over `next` counter, not the array position — the extra
-  // args are CodeQL's "superfluous trailing arguments" finding. Wrapped as () => worker() to
-  // make the discard explicit; behavior unchanged.
+  // args are CodeQL's first "superfluous trailing arguments" finding. Wrapped as () => worker()
+  // to make the discard explicit; behavior unchanged.
   await Promise.all(Array.from({ length: workers }, () => worker()));
   return out;
 }
