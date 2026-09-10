@@ -3660,3 +3660,68 @@ position, and diffing against that earlier snapshot:
   case the fix targeted).
 
 All three confirmed correct under real live data — GREEN pass, no follow-up needed.
+
+## 2026-09-10 (18:10 UTC) — [DISCOVERY] 5-engine cycle: 0DTE record grading-math cross-check, live RTH data
+
+Fresh verification angle for the standing 5-engine monitor (not previously checked this session):
+`GET /api/market/zerodte/record?days=30` against production, one temp Clerk premium session
+(`mintClerkPremiumSession`, deleted after). Cross-checked the aggregate `wins+losses+breakeven==
+graded` invariant AND, one level deeper, that the `by_outcome` per-bucket breakdown sums to the
+same top-level aggregate — a stronger check than the bare identity, since a bucketing bug could
+preserve the top-level sum while misattributing individual plays to the wrong bucket.
+
+Live snapshot (30-day window, 22 sessions, through 2026-09-10): `graded=193, wins=62, losses=85,
+breakeven=46` → `62+85+46=193` ✓. `by_outcome` buckets (doubled/ratchet/stopped/time_stop/
+thesis_break/flat_scratch) sum to `n: 4+53+23+2+75+36=193` ✓, `wins: 4+24+0+2+25+7=62` ✓,
+`losses: 0+1+21+0+39+24=85` ✓, `breakeven: 0+28+2+0+11+5=46` ✓ — every bucket total ties out
+exactly, both dimensions. `total_flagged=194`, `ungraded=1` (the one open, un-graded play), so
+`graded+ungraded=total_flagged` also holds. No discrepancy found — GREEN pass, no follow-up
+needed. PR queue swept same cycle: 0 open agent PRs (only 5 pre-existing Dependabot bumps, left
+untouched per standing policy).
+
+## 2026-09-10 (18:19 UTC) — [DISCOVERY] Same cycle, second angle: Legacy edition + record coherence, live RTH data
+
+While #4740 (the entry above) sat on pending CI, continued the standing "never sit idle" discipline
+with a second fresh angle: `GET /api/market/nighthawk/edition` and `GET /api/market/nighthawk/record`
+against production, same temp Clerk session pattern, plus a fresh CloudWatch crash-error grep
+(`/ecs/blackout-production`, 15-min window, `TypeError`/`Unhandled`/`"undefined is not"` — 0 matched
+events, clean).
+
+**Edition**: HTTP 200, not stale, not degraded, 3 real plays served — reachable and healthy, not the
+"unreachable read as no_plays" failure mode the Legacy healthcheck guards against.
+
+**Record coherence**: `total_resolved=74`. `segments.current` (the live, non-superseded methodology):
+`scoreable(59) + excluded_total(15) = 74 = resolved` ✓; `excluded_total(15) = unfilled(6) +
+pulled(9) + stop_data_unavailable(0)` ✓; `scoreable(59) = wins(2) + losses(0) + opens(57)` ✓;
+`decided(2) = wins(2) + losses(0)` ✓. `debrief.failure_modes` sum to `36+21+6+5+4+1+1=74 =
+debrief.graded` ✓. `by_conviction` (A: n=3/opens=3/decided=0, B: n=56/opens=54/decided=2) sums to
+`n:59=scoreable`, `opens:57=segments.current.opens`, `decided:2=segments.current.decided` ✓ — every
+cross-cut (segment, debrief failure-mode, conviction tier) reconciles to the same top-level counts.
+No discrepancy found — GREEN pass, no follow-up needed.
+
+## 2026-09-10 (18:20 UTC) — [DISCOVERY] 5-engine cycle (:20 offset): SPX Slayer score-sum + Vector non-SPX ticker, live RTH data
+
+`GET /api/market/spx/play` (authenticated, live): `score(-44) === sum(factors[].weight)` exactly
+(11 factors: -18-12-10-8+6-5-5+4+4+0+0 = -44) ✓; `direction: "short"` consistent with the negative
+net signed weight ✓. `gates.blocks` coherent with the data: `"Desk data stale (281s)"` — within the
+documented normal ~5min warm cadence, not stuck; `"Cold BUY needs score ≥78 (have 44)"` uses the
+score's magnitude (44 = abs(-44)) against the threshold, consistent with a magnitude-keyed
+conviction gate applying symmetrically regardless of long/short direction — not a sign bug.
+(Note: an earlier same-cycle fetch of this endpoint returned a different live snapshot — score 14,
+rawScore 52, factors summing to -14 — the desk's live state simply moved between the two fetches
+~1 minute apart; both snapshots independently satisfied `score===sum(factors)`, so this is normal
+live-data churn, not an inconsistency.)
+
+`GET /api/market/vector/wall-history?ticker=NVDA&dte=0dte&session=2026-09-10` (a non-SPX ticker,
+the #4732 bead-rail fix's own sidePctMaxima fix is ticker-agnostic but had only been visually
+confirmed on SPX so far): 2670 history rows, real per-side differentiation — call side tops at
+10.53% (227.5 strike) vs put side at 27.23% (220 strike), an ~2.6x side imbalance still smaller
+than the 18x SPX case that originally exposed the bug, and the pct spread across each side's own
+strikes is clearly graduated (not flattened) — confirms the fix generalizes beyond the ticker that
+surfaced it. `vector/universe` returned 0 rows via the response shape assumed by this check
+(`tickers`/`universe` keys); the route's real shape is `{updatedAt, rows: [...]}` — corrected
+mid-check and re-read successfully (multiple real tickers, sensible gamma-flip/wall data) — a
+harness mistake on this cycle's part, not a product defect, so not logged as a finding.
+
+CloudWatch crash-error grep (15-min window, all five systems' routes): 0 matched events, clean.
+No discrepancy found across this cycle's checks — GREEN pass, no follow-up needed.
