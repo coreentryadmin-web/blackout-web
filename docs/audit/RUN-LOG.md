@@ -3657,3 +3657,23 @@ exactly, both dimensions. `total_flagged=194`, `ungraded=1` (the one open, un-gr
 `graded+ungraded=total_flagged` also holds. No discrepancy found — GREEN pass, no follow-up
 needed. PR queue swept same cycle: 0 open agent PRs (only 5 pre-existing Dependabot bumps, left
 untouched per standing policy).
+
+## 2026-09-10 (18:19 UTC) — [DISCOVERY] Same cycle, second angle: Legacy edition + record coherence, live RTH data
+
+While #4740 (the entry above) sat on pending CI, continued the standing "never sit idle" discipline
+with a second fresh angle: `GET /api/market/nighthawk/edition` and `GET /api/market/nighthawk/record`
+against production, same temp Clerk session pattern, plus a fresh CloudWatch crash-error grep
+(`/ecs/blackout-production`, 15-min window, `TypeError`/`Unhandled`/`"undefined is not"` — 0 matched
+events, clean).
+
+**Edition**: HTTP 200, not stale, not degraded, 3 real plays served — reachable and healthy, not the
+"unreachable read as no_plays" failure mode the Legacy healthcheck guards against.
+
+**Record coherence**: `total_resolved=74`. `segments.current` (the live, non-superseded methodology):
+`scoreable(59) + excluded_total(15) = 74 = resolved` ✓; `excluded_total(15) = unfilled(6) +
+pulled(9) + stop_data_unavailable(0)` ✓; `scoreable(59) = wins(2) + losses(0) + opens(57)` ✓;
+`decided(2) = wins(2) + losses(0)` ✓. `debrief.failure_modes` sum to `36+21+6+5+4+1+1=74 =
+debrief.graded` ✓. `by_conviction` (A: n=3/opens=3/decided=0, B: n=56/opens=54/decided=2) sums to
+`n:59=scoreable`, `opens:57=segments.current.opens`, `decided:2=segments.current.decided` ✓ — every
+cross-cut (segment, debrief failure-mode, conviction tier) reconciles to the same top-level counts.
+No discrepancy found — GREEN pass, no follow-up needed.
