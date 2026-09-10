@@ -839,11 +839,25 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const occPrefixed = occ ? (occ.startsWith("O:") ? occ : `O:${occ}`) : null;
   const working = status === "OPEN" || status === "HOLD" || status === "TRIM";
   const mgmt = managementFor("SCALE_OUT", status, status === "WATCH" || status === "SKIP" ? null : livePnl);
-  const exitPolicy = buildTerminalExitLadder(
+  const rawExitPolicy = buildTerminalExitLadder(
     SWING_SCALE_OUT_POLICY,
     entry,
     fin(src.peakPremium) ?? (entry != null && markMid != null ? Math.max(entry, markMid) : null),
   );
+  // `fired` on buildTerminalExitLadder's ladder is a MECHANICAL peak-vs-level check, and for
+  // 0DTE that's fine because derivePlayStatus (marks-math.ts) makes the mechanical rule the
+  // status itself. Swing is different: manage-sync.ts gates a real scale-out behind an
+  // `enforced` flag (the PR-16 calibration ladder) specifically so a bare peak crossing can't
+  // "fabricate a scale-out that never happened" — a row can sit at HOLD long after its peak
+  // cleared the trim trigger. Reusing the raw mechanical ladder here made the Command Deck
+  // panel AND Ask Largo's play-brief both claim "Trim ladder ✓" / "all trims banked" for rows
+  // still fully exposed at HOLD (live repro 2026-09-10: NRG, peak +132.7%, still HOLD). Once
+  // `status` actually reaches TRIM the mechanical read is real again, so only gate the
+  // not-yet-enforced case.
+  const exitPolicy =
+    status === "TRIM"
+      ? rawExitPolicy
+      : { ...rawExitPolicy, trim_levels: rawExitPolicy.trim_levels.map((t) => ({ ...t, fired: false })) };
   const thesisBreakResolved = src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon);
   const thesisHealth = working
     ? computeSwingThesisHealth({
