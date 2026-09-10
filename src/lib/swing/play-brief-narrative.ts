@@ -529,7 +529,19 @@ export function counterThesisLine(
     if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
   }
 
-  const faded = play.thesisHealth?.pillars?.find((p) => p.status === "lost" || p.status === "faded");
+  // Same guard as degradedReadLine/thesisPillarCoaching (thesis-health.ts's thesisHealthUncalibrated):
+  // a committed row with no setup/entry/signal inputs wired gets FORCED default pillar labels
+  // (persistence: "unknown", etc — see UNCALIBRATED_PILLAR_LABELS), and degradeFromManage() then
+  // force-sets the persistence pillar's status straight off the manage-engine action
+  // (TAKE_PARTIAL/EXIT_RUNNER -> "faded") regardless of calibration. Reading `.status` here with no
+  // guard steelmanned a fabricated "fading pillar Persistence" bear/bull case on rows whose own
+  // Thesis-health section (thesisHealthSection, play-brief.ts) says "pillar breakdown not shown" —
+  // confirmed live on 3 committed positions, different tickers/directions/scores, always the
+  // byte-identical clause. 4th instance of this exact unguarded-pillar-read shape in this file; the
+  // other three (degradedReadLine, thesisPillarCoaching, thesisHealthSection) were already fixed.
+  const faded = thesisHealthUncalibrated(play.thesisHealth)
+    ? undefined
+    : play.thesisHealth?.pillars?.find((p) => p.status === "lost" || p.status === "faded");
   if (faded && (!play.thesisBreak?.level || play.thesisBreak.level === "intact")) {
     reasons.push(`fading pillar **${faded.label}**`);
   }

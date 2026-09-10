@@ -2564,6 +2564,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
         deferPlanStop: true,
         targetPct: rails.targetPct,
         stopPct: rails.stopPct,
+        trimScaleFirstTranchePct: rails.trimScaleFirstTranchePct,
         isCondor,
       });
       const exit =
@@ -2598,6 +2599,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
               nowEtMinutes,
               targetPct: rails.targetPct,
               stopPct: rails.stopPct,
+              trimScaleFirstTranchePct: rails.trimScaleFirstTranchePct,
               isCondor,
             })
           : preStop;

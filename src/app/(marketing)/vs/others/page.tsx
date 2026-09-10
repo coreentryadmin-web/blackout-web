@@ -9,7 +9,7 @@ import { MARKETING_DATA_FRESHNESS, manifestProductCount } from "@/lib/marketing/
 
 export const metadata: Metadata = publicPageMetadata(
   "BlackOut vs Other Options Trading Platforms",
-  `How BlackOut compares to typical options-analytics platforms: ${MARKETING_DATA_FRESHNESS.comparison} vs delayed snapshots, graded track record vs cherry-picked alerts, one desk vs scattered tabs and Discords.`,
+  "BlackOut vs typical options-analytics platforms: live data vs delayed snapshots, graded track record vs cherry-picked alerts, one desk vs scattered tools.",
   "/vs/others"
 );
 

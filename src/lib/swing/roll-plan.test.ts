@@ -5,7 +5,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSwingRollPlan, gradeParentFromMark, type SwingRollPlanDeps } from "./roll-plan.ts";
+import {
+  buildSwingRollPlan,
+  gradeParentFromMark,
+  resolveParentGradeMark,
+  MAX_LATCHED_MARK_AGE_MS,
+  type SwingRollPlanDeps,
+} from "./roll-plan.ts";
 import type { SwingManageVerdict } from "./manage.ts";
 import type { SwingPositionRow } from "../db.ts";
 import { PRODUCTION_PORTFOLIO_BUDGET } from "./swing-portfolio-budget.ts";
@@ -19,7 +25,7 @@ function parentRow(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
     session_date: "2026-07-01", ticker: "NVDA", direction: "long", sub_lane: "STANDARD", archetype: "BREAKOUT",
     top_flow_strike: null, contract_strike: 150, contract_expiry: "2026-07-28", contract_type: "call", contract_occ: null,
     contract_delta: 0.6, entry_underlying_px: 148, thesis_invalidation_px: 140, target_underlying_px: 170,
-    entry_premium: 5.0, last_mark: null, peak_premium: null, trough_premium: null, underlying_mfe: null, underlying_mae: null,
+    entry_premium: 5.0, last_mark: null, last_mark_at: null, peak_premium: null, trough_premium: null, underlying_mfe: null, underlying_mae: null,
     realized_pnl_pct: null, entry_context: { risk_usd: 500 }, gate_calibration_json: null, feature_vector: null,
     plan_json: null, scale_out_grade: null, grade_json: null, grade_methodology: null, legacy_grade: null,
     status: "OPEN", first_seen_at: "2026-07-01T14:00:00.000Z", committed_at: "2026-07-01T14:00:00.000Z",
@@ -56,6 +62,66 @@ test("gradeParentFromMark: realized P&L% = (mark − entry)/entry × 100; null w
   assert.equal(gradeParentFromMark(parentRow({ entry_premium: 0 }), 6), null);
 });
 
+// ─── FIX (B): mark provenance / staleness (docs/audit/findings-staging, RIOT-analog for swing) ────
+
+test("gradeParentFromMark: basis + provenance fields depend on markSource — a latched mark is never labeled live", () => {
+  // No markSource supplied (direct-call callers, e.g. the test above) → unchanged legacy basis string.
+  const legacy = gradeParentFromMark(parentRow({ entry_premium: 5 }), 6);
+  assert.equal(legacy!.grade_json.basis, "live_option_mark_vs_entry_premium");
+  assert.equal(legacy!.grade_json.mark_source, undefined, "no provenance fabricated when the caller supplies none");
+
+  // A real live_quote source → same "live" basis, but now with explicit provenance.
+  const live = gradeParentFromMark(parentRow({ entry_premium: 5 }), 6, { source: "live_quote", observedAt: null, ageMs: null });
+  assert.equal(live!.grade_json.basis, "live_option_mark_vs_entry_premium");
+  assert.equal(live!.grade_json.mark_source, "live_quote");
+
+  // A latched_last_mark source → a DIFFERENT, honest basis string + the observed-at/age recorded — this
+  // is the exact silent-mislabeling FIX (B) closes: before this, this case stamped the same "live" basis.
+  const latched = gradeParentFromMark(parentRow({ entry_premium: 5 }), 6, {
+    source: "latched_last_mark",
+    observedAt: "2026-09-09T14:00:00.000Z",
+    ageMs: 42 * 60_000,
+  });
+  assert.equal(latched!.grade_json.basis, "latched_last_mark_vs_entry_premium");
+  assert.equal(latched!.grade_json.mark_source, "latched_last_mark");
+  assert.equal(latched!.grade_json.mark_observed_at, "2026-09-09T14:00:00.000Z");
+  assert.equal(latched!.grade_json.mark_age_ms, 42 * 60_000);
+});
+
+test("resolveParentGradeMark: prefers the live read; falls back to a FRESH latched last_mark; rejects a STALE or untimestamped one", () => {
+  const now = Date.parse("2026-09-09T15:00:00.000Z");
+
+  // Live read present → used verbatim, regardless of what the ledger has latched.
+  const live = resolveParentGradeMark(parentRow({ last_mark: 1, last_mark_at: "2026-01-01T00:00:00.000Z" }), 6, now);
+  assert.equal(live!.mark, 6);
+  assert.equal(live!.source.source, "live_quote");
+  assert.equal(live!.source.observedAt, null);
+
+  // Live read missing, latched mark is FRESH (30 min old, under the 90-min bound) → used, with provenance.
+  const freshAt = new Date(now - 30 * 60_000).toISOString();
+  const fresh = resolveParentGradeMark(parentRow({ last_mark: 7, last_mark_at: freshAt }), null, now);
+  assert.equal(fresh!.mark, 7);
+  assert.equal(fresh!.source.source, "latched_last_mark");
+  assert.equal(fresh!.source.observedAt, freshAt);
+  assert.equal(fresh!.source.ageMs, 30 * 60_000);
+
+  // Live read missing, latched mark is right AT the bound → still trusted (inclusive boundary is fine
+  // either way; this asserts the constant is actually wired through, not a magic number elsewhere).
+  const atBoundAt = new Date(now - MAX_LATCHED_MARK_AGE_MS).toISOString();
+  assert.ok(resolveParentGradeMark(parentRow({ last_mark: 7, last_mark_at: atBoundAt }), null, now));
+
+  // Live read missing, latched mark is STALE (2 hours old, over the 90-min bound) → defer (null).
+  const staleAt = new Date(now - 2 * 60 * 60_000).toISOString();
+  assert.equal(resolveParentGradeMark(parentRow({ last_mark: 7, last_mark_at: staleAt }), null, now), null);
+
+  // Live read missing, latched mark present but UNTIMESTAMPED (last_mark_at null) → fail closed, never
+  // trust an un-provenanced latch even though a value exists.
+  assert.equal(resolveParentGradeMark(parentRow({ last_mark: 7, last_mark_at: null }), null, now), null);
+
+  // Neither live nor latched → null, unchanged pre-existing behavior.
+  assert.equal(resolveParentGradeMark(parentRow({ last_mark: null, last_mark_at: null }), null, now), null);
+});
+
 // ─── ROLL happy path ────────────────────────────────────────────────────────────
 
 test("ROLL: grades the parent + builds a gated, further-out child leg", async () => {
@@ -75,10 +141,37 @@ test("ROLL: grades the parent + builds a gated, further-out child leg", async ()
   assert.equal((child.entry_context as Record<string, unknown>).roll_seq, 1);
 });
 
-test("ROLL uses the latched last_mark when the live reads carry no mark", async () => {
-  const plan = await buildSwingRollPlan(parentRow({ last_mark: 7.0, entry_premium: 5 }), verdict(), reads({ mark: null }), deps());
+test("ROLL uses the latched last_mark when the live reads carry no mark (mark is FRESH)", async () => {
+  // FIX (B): the fallback is only trusted when last_mark_at is fresh — supply a recent timestamp
+  // (5 minutes old, well under MAX_LATCHED_MARK_AGE_MS) so this happy path keeps working.
+  const recentAt = new Date(Date.now() - 5 * 60_000).toISOString();
+  const plan = await buildSwingRollPlan(
+    parentRow({ last_mark: 7.0, last_mark_at: recentAt, entry_premium: 5 }),
+    verdict(),
+    reads({ mark: null }),
+    deps(),
+  );
   assert.ok(plan, "falls back to the ledger's last_mark");
   assert.equal(plan!.parentGrade.realized_pnl_pct, 40, "(7-5)/5*100");
+  // Honestly labeled as a latched fallback, not silently passed off as a live read (FIX (B)).
+  assert.equal(plan!.parentGrade.grade_json.basis, "latched_last_mark_vs_entry_premium");
+  assert.equal(plan!.parentGrade.grade_json.mark_source, "latched_last_mark");
+  assert.equal(plan!.parentGrade.grade_json.mark_observed_at, recentAt);
+});
+
+test("DEFER: the latched last_mark is present but too STALE (last_mark_at beyond MAX_LATCHED_MARK_AGE_MS) to trust — never freeze a stale grade as if it were live (FIX (B))", async () => {
+  // This is the population docs/audit/findings-staging documents: 5 live rows graded via
+  // swing.roll.markfreeze.v1 at exit_mark === entry_premium to the cent (25% headline win rate,
+  // 2026-09-09 30-day /swing/record pull) — a stale-fallback grade is indistinguishable from a
+  // genuinely flat outcome without this guard. A last_mark_at 3 hours old is well past the 90-min bound.
+  const staleAt = new Date(Date.now() - 3 * 60 * 60_000).toISOString();
+  const plan = await buildSwingRollPlan(
+    parentRow({ last_mark: 5.0, last_mark_at: staleAt, entry_premium: 5.0 }), // would grade a false "flat" 0%
+    verdict(),
+    reads({ mark: null }),
+    deps(),
+  );
+  assert.equal(plan, null, "defers rather than freezing a stale-latch grade");
 });
 
 // ─── CLOSE (thesis broken / no valid roll) ────────────────────────────────────────

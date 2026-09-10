@@ -1,0 +1,39 @@
+{
+  "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
+  "lastUpdated": "2026-09-10T04:15:00Z",
+  "coldStart": true,
+  "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). This is the first entry — no prior-cycle continuity to compare against.",
+  "editions": {
+    "2026-09-10": {
+      "editionFor": "2026-09-10",
+      "publishedAt": "2026-09-09T21:34:32.000Z",
+      "checkedAt": "2026-09-10T04:06:46.478Z",
+      "playsCount": 3,
+      "tickers": ["SIG", "ASO", "FICO"],
+      "marksPopulated": true,
+      "marksSaneAtCheck": true,
+      "notes": "3-play edition, published ~5:34pm ET prior evening. legacy-marks returned live-looking marks for all 3 resolved OCCs (SIG260911C00100000, ASO260911C00052000, FICO260918P00980000) — mark for SIG ($3.28) and ASO ($0.45) close to published entry premium ($3.27/$0.45), consistent with an overnight quote before RTH price discovery. FICO mark ($32.25) also close to entry ($32.25) — flagged 'thin liquidity, use limit order' in the play copy itself, wide bid/ask (26.70/37.80) consistent with that warning, not a defect.",
+      "editionApiBugFound": "GET /api/market/nighthawk/edition returned stale:true / carry_until_close:false for this exact same-session edition when checked at 00:06 ET (6 min after midnight) -- root-caused to an ICU Intl.DateTimeFormat hour12:false midnight='24' quirk in isBeforeOrAtMarketCloseEt (session.ts). Fixed same cycle, see docs/audit/findings-staging/2026-09-10-nighthawk-session-midnight-hour24-carry-until-close.md and PR (fix/nighthawk-session-midnight-hour24)."
+    }
+  },
+  "record": {
+    "lastChecked": "2026-09-10T04:06:47Z",
+    "window_days": 14,
+    "total_resolved": 28,
+    "scoreable": 22,
+    "wins": 0,
+    "losses": 0,
+    "opens": 22,
+    "unfilled": 2,
+    "pulled": 4,
+    "win_rate_pct": null,
+    "avg_return_pct": -1.95,
+    "note": "decided=0 (0 wins + 0 losses out of scoreable=22) -- everything currently scoreable is still OPEN, not yet resolved either way. Not a calibration signal by itself; needs re-check on a later cycle once more of these 22 opens resolve. No 3+ instance pattern of thin picks-reasoning observed yet -- too early, cold start."
+  },
+  "knownOpenItems": {
+    "legacyDte5Gap_2026-08-06": "FINDINGS.md 2026-08-06 P1 'Legacy->Swing promotion path admits dte<5 contracts' -- verified 2026-09-10 via code read of legacy-confirm-promote.ts (lines ~56-69): a minDte/maxDte filter against HORIZONS.SWING.dteMin/dteMax now exists at the chain-row filtering step, with an in-code comment referencing this exact finding. Appears FIXED since the 08-06 entry; FINDINGS.md itself was not updated to reflect this (still shows NOT FIXED). Worth a follow-up cycle to confirm live (no dte<5 Legacy-promoted plays currently on the Swing board) and correct the FINDINGS.md status if confirmed."
+  },
+  "toolingGaps": {
+    "noLegacyE2eHealthcheck": "No dedicated scripts/audit/legacy-e2e-healthcheck.mjs exists yet (unlike 0DTE's zerodte-e2e-healthcheck.mjs and the Swing lane's tooling). Per the standing brief, if manual checks keep repeating cycle over cycle, build one. Not yet built this cycle -- first cycle, doing manual checks to establish baseline first."
+  }
+}

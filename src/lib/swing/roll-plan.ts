@@ -79,19 +79,101 @@ export interface SwingRollPlanDeps {
 /** Default extra runway a rolled child must carry over the parent's current DTE (never roll flat/nearer). */
 export const DEFAULT_MIN_ROLL_BUFFER_DAYS = 2;
 
+/**
+ * Which row field actually supplied the mark `gradeParentFromMark` froze the parent grade from, and how
+ * stale that observation was. FIX (B) — see the module header's GRADE-FROM-MARK section and
+ * `resolveParentGradeMark` below: before this, a fallback to `row.last_mark` was stamped with the exact
+ * same `basis: "live_option_mark_vs_entry_premium"` as a genuinely live read, so a reader of `grade_json`
+ * (a member, Largo, an auditor) could not tell "graded off THIS tick's live quote" apart from "graded off
+ * a latched mark from N minutes/hours ago" — the identical ambiguity `db.ts` (~7140-7156) already
+ * documents fixing for 0DTE (RIOT 2026-08-11: closed "breakeven" at a `last_mark` that was never actually
+ * re-observed after being seeded, while the contract traded $0.24→$1.48).
+ */
+export interface ParentMarkSource {
+  /** "live_quote" = `reads.mark` this tick; "latched_last_mark" = the ledger's persisted `last_mark`,
+   *  used only because the live read missed THIS tick (see `resolveParentGradeMark`). */
+  source: "live_quote" | "latched_last_mark";
+  /** `row.last_mark_at` as of the freeze — null for a live_quote source (this tick's own read has no
+   *  persisted observation instant yet; it IS the current instant). */
+  observedAt: string | null;
+  /** Age of `observedAt` vs "now" in ms at resolve time — null alongside a null `observedAt`. */
+  ageMs: number | null;
+}
+
+/** Above this age, a latched `last_mark` is too old to trust for a real-money grade freeze — the roll
+ *  DEFERS instead of freezing a stale mark passed off as live (same null-honest philosophy the module
+ *  header already documents for a genuinely MISSING mark — see `resolveParentGradeMark`). Sized against
+ *  `swing-active-refresh`'s own ~15-min market-hours cadence (cron-registry.ts: schedule_label "Every 15
+ *  min (market hours)", stale_after_min 25): a handful of missed ticks (a momentary quote-provider
+ *  hiccup, or the FIRST tick after a weekend/holiday gap where today's own live read also happens to
+ *  miss) is ordinary cron jitter and still worth trusting; a latch this old means the live quote read has
+ *  been failing for HOURS — that is stale evidence, not a frozen truth. */
+export const MAX_LATCHED_MARK_AGE_MS = 90 * 60_000; // 90 minutes
+
+/**
+ * Resolve which mark to freeze the parent grade from: prefer THIS tick's live read (`liveMark`); fall
+ * back to the ledger's latched `row.last_mark` ONLY when that latch is both timestamped and fresh enough
+ * (`MAX_LATCHED_MARK_AGE_MS`) to trust for a real-money grade. Returns null when neither is usable — the
+ * caller DEFERS, exactly like the pre-existing "no mark at all" case (never freezes a fabricated OR
+ * silently-stale-passed-off-as-live grade). Pure + exported so the freshness boundary is unit-tested
+ * without a live DB or a wall-clock race (`nowMs` is injectable).
+ *
+ * `row.last_mark_at` should never be null while `row.last_mark` is non-null in production —
+ * `insertSwingPosition` never seeds `last_mark` (only peak/trough seed to entry_premium — see its own
+ * comment), and `updateSwingLiveState` stamps `last_mark_at = now()` in the SAME statement as `last_mark`
+ * every time a real quote lands — but this fails CLOSED (defers) rather than trusting an un-timestamped
+ * latch if that invariant is ever violated, the same fail-closed posture `isMonotonicSwingStatusTransition`
+ * takes on an unrecognized status.
+ */
+export function resolveParentGradeMark(
+  row: SwingPositionRow,
+  liveMark: number | null | undefined,
+  nowMs: number = Date.now(),
+): { mark: number; source: ParentMarkSource } | null {
+  if (isFin(liveMark) && liveMark >= 0) {
+    return { mark: liveMark, source: { source: "live_quote", observedAt: null, ageMs: null } };
+  }
+  const latched = row.last_mark;
+  if (!isFin(latched) || latched < 0) return null;
+  if (!row.last_mark_at) return null; // untimestamped latch — fail closed, see doc comment above
+  const observedMs = Date.parse(row.last_mark_at);
+  if (!Number.isFinite(observedMs)) return null;
+  const ageMs = nowMs - observedMs;
+  if (ageMs > MAX_LATCHED_MARK_AGE_MS) return null; // too stale to trust — defer, do not freeze
+  return { mark: latched, source: { source: "latched_last_mark", observedAt: row.last_mark_at, ageMs } };
+}
+
 /** Freeze the parent leg's realized P&L from the live mark vs entry premium. Null when either is unusable
- *  (a roll must never freeze a fabricated grade — it DEFERS instead). Long-option P&L% = (mark−entry)/entry×100. */
-export function gradeParentFromMark(row: SwingPositionRow, mark: number | null | undefined): ParentGradeFreeze | null {
+ *  (a roll must never freeze a fabricated grade — it DEFERS instead). Long-option P&L% = (mark−entry)/entry×100.
+ *  `markSource` (from `resolveParentGradeMark`) is optional ONLY so direct unit tests can call this with a
+ *  raw mark; every real caller supplies it so `grade_json.basis` never claims "live" for a latched mark. */
+export function gradeParentFromMark(
+  row: SwingPositionRow,
+  mark: number | null | undefined,
+  markSource?: ParentMarkSource,
+): ParentGradeFreeze | null {
   const entry = row.entry_premium;
   if (!isFin(entry) || entry <= 0 || !isFin(mark) || mark < 0) return null;
   const realized = ((mark - entry) / entry) * 100;
+  // FIX (B): `basis` now reflects what actually supplied the mark, rather than unconditionally claiming
+  // "live" — see ParentMarkSource's doc comment for why a silent claim was dishonest. A direct-call test
+  // (no markSource) keeps the old literal `basis` for backward compatibility; every production call site
+  // (buildSwingRollPlan below) always passes markSource.
+  const basis = !markSource || markSource.source === "live_quote"
+    ? "live_option_mark_vs_entry_premium"
+    : "latched_last_mark_vs_entry_premium";
   return {
     grade_json: {
       methodology: "swing.roll.markfreeze.v1",
-      basis: "live_option_mark_vs_entry_premium",
+      basis,
       entry_premium: entry,
       exit_mark: mark,
       realized_pnl_pct: realized,
+      ...(markSource ? {
+        mark_source: markSource.source,
+        mark_observed_at: markSource.observedAt,
+        mark_age_ms: markSource.ageMs,
+      } : {}),
       note: "parent leg frozen at roll time from the live mark; the EOD multi-truth grader never re-litigates a frozen leg (graded_at IS NULL guard)",
     },
     grade_methodology: "swing.roll.markfreeze.v1",
@@ -132,9 +214,17 @@ export async function buildSwingRollPlan(
   const decision = decideRollAction(verdict);
   if (decision.action === "SKIP") return null; // manage-sync only calls us on a gate, but be defensive.
 
-  // 1. Freeze the parent from the live mark (falling back to the ledger's latched last_mark). No usable mark →
-  //    DEFER (never a fabricated grade). The live option mark is supplied by the active-refresh reads.
-  const parentGrade = gradeParentFromMark(row, reads.mark ?? row.last_mark);
+  // 1. Freeze the parent from the live mark, falling back to the ledger's latched last_mark ONLY when
+  //    that latch is fresh enough to trust (resolveParentGradeMark / MAX_LATCHED_MARK_AGE_MS — FIX (B),
+  //    see that function's doc comment). No usable mark (live, or latched-but-stale) → DEFER (never a
+  //    fabricated OR silently-stale-passed-off-as-live grade). The live option mark is supplied by the
+  //    active-refresh reads.
+  const resolvedMark = resolveParentGradeMark(row, reads.mark);
+  if (!resolvedMark) {
+    console.info(`[swing-roll] defer ${row.ticker} #${row.id}: no live mark (or only a stale latched last_mark) to freeze the parent grade`);
+    return null;
+  }
+  const parentGrade = gradeParentFromMark(row, resolvedMark.mark, resolvedMark.source);
   if (!parentGrade) {
     console.info(`[swing-roll] defer ${row.ticker} #${row.id}: no live mark to freeze the parent grade`);
     return null;
