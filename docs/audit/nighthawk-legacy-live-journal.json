@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T13:10:56.994Z",
+  "lastUpdated": "2026-09-10T13:22:24.143Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -226,6 +226,11 @@
       "at": "2026-09-10T13:10:56.994Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, wraps to cycle start)",
       "result": "PR #4725 undraft retry SUCCEEDED (rate limit cleared). mergeable_state read 'unstable' right after undraft with no fresh automerge run -- matches CLAUDE.md's documented automerge.yml token-scope gap, so merged manually via mcp__github__merge_pull_request (squash, expectedHeadSha pinned) -- merged clean as ef67b1f. Re-verified against origin/main directly: fix present. Immediate self-review of the merged text (the standing 'a merge is not a verification' discipline) caught a real defect in my OWN fix: the replacement suggestion string had a broken/ungrammatical clause ('the residual gap is calls the tape reads as mixed or agreeing but that still miss'). Fixed with a small follow-up PR #4726 (draft, CI pending) rather than silently living with sloppy shipped text -- correctly went through the full branch+test+stage+PR pipeline rather than pushing the trivial fix straight to main. debrief-aggregate suite 27/27 pass (unchanged, tests cover substance not full prose), tsc/eslint clean. Unsubscribed from #4725 (done), subscribed to #4726. Re-ran npm run healthcheck:legacy (all GREEN, no change -- same 3 open picks)."
+    },
+    {
+      "at": "2026-09-10T13:22:24.143Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "PR #4726 (wording follow-up) went green (verify completed 13:21:21Z) and merged cleanly this cycle -- undraft succeeded on first try, mergeable_state again read 'unstable' post-undraft (automerge.yml token-scope gap, same as #4725), merged manually via mcp__github__merge_pull_request (squash, expectedHeadSha pinned) as commit 1435784. Re-verified against origin/main: the wrong_direction suggestion text is now both accurate (names G-N4, doesn't claim it's missing) AND grammatically correct. Unsubscribed from #4726 -- both PRs from this session's gap-fill/stale-suggestion thread are now fully closed out (#4722, #4725, #4726 all merged and re-verified). Re-ran npm run healthcheck:legacy (all GREEN, no change)."
     }
   ],
   "knownOpenItems": {
