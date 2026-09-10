@@ -496,7 +496,17 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   }
 
   if (bucket === "open" && play.exitPolicy?.stop_premium != null) {
-    lines.push(`Premium stop rail: **${fmtUsd(play.exitPolicy.stop_premium)}** — thesis breaks if mark closes below`);
+    const stop = play.exitPolicy.stop_premium;
+    // Cushion = how far (%) the current mark could still fall before hitting the stop — the
+    // dollar level alone forces a member to do that subtraction themselves. Only shown when the
+    // mark is actually above the stop (the normal case for an OPEN row); omitted rather than
+    // shown negative/zero when data is missing or mid a stale-mark edge case — never fabricated.
+    const cushionPct =
+      play.mark != null && play.mark > 0 && play.mark > stop ? ((play.mark - stop) / play.mark) * 100 : null;
+    const cushionNote = cushionPct != null ? ` — ${cushionPct.toFixed(0)}% cushion from current mark` : "";
+    lines.push(
+      `Premium stop rail: **${fmtUsd(stop)}**${cushionNote} — thesis breaks if mark closes below`,
+    );
   }
 
   if (!lines.length) {
