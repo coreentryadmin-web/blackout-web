@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T06:17:00Z",
+  "lastUpdated": "2026-09-10T06:37:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -84,6 +84,11 @@
       "at": "2026-09-10T06:17:00Z",
       "via": "v6 mandate receipt, no dedicated offset trigger for this one",
       "result": "Re-checked edition live: no change since the prior check-in (SIG/ASO/FICO all still open, no outcome/pulled fields set, carry_until_close still true). Logged v6 in mandateLog above and deferred its three asks pending resolved-pick data. Nothing else actionable this cycle -- avoiding a redundant full re-audit of data that hasn't changed in ~8 minutes."
+    },
+    {
+      "at": "2026-09-10T06:37:00Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "AGGRESSIVE-HUNT investigation instead of a 4th redundant API poll (nothing had changed for ~15min and picks can't resolve until market opens ~7h out). Pulled the FULL raw play objects (not just the fields my own probe script had been cherry-picking) -- found rich server-computed data already present: factor_breakdown (12-dimension score components), tier.factors (human-readable tier reasoning), confirming_signals, target_atr_multiple, rr_ratio. Noticed SIG/ASO rr_ratio=0.35 labeled 'tight' and FICO rr_ratio=0.72 labeled 'acceptable' in the thesis text -- looked like a possible mislabeling (0.72 reward:risk is objectively a below-breakeven ratio). Traced to source (play-levels.ts computeRiskReward + deterministic-edition.ts's rrLabel bands) and found this is NOT a new bug: it's the deliberate, already-documented output of the 2026-08-06 win-rate presentation-only recalibration campaign (see FINDINGS.md same date) -- the function's own code comment explains the edge-basis R:R was intentionally made MORE honest (lower) than the old mid-basis number specifically because 20/48 plays in a July-Aug window had fill-edge R:R below 1.0 that the old display concealed. Confirmed system working as designed, not a defect. Useful cycle even though nothing shipped: ruled out a plausible-looking false lead before it became a wasted PR, and confirmed the live edition IS populating the richer scoring fields server-side (factor_breakdown/tier.factors/confirming_signals/target_atr_multiple) -- worth checking on a future cycle whether the member-facing UI actually renders all of these or whether some are computed-but-unsurfaced (did not check the UI render this cycle, API-only)."
     }
   ],
   "knownOpenItems": {
@@ -92,5 +97,6 @@
   "toolingGaps": {
     "noLegacyE2eHealthcheck": "No dedicated scripts/audit/legacy-e2e-healthcheck.mjs exists yet (unlike 0DTE's zerodte-e2e-healthcheck.mjs and the Swing lane's tooling). Per the standing brief, if manual checks keep repeating cycle over cycle, build one. Not yet built -- still establishing baseline manually across cycles.",
     "noLegacyGateCompoundFunnel": "v5 mandate (2026-09-10) suggests considering a Legacy analogue to 0DTE/Swing's gate-compound-funnel tools. Not yet assessed whether Legacy's picks pipeline even has an analogous multi-gate structure worth measuring this way -- next cycle should read the actual Legacy edition-generation/publish-gates code (publish-gates.ts et al, already referenced elsewhere in this repo's FINDINGS for the win-rate campaign) to answer that before committing to building anything."
-  }
+  },
+  "nextConcreteCheck": "UI-render audit (proxy-browser.cjs, secondary priority per the mandate correction): the live edition API returns factor_breakdown (12-dim score components), tier.factors (human-readable tier reasoning sentences), confirming_signals, and target_atr_multiple for every play. Confirm whether PlaybookBoard/the Legacy play card actually renders these or whether members only ever see the flattened thesis-sentence prose -- computed-but-unsurfaced server data is exactly the kind of gap the aggressive-hunt mandate wants found. Checked API only this cycle (2026-09-10T06:37), not the UI."
 }
