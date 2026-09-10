@@ -525,6 +525,39 @@ test("tradeManagerNarrativeSection: watch bucket entry stance uses WAIT not raw 
   assert.doesNotMatch(section!.body, /Entry stance.*HOLD/i);
 });
 
+test("tradeManagerNarrativeSection: watch bucket gate reasons appear once, not duplicated across Entry stance + Gates blocking entry", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "WATCH",
+        recommendation: "HOLD",
+        gateBlocks: [
+          { code: "g_s12_halt_feed_stale", reason: "Trading-halt feed unavailable" },
+          { code: "g_s6_confluence", reason: "Independent signal confluence below commit threshold" },
+        ],
+      }),
+      vector: { spot: 50 } as SwingPlayBriefContext["vector"],
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  // BUG (found live on EWY/NRG WATCH briefs, 2026-09-10): actionNarrative's "Entry stance" bullet
+  // used to re-render the same first-two gate code+reason strings watchGateCoaching's own "Gates
+  // blocking entry" bullet already carries in full — the section's own de-dup (`seen`, keyed on
+  // each line's first 48 chars) never caught it because the two bullets open with different
+  // wording. Each gate's reason text must now appear exactly once in the composed narrative.
+  const halt = (section!.body.match(/Trading-halt feed unavailable/g) ?? []).length;
+  assert.equal(halt, 1, `expected the halt-feed gate reason to appear once, found ${halt}`);
+  const confluence = (
+    section!.body.match(/Independent signal confluence below commit threshold/g) ?? []
+  ).length;
+  assert.equal(confluence, 1, `expected the confluence gate reason to appear once, found ${confluence}`);
+  // De-duplication, not deletion: the terse count-only "Entry stance" bullet and the detailed
+  // "Gates blocking entry" bullet (with codes + reasons) must both still be present.
+  assert.match(section!.body, /Entry stance.*2 gates blocking entry — see below/i);
+  assert.match(section!.body, /Gates blocking entry.*g_s12_halt_feed_stale/i);
+});
+
 test("tradeManagerNarrativeSection: watch bucket entry stance", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
