@@ -7,6 +7,18 @@
       "roster": {"SPCH":86,"AAPL":69,"SPCX":63,"ASTS":61,"RDW":61,"SPXW":56,"MU":48,"QQQ":43,"IBIT":48,"M":52,"CIFR":52,"MSTR":51,"LUNR":50,"NVAX":50,"VRT":48,"PL":48,"RKLB":47,"HAL":47,"MARA":44,"SMCI":43,"TSLA":28,"RCAT":39,"ACHR":39,"F":39,"RIG":39,"META":23,"KHC":37,"NVDX":37,"ONDS":36,"BTDR":35,"ASST":34,"PURR":33,"SNXX":33,"SMH":18,"USO":30,"INFQ":29,"RGTI":28,"AVAV":27,"SNDK":11,"AXTI":25,"AAOI":23},
       "above_score_floor_65_still_uncommitted": ["SPCH:86","AAPL:69"],
       "next_cycle_check": "Did SPCH(86) or AAPL(69) finally commit? If a high-score WATCH setup sits uncommitted for multiple consecutive cycles despite clearing score_floor, that's worth a real gate-trace (what's actually blocking OPEN) rather than more roster diffing."
+    },
+    "2026-09-10T14:08Z": {
+      "note": "22 min later, heat now RTH 100%. SPCH/AAPL follow-up RESOLVED (not a finding): SPCH decayed 86->51, AAPL 69->54, both still WATCH/uncommitted -- confirms hypothesis those were transient opening-drive score noise, not a stuck gate. First 2 real commits of the session: SPCX long (score75/tierA, cortex PASS 0.72, confluence WEAK timing+VWAP-only) and SPXW short (score75/tierB, cortex PASS 0.5, confluence TRIPLE-confirmed), both committed_at_et 10:02, both trim_scale. Both look coherent at entry, no red flags. 65 WATCH setups total now.",
+      "open_stage_tracking": {
+        "SPCX": {"direction":"long","score":75,"tier":"A","confluence":"weak","committed_et":"10:02"},
+        "SPXW": {"direction":"short","score":75,"tier":"B","confluence":"triple","committed_et":"10:02"}
+      },
+      "next_cycle_check": "How are SPCX/SPXW managing? Trim triggers hit and acted on per trim_scale rules? Does SPCX's weaker confluence show up in a worse outcome than SPXW's triple-confirmed one (a single pair, not a pattern -- just an observation to track)?"
+    },
+    "2026-09-10T14:17Z": {
+      "note": "SPCX CLOSED: entry 3.18, mark 3.05, final pnl -4.09%, peak was only +2.2% -- never crossed the 40% trim_scale first-trigger, so no trim ever fired, CORRECT (peak too small for the rule to engage), small round-trip loss from noise-level gain, not mismanagement. SPXW still HOLD, worsening: entry 14.5, mark 8, live pnl -44.83%, peak_pnl -21.03% (never once profitable). trim_scale trim_levels correctly show fired=False on BOTH (they're GAIN triggers, irrelevant to a losing trade) -- the only loss-side protection is the flat -50% hard stop and 15:50 ET time stop, so HOLD at -44.83% is CORRECT current behavior, not a bug. This is a single in-flight loser, not a 3-instance pattern -- watching, not escalating.",
+      "watch_next_cycle": "Does SPXW's -50% stop fire correctly if it breaches, or does it round-trip back? (also: keep an eye out for the QQQ-style instant-phantom-stop shape if it DOES stop out -- this one committed at 10:02 and has been live for real elapsed time with a real gradual decay, so it does NOT look like that bug, but worth confirming the stop math is clean when/if it fires.)"
     }
   },
   "sessions": {

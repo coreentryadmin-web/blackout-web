@@ -11,6 +11,23 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-10 (14:06 UTC) — [SEO] Daily growth cycle: no new striking-distance queries, small real 28d uptick
+
+**Severity.** — (no defect found)
+
+1. Opportunity scan: `gsc-opportunities-report.mjs` unchanged from every check earlier today (same
+   2 striking-distance queries, both already optimized per `SEO-GROWTH-STRATEGY.md` §3). No new
+   query entered striking distance — expected state for an early-stage authority-limited site, per
+   the standing "monitor, don't churn" rule. No on-page work done.
+2. Live re-verify: `robots.txt` still serves `Allow: /api/og` (11 lines). CWV already verified
+   fresh this cycle (13:33 UTC RTH pass, post-purge, both viewports GOOD) — not re-run.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-11→09-07): clicks=13,
+   impressions=1677, CTR=0.78%, avgpos=36.5 — vs the last recorded pull (clicks=12, impressions=1663,
+   CTR=0.72%, avgpos=36.5): a small, real uptick in clicks/impressions/CTR, position flat. Too small
+   a single-day delta to attribute to any specific shipped change.
+4. Housekeeping: 0 open SEO-lane PRs (confirmed at 12:19 UTC, unchanged).
+
+---
 ## 2026-09-10 (13:33 UTC) — [RTH — SEO] Live public-surface validation: gamma-snapshot + CLS clean
 
 **Severity.** — (no defect found)

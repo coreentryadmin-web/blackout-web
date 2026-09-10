@@ -53,6 +53,40 @@ test("composeSwingPlayBrief: WATCH WAIT recommendation uses WAIT label, not raw 
   assert.doesNotMatch(entry!.body, /\*\*Entry stance:\*\* HOLD/);
 });
 
+test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope headline, not raw status (2026-09-10 gap fix)", () => {
+  // Live repro (SLV, 2026-09-10 09:47 ET): a RESEARCH-section WATCH row gets
+  // swingEntryVerdict's deliberate split — deckStatus:"SKIP" (drives play.status, so the
+  // honest PASSED pill shows on the deck) but recommendation:"HOLD" (the member-facing word).
+  // The envelope headline correctly falls back action.label -> recommendation -> status and
+  // reads "HOLD — SLV 59C 6DTE". The Verdict section's own inline line built two lines below it
+  // skipped the `recommendation` rung of that same fallback chain and fell straight to raw
+  // `play.status`, so the SAME brief response showed "· SKIP" plus "Desk is passing this
+  // setup — no entry recommended." directly under a headline that says HOLD — a real,
+  // member-visible contradiction inside one answer, not two different reads.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "SKIP",
+      recommendation: "HOLD",
+      swingEntryAction: undefined,
+      recNote: "Desk is passing this setup — no entry recommended.",
+    }),
+    asOf: "2026-09-10T13:47:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.match(brief.envelope.headline, /^HOLD — /);
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "expected Verdict section");
+  assert.match(verdict!.body, /· HOLD$/m, `Verdict must agree with the headline, got: ${verdict!.body}`);
+  assert.doesNotMatch(verdict!.body, /· SKIP/, "Verdict must not show the raw internal SKIP deckStatus");
+});
+
 test("composeSwingPlayBrief: WATCH play with detectedAt narrates real days-on-watch age (2026-09-10 gap fix)", () => {
   // detectedAt (the deck's "WATCH Published clock") was already threaded onto TerminalPlay and
   // shown on the Command Deck panel, but never narrated in the play-brief text — a live sweep
