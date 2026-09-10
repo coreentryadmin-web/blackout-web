@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T08:23:00Z",
+  "lastUpdated": "2026-09-10T08:38:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -75,6 +75,11 @@
   },
   "checkIns": [
     {
+      "at": "2026-09-10T08:38:00Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "OUTCOME-HONESTY pass on a wider window (days=60, since the 14d window keeps showing 0 decided -- everything currently in-flight). Found the record's debrief block: 124 graded plays / 35 sessions, failure_modes wrong_direction=49, target_unreachable=41, pulled_wrongly=14, unfilled_never_traded_back=11, pulled_correctly=7, clean_win=1, gap_win=1 -- only 2 real wins out of 124. This is NOT a new finding -- it matches FINDINGS.md's own 2026-08-06 P1 entry ('the 0% win rate is REAL... presentation-only recalibration... the underlying geometry defect this campaign deliberately did NOT touch remains OPEN'), confirming that deliberately-parked geometry issue is still active in current data, same dominant failure shape (wrong_direction/target_unreachable). Not escalating as new per noise discipline -- it's an already-tracked, already-documented, intentionally-deferred issue, not a fresh 3-instance pattern. Logging the confirmation for continuity so a future cycle doesn't waste time rediscovering it from scratch, and because it's the honest answer to 'is the outcome-honesty check clean' -- it is NOT clean, but the reason is already known and owned elsewhere in the audit trail, not something this cycle needs to act on."
+    },
+    {
       "at": "2026-09-10T08:23:00Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "Auth clean this time (no repeat of last cycle's transient blip). Explicit marks-correctness pass (legacy-marks endpoint directly, not just edition): all 3 OCCs sane -- bid<mark<ask for SIG/ASO/FICO, no NaN/sign errors, fresh asof, stale:false. Values unchanged from hours-ago checks, expected pre-market with no real price discovery yet (~04:23 ET). Edition unchanged."
@@ -128,6 +133,7 @@
     }
   ],
   "knownOpenItems": {
+    "geometryWinRateGap_2026-08-06": "FINDINGS.md 2026-08-06 P1 (5-PR presentation-only recalibration campaign) -- the underlying geometry defect (targets unreachable inside the 1-session grading window, deliberately PARKED/not fixed by that campaign) is still active as of 2026-09-10 (60d window: 124 graded, wrong_direction=49 + target_unreachable=41 = 90/124, only 2 real wins). Not this session's to fix unilaterally -- it's a member-facing geometry/product decision the original campaign explicitly deferred, not a mechanical bug. Re-verify periodically (roughly monthly is plenty, this doesn't move week to week) rather than every cycle.",
     "legacyDte5Gap_2026-08-06": "FINDINGS.md 2026-08-06 P1 'Legacy->Swing promotion path admits dte<5 contracts' -- verified 2026-09-10 via code read of legacy-confirm-promote.ts (lines ~56-69): a minDte/maxDte filter against HORIZONS.SWING.dteMin/dteMax now exists at the chain-row filtering step, with an in-code comment referencing this exact finding. Appears FIXED since the 08-06 entry; FINDINGS.md itself was not updated to reflect this (still shows NOT FIXED). Live-confirmed clean 2026-09-10: only one Legacy-origin play currently on the Swing board (IREN, dte 8, well inside [5,30]), consistent with the fix holding (n=1, not yet a large sample). Not escalating a FINDINGS.md status correction as its own PR -- low priority, noted here for correlation; revisit if this file needs touching for another reason anyway."
   },
   "toolingGaps": {
