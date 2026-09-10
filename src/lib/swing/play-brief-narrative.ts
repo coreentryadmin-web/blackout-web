@@ -22,6 +22,7 @@ import { collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { fmtPremium } from "@/lib/fmt-money";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { mfeCaptureOutcome } from "./mfe-capture";
 
 const MAX_BULLETS = 14;
 
@@ -360,9 +361,24 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
     );
   }
 
-  if (play.peak != null && play.pnlPct != null && play.peak - play.pnlPct > 20) {
+  // Honest RELATIVE retracement, not a percentage-POINT subtraction of two already-percentage
+  // numbers (FINDINGS 2026-09-10: "Gave back 93%" on a play still up +39.8% — peak 132.7 minus
+  // pnl 39.8 read as 93 points, which the "gave back X%" phrasing unambiguously misreads as a
+  // near-total round-trip). mfeCaptureOutcome (mfe-capture.ts) is the SAME math already shipped
+  // for CLOSED-play post-mortems, reused here for a LIVE play's CURRENT pnl (mfeCapturePct is
+  // always null pre-close — that field only exists after grading).
+  // captureFloor=75 (fire once the play has given back at least a quarter of its peak gain): this
+  // bullet is a standalone recommendation ("consider protecting runner"), so it stays a touch LESS
+  // sensitive than the underlying-excursion aside in play-brief-narrative-coaching.ts (which is a
+  // secondary data point, not its own call to action, and can afford to flag a smaller giveback).
+  const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
+  if (giveback?.kind === "round_trip") {
     lines.push(
-      `Gave back **${(play.peak - play.pnlPct).toFixed(0)}%** from peak — consider protecting runner.`,
+      `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left.`,
+    );
+  } else if (giveback?.kind === "capture" && giveback.capturePct < 75) {
+    lines.push(
+      `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of peak — consider protecting runner.`,
     );
   }
 
@@ -566,12 +582,22 @@ function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed
     play.swingEntryAction?.toUpperCase() ??
     "HOLD";
   const health = thesisHealthUncalibrated(play.thesisHealth) ? null : play.thesisHealth?.health;
-  const pnl = fin(play.pnlPct);
-  const peak = fin(play.peak);
-  const giveback = pnl != null && peak != null && peak - pnl > 15 ? ` · gave back **${(peak - pnl).toFixed(0)}%** from peak` : "";
+  // Honest relative retracement (mfe-capture.ts), not point-difference — a 4TH call site with the
+  // identical bug, found while fixing the other three (blast radius, FINDINGS 2026-09-10): this
+  // degraded-read fallback (fires only when Vector spot isn't wired) independently computed
+  // `peak - pnlPct` right beside actionNarrative's own copy of the same bug in this same file.
+  // captureFloor=80 matches the sibling aside in play-brief-narrative-coaching.ts (a secondary
+  // clause on an already-degraded line, not a standalone recommendation).
+  const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
+  const givebackBit =
+    giveback?.kind === "round_trip"
+      ? ` · round-tripped past breakeven — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%**`
+      : giveback?.kind === "capture" && giveback.capturePct < 80
+        ? ` · gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
+        : "";
   const healthBit = health != null ? ` · thesis **${health}%**` : "";
   const markBit = play.mark != null ? ` · mark **${fmtOptionUsd(play.mark)}**` : "";
-  return `**Live read** — Vector spot not wired on this tick; desk still says **${rec}**${healthBit}${markBit}${giveback}. Levels refresh on next poll.`;
+  return `**Live read** — Vector spot not wired on this tick; desk still says **${rec}**${healthBit}${markBit}${givebackBit}. Levels refresh on next poll.`;
 }
 
 /** Largo-style trade manager narration — levels, flow, hold/break coaching. */
