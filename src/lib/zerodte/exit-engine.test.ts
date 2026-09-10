@@ -608,12 +608,14 @@ test("trim_scale DEAD ZONE (neutral, live TSM shape): peak +20.59% round-trips t
 test("trim_scale DEAD ZONE: once the pending tranche is already taken, the floor exit fires normally (no infinite bypass)", () => {
   // Same peak/mark as the SLS shape, but the caller has ALREADY banked tranche 1
   // (trimsTaken: 1) — nothing new to bank, so the shared floor is free to protect the
-  // remainder. `input.trimmed: true` mirrors what the caller sets after a TRIM, which
-  // also raises the floor to the +50% runner floor rather than breakeven — so this
-  // 0% mark (well below +50%) correctly EXITS the remainder via the runner floor
-  // instead of holding. The point of this test is that `trimAvailable` is false once
-  // `taken` has caught up with `armed` (armed=1, taken=1), so the floor is NOT
-  // suppressed forever — the guard only bypasses the floor for the ONE tick a
+  // remainder. The floor here is the ordinary PEAK-based ratchet table (peak +22.09%
+  // arms the breakeven tier, floor 0%) — NOT the forced +50% runner floor, because the
+  // peak has not cleared the ratchet's own +100% target (ratchetTargetReached is false
+  // at this peak; see that function's doc for why trim_scale's floor no longer trusts a
+  // caller-supplied `trimmed`/the badge). This 0% mark still correctly EXITS via that
+  // breakeven floor rather than holding. The point of this test is that `trimAvailable`
+  // is false once `taken` has caught up with `armed` (armed=1, taken=1), so the floor is
+  // NOT suppressed forever — the guard only bypasses the floor for the ONE tick a
   // tranche is newly armable, exactly as intended.
   const d = evaluateExitState(
     input({
@@ -621,11 +623,65 @@ test("trim_scale DEAD ZONE: once the pending tranche is already taken, the floor
       peakPremium: 4.8836,
       currentMark: 4.0,
       trimsTaken: 1,
-      trimmed: true,
     })
   );
   assert.equal(d.action, "EXIT");
-  assert.equal(d.reason, "runner_floor", "the POST-TRIM +50% runner floor protects the remainder, not breakeven");
+  assert.equal(
+    d.reason,
+    "ratchet_breakeven_floor",
+    "the ordinary peak-based breakeven floor protects the remainder — not a forced +50% runner floor, which only a peak past the ratchet's own target now arms"
+  );
+});
+
+// ── 2026-09-09 finding: badge-lag fix must NOT newly expose the floor-forcing bug ────
+// Reproduces the exact failure mode traced in the finding: fixing plan.ts's badge lag
+// by flipping `status` to "TRIM" at trim_scale's own first-tranche threshold (+20% for
+// neutral) — instead of the ratchet's +100% literal — would, if a caller wired
+// `status === "TRIM"` straight into ExitEngineInput.trimmed (the pre-fix contract; see
+// exit-sync.ts's own `trimmed: opts.status === "TRIM"` line), force the +50% runner
+// floor after banking only ONE of trim_scale's two tranches. This test drives
+// decideTrimScale with EXACTLY that "poisoned" input — `trimmed: true` at a peak that
+// has armed tranche 1 but is nowhere near the ratchet's own target — and asserts the
+// engine ignores it (ratchetTargetReached, not `input.trimmed`, decides trim_scale's
+// floor), so a real member's position is NOT force-exited on a mild pullback from a
+// modest peak.
+test("trim_scale: a 'poisoned' trimmed=true (as a naive caller wiring status===TRIM would produce) must NOT force the +50% floor below the row's own target", () => {
+  // Peak +30% (armed tranche 1 of 2 for neutral — [20,50] — nowhere near the +100%
+  // ratchet target), already banked (trimsTaken: 1), retraced to +22% — still a WINNER,
+  // well above the correct peak-based floor (peak >=20 arms the breakeven tier, 0%) but
+  // BELOW a forced +50% runner floor, which is exactly the premature-exit failure mode
+  // this test guards against.
+  const poisoned = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      peakPremium: 5.2, // +30%
+      currentMark: 4.88, // +22%
+      trimsTaken: 1,
+      trimmed: true, // ← what a naive `status === "TRIM"` wire-through would set
+    })
+  );
+  assert.notEqual(
+    poisoned.action,
+    "EXIT",
+    `expected the position to keep running (RAISE_FLOOR), not a forced exit — got reason=${poisoned.reason}`
+  );
+  assert.equal(poisoned.action, "RAISE_FLOOR");
+  assert.equal(poisoned.reason, "trim_scale_running");
+
+  // Sanity: an IDENTICAL input with `trimmed: false` (the honest value a fixed caller
+  // would pass, since exit-sync.ts's own `trimmed` field stays ratchet-only post-fix)
+  // must produce the EXACT SAME decision — proving trim_scale truly never reads
+  // `input.trimmed` at all, not just that this one poisoned value happens to be safe.
+  const honest = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      peakPremium: 5.2,
+      currentMark: 4.88,
+      trimsTaken: 1,
+      trimmed: false,
+    })
+  );
+  assert.deepEqual(poisoned, honest, "trim_scale's decision must be fully independent of input.trimmed");
 });
 
 // ── KNOWN GAP (2026-08-29 audit finding): the dead-zone guard above is proven correct in
@@ -899,7 +955,10 @@ test("evaluateExitState: a play entered via gex-walls relief does not instantly 
 // ── trim_scale trimsTaken latch clamping ─────────────────────────────────────────────
 test("trim_scale: trimsTaken is clamped/floored to 0..2 — an over-count runs the runner, a negative starts fresh", () => {
   // trimsTaken 5 (> 2) → clamped to 2 → the last third RUNS (not another trim).
-  const over = evaluateExitState(input({ exitMode: "trim_scale", peakPremium: 8.0, currentMark: 5.6, trimsTaken: 5 }));
+  // Peak +75% (not +100%, the default planTarget) — this isolates the CLAMP behavior
+  // under test from ratchetTargetReached's own +50%-floor-forcing (peak clearing the
+  // target is a separate, deliberately-tested fact; see the DEAD ZONE tests above).
+  const over = evaluateExitState(input({ exitMode: "trim_scale", peakPremium: 7.0, currentMark: 5.6, trimsTaken: 5 }));
   assert.equal(over.action, "RAISE_FLOOR");
   assert.equal(over.reason, "trim_scale_running");
   // trimsTaken −1 → floored to 0 → a +25% peak banks the FIRST third.
