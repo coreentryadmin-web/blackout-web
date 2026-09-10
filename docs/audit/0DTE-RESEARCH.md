@@ -280,6 +280,78 @@ stays advisory and accrues evidence.
   ENFORCE_MIN_DELTA) before it sizes or gates real risk. The measurement loop — not any single parameter —
   is the moat.
 
+### E6 — does `score_floor` (65) actually rank forward outcome? An independent re-check (2026-09-10)
+
+**The open question.** `zerodte-gate-compound-funnel.mjs` measured twice (2026-09-08 off-hours n=15,
+2026-09-09 RTH n=26) that `score_floor` (G-3, `ZERODTE_SCORE_FLOOR = 65`) is the dominant ISOLATED-
+rejection gate on FLOW-origin whole-market 0DTE setups — 84.6% isolated failure at RTH, the clear
+chokepoint on play COUNT the operator has repeatedly complained about live — and left open whether 65
+itself is miscalibrated or the score formula genuinely underscores tradeable setups. "Needs a backtest
+of the score distribution against forward outcomes before touching the threshold," per that script's
+own header.
+
+**Why 65 was set in the first place (F-2, `NIGHTHAWK-0DTE-DECISION.md`, 2026-07-13, n=16, real option
+premium graded):** the engine's own 14-day calibration at the time found the 55–64 score band ran
+**18.8% WR / avg −24.5% premium** — below the 33.3% breakeven line on the −50%/+100% payoff — while
+65–74 ran 50% WR/+21.1% and 75+ ran 50% WR/+9.9%. That is the evidence the 65 floor exists on. It is
+also ~2 months old, n=16 in the load-bearing band, and measured against the THEN-current engine, not
+today's `deriveZeroDteSetups`/`gates.ts`.
+
+**This re-check (`zerodte-score-floor-outcome-backtest.mjs`).** Re-derives the REAL FLOW-origin score
+for 18 real historical trading days (2026-08-13…2026-09-08, chosen as the most recent complete sessions
+UW's flow-alerts `older_than` pagination reaches from this sandbox — confirmed live back to at least
+2026-08-14 with zero errors) directly from UW flow-alerts (same re-fetch precedent as
+`zerodte-gate-compound-funnel.mjs`: same alerts, different pipe from the Postgres table production
+reads from), runs the REAL `deriveZeroDteSetups` (board.ts) per day with that day's own 3-day
+accumulation window and as-of clock (so `dte`/expiry filtering is correct for each historical day, not
+just "now"), and grades every scored setup's forward move on REAL Polygon minute bars with the
+favorable-first underlying-continuation proxy `discovery-recall-probe.mjs`/`merge-precedence-ab.mjs`
+already use (fixed 10:00 ET entry, +1.5%/−0.75% favorable/adverse) — **NOT real option premium like
+F-2 used**, a materially different and coarser grading rule, stated here so the two measurements are
+never conflated as directly comparable. Bucketed into bands fixed BEFORE looking at any result,
+straddling 65 exactly (`lib/score-floor-backtest-eval.mjs`).
+
+**Result — 18 sessions, 393 setups sampled, 392 graded:**
+```
+score band              n     win%     avg maxRet%
+0-39                    47    19.1%     0.75%
+40-54                  206    20.4%     0.72%
+55-64 (blocked today)   78    25.6%     0.76%
+65-74 (clears today)    55    14.5%     0.57%
+75-84                    6    33.3%     0.91%   (excluded, n<30)
+85-100                   0     —         —
+```
+**The headline comparison this re-check exists to answer — does the population score_floor lets
+through beat the population it blocks?** **NO, not in this sample:** 55–64 (blocked) graded **25.6%**
+vs 65–74 (clears) at **14.5%** — a **−11.1pp delta AGAINST the floor's implied ordering**, the opposite
+direction from F-2's 55–64-underperforms finding.
+
+**Verdict (same discipline `helix-score-signal.mjs` uses — requires a real spread AND a monotonic
+Spearman trend, never a spread alone): `SPREAD WITHOUT ORDER`** — spread 11.1pp, rank correlation
+ρ = −0.20 (short of the ±0.6 threshold for RANKS/INVERTED). The bands differ but do not trend with
+score; the two directly-comparable bands (n=78, n=55, both ≥30) sit in the "wrong" order and the two
+lower bands (0-39, 40-54) both under-perform 55-64 too. This is the same verdict shape HELIX's own
+conviction-score probe reached for an analogous question — a second, independent instance of a
+BlackOut scoring formula whose ordering does not survive an outcome check, worth noting for anyone
+building a NEW score elsewhere in the product.
+
+**Does this REFUTE F-2 or justify removing the floor? No — read the scope before acting on this.**
+This measures a favorable-first UNDERLYING-continuation proxy at a FIXED synthetic 10:00 ET entry, not
+real option P&L (no strike, no premium decay, no exit-management rule) — a different, coarser
+instrument than F-2's real-premium grading. It also measures `score` ALONE, never jointly with the
+other ~14 hard gates (VIX regime, confluence, governor, Cortex — see `zerodte-gate-compound-funnel.mjs`
+for those). A setup graded here as a "65-74 win" may still be blocked live by a different gate, and a
+"55-64 win" here was never exposed to real slippage/spread on the actual option leg. What this DOES
+say: on the specific, narrower question of whether `score` alone ranks a coarse forward-continuation
+proxy, the evidence over a real, well-powered (n=392) recent sample does not support a clean ordering
+around 65 — which means the standing question ("miscalibrated floor, or genuinely weak setups below
+it?") is still open, not closed in either direction, and deserves a real-option-P&L re-run of F-2's
+own methodology at today's larger achievable sample size before anyone touches the threshold.
+
+**No gate changed.** Evidence-gathering only, same discipline as every other calibration A/B in this
+toolkit (`cortex-oppose-magnitude-ab.mjs`, `tier-exit-mode-ab.mjs`, etc.) — this reports a verdict and
+leaves the decision to a human reading it.
+
 ---
 
 ## Part 2 — Whole-market weekly BANGER engine
