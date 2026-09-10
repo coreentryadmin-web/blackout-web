@@ -469,3 +469,83 @@ than a blind global change.
 ```
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-persistence-recall.mjs --days=90 --horizons=1,3,5 --min-n=8
 ```
+
+## 8. Swing gate-COMPOUND funnel + discovery-pool loosening pool-size before/after — measured 2026-09-09/10, one genuine gap found and left UNFIXED (documented, not forced)
+
+**Why this was measured.** Two PRs shipped on 2026-09-08 on the same operator complaint about low
+swing play counts — the discovery-pool-loosening finding (raised the dynamic Tier-1 cap
+ceiling/pool-pct, `maxStructureMovers`, BREAKOUT_MIN_VOLUME/GAIN, and two FLOW premium floors) and
+item #7 above (the persistence floor). Neither PR, nor any prior tool, ever measured (a) whether
+the pool-size loosening actually widened the number of names reaching Tier-1, or (b) the JOINT
+pass rate across `v2/gates.ts`'s 5 active commit gates (G-S3 earnings, G-S4 regime, G-S6
+confluence, G-S12 halt, G-S14 Cortex) — the same "each gate looks fine alone, but a setup must
+clear ALL of them at once" question `zerodte-gate-compound-funnel.mjs` was built to answer for
+0DTE. `scripts/audit/swing-gate-compound-funnel.mjs` (CLAUDE.md's audit toolkit has the full
+methodology + caveats) answers both, against REAL production functions and REAL live data.
+
+**(1) Pool size — genuinely reconstructable before/after, because the affected constants are
+either function parameters or env-overridable.** Live run, 2026-09-09, same real Tier-0 pool
+measured under both configs at once:
+
+| | OLD (pre-2026-09-08) | NEW (live) | Δ |
+|---|---|---|---|
+| STRUCTURE movers | 40 | 60 | +20 |
+| Tier-0 merged (FLOW ∪ STRUCTURE) | 209 | 224 | +15 |
+| Tier-1 cap resolved | 80 | 101 | +21 |
+
+The loosening DID widen the pool that reaches Tier-1 scoring — a real, measured +26% on the
+resolved cap, not an assumption. **But** FLOW tickers (directional) were **193 in BOTH eras,
+completely unaffected** — see finding (3) below for why.
+
+**(2) Gate joint pass rate — FRESH BASELINE ONLY, not a before/after** (the 5 commit gates in
+`gates.ts` were untouched by either 2026-09-08 PR, so there is nothing to diff against). Same live
+run, 80 of the 101 real Tier-1 candidates evaluated (harness fetch-budget bound, not production's
+own cap):
+
+| Gate | Isolated failure | % |
+|---|---|---|
+| G-S6 confluence | 79/80 | 98.8% |
+| G-S4 regime | 37/80 | 46.3% |
+| G-S3 earnings | 1/80 | 1.3% |
+| **JOINT (all 3 at once)** | **80/80 blocked** | **0.0% commit-eligible** |
+
+G-S12 (halt) and G-S14 (Cortex) were not run at all (see the script header/toolkit entry for why);
+their absence biases the joint rate UP. Missing POSITIONING/CATALYST/BANGER/VECTOR Tier-0 origins
+bias G-S6 the OPPOSITE way — DOWN, because every candidate here carries fewer independent
+`discoveryPaths` kinds than production's real multi-origin merge would, and G-S6 requires 3
+independent kinds for a standard archetype (2 for EVENT_DRIVEN/POST_EARNINGS_DRIFT). Most
+candidates in this run carry only `["FLOW"]` (1 kind) — an automatic G-S6 fail regardless of
+archetype, which is very likely THIS run's own recall gap more than a fact about live production.
+**Net verdict: the compounding EXISTS (0/80 joint here even before counting G-S12/G-S14), but this
+run does not isolate how much of the G-S6 dominance is real vs. an artifact of the narrower
+Tier-0 origin set measured** — unlike the 0DTE tool's approximations (which were all one-
+directional and therefore a clean upper bound), this one is genuinely mixed. G-S4 regime's 46.3%
+is NOT subject to that particular bias (regime01 is computed from real SPY closes, independent of
+origin count) and is a real, standalone chokepoint worth its own follow-up.
+
+**(3) A genuine gap found, and deliberately left UNFIXED rather than forced.** Building (1) above
+required reading exactly what the discovery-pool-loosening PR's two FLOW premium floors
+(`swingCorroboratedFlowMinPremium`/`swingLegacyFlowMinPremium`, `v2/config.ts`) actually do.
+Answer: **nothing.** Repo-wide grep confirms zero call sites outside their own definitions — not
+even a test references them. Worse, wiring them in exactly as named would still be a no-op:
+`flowAccumulationByTicker`'s `DIRECTION_MIN_NET_PREMIUM = 250_000`
+(`features/nighthawk/lib/flow-accumulation.ts`, shared with 0DTE/Vector/Helix) already classifies
+any ticker under $250k net signed premium as "neutral" — no side to trade, dropped before either
+swing-specific floor would ever see it. Every ticker that reaches `flowTickersDirectional` already
+clears $250k, which trivially clears both the claimed $175k and $100k floors. A literal wire-up
+was drafted, then reverted once this was traced, on the judgment that shipping code which can
+never fire is worse than leaving it dead — it would read as "fixed" in a diff while changing
+nothing measurable. **The real fix needs `DIRECTION_MIN_NET_PREMIUM` to become configurable per
+caller — out of scope here since 0DTE and Vector read the same shared function and constant; a
+change there is a cross-engine risk this PR does not take.** Left open as a scoped follow-up, not
+silently dropped.
+
+**What was NOT done.** No gate changed, no premium floor wired. The pool-size numbers above are
+real and stand on their own; the gate-compound measurement is a fresh baseline whose G-S6 reading
+should NOT be read as "confluence is broken" without a follow-up run that also fetches
+POSITIONING/CATALYST/BANGER/VECTOR origins to remove that bias.
+
+**Re-run:**
+```
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-gate-compound-funnel.mjs --days=5 --max-tickers=101 --json
+```
