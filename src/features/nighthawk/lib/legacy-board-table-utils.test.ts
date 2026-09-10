@@ -6,6 +6,7 @@ import {
   legacyBoardCalendarBuckets,
   terminalPlayToLegacyRow,
 } from "@/features/nighthawk/lib/legacy-board-table-utils";
+import { vectorBoardScorecard } from "@/features/nighthawk/lib/vector-board-row-utils";
 
 function basePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -85,6 +86,57 @@ test("legacyBoardCalendarBuckets excludes a pulled play's counterfactual from ne
 // as-is with no rounding, so an un-rounded average here prints raw float noise. Measured live,
 // 2026-09-10: real SIG/FICO premiums (-80.73%/+24.19%) averaged to a tile reading
 // "-28.2700000000000004%" once the pulled-play fix above landed without this rounding. ─────────
+
+// ── legacyVectorStatus never emitted "winner"/"runner" — only vectorBoardScorecard's shared
+// aggregation (winners/runners/winnersFloorPct/runnerPipelinePct) reads `status`, so those four
+// figures were structurally always zero for every Legacy row regardless of real performance.
+// Live evidence, 2026-09-10: FICO open at +24.19% (clears the same 15% threshold legacyRowKind
+// already uses for `kind`) still showed "0 runners" on the live scorecard. ───────────────────────
+
+test("terminalPlayToLegacyRow: an open play crossing +50% reports status winner", () => {
+  const row = terminalPlayToLegacyRow(basePlay({ status: "OPEN", pnlPct: 62 }), "2026-09-10");
+  assert.equal(row.status, "winner");
+  assert.equal(row.statusLabel, "Winner");
+});
+
+test("terminalPlayToLegacyRow: an open play crossing +15% (but under +50%) reports status runner", () => {
+  const row = terminalPlayToLegacyRow(basePlay({ status: "OPEN", pnlPct: 24.19 }), "2026-09-10");
+  assert.equal(row.status, "runner");
+  assert.equal(row.statusLabel, "Runner");
+});
+
+test("terminalPlayToLegacyRow: an open play under +15% stays plain open, no upgrade", () => {
+  const row = terminalPlayToLegacyRow(basePlay({ status: "OPEN", pnlPct: -5 }), "2026-09-10");
+  assert.equal(row.status, "open");
+});
+
+test("terminalPlayToLegacyRow: a WATCH play is never upgraded even with a stray pnlPct", () => {
+  const row = terminalPlayToLegacyRow(basePlay({ status: "WATCH", pnlPct: 90 }), "2026-09-10");
+  assert.equal(row.status, "open");
+  assert.equal(row.statusLabel, "WATCH");
+});
+
+test("terminalPlayToLegacyRow: a caution-flagged play is never upgraded by a high pnlPct", () => {
+  const row = terminalPlayToLegacyRow(
+    basePlay({ status: "OPEN", horizon: "LEGACY", morningStatus: "DEGRADED", pnlPct: 90 }),
+    "2026-09-10"
+  );
+  assert.equal(row.status, "caution");
+  assert.equal(row.statusLabel, "DEGRADED");
+});
+
+test("vectorBoardScorecard: legacy rows with a real runner now count toward runners/runnerPipelinePct (live SIG/FICO figures)", () => {
+  const plays = [
+    basePlay({ id: "sig", ticker: "SIG", status: "OPEN", pnlPct: -80.73 }),
+    basePlay({ id: "fico", ticker: "FICO", status: "OPEN", pnlPct: 24.19 }),
+  ];
+  const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-10"));
+  const sc = vectorBoardScorecard(rows);
+  assert.equal(sc.runners, 1, "FICO at +24.19% must count as a runner");
+  assert.equal(sc.winners, 0);
+  assert.equal(sc.runnerPipelinePct, 50, "1 of 2 open rows is a runner");
+  assert.equal(sc.winnersFloorPct, 0);
+});
 
 test("legacyBoardCalendarBuckets rounds net_premium_pct to an integer (no float-noise digits)", () => {
   const plays = [

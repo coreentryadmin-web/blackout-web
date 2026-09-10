@@ -35,11 +35,32 @@ function legacyVectorStatus(play: TerminalPlay): { status: VectorBoardStatus; la
   if (play.status === "SKIP") return { status: "invalidated", label: "PULLED" };
   if (play.status === "CLOSED") return { status: "closed", label: "CLOSED" };
   if (play.status === "WATCH") return { status: "open", label: "WATCH" };
-  if (play.morningStatus === "CONFIRMED") return { status: "open", label: "CONFIRMED" };
-  const base = playStatusDisplay(play.status);
-  const status: VectorBoardStatus =
-    base.tone === "closed" ? "closed" : base.tone === "watch" ? "caution" : "open";
-  return { status, label: base.label };
+
+  let status: VectorBoardStatus;
+  let label: string;
+  if (play.morningStatus === "CONFIRMED") {
+    status = "open";
+    label = "CONFIRMED";
+  } else {
+    const base = playStatusDisplay(play.status);
+    status = base.tone === "closed" ? "closed" : base.tone === "watch" ? "caution" : "open";
+    label = base.label;
+  }
+
+  // A live, open play (never WATCH — not-yet-entered plays have no real pnlPct and already
+  // returned above) that has crossed the winner/runner premium thresholds must present that way
+  // to the shared scorecard: vectorBoardScorecard's winners/runners/winnersFloorPct/
+  // runnerPipelinePct all key off `status`, not `kind` — and no branch above this point ever
+  // emits "winner"/"runner", so those four figures were structurally always zero for every
+  // Legacy row regardless of real performance. Live evidence, 2026-09-10: FICO open at +24.19%
+  // (clears the same 15% runner threshold legacyRowKind already uses below) still showed
+  // "0 runners" / "Runner pipeline 0%" on the live scorecard.
+  if (status === "open") {
+    const pct = play.pnlPct;
+    if (pct != null && pct >= 50) return { status: "winner", label: "Winner" };
+    if (pct != null && pct >= 15) return { status: "runner", label: "Runner" };
+  }
+  return { status, label };
 }
 
 function legacyRowKind(play: TerminalPlay): VectorBoardRowKind {
