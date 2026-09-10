@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T17:09:18.158Z",
+  "lastUpdated": "2026-09-10T17:31:59.742Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -306,6 +306,11 @@
       "at": "2026-09-10T17:09:18.159Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hour's cycle set)",
       "result": "healthcheck:legacy GREEN. GitHub MCP undraft rate-limit budget CLEARED this cycle -- undrafted both #4733 and #4736 successfully. #4733 (G-N4 published-mirror fix) MERGED (c8f7d7d) -- verified content directly against origin/main (book_tape_conflict wired into GateMirrorLine/retroWouldBlock/gatePublishedMirror, exactly as shipped), per the standing 'a merge is not a verification' discipline. #4736 (tier-factors briefing) not yet merged -- undrafting it kicked off a fresh dispatch/triage CI run on the same head SHA, mergeable_state 'unstable' while that settles; will check again next cycle. Rate-limiter incident: same intermittent pattern (p99 spikes 28-90s at 16:54/16:57/16:58/17:00/17:01/17:06/17:07), not re-investigating. DISCIPLINE NOTE: started building the queued factor_breakdown surfacing enhancement (branched feat/legacy-factor-breakdown-briefing off main) but caught myself before writing code -- main does NOT yet have #4736's 'Why this tier' section (still unmerged), and my planned factor_breakdown section would insert at the exact same spot in the same file (PlaybookBriefingPanel.tsx, right before 'Factor inputs'). Building on stale main risks a same-file ordering collision exactly like CLAUDE.md's CROSS-PR ORDERING DEPENDENCIES section warns about. Abandoned the branch, will rebuild once #4736 is confirmed merged (next cycle or the one after) rather than race it."
+    },
+    {
+      "at": "2026-09-10T17:31:59.742Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy GREEN. Confirmed #4736 (tier-factors briefing) merged to main this cycle ('Why this tier' section present in PlaybookBriefingPanel.tsx) -- cleared to build the queued factor_breakdown enhancement without an ordering collision. Built it: FACTOR_BREAKDOWN_LABELS map + scoreComponents() helper (non-zero entries, magnitude-sorted, unmapped-key fallback to raw name) + a new 'Score components' section right below 'Why this tier', mirroring 0DTE's FactorChips visual grammar but rendering ALL non-zero dimensions (Legacy's breakdown has more dimensions than 0DTE's curated 5-chip set -- curating would relocate the same gap). RED->GREEN via git-stash on the component alone (2/7 new tests failed pre-fix). Full nighthawk-components suite 90/90, full repo suite 13654/13654, tsc clean, eslint clean. PR opened as draft (feat/legacy-factor-breakdown-briefing), subscribed to PR activity -- number/URL pending via background agent. This closes out the knownOpenItems.legacyFactorBreakdownNeverRendered_2026_09_10 item flagged 2 cycles ago."
     }
   ],
   "knownOpenItems": {
@@ -319,8 +324,8 @@
     },
     "uwGlobalRpsCeilingStillUndersized_2026_09_10": "OPEN, platform-wide, ESCALATING -- updated 13:51 UTC follow-up: the global_rps contention flagged at 13:31 UTC market open has NOT resolved 20+ minutes later; ALB p99 stayed 12-32s (vs 4-8s pre-open baseline) continuously, and log clusters GREW (10 simultaneous rate-limiter failures in one second at 13:45:36, up from 1-2 at 13:31). Legacy's OWN member-facing surface (edition/marks/record) has recovered to GREEN and stayed there because the edition route reads a persisted DB row rather than live UW flow-alerts -- Legacy is largely insulated, but this almost certainly means live-polling desks (Vector, 0DTE, Helix, flows) are experiencing WORSE, ongoing degradation right now. uw-rate-limiter.ts's GLOBAL_MAX_RPS=2 default has no documentation of whether it reflects a real UW plan/contract rate limit -- raising it blind risks trading one failure mode (internal queue timeout) for another (UW-side 429 rejections). Needs: (1) someone with UW contract/plan knowledge to confirm the real safe ceiling, (2) a cross-desk concurrent-caller-count measurement at RTH open, before any ceiling change. This is now confirmed sustained/worsening, not a one-off blip -- treat as active, not historical.",
     "legacyFactorBreakdownNeverRendered_2026_09_10": {
-      "status": "OPEN",
-      "note": "factor_breakdown (score-component weights, distinct from tier.factors' prose reasoning and from the existing trade-mechanics 'Factor inputs' section) is computed and returned on every play but never rendered in any Legacy component -- 0DTE's ZeroDteBoard.tsx has a working FactorChips component (~line 1056) to port the pattern from. Same shape/scope as the tier-factors fix (PR #4736) -- small, additive, one component. Not yet built; pick up next cycle with capacity."
+      "status": "CLOSED",
+      "note": "Built and PR opened this cycle (feat/legacy-factor-breakdown-briefing) once #4736 (the prerequisite tier-factors PR touching the same file/location) merged. See the :21 UTC checkIn for details."
     }
   },
   "toolingGaps": {
