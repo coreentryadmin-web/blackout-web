@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T19:14:10.728Z",
+  "lastUpdated": "2026-09-10T19:22:36.092Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -346,6 +346,11 @@
       "at": "2026-09-10T19:14:10.729Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hour's cycle set)",
       "result": "healthcheck:legacy GREEN. PR #4742 (pulled-play scorecard fix) CONFIRMED MERGED (6b5c59d, 2026-09-10 18:57:33 UTC) -- verified content directly against origin/main. Ran a fresh live-UI sweep to close the loop on this session's biggest finding: the Legacy tab screenshot at 19:09 UTC STILL showed the bug live ('Hit rate 100%... Best: ASO +306.67%' -- the pull's counterfactual has moved but the phantom-win framing is unchanged). Did NOT treat this as a fix failure -- checked ECS directly first: blackout-production-web has a PRIMARY deployment (task def :1428) with rolloutState IN_PROGRESS, createdAt 19:03:14 UTC (~6min after the merge, consistent with CI build+ECR push timing), alongside the still-serving prior ACTIVE deployment (:1427, desired 5/running 5). This is real, first-class evidence the fix is mid-rollout, not a persistent bug -- the 19:09 screenshot caught the tail of the OLD deployment still serving some traffic during the ECS rolling swap. Logged for next-cycle re-verification once rolloutState reads COMPLETED -- this is the exact 'don't trust a check run seconds after a deploy' discipline CLAUDE.md's depth-ladder tooling note already documents for a different feature; same trap, same fix (check ECS/re-screenshot after the rollout actually finishes, never right after a merge)."
+    },
+    {
+      "at": "2026-09-10T19:22:36.092Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy GREEN. ECS rollout (deployment :1428, PR #4742's fix) still IN_PROGRESS (desired 7/running 6 on new, 2/2 draining old) -- checked via direct ecs describe_services, not yet complete, re-check next cycle before re-screenshotting (screenshotting mid-rollout would likely still catch stale traffic and waste a check). Rate-limiter incident: same pattern, one spike to 110.54 at 19:11 roughly coinciding with the deploy swap -- plausible but not conclusive correlation, not chasing further. RESOLVED last cycle's flagged follow-up (legacyTimelinePulledReasonSoftGap): traced which component actually renders Legacy's play-detail view -- LegacyPickLogBoard.tsx uses its OWN LegacyPlayTechnicalsRail component (line 504), NOT the shared VectorPlayDetailPanel/vectorBoardTimeline() I was worried about (that combo is Vector-only, grep confirmed vectorBoardTimeline has exactly one caller, VectorPlayDetailPanel.tsx, never imported by any Legacy component). LegacyPlayTechnicalsRail.tsx DOES explicitly render a 'Pulled' bullet with the real play.pulledReason text and a down/warning tone when set (line 94-95) -- the detail view already discloses pulls honestly. CLOSING that open item as a false alarm, not a real gap -- the only genuine issue this session's pulled-play investigation found was the scorecard aggregate (PR #4742, already fixed), not the per-play detail view."
     }
   ],
   "knownOpenItems": {
@@ -363,8 +368,8 @@
       "note": "Built and PR opened this cycle (feat/legacy-factor-breakdown-briefing) once #4736 (the prerequisite tier-factors PR touching the same file/location) merged. See the :21 UTC checkIn for details."
     },
     "legacyTimelinePulledReasonSoftGap_2026_09_10": {
-      "status": "OPEN_UNVERIFIED",
-      "note": "vectorBoardTimeline's row.reason for a pulled Legacy play is thesis/recNote text, not the real pulled_reason -- the mini-timeline shows a generic green 'Closed' event rather than explicitly disclosing the pull. Not yet confirmed as real user-facing impact (statusLabel='PULLED' badge may already cover this elsewhere on the same detail view) -- needs tracing which component actually calls vectorBoardTimeline for Legacy before treating as a genuine finding. Lower priority than the scorecard fix (PR #4742)."
+      "status": "CLOSED_FALSE_ALARM",
+      "note": "vectorBoardTimeline (the function I was worried about) is exclusively used by Vector's own VectorPlayDetailPanel.tsx -- never called for Legacy rows. Legacy's real detail view is LegacyPlayTechnicalsRail.tsx, which already renders an explicit 'Pulled' bullet with the real pulledReason text and a down tone (lines 94-95). No fix needed."
     },
     "legacyPulledScorecardFixRolloutVerify_2026_09_10": {
       "status": "PENDING_ROLLOUT",
