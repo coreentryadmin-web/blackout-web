@@ -499,7 +499,10 @@ export function composeSwingPlayBrief(
 
   const verdictLines: string[] = [];
   const action = swingActionDisplay(play);
-  verdictLines.push(`**${headline}** · ${play.direction} · ${action?.label ?? play.status}`);
+  // Fallback chain must match the envelope headline's below (action -> recommendation -> status)
+  // — a SKIP-deckStatus RESEARCH row otherwise showed "HOLD" in the headline and raw "· SKIP"
+  // here in the very same brief (live repro: SLV, 2026-09-10, FINDINGS 2026-09-10).
+  verdictLines.push(`**${headline}** · ${play.direction} · ${action?.label ?? play.recommendation ?? play.status}`);
   if (grade) verdictLines.push(`Grade **${grade}**${quality != null ? ` · score ${quality}` : ""}`);
   if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
   // Dossier regime (discovery-pillar read, e.g. "Breakout · regime 0.82") belongs in "Why this setup"
