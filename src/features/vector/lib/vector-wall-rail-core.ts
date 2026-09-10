@@ -579,6 +579,34 @@ export function maxPctByTime(
   return out;
 }
 
+/**
+ * Per-side book-peak denominators for the bead rail's size/colour channels.
+ *
+ * `maxPct` (the combined max across both sides) used to be the ONLY denominator fed to
+ * `targetHalfPx`/`fillAlpha` for every bead, call or put — deliberate, so a call and a put of
+ * equal book share rendered equally fat. That collapses one side's whole distribution to the
+ * size/alpha floor whenever the OTHER side's book share dominates it (member report + live SPX
+ * repro, 2026-09-10: put walls 16.3/6.3/6.2/5.7%..., call walls 0.89/0.45/0.4/0.35%... — every
+ * call bead sat far enough below the combined max that the entire call side rendered as one
+ * indistinguishable size/shade, even though its own strikes span a real ~6x range).
+ *
+ * `callMaxPct`/`putMaxPct` keep exactly the same "shared, not self-referential" property that
+ * made the combined denominator work in the first place (see the size-channel comment in
+ * vector-wall-rail-primitive.ts for the full A/B history) — they are just scoped to one side
+ * instead of both, so a side's own cross-strike ordering is unaffected and its own real spread
+ * gets the floor-to-ceiling range to itself instead of ceding most of it to the stronger side.
+ */
+export function sidePctMaxima(
+  callTrails: ReadonlyArray<{ points: ReadonlyArray<{ pct: number }> }>,
+  putTrails: ReadonlyArray<{ points: ReadonlyArray<{ pct: number }> }>
+): { callMaxPct: number; putMaxPct: number; maxPct: number } {
+  let callMaxPct = 0;
+  for (const t of callTrails) for (const p of t.points) if (p.pct > callMaxPct) callMaxPct = p.pct;
+  let putMaxPct = 0;
+  for (const t of putTrails) for (const p of t.points) if (p.pct > putMaxPct) putMaxPct = p.pct;
+  return { callMaxPct, putMaxPct, maxPct: Math.max(callMaxPct, putMaxPct) };
+}
+
 // ── SPACING BUDGET (2026-08-18) ───────────────────────────────────────────────────────────────
 //
 // THE DEFECT, seen rather than computed. A live screenshot of /vector at 3m showed the rail as
