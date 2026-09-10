@@ -53,6 +53,47 @@ test("composeSwingPlayBrief: WATCH WAIT recommendation uses WAIT label, not raw 
   assert.doesNotMatch(entry!.body, /\*\*Entry stance:\*\* HOLD/);
 });
 
+test("composeSwingPlayBrief: WATCH play with detectedAt narrates real days-on-watch age (2026-09-10 gap fix)", () => {
+  // detectedAt (the deck's "WATCH Published clock") was already threaded onto TerminalPlay and
+  // shown on the Command Deck panel, but never narrated in the play-brief text — a live sweep
+  // found real WATCH rows persisting 45+ days (AMD) below the commit floor, invisible to a member
+  // asking Largo directly about them. This section surfaces it without any new plumbing.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ detectedAt: "2026-07-27T14:30:38.000Z" }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(entry!.body, /First flagged \*\*\d+ days? ago\*\*/);
+  assert.match(entry!.body, /still on WATCH, not yet graduated to a real position/);
+});
+
+test("composeSwingPlayBrief: WATCH play without detectedAt omits the age line entirely (never fabricated)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ detectedAt: null }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.doesNotMatch(entry!.body, /First flagged/);
+});
+
 test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ discoveryOrigin: ["FLOW", "BREAKOUT"] }),
