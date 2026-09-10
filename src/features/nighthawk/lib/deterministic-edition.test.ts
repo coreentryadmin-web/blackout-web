@@ -327,6 +327,42 @@ test("thesis explains flow/tech divergence when direction opposes trend (PR-N28)
   assert.match(thesis, /Flow conviction overrides bearish technicals/);
 });
 
+test("thesis keeps a gap tag paired with its own gap-fill explanation instead of truncating it away", () => {
+  // Mirrors a real live thesis (FICO, 2026-09-10): "prior day HOD break, gap up 49.89 in
+  // bearish trend" for a SHORT play — a bullish-sounding break+gap-up pair with no stated
+  // reason why the trade fades it. technicals.ts's classifySetup() always pushes a
+  // "gap-fill risk below" / "gap-fill bounce zone above" tag immediately after the gap tag
+  // for exactly this reason (it's the one setup_tag that argues a DIRECTION, unlike RSI/
+  // volume/EMA tags), but buildDeterministicThesis's blind `slice(0, 2)` drops it whenever
+  // two other tags sort ahead of it — here "prior day HOD break" and "gap up X" fill both
+  // slots and "gap-fill risk below" (3rd) never reaches the member-facing sentence.
+  const s = scored("FICO", "short", 42);
+  const d = dossier("FICO", 106.75, {
+    tech: {
+      ...dossier("FICO", 106.75).tech!,
+      trend: "bearish",
+      setup_tags: ["prior day HOD break", "gap up 49.89", "gap-fill risk below"],
+    },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /gap-fill risk below/, "the gap's own directional explanation must survive truncation");
+});
+
+test("thesis does not force in a gap-fill tag when the gap tag itself was never selected", () => {
+  // The pairing fix must not spuriously append gap-fill commentary onto a thesis whose
+  // opener never mentioned the gap in the first place (e.g. two stronger tags precede it).
+  const s = scored("ZZZ", "long", 53);
+  const d = dossier("ZZZ", 100, {
+    tech: {
+      ...dossier("ZZZ", 100).tech!,
+      trend: "bullish",
+      setup_tags: ["20d range breakout", "weekly breakout zone", "gap up 5.00", "gap-fill risk below"],
+    },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /gap-fill/, "no gap tag in the opener means no orphaned gap-fill commentary either");
+});
+
 test("LONG target is pushed above call strike + 2×premium when stock target < strike (PR-N29)", () => {
   // High-priced stock where ATR-based target lands below the ATM strike
   const highChain: EditionChainData = {
