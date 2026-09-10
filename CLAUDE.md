@@ -623,6 +623,19 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   --is-shallow-repository` before believing any merge-base result**, and
   `git fetch --unshallow -q origin` (~30s) once per container. A container restart brings the
   shallow clone back.
+  **Second confirmed instance (2026-09-10): `git log`-based date generators silently produce WRONG
+  dates on a shallow clone, no error, no warning.** `scripts/seo/generate-marketing-dates.mjs` (and
+  the same-shape `generate-article-dates.mjs`) derive each page's `lastModified` via
+  `git log -1 --format=%ad -- <file>`. On this sandbox's default shallow clone, that command doesn't
+  fail — it happily returns a date, just the wrong one (the shallow boundary's own commit, not the
+  file's true last-touching commit), for any file whose real most-recent change lies outside the
+  fetched window. Regenerating `marketing-dates.ts` from a shallow clone drifted THREE untouched
+  pages (`/faq`, `/why-blackout`, `/contact`) from their correct 2026-08-08 to a fabricated
+  2026-08-20, and that wrong file was pushed and failed CI's `check-marketing-dates-drift.mjs` guard
+  (which runs with `fetch-depth: 0` and computes the true dates) — a real, avoidable CI round-trip.
+  Unlike the merge-base failure above, there is **no loud error to catch this one** — the script
+  exits 0 and prints a plausible-looking file. **Run `git fetch --unshallow -q origin` before
+  running EITHER date generator, not just before a merge-base check.**
 - **Direct Postgres (raw TCP) is blocked**, same as WebSockets — only HTTP(S) egress through the agent proxy works. So `pg_stat_activity`/lock/row-count probes against prod are **not possible from this sandbox** — root-causing a live DB-side issue (lock contention, slow query, table bloat) needs either an AWS ECS exec session or a temporary HTTP-exposed debug endpoint in the app itself. Don't spend time retrying a raw `pg.Client` connection here.
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
 - Clerk instance requires a **phone number** on user creation; rapid sign-in/token cycles get **FAPI-rate-limited** — authenticate once per run.
