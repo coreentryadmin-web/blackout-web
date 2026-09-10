@@ -165,6 +165,15 @@
       "Item 5 (fast circuit-breaker authority) -- noted as standing authority, not yet actionable: the full non-mechanical loss taxonomy (BAD-ENTRY/BAD-EXIT/CLEAN-STOP-OUT/VARIANCE bucketing) still isn't built, so there's no streak-tracking substrate to trigger it from yet."
     ]
   },
+  "2026-09-10T13:10Z_15min_cadence_check": {
+    "board_state": "PRE_MARKET (heat_pct 33), 0 live setups, 0 ledger rows -- no material change since 06:xx cycle, no forensic story to read yet.",
+    "pr4076_check": "No Cursor response yet to the QQQ stale-entry-premium finding (checked via GitHub REST `since=` filter, only own prior comments + an unrelated Swings-lane CI-outage note in that window). Still awaiting -- not re-posting, not idle either (see below).",
+    "bounded_enhancement_look": {
+      "method": "Time-of-day (ET commit hour) win rate, same 90-day/non-mechanical dataset already in hand -- zero new API calls.",
+        "result_table": "10:00 ET: n140/WR43.2%/avg-3.08 | 11:00: n65/WR48.1%/avg+0.05 | 12:00: n31/WR50.0%/avg-4.20 | 13:00: n9/WR40.0%/avg-7.53 | 14:00: n8/WR50.0%/avg+6.19 | 15:00: n2/WR50.0%/avg-0.56",
+      "finding": "Corroborates, does not newly discover: the 10:00 ET hour is both the single busiest commit window (140 of ~300 clean commits) AND the worst-performing well-sampled bucket -- consistent with the 'Early window' tier-discount factor already seen live on individual plays ('measured-weak window after the 10:00 unlock... first positive 11:00'). Not escalating as new; logged as corroboration for whoever eventually does the full regime/time-of-day segmentation (v6 item 1, still deferred -- this was a narrow slice of it, not the full job)."
+    }
+  },
   "next_specific_experiments_scoped": [
     {
       "id": "score-floor-rejected-outcome-backtest",
