@@ -598,6 +598,16 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   trusting any test run. A restart also wipes the scratchpad and any background-task output.
   `npm test` goes through `scripts/run-tests.mjs`, which is the exact command CI runs and prints a
   loud banner on any other major — so a Node 22 run announces itself rather than lying quietly.
+  **A third phantom-failure trap, same shape, different flag (hit live 2026-09-09):** `run-tests.mjs`
+  invokes `tsx --test` with `--experimental-test-module-mocks` (line ~107); any test file using
+  `mock.module(...)` — e.g. `src/lib/swing/ex-dividend-reads.test.ts`, present since 2026-09-06 —
+  throws `TypeError: import_node_test.mock.module is not a function` and fails to even LOAD (not a
+  per-assertion failure — the whole file errors at `:1:1`) under a bare ad-hoc
+  `npx tsx --test <path>` that omits the flag, on Node 20 or 22 alike. Reads exactly like a real
+  regression (2 files, ~15 tests silently unrun) until you notice it's a module-load `TypeError`, not
+  an assertion. Always run scoped ad-hoc checks as `npx tsx --experimental-test-module-mocks --test
+  <path>` — there is no scoped npm script that adds the flag for you; plain `npm test` already
+  carries it, so a full-suite run was never at risk, only a targeted ad-hoc one.
 - **A container restart can silently revert the checked-out branch to a stale local one — verify,
   don't trust `git branch --show-current` from before the restart (measured 2026-09-02).** The SEO
   lane heartbeat cycle checked out `main` cleanly, then two turns later (after an intervening
