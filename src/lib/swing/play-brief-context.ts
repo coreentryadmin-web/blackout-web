@@ -16,6 +16,20 @@ import { readSwingArchetypeTrackRecord } from "./calibration-cache";
 import { withBriefSourceTimeout } from "./brief-source-timeout";
 
 /**
+ * The network-bound reads below (Meridian timeline/peer-cohort, ecosystem context, Vector
+ * full-state) carry no timeout of their own, so an upstream stall used to propagate all the way
+ * to Cloudflare's edge (~100s) before the member ever saw an error — a raw 504 instead of this
+ * route's own graceful `degraded` response. Measured live 2026-09-09: a `play-brief` request
+ * hung past a 120s client-side timeout while ALB TargetResponseTime for the same window showed
+ * repeated p99 spikes to 90-104s. `withBriefSourceTimeout` (brief-source-timeout.ts) races each
+ * call against an 8s budget so a single slow source degrades to "unavailable" for THIS section
+ * instead of hanging the whole brief. This helper REJECTS on timeout (rather than degrading to
+ * null itself) so callers that need to distinguish "genuinely no data" from "upstream stalled"
+ * (the ecosystem/vector `*FetchFailed` flags below) still can — the archetype-track-record read
+ * has no such distinction to make, so it wraps its own call in `.catch(() => null)`.
+ */
+
+/**
  * The member's full open book as `PortfolioPosition[]` for the "Book context" theme-overlap
  * section. `direction` on the ledger row is lowercase ("long"/"short"); the overlap checker
  * (and the swing entry gate it shares code with) works in uppercase `PlayDirection`. The play
@@ -49,20 +63,21 @@ export async function loadSwingPlayBriefContext(
   if (!resolved) return null;
 
   const ticker = resolved.play.ticker.toUpperCase();
-  const meridian = await fetchMeridianForTicker(ticker).catch(() => null);
-  const meridianPeer = await fetchMeridianPeerForBrief(meridian, ticker).catch(() => null);
+  const meridian = await withBriefSourceTimeout(fetchMeridianForTicker(ticker)).catch(() => null);
+  const meridianPeer = await withBriefSourceTimeout(fetchMeridianPeerForBrief(meridian, ticker)).catch(() => null);
 
   // Distinguish a genuine "no data" null from a thrown fetch — FINDINGS 2026-09-06 (#11): an
   // ecosystem/vector fetch that THROWS must not read the same as one that legitimately returned
-  // nothing, or a total upstream failure can still leave confidence.level at "high".
+  // nothing, or a total upstream failure can still leave confidence.level at "high". A timeout
+  // rejection is just another throw here, so it flows through the same failed-flag path.
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
   const [ecosystem, vector, openBook, archetypeTrackRecord] = await Promise.all([
-    fetchEcosystemContext(ticker).catch(() => {
+    withBriefSourceTimeout(fetchEcosystemContext(ticker)).catch(() => {
       ecosystemFetchFailed = true;
       return null;
     }),
-    fetchVectorFullState(ticker, normalizeDteHorizon("all")).catch(() => {
+    withBriefSourceTimeout(fetchVectorFullState(ticker, normalizeDteHorizon("all"))).catch(() => {
       vectorFetchFailed = true;
       return null;
     }),
@@ -72,8 +87,10 @@ export async function loadSwingPlayBriefContext(
     // blocking the whole brief; unlike ecosystem/vector above this has no dedicated *FetchFailed
     // flag because a miss here is never surfaced as an absence/error to the member — an ungraduated
     // or unavailable track record simply omits the "Track record" section (Largo C6: omission, not
-    // fabrication), the same as a play with no track record to cite at all.
-    withBriefSourceTimeout(readSwingArchetypeTrackRecord()),
+    // fabrication), the same as a play with no track record to cite at all. `withBriefSourceTimeout`
+    // now REJECTS on timeout (see the import-site comment above), so this read keeps its own
+    // `.catch(() => null)` to preserve that "never surfaces as a failure" contract.
+    withBriefSourceTimeout(readSwingArchetypeTrackRecord()).catch(() => null),
   ]);
 
   const nowMs = Date.now();
