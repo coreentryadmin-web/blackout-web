@@ -137,6 +137,14 @@ const nextConfig = {
     return [
       { source: "/learn/helix", destination: "/learn/helix-flows", permanent: true },
       { source: "/helix", destination: "/flows", permanent: true },
+      // /vs/spotgamma was live and sitemap-indexed (commit 611714f88) before being reworked to a
+      // generic, no-named-competitor comparison per an explicit product steer (commit 99900c12d,
+      // "don't name SpotGamma or any specific competitor") and moved to /vs/others. The rename
+      // left the old URL 404ing — any accumulated backlinks, bookmarks, or a lingering Google
+      // index entry for it (high-intent bottom-funnel traffic: someone searching a named
+      // competitor comparison) hit a dead page instead of the page that now carries that intent.
+      // A redirect reclaims that without reintroducing named-competitor content.
+      { source: "/vs/spotgamma", destination: "/vs/others", permanent: true },
       // Legacy browsers and crawlers request /favicon.ico by convention; without this they get a
       // 28KB HTML 404 (see docs/audit/SEO-BASELINE-2026-08-21 P3-1). icon-192.png is the committed
       // manifest icon and is already edge-cacheable.
