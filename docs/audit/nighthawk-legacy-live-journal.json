@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T23:08:44.331Z",
+  "lastUpdated": "2026-09-10T23:10:45.338Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -421,6 +421,11 @@
       "at": "2026-09-10T22:53:47.378Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
       "result": "Outcome-honesty forensics on GET /api/market/nighthawk/record?days=14: decided_count=1/win_rate_pct=0 with debrief.failure_modes wrong_direction=16 + target_unreachable=8 + pulled_correctly=3 + pulled_wrongly=2 + unfilled=2 (31 total) -- this is the SAME already-documented, already-escalated pattern as knownOpenItems.geometryWinRateGap_2026-08-06 (FINDINGS.md 2026-08-06 P1, a deliberately-parked design decision from a prior campaign, not this session's to fix unilaterally). Re-confirmed present, not a new finding -- per that item's own re-check cadence (~monthly), no further action needed today. Dead-field check on the fresh AAPL/SWKS plays' remaining unexamined fields (confirming_signals, target_atr_multiple) per this cycle's plan: BOTH trace to real member-visible UI, no dead-wiring. target_atr_multiple feeds PlaybookBriefingPanel.tsx's targetReachabilityNote() (a real reachability sentence). confirming_signals feeds assignNighthawkTier's confirmingSignals param, which becomes the tier.factors 'X of 9 dimensions confirming' detail text -- rendered via the 'Why this tier' section this session's own PR #4736 added earlier today. Confirms that earlier work actually closed the loop on these fields rather than leaving a gap. No new issues found. healthcheck:legacy fully GREEN again this cycle (editionFor=2026-09-11, 2 plays, marks/record all GREEN, resolved=31)."
+    },
+    {
+      "at": "2026-09-10T23:10:45.338Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3)",
+      "result": "Live UI pixel check (nighthawk-ui-sweep.mjs, secondary-priority per the mandate) on the fresh 2026-09-11 edition's Legacy tab: renders cleanly, no regressions from today's four merged fixes (PR #4742/#4746/#4750/#4752). AAPL and SWKS both correctly show WATCH status (not-yet-entered, no real pnlPct yet) -- confirms the winner/runner upgrade fix (#4752) correctly excludes WATCH plays as designed, not accidentally forcing a spurious classification. 'Net premium +0%'/'Hit rate 0%' read as clean whole numbers, no float noise (consistent with the rounding fix, #4750, though this specific case is trivially 0 either way). No overflow, no empty sections, no bad text. The sweep itself hit a harness-side timeout crash on a later, unrelated page (/track-record, after a 110s wrapper expired) -- not a product issue, and the Legacy tab screenshot had already saved cleanly before that. Minor observation, not escalated: the calendar strip still shows SEP 04-10 only, no SEP 11 tile yet, even though the table above correctly shows 'Showing 2' for the new session -- plausibly by-design (calendar may only add a tile once a session has some resolution/activity, or simply lags the edition rollover by one refresh) rather than a bug; will note only if it's still missing after this session has some real activity. Refreshed the stale nextConcreteCheck/toolingGaps pointers (were referencing PR #4718/#4722 and old resolved counts from earlier today) so a future session reading this file cold gets accurate current state. healthcheck:legacy fully GREEN. No new issues this cycle."
     }
   ],
   "knownOpenItems": {
