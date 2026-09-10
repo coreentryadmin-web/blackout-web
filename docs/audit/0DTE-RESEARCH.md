@@ -18,6 +18,7 @@ win-rate. Rigor rule: validate wide (≥20 sessions) before trusting — small s
 | E1 | Multi-day (d=5) vs single-day (d=1) accumulation as discovery | 5 | **Wash** — 32% vs 36% WR, n≈30. No standalone edge for lookback window. |
 | E2 | Entry-time × strike × stop/target geometry sweep | 7 → **25** | 7-session screamed "+43% EV @ 11:00"; **25-session corrected to +1.5%.** (Overfit caught.) |
 | E3 | Confluence: 0/1/2 confirmations (VWAP-side + SPY-aligned) @ 11:00 | 25 | **CONFIRMED edge** — see below. |
+| E6 | Thesis-first `thesis_rank_reject` outcome A/B, whole-market BREAKOUT/BREAKDOWN | 10 (n=599) | **⚠ REJECT graded BETTER than PASS** (64.3% vs 52.3% WR) — see below. |
 
 ### E2 — entry timing (25 sessions, opening-drive, held-to-close)
 ```
@@ -198,6 +199,61 @@ item above already establishes for this exact file) and per this repo's own evid
 than 0-3 real trend samples. **Re-run `npm run ab:regime-dead-zone -- --days=90` in 2-3 weeks** once
 `session_regime`-stamped trend rows have accumulated — the script is built, live-auth-tested, and ready;
 it just needs a population that doesn't exist yet.
+
+### E6 — thesis-first `thesis_rank_reject` outcome A/B (whole-market BREAKOUT/BREAKDOWN, 2026-09-10)
+
+`ZERODTE_THESIS_FIRST` is live. On 2026-09-09 its `thesis_rank_reject` gate (the archetype/rank
+quality floor `resolveThesisRankTier` fires when `evaluateArchetypeGates` returns `BLOCK`,
+`thesis/live-pipeline.ts`) alone accounted for 218/1,705 gate-blocked events that session — more
+than any single hard-gate code — yet `zerodte-gate-compound-funnel.mjs` explicitly scoped to
+FLOW-origin setups and listed "BREAKOUT/PIN origins" under its own NOT MEASURED THIS RUN. Nobody
+had asked the outcome question: does REJECTing these solo-BREAKOUT/PIN setups actually improve
+forward results?
+
+Built `scripts/audit/thesis-rank-reject-outcome-ab.mjs` (`npm run ab:thesis-rank-reject`): real
+`screenBreakoutMovers`/`screenBreakdownMovers` (the real whole-market screen) → real dynamic
+cap/momentum-rank (`resolveBreakoutCandidateCap`/`rankMoversForChainFetch`) → real per-ticker
+intraday read (`computeIntradayRead`, real Polygon minute bars) → the REAL, unmodified
+`attachThesisFirstLive` (the exact function scan.ts calls live, real rail scoring/archetype
+classification/gates/rank-tier resolver) → favorable-first forward grade on real Polygon minute
+bars from a fixed ET entry checkpoint (same proxy convention as `discovery-recall-probe.mjs`).
+Setup construction omits `key_resistances`/`key_supports`/`rel_volume` (disclosed in the script
+header, and verified NOT a shortcut: `buildBreakoutSetup`/`enrichSetup` leave these null/empty
+for BREAKOUT-origin setups in production too, since no technicals dossier is passed for that
+origin — this tool matches production exactly on these fields, not a weaker approximation of it).
+
+**First live run, 10 sessions (2026-08-26…2026-09-09), entry=10:30 ET: 599 graded — REJECT n=129
+(64.3% win rate, avg maxRet +1.3%) vs PASS (control, non-REJECT) n=470 (52.3% WR, +1.2%).**
+**⚠ The gate REJECTED setups that graded BETTER than the ones it let through**, the opposite of
+what a quality floor should do. Breakdown: 115/129 REJECTs fire on `momentum_abs_floor`
+(archetype `MOMENTUM_CONTINUATION`, `rail_scores.MOMENTUM < 60`) — only 14/129 on
+`breakout_score_floor`. **Sensitivity check at entry=10:00 ET (same 10 sessions): REJECT 72.9%
+WR (n=133) vs PASS 52.4% (n=466)** — same direction, larger gap; not an artifact of the specific
+entry-time choice. This systematizes, at n=129/599 across 10 sessions, the exact concern
+`archetype-gates.ts`'s own code comment already flagged from a single live anecdote (2026-08-28,
+INTC 92P REJECTed on `momentum_abs_floor`, later ran +275%) — the anecdote generalizes.
+
+**Read carefully before acting on this:** the dominant rejection reason (`momentum_abs_floor`)
+is really testing "did this BREAKOUT-origin name ALSO clear a `MOMENTUM` rail floor of 60"
+(`scoreMomentumRail`: base 40 + up to 12 for 5m-trend-aligned + up to 10 for VWAP-aligned, capped
+at 62 without `rel_vol`/`change_pct` — neither ever populated for a BREAKOUT-origin setup in
+production) — i.e. it demotes/rejects a clean BREAKOUT/BREAKDOWN print for lacking a SEPARATE,
+narrow momentum confirmation, not for being a weak breakout. That reads as a real candidate for
+recalibration (the floor, or requiring a second rail at all for this archetype), but this A/B is
+evidence, not a verdict on ONE session's worth of extra confirmation — **no gate changed here.**
+
+Extended `zerodte-gate-compound-funnel.mjs` with a new "BREAKOUT/PIN THESIS-RANK-REJECT" section
+(clearly labeled a DIFFERENT pipeline from its own hard-gate stack): a live, single-snapshot
+isolated `thesis_rank_reject` rate for today's BREAKOUT/BREAKDOWN screen, plus a live
+`discoverPinSetups` attempt. **PIN has no reachable measurement path from this sandbox at all**
+— two independent blockers, either alone sufficient: `discoverPinSetups` needs a live GEX-heatmap
+snapshot (server-side UW product, cache-only, no historical replay, same limitation
+`wall-temporal-stability.mjs` already documents), AND importing `pin-discovery.ts` from a plain
+Node script throws `"This module cannot be imported from a Client Component module"` — a Next.js
+client/server module-boundary marker in `resolveTickerChainRows`'s dependency graph. Reported as
+INSUFFICIENT DATA, not fabricated; a PIN measurement needs to run where that module's full server
+graph already loads (inside the app, admin-gated) or a poller built the way
+`gex-wall-snapshot-poll.mjs` is (authenticate through the live app's own API route).
 
 ---
 
