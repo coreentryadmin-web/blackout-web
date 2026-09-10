@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T11:14:21.819Z",
+  "lastUpdated": "2026-09-10T11:22:25.795Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -186,6 +186,11 @@
       "at": "2026-09-10T11:14:21.819Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, wraps to cycle start)",
       "result": "Re-ran npm run healthcheck:legacy (all GREEN, no change -- same 3 open picks, record unchanged). AGGRESSIVE-HUNT, following the trigger brief's own explicit example ('a picks narrative that could be richer'): read the live FICO thesis text closely -- 'FICO showing prior day HOD break, gap up 49.89 in bearish trend' for a SHORT play. Both 'prior day HOD break' and 'gap up X' are classically BULLISH continuation facts shown in a bearish/SHORT thesis with no stated reason the trade fades them -- reads as an unexplained contradiction to a member. Traced root cause: technicals.ts's classifySetup() already computes the missing connective reasoning -- it always pushes a 'gap-fill risk below' (after a gap up) / 'gap-fill bounce zone above' (after a gap down) tag immediately following its own gap tag, specifically because that's the one setup_tag that argues a DIRECTION (unlike RSI/volume/EMA tags). But deterministic-edition.ts's buildDeterministicThesis() takes setupTags.slice(0, 2) unconditionally for the opener sentence -- for FICO, 'prior day HOD break' + 'gap up 49.89' filled both slots and 'gap-fill risk below' (3rd in the array) never reached the member-facing text, even though it's exactly the reasoning that explains the SHORT. This is the same SHAPE of gap the existing trendConflicts check (PR-N28) patches for the aggregate trend field vs direction, but one level down -- individual setup_tags can carry directional polarity that trendConflicts never looks at. FIXED: PR #4722 (fix/nighthawk-thesis-gap-fill-tag-truncation, draft, CI pending) -- when the gap tag makes the first-two cut but its own gap-fill companion doesn't, append the companion instead of dropping it; narrow by construction (a negative test confirms no gap-fill commentary is force-inserted when the gap tag itself was never selected). RED test built from the exact live FICO tag order failed pre-fix, passes post-fix. Full deterministic-edition suite 43/43, full Night Hawk suite 1360/1360, tsc clean, eslint clean. Staged finding: docs/audit/findings-staging/2026-09-10-legacy-thesis-gap-fill-tag-truncated.md. Subscribed to PR activity; will undraft+merge once CI is green per the rescinded-CARVE-OUT policy (no Cursor sign-off wait needed)."
+    },
+    {
+      "at": "2026-09-10T11:22:25.796Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "Re-ran npm run healthcheck:legacy (all GREEN, no change). PR #4722 (gap-fill tag truncation fix) status: CodeQL/Analyze/dispatch/triage all green, auto-merge/enable-automerge correctly skipped (still draft), verify still in_progress (~8min in) -- no failure, normal for the full suite, nothing actionable yet. No PR comments. Not polling further this cycle -- letting the subscription webhook or the next :36 offset trigger pick up completion."
     }
   ],
   "knownOpenItems": {
