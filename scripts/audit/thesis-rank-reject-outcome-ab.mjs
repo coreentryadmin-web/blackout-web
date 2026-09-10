@@ -229,7 +229,7 @@ async function mapPool(items, fn) {
       out[i] = await fn(items[i], i);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length || 1) }, worker));
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length || 1) }, () => worker()));
   return out;
 }
 
@@ -382,7 +382,7 @@ if (rejectRows.length > 0) {
   }
 }
 
-let verdict = "INSUFFICIENT DATA";
+let verdict;
 const MIN_N = 20;
 if (rejectRows.length >= MIN_N && passRows.length >= MIN_N) {
   const rr = rate(rejectRows);
