@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T23:37:10.020Z",
+  "lastUpdated": "2026-09-10T23:52:00.624Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -436,6 +436,11 @@
       "at": "2026-09-10T23:37:10.021Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "PR #4754 CI still verify/CodeQL in_progress (~10min elapsed, within this session's normal range). healthcheck:legacy steady GREEN, no changes since last cycle. Quiet cycle otherwise -- just fixed the calendar-strip bug last cycle, not forcing a new finding immediately after; staying quiet per the mandate's own noise discipline."
+    },
+    {
+      "at": "2026-09-10T23:52:00.624Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
+      "result": "PR #4754: verify + CodeQL both GREEN (verify ran 23:33-23:41 UTC). Attempted to undraft via mcp__github__update_pull_request -- hit the documented GitHub MCP server rate limit ('API rate limit already exceeded for user ID 284440397', CLAUDE.md budget #3 of 4) -- this clears in 1-3 cycles typically per this session's prior experience, will retry next cycle. Still a draft as of this check-in, not yet merged. healthcheck:legacy steady GREEN, no new issues. Closing out today's 4-cycle-per-hour set: five real bugs found+fixed today across the Legacy scorecard/calendar surface (PR #4742/#4746/#4750/#4752 all merged+verified live, #4754 green and awaiting undraft)."
     }
   ],
   "knownOpenItems": {
