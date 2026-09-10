@@ -4,15 +4,72 @@
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
-      "roster": {"SPCH":86,"AAPL":69,"SPCX":63,"ASTS":61,"RDW":61,"SPXW":56,"MU":48,"QQQ":43,"IBIT":48,"M":52,"CIFR":52,"MSTR":51,"LUNR":50,"NVAX":50,"VRT":48,"PL":48,"RKLB":47,"HAL":47,"MARA":44,"SMCI":43,"TSLA":28,"RCAT":39,"ACHR":39,"F":39,"RIG":39,"META":23,"KHC":37,"NVDX":37,"ONDS":36,"BTDR":35,"ASST":34,"PURR":33,"SNXX":33,"SMH":18,"USO":30,"INFQ":29,"RGTI":28,"AVAV":27,"SNDK":11,"AXTI":25,"AAOI":23},
-      "above_score_floor_65_still_uncommitted": ["SPCH:86","AAPL:69"],
+      "roster": {
+        "SPCH": 86,
+        "AAPL": 69,
+        "SPCX": 63,
+        "ASTS": 61,
+        "RDW": 61,
+        "SPXW": 56,
+        "MU": 48,
+        "QQQ": 43,
+        "IBIT": 48,
+        "M": 52,
+        "CIFR": 52,
+        "MSTR": 51,
+        "LUNR": 50,
+        "NVAX": 50,
+        "VRT": 48,
+        "PL": 48,
+        "RKLB": 47,
+        "HAL": 47,
+        "MARA": 44,
+        "SMCI": 43,
+        "TSLA": 28,
+        "RCAT": 39,
+        "ACHR": 39,
+        "F": 39,
+        "RIG": 39,
+        "META": 23,
+        "KHC": 37,
+        "NVDX": 37,
+        "ONDS": 36,
+        "BTDR": 35,
+        "ASST": 34,
+        "PURR": 33,
+        "SNXX": 33,
+        "SMH": 18,
+        "USO": 30,
+        "INFQ": 29,
+        "RGTI": 28,
+        "AVAV": 27,
+        "SNDK": 11,
+        "AXTI": 25,
+        "AAOI": 23
+      },
+      "above_score_floor_65_still_uncommitted": [
+        "SPCH:86",
+        "AAPL:69"
+      ],
       "next_cycle_check": "Did SPCH(86) or AAPL(69) finally commit? If a high-score WATCH setup sits uncommitted for multiple consecutive cycles despite clearing score_floor, that's worth a real gate-trace (what's actually blocking OPEN) rather than more roster diffing."
     },
     "2026-09-10T14:08Z": {
       "note": "22 min later, heat now RTH 100%. SPCH/AAPL follow-up RESOLVED (not a finding): SPCH decayed 86->51, AAPL 69->54, both still WATCH/uncommitted -- confirms hypothesis those were transient opening-drive score noise, not a stuck gate. First 2 real commits of the session: SPCX long (score75/tierA, cortex PASS 0.72, confluence WEAK timing+VWAP-only) and SPXW short (score75/tierB, cortex PASS 0.5, confluence TRIPLE-confirmed), both committed_at_et 10:02, both trim_scale. Both look coherent at entry, no red flags. 65 WATCH setups total now.",
       "open_stage_tracking": {
-        "SPCX": {"direction":"long","score":75,"tier":"A","confluence":"weak","committed_et":"10:02"},
-        "SPXW": {"direction":"short","score":75,"tier":"B","confluence":"triple","committed_et":"10:02"}
+        "SPCX": {
+          "direction": "long",
+          "score": 75,
+          "tier": "A",
+          "confluence": "weak",
+          "committed_et": "10:02"
+        },
+        "SPXW": {
+          "direction": "short",
+          "score": 75,
+          "tier": "B",
+          "confluence": "triple",
+          "committed_et": "10:02"
+        }
       },
       "next_cycle_check": "How are SPCX/SPXW managing? Trim triggers hit and acted on per trim_scale rules? Does SPCX's weaker confluence show up in a worse outcome than SPXW's triple-confirmed one (a single pair, not a pattern -- just an observation to track)?"
     },
@@ -26,7 +83,8 @@
     "2026-09-10T15:08Z": {
       "note": "3rd consecutive quiet tick (still 0 new commits since 10:02, ~65min). Per aggressive-mode discipline, used this cycle for a real WATCH gate-breakdown deep-dive instead of another no-op poll. 12 setups currently clear score_floor(65) with zero commits among them -- consistent with (not new evidence beyond) the already-documented gate-compound-funnel finding that clearing score_floor alone rarely yields a joint commit.",
       "aapl_case_study": {
-        "score": 86, "gate_verdict": "BLOCKED",
+        "score": 86,
+        "gate_verdict": "BLOCKED",
         "block_reason": "cortex_veto:gex-walls -- long target path crosses dominant call wall 325 (27.89% of ladder gamma) 1.85pts above spot 323.15, inside 0.5x expected move (3.13pts)",
         "cortex_net_score": -0.11,
         "read": "On its own economic merits this looks like a REASONABLE, defensible block -- a real gamma wall sitting in the breakout's path is genuine resistance, not an obviously-wrong veto. NOT calling this a bug.",
@@ -44,6 +102,9 @@
     },
     "2026-09-10T16:37Z": {
       "note": "QQQ RESOLVED: 22min later it's now in /board's ledger array, status HOLD, live pnl +18.18% -- a real winner so far, confirms the earlier absence was cache propagation lag, not a bug. Not escalating. Minor residual quirk, not itself a finding: QQQ is STILL also listed in the WATCH setups array even though it's a committed/open ledger row -- could be intentional (scan-history display regardless of commit state) or a minor duplicate-listing behavior; noting for pattern-watching, not chasing it as a single instance."
+    },
+    "2026-09-10T16:45Z": {
+      "note": "REAL FIX SHIPPED. QQQ CLOSED: peaked +47.73%, gave the ENTIRE gain back to close at -2.27% (closed_reason=ratchet). exit_detail literally said 'the protective floor exits so the green trade cannot finish red' -- yet it closed red. Traced root cause in src/lib/zerodte/exit-engine.ts: buildExitContext's mark_honored flag compared two ALREADY-ROUNDED values (mark !== markObserved); the raw observed print (0.215) rounds UP to the exact same cent as the 0% floor (0.22), so the flag read false even though resolveExitMark's own Math.max(raw values) correctly picked the floor. pnl_pct then branched on the wrong flag and used the raw (worse) print instead of the floor-honored mark. Fixed: resolveExitMark now returns {mark, honored} directly from the SAME raw comparison Math.max uses -- single source of truth. RED->GREEN proven (git-stash the production fix, keep the new test: 81/83 pre-fix with 2 real failures reproducing this exact shape; 83/83 post-fix). tsc --noEmit clean. Full npm test (Node 20): 13645 pass/0 fail/3 skipped (pre-existing). Staged finding: docs/audit/findings-staging/2026-09-10-zerodte-ratchet-floor-honor-rounding-boundary.md. MARKET-OPEN-VALIDATION.md #92 added. PR #4737 opened, undrafted, subscribed -- CARVE-OUT is rescinded per current CLAUDE.md so this merges on green CI, no Cursor sign-off needed. Watching for CI to go green."
     }
   },
   "sessions": {
@@ -177,6 +238,19 @@
       ],
       "why_not_fixed_yet": "Touches live commit/entry-pricing logic directly (resolveLedgerEntryPremium + the quote_age_unknown precondition gate). Root cause of WHY the existing guard doesn't catch this is only partially traced (haven't confirmed whether plan.quoteAgeMs was populated-but-wrong vs the precondition check being skipped entirely for this commit path) -- shipping a fix without that final trace risks making live pricing logic worse, not better. Per mandate: report with evidence and hold for direction on anything ambiguous/architecturally significant, even though v5 grants standing authority for MEASURED calibration changes -- this is a data-integrity/entry-sourcing bug, not a threshold-tuning question, so it stays in the 'hold for direction' lane.",
       "next_step": "If greenlit: (1) finish tracing plan.quoteAgeMs propagation for a FLOW/aggressor-flow-origin commit to find exactly why quote_age_unknown didn't fire on these 7; (2) once root cause is nailed, the fix is likely either (a) require a fresh in-bound quote (not just flowAvgFill) before ANY directional commit, independent of CHASE_PCT, or (b) tighten CHASE_PCT below hard_stop_pct so a 'not chasing' entry can never already be past its own stop; (3) A/B backtest the candidate fix against this same 90-day window before shipping, same rigor as tier-exit-mode-ab.mjs."
+    },
+    {
+      "id": "2026-09-10-ratchet-floor-honor-rounding-boundary",
+      "session_date": "2026-09-10",
+      "ticker": "QQQ",
+      "summary": "Ratchet floor's mark_honored detection compared two already-ROUNDED values, so a raw observed print that cent-rounds to the same value as the floor read as 'not honored' even though the floor mechanism (raw-value Math.max) determined the fill -- pnl_pct then used the worse raw print, letting a floor-protected winner (peak +47.73%) close red (-2.27%) despite its own exit_detail promising it couldn't.",
+      "root_cause_files": [
+        "src/lib/zerodte/exit-engine.ts (resolveExitMark, buildExitContext)"
+      ],
+      "status": "FIXED -- PR #4737 open, undrafted, subscribed, awaiting CI",
+      "evidence_ref": "docs/audit/findings-staging/2026-09-10-zerodte-ratchet-floor-honor-rounding-boundary.md, https://github.com/coreentryadmin-web/blackout-web/pull/4737",
+      "fix_shipped": true,
+      "red_green_proof": "exit-engine.test.ts 81/83 pass pre-fix (2 fail, both reproducing this exact shape) -> 83/83 post-fix. tsc clean. Full npm test 13645/0/3skip."
     }
   ],
   "win_loss_taxonomy": {
@@ -215,7 +289,7 @@
     "pr4076_check": "No Cursor response yet to the QQQ stale-entry-premium finding (checked via GitHub REST `since=` filter, only own prior comments + an unrelated Swings-lane CI-outage note in that window). Still awaiting -- not re-posting, not idle either (see below).",
     "bounded_enhancement_look": {
       "method": "Time-of-day (ET commit hour) win rate, same 90-day/non-mechanical dataset already in hand -- zero new API calls.",
-        "result_table": "10:00 ET: n140/WR43.2%/avg-3.08 | 11:00: n65/WR48.1%/avg+0.05 | 12:00: n31/WR50.0%/avg-4.20 | 13:00: n9/WR40.0%/avg-7.53 | 14:00: n8/WR50.0%/avg+6.19 | 15:00: n2/WR50.0%/avg-0.56",
+      "result_table": "10:00 ET: n140/WR43.2%/avg-3.08 | 11:00: n65/WR48.1%/avg+0.05 | 12:00: n31/WR50.0%/avg-4.20 | 13:00: n9/WR40.0%/avg-7.53 | 14:00: n8/WR50.0%/avg+6.19 | 15:00: n2/WR50.0%/avg-0.56",
       "finding": "Corroborates, does not newly discover: the 10:00 ET hour is both the single busiest commit window (140 of ~300 clean commits) AND the worst-performing well-sampled bucket -- consistent with the 'Early window' tier-discount factor already seen live on individual plays ('measured-weak window after the 10:00 unlock... first positive 11:00'). Not escalating as new; logged as corroboration for whoever eventually does the full regime/time-of-day segmentation (v6 item 1, still deferred -- this was a narrow slice of it, not the full job)."
     }
   },
