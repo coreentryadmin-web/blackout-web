@@ -388,7 +388,7 @@ export type GateMirrorBucket = {
 };
 
 export type GateMirrorLine = {
-  gate: "band_detached" | "target_unreachable";
+  gate: "band_detached" | "target_unreachable" | "book_tape_conflict";
   would_block: GateMirrorBucket;
   would_pass: GateMirrorBucket;
   /** would_pass WR minus would_block WR, pts — positive means the gate separates real
@@ -500,8 +500,10 @@ function pinGeometry(publishContext: unknown): PinGeometry {
  */
 export function retroWouldBlock(
   row: Pick<DebriefAggregateRow, "publish_context" | "direction" | "entry_range_low" | "entry_range_high" | "target">,
-  gate: "band_detached" | "target_unreachable"
+  gate: "band_detached" | "target_unreachable" | "book_tape_conflict"
 ): boolean | null {
+  if (gate === "book_tape_conflict") return retroBookTapeConflict(row.publish_context ?? null);
+
   const geo = pinGeometry(row.publish_context ?? null);
   const pinned = geo.thresholds[gate];
   if (pinned.kind === "unusable") return null;
@@ -516,6 +518,33 @@ export function retroWouldBlock(
   const fillEdge = (row.direction === "SHORT" ? row.entry_range_low : row.entry_range_high) ?? null;
   if (geo.atr14 == null || geo.atr14 <= 0 || fillEdge == null || row.target == null) return null;
   return Math.abs(row.target - fillEdge) / geo.atr14 > threshold;
+}
+
+/**
+ * G-N4's retro would-block verdict, read straight off the pin rather than recomputed.
+ * Unlike band_detached/target_unreachable (numeric distance thresholds that can drift
+ * and need the pinned-vs-live distinction above), book_tape_conflict's verdict is a
+ * fixed categorical fact the moment publish-gates.ts writes `passed` into this play's
+ * checks[] entry — there is no threshold to re-derive. Recomputing tapeConflicts here
+ * from a re-read of `value`/direction would just be a second copy of that gate's own
+ * logic that could silently diverge from the gate that actually judged this play; reading
+ * the pinned `passed` bit directly cannot drift. Absent (pins that predate G-N4, shipped
+ * 2026-08-03) or a non-boolean `passed` (corrupt/legacy JSONB) both return null — can't
+ * answer, never a guessed verdict.
+ */
+function retroBookTapeConflict(publishContext: unknown): boolean | null {
+  if (publishContext == null || typeof publishContext !== "object" || Array.isArray(publishContext)) return null;
+  const gates = (publishContext as Record<string, unknown>).gates;
+  if (gates == null || typeof gates !== "object" || Array.isArray(gates)) return null;
+  const checks = (gates as Record<string, unknown>).checks;
+  if (!Array.isArray(checks)) return null;
+  for (const raw of checks) {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const check = raw as Record<string, unknown>;
+    if (check.code !== "book_tape_conflict") continue;
+    return typeof check.passed === "boolean" ? !check.passed : null;
+  }
+  return null;
 }
 
 function mirrorBucket(rows: DebriefAggregateRow[]): GateMirrorBucket {
@@ -565,7 +594,7 @@ function mirrorBucket(rows: DebriefAggregateRow[]): GateMirrorBucket {
  */
 export function gatePublishedMirror(current: DebriefAggregateRow[]): GateMirrorLine[] {
   const resolved = current.filter((r) => r.pulled !== true && r.outcome !== "pending");
-  return (["band_detached", "target_unreachable"] as const).map((gate) => {
+  return (["band_detached", "target_unreachable", "book_tape_conflict"] as const).map((gate) => {
     const block: DebriefAggregateRow[] = [];
     const pass: DebriefAggregateRow[] = [];
     let noGeo = 0;
