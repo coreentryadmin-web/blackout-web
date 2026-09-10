@@ -1,8 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T13:52:00Z",
+  "last_updated": "2026-09-10T14:00:00Z",
   "notes": [
+    "Ask Largo play-brief ten-point-contract audit on a WATCH/RESEARCH candidate (SLV, top of the 14-name WATCH list, score 60, thesis_invalidated gate blocking entry) found a real, shipped bug: the envelope headline (\"HOLD — SLV 59C 6DTE\") and the Verdict section's own inline line (\"... SKIP\" + \"Desk is passing this setup — no entry recommended.\") disagreed inside the SAME brief response. Root cause: play-brief.ts's Verdict line used a 2-rung fallback (action.label -> status) while the headline two lines below uses 3 rungs (action.label -> recommendation -> status) -- entry-verdict.ts deliberately splits deckStatus:\"SKIP\" (internal) from recommendation:\"HOLD\" (member-facing) for RESEARCH-section rows, and only the headline's fallback chain honored that split. Fixed on branch fix/swing-brief-verdict-skip-headline-mismatch: Verdict line now uses the same 3-rung chain. Regression test added (RED confirmed pre-fix, GREEN post-fix), tsc --noEmit clean, full npm test 13629 pass/0 fail/3 skipped. Staged finding + MARKET-OPEN-VALIDATION.md #88 added. PR #4727 opened, undrafted on the first attempt (no rate-limit wait this time), subscribed for CI/review events.",
     "Book-context / checkPortfolioOverlap live cross-check (same cycle as the #4704 fresh-peak stress test above). With CRWD open LONG (software theme, sector-map.ts), scanned the 14-name WATCH list for a same-theme candidate. PLTR (SHORT) and ORCL (SHORT) both resolve to theme \"software\" (sector-map.ts's software cluster: PLTR/CRM/NOW/SNOW/ADBE/ORCL/CRWD/NET/DDOG/PANW/MDB/ZS/SHOP) opposed to CRWD's LONG. Fetched both live play-briefs directly: both correctly render a \"Book context\" section — 'Internal conflict — theme \"software\" already has an OPPOSED position: CRWD LONG. One leg is structurally betting against the other; this is not a hedge unless intentional.' Confirms bookContextSection/checkPortfolioOverlap correctly fires on a genuine live cross-thesis conflict (not just in unit tests) for real swing_positions rows. No bug — positive verification. Scope note (not a defect): the check only compares a candidate against the REAL open book, not against sibling WATCH rows, so it would not flag PLTR-vs-ORCL (both SHORT software) stacking if a trader added both — that is consistent with the documented scope (checkPortfolioOverlap takes 'existing positions', i.e. the book, not the watch list) and not something to fix.",
     "RTH-open live forensic pass (13:31 UTC snapshot, first genuinely fresh intraday marks in several cycles — prior cycles only showed stale 09/09 16:00 ET close marks). All 4 real OPEN positions (NRG/NN/CG/CRWD) re-pulled via live play-brief (playId+positionId, not ticker-only). CG made a genuine NEW peak at open (peakPremium 5.75->6.40, pnl 117.3%->146.2%) — the most interesting single data point this cycle, since it is exactly the shape of bug #4704 fixed earlier today (mechanical trim-ladder fired flag vs enforced liveStatus). Checked CG's live brief directly: liveStatus HOLD (board), brief shows trimsFired:0, \"Trim ladder +100%\" WITHOUT a checkmark, Management recommends TRIM as advisory only (Recommended: TRIM / Manage engine TAKE_PARTIAL) while the enforced status stays HOLD — confirms adapters.ts:857-860's status===\"TRIM\" gate (added by #4704) correctly holds fired:false on a not-yet-enforced row even against a brand new same-day peak, not just the stale peak that originally exposed the bug. Cross-checked all 4: NRG (peak +132.7%, live +29.6%, HOLD, trimsFired:0 — the literal repro example from #4704's own code comment, now independently reproduced live and confirmed correctly un-fired) / NN (peak +24.4%, live -30.8%, HOLD, round-tripped, trimsFired:0, correct) / CRWD (status genuinely TRIM, peak +129.7%, live -20.1%, trimsFired:1, \"Trim ladder +100% checked\", all trims banked — runner only, correctly enforced). No new bug found — this is a real-money confirmation that #4704's fix generalizes beyond the single ticker it was found on.",
     "AGGRESSIVE MODE follow-through: the earlier n=1 WATCH-staleness observation (AMD/FSLR/PLTR sitting below scoreFloor for 9-45 days) escalated to a real, shipped finding this cycle -- confirmed AMD specifically at 45 days (firstSeenAt 2026-07-27) via a live re-check, clearing the 3-instance threshold. Traced the code: fadeStaleSwingCandidates (accumulation-store.ts) DOES fade a candidate that stops re-qualifying, so persistence isn't a pruning bug -- it's a genuine re-qualifying signal. But TerminalPlay.detectedAt (the WATCH 'Published clock', already on the Command Deck UI) was NEVER read by play-brief.ts's watchEntrySection -- the Largo narrative for a WATCH play never said how long it had been building. Shipped as #4721 (feat/swing-watch-age-narrative): one new conditional line, 'First flagged N days ago... still on WATCH, not yet graduated' -- purely additive, no plumbing changes, detectedAt was already populated end-to-end.",
@@ -125,6 +126,11 @@
       "id": "swing-brief-watch-age-never-narrated",
       "pr": 4721,
       "status": "MERGED 10:02 UTC. Verified on origin/main directly: play-brief.ts's watchEntrySection reads play.detectedAt via daysOnWatch. MARKET-OPEN-VALIDATION.md entry added for next-session RTH check."
+    },
+    {
+      "id": "swing-brief-verdict-skip-headline-mismatch",
+      "pr": 4727,
+      "status": "OPEN, undrafted, CI pending. Subscribed to PR activity — will drive to green/merge per standing carve-out (self-authored PRs merge on green CI alone, no Cursor sign-off required)."
     }
   ],
   "loss_taxonomy": {
@@ -203,8 +209,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T10:02:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-10T14:00:00Z",
+    "swing_prs": [
+      {
+        "pr": 4727,
+        "branch": "fix/swing-brief-verdict-skip-headline-mismatch",
+        "status": "open, non-draft, CI pending"
+      }
+    ]
   },
   "tickers_seen": {
     "NRG": {
