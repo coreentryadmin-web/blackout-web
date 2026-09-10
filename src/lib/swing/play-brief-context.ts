@@ -12,6 +12,7 @@ import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-br
 import { fetchMeridianForTicker } from "./play-brief-meridian";
 import { fetchMeridianPeerForBrief } from "./play-brief-meridian-peer";
 import type { PortfolioPosition } from "./portfolio";
+import { readSwingArchetypeTrackRecord } from "./calibration-cache";
 import { withBriefSourceTimeout } from "./brief-source-timeout";
 
 /**
@@ -22,7 +23,10 @@ import { withBriefSourceTimeout } from "./brief-source-timeout";
  * hung past a 120s client-side timeout while ALB TargetResponseTime for the same window showed
  * repeated p99 spikes to 90-104s. `withBriefSourceTimeout` (brief-source-timeout.ts) races each
  * call against an 8s budget so a single slow source degrades to "unavailable" for THIS section
- * instead of hanging the whole brief.
+ * instead of hanging the whole brief. This helper REJECTS on timeout (rather than degrading to
+ * null itself) so callers that need to distinguish "genuinely no data" from "upstream stalled"
+ * (the ecosystem/vector `*FetchFailed` flags below) still can — the archetype-track-record read
+ * has no such distinction to make, so it wraps its own call in `.catch(() => null)`.
  */
 
 /**
@@ -68,7 +72,7 @@ export async function loadSwingPlayBriefContext(
   // rejection is just another throw here, so it flows through the same failed-flag path.
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
-  const [ecosystem, vector, openBook] = await Promise.all([
+  const [ecosystem, vector, openBook, archetypeTrackRecord] = await Promise.all([
     withBriefSourceTimeout(fetchEcosystemContext(ticker)).catch(() => {
       ecosystemFetchFailed = true;
       return null;
@@ -78,6 +82,15 @@ export async function loadSwingPlayBriefContext(
       return null;
     }),
     loadOpenBook(),
+    // Ask Largo C10 (historical context) — a plain, best-effort shared-cache read the cron writes
+    // (calibration-cache.ts). Bounded so a wedged Redis hop degrades to "no citation" rather than
+    // blocking the whole brief; unlike ecosystem/vector above this has no dedicated *FetchFailed
+    // flag because a miss here is never surfaced as an absence/error to the member — an ungraduated
+    // or unavailable track record simply omits the "Track record" section (Largo C6: omission, not
+    // fabrication), the same as a play with no track record to cite at all. `withBriefSourceTimeout`
+    // now REJECTS on timeout (see the import-site comment above), so this read keeps its own
+    // `.catch(() => null)` to preserve that "never surfaces as a failure" contract.
+    withBriefSourceTimeout(readSwingArchetypeTrackRecord()).catch(() => null),
   ]);
 
   const nowMs = Date.now();
@@ -97,5 +110,6 @@ export async function loadSwingPlayBriefContext(
     openBook,
     ecosystemFetchFailed,
     vectorFetchFailed,
+    archetypeTrackRecord,
   };
 }

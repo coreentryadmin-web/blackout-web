@@ -9,6 +9,10 @@ import { thesisHealthUncalibrated } from "./thesis-health";
 export type BriefSnapshot = {
   headline: string;
   recommendation: string | null;
+  /** LONG/SHORT — carried through only so the diff engine can tell an "adverse" spot move
+   *  (toward the put wall for a LONG, toward the call wall for a SHORT) from a favorable one.
+   *  Not itself diffed (a play's direction doesn't change mid-life). */
+  direction: TerminalPlay["direction"] | null;
   thesisHealth: number | null;
   pnlPct: number | null;
   mark: number | null;
@@ -48,6 +52,83 @@ function narrateSpotShift(prev: number, next: number): string {
   const d = next - prev;
   const dir = d > 0 ? "higher" : "lower";
   return `**Spot drifted ${dir}** — **$${next.toFixed(2)}** (${d >= 0 ? "+" : ""}${d.toFixed(2)} vs prior read)`;
+}
+
+/** BUY > HOLD > TRIM > SELL — matches the ACTION vocabulary `swingActionDisplay` renders
+ *  (play-card-lifecycle.ts): SELL surfaces as "EXIT", the most defensive action. Used only to
+ *  classify a recommendation change as an upgrade/downgrade for cross-field synthesis below —
+ *  never for anything that reaches the UI as a raw number. */
+const RECOMMENDATION_RANK: Record<string, number> = { BUY: 3, HOLD: 2, TRIM: 1, SELL: 0 };
+
+function recommendationShiftKind(
+  prev: string | null,
+  next: string | null,
+): "upgrade" | "downgrade" | null {
+  if (!prev || !next) return null;
+  const p = RECOMMENDATION_RANK[prev];
+  const n = RECOMMENDATION_RANK[next];
+  if (p == null || n == null || p === n) return null;
+  return n > p ? "upgrade" : "downgrade";
+}
+
+/** An "adverse" spot move — toward the put wall on a LONG, toward the call wall on a SHORT —
+ *  is the one co-occurrence with a fading thesis that actually explains a downgrade; a spot
+ *  move in the play's FAVOR alongside a fading thesis is two facts pulling in different
+ *  directions and must NOT be narrated as connected (see the "independent shifts" test). Also
+ *  flags a same-direction gamma-flip crossing, since "drifted through the gamma flip toward the
+ *  put wall" is a materially different (more urgent) read than "drifted toward the put wall"
+ *  alone. Returns null — never a guess — when direction is unknown or no level exists on the
+ *  adverse side, so the caller falls back to the plain independent spot bullet. */
+function adverseSpotDrift(
+  prev: BriefSnapshot,
+  next: BriefSnapshot,
+): { label: string; level: number; throughFlip: boolean } | null {
+  if (prev.spot == null || next.spot == null || Math.abs(next.spot - prev.spot) < 0.01) return null;
+  if (next.direction !== "LONG" && next.direction !== "SHORT") return null;
+
+  const movedDown = next.spot < prev.spot;
+  const adverse = next.direction === "LONG" ? movedDown : !movedDown;
+  if (!adverse) return null;
+
+  const level = next.direction === "LONG" ? next.putWall : next.callWall;
+  const label = next.direction === "LONG" ? "put wall" : "call wall";
+  if (level == null) return null;
+
+  const flip = next.gammaFlip;
+  const throughFlip =
+    flip != null &&
+    (next.direction === "LONG" ? prev.spot >= flip && next.spot < flip : prev.spot <= flip && next.spot > flip);
+
+  return { label, level, throughFlip };
+}
+
+/** Rule 1 of the cross-field synthesis: a fading thesis AND an adverse spot drift, read as one
+ *  causal line — optionally naming the desk downgrade the combination produced — rather than two
+ *  bullets a reader has to connect themselves. Composes the existing `narrateThesisShift`/
+ *  `narrateSpotShift` fact strings (never reimplements their math) per the standing "narrative,
+ *  not bullet-dump" mandate already shipped for the static brief in play-brief-narrative.ts. */
+function synthesizeThesisAndPrice(
+  prev: BriefSnapshot,
+  next: BriefSnapshot,
+  adverse: { label: string; level: number; throughFlip: boolean },
+  downgradeTo: string | null,
+): string {
+  const thesisFact = narrateThesisShift(prev.thesisHealth!, next.thesisHealth!);
+  const spotFact = narrateSpotShift(prev.spot!, next.spot!);
+  const route = adverse.throughFlip
+    ? `through the gamma flip toward the **${adverse.label}** ($${adverse.level.toFixed(2)})`
+    : `toward the **${adverse.label}** ($${adverse.level.toFixed(2)})`;
+  const downgradeClause = downgradeTo
+    ? ` — that combination is why the desk downgraded to **${downgradeTo}**`
+    : "";
+  return `${thesisFact}, and ${spotFact} ${route}${downgradeClause}`;
+}
+
+/** Rule 2 of the cross-field synthesis: P&L building AND a desk upgrade, read as one line —
+ *  the two facts tracking together is the point, not two adjacent unconnected bullets. */
+function synthesizePnlAndUpgrade(prev: BriefSnapshot, next: BriefSnapshot): string {
+  const pnlFact = narratePnlShift(prev.pnlPct!, next.pnlPct!);
+  return `${pnlFact}, and the **desk upgraded** — **${prev.recommendation}** → **${next.recommendation}** — tracking together`;
 }
 
 /**
@@ -96,6 +177,7 @@ export function snapshotFromBrief(
   return {
     headline: envelope.headline,
     recommendation: play?.recommendation ?? null,
+    direction: play?.direction ?? null,
     thesisHealth:
       play?.thesisHealth && !thesisHealthUncalibrated(play.thesisHealth)
         ? fin(play.thesisHealth.health)
@@ -118,25 +200,65 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   if (!prev) return [];
   const lines: string[] = [];
 
-  if (prev.recommendation && next.recommendation && prev.recommendation !== next.recommendation) {
-    lines.push(`**Desk action shifted** — **${prev.recommendation}** → **${next.recommendation}**`);
-  }
-  if (
+  // ---- raw facts (unchanged thresholds — same gates as before synthesis existed) ----
+  const recommendationChanged =
+    !!prev.recommendation && !!next.recommendation && prev.recommendation !== next.recommendation;
+  const thesisMoved =
     prev.thesisHealth != null &&
     next.thesisHealth != null &&
     prev.thesisHealth !== next.thesisHealth &&
-    Math.abs(prev.thesisHealth - next.thesisHealth) >= 3
-  ) {
-    lines.push(narrateThesisShift(prev.thesisHealth, next.thesisHealth));
+    Math.abs(prev.thesisHealth - next.thesisHealth) >= 3;
+  const thesisFading = thesisMoved && next.thesisHealth! < prev.thesisHealth!;
+  const pnlMoved = prev.pnlPct != null && next.pnlPct != null && Math.abs(prev.pnlPct - next.pnlPct) >= 0.5;
+  const pnlBuilding = pnlMoved && next.pnlPct! > prev.pnlPct!;
+  const spotMoved = prev.spot != null && next.spot != null && Math.abs(prev.spot - next.spot) >= 0.01;
+
+  // ---- cross-field synthesis: connect CO-OCCURRING shifts into one causal read instead of
+  // disconnected bullets (Ask Largo mandate — "narrating the live 'what changed' diff the same
+  // trade-manager way instead of numeric deltas"). Each rule only fires when the shifts actually
+  // plausibly relate; anything it doesn't consume falls through to the independent bullets below
+  // exactly as before, so an unrelated pair of shifts never gets a forced causal link.
+  let thesisConsumed = false;
+  let spotConsumed = false;
+  let recommendationConsumed = false;
+  let pnlConsumed = false;
+
+  if (thesisFading && spotMoved) {
+    const adverse = adverseSpotDrift(prev, next);
+    if (adverse) {
+      const shift = recommendationChanged ? recommendationShiftKind(prev.recommendation, next.recommendation) : null;
+      const downgradeTo = shift === "downgrade" ? next.recommendation : null;
+      lines.push(synthesizeThesisAndPrice(prev, next, adverse, downgradeTo));
+      thesisConsumed = true;
+      spotConsumed = true;
+      if (downgradeTo) recommendationConsumed = true;
+    }
   }
-  if (prev.pnlPct != null && next.pnlPct != null && Math.abs(prev.pnlPct - next.pnlPct) >= 0.5) {
-    lines.push(narratePnlShift(prev.pnlPct, next.pnlPct));
+
+  if (!recommendationConsumed && pnlBuilding && recommendationChanged) {
+    if (recommendationShiftKind(prev.recommendation, next.recommendation) === "upgrade") {
+      lines.push(synthesizePnlAndUpgrade(prev, next));
+      pnlConsumed = true;
+      recommendationConsumed = true;
+    }
+  }
+
+  // ---- independent bullets — same content/order as before synthesis existed, skipping only
+  // what a synthesis rule above already narrated as part of a connected line. ----
+  if (!recommendationConsumed && recommendationChanged) {
+    lines.push(`**Desk action shifted** — **${prev.recommendation}** → **${next.recommendation}**`);
+  }
+  if (!thesisConsumed && thesisMoved) {
+    lines.push(narrateThesisShift(prev.thesisHealth!, next.thesisHealth!));
+  }
+  if (!pnlConsumed && pnlMoved) {
+    lines.push(narratePnlShift(prev.pnlPct!, next.pnlPct!));
   }
   if (prev.mark != null && next.mark != null && Math.abs(prev.mark - next.mark) >= 0.05) {
     lines.push(`Option mark $${prev.mark.toFixed(2)} → $${next.mark.toFixed(2)}`);
   }
-  if (prev.spot != null && next.spot != null && Math.abs(prev.spot - next.spot) >= 0.01) {
-    lines.push(narrateSpotShift(prev.spot, next.spot));
+  if (!spotConsumed && spotMoved) {
+    lines.push(narrateSpotShift(prev.spot!, next.spot!));
   }
   if (prev.gammaFlip != null && next.gammaFlip != null && Math.abs(prev.gammaFlip - next.gammaFlip) >= 0.05) {
     lines.push(`Gamma flip moved ${fmtDelta(prev.gammaFlip, next.gammaFlip)}`);

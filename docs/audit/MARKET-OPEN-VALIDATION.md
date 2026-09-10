@@ -118,6 +118,36 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-10 Night Hawk Swings live audit (read this before the routine pass)
+
+### Swing Command Deck + Ask Largo play-brief showed a false "trim banked" on a position still fully exposed at HOLD — fix/swing-trim-ladder-enforced-gate
+
+**What was broken:** live-caught during the hourly Night Hawk Swings audit, positionId 34
+(NRG, LONG, STANDARD sub-lane, entry $4.90, peak $11.40 = +132.7%, mark $6.85 = +39.8%). The
+board's own `liveStatus` (`GET /api/market/nighthawk/horizons?view=swings`) correctly reported
+`HOLD` — manage-sync.ts's calibration-gated `enforced` flag had never actually banked a trim on
+this row. But both the Command Deck terminal panel and Ask Largo's play-brief
+(`GET /api/market/swing/play-brief?playId=SWING:NRG...`) rendered `Trim ladder: +100% ✓` /
+"**all trims banked** — runner only" for the same position at the same instant — a mechanical
+peak-vs-trigger check (`buildTerminalExitLadder`) that ignored manage-sync's enforcement gate
+entirely. A member reading either surface would reasonably believe half the position had already
+been de-risked when 100% of it was still exposed to the original stop.
+
+**Fix:** `terminalPlayFromHorizon` (`src/features/nighthawk/command-deck/adapters.ts`) now forces
+every trim rung's `fired` flag to `false` unless the row's resolved `status` has actually reached
+`TRIM` — the mechanical ladder read is only trusted once manage-sync's enforcement gate agrees
+with it. See `docs/audit/findings-staging/2026-09-10-swing-trim-ladder-fired-ignores-enforced-gate.md`
+for the full root cause and blast-radius (one shared code path feeds both consumers).
+
+**Check at the open:** re-pull `GET /api/market/nighthawk/horizons?view=swings` for any OPEN swing
+row whose `liveStatus` is `HOLD` but `peakPremium` has cleared its +100% trim level (i.e. exactly
+NRG's situation) — its play-brief and Command Deck panel should now show the ladder as un-fired
+("next trim at +100%"), not "✓"/"banked". Also confirm a row that HAS genuinely reached `TRIM`
+(e.g. CRWD, FSLY, SRPT as of 2026-09-10) still shows its ladder correctly fired — this fix must not
+suppress the real, enforced case.
+
+---
+
 ## WATCH LIST — 2026-09-08 evidence-based gate loosening (read this before the routine pass)
 
 ### 0a-3a. Swing cross-session persistence floor loosened for 5 standard archetypes — fix/swing-persistence-loosen-standard-archetypes
@@ -3554,3 +3584,15 @@ than an end-of-session patch.
 - **What was broken:** A live `play-brief` request for a real committed NRG swing position ran past a 120s client timeout, then a retry returned Cloudflare's raw `504: Gateway time-out` HTML instead of the route's own `{available:false, degraded:true}` 503. `loadSwingPlayBriefContext`'s four network-bound reads (Meridian timeline, Meridian peer-cohort, ecosystem context, Vector full-state) had `.catch()` guards for thrown failures but no timeout — a hang, as opposed to a rejection, was never caught. `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app` confirmed a real tail-latency pattern in the same hour: p99 spiking to 88-104s against a 0.4-5s average, with matching intermittent 5xx counts.
 - **What changed:** New `withBriefSourceTimeout()` (`src/lib/swing/brief-source-timeout.ts`) races each of the four calls against an 8s budget (same shape as the existing `CORTEX_SOURCE_TIMEOUT_MS` pattern in `nighthawk/cortex/fetch.ts`), feeding the existing `.catch()` paths on timeout exactly as it would on a genuine failure. Worst case is now bounded at ~24s, inside the route's own intended (but ECS-unenforced) `maxDuration = 30`.
 - **RTH check:** Pull a live swing play-brief for any committed/watch position during RTH (when Meridian/Vector fan-out is under real load) and confirm it always returns within a few seconds — never a multi-minute hang or a raw Cloudflare 504 page. If a slow-path IS hit, confirm the response is the route's own `{available:false, degraded:true}` JSON, not an infrastructure error page. Also worth re-pulling ALB `TargetResponseTime` p99 for `blackout-production-app` a few hours into RTH to see whether the tail-latency spikes recur even with this route now bounded — if they do, the actual long-pole (likely Meridian's per-ticker earnings enrichment fan-out, not yet traced) still needs its own fix.
+
+### 83. UW rate-limiter had no live-traffic reservation on its RPS layer, only concurrency — recurring member-facing flow-alerts outage — fix/uw-rate-limiter-rps-reservation — 2026-09-09
+
+- **What was broken:** `acquireGlobalRedisSlot()` (`uw-rate-limiter.ts`) paced every caller — background sweep or live member traffic alike — against the same raw `GLOBAL_MAX_RPS` (default 2) on the RPS sliding-window admission stage. A prior fix (2026-09-03) had already added `reserveForLiveTraffic()` — a background-sweep-tagged caller sees its ceiling reduced by one so it can never claim the LAST slot from live traffic — but only wired it into the CONCURRENCY stage, never the RPS stage. Live evidence 2026-09-09 ~22:41-23:40 UTC: ALB `TargetResponseTime` p99/Max tail-latency spikes up to 49.6s against a low average and low ECS CPU/Memory (ruling out fleet capacity), and directly, `[uw] flow-alerts cache too stale — not serving: [unusual_whales] rate-limiter queue budget exceeded at global_rps: waited 20001ms of 20000ms` — the queue's own 20s admission budget exhausted specifically at the RPS stage, members not served flow-alerts data.
+- **What changed:** `acquireGlobalRedisSlot()` now passes `reserveForLiveTraffic(GLOBAL_MAX_RPS)` instead of the raw ceiling — same already-tested primitive the concurrency stage already used, applied to the second stage that needed it. The local per-process token bucket (`effectiveMaxRps()`) was deliberately left unchanged (see the staged finding for why — shared mutable refill-rate state makes that a materially riskier change, and the live evidence named the Redis `global_rps` stage specifically).
+- **RTH check:** This is the most important RTH check on this list — the underlying incident was LIVE and member-facing, not merely code-review-visible. Pull ALB `blackout-production-app` `TargetResponseTime` p99/Max for the next RTH session and confirm the recurring 10-50s single-minute spikes seen 2026-09-09 evening do not repeat at the same magnitude/frequency during real trading hours; grep `CloudWatch Logs /ecs/blackout-production` for `rate-limiter queue budget exceeded at global_rps` and confirm it either stops appearing or appears far less often than the pre-fix baseline (5+ occurrences in under 20 minutes). If it still recurs at similar severity, the RPS ceiling itself (not just its reservation) may need raising, or another caller entirely may be saturating the budget — re-open the investigation rather than assuming the fix was insufficient without re-measuring.
+
+### 84. All three SSE stream routes could throw an unhandled promise rejection on every tick of a live connection — fix/sse-stream-tick-unhandled-rejection — 2026-09-09
+
+- **What was broken (operator-reported):** live production alert (Discord `#website-logs`) — two `🛑 Unhandled promise rejection` alerts ~19 minutes apart, both an async stack bottoming out through `market/vector/stream/route.js`. Root cause: `recheckSseUserEntitlement` re-throws any error that isn't a degraded-mode `TierUnavailableError`, and all three SSE stream routes (`vector/stream`, `zerodte/marks/stream`, `flows/stream`) call it inside a per-tick `send()` invoked fire-and-forget (`void send()`) with no `.catch()` anywhere in the chain. `send()` runs every 1s (or per live event) for the life of a long-lived connection, so a single transient Clerk/Redis hiccup produced a fresh unhandled rejection on every subsequent tick until the client disconnected, not just once.
+- **What changed:** New `runSseTickSafely(tick, routeLabel)` (`src/lib/sse-safe-tick.ts` — a pure, dependency-free file, split out for the same `import "server-only"` testability reason `sse-backpressure.ts` already was) wraps a tick in try/catch and logs instead of letting it escape — the same "skip this tick, try again next tick" treatment the existing `"unavailable"` verdict already gets. All three routes' `send()` (and, in `flows/stream`, its flow-event subscriber callback too) now route through it.
+- **RTH check:** Watch Discord `#website-logs` (or CloudWatch Logs `/ecs/blackout-production` for `[sse-stream:` entries) — a transient tier/tool-access hiccup on a live SSE connection should now show as a normal `console.error` log line (`[sse-stream:<route>] tick failed unexpectedly: ...`) with the connection continuing to serve subsequent ticks, never as another `🛑 Unhandled promise rejection` Discord alert. If one still appears with a stack through any of the three stream routes, the fix isn't reaching that call site and needs re-tracing.

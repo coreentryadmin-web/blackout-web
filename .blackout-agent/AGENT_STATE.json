@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-09T15:27:15.562Z",
+  "updated_at": "2026-09-10T04:19:50.151Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,90 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a4098bde0fd7edf912faa96b5a343334c4edf963",
+    "last_main_sha": "a56c77caf44a3be4d9c63743195548036bc75ab8",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-05T19:35:19.110Z",
-      "type": "pr_review",
-      "pr": 4037,
-      "head_sha": "2c4363b2c",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T19:35:19.109Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-05T19:35:26.152Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-09-05T19:35:26.152Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
-    },
-    {
-      "at": "2026-09-05T20:41:08.341Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T20:41:08.976Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T20:41:09.263Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.295Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.899Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:58.167Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:49.766Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:50.307Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:48:50.539Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-05T22:19:16.536Z",
       "type": "context_sync",
@@ -1308,9 +1231,382 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T17:48:44.795Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T17:48:45.445Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-09T17:48:45.744Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-10T04:12:26.216Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-10T04:12:26.948Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-10T04:12:27.650Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 30
+    },
+    {
+      "at": "2026-09-10T04:19:21.841Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-10T04:19:22.893Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 30
+    },
+    {
+      "at": "2026-09-10T04:19:23.232Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-10T04:19:48.352Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-10T04:19:49.485Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-10T04:19:50.151Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 30
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4703,
+      "title": "fix(nighthawk): ICU midnight-as-24 quirk broke isBeforeOrAtMarketCloseEt",
+      "branch": "fix/nighthawk-session-midnight-hour24",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T04:17:23Z"
+    },
+    {
+      "number": 4702,
+      "title": "fix(seo): trim 5 marketing meta descriptions under Google SERP truncation limit",
+      "branch": "fix/seo-marketing-meta-description-length",
+      "author": "claude[bot]",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T04:07:36Z"
+    },
+    {
+      "number": 4701,
+      "title": "fix(seo): add DefinedTermSet schema to the general options-trading glossary",
+      "branch": "fix/seo-options-glossary-definedtermset",
+      "author": "claude[bot]",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T04:08:46Z"
+    },
+    {
+      "number": 4700,
+      "title": "docs(swing): scope Ask Largo book-context banger-blindspot — design proposal, not a fix",
+      "branch": "docs/swing-book-context-banger-blindspot",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T02:56:20Z"
+    },
+    {
+      "number": 4699,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/sync-heartbeat-state-2026-09-10g",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T02:56:27Z"
+    },
+    {
+      "number": 4698,
+      "title": "0DTE: score_floor outcome backtest — does score rank forward outcome?",
+      "branch": "feat/zerodte-score-floor-outcome-backtest",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T02:56:26Z"
+    },
+    {
+      "number": 4696,
+      "title": "fix(swing): honest relative retracement for live-play giveback bullets",
+      "branch": "fix/swing-live-giveback-relative",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T02:56:24Z"
+    },
+    {
+      "number": 4695,
+      "title": "docs: design canonical swing play-brief facts precompute layer",
+      "branch": "docs/swing-canonical-facts-layer-design",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T02:56:23Z"
+    },
+    {
+      "number": 4693,
+      "title": "Swing gate-compound funnel: measure the 2026-09-08 discovery-pool loosening",
+      "branch": "feat/swing-gate-compound-funnel",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T02:56:22Z"
+    },
+    {
+      "number": 4691,
+      "title": "0DTE: real-option-P&L validation tool for BREAKOUT gain_over_range ranking (BLOCKED — enabling fix included)",
+      "branch": "fix/breakout-gain-over-range-option-pnl-validation",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T02:06:02Z"
+    },
+    {
+      "number": 4689,
+      "title": "fix(swing): dedup gate-block text in WATCH brief's Trade manager read",
+      "branch": "fix/swing-watch-gate-bullet-dedup",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T01:57:47Z"
+    },
+    {
+      "number": 4688,
+      "title": "0DTE: primary-gate-only ablation for G-1/G-4/G-10/G-12/G-13",
+      "branch": "feat/zerodte-gate-primary-ablation",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T01:57:45Z"
+    },
+    {
+      "number": 4687,
+      "title": "G-11: liquidity/cap-matched single-stock control (INTENTIONAL-DESIGN §5 follow-up)",
+      "branch": "feat/g11-liquidity-cap-control",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T01:57:44Z"
+    },
+    {
+      "number": 4685,
+      "title": "feat(swing): persist + surface archetype/sub-lane track record in Ask Largo brief",
+      "branch": "fix/swing-largo-archetype-winrate-history",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T01:57:39Z"
+    },
+    {
+      "number": 4684,
+      "title": "0DTE: thesis_rank_reject outcome A/B + extend gate-compound funnel to BREAKOUT/PIN",
+      "branch": "feat/thesis-rank-reject-outcome-ab",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T01:13:29Z"
+    },
+    {
+      "number": 4683,
+      "title": "Swing play-brief: narrate cross-desk disagreement instead of listing it",
+      "branch": "fix/swing-cross-desk-conflict-narrative",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T01:06:25Z"
+    },
+    {
+      "number": 4682,
+      "title": "feat(swing): narrate the live play-brief diff as one connected read",
+      "branch": "feat/swing-play-brief-diff-synthesis",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T01:06:36Z"
+    },
+    {
+      "number": 4681,
+      "title": "fix(zerodte): decouple trim_scale badge lag from ratchet-floor forcing",
+      "branch": "fix/zerodte-trim-scale-badge-lag",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T00:47:41Z"
+    },
+    {
+      "number": 4679,
+      "title": "docs(swing): scope thesis-health committed-position wiring gap — design proposal",
+      "branch": "docs/swing-thesis-health-committed-position-wiring-gap",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T00:47:46Z"
+    },
+    {
+      "number": 4677,
+      "title": "fix(vector): forward gex.flip_reason to the scanner table and Largo's Vector tool",
+      "branch": "fix/vector-universe-flip-reason-dropped",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T00:47:47Z"
+    },
+    {
+      "number": 4676,
+      "title": "fix(swing): surface roll-freeze breakevens + require fresh last_mark_at for latched-mark grades",
+      "branch": "fix/swing-roll-freeze-breakeven-staleness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T00:47:49Z"
+    },
+    {
+      "number": 4675,
+      "title": "chore: gitignore sweep-output/ (raw production API dumps from live investigations)",
+      "branch": "chore/gitignore-sweep-output",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T23:53:06Z"
+    },
+    {
+      "number": 4673,
+      "title": "fix(perf): reserve one UW RPS slot for live traffic during background sweeps",
+      "branch": "fix/uw-rate-limiter-rps-reservation",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T00:11:47Z"
+    },
+    {
+      "number": 4672,
+      "title": "fix(zerodte): conviction field falls back to merit tier for BREAKOUT/PIN plays",
+      "branch": "fix/zerodte-conviction-null-breakout-pin",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T00:11:51Z"
+    },
+    {
+      "number": 4671,
+      "title": "fix(swing): gate counter-thesis fading-pillar read on thesisHealthUncalibrated",
+      "branch": "fix/swing-counter-thesis-uncalibrated-pillar",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T00:11:52Z"
+    },
+    {
+      "number": 4669,
+      "title": "fix(audit): remove two phantom tools from largo-truncation-probe LANE_TOOLS",
+      "branch": "fix/largo-truncation-probe-phantom-swing-discovery-tool",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-10T00:11:54Z"
+    },
+    {
+      "number": 4663,
+      "title": "fix(swing): bound play-brief's upstream reads so a stall degrades instead of hanging",
+      "branch": "fix/swing-play-brief-source-timeout",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T21:06:09Z"
+    },
+    {
+      "number": 4662,
+      "title": "docs(audit): log RTH validation follow-up for three more swing fixes",
+      "branch": "docs/rth-validation-followup-2026-09-09",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T21:06:14Z"
+    },
+    {
+      "number": 4660,
+      "title": "fix(sse): stop unhandled promise rejections escaping stream tick sends",
+      "branch": "fix/sse-stream-tick-unhandled-rejection",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T18:47:54Z"
+    },
+    {
+      "number": 4658,
+      "title": "docs: document a third Node-test phantom-failure trap (--experimental-test-module-mocks)",
+      "branch": "docs/experimental-test-module-mocks-trap-2026-09-09",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-09T18:17:05Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",

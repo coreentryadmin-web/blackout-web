@@ -11,6 +11,71 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-10 (03:52 UTC) — [SEO] Deep-dive continuation: PR #4701 checked, sweep clean, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Continuation of the deep-dive SEO/GEO audit (operator request). Second finding (5 marketing pages'
+meta descriptions over the ~160-char SERP truncation limit + new regression test) moved from
+uncommitted WIP onto a fresh branch (`fix/seo-marketing-meta-description-length`, off current
+`main`) per the "one issue per branch/PR" discipline — staged finding written
+(`2026-09-10-marketing-meta-description-serp-truncation.md`), full suite running for RED→GREEN
+proof before commit/push/PR.
+
+While waiting on that suite run (NEVER SIT IDLE): a GitHub subscription-created event arrived for
+PR #4701 (my own DefinedTermSet fix, opened this session) — checked its state: all CI green
+(verify, CodeQL, triage), mergeable, zero review comments yet. Correctly still draft, held for
+Cursor's peer-review sign-off per the CARVE-OUT — nothing actionable.
+
+`agent-pr-sweep.mjs`: 20 open agent PRs, 19 MERGEABLE, only #4701 (mine) READY-BUT-DRAFT — expected,
+not a jam. No other lane stuck.
+
+`gsc-opportunities-report.mjs`: same 2 striking-distance queries as every prior cycle ("gamma three
+trading" pos 16.4, "is 0dte gambling" pos 11.5), both already targeted by existing content. `dealer
+gamma` (deep-demand) essentially flat at pos 20.9 (was 20.9 last cycle) — still outside the
+actionable 10-20 band.
+
+---
+## 2026-09-10 (00:16 UTC) — [SEO] Lane heartbeat: prod re-validated, sweep clean, dealer gamma still climbing
+
+**Severity.** — (no defect found)
+
+STEP 1 — no homepage-affecting commits since the last real CLS measurement (0.0299, GOOD; live RTH
+data 2026-09-09), still stands. `/api/og` re-fetched with a Googlebot UA: HTTP 200, `image/png` —
+still crawlable.
+
+STEP 2 — `agent-pr-sweep.mjs`: 13 open agent PRs, none SEO-lane (swing/largo/zerodte/audit-docs
+fixes). #4660 (flagged last cycle as stuck draft) has moved to MERGEABLE — coordinator acted on it.
+Nothing to rebase.
+
+STEP 3 — `gsc-opportunities-report.mjs` window refreshed a day (2026-06-10 → 2026-09-07), same 2
+striking-distance queries, both already targeted. `dealer gamma` (deep-demand) continues its climb
+— now pos 20.9 (was 21.9 two cycles ago) — still outside the 10-20 actionable band. Sitemap swept:
+76/76 URLs still 200.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
+## 2026-09-09 (18:16 UTC) — [SEO] Lane heartbeat: #2453/#2448 re-validated on prod, non-SEO draft-deadlock flagged, no new opportunity
+
+**Severity.** — (no defect found)
+
+STEP 1 — no homepage-affecting commits since the last real CLS measurement (0.0299, GOOD; live RTH
+data this morning); `/api/og` re-fetched with a Googlebot UA: HTTP 200, `image/png` — still
+crawlable.
+
+STEP 2 — `agent-pr-sweep.mjs`: 2 open agent PRs. #4658 (docs, MERGEABLE) is not SEO-lane. #4660
+(coordinator-branch SSE fix) came back READY-BUT-DRAFT — green CI sitting in draft, nobody else
+watching it. Per the standing DRAFT DEADLOCK note in CLAUDE.md this is finished work fallen out of
+the pipeline, not in-progress; posted a PR comment flagging it for the coordinator rather than
+merging it myself (out of SEO-lane scope) — https://github.com/coreentryadmin-web/blackout-web/pull/4660#issuecomment-5606655493.
+
+STEP 3 — `gsc-opportunities-report.mjs` returned the same window/numbers as every prior cycle —
+still no new striking-distance query. Sitemap swept: 76/76 URLs still 200.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-09 (16:33 UTC / Wed 2026-09-09 12:33 ET) — [SEO] RTH wake: final window check, gamma-snapshot liveness re-confirmed
 
 **Severity.** — (no defect found)
@@ -3420,3 +3485,26 @@ cycle, now trading live rather than off-hours/stale.
 All four hold under real live RTH conditions with fresh data (not just the off-hours/synthetic
 fixtures the original unit tests used) — GREEN pass, no follow-up needed. `MARKET-OPEN-VALIDATION.md`
 items #74/#75 can be considered validated as of this entry.
+
+## 2026-09-09 (19:16 UTC) — [DISCOVERY] Live RTH validation follow-up: three more swing/Largo fixes confirmed correct (#4650, #4651, #4653)
+
+Same-day follow-up to the entry above — three more swing/Largo fixes merged mid-session
+(#4650, #4651, #4653), each confirmed live by re-pulling `GET /api/market/swing/play-brief?
+playId=SWING:NRG:34` at 11:15 ET, ~1 hour after the first RTH check on the identical still-open
+position, and diffing against that earlier snapshot:
+
+- **#4650 (dedupe triple-restated Vector conflict):** the earlier (10:15 ET) snapshot's "Vector
+  desk: ..." bullet ended with `— **cross-check** Vector thesis vs swing direction`, restating a
+  fact the "Cross-desk friction — Vector bearish (...)" bullet earlier in the same brief already
+  named. The newer (11:15 ET, post-merge) snapshot's "Vector desk: ..." bullet has NO trailing
+  cross-check clause — the redundant framing is correctly dropped now that the earlier bullet
+  already flagged the conflict, while the "Vector desk" bullet's own non-duplicative content
+  (headline, invalidation) is unchanged.
+- **#4651 (round lane-rank median delta):** "Below lane median — **#90/92** (score **27**, **-37**
+  vs median)" — a clean integer, not a raw unrounded float (the bug this fix removed).
+- **#4653 (restore DTE-runway context for DTE > 7):** "Manage plan" now includes "**9 DTE**
+  remaining" for this still-9DTE position, folded correctly into the "Trade manager read"
+  narrative even though this brief has no separate "Hold plan" section (exactly the collapsed-away
+  case the fix targeted).
+
+All three confirmed correct under real live data — GREEN pass, no follow-up needed.
