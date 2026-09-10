@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildSwingRecord,
+  buildSwingRecordSummary,
   isSwingWin,
   LOW_N_THRESHOLD,
   type SwingLegRowLike,
@@ -122,4 +123,44 @@ test("a graded parent loss with an OPEN child is already a loss (loss preserved 
 test("low_n badges a thin chain", () => {
   const rec = buildSwingRecord([leg()]);
   assert.equal(rec.composite.low_n, 1 < LOW_N_THRESHOLD);
+});
+
+// ─── FIX (A): breakevens surfaced alongside wins/losses (docs/audit/findings-staging) ──────────────
+
+test("buildSwingRecordSummary: an exact-0% chain counts as a loss (isSwingWin unchanged) AND is reported in `breakevens`", () => {
+  // Live population this mirrors (2026-09-09 30-day /swing/record pull): a single-leg chain frozen via
+  // roll-freeze markfreeze.v1 at exit_mark === entry_premium to the cent → realized_pnl_pct === 0.
+  const breakevenChain = buildSwingRecord([leg({ id: 100, realized_pnl_pct: 0 })]);
+  const realLossChain = buildSwingRecord([leg({ id: 101, realized_pnl_pct: -50 })]);
+  const winChain = buildSwingRecord([leg({ id: 102, realized_pnl_pct: 30 })]);
+  const openChain = buildSwingRecord([leg({ id: 103, realized_pnl_pct: null, graded_at: null, status: "OPEN" })]);
+
+  const summary = buildSwingRecordSummary(
+    [breakevenChain, realLossChain, winChain, openChain],
+    { since: "2026-08-10", through: "2026-09-09", days: 30 },
+  );
+
+  // isSwingWin's binary semantics are UNCHANGED: the breakeven chain still counts as a full loss, exactly
+  // like before this field existed — losses = {breakeven, realLoss} = 2, wins = {winChain} = 1.
+  assert.equal(summary.wins, 1);
+  assert.equal(summary.losses, 2);
+  assert.equal(summary.opens, 1);
+  // NEW: of those 2 losses, exactly 1 is a breakeven (worstLegPnlPct === 0) — the real drawdown loss is
+  // NOT counted here, so a reader can recover "1 real loss, 1 breakeven-as-loss" from these two fields.
+  assert.equal(summary.breakevens, 1);
+  assert.ok(summary.breakevens <= summary.losses, "breakevens is a subset of losses, never exceeds it");
+});
+
+test("buildSwingRecordSummary: no breakeven legs → breakevens is 0, not omitted/undefined", () => {
+  const summary = buildSwingRecordSummary(
+    [buildSwingRecord([leg({ realized_pnl_pct: 30 })]), buildSwingRecord([leg({ realized_pnl_pct: -20 })])],
+    { since: "2026-08-10", through: "2026-09-09", days: 30 },
+  );
+  assert.equal(summary.breakevens, 0);
+  assert.equal(summary.losses, 1);
+});
+
+test("buildSwingRecordSummary: methodology text documents that a 0% leg counts as a loss in this view", () => {
+  const summary = buildSwingRecordSummary([], { since: "2026-08-10", through: "2026-09-09", days: 30 });
+  assert.match(summary.methodology, /0% .*(counts as a LOSS|breakeven)/i);
 });
