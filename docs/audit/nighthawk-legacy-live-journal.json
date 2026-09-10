@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T07:26:00Z",
+  "lastUpdated": "2026-09-10T07:38:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -74,6 +74,11 @@
     "nextStep": "Once >=5-10 resolved picks accumulate with bucket classifications, evaluate whether a dedicated picks-taxonomy-tracker script (mirroring 0DTE/Swing's e2e-healthcheck shape) is worth building per the standing 'if manual checks keep repeating, build one' rule -- not yet, insufficient sample."
   },
   "checkIns": [
+    {
+      "at": "2026-09-10T07:38:00Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "PR #4715 is now fully green (verify/CodeQL/Analyze/triage/dispatch all success) -- exactly the DRAFT DEADLOCK jam CLAUDE.md describes: finished work fallen out of the pipeline. Retried the MCP undraft, still 'API rate limit already exceeded for user ID 284440397'. This is a real, active blocker now (not premature like the last check) -- will keep retrying every cycle until it clears rather than treating one failed attempt as final. Edition re-checked, unchanged (SIG/ASO/FICO still open, stale:false, carry_until_close:true)."
+    },
     {
       "at": "2026-09-10T07:26:00Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
