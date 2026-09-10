@@ -363,14 +363,21 @@ test("holdPlanSection: omits aggregate thesis health % when inputs uncalibrated"
   assert.doesNotMatch(section!.body, /Thesis health \*\*46%\*\*/);
 });
 
-test("holdPlanSection: peak giveback warning still shows when thesis health is uncalibrated", () => {
+// FINDINGS 2026-09-10 (live NRG repro): this bullet used to compute `play.peak - play.pnlPct` — a
+// percentage-POINT subtraction of two already-percentage numbers — and label it "Gave back X%
+// from peak", which reads as a RELATIVE retracement. Real production NRG position: peak 132.7,
+// pnlPct 39.8 -> old math printed "Gave back 93% from peak" on a play still up +39.8%. Numbers
+// below use that same live NRG case (capture ~30%, honest giveback ~70%) rather than the old
+// fixture's 129/95 pair, which under the new honest math (capture ~74%) no longer clears the
+// giveback floor and would silently stop testing this bullet at all.
+test("holdPlanSection: peak giveback warning still shows when thesis health is uncalibrated (live NRG repro)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
       status: "HOLD",
       recommendation: "HOLD",
       contract: "110C · 12DTE",
-      peak: 129,
-      pnlPct: 95,
+      peak: 132.7,
+      pnlPct: 39.8,
       thesisHealth: {
         health: 46,
         entryIndex: 60,
@@ -411,7 +418,114 @@ test("holdPlanSection: peak giveback warning still shows when thesis health is u
   const section = holdPlanSection(ctx);
   assert.ok(section);
   assert.doesNotMatch(section!.body, /Thesis health \*\*46%\*\*/);
-  assert.match(section!.body, /Gave back \*\*34%\*\* from peak/);
+  assert.match(section!.body, /Gave back \*\*70%\*\* from peak/, `expected ~70% relative giveback, got: ${section!.body}`);
+  assert.doesNotMatch(section!.body, /Gave back \*\*93%\*\*/, "must not regress to the point-difference bug");
+});
+
+test("holdPlanSection: peak giveback warning does not fire once retained capture clears the floor", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      // capture = 98/120*100 ~= 81.7% retained -> above the 70% floor, no giveback bullet.
+      // (Old point-difference math: 120-98=22, which is NOT > 25, so this was already silent
+      // under the old logic too — kept as a same-shape non-regression check.)
+      peak: 120,
+      pnlPct: 98,
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section, "contract runway line still renders regardless of giveback");
+  assert.doesNotMatch(section!.body, /Gave back/i);
+});
+
+test("holdPlanSection: round-tripped-past-breakeven note fires when current pnl has gone negative after a positive peak", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 132.7,
+      pnlPct: -10,
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Round-tripped past breakeven.*was up \*\*133%\*\* at peak, now \*\*-10%\*\*/,
+  );
 });
 
 test("holdPlanSection: null when no unique hold-plan content beyond Management", () => {

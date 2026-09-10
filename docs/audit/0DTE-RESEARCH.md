@@ -336,6 +336,83 @@ stays advisory and accrues evidence.
   ENFORCE_MIN_DELTA) before it sizes or gates real risk. The measurement loop — not any single parameter —
   is the moat.
 
+### Gate-overlap ablation, PRIMARY-CODE ONLY (G-1/G-4/G-10/G-12/G-13) — built 2026-09-09/10, still INSUFFICIENT DATA
+
+**Why this was built.** The operator's CTO review (2026-09-09) asked whether G-1 (tape alignment), G-4
+(VIX regime), G-10 (intraday structure), G-12 (confluence floor) and G-13 (flow-accumulation conflict)
+measure overlapping "does the environment agree with this direction" phenomena. The same-day fix
+(`docs/audit/findings-staging/2026-09-09-zerodte-rejection-log-primary-gate-only.md`) made
+`zerodte_scan_rejections.blocks_json` start recording EVERY failing gate on a row, not just the primary
+`gate_failed` — but that field needs to accumulate a real sample before the FULL overlap study is
+possible. That finding's own closing line named the smaller thing buildable immediately: a
+primary-gate-only Blocked WR/EV vs Passed WR/EV comparison via the already-existing counterfactual
+grader (`skip-grading.ts`). That tool now exists:
+`scripts/audit/zerodte-gate-primary-ablation.mjs` (pure aggregation in
+`scripts/audit/lib/gate-primary-ablation-eval.mjs`, 17 unit tests). It:
+- Maps each named gate to its exact rejection code(s), read directly off `gates.ts`'s own `// G-N —`
+  comments (not inferred): G-1 → `no_market_bias`/`tape_alignment`; G-4 → `vix_extreme`/`vix_elevated`/
+  `vix_unavailable`/`condor_vix_regime`; G-12 → `confluence_floor`; G-13 → `flow_accumulation_conflict`.
+  **G-10 maps to zero codes** — it was DEMOTED to score-only on 2026-07-27 (see that line's own comment
+  in `gates.ts`) and has pushed no block since, so it is reported `NOT_MEASURABLE` by construction, never
+  silently defaulted to an empty-but-plausible-looking row.
+- Aggregates the calibration report's existing `blocked_value[]` (already grouped by primary
+  `gate_failed`, `GET /api/market/zerodte/calibration`) across each gate's code family, with a Wilson 95%
+  CI on the merged win rate.
+- Compares against the committed ledger's `mechanical` rollup (`GET /api/market/zerodte/record`) — the
+  SAME fixed −50%/+100%/15:50-ET plan grade the blocked-side counterfactual uses, not the as-managed
+  headline (a different, variable exit policy) — so Blocked and Passed are graded under identical
+  physics, per skip-grading.ts's own stated rule.
+- Reports a clearly-labeled MODELED "assumed EV" for the blocked side (win rate run through the fixed
+  plan payoff) distinct from the passed side's REAL measured premium P&L — rejection rows carry no OCC,
+  so skip-grading can only grade them underlying-direction-only; never blends the two.
+- Distinguishes **"no rejections logged"** from **"rejections logged but 100% ungradeable"** — collapsing
+  those into one `n=0` line would silently hide that a gate DID fire.
+
+**First live run (2026-09-10, 90-day window, `--days=90`):** committed-ledger baseline (Passed) is
+solid — **n=363, WR=30.6%, mechanical EV=−11.4%**. But the Blocked side is currently **unmeasurable for
+all five gates**, and the reason is NOT small sample size specific to these gates:
+```
+G-1   (no_market_bias/tape_alignment):        5 rejections logged, 5/5 ungradeable — ALL_UNGRADEABLE
+G-4   (vix_extreme/vix_elevated/...):         0 rejections logged in-window            — NO_REJECTIONS_IN_WINDOW
+G-10  (score-only since 2026-07-27):          structurally 0 codes                      — NOT_MEASURABLE
+G-12  (confluence_floor):                     1 rejection logged, 1/1 ungradeable       — ALL_UNGRADEABLE
+G-13  (flow_accumulation_conflict):           9 rejections logged, 9/9 ungradeable      — ALL_UNGRADEABLE
+```
+Pulling the FULL `blocked_value[]` (every gate code the report knows about, not just these five) showed
+this is **platform-wide, not specific to the five named gates**: **all 18 gate codes present in the
+90-day window show `n=0` graded against 2,000 ungradeable rows** (2,000 is `fetchGradedSkips`'s own fetch
+cap — the true ungradeable total may be higher), including high-volume codes like `score_floor` (320
+ungradeable), `thesis_rank_reject` (464), `late_afternoon` (337), and `min_gross` (206). The tool now
+self-detects and prints this (`platformWideSkipGradingHealth` / the `systemic_zero_graded` flag) so a
+future run can never mistake "these five gates are quiet" for "the whole grader is stalled" again.
+
+The dominant ungradeable reasons across the sample are **"no underlying bar at/after the block time
+inside the plan window"** and **"no bar data available for the session"** — the SAME generic-reason
+class the 2026-08-29 finding (documented in `skip-grading.ts`'s own module comment) previously traced to
+a swallowed Polygon fetch failure inside `fetchAggBars`, supposedly fixed by routing through
+`fetchAggBarsWithDiagnostics`. Reading that function today: it DOES correctly distinguish a genuine fetch
+failure (`data == null`, a real thrown/non-2xx error) from a genuinely empty result set (`data` present,
+`results` empty/absent) — and `skip-grading.ts` only swaps in the specific `"underlying bar fetch threw:
+..."` reason when a real failure was captured. **None of the sampled ungradeable rows carry that specific
+message** — every one reads the generic reason — which means, per that function's own logic, Polygon is
+reporting a SUCCESSFUL response with no matching bars for essentially every rejected candidate's session
+date, or the block timestamp being compared against those bars is systematically landing outside the
+range that exists. Neither of those was verified further here (out of scope for this measurement task —
+flagged as a follow-up rather than root-caused blind). **A plausible, NOT YET VERIFIED, hypothesis worth
+checking first:** `runSkipGrading` derives `blockedAtMs` via `Date.parse(row.observed_at)` — if
+`observed_at` round-trips through Postgres/pg without an explicit UTC marker, a timezone
+misinterpretation would systematically push `blockedAtMs` outside every session's available minute-bar
+range, producing exactly this "bars exist for the day, but none at/after the (wrong) block instant"
+signature. This is a hypothesis to check, not a diagnosis — verify against a real `observed_at` value
+before touching anything.
+
+**No gate changed, nothing fixed.** This is evidence-gathering only, same discipline as every other A/B
+tool in this file. **Status: the primary-gate-only ablation the CTO review asked for is now BUILT and
+RUNNABLE, but currently returns INSUFFICIENT DATA for all five gates because of this separate,
+platform-wide skip-grading gap — re-run `node --import tsx scripts/audit/zerodte-gate-primary-ablation.mjs
+--days=90` once that gap is investigated/fixed** (a distinct piece of work, flagged as a follow-up
+suggestion rather than attempted inline here). Until it is, neither the primary-gate-only nor a future
+full `blocks_json`-based ablation can produce a real Blocked WR/EV number for any gate.
 ### E6 — does `score_floor` (65) actually rank forward outcome? An independent re-check (2026-09-10)
 
 **The open question.** `zerodte-gate-compound-funnel.mjs` measured twice (2026-09-08 off-hours n=15,

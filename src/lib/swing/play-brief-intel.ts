@@ -555,8 +555,18 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
       if (h.health < 45) lines.push("**Tighten risk** — thesis fading; don't add size");
     }
     // Peak giveback is grounded in committed trade marks — independent of thesis-health calibration.
-    if (play.peak != null && play.pnlPct != null && play.peak - play.pnlPct > 25) {
-      lines.push(`Gave back **${(play.peak - play.pnlPct).toFixed(0)}%** from peak — consider trim into strength`);
+    // Honest RELATIVE retracement via mfe-capture.ts, not a percentage-POINT subtraction of two
+    // already-percentage numbers (same fix as the two sibling call sites, FINDINGS 2026-09-10).
+    // captureFloor=70 is the LEAST sensitive of the three call sites — this bullet only renders
+    // when thesisHealth is already present (a live open play with a computed thesis read already
+    // surfaced above), so a smaller giveback is less likely to be worth a second callout here.
+    const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
+    if (giveback?.kind === "round_trip") {
+      lines.push(
+        `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider trim into strength`,
+      );
+    } else if (giveback?.kind === "capture" && giveback.capturePct < 70) {
+      lines.push(`Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`);
     }
   }
 
