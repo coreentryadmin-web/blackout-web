@@ -38,7 +38,9 @@ export function openSessionYmd(now: Date = new Date()): string | null {
   }).format(now);
   const [h, m] = hm.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  const mins = h * 60 + m;
+  // `hour12: false` renders ET midnight as "24" in this Node/ICU build, not "00" (same quirk
+  // fixed in nighthawk/session.ts #4703/#4714/#4715) — fold it back before the arithmetic.
+  const mins = (h % 24) * 60 + m;
   // At exactly 16:00 the session is DONE, so the bar is final — strict less-than on the close.
   return mins >= OPEN_MIN && mins < CLOSE_MIN ? ymd : null;
 }
