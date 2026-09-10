@@ -486,6 +486,63 @@ test("tradeManagerNarrativeSection: round-tripped-past-breakeven bullet fires wh
   );
 });
 
+// Live repro (NN, SWING:NN:32, 2026-09-10 12:00 ET): a TRIM recommendation whose position has
+// ALREADY round-tripped past breakeven still rendered actionNarrative's generic "Bank partial
+// into strength; don't give back peak." immediately before the accurate "Round-tripped past
+// breakeven ... was up 24% at peak, now -35%" bullet — telling a member to protect a peak the very
+// next clause says is already gone, past breakeven, into a loss. "Into strength" and "don't give
+// back peak" are both stale/contradictory once the round-trip has already happened.
+test("tradeManagerNarrativeSection: TRIM recommendation does not claim 'into strength' once the play has already round-tripped past breakeven", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "TRIM",
+        pnlPct: -34.6,
+        peak: 24.4,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 3.9, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(
+    section!.body,
+    /Bank partial into strength/i,
+    `TRIM's generic "into strength" line must not survive a real round-trip, got: ${section!.body}`,
+  );
+  assert.match(section!.body, /Round-tripped past breakeven.*was up \*\*24%\*\* at peak, now \*\*-35%\*\*/);
+});
+
+test("tradeManagerNarrativeSection: TRIM recommendation keeps the 'into strength' line when the play has NOT round-tripped (still a live gain)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "TRIM",
+        recommendation: "TRIM",
+        pnlPct: 8.6,
+        peak: 129.7,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Bank partial into strength; don't give back peak/);
+});
+
 // FINDINGS 2026-09-10: degradedReadLine (the "Live read" fallback bullet, fires only when Vector
 // spot isn't wired on this tick) independently carried the SAME peak-pnlPct point-difference bug
 // right beside actionNarrative's copy in this same file — a 4th call site found while fixing the
