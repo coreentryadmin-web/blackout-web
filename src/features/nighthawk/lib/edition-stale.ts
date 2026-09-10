@@ -71,7 +71,10 @@ export function publishedAtEtMeta(
     hour12: false,
   }).formatToParts(d);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "0";
-  const minutes = Number(get("hour")) * 60 + Number(get("minute"));
+  // `hour12: false` renders ET midnight as hour "24" in some ICU versions, not "00" — the
+  // same quirk fixed in session.ts's etNowParts/isBeforeOrAtMarketCloseEt (#4703). `% 24`
+  // folds 24:xx back to 0:xx so 00:00-00:59 ET computes 0-59 minutes, not 1440-1499.
+  const minutes = (Number(get("hour")) % 24) * 60 + Number(get("minute"));
   if (!Number.isFinite(minutes)) return null;
   return { date, minutes };
 }
