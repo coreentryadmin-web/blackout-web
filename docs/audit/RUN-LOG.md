@@ -3725,3 +3725,33 @@ harness mistake on this cycle's part, not a product defect, so not logged as a f
 
 CloudWatch crash-error grep (15-min window, all five systems' routes): 0 matched events, clean.
 No discrepancy found across this cycle's checks — GREEN pass, no follow-up needed.
+
+## 2026-09-10 (20:35 UTC) — [DISCOVERY] `vector-universe-snapshot` "stale" alarm investigated and ruled out — market close, not a bug
+
+Mid-cycle, `GET /api/market/vector/universe`'s `updatedAt` was observed frozen for 35+ minutes
+(vs the cron's own documented `stale_after_min: 15`, ~5-min schedule) while PR #4744's ECS deploy
+was mid-rollout — initially suspected as either a deploy-transient artifact or a real silent
+background-task failure, and investigated properly rather than either dismissing it or filing a
+premature fix:
+
+- Confirmed via `boto3` (live AWS creds this session) that EventBridge rule
+  `blackout-production-vector-universe-snapshot` is ENABLED on schedule and the target Lambda
+  (`blackout-production-hit-cron`) IS firing the route every 5 minutes without fail, all
+  returning HTTP 200 — the trigger layer was never the problem.
+- Waited for the ECS deploy to fully complete (`ecs describe_services`: ACTIVE deployment drained
+  to 0/0, only PRIMARY 8/8 remained) and re-checked — `updatedAt` was STILL frozen at the exact
+  same value, ruling out "deploy transient" as the explanation.
+- Root cause found by checking the ET wall clock directly (`TZ=America/New_York date`): **16:35
+  ET — market closed at 16:00 ET.** The route's own `isEtCashRth()` gate
+  (`src/app/api/cron/vector-universe-snapshot/route.ts:56`) correctly self-skips the background
+  snapshot dispatch outside cash RTH, returning `{ok:true, skipped:true, reason:"Outside cash
+  RTH"}` at the default 200 status (not the in-session 202) — exactly why the response code
+  changed from 202→200 around 20:05 UTC (≈16:05 ET) and why no "background done"/"REJECTED" log
+  appeared afterward: the background dispatch is never invoked once outside RTH, by design.
+
+**Verdict: NOT a bug — the cron is working exactly as designed, and the "frozen" snapshot is the
+correct, intentional end-of-session freeze.** This is precisely the "check the ET clock yourself"
+mistake CLAUDE.md's own standing discipline warns about, caught before a false finding/fix PR was
+filed. No code change made. Logged here per the "absence/anomaly is a finding — but only after
+verification" discipline: the investigation was real and worth recording even though the
+conclusion is GREEN.
