@@ -221,6 +221,37 @@ test("collectBriefUnavailableSources: prior-session Night Hawk Legacy surfaces i
   );
 });
 
+test("collectBriefUnavailableSources: STALE-TICKER Night Hawk Legacy (5+ weeks) must NOT claim 'today's edition not yet run' (found live 2026-09-10, GOOG)", () => {
+  // Live evidence: GOOG's nighthawk_recent.edition_for read 2026-08-03 while the real Legacy
+  // edition was freshly published (GET /api/market/nighthawk/edition, published_at
+  // 2026-09-09T21:34:32Z) — a per-ticker "not featured recently" fact was misreported as a
+  // system-wide "the pipeline hasn't run today" claim. The query behind nighthawk_recent has no
+  // date filter (ORDER BY edition_for DESC LIMIT 1 for this ticker only), so any ticker Legacy
+  // hasn't picked recently will always show an old date here — that must read as ticker absence,
+  // never as edition staleness.
+  const ctx = {
+    sessionDate: "2026-09-10",
+    ecosystem: {
+      nighthawk_recent: {
+        edition_for: "2026-08-03",
+        direction: "short",
+        conviction: "high",
+        outcome: "open",
+        score: 72,
+      },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const nh = sources.find((s) => s.source === "Night Hawk Legacy");
+  assert.ok(nh, "Night Hawk Legacy chip should still surface (the fact is real)");
+  assert.ok(
+    !nh!.reason.includes("today's edition not yet run"),
+    `must not assert an unverified system-wide claim from a stale per-ticker date, got: ${nh!.reason}`,
+  );
+  assert.equal(nh!.reason, "no recent Legacy edition for this ticker (last featured 2026-08-03)");
+});
+
 test("vectorLiveForSession: null when observed_session_date lags brief sessionDate (Largo C2)", () => {
   const vec = {
     spot: 100,
