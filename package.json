@@ -58,6 +58,7 @@
     "calibration:nighthawk": "node --import tsx scripts/audit/nighthawk-calibration-table.mjs",
     "capture:veto-flicker": "node --import tsx scripts/audit/veto-flicker-capture.mjs",
     "healthcheck:0dte": "node --import tsx scripts/audit/zerodte-e2e-healthcheck.mjs",
+    "healthcheck:legacy": "node --import tsx scripts/audit/legacy-e2e-healthcheck.mjs",
     "validate:thesis-first-live": "node scripts/audit/thesis-first-live-audit.mjs",
     "validate:nighthawk-thesis-ui": "node scripts/audit/nighthawk-thesis-ui-audit.mjs",
     "validate:nighthawk-prod-check": "NODE_USE_ENV_PROXY=1 node scripts/audit/nighthawk-prod-check.mjs",
