@@ -1,8 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-10T14:35:00Z",
+  "last_updated": "2026-09-10T14:50:00Z",
   "notes": [
+    "AGGRESSIVE MODE enhancement/maintenance find (not a bug, a doc-staleness catch): CLAUDE.md's own Ask Largo x Night Hawk Swings mandate section still described the Largo C10 historical archetype/sub-lane win-rate track record as 'Scoped but not yet built -- blocked on a cache layer.' Traced the code: #4685 (2026-09-09) already shipped it in full -- calibration-cache.ts (sharedCacheGet/sharedCacheSet, written every RTH tick by swing-active-refresh's analyzeSwingCalibration) + archetypeTrackRecordSection/graduatedArchetypeEntry in play-brief-intel.ts, wired UNCONDITIONALLY into composeSwingPlayBrief (line 899-900, not bucket-gated). Checked why it never once rendered across 9 different live play-briefs fetched this session (CG/NRG/CRWD/SLV/PLTR/ORCL/MSFT/BE/COPX) -- confirmed it is correctly honoring the C6 confidence-omission gate (graduated:true requires Wilson-LB + point-delta>=15pt), not a wiring/cron gap: the real closed-swing population is only ~31-37 trades across ~5-6 archetypes (per swing-loss-taxonomy-segment.mjs's own count), nowhere near graduation n for any bucket yet. Filed docs(claude-md) correction PR #4731 (draft, subscribed) rewriting the stale bullet with the verification trail so a future session doesn't re-scope already-shipped work as a gap -- exactly the kind of staleness the same CLAUDE.md section already warns about two paragraphs down. Undraft blocked by the known shared AGENT_RELEASE_TOKEN rate limit (budget #4) -- will retry next cycle per standing discipline.",
     "14:16 UTC live re-check of all 4 real OPEN positions found two genuinely large moves since the 14:10 snapshot. NRG: pnl +29.6%->-5.1%, manageAction flipped from unset to EXIT (headline 'EXIT -- NRG 110C 8DTE', recommendation SELL, 'Exit now -- thesis or ladder fired. Flatten per manage engine.'). Round-tripped fully from its +132.7% peak down to a small loss -- a genuinely significant live development for a real member position, not a bug. liveStatus stayed HOLD (board) while the brief carries the advisory EXIT -- same advisory-vs-enforced pattern already verified this session (#4704), not re-litigated. CRWD: pnl recovered -20.1%->+8.6% (round-tripped back ABOVE breakeven after the round_trip state I'd checked earlier this cycle) -- this is the first time this session mfeCaptureOutcome's round_trip->capture transition was observed live on the SAME position across two consecutive reads (not just inferred from the code): narrative correctly flipped from 'Round-tripped past breakeven -- was up X% at peak, now Y%' back to 'Gave back 93% of peak' phrasing now that pnl is positive again (8.6/129.7=6.6% captured, 93.4% given back, matches the displayed 93%). No bug in either -- both are the intended narrative machinery correctly tracking a real live state transition, and NRG's EXIT signal is logged here as market context for the next cycle's forensic pass (is it still EXIT, did pnl deteriorate further, does liveStatus ever reach the enforced state) rather than something this lane can or should act on -- audit lane observes and verifies correctness, does not execute trades.",
     "PR #4727 (swing brief verdict/headline SKIP mismatch fix) MERGED 14:08 UTC (squash, sha 7245e619b) -- CI took ~11 min (verify job: unit tests 5.5min, next build ~4min, rest fast), all green (verify + CodeQL success, no failures this time, no rate-limit wait on undraft either). Verified on origin/main directly (git show, not trusted from the merge API response alone): play-brief.ts:505 and :546 both now read `action?.label ?? play.recommendation ?? play.status` -- the two fallback chains that used to disagree are now textually identical. Unsubscribed from PR activity (already inactive by the time of the call, presumably auto-cleared post-merge).",
     "WATCH roster diff (14:10 UTC vs the 13:31 UTC snapshot this cycle): watchCount 14->15 (new: SKHY LONG PULLBACK_CONTINUATION, score 59, PRE_TRIGGER, firstSeenAt 2026-09-08 -- a genuinely new entrant to the visible list, not a same-day flag). committedCount 94->82 (Banger-lane merge churn per the known #4700 blindspot, not swing's own 4 real positions -- NRG/NN/CG/CRWD all still present, confirmed via the earlier book-context check this cycle). More interesting: MSFT and PLTR both transitioned entryStatus EXTENDED_CHASE -> AT_TRIGGER with IDENTICAL scores (35.1, 34.3) versus the 13:31 snapshot -- traced this as expected architecture, not a bug: score is frozen from the once-daily 06:07 ET swing scan while entryStatus/servingSection update live intraday as price crosses trigger geometry, so a same-score AT_TRIGGER flip is exactly what should happen when price alone moves through a level. Checked MSFT's live brief: correctly explains the still-WAIT verdict via a real g_s4_regime gate block ('Broad-market regime degraded -- desk will not open new swings (WATCH only)'). Checked whether this reads as a fleet-wide freeze: PLTR (also AT_TRIGGER) shows a DIFFERENT block reason (entry-validity window expired) with no regime mention, and BE/COPX (not AT_TRIGGER) show no gate block or a different one (thesis_invalidated) -- consistent with gates only being evaluated/surfaced once a candidate reaches AT_TRIGGER, so this does NOT prove or disprove a fleet-wide regime freeze from the brief text alone. Not escalated -- the gate itself firing correctly for MSFT is the only claim verified; whether G-S4 regime is currently degraded fleet-wide would need a direct regimeFromSpyTrend recomputation, left as a possible next-cycle follow-up rather than assumed from one brief's text.",
@@ -143,6 +144,12 @@
       "id": "swing-brief-verdict-skip-headline-mismatch",
       "pr": 4727,
       "status": "MERGED 14:08 UTC (squash, sha 7245e619b). Verified on origin/main directly: play-brief.ts's Verdict line and headline now share the identical 3-rung fallback chain (action.label -> recommendation -> status)."
+    },
+    {
+      "id": "claude-md-track-record-stale-correction",
+      "pr": 4731,
+      "kind": "DOCS",
+      "status": "OPEN, draft (undraft blocked by AGENT_RELEASE_TOKEN rate limit, retrying next cycle). Subscribed to PR activity."
     }
   ],
   "loss_taxonomy": {
@@ -221,8 +228,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T14:23:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-10T14:50:00Z",
+    "swing_prs": [
+      {
+        "pr": 4731,
+        "branch": "docs/claude-md-track-record-correction",
+        "status": "draft, needs undraft retry"
+      }
+    ]
   },
   "tickers_seen": {
     "NRG": {

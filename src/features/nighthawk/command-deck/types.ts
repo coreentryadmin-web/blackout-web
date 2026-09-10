@@ -7,7 +7,7 @@
  */
 
 import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
-import type { SwingManageAction } from "@/lib/swing/manage";
+import type { SwingManageAction, SwingManageRung } from "@/lib/swing/manage";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { WhyNow } from "@/lib/zerodte/why-now";
@@ -243,6 +243,10 @@ export interface TerminalPlay {
   servingSection?: SwingServingSection | null;
   /** Live manage engine action (manage.ts) — drives EXITING / scale-out advisory on refresh. */
   manageAction?: SwingManageAction | null;
+  /** The rung that decided manageAction (manage.ts) — e.g. "expiry_risk" (time-based, thesis still
+   *  intact) vs "structural_stop"/"thesis_stop" (thesis actually broke). Lets narrative text state
+   *  the real reason for a SELL/EXIT recommendation instead of a generic guess. */
+  manageReason?: SwingManageRung | null;
   /** Member entry label when geometry still allows entry (buy / still_buy) — decoupled from desk OPEN. */
   swingEntryAction?: "buy" | "still_buy" | null;
 

@@ -94,6 +94,7 @@ export function horizonRowToDeckSource(p: HorizonPlay, positionId?: number | nul
     troughPremium: p.troughPremium ?? null,
     markAsOf: p.markAsOf ?? null,
     manageAction: p.manageAction ?? null,
+    manageReason: p.manageReason ?? null,
     thesisBreak:
       p.thesisLevel != null ? { level: p.thesisLevel, note: p.thesisNote ?? undefined } : undefined,
     occ: null,
