@@ -89,9 +89,15 @@ import {
 export type WallRailData = {
   callTrails: StrikeTrail[];
   putTrails: StrikeTrail[];
-  /** Strongest pct across BOTH sides in view — the frame reference the RELATIVE fallback scales
-   *  against (absolute $-ladder sizing does not use it). */
+  /** Strongest pct across BOTH sides in view — gates overall rail visibility only. SIZE/COLOUR use
+   *  the per-side maxima below instead (see feedWallRail's comment for why). */
   maxPct: number;
+  /** Strongest call-side pct in view — the denominator every call bead's size/colour scales
+   *  against, so a call wall's own strongest-to-weakest spread stays visible even on a day the put
+   *  side dominates the combined book (2026-09-10 — see feedWallRail). */
+  callMaxPct: number;
+  /** Put-side counterpart of {@link callMaxPct}. */
+  putMaxPct: number;
   callColor: string;
   putColor: string;
   /** Compare grid uses smaller, more translucent beads behind candles. */
@@ -522,6 +528,8 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       callTrails,
       putTrails,
       maxPct,
+      callMaxPct,
+      putMaxPct,
       callColor,
       putColor,
       profile,
@@ -627,6 +635,8 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       if (y == null) return;
       const pts = trail.points;
       if (pts.length === 0) return;
+      // This side's own denominator for size/colour — see WallRailData's callMaxPct/putMaxPct doc.
+      const sideMaxPct = side === "c" ? callMaxPct : putMaxPct;
       // Live-bucket easing target for this strike (history is exact, so only the live edge eases).
       const kKey = kingKey(side, trail.strike);
       const isLiveKing = kingAt.get(liveTime) === trail.strike;
@@ -693,7 +703,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         // baseline. The per-bucket channel alone never fires on gradual decay (a 20%->2% bleed over an
         // hour moves ~0.025% of king per 5s bucket, ~80x under its threshold), which is why a dying
         // wall used to render as a row of unchanged beads.
-        const mod = beadModulation(p.pct, prev ? prev.pct : null, refs[i] ?? null, maxPct);
+        const mod = beadModulation(p.pct, prev ? prev.pct : null, refs[i] ?? null, sideMaxPct);
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
         // ── ONE DENOMINATOR FOR EVERY ROW (2026-08-19) ───────────────────────────────────────
         // This used to divide each bucket by `rowPeaks[i]` — that row's RUNNING peak. Two defects
@@ -709,26 +719,37 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         //      1.0 on its own terms, so a 25.7%-of-book wall and a 5.8% one painted the same size
         //      (measured separation at each row's median: 1.26x).
         //
-        // `maxPct` — the strongest wall on the frame — is the denominator that fixes both, because
-        // it is SHARED. Measured on the same session it takes 7700 from a flat 0.96 to a live
-        // 0.32..0.93 and restores ordering across rows by actual share.
+        // A SHARED denominator is the fix for both, because a shared value cannot self-fulfil the
+        // way a row's own running peak does. It does not have to be shared across the WHOLE book,
+        // though — see the 2026-09-10 update below.
         //
         // Rejected: each row's own SESSION peak (rather than running). It fixes (1) but not (2),
         // and measurably INVERTS the ordering — the weakest wall painted 0.81x the size of the
         // dominant one, which is worse than shipping nothing. See
         // scripts/audit/vector-swell-normalization-ab.mts for the A/B this came from.
         //
-        // The cost, stated plainly: `maxPct` is a frame-wide peak, so when a new record wall prints
-        // the whole rail restretches. The previous design bought immunity to that with strict
-        // no-lookahead, and paid for it with a rail that could not show strength at all.
-        const bookPeak = maxPct;
+        // The cost, stated plainly: a shared peak restretches the whole side when a new record wall
+        // prints. The previous design bought immunity to that with strict no-lookahead, and paid
+        // for it with a rail that could not show strength at all.
+        //
+        // ── PER-SIDE, NOT WHOLE-BOOK (2026-09-10) ────────────────────────────────────────────
+        // This used to read the combined `maxPct` (max across BOTH call and put walls) — deliberate,
+        // so a call and a put of equal book share rendered equally fat. That breaks down on a day
+        // one side dominates the other: live SPX 0DTE measured put walls at 16.3/6.3/6.2/5.7%...
+        // and call walls at 0.89/0.45/0.4/0.35%... — every call bead sat so far below the COMBINED
+        // denominator that the whole call side clamped to the size/alpha floor, and a member watching
+        // live reported "all beads look the same, can't differentiate" (screenshot, 2026-09-10).
+        // `sideMaxPct` keeps the SAME shared-denominator property that fixed (1) and (2) above — it
+        // is still shared across every strike on a side, so cross-strike ordering is unaffected —
+        // it just no longer lets the STRONGER side's peak crush the WEAKER side's own real spread.
+        const bookPeak = sideMaxPct;
         const rowSwell =
           p.modeled === true || bookPeak <= 0
             ? 0
             : rowSwellMul(p.pct, bookPeak, { floor: BOOK_SWELL_FLOOR, exp: BOOK_SWELL_EXP });
         // Core bead radius = absolute share ladder × book swell × velocity (round dots, not ellipses).
         const target =
-          targetHalfPx(p.pct, p.notional, maxPct, tuning, { rowPeakPct: bookPeak }) * mod.sizeMul;
+          targetHalfPx(p.pct, p.notional, sideMaxPct, tuning, { rowPeakPct: bookPeak }) * mod.sizeMul;
         const key = beadKey(side, trail.strike, p.time);
         this._targetHalf.set(key, target);
         // Displayed half lags the target (eased by the rAF loop). Reduce-motion / first sight → snap
@@ -785,10 +806,11 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
           // sizing, but no coloring dynamics" — and later, "it paints all the beads with the same
           // color contrast". Exactly what a per-bucket denominator produces.
           //
-          // `maxPct` is the frame-wide king, so a weak wall now stays pale for the whole session
-          // and only a genuinely dominant one saturates — the same rule that gave the size channel
-          // its range, applied to the channel the member can actually see as colour.
-          fillAlpha(p.pct, maxPct, tuning) *
+          // `sideMaxPct` (own-side king, since 2026-09-10 — see the size channel's comment above)
+          // is the denominator, so a weak wall stays pale for the whole session and only a
+          // genuinely dominant one saturates — the same rule that gave the size channel its range,
+          // applied to the channel the member can actually see as colour.
+          fillAlpha(p.pct, sideMaxPct, tuning) *
             mod.alphaMul *
             // Temporal fade only. The cross-row term already lives in fillAlpha's book denominator
             // AND in the shade above; multiplying a third book-relative factor here drove the whole

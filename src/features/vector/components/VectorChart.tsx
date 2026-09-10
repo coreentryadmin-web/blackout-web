@@ -137,7 +137,7 @@ import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-ho
 import { computeVolumeProfile, sessionRthVolumeProfileBars } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
 import { vectorChartTimeScaleGutter } from "@/features/vector/lib/vector-volume-profile-layout";
-import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
+import { sidePctMaxima, type WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
@@ -1266,9 +1266,31 @@ function applyWallBeadMarkers(
   return { strikes: active, rendered };
 }
 
-/** Feed the WallRailPrimitive the composed call+put trails. maxPct is taken across BOTH sides so the
- *  king wall (whichever side) is the single frame reference every band scales against — a call and a
- *  put of equal share render equally fat. A null primitive or empty trails draws nothing. */
+/**
+ * Feed the WallRailPrimitive the composed call+put trails.
+ *
+ * `maxPct` (combined) still gates overall rail visibility. SIZE/COLOUR now scale each side
+ * against its OWN side's peak (`callMaxPct`/`putMaxPct`), not the combined one.
+ *
+ * WHY THIS CHANGED (2026-09-10, live member report — screenshot showed every call-side bead at
+ * one indistinguishable size/shade): the combined-book denominator was deliberate ("a call and a
+ * put of equal share render equally fat" — see the prior version of this comment) and correct on
+ * a balanced day. But on a day where one side's book share dominates the other (measured live,
+ * SPX 0DTE: put walls 16.3%/6.3%/6.2%/5.7%..., call walls 0.89%/0.45%/0.4%/0.35%... — an 18x gap
+ * between the two sides' own kings), EVERY bead on the weaker side sits so far below the
+ * combined-book denominator that both `beadRadiusForPctShare`'s fixed floor and `fillAlpha`'s
+ * floor clamp the entire side to one size/shade — the real ~6x spread within that side (0.14% to
+ * 0.89%) never gets a chance to show. A member reads that as "the beads all look the same",
+ * because on that side they genuinely do.
+ *
+ * Per-SIDE (not per-ROW/per-strike) is the right granularity: the prior A/B history in
+ * vector-wall-rail-primitive.ts rejected a per-ROW peak denominator (self-fulfilling — a
+ * gradually-building wall is always near its own running max) and a per-ROW SESSION peak (measured
+ * to INVERT cross-row ordering). Neither objection applies here: like the combined-book
+ * denominator this replaces, a per-side max is SHARED across every strike on that side, so
+ * cross-strike ordering within a side is preserved exactly as it was — the only change is which
+ * strikes share the denominator (one side's strikes, not both sides' combined).
+ */
 function feedWallRail(
   rail: WallRailPrimitive | null,
   callRendered: StrikeTrail[],
@@ -1289,15 +1311,15 @@ function feedWallRail(
   intervalSec = 0
 ): void {
   if (!rail) return;
-  let maxPct = 0;
-  for (const t of callRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
-  for (const t of putRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
+  const { callMaxPct, putMaxPct, maxPct } = sidePctMaxima(callRendered, putRendered);
   const tierMaps = showIntegrityRings ? beadIntegrityTierMaps(history, activeLens) : null;
   rail.setData(
     {
       callTrails: callRendered,
       putTrails: putRendered,
       maxPct,
+      callMaxPct,
+      putMaxPct,
       callColor,
       putColor,
       profile,
