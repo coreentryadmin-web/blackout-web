@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-10T14:38:08.242Z",
+  "lastUpdated": "2026-09-10T14:52:12.178Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -256,6 +256,11 @@
       "at": "2026-09-10T14:38:08.242Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy GREEN, marks continuing to track real intraday movement (SIG 0.73->0.57 continuing to fall with the stock, ASO 0.88->1.33 and FICO 41.15->42.70 both continuing favorably -- consistent directional continuation from last cycle's cross-check). Rate-limiter incident: ALB p99 still elevated most of the window (12-23s) but the latest datapoint (14:35) read 8.84, closer to the pre-open baseline -- possibly beginning to ease, not conclusively resolved, not re-investigating in full since already thoroughly documented. Checked the member-facing edition's `funnel` field (present in the JSON shape but null on this route) -- confirmed intentional (funnel/candidate detail is admin-only, not a bug). Record unchanged: 22 opens, 0 wins/losses in the 14d window -- Legacy plays resolve end-of-session, nothing new to grade mid-day. Quiet cycle, nothing new to escalate."
+    },
+    {
+      "at": "2026-09-10T14:52:12.179Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
+      "result": "healthcheck:legacy GREEN, record unchanged (22 opens, 0 wins/losses -- Legacy plays resolve end-of-session). Rate-limiter incident: mixed signal this check -- briefly dipped near baseline (p99 3.74-5.55 at 14:38-14:41) then bounced back to 10-19s (14:42-14:50). Trending calmer than the 40-83s spikes seen at 13:31-13:45 but not cleanly resolved yet. Not re-investigating further this cycle -- already thoroughly documented (MARKET-OPEN-VALIDATION.md #83 addendum) with a scoped, ready-to-build ops-alert proposal; continuing to monitor passively rather than re-deriving the same finding each cycle. Last trigger of today's 4-cycle ~15-min cadence set."
     }
   ],
   "knownOpenItems": {
