@@ -89,3 +89,17 @@ test("isBeforeOrAtMarketCloseEt does not carry a different session", () => {
     false
   );
 });
+
+// ICU renders ET midnight (00:00-00:59) as hour "24" under `hour12: false`, not "00" — see
+// et-session-facts.ts's own normalisation comment for the same quirk. Unnormalised here, the
+// 00:00-00:59 ET window computes 1440-1499 minutes, which is > 16*60 and reads as "past close"
+// even though the very same session is barely six minutes old. This broke the Night Hawk
+// edition route's `carry_until_close` branch every night: a freshly-published edition for the
+// upcoming session was served as a stale fallback with a false "not published yet" banner for
+// the first hour after midnight ET, every trading day.
+test("isBeforeOrAtMarketCloseEt is true in the first minute after midnight ET (ICU hour24 quirk)", () => {
+  // 2026-09-10T04:00:00Z = 2026-09-10T00:00:00 ET (EDT, UTC-4).
+  assert.equal(isBeforeOrAtMarketCloseEt("2026-09-10", new Date("2026-09-10T04:00:00Z")), true);
+  // 2026-09-10T04:59:00Z = 2026-09-10T00:59:00 ET.
+  assert.equal(isBeforeOrAtMarketCloseEt("2026-09-10", new Date("2026-09-10T04:59:00Z")), true);
+});

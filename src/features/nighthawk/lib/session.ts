@@ -120,8 +120,13 @@ export function etNowParts(now: Date = new Date()): { hour: number; minute: numb
     hour12: false,
   }).formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  // `hour12: false` renders ET midnight as "24" in some ICU versions, not "00" — normalise so
+  // 24:07 -> 00:07 (see et-session-facts.ts's identical fix for the same quirk). Unnormalised,
+  // every 00:00-00:59 ET minute reads as 1440-1499 in hour*60+minute math, which lands outside
+  // every same-day window a caller checks against.
+  const rawHour = Number(get("hour"));
   return {
-    hour: Number(get("hour")),
+    hour: rawHour === 24 ? 0 : rawHour,
     minute: Number(get("minute")),
     weekday: get("weekday"),
   };
@@ -146,6 +151,11 @@ export function isBeforeOrAtMarketCloseEt(
     hour12: false,
   }).formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  const mins = Number(get("hour")) * 60 + Number(get("minute"));
+  // Same ICU midnight-as-"24" quirk etNowParts guards above — without it, 00:00-00:59 ET reads
+  // as 1440-1499 minutes (past the 16:00 close) instead of 0-59 (barely past open), and a
+  // same-day session six minutes old is misjudged as already closed.
+  const rawHour = Number(get("hour"));
+  const hour = rawHour === 24 ? 0 : rawHour;
+  const mins = hour * 60 + Number(get("minute"));
   return mins <= 16 * 60;
 }
