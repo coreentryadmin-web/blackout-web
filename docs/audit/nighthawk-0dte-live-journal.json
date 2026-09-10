@@ -247,7 +247,7 @@
       "root_cause_files": [
         "src/lib/zerodte/exit-engine.ts (resolveExitMark, buildExitContext)"
       ],
-      "status": "FIXED -- PR #4737 open, undrafted, subscribed, awaiting CI",
+      "status": "MERGED -- PR #4737 merged 2026-09-10T17:13:58Z (commit c9465f2), verified present on origin/main",
       "evidence_ref": "docs/audit/findings-staging/2026-09-10-zerodte-ratchet-floor-honor-rounding-boundary.md, https://github.com/coreentryadmin-web/blackout-web/pull/4737",
       "fix_shipped": true,
       "red_green_proof": "exit-engine.test.ts 81/83 pass pre-fix (2 fail, both reproducing this exact shape) -> 83/83 post-fix. tsc clean. Full npm test 13645/0/3skip."
