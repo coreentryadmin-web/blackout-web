@@ -11,6 +11,32 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-10 (13:33 UTC) — [RTH — SEO] Live public-surface validation: gamma-snapshot + CLS clean
+
+**Severity.** — (no defect found)
+
+Confirmed genuine RTH before acting: `TZ=America/New_York date` → 09:34 EDT Thursday, within
+Mon-Fri 09:30-13:00 ET, 2026-09-10 not in `US_MARKET_HOLIDAYS`. Narrowed to the RTH-only public-
+surface job per the standing brief.
+
+**`/tools/gamma-snapshot` (public, unauthenticated, live-derived):** `GET
+/api/public/gex-snapshot?ticker=SPX` — market_session `OPEN`, real spot 7592.42→7593.84 across two
+polls 6s apart, `asof`/`calculation_id` both advanced between polls, `snapshot_data_age_seconds`
+held at 3 both times — the 5s refresh genuinely refreshes, not a stale snapshot. `flip: null` with
+posture `short` and a full explanatory `read` (dealers net short gamma at every strike, no
+long-gamma region above spot) — the same honest-absence pattern confirmed correct in prior cycles,
+not a defect. Response carries only derived fields (spot/walls/posture/read), no raw chain —
+consistent with the publish posture.
+
+**Core Web Vitals, live data, post-purge:** Cloudflare edge purged (HTML only — `/` and
+`/tools/gamma-snapshot`, never `/_next/static/*`), confirmed `cf-cache-status: MISS` before
+measuring. `cls-measure.cjs` on `/`: desktop 1440×900 **0.0002 GOOD** (65 assets routed, 0 fail),
+mobile 430×932 **0.0328 GOOD** (64 assets routed, 0 fail) — both comfortably under the 0.1
+threshold with real RTH data actively rendering, not a frozen off-hours page.
+
+No defects found. Returning to normal search/authority work per the brief's 13:00 ET boundary.
+
+---
 ## 2026-09-10 (12:19 UTC) — [SEO] Lane heartbeat: prod validated, 0 open agent PRs, GSC unchanged
 
 **Severity.** — (no defect found)
