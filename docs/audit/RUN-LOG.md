@@ -4,11 +4,55 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-10 (20:38 UTC) — [DISCOVERY] Legacy `healthcheck:legacy` AMBER on stage A investigated and ruled out — pre-5:30pm-ET, not a bug
+
+`npm run healthcheck:legacy` returned overall AMBER: stage A (EDITION) flagged `edition is stale
+(served an older date than requested)`. Stage B (MARKS, 3/3 OCC marks within bid/ask) and stage C
+(RECORD, resolved=31, buckets sum consistently) both GREEN.
+
+Checked `nighthawk-playbook` in `cron-registry.ts`: scheduled `5:30 PM ET weekdays`
+(`stale_after_min: 240`). Real time at check was ~16:37 ET — before the edition cron's own
+scheduled fire time. The route has nothing to serve yet for today; the "stale" flag is the honest,
+correct behavior of a next-day digest board checked before its own daily publish window, same
+shape as the `vector-universe-snapshot` ruled-out alarm earlier this session (PR #4748) — a
+health check run before a cron's scheduled time reads a not-yet-generated state as staleness, not
+as a defect. No code change. Re-check after 5:30 PM ET / within the 240-min stale window if AMBER
+persists past that.
+
 New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling policy, which
 already forbids opening docs-only PRs for GREEN audit logs.
 
 New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling policy, which
 already forbids opening docs-only PRs for GREEN audit logs.
+
+## 2026-09-10 (21:02 UTC) — [DISCOVERY] SPX Slayer `direction: null` at low score investigated and ruled out — deliberate neutral-zone threshold
+
+Follow-up on a prior cycle's observation: `GET /api/market/spx/play` returned `score: 4,
+direction: null` (score/factorsSum matched exactly, 4===4, so the additive math itself was never
+in question — only whether `direction: null` at that score was a gap). Traced to
+`computeSpxConfluence` in `src/features/spx/lib/spx-signals.ts:734-751`: `bias` is explicitly set
+to `"neutral"` (and `direction` to `null`) whenever `Math.abs(score) < 10` — a deliberate
+no-conviction threshold, the same "honest absence over fabricated direction" pattern used
+elsewhere in this codebase (Largo's `confidence` omission rule, etc.). Score 4 is well inside that
+neutral band. No code change — confirms intended behavior, not a bug.
+
+## 2026-09-10 (20:50 UTC) — [ASK LARGO] First CLOSED-bucket swing play-brief checked this session — coherent, no new gap
+
+Standing Ask Largo mandate: checked a CLOSED-bucket `GET /api/market/swing/play-brief` this
+cycle (AAPL, `SWING:AAPL:36`, PULLBACK_CONTINUATION/TACTICAL, stopped 2026-09-04 09:45 ET,
+peak +1.3% → exit -56.2%) — not previously checked this session (prior cycles only hit
+OPEN/committed positions, e.g. NRG). CLOSED-only sections present and populated: Outcome, Since
+it closed (dealer regime vs gamma flip post-close), Lessons. `unavailableSources: []`.
+
+**This AAPL row is part of the TACTICAL sub-lane already flagged by
+`swing-loss-taxonomy-segment.mjs`** (80% loss rate, n=5, +31.6pp vs the 44.4% aggregate) —
+confirms rather than contradicts that existing watch item, no new action.
+
+**Lessons section quality**: still short bullet-style lines ("Gave back the move — next time
+tighten at first trim rail or thesis fade") rather than fully trade-manager-narrated prose —
+consistent with the already-tracked open item in this file's Ask Largo section ("narrating the
+live 'what changed' diff the same trade-manager way instead of numeric deltas... still genuinely
+open"). No new gap found this cycle; re-confirms known state.
 
 ---
 ## 2026-09-10 (18:17 UTC) — [SEO] Lane heartbeat: PR sweep clear, /api/og healthy, GSC unchanged
