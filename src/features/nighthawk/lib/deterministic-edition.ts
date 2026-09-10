@@ -402,7 +402,22 @@ export function buildDeterministicThesis(
 
   const trendConflicts = trend && ((isLong && trend === "bearish") || (!isLong && trend === "bullish"));
   if (setupTags.length) {
-    const tagText = setupTags.slice(0, 2).join(", ");
+    let selectedTags = setupTags.slice(0, 2);
+    // classifySetup() (technicals.ts) always pushes "gap-fill risk below"/"gap-fill bounce
+    // zone above" immediately after its own "gap up/down X" tag — it's the one setup_tag
+    // that argues a DIRECTION (a gap up creates downside gap-fill risk, a gap down creates
+    // upside bounce potential), unlike the purely descriptive RSI/volume/EMA tags. A blind
+    // slice(0, 2) can select the gap tag while dropping its own explanation to 3rd place,
+    // which reads as an unexplained contradiction on a SHORT after a "gap up"/"HOD break"
+    // (live example, FICO 2026-09-10) — the bullish-sounding break is shown with no stated
+    // reason the trade fades it, even though the reason was already computed. Keep the pair
+    // together whenever the gap tag itself made the cut.
+    const gapTag = setupTags.find((t) => t.startsWith("gap up") || t.startsWith("gap down"));
+    const gapFillTag = setupTags.find((t) => t.startsWith("gap-fill"));
+    if (gapTag && gapFillTag && selectedTags.includes(gapTag) && !selectedTags.includes(gapFillTag)) {
+      selectedTags = [...selectedTags, gapFillTag];
+    }
+    const tagText = selectedTags.join(", ");
     parts.push(`${scored.ticker} showing ${tagText}${trend ? ` in ${trend} trend` : ""}.`);
   } else if (trend) {
     parts.push(`${scored.ticker} in ${trend} trend.`);
