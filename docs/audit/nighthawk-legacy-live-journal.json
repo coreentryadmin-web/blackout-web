@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T02:18:32.456Z",
+  "lastUpdated": "2026-09-11T02:21:52.104Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -486,6 +486,11 @@
       "at": "2026-09-11T02:18:32.456Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3)",
       "result": "After 7 clean bug-hunting cycles, pivoted to genuine ENHANCEMENT ideation per the mandate's explicit ask. Also ruled out a discoveryOrigin-coverage gap (only FLOW badge shown) as DELIBERATE, already-documented design -- a prior fix removed regex-inferred BREAKOUT/CATALYST/SWEEP badges because they fabricated provenance from free-text never designed to encode taxonomy; not touching. Found and SHIPPED a real enhancement: play.regime (captured at ~7pm ET publish) and macro.regime (today's live regime, shown once at the top of the board) both already existed but were never cross-compared anywhere -- a genuine 'signal exists but isn't surfaced' case, concretely useful since Legacy picks sit 12-16h+ overnight and regime can flip. Built regime-alignment.ts (pure comparison helper, honest null-handling, 4 tests) + wired a new 'Regime' bullet into LegacyPlayTechnicalsRail's Gates & checks section (3 new component tests using the renderToStaticMarkup idiom from PlaybookBriefingPanel.test.ts) + one-line prop-thread from LegacyPickLogBoard's existing macroContext. Purely additive, no existing signatures broken. Full suite 13693/13693, tsc clean. Opened PR #4761 (feat/legacy-regime-alignment-signal), draft, subscribed, staged finding filed as an enhancement (not a bug) per CLAUDE.md's FULL-LIFECYCLE SCOPE EXPANSION section explicitly covering product enhancements through the same pipeline. Live UI verification deferred to a later cycle once merged+deployed (same pattern as today's bug fixes). healthcheck:legacy steady GREEN (resolved=28)."
+    },
+    {
+      "at": "2026-09-11T02:21:52.104Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "PR #4761 CI still verify/CodeQL in_progress (~10min elapsed, normal range). healthcheck:legacy steady GREEN, no changes since last cycle. Quiet cycle -- just shipped the regime-alignment enhancement last cycle, not forcing another new item immediately after."
     }
   ],
   "knownOpenItems": {
