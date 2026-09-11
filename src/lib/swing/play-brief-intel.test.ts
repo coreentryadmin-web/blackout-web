@@ -1177,6 +1177,52 @@ test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma p
   assert.doesNotMatch(section!.body, /Net GEX/i, "stale matrix numeric fields must not render as live");
 });
 
+// FINDING 2026-09-11 (Ask Largo monitor cycle, live MSTR:33): gexPostureSection's "Nearest wall"
+// line read ONLY `gex.nearest_wall` (derived purely from the raw GEX-matrix call_wall/put_wall),
+// while "Levels on chart" (chartLevelsSection) already prefers a live Vector-ladder wall over the
+// GEX matrix — the same "two different precedence rules for one conceptual level" defect class
+// already fixed for GEX king strike on 2026-09-09. Live evidence: MSTR:33 rendered "Put wall
+// (GEX): 125.00" in "Levels on chart" (Vector ladder) but "Nearest wall: 120.00 (support, -7.3
+// pts...)" in "GEX posture" (raw GEX-matrix put_wall) for the SAME spot (127.25) in the SAME
+// envelope — 125 is also numerically nearer to spot than 120, so the un-reconciled number was
+// both a different source AND a worse "nearest" by the matrix's own raw levels.
+test("gexPostureSection: nearest wall prefers a live Vector ladder wall over the GEX matrix, matching Levels-on-chart precedence", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 127.25,
+        gamma_posture: "short",
+        net_gex: 17_800_000,
+        call_wall: 135,
+        put_wall: 120,
+        nearest_wall: { strike: 120, kind: "support", distance_pts: -7.25 },
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 127.25,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      gexWalls: { putWalls: [{ strike: 125 }], callWalls: [{ strike: 135 }] },
+    } as unknown as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Nearest wall: \*\*125\.00\*\* \(support, -2\.3 pts from spot \*\*127\.25\*\*\)/,
+    "must show the live Vector ladder's nearer put wall (125), not the GEX matrix one (120)",
+  );
+  assert.doesNotMatch(section!.body, /120\.00/);
+});
+
 test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and omits live-looking technicals (Largo C2)", () => {
   const vec = fixtureVec({
     spot: 95,

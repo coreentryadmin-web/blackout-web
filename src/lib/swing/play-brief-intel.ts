@@ -20,6 +20,7 @@ import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
+import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
@@ -278,6 +279,48 @@ function formatConfluenceZone(z: ConfluenceZone, spot: number | null): string {
   return `• **${z.center.toFixed(2)}** (${kinds}, score ${z.score.toFixed(1)})${dist}`;
 }
 
+/**
+ * Preferred call/put wall + spot for a brief: live Vector ladder wall first, GEX matrix wall as
+ * fallback — the SAME precedence `chartLevelsSection`'s "Levels on chart" line already applies.
+ *
+ * Extracted 2026-09-11 (Ask Largo monitor cycle, live MSTR:33) because `gexPostureSection`'s
+ * "Nearest wall" line independently recomputed nearest-wall from the raw GEX-matrix-only
+ * call_wall/put_wall (via `ecosystem.gex_positioning.nearest_wall`), bypassing this precedence
+ * entirely — the exact "two different precedence rules for the same conceptual level" defect
+ * class already fixed for GEX king strike on 2026-09-09 (see that fix's comment right below,
+ * still in this file). Live evidence: MSTR:33 rendered "Put wall (GEX): 125.00" in "Levels on
+ * chart" (Vector ladder) but "Nearest wall: 120.00 (support, -7.3 pts...)" in "GEX posture" (raw
+ * GEX-matrix put_wall) in the SAME envelope for the SAME spot (127.25) — 125 is numerically
+ * closer to spot than 120, so the second number wasn't just a different source, it was also the
+ * less-true "nearest" wall by the matrix's own raw levels. A shared resolver keeps future callers
+ * from re-deriving "nearest" a third way (the risk `nearestWallFromLevels`'s own header warns
+ * about for its two existing call sites).
+ */
+function preferredGexWalls(ctx: SwingPlayBriefContext): {
+  spot: number | null;
+  callWall: number | null;
+  putWall: number | null;
+  callWallFromStaleGex: boolean;
+  putWallFromStaleGex: boolean;
+} {
+  const vec = vectorOf(ctx);
+  const gex = ctx.ecosystem?.gex_positioning;
+  const readMs = Date.now();
+  const vectorStaleForLevels = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const gexStaleForLevels = gexMatrixStale(gex, readMs);
+  const spot =
+    (vectorStaleForLevels ? undefined : vec?.spot) ??
+    (gexStaleForLevels ? undefined : gex?.spot) ??
+    null;
+  const vecCallWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const callWall = vecCallWall ?? gex?.call_wall ?? null;
+  const putWall = vecPutWall ?? gex?.put_wall ?? null;
+  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStaleForLevels;
+  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStaleForLevels;
+  return { spot, callWall, putWall, callWallFromStaleGex, putWallFromStaleGex };
+}
+
 /** GEX walls, flip, max pain, expected move, confluence nodes. */
 export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | null {
   const vec = vectorOf(ctx);
@@ -286,20 +329,11 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const readMs = Date.now();
   const vectorStaleForLevels = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gexStaleForLevels = gexMatrixStale(gex, readMs);
-  const spot =
-    (vectorStaleForLevels ? undefined : vec?.spot) ??
-    (gexStaleForLevels ? undefined : gex?.spot) ??
-    null;
+  const { spot, callWall, putWall, callWallFromStaleGex, putWallFromStaleGex } = preferredGexWalls(ctx);
   const lines: string[] = [];
 
-  const vecCallWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
-  const vecPutWall = vectorStaleForLevels ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
   const vecFlip = vectorStaleForLevels ? undefined : vec?.gammaFlip;
-  const callWall = vecCallWall ?? gex?.call_wall ?? null;
-  const putWall = vecPutWall ?? gex?.put_wall ?? null;
   const flip = vecFlip ?? gex?.flip ?? null;
-  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStaleForLevels;
-  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStaleForLevels;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStaleForLevels;
   // King strike previously read GEX-only here ("Vector presence irrelevant") while play-brief.ts's
   // structured `levels` array AND play-brief-narrative.ts's focalLevelsFrom (used by the "Trade
@@ -817,10 +851,21 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
     lines.push(`Gamma posture: ${posture}`);
   }
   if (!stale && gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
-  if (!stale && gex.nearest_wall != null && gex.spot != null) {
-    const { strike, kind, distance_pts } = gex.nearest_wall;
+  // Recompute "nearest wall" from the SAME preferred (Vector-ladder-first) call/put walls
+  // "Levels on chart" renders, instead of the raw `gex.nearest_wall` (GEX-matrix-only call_wall/
+  // put_wall) — see preferredGexWalls' header for the live MSTR:33 evidence this fixes.
+  const preferred = preferredGexWalls(ctx);
+  const nearest =
+    preferred.spot != null
+      ? nearestWallFromLevels(
+          preferred.callWallFromStaleGex ? null : preferred.callWall,
+          preferred.putWallFromStaleGex ? null : preferred.putWall,
+          preferred.spot,
+        )
+      : null;
+  if (!stale && nearest != null) {
     lines.push(
-      `Nearest wall: **${strike.toFixed(2)}** (${kind}, ${distance_pts.toFixed(1)} pts from spot **${gex.spot.toFixed(2)}**)`,
+      `Nearest wall: **${nearest.strike.toFixed(2)}** (${nearest.kind}, ${nearest.distance_pts.toFixed(1)} pts from spot **${preferred.spot!.toFixed(2)}**)`,
     );
   }
   if (!stale && gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
