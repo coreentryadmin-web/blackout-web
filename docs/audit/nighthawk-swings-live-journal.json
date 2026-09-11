@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-11T14:47:41Z",
+  "last_updated": "2026-09-11T15:05:00Z",
   "notes": [
     "14:31 UTC cycle -- PR #4791 MERGED (self-merged). Its deploy rolling (1-3/8). Spot-checked CG's Trade manager read (trimsFired=0, the exact target case) -- still shows the old 'Bank partial into strength' text with no 'Nothing's banked yet' disclosure, consistent with partial rollout not yet reaching this task, not a bug. Will re-verify next cycle once deploy completes. No other new swing PRs (#4792 is Legacy lane). All 4 real positions unchanged.",
     "14:18 UTC cycle -- new sibling PR #4791, a genuine convergent finding with my own 13:47 investigation: 'Desk says TRIM' reads like an instruction already carried out or that the platform will execute, but Ask Largo is advisory-only (managementFor's own in-code comment: 'we recommend, you execute') -- when trimsFired===0 (the trigger crossed but nothing actually banked, exactly CG's live shape I just traced), the copy silently leaves a member fully exposed to a round-trip with no warning. Cites the SAME live NRG proof I've been tracking all night (+132.7% peak -> +2%, zero trim banked) as evidence. Fix appends an explicit 'Nothing's banked yet -- this is advisory only; place the trim yourself' disclosure, scoped only to the trimsFired===0 case (the genuine silent-exposure risk) not every TRIM line. verify still running, will check for merge next cycle. All 4 real positions unchanged, still open.",
@@ -127,7 +127,8 @@
     "MANDATE v5 (2026-09-10 05:59 UTC): loss/win taxonomy + calibration authority + weekly scorecard + cross-pollination -- taxonomy built, tool shipped (#4712, INCONCLUSIVE, correctly no gate change).",
     "MANDATE v4/v3: 24/7 firing, CARVE-OUT rescinded, ~15-min cadence via 4 offset triggers.",
     "v2 field corrections confirmed by direct code read: HorizonPlay.status IS the real lifecycle field. Real swing exit-management surface is manage-sync.ts + exit-policy.ts.",
-    "14:47 UTC cycle: PR #4791 CONFIRMED LIVE -- ECS deploy reached 8/8 on image 59eec91e (task def :1456). CG's Trade manager read now shows the advisory-only disclosure after the TRIM recommendation, exactly as designed."
+    "14:47 UTC cycle: PR #4791 CONFIRMED LIVE -- ECS deploy reached 8/8 on image 59eec91e (task def :1456). CG's Trade manager read now shows the advisory-only disclosure after the TRIM recommendation, exactly as designed.",
+    "15:02 UTC cycle (aggressive-mode dig): re-derived NN's TAKE_PARTIAL(14:47)->HOLD(15:02) flip independently via manage.ts/manage-sync.ts before finding it's already documented (journal line ~159) as the intentional un-enforced-edge-rung advisory pattern -- not re-raised. Verified GOOG+GOOGL simultaneous WATCH candidates correctly cluster via resolveTheme->sectorFor 'megatech' (theme-cluster.ts), so checkPortfolioOverlap would catch them as concentration if either got committed -- not a bug. Minor low-priority idea (not escalated): the WATCH deck itself has no watch-vs-watch correlation flag between simultaneous same-theme candidates (bookContextSection is scoped to candidate-vs-committed-book only, by design) -- GOOG/GOOGL read as two independent opportunities on the board even though they're the same economic bet. Low priority since WATCH candidates aren't directly tradeable without the commit pipeline, where the existing overlap check already fires correctly."
   ],
   "checked_this_cycle_no_bug_found": [
     {
@@ -221,6 +222,10 @@
     {
       "topic": "PR #4791 post-deploy verification + full 4-position sweep (NRG/NN/CG/CRWD)",
       "verdict": "CLEAN -- CG's Trade manager read confirmed showing 'Nothing's banked yet -- this is advisory only; place the trim yourself, the desk does not execute trades.' after the TRIM recommendation, on the correct deployed image (59eec91e). Bonus live confirmation of the fix's real-world value: NN (positionId 32) has genuinely round-tripped since commit -- was up +24% at peak, now -49% (mid P&L -48.7% vs fill -59.0%), still sitting on an un-executed 'Desk says TRIM' recommendation -- its read now correctly discloses the advisory-only nature instead of implying protection happened. This is exactly the failure mode #4791 exists to guard against, observed live. NRG (34) unchanged: HOLD, mark $5.60 (10:45 ET), P&L +14.3%, peak +132.7%, exec P&L -4.1%. CRWD (19) unchanged: status genuinely TRIM (real partial banked), blended P&L +42.4% vs raw -15.3% on the open runner -- blended-P&L math rendering correctly. No new swing-lane PRs this cycle (#4793 is 0DTE-lane audit tooling, #4792 is Legacy-lane draft, neither in scope)."
+    },
+    {
+      "topic": "GOOG/GOOGL dual-listing theme-overlap resolution + NN advisory-flip re-verification",
+      "verdict": "CLEAN -- resolveTheme(GOOG)===resolveTheme(GOOGL)==='megatech' via sector-map.ts's megatech bucket, so checkPortfolioOverlap correctly treats them as the same thesis for concentration purposes, not a literal-ticker-only match. NN's manage-action flip (TAKE_PARTIAL->HOLD across one 15-min tick, no enforced trim either time) re-confirmed as the documented un-enforced edge-rung design (manage-sync.ts latchSwingLiveStatus comment + manage.ts's advisory rungs 5+), same conclusion this journal already reached earlier this session -- not re-litigated."
     }
   ],
   "findings_filed_this_cycle": [
