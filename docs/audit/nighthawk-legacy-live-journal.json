@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T12:52:21.351Z",
+  "lastUpdated": "2026-09-11T13:12:18.129Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -711,6 +711,11 @@
       "at": "2026-09-11T12:52:21.371Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "PR #4784 undraft rate-limited a 4th consecutive cycle. Fix fully validated, CI was green last check. healthcheck:legacy on main still shows the known/expected RED (fix not yet merged), consistent. Both live plays still WATCH, ~1h05m to 9:15am ET morning-confirm -- getting close, will watch this closely next cycle since the confirm cron could start interacting with the fixed/unfixed healthcheck state around then."
+    },
+    {
+      "at": "2026-09-11T13:12:18.149Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
+      "result": "PR #4784 undraft succeeded (draft:false confirmed), but main had moved far enough (multiple parallel-lane merges) that the PR developed a real merge conflict against MARKET-OPEN-VALIDATION.md (two independent lanes appended entry #101 at the same anchor -- exactly the append-only-file collision pattern this file's own README warns about). Resolved by merging origin/main into the fix branch, renumbering my entry to #102 (kept both, no content lost), re-ran the healthcheck-eval test file (29/29 pass) and pushed (head now 6e1ce6dcd). Re-verified via pull_request_read immediately after push: still open, not merged, head sha matches -- no MIRROR FAILURE this cycle. healthcheck:legacy on main still shows the known/expected RED baseline (fix not yet merged) -- both plays still WATCH. ET time now ~09:12, 9:15am ET morning-confirm cron is imminent (~3 min) -- first live WATCH transition this session, watching closely next cycle."
     }
   ],
   "knownOpenItems": {
