@@ -420,7 +420,22 @@ export function flowIntelSection(
   const helixFresh = eco.flow_feed_fresh !== false;
 
   if (helixFresh && eco.recent_anomalies?.length) {
-    const anomalies = eco.recent_anomalies
+    // The market-regime-detector cron writes flow_anomalies every 30min but only dedups
+    // (anomaly_type, ticker) writes within a 15-minute window at write time (see
+    // EcosystemAnomaly's own doc comment) — so a pattern that persists across two 30-min
+    // cron cycles (>15min apart) writes a SECOND row with byte-identical anomaly_type/detail
+    // and only a newer detected_at. Undeduped, that renders the exact same bullet twice in
+    // one brief (reproduced live on NRG 2026-09-11). Dedup on (anomaly_type, detail) here —
+    // recent_anomalies is already ORDER BY detected_at DESC, so the first occurrence kept is
+    // the most recent one.
+    const seen = new Set<string>();
+    const deduped = eco.recent_anomalies.filter((a) => {
+      const key = `${a.anomaly_type} ${a.detail}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const anomalies = deduped
       .slice(0, 4)
       .map((a) => `• **${a.anomaly_type}** — ${a.detail}${a.direction ? ` (${a.direction})` : ""}`)
       .join("\n");

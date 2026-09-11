@@ -290,6 +290,25 @@ would be the first real evidence against this change and should prompt revisitin
 
 ---
 
+## WATCH LIST — 2026-09-11 coordinator sweep (read this before the routine pass)
+
+- **Ask Largo swing brief: duplicate flow-anomaly bullet.** `flowIntelSection`
+  (`src/lib/swing/play-brief-intel.ts`) rendered the exact same HELIX flow-anomaly
+  bullet twice on live NRG (`DIRECTIONAL_FLOW_SKEW` printed back-to-back, byte-
+  identical) because the `flow_anomalies` write-time dedup window (15min) is
+  narrower than the writer's own 30-min cron interval, so a persisting pattern
+  writes a fresh identical-content row every cycle. Fixed by deduping on
+  `(anomaly_type, detail)` at render time (keeps the most recent, since the query
+  is already `ORDER BY detected_at DESC`). **Check at the open:** pull
+  `GET /api/market/swing/play-brief?playId=SWING:<T>&ticker=<T>&status=WATCH` (or
+  OPEN) for any ticker whose flow anomaly has been live for >30min and confirm the
+  "Flow anomalies" section shows it once, not repeated. Also worth periodically
+  re-checking whether the underlying DB-side dedup window itself should widen to
+  match the writer's cadence (noted but deliberately not touched by this fix —
+  see the staged finding for why).
+
+---
+
 ## WATCH LIST — 2026-09-08 live-incident fix (read this before the routine pass)
 
 ### 0a-2a. Largo's swing `committed_count` conflated with open positions — docs/swing-committed-vs-open-clarification
@@ -3837,7 +3856,13 @@ than an end-of-session patch.
 - **What changed:** `horizonRowToDeckSource()` takes an optional `occ` param (default `null`, WATCH-lane caller unchanged); `loadOpenTerminalPlay` now passes `occSymbolFromSwingRow(row)` (the existing fail-closed helper, never reconstructs) so a committed position's brief carries its ledger value, preferred over reconstruction.
 - **RTH check:** Pull `GET /api/market/swing/play-brief?playId=SWING:<ticker>:<positionId>` for a currently-committed swing position once the deploy is live and confirm the resolved play's underlying OCC (checked server-side/DB, not currently exposed in the envelope body) still matches the actual held contract — especially useful to re-check on any position that has rolled recently, the one case where reconstruction and the ledger value could genuinely have diverged.
 
-### 106. Banger-origin Swing live positions served a mark with NO freshness timestamp — `npm run healthcheck:swing` Stage F AMBER on ~70/73 positions — fix/banger-swing-mark-freshness — 2026-09-11
+### 106. Legacy scorecard reported a fabricated "Hit rate 0%" on a day where every play was pulled pre-open — fix/legacy-vector-scorecard-all-pulled-hitrate — 2026-09-11
+
+- **What was broken (live repro via `proxy-browser.cjs` screenshot of `/nighthawk?view=legacy`, 2026-09-11):** Both today's plays (AAPL, SWKS) were pulled pre-open by the Cortex `gex-walls` veto and both carried strongly positive counterfactual premium moves (+85%/+162%, SWKS at "100% to stock target") — yet the board's summary line read `0 winners · 0 runners · 2 closed · Hit rate 0%`. `vectorBoardScorecard`'s hit-rate fallback (`hitDenom = closedResolved > 0 ? closedResolved : rows.length`) correctly excludes pulled rows from `closedResolved`, but on a day where 100% of rows are pulled, `closedResolved` stays 0 and the code falls through to `rows.length`/`winners` — a denominator that is entirely phantom (pulled) rows, producing a fabricated 0% that reads as "today's picks lost" when the honest state is "no capital was ever at risk."
+- **What changed:** The fallback denominator now excludes never-entered pulls the same way `closedResolved` already does (`nonPulledTotal`). When every row is pulled, `nonPulledTotal` is 0 and the scorecard's existing `hitDenom > 0 ? ... : null` guard correctly returns `null` ("no resolved data") instead of 0%. A mixed day (pulls alongside real open/closed rows) is unchanged — real rows already dominated the old `rows.length` fallback there too.
+- **RTH check:** Reload `/nighthawk?view=legacy` on a day where every published play has been pulled pre-open and confirm the scorecard shows an honest "no data yet" state (not "Hit rate 0%") for the Today view; also worth spot-checking Vector's own board (`/vector` or wherever `VectorPickLogBoard` renders) is visually unaffected, since `vectorBoardScorecard` is shared — Vector rows never carry the `PULLED` label so its numbers should be byte-identical to before this fix.
+
+### 107. Banger-origin Swing live positions served a mark with NO freshness timestamp — `npm run healthcheck:swing` Stage F AMBER on ~70/73 positions — fix/banger-swing-mark-freshness — 2026-09-11
 
 - **What was broken (first live run of `npm run healthcheck:swing` this session):** Stage F (MARKS) read AMBER `mark=<value> age=unknown` for the large majority of live Swing MANAGING/SCALING_OUT positions. Traced to `horizonPlayFromBangerPosition` (Engine B positions merged into the Swing lane for display) never setting `markAsOf` at all — `banger_positions` had no per-mark timestamp column, only a generic `updated_at` stamped on every write regardless of whether a fresh mark landed. Confirmed via live CloudWatch that `swing-active-refresh` (the REAL swing_positions marker) only ever touches 4 positions/tick while the live board serves 73 — the rest are banger-merged rows that were silently freshness-blind.
 - **What changed:** Added `banger_positions.last_mark_at`, CASE-guarded in `updateBangerLiveState` to advance only on an actual fresh mark (mirrors `swing_positions.last_mark_at`/`updateSwingLiveState` exactly); `horizonPlayFromBangerPosition` now surfaces it as `markAsOf`.

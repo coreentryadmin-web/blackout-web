@@ -108,6 +108,25 @@ test("vectorBoardScorecard: a PULLED row never counts toward Hit rate — no cap
   assert.equal(sc.closed, 1, "the Closed(1) tab elsewhere on the board still counts the pull");
 });
 
+// ── Live production repro, 2026-09-11: a Legacy session where EVERY published play for the day
+// got pulled pre-open (both AAPL and SWKS Cortex-vetoed by the morning-confirm cron). Distinct
+// from the "1 pulled + 2 still-open real plays" case above, where the fallback denominator
+// (rows.length) happens to read correctly because real, non-pulled rows dominate the population.
+// Here there are ZERO non-pulled rows at all — the fallback's `rows.length`/`winners` read (2, 0)
+// produces a literal "Hit rate 0%" on the live board, which reads as "today's picks lost" even
+// though no capital was ever at risk and the pulled plays' own counterfactual read was strongly
+// positive (+85%/+162% that same session). "0%" here is just as much a fabrication as the
+// phantom-100% bug the tests above already guard against — the honest state is "no resolved
+// data", i.e. null, not a computed rate over an entirely-phantom population.
+test("vectorBoardScorecard: a day where EVERY play was pulled reads hitRate null, not a fabricated 0%", () => {
+  const sc = vectorBoardScorecard([
+    row({ ticker: "AAPL", kind: "closed", status: "invalidated", statusLabel: "PULLED", premiumPct: 85 }),
+    row({ ticker: "SWKS", kind: "closed", status: "invalidated", statusLabel: "PULLED", premiumPct: 162 }),
+  ]);
+  assert.equal(sc.hitRate, null, "no real position ever resolved today — never read as a false 0%");
+  assert.equal(sc.closed, 2, "the Closed(2) tab elsewhere on the board still counts both pulls");
+});
+
 test("vectorBoardScorecard: a real closed loser after a pull still grades honestly (denominator excludes the pull)", () => {
   const sc = vectorBoardScorecard([
     row({ ticker: "ASO", kind: "closed", status: "invalidated", statusLabel: "PULLED", premiumPct: 277.78 }),

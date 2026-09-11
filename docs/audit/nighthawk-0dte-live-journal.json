@@ -144,6 +144,12 @@
     },
     "2026-09-11T15:37Z": {
       "note": "2nd commit of the day: SMR short, score80(tierC)/score_max84, entry 0.37, HOLD +10.81% (peak matches current, still rising). NVDA (1st commit) CLOSED at exactly 0% via ratchet-floor-honor (peak +20.79% armed breakeven, exited cleanly at mark==entry, exit_pnl_pct matches live_pnl_pct exactly -- good live confirmation PR #4737s cent-rounding fix is holding correctly on new closes, no recurrence). SMR investigated in depth: cortex.decision PASS despite cortex.score -0.32 (negative) initially looked like a real bug -- traced applyCortexCommitRelief (cortex-vector-relief.ts:59-103): original decision was VETO (gex-walls, short crosses dominant put wall), relieved via vectorRelief (Vector independently confirmed a winner/runner in the same short direction at score>=68 per vectorExemptsG17PrimeBand), reassessed via assessCortexVerdict which would have returned NET_NEGATIVE on the residual -0.32 score (vex-charm oppose -0.4 vs opening-harvest support +0.08), but the code forces PASS regardless of the reassessment result once vectorRelief/fullRegimeRelief apply. CONFIRMED INTENTIONAL, not a bug: vectorExemptsCortexBlocks doc comment explicitly says \"full Cortex block relief (gex veto strip + net-negative pass)\" -- the whole point of Vector cross-desk confirmation is to override BOTH the veto AND any residual Cortex net-negative reading, trusting real price action over the Cortex composite. Ruled out, not escalating. Noting here so a future cycle does not re-chase the same non-bug (same trap as the nighthawk_echo and live_pnl_pct/exit_pnl_pct investigations earlier this session)."
+    },
+    "2026-09-11T16:15Z": {
+      "note": "3rd commit of the day: SPXW long, score80/tierB, cortex clean PASS+0.5, trim_scale, HOLD -12.23% but thesis_health 86/intact, advisory hold -- coherent drawdown, no red flags. SMR (2nd commit) still running, pulled back further to +8.11% from its 24.32% peak, well above its 0% armed floor, no exit yet. NVDA (1st commit) still closed flat 0%. 3 commits total for the day so far, all coherent at entry, nothing to escalate."
+    },
+    "2026-09-11T16:38Z": {
+      "note": "SPXW (3rd commit) CLOSED via clean mechanical stop, exit -50.2% matching plan stop 2.54 exactly -- coherent, no bug. SMR (2nd commit) continues running well: peak now 29.73%, floor armed 0%, currently HOLD +27.03%. NVDA (1st) still closed flat 0%. Session tally so far: 1 win-scratch(NVDA 0%), 1 stop(SPXW -50.2%), 1 still-open-strong(SMR +27%). Nothing to escalate."
     }
   },
   "sessions": {
