@@ -1,3 +1,25 @@
+## WATCH LIST — 2026-09-11 swing/banger zombie-OCC follow-up (read before the routine pass)
+
+- **What was broken:** `src/lib/swing/live-marks-active.ts`'s `swingRowToActivePlay()`/
+  `bangerRowToActivePlay()` had no expiry-of-contract check at all — a swing/banger open position
+  whose OCC had already expired but was never flagged CLOSED stayed in the shared 0DTE live-marks
+  poller forever, `mark:null`/`source:"none"`/`stale:true`. Confirmed live 2026-09-11 across 14
+  rows (OKTA, BLSH, ASST, MSTX, ETH, GBTC, ETHU, BITX, FBTC, BITO, ETHA, CRM, MSTR, IBIT, CRCG) —
+  this was a DIFFERENT, unfixed lane from #4790's own `toActivePlay()` guard (which only covers
+  `zerodte_setup_log` rows), confirmed #4790 WAS already deployed via `ecr-push-production.yml`
+  ancestry before this was found.
+- **What the fix changed:** both row-builders now exclude a row whose OCC's own embedded expiry is
+  strictly before `todayEt()` (NOT compared to the row's own `session_date`, which for swing/banger
+  is the ENTRY date and can legitimately be weeks before a still-live contract's real expiry).
+- **Specific thing to check at next RTH open:** re-run `GET /api/market/zerodte/marks` (or
+  `npm run healthcheck:0dte` Stage D) and confirm the 14 tickers above no longer appear with
+  `mark:null`/`source:"none"` — and that any GENUINELY still-open swing/banger position (expiry in
+  the future) is still tracked and quoting normally (the regression risk this fix could introduce
+  is over-excluding a healthy position, not under-excluding a zombie one).
+- **Still open, NOT fixed here (see the staged finding for the DB-level follow-up needed):** why the
+  upstream close/expiry-sweep never flipped these swing/banger rows to CLOSED in the first place —
+  needs raw Postgres access this sandbox cannot reach.
+
 # Market-Open Data-Correctness Validation
 
 A cross-provider validator that confirms the numbers members see on

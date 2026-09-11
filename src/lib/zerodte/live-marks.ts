@@ -283,10 +283,11 @@ export function resolveLedgerRowLiveMark(
 
 /** OCC option-symbol expiry, as YYYY-MM-DD, or null if `occ` doesn't parse.
  *  Format: [O:]TICKER YYMMDD [C|P] STRIKE(8) — same shape parsed elsewhere (e.g.
- *  providers/unusual-whales.ts's parseOccSymbol) but kept local: this call site only
- *  needs the date, and importing across the providers/zerodte boundary for one field
- *  isn't worth it. */
-function occExpiryYmd(occ: string): string | null {
+ *  providers/unusual-whales.ts's parseOccSymbol). EXPORTED (2026-09-11 finding, a
+ *  correction to #4790's own "kept local" note above): swing/live-marks-active.ts
+ *  already imports `ActiveZeroDtePlay` from this module, and its own zombie-OCC
+ *  guard reuses this exact parse rather than re-deriving it a second way. */
+export function occExpiryYmd(occ: string): string | null {
   const m = /^O:[A-Z.]{1,6}(\d{6})[CP]\d{8}$/.exec(occ.toUpperCase());
   if (!m) return null;
   const ymd = m[1]!;
