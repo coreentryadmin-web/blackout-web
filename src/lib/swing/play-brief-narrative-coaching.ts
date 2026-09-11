@@ -427,8 +427,15 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
 
   const nhLong = nh?.direction?.toLowerCase() === "long";
   const nhShort = nh?.direction?.toLowerCase() === "short";
-  const zLong = z?.direction === "long";
-  const zShort = z?.direction === "short";
+  // A committed iron CONDOR's `direction` column is nominal provenance only (the fade side of the
+  // pin it came from) -- the structure itself is delta-neutral, so treating it as a directional
+  // 0DTE call would fabricate a signal the desk never took. #4788 fixed the identical mislabel in
+  // flowIntelSection's own "0DTE desk" line (play-brief-intel.ts) but missed this second call site
+  // reading the same zerodte_today.direction field -- gate both alignment and conflict detection
+  // here on !is_condor too, or a condor fade can silently render as "Cross-desk friction" or
+  // "Desk alignment" against the swing's real directional call.
+  const zLong = z?.direction === "long" && z?.is_condor !== true;
+  const zShort = z?.direction === "short" && z?.is_condor !== true;
   const callHeavy = flow && flow.call_premium > flow.put_premium * 1.3;
   const putHeavy = flow && flow.put_premium > flow.call_premium * 1.3;
 

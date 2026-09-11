@@ -496,6 +496,35 @@ test("crossDeskCoaching: 0DTE-only conflict reasons about its mismatched hours-l
   assert.doesNotMatch(line!, /most direct read of the four/i, "an hours-long 0DTE clock is the LEAST direct read here, never the most");
 });
 
+// FINDINGS 2026-09-11 (Ask Largo standing mandate): #4788 fixed the identical condor-direction
+// mislabel in flowIntelSection's "0DTE desk: aligned/conflict" line (play-brief-intel.ts) but
+// crossDeskCoaching reads the SAME zerodte_today.direction field through the SAME
+// zerodteLiveForSession() helper and was never touched by that fix — a committed iron CONDOR's
+// `direction` column is nominal provenance only (the fade side of the pin it came from; the
+// structure itself is delta-neutral, per board.ts's own comment), so comparing it against swing
+// direction here fabricates a directional 0DTE call the desk never actually took, exactly the bug
+// #4788's own write-up already diagnosed for the sibling call site.
+test("crossDeskCoaching: a committed CONDOR's nominal direction must not be read as a directional 0DTE conflict", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short", // nominal fade side of the pin, not a directional call
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+          is_condor: true,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "a structure-neutral condor must never fabricate a directional 0DTE conflict");
+});
+
 test("crossDeskCoaching: Night-Hawk-only conflict (digest) reasons about the overnight cadence, not a live override", () => {
   const line = crossDeskCoaching(
     ctx({

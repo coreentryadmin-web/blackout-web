@@ -118,6 +118,29 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-11 Ask Largo crossDeskCoaching condor-direction fix (read this before the routine pass)
+
+### "Cross-desk friction"/"Desk alignment" narrative could mislabel a committed CONDOR's nominal direction as a real directional 0DTE call — fix/swing-crossdesk-condor-direction-mislabel
+
+**What was broken:** `crossDeskCoaching` (`play-brief-narrative-coaching.ts`, the "Trade manager
+read" narrative's cross-desk conflict/alignment bullet) read `zerodte_today.direction` and compared
+it to the swing's own direction without checking `is_condor` — the same defect #4788 fixed the same
+day in `flowIntelSection`'s separate "0DTE desk: aligned/conflict" line, but that fix's blast-radius
+check missed this second call site reading the identical field. A committed iron CONDOR's direction
+is nominal-only (the fade side of the pin); the structure is delta-neutral. See
+`docs/audit/findings-staging/2026-09-11-swing-crossdesk-condor-direction-mislabel.md`.
+
+**Fix:** `zLong`/`zShort` in `crossDeskCoaching` now also require `z?.is_condor !== true`, so a
+condor row contributes to neither the "Cross-desk friction" conflict bullet nor the "Desk
+alignment" fallback line.
+
+**Check at the open:** if a session commits an iron condor (`zerodte_today` row with
+`entry_context` carrying condor legs) on the same ticker/day as a live swing position, re-pull that
+swing's play-brief and confirm the "Trade manager read" narrative never renders "0DTE
+long/short(...)" as a friction or alignment claim against it — `flowIntelSection`'s own "Flow &
+positioning" section is the only place that should name the condor, and it should read "sold iron
+condor (structure-neutral, not a directional call)".
+
 ## WATCH LIST — 2026-09-11 Ask Largo Position-section Mark-sync-echo fix (read this before the routine pass)
 
 ### Position section's "Mark" line silently echoed Entry for unsynced Engine-B/banger quotes — fix/swing-position-mark-sync-echo (PR #4775)
