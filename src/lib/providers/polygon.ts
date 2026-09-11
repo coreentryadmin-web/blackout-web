@@ -7,6 +7,7 @@ import { smaFromCloses, emaFromCloses } from "./ma-math";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { logToken } from "@/lib/log-token";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -81,10 +82,44 @@ type SnapshotTicker = {
   lastTrade?: { p?: number };
 };
 
-/** Session change % from a batch snapshot row — null when the provider omits change and we
- *  cannot derive it from day close vs prior close (never fabricate flat 0%). */
-export function snapshotChangePctFromRow(row: SnapshotTicker | undefined): number | null {
+/**
+ * Session change % from a batch snapshot row — null when the provider omits change and we
+ * cannot derive it from day close vs prior close (never fabricate flat 0%).
+ *
+ * `cashSessionOpen` defaults to `true` (preserving the standard "vs prior close" reading for
+ * every existing caller that doesn't pass it) and should be `false` whenever the caller knows
+ * cash RTH is closed. When closed, Polygon's own `todaysChangePerc` (and the `prevDay.c` derive
+ * below) measure the LATEST print — which can be a real after-hours/overnight trade once the
+ * regular session has closed — against `prevDay.c`, i.e. the close from ONE SESSION BEFORE the
+ * one that just ended. That reads as a stale, wrong-magnitude move: live 2026-09-11, QQQ's
+ * after-hours print of $706.90 was reported as "-1.31%" (706.90 vs $716.31, Sept-9's close)
+ * when the actual, meaningful move since the real close ($708.69, Sept-10's close, confirmed
+ * against `/v2/aggs/ticker/QQQ/prev`) was only -0.25%. `day.c` freezes at the regular session's
+ * official close and does NOT keep tracking after-hours prints (confirmed live: `lastTrade.p`
+ * moved to 706.8992 while `day.c` stayed at 708.69), so once the session is closed it is the
+ * correct, current anchor — not `prevDay.c`, which only becomes current again once the NEXT
+ * session opens and the provider rolls the day/prevDay buckets forward.
+ *
+ * Mirror-image of the index bug `src/features/spx/lib/spx-change-anchor.ts` fixes: there,
+ * `previous_close` rolls FORWARD too EARLY and reads a false 0%; here, `day.c` rolls forward too
+ * LATE relative to a live after-hours print, and reads a stale, larger move than actually
+ * happened since the close.
+ */
+export function snapshotChangePctFromRow(
+  row: SnapshotTicker | undefined,
+  cashSessionOpen: boolean = true,
+): number | null {
   if (!row) return null;
+  if (!cashSessionOpen) {
+    const dayClose = row.day?.c;
+    const lastPrice = row.lastTrade?.p ?? dayClose;
+    if (
+      typeof lastPrice === "number" && Number.isFinite(lastPrice) && lastPrice > 0 &&
+      typeof dayClose === "number" && Number.isFinite(dayClose) && dayClose > 0
+    ) {
+      return Number((((lastPrice - dayClose) / dayClose) * 100).toFixed(2));
+    }
+  }
   if (row.todaysChangePerc != null && Number.isFinite(row.todaysChangePerc)) {
     return Number(row.todaysChangePerc.toFixed(2));
   }
@@ -128,7 +163,7 @@ function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | 
     ticker: sym,
     price,
     prev_close: prevClose,
-    change_pct: snapshotChangePctFromRow(row),
+    change_pct: snapshotChangePctFromRow(row, isEtCashRth()),
     // Gap #14 (truth): when the day aggregate is absent (pre-open / closed / untraded) we have
     // no real HOD/LOD/VWAP — return null instead of dressing the spot price up as an extreme.
     day_high: day.h != null ? Number(day.h) : null,
