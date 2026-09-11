@@ -1001,6 +1001,27 @@ test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf 
   assert.equal(fresh, null);
 });
 
+// Live repro 2026-09-11 (Ask Largo standing mandate, TWST): the Position section (play-brief.ts)
+// already distinguishes two cases behind the SAME `markIsSync` flag — a real, live mark that just
+// lacks a stored freshness timestamp (pnlPct is a real number: prints "Mark: $X _(live quote, no
+// freshness timestamp)_") versus a genuinely unknown mark (pnlPct is null: prints "Mark: unknown").
+// This coaching bullet never made that distinction — it fires the identical "mark not synced to
+// live tape" wording for BOTH. For the live-quote-just-untimestamped case, that directly
+// contradicts the Position section printed two blocks above it in the SAME brief: one line says
+// "live quote", the very next section says "not synced to live tape" about the exact same mark.
+// A member reading top-to-bottom sees the brief disagree with itself over one fact. The genuinely-
+// unknown case (pnlPct null) is unaffected — "not synced to live tape" is the correct, honest
+// wording there, and the test above still covers it.
+test("dataHonestyCoaching: markIsSync true WITH a real pnlPct (live quote, no timestamp) does not contradict Position's own wording", () => {
+  const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, pnlPct: 7.0, status: "OPEN" }));
+  assert.doesNotMatch(
+    line!,
+    /mark not synced to live tape/i,
+    "must not claim the mark isn't synced when a real pnlPct proves a real live mark exists",
+  );
+  assert.match(line!, /freshness timestamp/i, "must still honestly flag the missing timestamp");
+});
+
 test("dataHonestyCoaching: closed play with markIsSync does not warn mark staleness", () => {
   const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "CLOSED" }));
   assert.equal(line, null);
