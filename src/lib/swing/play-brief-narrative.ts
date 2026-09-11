@@ -398,16 +398,32 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
   const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
 
   if (rec === "TRIM") {
-    const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
+    const trimLevels = play.exitPolicy?.trim_levels ?? [];
+    const next = trimLevels.find((t) => !t.fired);
     // "Bank partial into strength; don't give back peak" only makes sense while there is still a
     // peak worth protecting. Once the play has already round-tripped past breakeven into a loss
     // (live repro: NN SWING:NN:32, 2026-09-10 — TRIM recommendation, peak +24.4%, pnl -34.6%), the
     // very next bullet already states the peak is gone — "into strength"/"don't give back peak"
     // then reads as stale advice contradicting the sentence right after it. Drop the strength
     // clause in that case; the round-trip bullet below already carries the real, current guidance.
+    //
+    // Product-honesty gap (live NRG repro, 2026-09-11: round-tripped from +132.7% to +2% with
+    // ZERO trim ever banked): "Desk says TRIM — bank partial into strength" reads as an
+    // instruction that has already happened or that the platform will act on. Neither is true —
+    // the whole product is advisory-only (managementFor in adapters.ts already carries the
+    // in-code comment "ADVISORY (we recommend, you execute)", but that disclosure never reached
+    // the member-facing narrative). The costliest version of this gap is exactly the
+    // trimsFired===0 case: the trigger has already been crossed (that's why rec is TRIM at all)
+    // yet NOTHING has been banked, so the position is still 100% exposed to a full round-trip
+    // while the copy reads like protection is already in motion. Disclose plainly in that case,
+    // BEFORE the round-trip happens — the round-trip bullet below only covers the aftermath.
+    const trimsFired = trimLevels.filter((t) => t.fired).length;
     lines.push(
       `**Desk says TRIM**${next ? ` — next rail at **+${next.trigger_pct}%**` : ""}.` +
-        (giveback?.kind === "round_trip" ? "" : " Bank partial into strength; don't give back peak."),
+        (giveback?.kind === "round_trip" ? "" : " Bank partial into strength; don't give back peak.") +
+        (trimsFired === 0
+          ? " Nothing's banked yet — this is advisory only; place the trim yourself, the desk does not execute trades."
+          : ""),
     );
   } else if (rec === "SELL") {
     lines.push(`**Exit now**${sellReasonClause(play.manageReason, play.thesisBreak)}. Flatten per manage engine.`);
