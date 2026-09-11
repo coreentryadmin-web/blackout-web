@@ -5,6 +5,7 @@
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { roundFloats } from "@/lib/round-floats";
 
 export type BriefSnapshot = {
   headline: string;
@@ -303,21 +304,44 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   return lines.slice(0, 8);
 }
 
-/** Stable content key for SSE dedupe — excludes time-only fields. */
+/**
+ * Stable content key for SSE dedupe — excludes time-only fields.
+ *
+ * BUG FIXED 2026-09-11 (Ask Largo standing mandate, raw-float check): this used to
+ * `JSON.stringify` the raw `BriefSnapshot` numbers directly, e.g. `pnlPct: -56.18644067796611`
+ * for a real AAPL closed play. The API route (`route.ts`) wraps its whole response in
+ * `roundFloats({ available: true, ...brief })` specifically to round every float before it
+ * reaches a client — but `roundFloats` walks objects/arrays/numbers and treats a string as an
+ * opaque leaf, and by the time `roundFloats` runs, `briefContentKey` is ALREADY a JSON string
+ * (built here, at compose time, before the route ever sees it). So the raw, unrounded floats
+ * baked into that string sailed straight through the route's own rounding pass untouched — the
+ * exact "systemic: several endpoints serve unrounded floats" class this repo's CLAUDE.md already
+ * names, just hiding one layer deeper than a top-level numeric field. `briefContentKey` is an
+ * internal SSE-dedupe/diff-baseline key (see `useSwingPlayBrief.ts`), never rendered to a member
+ * or read by Largo chat, so the blast radius was contained — but it's still real, unrounded data
+ * leaving the API surface, and a full-precision float in a "stable key" is also fragile: two
+ * refreshes computing the same logical P&L through a different floating-point path (e.g. a
+ * blended-vs-plain P&L branch) could now produce different keys over noise in the 10th decimal
+ * place, causing a spurious "content changed" SSE push. Rounding here — to the same 2dp the route
+ * already applies to everything else — fixes both: no raw float leaves the API, and the key is
+ * stable to the precision a trader actually reads.
+ */
 export function briefContentKey(snap: BriefSnapshot): string {
-  return JSON.stringify({
-    headline: snap.headline,
-    recommendation: snap.recommendation,
-    thesisHealth: snap.thesisHealth,
-    pnlPct: snap.pnlPct,
-    mark: snap.mark,
-    spot: snap.spot,
-    gammaFlip: snap.gammaFlip,
-    callWall: snap.callWall,
-    putWall: snap.putWall,
-    trimsFired: snap.trimsFired,
-    sectionTitles: snap.sectionTitles,
-  });
+  return JSON.stringify(
+    roundFloats({
+      headline: snap.headline,
+      recommendation: snap.recommendation,
+      thesisHealth: snap.thesisHealth,
+      pnlPct: snap.pnlPct,
+      mark: snap.mark,
+      spot: snap.spot,
+      gammaFlip: snap.gammaFlip,
+      callWall: snap.callWall,
+      putWall: snap.putWall,
+      trimsFired: snap.trimsFired,
+      sectionTitles: snap.sectionTitles,
+    }),
+  );
 }
 
 /** Inject live refresh pulse into Trade manager read; overflow goes to What changed. */

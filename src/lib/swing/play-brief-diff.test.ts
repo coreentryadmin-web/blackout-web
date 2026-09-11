@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
+  briefContentKey,
   diffBriefSnapshots,
   envelopeWithDiffSection,
   envelopeWithNarrativePulse,
@@ -291,6 +292,15 @@ test("diffBriefSnapshots: detects HELIX put-only flow build when call premium is
     lines.some((l) => l.includes("HELIX tape: put flow building")),
     `expected put flow building line, got: ${JSON.stringify(lines)}`,
   );
+});
+
+test("briefContentKey: rounds raw floats — never leaks full-precision numbers past the route's own roundFloats pass", () => {
+  // Real repro shape: AAPL closed-play pnlPct computed as mark/entry - 1, e.g. 4.5/10.275 - 1.
+  const snap = snapshotFromBrief(env(), play({ pnlPct: -56.18644067796611 }));
+  const key = briefContentKey(snap);
+  assert.ok(!key.includes("56.18644067796611"), `raw unrounded float leaked into content key: ${key}`);
+  const parsed = JSON.parse(key) as { pnlPct: number };
+  assert.equal(parsed.pnlPct, -56.19, "pnlPct must be rounded to 2dp, same precision the route applies everywhere else");
 });
 
 test("briefSnapshotStorageKey: requires play id and session date", () => {
