@@ -659,6 +659,24 @@ test("deskConsensusSection: narrates NH outcome history when present", () => {
   assert.match(section?.body ?? "", /weigh that track record/i);
 });
 
+test("deskConsensusSection: attributes the outcome history to Night Hawk LEGACY, not the Swing engine itself", () => {
+  // Live production wording: "Night Hawk's last swing on this name" inside a SWING play brief reads
+  // as "this same engine's own prior position" — but `nighthawk_recent` is Legacy's next-day-digest
+  // pick history (confirmed by the `edition_for` field, Legacy's own vocabulary), a different product.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-04",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }));
+  assert.ok(section);
+  assert.match(section?.body ?? "", /Night Hawk Legacy's last pick/i);
+  assert.doesNotMatch(section?.body ?? "", /Night Hawk's last swing/i);
+});
+
 test("deskConsensusSection: an unresolved last swing (outcome 'open') never reads as 'closed open' — a live contradiction", () => {
   // Reproduces a live production case: AAPL positionId 36's CLOSED brief cited Night Hawk's
   // last swing (2026-07-29) as "closed **open**" because outcome is "open" | "pending" |
