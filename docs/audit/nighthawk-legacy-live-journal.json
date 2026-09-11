@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T22:23:51.451Z",
+  "lastUpdated": "2026-09-11T22:37:38.538Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -916,6 +916,11 @@
       "at": "2026-09-11T22:23:51.467Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "PR #4797 closure discovered: pull_request_read now shows state:closed, merged:true, merged_at 2026-09-11T17:08:37Z (squash sha 8daac545c, confirmed present in git log origin/main and in the current working tree source -- vector-board-row-utils.ts's nonPulledTotal/hitDenom fix is live). NOTABLE ANOMALY worth flagging: the actual merge timestamp (17:08 UTC) is HOURS before the many consecutive cycles (17:21 through 22:07 UTC, ~20 cycles) where my own pull_request_read calls kept showing draft:true/merged:false and I logged 'undraft still rate-limited' each time. Either those reads were served genuinely stale/cached data for an extended period, or a parallel session's earlier retry actually succeeded and merged it while my own subsequent status checks kept hitting a stale cache -- can't determine which from here. Net effect: no harm done (the fix landed correctly and works), but this is a real, extended instance of the documented 'a merge is not a verification, and neither apparently is a status read' pattern -- logging it in case this recurs and needs escalating. No further action needed on #4797 -- fully closed."
+    },
+    {
+      "at": "2026-09-11T22:37:38.555Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN, stable, unchanged for the 9/14 edition (HPE/DELL marks frozen since market closed for the weekend, Stage D still correctly SKIPPED pending Monday's morning-confirm). No open PR to track anymore (#4797 fully closed/merged last cycle). Quiet, clean cycle -- both major threads from today (Stage D pull-status consistency, the all-pulled hit-rate scorecard bug) are shipped and verified; the AAPL/SWKS pulled_wrongly grade question remains the one open item to check next session once a way to see it materializes."
     }
   ],
   "knownOpenItems": {
