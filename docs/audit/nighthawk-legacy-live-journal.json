@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T00:22:22.220Z",
+  "lastUpdated": "2026-09-11T00:37:20.250Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -451,6 +451,11 @@
       "at": "2026-09-11T00:22:22.220Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy steady GREEN (resolved=28, stable vs last cycle -- confirms the 31->28 shift last cycle was a one-time trailing-window boundary effect at the midnight rollover, not an ongoing issue). Spot-checked legacyBoardExportCsv (untouched territory) for a CSV-injection/column-misalignment risk: ticker/statusLabel are emitted unquoted while several other fields ARE JSON.stringify-quoted -- inconsistent escaping, but every unquoted field (ticker, statusLabel, direction, tierLabel) is always an internally-generated short enum-like string (tickers, CONFIRMED/WATCH/PULLED/Winner/Runner/etc., CALL/PUT/LONG/SHORT), never free text or user input, so a comma-breaking-the-CSV scenario is not realistically reachable. Not escalating as a live bug -- noting only as a very low-priority style inconsistency, not worth a fix on its own. No new issues this cycle."
+    },
+    {
+      "at": "2026-09-11T00:37:20.250Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "Deep read-through of LegacyPlayManageRail.tsx (the trade-management detail rail, not yet closely examined this session) plus its helpers (legacyPrimaryPnlPct, legacyMorningHeadline, legacyMarkAgeLabel, legacy-primary-pnl.ts) for the current AAPL/SWKS WATCH plays. All correct: R:R tone thresholds (>=2 up, <1 down) correctly flag AAPL's 0.55 R:R as 'down' tone; morning-headline/pulled-reason/thesis-break sections all correctly gate on real fields with sensible null-handling; premium-cap and exit-model badges render conditionally as expected. No dead fields, no wrong sign/tone logic found. No new issues this cycle. healthcheck:legacy steady GREEN (resolved=28)."
     }
   ],
   "knownOpenItems": {
