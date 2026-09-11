@@ -152,6 +152,59 @@ function blendedPnlPct(play: TerminalPlay): number | null {
   return bankedPnl + runnerFraction * play.pnlPct;
 }
 
+/**
+ * BUG FOUND 2026-09-11 (Ask Largo standing mandate — multi-position-same-ticker identity check).
+ * `HorizonPlay.positionId` is explicitly documented ("disambiguates ticker collisions in briefs")
+ * but `horizonPlayFromBangerPosition` (banger-lane-merge.ts) never stamps it, even though the
+ * source `BangerPositionRow` carries a real `id`. Live repro 2026-09-11: APPS, BAND, INSP and TWST
+ * each had TWO concurrent, genuinely independent open Banger-engine positions on the same ticker
+ * at once (different strikes/expiries/entry dates/P&L — e.g. APPS 12C entered 09-08 at +28.4% vs
+ * APPS 13C entered 09-10 at ~0%). A ticker-only play-brief request (no strike/right hint — exactly
+ * how Largo's tool-call convention and a plain "how's my APPS position doing" resolve) silently
+ * picked ONE via `pickLanePlayForBrief`'s best-live-P&L tiebreak and composed a full brief for it
+ * with ZERO indication a second concurrent position on the same underlying existed. This is Largo
+ * contract C4 territory (identity) from the other direction: the identity shown was correct for
+ * the one row chosen, but a second real position was silently omitted rather than disclosed — the
+ * same "absence must be disclosed, never silent" principle (C3) applied to a sibling position
+ * instead of a missing field.
+ *
+ * Fix scope: this does NOT attempt to make `positionId` resolvable for banger rows (that would
+ * require wiring an entirely separate resolution branch against `banger_positions` in
+ * `resolveSwingPlayForBrief`, and risks a WORSE bug — banger row ids and swing ledger row ids are
+ * separate DB sequences that can collide, so blindly trusting a banger id as a swing positionId
+ * hint could resolve to a completely unrelated swing position). Instead: a purely additive
+ * disclosure, using data already on `ctx.laneRows` (no new fetch), naming every OTHER live position
+ * on the same ticker by its distinguishing contract + entry so nothing is hidden. Matches on
+ * `entryPremium` (rounded) rather than a synthetic id, since two genuinely different positions on
+ * one ticker always differ in strike/expiry/entry price in practice — good enough for an honest
+ * disclosure, not a resolution key.
+ */
+function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
+  const { play } = ctx;
+  if (play.entry == null || !Number.isFinite(play.entry)) return null;
+  const ticker = play.ticker.toUpperCase();
+  const siblings = ctx.laneRows.filter((r) => {
+    if (r.ticker.toUpperCase() !== ticker) return false;
+    if (!r.liveStatus) return false; // only OTHER live/committed positions matter here
+    if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+    return Math.abs(r.entryPremium - play.entry!) > 0.005;
+  });
+  if (!siblings.length) return null;
+  const lines = siblings.map((r) => {
+    const strike = r.contract?.strike;
+    const right = r.contract?.right ?? "C";
+    const expiry = r.contract?.expiry ?? "—";
+    const entered = r.committedAt ? etStampFromIso(r.committedAt) : null;
+    const pnl = r.livePnlPct != null ? fmtPct(r.livePnlPct) : "—";
+    return `• **${strike ?? "?"}${right} ${expiry}** — entered ${entered ?? "unknown date"}, entry ${fmtUsd(r.entryPremium ?? null)}, P&L ${pnl}`;
+  });
+  return {
+    title: "Other concurrent position(s)",
+    body: `${ticker} carries ${siblings.length + 1} concurrent live position(s) — this brief covers one. Other(s):\n\n${lines.join("\n")}\n\nPass a specific strike/expiry to review a different one.`,
+    bias: "neutral",
+  };
+}
+
 function pnlSection(play: TerminalPlay): RichSection {
   const blended = blendedPnlPct(play);
   const lines = [
@@ -559,6 +612,8 @@ export function composeSwingPlayBrief(
     const th = thesisHealthSection(play);
     if (th) sections.push(th);
     sections.push(pnlSection(play));
+    const siblings = siblingPositionsNote(ctx);
+    if (siblings) sections.push(siblings);
   } else {
     sections.push(closedSection(play));
   }
