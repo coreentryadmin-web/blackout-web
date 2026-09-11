@@ -691,7 +691,24 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
       headline = `${label} · momentum long on ${trigger} → target ${tgt}`;
       thesis = `${input.regime?.posture === "short" ? "Short gamma amplifies the move" : "Trend is up"}: go WITH strength, not against it. ${brokeWall != null ? `A break of ${fmt(brokeWall)} runs — ` : ""}target the next wall, wider stop.`;
       entryZone = brokeWall != null ? `long on ${tf} close > ${fmt(brokeWall)}` : `long on strength / pullback hold`;
-      invalidation = brokeWall != null ? `${tf} close back < ${fmt(brokeWall)}` : flip != null ? `${tf} close < ${fmt(flip)}` : undefined;
+      // The flip-based fallback (no wall break in range) is only a real, not-yet-true invalidation
+      // level when the flip actually sits BELOW spot — a genuine downside line the long has to hold.
+      //
+      // "momentum-long" is reached two ways: the posture==="short" branch (spot is below the flip
+      // BY CONSTRUCTION — see vector-regime.ts — so flip > spot there), and the style==="position"
+      // EMA-stack override above, which fires on trend alone and does NOT require spot to be above
+      // the flip. When the override fires while the underlying regime is still genuinely "short"
+      // (flip > spot), naively reusing "close < flip" produced an already-breached invalidation —
+      // e.g. live GOOG 2026-09-11: spot 332.50, flip 363.47, invalidation printed "5m close < 363.47"
+      // while spot already sat ~30pts below that level. A trader reading that has no real stop, just
+      // a condition that was already true the moment the play was generated. Omit rather than
+      // fabricate when the flip is on the wrong side of spot for a downside line.
+      invalidation =
+        brokeWall != null
+          ? `${tf} close back < ${fmt(brokeWall)}`
+          : flip != null && flip < spot
+            ? `${tf} close < ${fmt(flip)}`
+            : undefined;
       break;
     }
     case "momentum-short": {
@@ -704,7 +721,16 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
       headline = `${label} · momentum short on ${trigger} → target ${tgt}`;
       thesis = `${input.regime?.posture === "short" ? "Short gamma amplifies the move" : "Trend is down"}: go WITH weakness. ${brokeWall != null ? `A break of ${fmt(brokeWall)} accelerates — ` : ""}target the next wall, wider stop.`;
       entryZone = brokeWall != null ? `short on ${tf} close < ${fmt(brokeWall)}` : `short on weakness / lower-high`;
-      invalidation = brokeWall != null ? `${tf} close back > ${fmt(brokeWall)}` : flip != null ? `${tf} close > ${fmt(flip)}` : undefined;
+      // Mirror of the momentum-long fix above: "close > flip" is only a real, not-yet-true
+      // invalidation line when the flip sits ABOVE spot — the same style==="position" override can
+      // fire momentum-short off the EMA stack alone while the underlying regime is still "long"
+      // (flip < spot), which would otherwise print an already-breached upside invalidation.
+      invalidation =
+        brokeWall != null
+          ? `${tf} close back > ${fmt(brokeWall)}`
+          : flip != null && flip > spot
+            ? `${tf} close > ${fmt(flip)}`
+            : undefined;
       break;
     }
     case "pivot": {
