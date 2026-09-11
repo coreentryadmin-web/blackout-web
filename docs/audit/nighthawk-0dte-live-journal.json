@@ -132,6 +132,9 @@
     },
     "2026-09-11T14:08Z": {
       "note": "First live signal of the day: NVDA long, score 90, gate verdict COMMIT (cleared VIX-elevated 17.51 canonicalized 75-floor cleanly). Not yet in ledger as of this pull (10:08 ET) -- discovery marks it commit-ready but the actual commit write happens on a separate cron tick. Score 90 sits in the known 85+ top-band-inversion zone (F-5: 85+ -> 33.3% WR vs 75-84 -> 63.6% WR) -- not a gate bug (W_SCORE_TOP is deliberately not weighted above W_SCORE_MID for exactly this reason per tiers.ts), just worth tracking this specific play through its lifecycle since its a live example of a top-band commit. Checking again next cycle whether it actually committed and how tier/cortex read at entry."
+    },
+    "2026-09-11T14:17Z": {
+      "note": "NVDA still commit_ready=1 (score drifted 90->86, same top-band-inversion zone) but STILL not landed in ledger after ~9 min across 2 polls. Checked governor: completely clean (not halted, 0 stops, 0 open, 0 realized losses, no reentry lock) -- nothing there explains the lag. Not escalating yet (only 2 observations, not the 3-instance threshold, and this may just be normal latency between the scan/scoring poll producing a COMMIT verdict and a separate, less-frequent commit-execution cron tick). Watching one more cycle before treating this as a real gap between \"gate says COMMIT\" and \"actually commits.\""
     }
   },
   "sessions": {
