@@ -99,6 +99,13 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
     thesisNote: row.scale_out_reason ?? "Engine B scale-out — whole-market breakout",
     regime: "BREAKOUT · BANGER",
     factors: gainPct != null ? [{ label: "Discovery gain", points: Math.round(gainPct) }] : [],
+    // FINDINGS 2026-09-11: this was omitted entirely, so every banger-origin Swing position (the
+    // majority of the live MANAGING/SCALING_OUT book once Engine B is merged in) served NO mark
+    // freshness signal at all — indistinguishable from "genuinely unknown" to both the
+    // swing-e2e-healthcheck Stage F staleness check and Ask Largo's own play-brief mark narrative.
+    // row.last_mark_at is the banger-table sibling of swing_positions.last_mark_at, added in the
+    // same fix, CASE-guarded in updateBangerLiveState to advance only on an actual fresh quote.
+    markAsOf: row.last_mark_at ?? null,
   };
 }
 

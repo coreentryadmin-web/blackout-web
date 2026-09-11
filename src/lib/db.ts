@@ -2331,6 +2331,22 @@ async function runMigrations(): Promise<void> {
     WHERE status NOT IN ('CLOSED_RUNNER', 'STOPPED');
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_banger_positions_session ON banger_positions(session_date DESC)`);
+  // FINDINGS 2026-09-11: banger_positions never carried a per-MARK timestamp — only a generic
+  // `updated_at` that updateBangerLiveState stamps on EVERY tick regardless of whether a fresh
+  // mark actually landed ($3 IS NOT NULL or not), so it can't distinguish "quoted just now" from
+  // "some other field changed, mark untouched". swing_positions solved this exact problem with its
+  // own CASE-guarded `last_mark_at` (see the ALTER above and updateSwingLiveState) — banger never
+  // got the same column, so horizonPlayFromBangerPosition (banger-lane-merge.ts) has always served
+  // its HorizonPlay with NO markAsOf at all. Since Engine B banger positions are folded into the
+  // Swing lane's MANAGING/SCALING_OUT sections (mergeBangerPositionsIntoSwingPlays) and today make
+  // up the large majority of that lane's live book, every consumer of mark freshness for that
+  // majority — the swing-e2e-healthcheck Stage F staleness check AND Ask Largo's play-brief mark
+  // narrative alike — has been silently blind for every banger-origin live position: mark=<value>
+  // age=unknown, indistinguishable from "genuinely unknown" even when the mark is one tick old.
+  // Mirrors swing_positions' own last_mark_at column + CASE-guarded stamp exactly.
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS last_mark_at TIMESTAMPTZ;
+  `);
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS email_captures (

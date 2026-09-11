@@ -19,6 +19,7 @@ function bangerRow(overrides: Partial<BangerPositionRow> = {}): BangerPositionRo
     contract_occ: "ANET250912C00150000",
     entry_premium: 4.2,
     last_mark: 5.0,
+    last_mark_at: "2026-09-04T20:55:00.000Z",
     peak_premium: 5.5,
     scaled_already: false,
     scale_out_action: null,
@@ -44,6 +45,26 @@ test("horizonPlayFromBangerPosition maps OPEN banger to SWING MANAGING with BANG
   assert.equal(play!.liveStatus, "OPEN");
   assert.deepEqual(play!.signalKinds, ["BANGER"]);
   assert.equal(play!.archetype, "BREAKOUT");
+});
+
+// FINDINGS 2026-09-11: horizonPlayFromBangerPosition used to omit markAsOf entirely — a live
+// banger-origin Swing position (the majority of the merged Swing live book) served mark=<value>
+// with NO freshness signal at all, indistinguishable from "genuinely unknown" to any consumer
+// (swing-e2e-healthcheck Stage F, Ask Largo's play-brief mark narrative). row.last_mark_at is the
+// banger-table sibling of swing_positions.last_mark_at added in the same fix.
+test("horizonPlayFromBangerPosition surfaces markAsOf from row.last_mark_at", () => {
+  const play = horizonPlayFromBangerPosition(bangerRow(), new Date("2026-09-04T16:00:00-04:00"));
+  assert.ok(play);
+  assert.equal(play!.markAsOf, "2026-09-04T20:55:00.000Z");
+});
+
+test("horizonPlayFromBangerPosition reports markAsOf null when no mark was ever observed", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({ last_mark_at: null }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  assert.equal(play!.markAsOf, null);
 });
 
 test("mergeBangerPositionsIntoSwingPlays replaces pre-entry row on same ticker", () => {
