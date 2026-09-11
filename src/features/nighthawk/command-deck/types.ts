@@ -13,6 +13,7 @@ import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { WhyNow } from "@/lib/zerodte/why-now";
 import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
+import type { PaneCortexView } from "@/lib/zerodte/pane";
 
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
@@ -173,6 +174,14 @@ export interface TerminalPlay {
   detectedAt?: string | null;
   /** ISO instant capital was committed (swing ledger committed_at). Null when unknown. */
   committedAt?: string | null;
+
+  /** Cortex evidence-layer read pinned at commit (`entry_context.cortex`), parsed structurally
+   *  via the same `readCortexView` the 0DTE ledger's own Cortex read uses (`bie/cortex-read.ts`)
+   *  — never trusts the raw JSONB blob. Present ONLY on a SWING row that actually carried a
+   *  Cortex assessment at commit (the swing engine wires Cortex in as G-S14); absent/null on a
+   *  pre-wire-in row, a WATCH/lane-only candidate that hasn't committed yet, or any non-SWING
+   *  horizon — never fabricated. Largo product-contract absence principle: omitted, not guessed. */
+  cortex?: PaneCortexView | null;
 
   /** Hard-gate blocks for SKIP rows — rendered in the command panel (never fabricated). */
   gateBlocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;

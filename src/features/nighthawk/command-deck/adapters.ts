@@ -40,6 +40,7 @@ import type {
   TerminalPlay,
   ThesisLevel,
 } from "./types";
+import { readCortexView } from "@/lib/zerodte/pane";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
 import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
@@ -719,6 +720,11 @@ export interface HorizonDeckSource {
   exitAt?: string | null;
   exitPnlPct?: number | null;
   closedReason?: string | null;
+  /** Raw entry_context.cortex JSONB (swing commit.ts:583 `cortexEntryContextFor`) — parsed
+   *  structurally via `readCortexView` below, never trusted raw. Undefined/null on a
+   *  pre-commit WATCH/lane candidate (Cortex only runs on committed rows), a pre-wire-in row,
+   *  or a non-SWING caller — honest absence, never fabricated (Largo contract §3 absence). */
+  cortex?: unknown;
 }
 
 /**
@@ -974,6 +980,9 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     exitAt: src.exitAt ?? null,
     exitPnlPct: fin(src.exitPnlPct),
     tierLabel: convictionFromScore(Math.round(src.score)),
+    // Pinned Cortex evidence from entry_context.cortex — parsed structurally, honestly null
+    // when absent (pre-commit candidate, pre-wire-in row, or a malformed/foreign blob).
+    cortex: readCortexView(src.cortex ?? null),
   };
 }
 
@@ -1245,5 +1254,6 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     exitAt: src.exitAt ?? null,
     exitPnlPct: src.exitPnlPct ?? null,
     closedReason: src.closedReason ?? null,
+    cortex: src.cortex ?? null,
   });
 }

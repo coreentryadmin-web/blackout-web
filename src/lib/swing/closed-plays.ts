@@ -46,6 +46,9 @@ export type SwingClosedDeckSource = {
   exitAt?: string | null;
   exitPnlPct?: number | null;
   closedReason?: string | null;
+  /** Raw entry_context.cortex JSONB — parsed structurally by the adapter (readCortexView),
+   *  never trusted here. Carries the Cortex evidence pinned at commit, when one exists. */
+  cortex?: unknown;
 };
 
 function closedReasonFromRow(row: SwingPositionRow): string | null {
@@ -111,6 +114,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     exitAt,
     exitPnlPct: exitPnl,
     closedReason: closedReasonFromRow(row),
+    cortex: row.entry_context?.cortex ?? null,
   };
 }
 

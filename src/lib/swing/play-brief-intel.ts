@@ -173,6 +173,43 @@ export function archetypeTrackRecordSection(
   return { title: "Track record", body: lines.join("\n\n"), bias: "neutral" };
 }
 
+/**
+ * Cortex read — surfaces WHY the evidence layer opposed/vetoed this position at commit
+ * (`entry_context.cortex`, pinned by swing `commit.ts` the same way 0DTE pins it and already
+ * readable there via `bie/cortex-read.ts`'s `readCortexForPlay()` — swing had no equivalent
+ * until this section). Renders ONLY when there is an actual signal to report: a real,
+ * non-abstained verdict carrying at least one veto or opposing item. A clean commit (no
+ * vetoes/opposes), an abstained read, or no pinned verdict at all (pre-wire-in row, WATCH/
+ * lane-only candidate) all render NOTHING — never a fabricated "Cortex is fine" line, per
+ * the Largo product-contract absence principle (omit an uncalibrated/absent read, don't guess).
+ * Prefers the pinned `narrative` lines (the same ready-made human-readable strings the
+ * verdict composer writes) and falls back to a constructed summary only if narrative is empty.
+ */
+export function cortexReadSection(play: TerminalPlay): RichSection | null {
+  const view = play.cortex;
+  if (!view || view.abstained) return null;
+  const v = view.verdict;
+  const vetoCount = v.vetoes?.length ?? 0;
+  const opposeCount = v.opposes?.length ?? 0;
+  if (vetoCount === 0 && opposeCount === 0) return null; // clean/supportive read — nothing to flag
+
+  const header = `Cortex ${view.decision ?? "read"} at commit — net score ${v.score >= 0 ? "+" : ""}${v.score}, conviction ${v.conviction}, ${vetoCount} veto${vetoCount === 1 ? "" : "es"} · ${opposeCount} opposing item${opposeCount === 1 ? "" : "s"}.`;
+  const narrativeLines = Array.isArray(v.narrative) ? v.narrative.filter((l) => typeof l === "string" && l.trim()) : [];
+  const evidenceLines =
+    narrativeLines.length > 0
+      ? narrativeLines
+      : [
+          ...v.vetoes.map((e) => `VETO — [${e.source}] ${e.detail}`),
+          ...v.opposes.map((e) => `Opposed — [${e.source}] ${e.detail}`),
+        ];
+
+  return {
+    title: "Cortex read",
+    body: [header, ...evidenceLines].join("\n\n"),
+    bias: vetoCount > 0 || v.score < 0 ? "bearish" : "neutral",
+  };
+}
+
 /** Vector chart technicals — EMA stack, VWAP, RSI, MACD, structure. */
 export function chartTechnicalsSection(
   vec: VectorFullState | null,
@@ -914,6 +951,9 @@ export function buildIntelSections(
 
   const trackRecord = archetypeTrackRecordSection(play, ctx.archetypeTrackRecord);
   if (trackRecord) out.push(trackRecord);
+
+  const cortexRead = cortexReadSection(play);
+  if (cortexRead) out.push(cortexRead);
 
   const rank = laneRankSection(play, ctx.laneRows);
   if (rank) out.push(rank);
