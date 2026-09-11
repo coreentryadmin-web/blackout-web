@@ -1,8 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-11T11:54:00Z",
+  "last_updated": "2026-09-11T12:09:00Z",
   "notes": [
+    "12:02 UTC cycle -- PR #4781's deploy rolling (2-3/8), TWST spot-check confirmed still pre-fix, consistent with partial rollout not a bug. New PR #4782 (Vector product, momentum flip-fallback invalidation) -- not swing lane. No response yet on #4076. NRG/NN/CG/CRWD unchanged, still open.",
     "11:47 UTC cycle -- PR #4781 MERGED, its build queued/pending behind #4780's still-in-progress pipeline (a cross-product cache fix, not swing, already :1451 stable 8/8 on the ECS side -- the workflow's later steps just haven't reported done). Will verify #4781's fix live on TWST next cycle once its own image deploys. No response yet on #4076. NRG/NN/CG/CRWD unchanged, still open.",
     "11:31 UTC cycle -- new sibling PR #4781 found, the 3rd in the #4775/#4777 chain: TWST's brief showed Position section 'Mark: $3.05 (live quote, no freshness timestamp)' directly contradicted by the Trade manager read's 'mark not synced to live tape' bullet a few lines later -- same mark, same brief. dataHonestyCoaching never made the same genuinely-unknown-vs-live-untimestamped split pnlSection already made in an earlier PR today; fix reuses the same pnlPct!=null signal instead of re-deriving a second definition. verify still running, will check for merge next cycle. No response yet on #4076. NRG/NN/CG/CRWD unchanged, still open.",
     "11:17 UTC cycle -- no new swing PRs, no response on #4076 yet. All 4 real positions unchanged from every prior check tonight. Clean sweep -- ~2.2h to RTH open, next material change expected at the RTH cron cycle (CG's trim rung, NRG's stale EXIT grade, the 28 previously-stuck expired positions, PR #4776's MU entry-verdict fix all pending RTH validation, already logged in MARKET-OPEN-VALIDATION.md).",
