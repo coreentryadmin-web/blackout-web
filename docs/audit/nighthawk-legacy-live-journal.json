@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T14:14:25.635Z",
+  "lastUpdated": "2026-09-11T14:20:11.383Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -736,6 +736,11 @@
       "at": "2026-09-11T14:14:25.648Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, v3 full brief)",
       "result": "healthcheck:legacy GREEN again (4th consecutive clean cycle). Given several consecutive clean correctness cycles, dug deeper per the aggressive-improvement-hunting mandate and found a genuine coverage gap: the healthcheck never checked GET /api/nighthawk/play-status (the CONFIRMED/DEGRADED/INVALIDATED verdict the 9:15am cron writes, Redis-cached w/ DB fallback) against the edition's own pulled/pulled_reason overlay (pull-overlay.ts, DB-merged at read time) -- two independently-read surfaces for the same underlying event that SHOULD always agree (both trace to one recordNighthawkMorningVerdict() write) but nothing was cross-checking them. Built Stage D (verdictForPullConsistency): per-ticker pulled<->INVALIDATED agreement check, RED on any split-brain, AMBER for a missing verdict, SKIPPED before the cron fires for the date. 13 new unit tests (39/39 total pass), live-verified against production (both AAPL/SWKS today correctly read GREEN/agree), tsc clean. This is a small, unambiguous, audit-tooling-only addition (CARVE-OUT applies) -- opening as fix/legacy-healthcheck-pull-status-consistency once the full suite background run confirms clean, same pipeline as #4784."
+    },
+    {
+      "at": "2026-09-11T14:20:11.384Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
+      "result": "Full background test suite came back clean (13738 pass / 0 fail / 3 skipped pre-existing). Merged latest main into the Stage D branch (clean, no conflicts -- my files untouched, re-verified 39/39 eval tests pass post-merge), pushed, opened PR #4792 as draft. Undraft hit the recurring GitHub MCP rate limit ('API rate limit already exceeded for user ID 284440397') on the first attempt -- consistent with the documented recurring pattern from #4767/#4772/#4784. Will retry next cycle."
     }
   ],
   "knownOpenItems": {
