@@ -3819,3 +3819,16 @@ mistake CLAUDE.md's own standing discipline warns about, caught before a false f
 filed. No code change made. Logged here per the "absence/anomaly is a finding — but only after
 verification" discipline: the investigation was real and worth recording even though the
 conclusion is GREEN.
+
+## 2026-09-11 (00:15 UTC) — [DISCOVERY] Full-suite + typecheck GREEN pass after a heavy day of cross-lane fixes
+
+Post-close, quiet cycle — used the lull to run the whole-product health checks the standing
+performance/lifecycle mandate calls for, rather than a narrow code-level sweep, after a day that
+saw a large number of real fixes land across nighthawk/swing/legacy/vector/zerodte/dependency
+docs (PRs #4729 through #4755, roughly two dozen merges).
+
+- `npm test` (Node 20, `scripts/run-tests.mjs`, `--experimental-test-module-mocks`): **13678 tests
+  / 13675 pass / 0 fail / 3 skipped** (pre-existing skips, unrelated), 521 suites, ~360s.
+- `npx tsc --noEmit`: clean, zero errors.
+
+No regression from today's fix volume. GREEN pass, no follow-up needed.
