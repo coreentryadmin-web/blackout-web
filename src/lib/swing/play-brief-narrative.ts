@@ -260,12 +260,23 @@ function narrateKing(level: FocalLevel, posture: string | null): string {
   return `**GEX king ${level.price.toFixed(2)}** — largest gamma concentration on the board. ${pin}`;
 }
 
-function narrateMaxPain(level: FocalLevel, spot: number): string {
+function narrateMaxPain(level: FocalLevel, spot: number, posture: string | null): string {
   const pull = level.price < spot ? "below" : "above";
-  return (
-    `**Max pain ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} ${pull} spot) — ` +
-    `expiration gravity pulls toward pin when dealers are long gamma; don't fight the pin into close.`
-  );
+  // Mirrors narrateKing/narrateMagnet's posture branch (Largo C2) — this line used to assert
+  // "when dealers are long gamma" unconditionally regardless of the actual computed regime, the
+  // same class of bug already fixed for the GEX-king and gamma-magnet narrations (see the
+  // magnetCoaching tests above, live NRG repro 2026-09-06). Caught live 2026-09-11 (RDDT SWING
+  // brief): dealer posture line read "dealers short gamma", two bullets later this line still
+  // said "pulls toward pin when dealers are long gamma" for the SAME read — a direct contradiction
+  // a member could act on (max-pain pin gravity is a long-gamma phenomenon; asserting it while
+  // short gamma overstates how much the level will hold).
+  const gravity =
+    posture === "long"
+      ? "expiration gravity pulls toward pin when dealers are long gamma; don't fight the pin into close."
+      : posture === "short"
+        ? "dealers are short gamma here — pin gravity is weaker and price can run through max pain rather than settle on it."
+        : "pin gravity depends on dealer gamma posture (not resolved on this read) — treat as a level to watch, not a settled pin.";
+  return `**Max pain ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} ${pull} spot) — ${gravity}`;
 }
 
 function narrateMagnet(level: FocalLevel, posture: string | null): string {
@@ -709,7 +720,7 @@ export function tradeManagerNarrativeSection(
         add(narrateKing(level, resolveGammaPosture(ctx, vec)));
         used.add("king");
       } else if (level.kind === "max_pain" && !used.has("max_pain")) {
-        add(narrateMaxPain(level, spot));
+        add(narrateMaxPain(level, spot, resolveGammaPosture(ctx, vec)));
         used.add("max_pain");
       } else if (level.kind === "gamma_flip" && !used.has("gamma_flip") && Math.abs(level.distancePct) < 3) {
         add(narrateFlip(level, play));

@@ -415,6 +415,66 @@ test("magnetCoaching (via tradeManagerNarrativeSection): still claims long-gamma
   assert.match(section!.body, /long-gamma regimes/i);
 });
 
+test("maxPainCoaching (via tradeManagerNarrativeSection): must not claim long-gamma pin gravity when posture is short (live RDDT repro 2026-09-11)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 156.15,
+        maxPain: 155,
+        gammaFlip: 168.48,
+        regime: { posture: "short" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Max pain 155\.00/i);
+  assert.doesNotMatch(
+    section!.body,
+    /pulls toward pin when dealers are long gamma/i,
+    "posture is measured SHORT — must not claim long-gamma pin gravity",
+  );
+  assert.match(section!.body, /short gamma here.*run through max pain/i, "short posture falls back to weaker-pin framing");
+});
+
+test("maxPainCoaching (via tradeManagerNarrativeSection): still claims long-gamma pin gravity when posture is measured long", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        maxPain: 99,
+        regime: { posture: "long" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /pulls toward pin when dealers are long gamma/i);
+});
+
+test("maxPainCoaching (via tradeManagerNarrativeSection): unresolved posture states the pin as unsettled, not long-gamma", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        maxPain: 99,
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Max pain 99\.00/i);
+  assert.doesNotMatch(
+    section!.body,
+    /pulls toward pin when dealers are long gamma/i,
+    "unresolved posture must not assert a long-gamma pin",
+  );
+  assert.match(section!.body, /depends on dealer gamma posture \(not resolved on this read\)/i);
+});
+
 test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
