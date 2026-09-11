@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T17:37:00.869Z",
+  "lastUpdated": "2026-09-11T17:51:59.927Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -821,6 +821,11 @@
       "at": "2026-09-11T17:37:00.890Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy all 4 stages GREEN, stable (AAPL mark=8.48, SWKS mark=6.30). PR #4797 undraft rate-limited again on my own attempt -- CI remains green/mergeable, will keep retrying."
+    },
+    {
+      "at": "2026-09-11T17:51:59.942Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy all 4 stages GREEN, stable (AAPL mark=7.90, SWKS mark=6.30). Noted the 0DTE lane logged a brief upstream infra incident (board upstream_ok:false, ~5min, resolved) this cycle -- confirmed via this run that Legacy's own edition/marks/record/pull-status endpoints were unaffected throughout, not a shared-infra issue that reached this lane. PR #4797 undraft rate-limited again, CI remains green/mergeable."
     }
   ],
   "knownOpenItems": {
