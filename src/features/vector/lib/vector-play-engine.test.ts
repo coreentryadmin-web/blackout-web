@@ -614,6 +614,71 @@ test("a breakout targets levels BEYOND the trigger, never the trigger itself", (
   }
 });
 
+// ── Flip-fallback invalidation must sit on the correct side of spot ─────────
+// Live GOOG 2026-09-11 (via the swing Largo play-brief's Vector cross-check): spot 332.50, gamma
+// flip 363.47, posture "short" (spot below flip, per vector-regime.ts's convention). The
+// style==="position" EMA override picks momentum-long off the trend alone, with no wall break in
+// range, so invalidation fell through to the bare "flip" fallback and printed
+// "5m close < 363.47" — a condition already true at spot, not a real, watchable stop line.
+test("momentum-long, no wall break, flip ABOVE spot (short-gamma regime): invalidation omitted, not already-breached", () => {
+  const play = buildVectorPlay(
+    base({
+      ticker: "GOOG",
+      horizon: "monthly",
+      timeframeMin: 5,
+      spot: 332.5,
+      regime: { posture: "short" },
+      gammaFlip: 363.47,
+      proximity: null,
+      gexWalls: { callWalls: [{ strike: 335, pct: 5 }], putWalls: [{ strike: 325, pct: 5 }] },
+      magnet: null,
+      technicals: { emaStack: "up", macd: "bull" },
+    })
+  )!;
+  assert.equal(play.setup, "momentum-long");
+  assert.equal(
+    play.invalidation,
+    undefined,
+    `flip (363.47) sits above spot (332.50) — "close < flip" is already true and not a real stop; got ${play.invalidation}`
+  );
+});
+
+test("momentum-long, no wall break, flip BELOW spot (real regime match): flip invalidation still fires", () => {
+  const play = buildVectorPlay(
+    base({
+      horizon: "monthly",
+      spot: 7590,
+      regime: { posture: "short" },
+      gammaFlip: 7500,
+      proximity: null,
+      technicals: { emaStack: "up", macd: "bull" },
+    })
+  )!;
+  assert.equal(play.setup, "momentum-long");
+  assert.match(play.invalidation!, /close < 7,500/);
+});
+
+test("momentum-short, no wall break, flip BELOW spot: invalidation omitted, not already-breached", () => {
+  const play = buildVectorPlay(
+    base({
+      horizon: "monthly",
+      spot: 332.5,
+      regime: { posture: "long" },
+      gammaFlip: 300,
+      proximity: null,
+      gexWalls: { callWalls: [{ strike: 335, pct: 5 }], putWalls: [{ strike: 325, pct: 5 }] },
+      magnet: null,
+      technicals: { emaStack: "down", macd: "bear" },
+    })
+  )!;
+  assert.equal(play.setup, "momentum-short");
+  assert.equal(
+    play.invalidation,
+    undefined,
+    `flip (300) sits below spot (332.50) — "close > flip" is already true and not a real stop; got ${play.invalidation}`
+  );
+});
+
 test("a range mean sitting ON a rail falls back to the rail midpoint", () => {
   // Live AAPL weekly 2026-08-09: put wall and max pain both 307.5 → "buy dips 307.5, target 307.5".
   const play = buildVectorPlay(
