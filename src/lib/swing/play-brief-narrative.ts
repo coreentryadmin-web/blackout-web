@@ -346,7 +346,13 @@ function sellReasonClause(
     case "regime_shift":
       return " — regime shifted against the thesis";
     case "time_stop":
-      return " — time stop hit";
+      // Same "generic label reads as a broken thesis" trap expiry_risk was fixed for above (the
+      // FINDINGS 2026-09-10 NRG repro) — a bare "time stop hit" tells a member nothing about WHY,
+      // and easily reads as a ladder/thesis event. manage.ts's own dead-money time_stop rung fires
+      // on stagnant UNDERLYING progress toward its target over enough sessions (thesisProgress01,
+      // thesis-progress.ts) — it is NOT about DTE (that's expiry_risk) and NOT a thesis break, so a
+      // position can be sitting on a real premium gain (leverage/IV) while still time-stopping here.
+      return " — time-based: held long enough that the underlying has stalled toward its target (thesis still intact)";
     default:
       // No manage-sync rung yet — fall back to the spot-detected structural break when that's
       // what actually drove the EXIT (structuralBreakFromSpot in live-plays.ts), otherwise say

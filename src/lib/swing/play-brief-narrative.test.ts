@@ -1409,6 +1409,29 @@ test("tradeManagerNarrativeSection: SELL from expiry_risk states time-based reas
   assert.doesNotMatch(section!.body, /thesis or ladder fired/i);
 });
 
+// Sibling gap to the expiry_risk fix directly above: time_stop is manage.ts's OTHER "thesis intact,
+// force-manage anyway" rung (dead-money — stagnant underlying progress over enough sessions,
+// thesis-progress.ts), not a DTE cliff and not a broken thesis, but the old bare "time stop hit"
+// gave a member no way to tell it apart from a thesis/ladder event. Live repro 2026-09-11: NRG
+// (SWING:NRG:34) hit its own time_stop rung while sitting on a real +15.3% premium gain (peak
+// +132.7%) — "time stop hit" alone reads as inexplicable when the position is green.
+test("tradeManagerNarrativeSection: SELL from time_stop states the dead-money reason, not a bare label", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "SELL", manageReason: "time_stop", pnlPct: 15.3, peak: 132.7 }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.ok(
+    section!.body.includes(
+      "**Exit now** — time-based: held long enough that the underlying has stalled toward its target (thesis still intact). Flatten per manage engine.",
+    ),
+  );
+  assert.doesNotMatch(section!.body, /^.*time stop hit.*$/m);
+});
+
 test("tradeManagerNarrativeSection: SELL from a real thesis break still says thesis broke", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
