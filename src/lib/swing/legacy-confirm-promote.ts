@@ -250,6 +250,7 @@ export function buildLegacySwingArtifacts(params: {
     regime: meta.regime,
     thesisLevel: meta.thesisLevel,
     thesisNote: meta.thesisNote ?? undefined,
+    sectorLeadershipFacts: meta.sectorLeadershipFacts,
     reason: `${swingPlay.reason} · Legacy morning confirm (${editionFor})`,
   };
 

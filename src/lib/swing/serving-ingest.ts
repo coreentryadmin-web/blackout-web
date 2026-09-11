@@ -17,6 +17,7 @@
 // PURE & deterministic — reads are injected; the clock is never touched here.
 
 import type { SwingDossier } from "./dossier";
+import type { IndustryGroupRsFacts } from "./industry-group-rs";
 import type {
   SwingArchetype,
   SwingEntryState,
@@ -73,6 +74,10 @@ export interface SwingServingMeta {
   calibratedProbability: number | null;
   /** LITERAL null in PR-12: no graded EV surface until the ladder graduates the bucket. */
   expectedValue: number | null;
+  /** The raw industry-group RS facts (benchmark ETF/label, name/group %-returns, delta) behind the
+   *  SECTOR_ROTATION archetype signal — echoed straight off the dossier. Null when the dossier's own
+   *  read is null (no benchmark resolved / not enough history). */
+  sectorLeadershipFacts: IndustryGroupRsFacts | null;
 }
 
 /** Grounded reads that let the meta place a name on the maturity/entry line. All optional — absent ⇒ the
@@ -226,6 +231,7 @@ export function swingServingMetaFromDossier(
     regime,
     thesisLevel,
     thesisNote,
+    sectorLeadershipFacts: dossier.sectorLeadershipFacts ?? null,
     // Calibration-first: nothing has graduated a calibrated bucket in the swing lane, so these stay null
     // (the desk renders "—"). PR-16 lights them up once an archetype×sub-lane bucket clears the ladder.
     calibratedProbability: null,

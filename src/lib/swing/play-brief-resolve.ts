@@ -101,6 +101,7 @@ export function horizonRowToDeckSource(
     manageReason: p.manageReason ?? null,
     thesisBreak:
       p.thesisLevel != null ? { level: p.thesisLevel, note: p.thesisNote ?? undefined } : undefined,
+    sectorLeadershipFacts: p.sectorLeadershipFacts ?? null,
     occ: null,
     positionId: positionId ?? null,
     // Cortex is only pinned on a COMMITTED ledger row (swing commit.ts) — the caller passes

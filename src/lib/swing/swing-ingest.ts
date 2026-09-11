@@ -44,6 +44,7 @@ import {
 import {
   resolveGroupBenchmark,
   industryGroupRs01,
+  industryGroupRsFacts,
   type GroupBenchmark,
 } from "./industry-group-rs";
 import { getSector } from "../sector-map";
@@ -250,6 +251,17 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
     lookback: SWING_RETURN_LOOKBACK_SESSIONS,
   });
 
+  // The RAW facts behind sectorLeadership01 (which ETF, the actual %-returns, leading-by-how-much) — computed
+  // alongside the 0-1 score so the play-brief can cite a concrete "leading/lagging XYZ by N%" instead of a
+  // bare pillar score (PR #4076 comment 5627569075: these facts were computed and thrown away, never reaching
+  // any Largo surface). Null exactly when sectorLeadership01 is null — same benchmark/closes, same honesty.
+  const sectorLeadershipFacts = industryGroupRsFacts({
+    benchmark: args.groupBenchmark ?? null,
+    nameCloses: args.nameCloses,
+    benchmarkCloses: args.groupCloses ?? null,
+    lookback: SWING_RETURN_LOOKBACK_SESSIONS,
+  });
+
   // ── Plan levels (entry / structural invalidation / target) — grounded from last close + ATR proxy so the
   // commit ledger can pin thesis_invalidation_px and the manager's structural_stop gate can fire. ──
   const lastClose = args.nameCloses.length > 0 ? args.nameCloses[args.nameCloses.length - 1]! : null;
@@ -281,6 +293,10 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
       // Industry-group RS → the SOLE SECTOR_ROTATION classifier signal (see the block above + archetype.ts).
       sectorLeadership01,
     },
+    // The raw facts behind sectorLeadership01 — carried on the dossier itself (NOT archetypeExtras, which
+    // only feeds the archetype fit calc and is discarded after classification) so the play-brief can read
+    // it straight off the live/persisted dossier. See industry-group-rs.ts's `industryGroupRsFacts`.
+    sectorLeadershipFacts,
     structure: {
       priceAboveEma20: signed.priceAboveEma20 ?? stack.priceAboveEma20,
       ema20AboveEma50: signed.ema20AboveEma50 ?? stack.ema20AboveEma50,

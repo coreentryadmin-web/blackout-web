@@ -183,6 +183,19 @@ export interface TerminalPlay {
    *  horizon — never fabricated. Largo product-contract absence principle: omitted, not guessed. */
   cortex?: PaneCortexView | null;
 
+  /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal (benchmark
+   *  ETF/label, the name's and the group's own %-returns, and the delta) — echoed off the live/
+   *  persisted dossier (`swing-ingest.ts`'s `industryGroupRsFacts`). Null/absent when no benchmark
+   *  resolved or not enough history (honest absence, never fabricated). Powers "Why this setup". */
+  sectorLeadershipFacts?: {
+    benchmarkEtf: string;
+    benchmarkLabel: string;
+    kind: "industry" | "sector";
+    nameReturnPct: number;
+    groupReturnPct: number;
+    deltaPct: number;
+  } | null;
+
   /** Hard-gate blocks for SKIP rows — rendered in the command panel (never fabricated). */
   gateBlocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;
   /** Vector desk pulse for cross-link — today's best pick on this ticker. */

@@ -115,6 +115,7 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     regime: meta.regime,
     thesisLevel: meta.thesisLevel,
     thesisNote: meta.thesisNote,
+    sectorLeadershipFacts: meta.sectorLeadershipFacts,
     flagUnderlyingPx:
       typeof flagPx === "number" && Number.isFinite(flagPx) && flagPx > 0 ? flagPx : play.flagUnderlyingPx,
   };
@@ -153,11 +154,12 @@ export function attachThesisExplanation(
   if (!dossier) return play;
   const meta = swingServingMetaFromDossier(dossier, reads);
   const hasFactors = Array.isArray(meta.factors) && meta.factors.length > 0;
-  if (!hasFactors && meta.regime == null) return play;
+  if (!hasFactors && meta.regime == null && meta.sectorLeadershipFacts == null) return play;
   return {
     ...play,
     factors: hasFactors ? meta.factors : play.factors,
     regime: meta.regime ?? play.regime,
+    sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
   };
 }
 

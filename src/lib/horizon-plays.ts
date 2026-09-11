@@ -120,6 +120,17 @@ export interface HorizonPlay {
   factors?: Array<{ label: string; points: number }>;
   /** Regime / archetype label blend for the desk, or null when absent. */
   regime?: string | null;
+  /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal (benchmark ETF/
+   *  label, name/group %-returns, delta) — echoed off the dossier. Null/absent when no benchmark
+   *  resolved or not enough history (honest absence, never fabricated). */
+  sectorLeadershipFacts?: {
+    benchmarkEtf: string;
+    benchmarkLabel: string;
+    kind: "industry" | "sector";
+    nameReturnPct: number;
+    groupReturnPct: number;
+    deltaPct: number;
+  } | null;
   /** Thesis-health level for the desk — "unknown" when no setup read (never a fabricated intact). */
   thesisLevel?: "intact" | "warn" | "break" | "unknown";
   thesisNote?: string | null;
