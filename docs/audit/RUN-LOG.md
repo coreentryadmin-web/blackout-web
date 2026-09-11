@@ -4,6 +4,30 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-11 (14:11 UTC) — [SEO] Daily growth cycle: no new striking-distance queries, small real 28d uptick, robots.txt 11-block AI-crawler set confirmed intentional
+
+**Severity.** — (no defect found)
+
+1. Opportunity scan: `gsc-opportunities-report.mjs` — same 2 striking-distance queries as every
+   check this window (`gamma three trading`, `is 0dte gambling`), both already well-optimized per
+   `SEO-GROWTH-STRATEGY.md` §3. No new query entered striking distance. No on-page work done.
+2. Live re-verify: `robots.txt` re-checked — the "11 lines" reference in this cycle's own brief is
+   stale; the file has since grown to **11 distinct `User-agent:` blocks** (`*`, GPTBot, ChatGPT-User,
+   ClaudeBot, anthropic-ai, PerplexityBot, Google-Extended, CCBot, Bytespider, cohere-ai, Applebot),
+   each repeating the same `Allow: /api/og` rule — legitimate per-bot GEO coverage, not a
+   duplication bug. CWV already confirmed fresh this cycle (13:34 UTC RTH pass referencing the
+   12:21 UTC full purge+measure, both GOOD) — not re-run, per rule 6's "skip if done in last 3
+   days."
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-12→09-08): clicks=14,
+   impressions=1709, CTR=0.82%, avgpos=35.7 — vs the last recorded pull (clicks=13,
+   impressions=1677, CTR=0.78%, avgpos=36.5): another small, real uptick across every metric
+   including position. Too small a single-day delta to attribute to any specific shipped change.
+4. Housekeeping: 1 open agent PR fleet-wide (#4791, CI-RUNNING, swing-lane, not SEO) — nothing to
+   resolve.
+
+No defects found.
+
+---
 ## 2026-09-11 (13:34 UTC) — [RTH — SEO] Market-open check: gamma-snapshot live refresh confirmed, gamma flip now real (was null yesterday)
 
 **Severity.** — (no defect found)
