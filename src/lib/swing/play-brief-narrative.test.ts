@@ -1456,3 +1456,56 @@ test("tradeManagerNarrativeSection: SELL with unknown reason and no detected the
   assert.ok(section!.body.includes("**Exit now**. Flatten per manage engine."));
   assert.doesNotMatch(section!.body, /thesis or ladder fired/i);
 });
+
+test("tradeManagerNarrativeSection: never-rolled position gets no roll-history line (Largo C6 omission)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "HOLD", pnlPct: 5 }),
+      rollHistory: null,
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Rolled/);
+});
+
+test("tradeManagerNarrativeSection: rolled-once position discloses the roll (open bucket)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "HOLD", pnlPct: 5 }),
+      rollHistory: {
+        rollCount: 1,
+        legs: [
+          { rollSeq: 0, strike: 100, right: "C", expiry: "2026-08-15", committedAt: "2026-08-01T14:00:00.000Z" },
+          { rollSeq: 1, strike: 110, right: "C", expiry: "2026-09-19", committedAt: "2026-08-20T15:30:00.000Z" },
+        ],
+      },
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Rolled once\*\* — most recently from the \$100 call to the \$110 call on 2026-08-20\./);
+});
+
+test("tradeManagerNarrativeSection: rolled-twice position says 'Rolled 2 times' and cites only the LATEST roll (closed bucket)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "CLOSED", recommendation: "HOLD", pnlPct: 12 }),
+      rollHistory: {
+        rollCount: 2,
+        legs: [
+          { rollSeq: 0, strike: 90, right: "P", expiry: "2026-07-18", committedAt: "2026-07-01T14:00:00.000Z" },
+          { rollSeq: 1, strike: 95, right: "P", expiry: "2026-08-15", committedAt: "2026-07-20T15:00:00.000Z" },
+          { rollSeq: 2, strike: 100, right: "P", expiry: "2026-09-19", committedAt: "2026-08-25T16:00:00.000Z" },
+        ],
+      },
+    }),
+    "closed",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Rolled 2 times\*\* — most recently from the \$95 put to the \$100 put on 2026-08-25\./);
+  assert.doesNotMatch(section!.body, /\$90/);
+});

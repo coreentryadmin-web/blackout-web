@@ -657,6 +657,32 @@ export function counterThesisLine(
   return `**Counter-thesis (${side} case)** — ${reasons.slice(0, 3).join(" · ")}. If this wins, honor invalidation — don't hope.`;
 }
 
+/**
+ * Roll-history disclosure (Ask Largo ownership mandate, 2026-09-11) — a chain's `roll_seq`
+ * thread has always been available to `record.ts`'s composite, but the narrative never mentioned
+ * it, so a member reading "Trade manager read" on a rolled position had no way to know from the
+ * brief alone that it wasn't the original entry. Only ever fires when `rollHistory.rollCount > 0`
+ * (Largo C6 omission — a never-rolled position gets no line at all, never a fabricated "not
+ * rolled" one). Cites the most recent roll only (the last two legs) — the full chain is a
+ * separate concern (record.ts's own composite), not something to unpack bullet-by-bullet here.
+ */
+function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
+  const rh = ctx.rollHistory;
+  if (!rh || rh.rollCount <= 0 || rh.legs.length < 2) return null;
+  const prev = rh.legs[rh.legs.length - 2]!;
+  const curr = rh.legs[rh.legs.length - 1]!;
+  const fmtLeg = (l: { strike: number | null; right: string | null }): string => {
+    const rightWord = l.right === "P" ? "put" : l.right === "C" ? "call" : "contract";
+    return l.strike != null ? `$${l.strike} ${rightWord}` : rightWord;
+  };
+  const dateStr =
+    curr.committedAt && !Number.isNaN(Date.parse(curr.committedAt))
+      ? new Date(curr.committedAt).toISOString().slice(0, 10)
+      : null;
+  const times = rh.rollCount === 1 ? "once" : `${rh.rollCount} times`;
+  return `**Rolled ${times}** — most recently from the ${fmtLeg(prev)} to the ${fmtLeg(curr)}${dateStr ? ` on ${dateStr}` : ""}.`;
+}
+
 function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
   const rec =
@@ -711,6 +737,8 @@ export function tradeManagerNarrativeSection(
   };
 
   if (bucket === "closed") {
+    const rollLine = rollHistoryLine(ctx);
+    if (rollLine) add(rollLine);
     for (const line of collectCoachingBullets(ctx, bucket, spot)) add(line);
     if (!bullets.length) return null;
     return { title: "Trade manager read", body: bullets.join("\n"), bias: "neutral" };
@@ -718,6 +746,9 @@ export function tradeManagerNarrativeSection(
 
   const action = actionNarrative(play, bucket);
   if (action) add(action);
+
+  const rollLine = rollHistoryLine(ctx);
+  if (rollLine) add(rollLine);
 
   for (const line of collectCoachingBullets(ctx, bucket, spot)) add(line);
 
