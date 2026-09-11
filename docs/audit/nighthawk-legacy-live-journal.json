@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T05:37:35.268Z",
+  "lastUpdated": "2026-09-11T05:52:31.864Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -556,6 +556,11 @@
       "at": "2026-09-11T05:37:35.286Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). PR #4767 undraft failed a THIRD consecutive cycle on the GitHub MCP write rate limit ('API rate limit already exceeded for user ID 284440397') -- confirmed via get_status that CI has not even started yet (0 statuses, pending), consistent with CLAUDE.md's documented draft-deadlock mechanics (many CI configs skip draft PRs entirely, so nothing runs until undraft succeeds). Not escalating yet -- this exact rate-limit pattern has cleared within 1-3 cycles every other time this session (PRs #4750/#4754/#4761/#4765 all eventually got undrafted/merged, usually by a parallel session beating my own retry). Will keep retrying each cycle; if it's still stuck past ~5-6 cycles (unusually long for this pattern) will consider posting the report finding as a plain comment on #4076 instead of relying on the PR merging (already done -- see prior cycle) and flag the undraft-stuck state explicitly. No new Legacy bugs/enhancements surfaced this cycle; nothing else due for periodic re-check per knownOpenItems (geometryWinRateGap/legacyDte5Gap not due, gate-compound-funnel pull not due)."
+    },
+    {
+      "at": "2026-09-11T05:52:31.880Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). PR #4767 undraft failed a FOURTH consecutive cycle on the GitHub MCP write rate limit (~45min since PR creation, longer than this session's usual 1-3 cycle clear time for this exact recurring pattern). Still open/draft/unmerged, not touched by a parallel session yet either. Not yet escalating to the operator -- the finding itself is already durably recorded in two places regardless of this PR's merge state (the findings-staging file on this branch, and the #4076 PR comment posted last hour, which is what actually needed to reach Cursor/the operator for the architectural decision) -- so the PR being stuck in draft doesn't block the actual goal of getting the finding seen. Will keep retrying each cycle per standing practice; if still stuck several more cycles will consider that the underlying #4076 comment is sufficient and stop chasing the PR merge specifically as a distinct blocker. No new Legacy bugs/enhancements this cycle."
     }
   ],
   "knownOpenItems": {
