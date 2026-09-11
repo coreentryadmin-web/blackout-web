@@ -281,19 +281,48 @@ export function resolveLedgerRowLiveMark(
   return resolved;
 }
 
+/** OCC option-symbol expiry, as YYYY-MM-DD, or null if `occ` doesn't parse.
+ *  Format: [O:]TICKER YYMMDD [C|P] STRIKE(8) — same shape parsed elsewhere (e.g.
+ *  providers/unusual-whales.ts's parseOccSymbol) but kept local: this call site only
+ *  needs the date, and importing across the providers/zerodte boundary for one field
+ *  isn't worth it. */
+function occExpiryYmd(occ: string): string | null {
+  const m = /^O:[A-Z.]{1,6}(\d{6})[CP]\d{8}$/.exec(occ.toUpperCase());
+  if (!m) return null;
+  const ymd = m[1]!;
+  return `20${ymd.slice(0, 2)}-${ymd.slice(2, 4)}-${ymd.slice(4, 6)}`;
+}
+
 /** Extract the live-lane view of a ledger row; null when it can't be tracked
- *  (CLOSED = frozen by design; no plan OCC / condor legs = nothing to quote). */
+ *  (CLOSED = frozen by design; no plan OCC / condor legs = nothing to quote;
+ *  OCC expiry != the row's own session_date = a stale/zombie row whose contract
+ *  can never quote — see the 2026-09-11 finding below). */
 export function toActivePlay(r: ZeroDteSetupLogRow): ActiveZeroDtePlay | null {
   if (r.status === "CLOSED") return null;
   const ec = r.entry_context as Record<string, unknown> | null;
   const condorLegs = condorLegRoles(ec?.condor);
-  if (condorLegs.length === 4 && (ec?.play_type === "CONDOR" || ec?.condor)) {
+  const isCondor = condorLegs.length === 4 && (ec?.play_type === "CONDOR" || ec?.condor);
+  const occ = isCondor ? condorLegs[0]!.occ : typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
+  if (!occ) return null;
+  // 0DTE's whole premise is same-day expiry: a row whose tracked OCC expired on a
+  // DIFFERENT calendar day than its own session_date can never be a live 0DTE
+  // position — either the contract has already expired (a stale row an end-of-day
+  // close missed, left forever polling a dead symbol with mark:null/source:"none")
+  // or the OCC itself is wrong. Either way it is not trackable; excluding it here
+  // (same early-return shape as the CLOSED guard above) stops the live-marks poller
+  // from wasting a tick on it every second and stops it pinning stage D of
+  // zerodte-e2e-healthcheck.mjs permanently RED. Skip the check when occExpiryYmd
+  // can't parse the symbol at all — that's a format problem, not an expiry one, and
+  // the existing null-mark path already surfaces it honestly.
+  const occExpiry = occExpiryYmd(occ);
+  if (occExpiry != null && occExpiry !== r.session_date) return null;
+  if (isCondor) {
     return {
       session_date: r.session_date,
       ticker: r.ticker,
       direction: r.direction,
       strike: r.top_strike,
-      occ: condorLegs[0]!.occ,
+      occ,
       is_condor: true,
       condor_legs: condorLegs,
       entry_premium: r.entry_premium,
@@ -302,8 +331,6 @@ export function toActivePlay(r: ZeroDteSetupLogRow): ActiveZeroDtePlay | null {
       trough_premium: r.trough_premium,
     };
   }
-  const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
-  if (!occ) return null;
   return {
     session_date: r.session_date,
     ticker: r.ticker,

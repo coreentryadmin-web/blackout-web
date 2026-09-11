@@ -221,6 +221,39 @@ test("boundActivePlays: caps at ZERODTE_LIVE_CONTRACT_CAP, skips CLOSED rows and
   assert.equal(active[0]!.entry_premium, 4.0);
 });
 
+test("toActivePlay: excludes a row whose OCC expired on a different day than its own session_date (zombie 0DTE row)", async () => {
+  // 2026-09-11 live finding: OKTA sat in TODAY's zerodte_setup_log with status TRIM
+  // and entry_premium 5.97, but its plan OCC's expiry (2026-09-04) was a week in the
+  // past — never closed at end-of-day, it polled forever for a dead contract
+  // (mark:null, source:"none", stale:true) and pinned zerodte-e2e-healthcheck.mjs's
+  // stage D RED permanently. 0DTE's premise is same-day expiry, so an OCC expiry
+  // that disagrees with the row's own session_date can never be a live position.
+  const lm = await loadLane();
+  const zombie = lm.toActivePlay(
+    ledgerRow({
+      ticker: "OKTA",
+      session_date: "2026-09-11",
+      status: "TRIM",
+      entry_premium: 5.97,
+      plan_json: { occ: "O:OKTA260904C00140000" }, // expiry 2026-09-04 != session_date
+    })
+  );
+  assert.equal(zombie, null);
+
+  // A genuinely same-day OCC (expiry === session_date) must still be tracked.
+  const live = lm.toActivePlay(
+    ledgerRow({
+      ticker: "OKTA",
+      session_date: "2026-09-11",
+      status: "TRIM",
+      entry_premium: 5.97,
+      plan_json: { occ: "O:OKTA260911C00140000" },
+    })
+  );
+  assert.ok(live);
+  assert.equal(live!.occ, "O:OKTA260911C00140000");
+});
+
 test("mark store: newest asOf wins — an older write never regresses a fresher tick", async () => {
   const lm = await loadLane();
   lm._resetZeroDteLiveMarksForTest();
