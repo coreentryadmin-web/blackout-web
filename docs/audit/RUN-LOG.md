@@ -4,6 +4,25 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-11 (16:34 UTC) — [RTH — SEO] Late-window check: PR #4796 verified merged+live, gamma-snapshot self-healed, CLS reconfirmed GOOD
+
+**Severity.** — (no defect found)
+
+Fourth and final RTH wake this window (12:34 ET, near the 13:00 cutoff). Confirmed:
+1. `/tools/gamma-snapshot`'s live API: fresh on first poll (age 1s), then two more polls over
+   ~26s showed genuine matrix recomputes (2 distinct `calculation_id`s, spot moving each time,
+   `degraded: false` correctly matching genuine freshness) — **no repeat of this morning's earlier
+   4+ minute stall** (see the 13:34 UTC RTH entry's linked PR #4796 fix). System behaving normally.
+2. Fresh CLS purge+measure: desktop 1440x900 **0.0001 GOOD**, live RTH data rendering.
+3. **PR #4796 (the stale-`degraded`-flag fix opened earlier this window) merged** — `verify` and
+   CodeQL both green. Per the standing "a merge is not a verification" discipline, re-checked out
+   fresh `origin/main` in a temp worktree and re-ran `public-gex-snapshot-degraded.test.ts`
+   directly against it: 5/5 pass, confirming the fix is genuinely live on `main`, not just a green
+   merge commit. Scheduled hour-later check-in on the PR cancelled as unnecessary (already done).
+
+No defects found. Returning to normal search/authority work past 13:00 ET.
+
+---
 ## 2026-09-11 (14:11 UTC) — [SEO] Daily growth cycle: no new striking-distance queries, small real 28d uptick, robots.txt 11-block AI-crawler set confirmed intentional
 
 **Severity.** — (no defect found)
