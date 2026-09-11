@@ -94,6 +94,21 @@ test("verdictForMarkRow: clean mark within bid/ask is GREEN", () => {
   assert.equal(verdictForMarkRow({ mark: 1.5, bid: 1, ask: 2, stale: false }).verdict, "GREEN");
 });
 
+test("verdictForMarkRow: bid=0/ask=0 (no live two-sided quote) with a real mark is AMBER, not a false RED", () => {
+  // Matches options-snapshot.ts's own midOf() convention: "bid may be 0 for deep-OTM; require
+  // ask>0 so it is a REAL quote" — ask<=0 means there is no live quote at all, so [0,0] is not a
+  // real band to check the mark against. Reproduces the live 2026-09-11 pre-market false RED on
+  // AAPL/SWKS (mark carried over from last trade/day close while the NBBO briefly had no live
+  // two-sided quote) rather than a fabricated data point.
+  const result = verdictForMarkRow({ mark: 5.01, bid: 0, ask: 0 });
+  assert.equal(result.verdict, "AMBER");
+});
+
+test("verdictForMarkRow: bid=0 with a real positive ask (deep-OTM, genuinely quoted) still checks the band", () => {
+  assert.equal(verdictForMarkRow({ mark: 0.05, bid: 0, ask: 0.1 }).verdict, "GREEN");
+  assert.equal(verdictForMarkRow({ mark: 5, bid: 0, ask: 0.1 }).verdict, "RED");
+});
+
 test("verdictForMarks: fetch failure is RED", () => {
   assert.equal(verdictForMarks({ fetchOk: false, requestedOccs: ["A"], rows: [] }).verdict, "RED");
 });

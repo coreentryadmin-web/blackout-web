@@ -37,6 +37,14 @@ export function verdictForEdition({ fetchOk, available, stale, degraded, playsCo
 /**
  * Stage B: one option mark row. A mark must be positive, and when both a bid and ask are present
  * the mark must sit within [bid, ask] — outside that band is a sign/data error, not noise.
+ *
+ * ask<=0 means there is no live two-sided quote at all — NOT a real [bid,ask] band to check the
+ * mark against. Matches options-snapshot.ts's own midOf() convention ("bid may be 0 for deep-OTM;
+ * require ask>0 so it is a REAL quote"): when the NBBO genuinely has no live quote, bid/ask come
+ * back as 0/0 while mark still falls back to last trade/day close — a real, non-stale value, just
+ * not one that ever lived inside a [0,0] "band". Reproduced live 2026-09-11 pre-market on AAPL/SWKS
+ * (mark ~5.01/~2.51 from the prior session's close, bid=ask=0 with no pre-market NBBO yet) — the
+ * unconditional band check read that as a sign/data error when it is an honest no-live-quote state.
  */
 export function verdictForMarkRow(row) {
   if (!row) return { verdict: "RED", evidence: "no mark row returned for this OCC" };
@@ -46,6 +54,9 @@ export function verdictForMarkRow(row) {
   if (bid != null && !Number.isFinite(bid)) return { verdict: "RED", evidence: `bid is not finite: ${bid}` };
   if (ask != null && !Number.isFinite(ask)) return { verdict: "RED", evidence: `ask is not finite: ${ask}` };
   if (bid != null && ask != null) {
+    if (ask <= 0) {
+      return { verdict: "AMBER", evidence: `no live two-sided quote (bid=${bid}, ask=${ask}) — mark sourced from last trade/close` };
+    }
     if (bid > ask) return { verdict: "RED", evidence: `bid (${bid}) > ask (${ask}) — crossed book` };
     if (mark < bid - 1e-9 || mark > ask + 1e-9) {
       return { verdict: "RED", evidence: `mark (${mark}) outside [bid=${bid}, ask=${ask}]` };
