@@ -501,13 +501,30 @@ export function buildContractPlan(input: {
  * flag time and paying the live mark could never have experienced, because the flow
  * print itself (stale, or matched to the wrong strike/expiry upstream) was never a
  * tradeable price. A member can't be graded against a fill they couldn't get in EITHER
- * direction, so when the mark sits FAR below the fill (the QQQ case above was ~73%
- * below) — by the same CHASE_PCT magnitude this file already treats as "too extreme to
- * trust" for the opposite (MOVED) case — the ledger basis is capped DOWN to the mark
- * instead of trusting the outlier fill.
+ * direction, so when the mark sits far enough below the fill, the ledger basis is capped
+ * DOWN to the mark instead of trusting the outlier fill.
  * Ordinary CHEAPER prints (mark a few/some percent below the fill — real front-running)
  * are far inside this band and are completely unaffected.
+ *
+ * THE CEILING TRIGGER IS `STOP_TRIGGER_PCT` (= |PLAN_RULES.stop_pct|), NOT `CHASE_PCT`
+ * (2026-09-11, live finding). The ceiling originally reused CHASE_PCT (55%) — the wrong
+ * threshold borrowed from the UP/MOVED case, where 55% was tuned for a DIFFERENT question
+ * ("is this much gamma-driven premium runup normal, or already-happened") and has nothing
+ * to do with achievability. That left a dead zone: a stale/dislocated fill 50-54.99% above
+ * the live mark stayed UNCORRECTED (pctBelow < 55), yet the live mark was ALREADY at or
+ * past the play's own -50% hard stop the instant a real quote was checked — a "stopped"
+ * grade fired before a member could have owned the position for even one tick, off a fill
+ * nobody could ever get, exactly the failure this ceiling exists to prevent. Confirmed
+ * live: a 90-day backtest found 7 near-instant (<5s) catastrophic "stopped" exits, several
+ * landing in this exact 50-54.99% band (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%,
+ * NVDA 2026-08-27 -52.90%, MSFT 2026-08-28 -52.07%); reproduced mechanically with the
+ * shipped function (see plan.test.ts). Triggering at the stop threshold instead closes the
+ * dead zone precisely: any dislocation large enough to ALREADY be an unavoidable stop is
+ * now corrected to the achievable mark before grading, while ordinary front-running
+ * (well under 50%) is untouched, same as before.
  */
+const STOP_TRIGGER_PCT = Math.abs(PLAN_RULES.stop_pct);
+
 export function resolveLedgerEntryPremium(
   planEntryMax: number | null | undefined,
   flowAvgFill: number | null,
@@ -518,7 +535,7 @@ export function resolveLedgerEntryPremium(
   if (markAtFlag != null && markAtFlag > 0) {
     if (markAtFlag > base) return round2(markAtFlag);
     const pctBelow = ((base - markAtFlag) / base) * 100;
-    if (pctBelow >= CHASE_PCT) return round2(markAtFlag);
+    if (pctBelow >= STOP_TRIGGER_PCT) return round2(markAtFlag);
   }
   return base;
 }

@@ -996,21 +996,37 @@ test("resolveLedgerEntryPremium: floors the graded basis at the flag-time mark w
 // same instant — plan_stop fired 1.2s after commit at -53%. Both losses were fake: the
 // underlying barely moved in either case (verified against real 1-min Polygon bars), so a
 // hard stop breaching within ~1 second of a fresh commit is a mispriced entry, not real
-// decay. The threshold reuses CHASE_PCT (55) — the SAME magnitude this file already
-// treats as "too extreme to trust" for the opposite (MOVED) direction.
+// decay.
+//
+// Threshold fix (2026-09-11): the ceiling originally reused CHASE_PCT (55%) — the wrong
+// threshold, borrowed from the UP/MOVED case where 55% was tuned for gamma-swing chase
+// logic, not achievability. That left a dead zone: a dislocation of 50-54.99% stayed
+// UNCORRECTED, yet the live mark was already AT OR PAST the play's own -50% hard stop —
+// an "instant stop" grade off a fill nobody could get, the exact failure this ceiling
+// exists to close. Now triggers at STOP_TRIGGER_PCT (|PLAN_RULES.stop_pct| = 50) instead.
 test("resolveLedgerEntryPremium: caps the graded basis DOWN at the flag-time mark when the mark is FAR BELOW the flow fill (outlier fill, achievability ceiling)", () => {
   // The live QQQ shape: flow fill 3.27, live mark 0.88 (~73% below) — outlier, cap to mark.
   assert.equal(resolveLedgerEntryPremium(3.27, 3.27, 0.88), 0.88);
-  // A comparable outlier shape well past the CHASE_PCT magnitude (5.86 -> 2.0, ~66% below).
+  // A comparable outlier shape well past the threshold (5.86 -> 2.0, ~66% below).
   assert.equal(resolveLedgerEntryPremium(5.86, 5.86, 2.0), 2.0);
   // Ordinary CHEAPER (real front-running): mark modestly below the fill, well inside the
-  // CHASE_PCT band — untouched, matches the existing CHEAPER test above.
+  // band — untouched, matches the existing CHEAPER test above.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 3.5), 4.0);
-  // Exactly at the CHASE_PCT boundary (45% of the fill remains, i.e. 55% below) — the
-  // ceiling fires (>=), consistent with the existing >= comparison at the MOVED boundary.
-  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.5), 4.5);
-  // Just inside the boundary (45.01% remains, i.e. 54.99% below) — no ceiling.
-  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 10.0);
+  // Exactly at the stop-trigger boundary (50% of the fill remains, i.e. 50% below) — the
+  // ceiling fires (>=): this is precisely the dead-zone case that used to slip through at
+  // 55%'s old boundary (10.0, 10.0, 5.0) — a mark this far below the fill already breaches
+  // the play's own -50% stop, so it must correct here, not stay uncorrected.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 5.0), 5.0);
+  // Just inside the boundary (50.01% of the fill remains, i.e. 49.99% below) — no ceiling;
+  // this dislocation alone would NOT already breach the -50% stop, so it's still ordinary
+  // (if unusually large) front-running, not an unachievable fill.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 5.001), 10.0);
+  // The OLD 55%-threshold boundary (54.99% below) now correctly corrects too — this was
+  // the live dead-zone shape (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%, etc.): a
+  // mark this far below the fill was already an instant, unachievable stop under the old
+  // CHASE_PCT-based threshold, and now gets capped to the achievable mark instead
+  // (round2(4.501) = 4.5 — the cap rounds like every other premium here).
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 4.5);
   // A malformed non-positive mark never drags the basis down via this path either.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 0), 4.0);
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, -1), 4.0);
