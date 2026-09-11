@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T00:37:20.250Z",
+  "lastUpdated": "2026-09-11T00:52:26.147Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -456,6 +456,11 @@
       "at": "2026-09-11T00:37:20.250Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "Deep read-through of LegacyPlayManageRail.tsx (the trade-management detail rail, not yet closely examined this session) plus its helpers (legacyPrimaryPnlPct, legacyMorningHeadline, legacyMarkAgeLabel, legacy-primary-pnl.ts) for the current AAPL/SWKS WATCH plays. All correct: R:R tone thresholds (>=2 up, <1 down) correctly flag AAPL's 0.55 R:R as 'down' tone; morning-headline/pulled-reason/thesis-break sections all correctly gate on real fields with sensible null-handling; premium-cap and exit-model badges render conditionally as expected. No dead fields, no wrong sign/tone logic found. No new issues this cycle. healthcheck:legacy steady GREEN (resolved=28)."
+    },
+    {
+      "at": "2026-09-11T00:52:26.147Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
+      "result": "Checked LegacyManageGeometry (command-deck/legacy-play-geometry.tsx, the stop/entry/target visual track) for direction-sign bugs, the same class of defect this session's earlier fixes were -- specifically the entryFrac calculation for SHORT vs LONG plays. Both are internally consistent: LONG uses (entryMid-stop)/(target-stop), SHORT uses (stop-entryMid)/(stop-target), and both correctly normalize to 0=stop/1=target on the shared visual track regardless of direction. distTarget/distStop dollar-and-pct figures are raw distance-from-spot (not direction-adjusted), which is the correct convention since the stop/target CSS classes (nh-deck-neg/nh-deck-pos) are already fixed by role, not by current sign. No bug found -- this is now the third consecutive component-level deep-read (manage rail, geometry) turning up nothing after yesterday's 5-bug sweep, consistent with the surface actually being cleaner now. Not forcing a finding. healthcheck:legacy steady GREEN (resolved=28). This closes out the day's/night's cycle set."
     }
   ],
   "knownOpenItems": {
