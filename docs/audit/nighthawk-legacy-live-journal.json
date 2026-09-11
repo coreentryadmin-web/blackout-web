@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T14:37:27.324Z",
+  "lastUpdated": "2026-09-11T14:52:12.398Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -751,6 +751,11 @@
       "at": "2026-09-11T14:37:27.344Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy GREEN again (marks continuing to climb: AAPL mark=9.07, SWKS mark=6.70). PR #4792 undraft rate-limited a 3rd consecutive cycle -- CI was confirmed green/mergeable_state:clean last cycle, purely waiting on the GitHub MCP write-limiter to clear, not a real blocker. SWKS live spot-check update: last=91.2572 vs target=88.52 -- has now DECISIVELY cleared the full target (+3.1% beyond it), same session it was pulled pre-open by the Cortex gex-walls veto. If this holds or improves into the close, it will very likely grade a real pulled_wrongly under debrief.ts's strict end-of-day counterfactual (pulledPlayWouldHaveWon checks outcome==='target', which needs the session to have actually touched/exceeded the target level -- SWKS now has, decisively, not just an intraday approach). AAPL last=334.0052 vs target=344.57, entry-high=329.58 -- ~29.6% of the entry-high-to-target distance covered, trending the same direction but nowhere near its target. This remains n=1 for the 3-instance threshold (today's pair is one same-session event, not two independent instances) -- not escalating a design question about the gex-walls veto yet, but this is now a strong, near-certain future pulled_wrongly data point worth checking against the actual end-of-day grade next session (the debrief only computes after next_day_close data lands, so today's grade won't be visible until tomorrow's cycles)."
+    },
+    {
+      "at": "2026-09-11T14:52:12.414Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy GREEN again, 6th consecutive clean cycle since the RTH open. Marks still climbing (AAPL mark=9.90, SWKS mark=7.75). PR #4792 undraft rate-limited a 4th consecutive cycle -- CI remains green/mergeable, purely the GitHub MCP write-limiter, will keep retrying. No new correctness issues or enhancement gaps found this cycle beyond what's already tracked (Stage D PR pending, SWKS pulled-play target-clear being watched toward tomorrow's actual EOD grade)."
     }
   ],
   "knownOpenItems": {
