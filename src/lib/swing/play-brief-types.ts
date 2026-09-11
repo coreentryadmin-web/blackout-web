@@ -49,6 +49,33 @@ export type SwingPlayBriefContext = {
    * whether this landed or not.
    */
   archetypeTrackRecord?: SwingArchetypeTrackRecordSnapshot | null;
+  /**
+   * Roll history for the chain backing this play (record.ts's `roll_seq` thread) — feeds the
+   * narrative's "rolled N times" disclosure. `null` when the position has never been rolled, the
+   * ledger read failed, or the play carries no `positionId` (a WATCH/lane-only candidate has no
+   * ledger row at all). `undefined` only in fixtures predating this field (treated as "unknown",
+   * never fabricated as "never rolled").
+   */
+  rollHistory?: SwingRollHistory | null;
+};
+
+/** One leg's identity for the roll-history narrative — deliberately minimal (no P&L; the
+ *  narrative discloses WHAT was rolled, not how it graded — the chain composite already owns
+ *  P&L semantics per record.ts). */
+export type SwingRollHistoryLeg = {
+  rollSeq: number;
+  strike: number | null;
+  right: string | null;
+  expiry: string | null;
+  /** ISO timestamp this leg was committed — the roll date for every leg after the first. */
+  committedAt: string | null;
+};
+
+export type SwingRollHistory = {
+  /** Number of rolls in the chain — `chain.length - 1`. Only present (and only ever cited) when > 0. */
+  rollCount: number;
+  /** Full chain oldest→newest by roll_seq, mirroring fetchSwingPositionChain's own order. */
+  legs: SwingRollHistoryLeg[];
 };
 
 export type SwingPlayBriefResult = {
