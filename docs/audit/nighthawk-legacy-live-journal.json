@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T20:37:53.436Z",
+  "lastUpdated": "2026-09-11T20:53:19.655Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -881,6 +881,11 @@
       "at": "2026-09-11T20:37:53.453Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "Stage C's resolved count jumped 28->30 this cycle (first change all day) -- checked GET /api/market/nighthawk/record?days=14 directly: pulled_count is now 7 (debrief.failure_modes: pulled_wrongly=4, pulled_correctly=3), total_resolved=30. This is very likely today's AAPL/SWKS grades landing (both flagged pulled at 9:15am, graded off today's own close which just happened) -- the +2 resolved count lines up exactly. Could NOT get per-ticker confirmation though: the /record endpoint only exposes aggregate buckets, no ticker-level breakdown, and I have no earlier-in-the-day pulled_wrongly/pulled_correctly snapshot to diff against precisely (only tracked the plain 'pulled' bucket sum via Stage C's rollup check, not the debrief detail) -- so this is a strong circumstantial read, not a confirmed one. Given the closing-spot numbers captured last cycle (SWKS closed ~88.40, just $0.12/-0.14% under its 88.52 target after clearing it for hours; AAPL closed ~332.45, net positive vs entry but short of its 344.57 target), if AAPL/SWKS are indeed 2 of today's new resolutions, the likely split is AAPL->pulled_wrongly (closed well above entry, would have been at least an 'open' position with positive return) and SWKS->genuinely close either way given how near target its close was. This is exactly the kind of pulled_wrongly instance the day's tracking thread was watching for -- worth a fresh, explicit check next session (or once a per-ticker debrief view is queryable) to confirm which two tickers actually resolved and how they graded, rather than trusting this circumstantial read as final. PR #4797 undraft still rate-limited; overall AMBER continues (Stage A market-close staleness, expected)."
+    },
+    {
+      "at": "2026-09-11T20:53:19.678Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "Tried to get per-ticker confirmation on the AAPL/SWKS pulled_wrongly/pulled_correctly question from last cycle via GET /api/admin/nighthawk/analytics (admin-gated, reachable with the default admin+premium temp session audit-auth-fetch.mjs already mints) -- no luck: that route's debrief_report only breaks down by conviction/tier (A/B/C), never by ticker. 30-day window context: A-tier (SWKS's conviction) shows n=9, pulled=4, dominant_failure_mode='pulled_wrongly' -- suggestive given SWKS's close was right at its target line, but still aggregate, not proof. No route anywhere in this app exposes a per-ticker debrief; genuine dead end without raw DB access (same conclusion the earlier pulled_wrongly=2 investigation reached this session). Leaving this as a flagged-but-unconfirmed thread rather than asserting a specific ticker's grade. healthcheck:legacy stable: overall AMBER (Stage A market-close staleness, expected/tracked), B/C/D all GREEN, resolved count settled at 30 (no further change since last cycle). PR #4797 undraft still rate-limited."
     }
   ],
   "knownOpenItems": {
