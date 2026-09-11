@@ -572,8 +572,14 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
     // surfaced above), so a smaller giveback is less likely to be worth a second callout here.
     const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
     if (giveback?.kind === "round_trip") {
+      // NOT "consider trim into strength" — the play has already round-tripped PAST breakeven
+      // into a loss, so there is no strength left to trim into; that phrasing was the exact
+      // self-contradiction fixed in actionNarrative's TRIM branch (FINDINGS 2026-09-10,
+      // "trim-strength-line-vs-round-trip") — this call site independently computes the same
+      // giveback and was missed by that fix's blast-radius check. Matches the wording
+      // play-brief-narrative.ts's SELL branch already uses for the identical fact.
       lines.push(
-        `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider trim into strength`,
+        `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left`,
       );
     } else if (giveback?.kind === "capture" && giveback.capturePct < 70) {
       lines.push(`Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`);
