@@ -116,13 +116,53 @@ function managementSection(play: TerminalPlay): RichSection {
   return { title: "Management", body: lines.join("\n\n") };
 }
 
+/**
+ * BUG FIXED 2026-09-11 (Ask Largo standing mandate, post-trim state consistency check): once a
+ * swing's exit-ladder trim has FIRED (peak reached the +100% rung, half the position mechanically
+ * banked per SWING_SCALE_OUT_POLICY), `play.pnlPct` is `mark/entry - 1` — the UNREALIZED return on
+ * the remaining runner ONLY (live-plays.ts's `livePnlPct`). The Position section printed that raw
+ * number as if it were the whole position's P&L, which massively UNDERSTATES the true outcome: a
+ * live CRWD brief (position #19, entry $16.65, peak $38.25 = +129.7%, trim fired at +100%, mark
+ * back down to $17.05) showed "P&L: +2.4%" when the true blended return — 50% banked at the
+ * +100% trigger + 50% still open at +2.4% — is ~+51.2%, not +2.4%. A member reading only this
+ * card would believe the position is nearly flat when it has already locked in a large real gain.
+ *
+ * Fix: compute a BLENDED P&L (fired tranches at their trigger_pct + the untouched runner fraction
+ * at the live mark) alongside the existing runner-only line, rather than replacing it — the raw
+ * `P&L:` line is still meaningful as "how is the open remainder doing", it was just being read as
+ * "how is the position doing" with nothing to correct that impression once a trim had fired.
+ *
+ * `trigger_pct` (not a reconstructed fill price) is the correct banked-gain proxy here: it is the
+ * exact mechanical level `buildTerminalExitLadder` arms `fired` against (see terminal-ladder.ts's
+ * own comment: "premium is the ABSOLUTE per-contract level... the tranche banks at"), the same
+ * convention the 0DTE lane's `trimScaleBlendedPnlAtStop` already uses for its own as-managed blend
+ * (marks-math.ts) — this brings swing's live brief in line with that existing precedent instead of
+ * inventing a new convention.
+ */
+function blendedPnlPct(play: TerminalPlay): number | null {
+  const ep = play.exitPolicy;
+  if (!ep || play.pnlPct == null || !Number.isFinite(play.pnlPct)) return null;
+  const firedFraction = ep.trim_levels.reduce((sum, t) => sum + (t.fired ? t.fraction : 0), 0);
+  if (firedFraction <= 0) return null; // nothing banked yet — the runner-only line already IS the whole position
+  const bankedPnl = ep.trim_levels.reduce(
+    (sum, t) => sum + (t.fired ? t.fraction * t.trigger_pct : 0),
+    0,
+  );
+  const runnerFraction = Math.max(0, 1 - firedFraction);
+  return bankedPnl + runnerFraction * play.pnlPct;
+}
+
 function pnlSection(play: TerminalPlay): RichSection {
+  const blended = blendedPnlPct(play);
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
     `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
-    `P&L: **${fmtPct(play.pnlPct)}**`,
+    `P&L: **${fmtPct(play.pnlPct)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     `Peak: **${fmtPct(play.peak)}**`,
   ];
+  if (blended != null) {
+    lines.push(`Blended P&L (realized trim + open runner): **${fmtPct(blended)}**`);
+  }
   if (play.execPnlPct != null) lines.push(`Exec P&L: **${fmtPct(play.execPnlPct)}**`);
   if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
   return { title: "Position", body: lines.join("\n") };
