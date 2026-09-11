@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T06:47:56.960Z",
+  "lastUpdated": "2026-09-11T06:52:09.870Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -581,6 +581,11 @@
       "at": "2026-09-11T06:47:56.961Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset, continuation — self-correction)",
       "result": "RETRACTED the live-UI finding filed earlier this cycle (PR #4772). Ran one more test to resolve the open question (does the in-app Legacy-tab click path also fail?) and instead got a decisive answer to a DIFFERENT question: loaded the plain /nighthawk URL with NO view param at all (the exact control path that had rendered cleanly 3 times before) and it ALSO got stuck on the same generic loading skeleton. Since the default view has no view-specific code path, this proves the whole 'Legacy cold-load stuck' pattern was proxy-tunnel/timing flakiness in this sandbox, not a real Legacy-specific defect -- the confound the original finding flagged as a risk but did not test to failure before filing. Corrected the finding file (now marked RETRACTED) and updated PR #4772's title/body in place rather than leaving a wrong finding to sit -- same discipline as the regime-alignment retraction earlier today, this is the second self-correction this session. No code was ever shipped for this one (docs-only PR, corrected before merge), so the cost was investigation time only, not a live-risk window. Lesson restated for the journal: when a control test exists specifically to rule out a confound, run it until the confound is tested to failure, not just until results agree with the hypothesis -- 2-3 clean control samples is not the same as ruling the confound out, especially against a documented, independently-flaky sandbox. PR #4772's undraft still hit the recurring GitHub MCP rate limit; will retry next cycle (low stakes now, it's a retraction record, not an active finding needing urgent attention). healthcheck:legacy steady GREEN throughout."
+    },
+    {
+      "at": "2026-09-11T06:52:09.870Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). PR #4772 (the retracted live-UI finding) still draft -- undraft retry hit the GitHub MCP rate limit again. Low priority to chase further: it's a retraction record now, docs-only, no live risk either way whether it merges this cycle or later. Both live plays (AAPL, SWKS) still WATCH; 9:15am ET morning-confirm still hours out. Summary of this hour's work for continuity: closed the regime-alignment deployment-tracking thread, found+reported+got-merged the BIE-router-unwired finding (PR #4767, real and durable), then investigated+filed+self-corrected a live-UI finding within the same cycle (PR #4772, retracted before merge once a second control sample disproved it) -- a genuinely productive, disciplined hour with two real deliverables and one caught-before-shipping false alarm."
     }
   ],
   "knownOpenItems": {
