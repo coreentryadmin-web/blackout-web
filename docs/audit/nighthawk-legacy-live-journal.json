@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T04:54:48.730Z",
+  "lastUpdated": "2026-09-11T05:09:19.017Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -536,6 +536,11 @@
       "at": "2026-09-11T04:54:48.747Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "Deployment :1441 (the regime-alignment revert) is now PRIMARY and fully scaled up (7/7 running), rolloutState still IN_PROGRESS pending the old :1440 draining to 0 (currently still ACTIVE at 2/2, not yet drained -- ECS holds old tasks briefly for connection draining before rolloutState flips to COMPLETED). This is the final step before the self-correction is fully closed at the infra level. No urgency: both live plays (AAPL, SWKS) still WATCH, 9:15am ET morning-confirm cron still hours out, and even the code on :1440 that would still be serving traffic right now was only ever reachable via play.regime being populated post-confirm, which hasn't happened yet today. Will confirm full drain (:1440 to 0/0, :1441 rolloutState COMPLETED as sole deployment) next cycle and close this thread. healthcheck:legacy steady GREEN (A_edition/B_marks/C_record all GREEN, resolved=28). Checked for any other open self-authored Legacy PRs needing attention -- none open (6 old legacy branches on remote all correspond to already-merged/closed PRs, no dangling work). Only open PRs repo-wide are 5 Dependabot dep-bumps, outside Legacy lane scope. No new bugs/enhancements surfaced this cycle beyond the deployment-tracking wrap-up; will resume deeper enhancement hunting next cycle once the deploy is confirmed closed."
+    },
+    {
+      "at": "2026-09-11T05:09:19.035Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3, new hour)",
+      "result": "DEPLOYMENT THREAD CLOSED: ECS blackout-production-web now shows exactly ONE deployment -- ecs-svc/2318569218717529410, status PRIMARY, rolloutState COMPLETED, 8/8 running, taskDef :1441 (image commit 2f7e767, confirmed ancestor-inclusive of revert 1b9a5b7). The old :1440 deployment is gone entirely -- fully drained, no longer listed. This closes the self-correction loop at the infra level: the flawed regime-alignment code (PR #4761) is no longer running anywhere in production, confirmed by direct ECS inspection, not just by the PR merge state. Full arc is now closed end-to-end: shipped -> live-verified -> caught -> reverted (PR #4765) -> merged -> deployed -> confirmed fully rolled out. healthcheck:legacy steady GREEN (A_edition/B_marks/C_record all GREEN, resolved=28, same AAPL/SWKS cohort). Checked for open self-authored PRs needing attention -- none. Resuming normal per-cycle bug/enhancement hunting now that the deployment-tracking thread is fully resolved; will look at whether Legacy's detail rail is missing any surfaced signal the product already computes but doesn't show (parallel to the Swing lane's recent unavailable_sources gap), per the aggressive-improvement-hunting mandate."
     }
   ],
   "knownOpenItems": {
