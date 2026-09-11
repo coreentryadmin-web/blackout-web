@@ -313,11 +313,16 @@ export function buildMarketRecap(ctx: MarketWideContext): {
           .join("; ")
       : "";
   const mag7Line = ctx.mag7_greek_flow?.headline ?? "";
+  // Round the same way formatMacroIndicators() above already does for this identical
+  // UwMacroIndicatorSnapshot field — this line went straight through with no rounding at all and
+  // printed raw provider floats ("GDP 23850.442 · CPI 333.918") in the member/Largo-facing
+  // recap_summary. Same "round at the data layer" class of bug CLAUDE.md already documents
+  // elsewhere (`7499.360000000001`), just a second, previously-unrounded call site.
   const macroLine =
     ctx.macro_indicators.length > 0
       ? ctx.macro_indicators
           .slice(0, 2)
-          .map((m) => `${m.label} ${m.latest_value ?? "—"}`)
+          .map((m) => `${m.label} ${m.latest_value != null ? m.latest_value.toFixed(2) : "—"}`)
           .join(" · ")
       : "";
   const summary = `${tide}. ${spx}.${ctx.spx_gap ? ` ${formatSpxGapContext(ctx.spx_gap)}.` : ""}${breadthLine ? ` Breadth: ${breadthLine}.` : ""}${mag7Line ? ` ${mag7Line}.` : ""}${macroLine ? ` Macro: ${macroLine}.` : ""} Leaders: ${leaders.map((s) => `${s.name} ${s.change_pct >= 0 ? "+" : ""}${s.change_pct.toFixed(2)}%`).join(", ") || "n/a"}.${netImpact ? ` Net impact: ${netImpact}.` : ""}${predictionsLine ? ` Predictions: ${predictionsLine}.` : ""}`;
