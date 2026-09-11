@@ -897,12 +897,15 @@ export function collectCoachingBullets(
   if (bucket === "watch") {
     push(morningConfirmCoaching(play));
     push(watchGateCoaching(play));
-    if (play.flagUnderlyingPx != null) {
-      push(`**Flag anchor ${play.flagUnderlyingPx.toFixed(2)}** — track trigger geometry from here.`);
-    }
-    if (play.entryStatus) {
-      push(`**Entry geometry** — ${play.entryStatus.replace(/_/g, " ")}.`);
-    }
+    // flagUnderlyingPx/entryStatus are NOT re-rendered here — watchForSection (play-brief-intel.ts,
+    // "Watch levels") already renders the same two facts ("Flag anchor: X — track move from here"
+    // / "Entry geometry: X") and both sections render together for every WATCH-bucket play. This
+    // module (#4104, 2026-09-05) duplicated them into coaching hours after play-brief-intel.ts
+    // (#4056, same day) had already shipped them — same near-verbatim-duplicate-fact class as the
+    // recNote/rails (#4261) and earnings-warning (#4757) fixes; found 2026-09-11 auditing the
+    // WATCH-bucket brief for GOOG. Kept in "Watch levels" (not here) because that section's whole
+    // job is to be the literal key-levels reference; these two coaching bullets restated the same
+    // terse fact rather than adding trade-manager narrative, so they added no information.
   }
 
   push(manageLifecycleCoaching(play, bucket));

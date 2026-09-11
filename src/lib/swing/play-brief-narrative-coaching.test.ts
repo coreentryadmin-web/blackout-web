@@ -758,6 +758,29 @@ test("collectCoachingBullets: crossDeskCoaching's Vector-conflict bullet suppres
   assert.doesNotMatch(vectorDesk[0]!, /cross-check/i);
 });
 
+// FINDINGS 2026-09-11 (live GOOG WATCH-bucket repro): "Flag anchor 329.87" and "Entry geometry
+// AT TRIGGER" appeared near-verbatim in BOTH "Trade manager read" (this module's watch-bucket
+// bullets) and "Watch levels" (watchForSection, play-brief-intel.ts) — the same play.flagUnderlyingPx
+// / play.entryStatus facts, rendered as near-identical sentences in two sections that both render
+// together for every WATCH play. Same duplication class as recNote/rails (#4261) and the
+// earnings-warning fix (#4757): a section added later (#4104) re-derived facts the original section
+// (#4056) already carried.
+test("collectCoachingBullets: does not repeat Flag anchor / Entry geometry — watchForSection already carries them", () => {
+  const bullets = collectCoachingBullets(
+    ctx({
+      play: play({
+        flagUnderlyingPx: 329.87,
+        entryStatus: "at_trigger",
+      }),
+    }),
+    "watch",
+    100,
+  );
+  const joined = bullets.join("\n");
+  assert.doesNotMatch(joined, /Flag anchor/i);
+  assert.doesNotMatch(joined, /Entry geometry/i);
+});
+
 test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {
   assert.equal(vectorPlayCoaching(null, play()), null);
   assert.equal(
