@@ -44,6 +44,10 @@ export type BangerPositionRow = {
   contract_occ: string;
   entry_premium: number;
   last_mark: number | null;
+  /** When a real quote last landed on this row. NULL = a mark was never observed at all — mirrors
+   *  swing_positions.last_mark_at (see FINDINGS 2026-09-11: this column didn't exist before that fix,
+   *  so every banger-origin position served markAsOf=null forever regardless of true freshness). */
+  last_mark_at: string | null;
   peak_premium: number | null;
   scaled_already: boolean;
   scale_out_action: string | null;
@@ -90,6 +94,7 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
     contract_occ: String(r.contract_occ),
     entry_premium: Number(r.entry_premium),
     last_mark: num(r.last_mark),
+    last_mark_at: isoTimestampString(r.last_mark_at),
     peak_premium: num(r.peak_premium),
     scaled_already: Boolean(r.scaled_already),
     scale_out_action: r.scale_out_action != null ? String(r.scale_out_action) : null,
@@ -186,6 +191,10 @@ export async function updateBangerLiveState(id: number, s: BangerLiveStateUpdate
          ELSE $2
        END,
        last_mark = COALESCE($3, last_mark),
+       -- Same stamp discipline as updateSwingLiveState's last_mark_at: only advance it on a tick
+       -- that actually delivered a fresh mark ($3 IS NOT NULL), never on a status-only/scale-out-only
+       -- write — otherwise "last touched" would masquerade as "last quoted" (FINDINGS 2026-09-11).
+       last_mark_at = CASE WHEN $3 IS NOT NULL THEN NOW() ELSE last_mark_at END,
        peak_premium = CASE WHEN $3 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $3), $3) ELSE peak_premium END,
        scaled_already = scaled_already OR COALESCE($4, FALSE),
        scale_out_action = COALESCE($5, scale_out_action),

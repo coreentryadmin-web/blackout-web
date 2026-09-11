@@ -41,6 +41,29 @@ test("mapBangerPositionRow coerces numeric/jsonb columns and defaults status", (
   assert.equal(row.status, "PARTIAL");
   assert.deepEqual(row.entry_context, { discovery: { screen: "banger" } });
   assert.equal(row.closed_at, null);
+  assert.equal(row.last_mark_at, null);
+});
+
+// FINDINGS 2026-09-11: banger_positions never had a per-mark timestamp column at all, so this
+// field couldn't be tested before it existed. Confirms the mapper round-trips it like every other
+// TIMESTAMPTZ column once the writer starts stamping it.
+test("mapBangerPositionRow surfaces last_mark_at when the column carries a value", () => {
+  const row = mapBangerPositionRow({
+    id: "1",
+    commit_key: "k",
+    session_date: "2026-08-04",
+    ticker: "T",
+    contract_strike: "1",
+    contract_expiry: "2026-08-14",
+    contract_occ: "occ",
+    entry_premium: "1",
+    last_mark: "1.1",
+    last_mark_at: "2026-08-04T15:00:00.000Z",
+    status: "OPEN",
+    first_seen_at: "2026-08-04T13:30:00.000Z",
+    updated_at: "2026-08-04T14:00:00.000Z",
+  });
+  assert.equal(row.last_mark_at, "2026-08-04T15:00:00.000Z");
 });
 
 test("mapBangerPositionRow parses a JSON-string entry_context (raw driver shape)", () => {
