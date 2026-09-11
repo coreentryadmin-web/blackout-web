@@ -501,7 +501,7 @@ export function LegacyPickLogBoard({
           />
         </div>
 
-        <LegacyPlayTechnicalsRail row={selectedRow} currentRegime={macroContext?.regime ?? null} />
+        <LegacyPlayTechnicalsRail row={selectedRow} />
       </div>
     </div>
   );
