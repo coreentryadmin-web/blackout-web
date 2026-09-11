@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T22:37:38.538Z",
+  "lastUpdated": "2026-09-11T22:52:24.799Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -921,6 +921,11 @@
       "at": "2026-09-11T22:37:38.555Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN, stable, unchanged for the 9/14 edition (HPE/DELL marks frozen since market closed for the weekend, Stage D still correctly SKIPPED pending Monday's morning-confirm). No open PR to track anymore (#4797 fully closed/merged last cycle). Quiet, clean cycle -- both major threads from today (Stage D pull-status consistency, the all-pulled hit-rate scorecard bug) are shipped and verified; the AAPL/SWKS pulled_wrongly grade question remains the one open item to check next session once a way to see it materializes."
+    },
+    {
+      "at": "2026-09-11T22:52:24.814Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN, stable, unchanged. Quiet cycle -- weekend approaching, no open PRs, all shipped fixes verified live. Nothing new to report."
     }
   ],
   "knownOpenItems": {
