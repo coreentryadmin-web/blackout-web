@@ -19,6 +19,7 @@ import {
   collectBriefUnavailableSources,
   gexMatrixAgeMs,
   gexMatrixStale,
+  playExpectsLiveOptionMark,
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
@@ -207,9 +208,32 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
 
 function pnlSection(play: TerminalPlay): RichSection {
   const blended = blendedPnlPct(play);
+  // Bug found 2026-09-11 (Ask Largo standing mandate — swing/Largo ownership lane): for a
+  // banger-lane position with no live-synced quote yet, `horizonPlayFromBangerPosition`
+  // (banger-lane-merge.ts) computes `contract.mid = row.last_mark ?? entry_premium` — a
+  // deliberate numeric fallback so downstream ranking/exit-ladder math always has *a* number
+  // to work with. That `mid` becomes `play.mark` verbatim (adapters.ts). The rest of this
+  // brief already knows the mark is unsynced (`play.markIsSync === true`) and discloses it
+  // honestly in two places — `collectOptionMarkStalenessAbsence` puts "option mark: sync quote
+  // without freshness timestamp" in `unavailableSources`, and `dataFreshnessSection` prints
+  // "Mark age unknown — sync quote without timestamp; treat P&L as indicative" — but THIS line
+  // (the actual "Mark: $X" the member reads first, right next to Entry) printed the raw fallback
+  // number with no caveat at all. Live repro 2026-09-11: SWING:IMPP/EBS/QCML (open, OPEN status,
+  // no positionId — Engine-B/banger ledger rows) all rendered "Entry: $0.10 / Mark: $0.10 /
+  // P&L: —" — Entry and Mark byte-identical because Mark IS just Entry replayed, not because the
+  // position happens to be exactly flat. A member skimming this line alone has no way to tell
+  // "flat" from "we don't actually know" — the one place in the brief that most directly invites
+  // that misread was the one place not using the `markIsSync` flag every other section already
+  // reads. Fix: same guard `playExpectsLiveOptionMark(play.status) && play.markIsSync`, applied
+  // here too — swap the numeric Mark for an honest "unknown (sync quote, no live price yet)"
+  // rather than a specific dollar value. WATCH rows are correctly exempt (static chain mid is
+  // the intended value there, not a fallback — see `playExpectsLiveOptionMark`'s own comment).
+  const markUnsynced = play.markIsSync === true && playExpectsLiveOptionMark(play.status);
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
-    `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
+    markUnsynced
+      ? `Mark: **unknown** _(sync quote, no live price yet — do not read as flat)_`
+      : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
     `P&L: **${fmtPct(play.pnlPct)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     `Peak: **${fmtPct(play.peak)}**`,
   ];
