@@ -1669,3 +1669,87 @@ test("composeSwingPlayBrief: book concentration is reported ONCE, not duplicated
     `expected book concentration to be reported in exactly one section, found it in: ${concentrationSections.map((s) => s.title).join(", ")}`,
   );
 });
+
+test("composeSwingPlayBrief: Position section shows a BLENDED P&L once a trim has fired (live CRWD repro 2026-09-11)", () => {
+  // Live repro: GET /api/market/swing/play-brief?ticker=CRWD&positionId=19 — entry $16.65,
+  // peak $38.25 (+129.7%, well past the +100% trim trigger), trim fired (SWING_SCALE_OUT_POLICY:
+  // 50% banked at +100%, 50% runner), mark back down to $17.05. The runner-only `pnlPct` (+2.4%)
+  // was the ONLY number shown, silently discarding the ~+100% already banked on the other half —
+  // the true blended outcome is ~+51.2% (0.5*100 + 0.5*2.4), not +2.4%.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "TRIM",
+      recommendation: "TRIM",
+      entry: 16.65,
+      mark: 17.05,
+      pnlPct: 2.4,
+      peak: 129.7,
+      manageAction: "EXIT_RUNNER",
+      exitPolicy: {
+        policy: "ratchet",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 6.66,
+        target_premium: 33.3,
+        time_stop_et: "16:00",
+      },
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  // Runner-only line stays (still meaningful — "how is the open remainder doing") but is now
+  // annotated so it is not mistaken for the whole position's outcome.
+  assert.match(position!.body, /P&L: \*\*\+2\.4%\*\*.*open runner only/, `got: ${position!.body}`);
+  // Blended = 0.5*100 (banked trim) + 0.5*2.4 (runner) = 51.2, rounded per fmtPct(1 digit).
+  assert.match(
+    position!.body,
+    /Blended P&L \(realized trim \+ open runner\): \*\*\+51\.2%\*\*/,
+    `got: ${position!.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: Position section omits blended P&L when no trim has fired yet (no false precision)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 5.2,
+      pnlPct: 6.1,
+      peak: 12,
+      manageAction: "HOLD",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 9.8, fired: false }],
+        runner_fraction: 0.5,
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+      },
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.doesNotMatch(position!.body, /Blended P&L/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /open runner only/, `got: ${position!.body}`);
+});
