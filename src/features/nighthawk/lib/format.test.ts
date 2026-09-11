@@ -66,3 +66,25 @@ test("recap summary still reads correctly for a real computed tide", () => {
   assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
   assert.ok(summary.startsWith("BULLISH — calls 60% ($6.0M) vs puts $4.0M. SPX"));
 });
+
+// Regression (Ask Largo standing mandate, 5-engine live monitor, 2026-09-11): live repro on
+// GET /api/market/nighthawk/edition printed "Macro: GDP 23850.442 · CPI 333.918" straight in the
+// member-facing recap_summary — buildMarketRecap's own macroLine read `m.latest_value` raw with no
+// rounding, while the sibling formatMacroIndicators() two functions above (used elsewhere in this
+// same file) already does `.toFixed(2)` on the identical UwMacroIndicatorSnapshot field. Same data,
+// two renderers in one file, only one rounds — exactly CLAUDE.md's documented "round at the data
+// layer" class of bug (`7499.360000000001`), just in a new spot. Members and Largo both read
+// recap_summary verbatim, so the raw float reached both. Fixed by rounding macroLine the same way.
+test("recap summary rounds macro indicator values instead of printing raw floats", () => {
+  const { summary } = buildMarketRecap(
+    baseCtx({
+      macro_indicators: [
+        { label: "GDP", latest_value: 23850.442, change_pct: null } as never,
+        { label: "CPI", latest_value: 333.918, change_pct: null } as never,
+      ],
+    })
+  );
+  assert.ok(summary.includes("Macro: GDP 23850.44 · CPI 333.92."), `expected rounded macro values, got: ${summary}`);
+  assert.ok(!summary.includes("23850.442"), `expected no raw unrounded float, got: ${summary}`);
+  assert.ok(!summary.includes("333.918"), `expected no raw unrounded float, got: ${summary}`);
+});
