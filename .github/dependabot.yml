@@ -39,6 +39,24 @@ updates:
       # patched verify() that returns the parsed payload again.
       - dependency-name: "svix"
         versions: [">=2.2.0"]
+      # tsx >=4.23.10 (through the latest published 4.23.13, checked 2026-09-11) throws
+      # `TypeError [Error]: Invalid URL` / `ERR_INVALID_URL` inside tsx's OWN ESM resolver
+      # hook (node_modules/tsx/dist/register-*.mjs) when running this repo's test suite on
+      # Node 20 with `--experimental-test-module-mocks` — not a flake: every test FILE hit
+      # aborts entirely (not a per-assertion failure), and 4.23.1 (pinned today) runs clean.
+      # This is the THIRD independent recurrence of the identical failure: first documented
+      # at 4.23.10 (CLAUDE.md's own environment notes, PR #2073, 133 files down), fixed again
+      # by hand at 4.23.12 (commit 34978b360, "hold tsx at 4.23.1 — the group bump breaks 89
+      # test files under Node 20"), and now again at 4.23.13 in PR #4812 (152 failures) — the
+      # prior two fixes each manually stripped tsx from that week's group bump but never added
+      # an ignore rule, so dependabot kept re-proposing the same broken range every week and
+      # blocking the other ~13-14 unrelated, genuinely-safe updates behind it each time. See
+      # docs/audit/findings-staging/2026-09-11-tsx-4.23.10-invalid-url-recurring-dependabot-block.md
+      # for the full evidence trail. Remove this once a tsx release confirms the resolver fix
+      # (re-test the exact failure — `npx tsx --experimental-test-module-mocks --test
+      # src/lib/zerodte/scan.test.ts` on Node 20 — before lifting it, not just a changelog read).
+      - dependency-name: "tsx"
+        versions: [">4.23.1"]
 
   - package-ecosystem: github-actions
     directory: "/"
