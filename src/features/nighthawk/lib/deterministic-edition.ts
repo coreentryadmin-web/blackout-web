@@ -433,7 +433,15 @@ export function buildDeterministicThesis(
     const rr = computeRiskReward({ direction: isLong ? "LONG" : "SHORT", ...levels });
     if (rr != null) {
       const rrLabel = rr >= 2 ? "strong" : rr >= 1 ? "favorable" : rr >= 0.5 ? "acceptable" : "tight";
-      parts.push(`R:R ${rr.toFixed(1)}:1 (${rrLabel}).`);
+      // Round DOWN to 1 decimal for display, never to-nearest: `rr.toFixed(1)` rounds 0.49 up to
+      // "0.5", printing "R:R 0.5:1 (tight)" — a member reads 0.5 against the very threshold ladder
+      // this label uses and sees an apparent contradiction (0.5 is the "acceptable" cutoff above).
+      // Flooring means the displayed number can only ever read AT OR BELOW the true ratio, so it
+      // can never cross into a higher label's territory than the label actually reflects. The
+      // epsilon guards a `rr` that is a clean multiple of 0.1 (e.g. exactly 0.50) from landing on
+      // the wrong side of `Math.floor` due to binary floating-point representation.
+      const rrDisplay = Math.floor(rr * 10 + 1e-9) / 10;
+      parts.push(`R:R ${rrDisplay.toFixed(1)}:1 (${rrLabel}).`);
     }
   }
 
