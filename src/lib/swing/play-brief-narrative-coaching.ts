@@ -843,7 +843,21 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   const markAbsence = collectOptionMarkStalenessAbsence(play, Date.now());
   if (markAbsence) {
     if (markAbsence.reason === "sync quote without freshness timestamp") {
-      warnings.push("mark not synced to live tape");
+      // Live repro 2026-09-11 (Ask Largo standing mandate, TWST): `markIsSync` collapses two
+      // different real-world cases (see play-brief.ts's own `markGenuinelyUnknown` split) — a
+      // mark that is genuinely unknown (no P&L basis exists either) versus a REAL, live mark that
+      // simply has no stored freshness timestamp. The Position section already tells these apart
+      // and prints "(live quote, no freshness timestamp)" for the second case — but this bullet
+      // used to say "mark not synced to live tape" for BOTH, which directly contradicts that own
+      // "live quote" wording a few lines above it in the same brief when a real pnlPct exists.
+      // `pnlPct != null` is the same signal play-brief.ts uses to prove the mark is real (a P&L
+      // percentage can only be computed from a real mark), so it's reused here rather than
+      // re-deriving a second, possibly-drifting definition of "real mark" in this file.
+      warnings.push(
+        play.pnlPct != null
+          ? "mark is a live quote but lacks a freshness timestamp"
+          : "mark not synced to live tape",
+      );
     } else {
       const stamp = markAbsence.reason.replace(/^stale — last synced /, "");
       warnings.push(`option mark from **${stamp}** — not live-synced`);
