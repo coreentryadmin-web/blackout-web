@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T19:52:36.595Z",
+  "lastUpdated": "2026-09-11T20:09:20.678Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -866,6 +866,11 @@
       "at": "2026-09-11T19:52:36.619Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy all 4 stages GREEN, stable (AAPL mark=7.55, SWKS mark=4.75, both continuing to ease off their midday highs). PR #4797 undraft rate-limited again, CI remains green/mergeable. No new correctness issues this cycle."
+    },
+    {
+      "at": "2026-09-11T20:09:20.695Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, v3 full brief)",
+      "result": "First AMBER of the day: healthcheck:legacy overall AMBER, Stage A flipped from GREEN 'fresh' to AMBER 'edition is stale' right at market close (~16:07 ET). Investigated via code trace (edition/route.ts) rather than assuming a bug given it's the first time this path fired live all session: resolveNighthawkEdition's 'carry until close' branch (line 218-228) serves the active playable edition UNFLAGGED as fresh while isBeforeOrAtMarketCloseEt(activePlayable.edition_for) is true -- that helper's cutoff is exactly mins<=16*60 (4:00pm ET). Past that cutoff, the code falls through to fetchLatestNighthawkEdition(), finds the 9/11 edition is now older than the requested nextTradingDayEt() key, and correctly sets stale=true. This is the exact, honest, by-design market-close transition (verdictForEdition already treats stale as AMBER not RED) -- not a bug, no fix needed. B/C/D stages all still GREEN (AAPL mark=7.38, SWKS mark=4.90, pull-status agreement holds). Expect Stage A to stay AMBER overnight until tonight's evening-publish cron lands tomorrow's edition -- that's the expected next state, not a new finding each cycle. PR #4797 undraft still rate-limited."
     }
   ],
   "knownOpenItems": {
