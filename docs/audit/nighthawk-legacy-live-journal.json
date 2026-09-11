@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T12:23:33.505Z",
+  "lastUpdated": "2026-09-11T12:37:41.948Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -701,6 +701,11 @@
       "at": "2026-09-11T12:23:33.505Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "PR #4784 still draft, undraft rate-limited again (2nd cycle now). healthcheck:legacy on main still shows the known/expected RED (fix not yet merged) -- same bid=ask=0 pre-market pattern, nothing new. Will keep retrying. Both live plays still WATCH, ~1h35m to 9:15am ET morning-confirm."
+    },
+    {
+      "at": "2026-09-11T12:37:41.964Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "PR #4784 now shows mergeable_state: clean (CI/verify passed) but still draft -- undraft rate-limited a 3rd consecutive cycle. Fix is fully validated and just waiting on the undraft to unblock automerge. healthcheck:legacy on main still shows the known/expected RED (fix not yet merged), consistent. Both live plays still WATCH, ~1h20m to 9:15am ET morning-confirm."
     }
   ],
   "knownOpenItems": {
