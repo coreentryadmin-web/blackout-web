@@ -4,8 +4,10 @@ import type { VectorBoardTableRow } from "./vector-board-table-utils";
 import {
   vectorBoardExportCsv,
   vectorBoardRowAtRisk,
+  vectorBoardRowGivebackPct,
   vectorBoardScorecard,
   vectorBoardSparklinePoints,
+  vectorBoardTimeline,
   vectorBoardTradeTicket,
 } from "./vector-board-row-utils";
 
@@ -37,6 +39,31 @@ test("vectorBoardRowAtRisk flags caution and giveback", () => {
   assert.equal(vectorBoardRowAtRisk(row({ status: "caution" })), true);
   assert.equal(vectorBoardRowAtRisk(row({ premiumPct: 5, peakPct: 40 })), true);
   assert.equal(vectorBoardRowAtRisk(row({ premiumPct: 25, peakPct: 30 })), false);
+});
+
+// ── vectorBoardRowGivebackPct must be a PERCENTAGE OF PEAK, not a raw point difference — same
+// bug shape already fixed for Swing's "gave back X% from peak" bullets (mfe-capture.ts,
+// FINDINGS 2026-09-10), missed by that fix's own blast-radius grep. A 20-point drop from a huge
+// peak is mild; the identical 20-point drop from a small peak is severe — the old math reported
+// both identically.
+test("vectorBoardRowGivebackPct: proportional to peak, not a raw point subtraction", () => {
+  // Peaked 200%, now 180% — a mild giveback relative to the huge peak: 10%, not 20.
+  assert.equal(vectorBoardRowGivebackPct(row({ peakPct: 200, premiumPct: 180 })), 10);
+  // Peaked 25%, now 5% — the SAME raw 20-point drop as above, but this is severe: 80%.
+  assert.equal(vectorBoardRowGivebackPct(row({ peakPct: 25, premiumPct: 5 })), 80);
+  // No giveback at all when still at peak.
+  assert.equal(vectorBoardRowGivebackPct(row({ peakPct: 40, premiumPct: 40 })), 0);
+  // A round-trip past breakeven into a loss clamps at 100%, never negative-capture nonsense.
+  assert.equal(vectorBoardRowGivebackPct(row({ peakPct: 40, premiumPct: -15 })), 100);
+  // No peak yet — nothing to compute a giveback against.
+  assert.equal(vectorBoardRowGivebackPct(row({ peakPct: null, premiumPct: 10 })), null);
+});
+
+test("vectorBoardTimeline's 'Gave back' event also uses the proportional percentage", () => {
+  const events = vectorBoardTimeline(row({ peakPct: 200, premiumPct: 180, kind: "live" }));
+  const gaveBack = events.find((e) => e.label.startsWith("Gave back"));
+  assert.ok(gaveBack, "the point-based gate (200-180=20) still fires the event");
+  assert.equal(gaveBack?.label, "Gave back 10% from peak", "but the number must be proportional (10%), not the raw 20-point drop");
 });
 
 test("vectorBoardScorecard computes hit rate and meters inputs", () => {

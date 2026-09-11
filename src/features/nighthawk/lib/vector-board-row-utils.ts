@@ -41,9 +41,21 @@ export function vectorBoardRowAtRisk(row: VectorBoardTableRow): boolean {
   return gaveBack || row.status === "caution" || row.status === "invalidated";
 }
 
+/** How much of the peak gain has been given back, as a PERCENTAGE OF THE PEAK — not a raw
+ *  percentage-POINT difference. `peakPct - premiumPct` mislabels points as a "%": a play that
+ *  peaked at 200% and now sits at 180% (a mild 10% giveback of its own peak) reported identically
+ *  to one that peaked at 25% and now sits at 5% (an 80% giveback, far more severe) — both "gave
+ *  back 20%" under the old math despite being very different situations. Same bug shape already
+ *  fixed for Swing's "gave back X% from peak" narrative bullets (`mfe-capture.ts`,
+ *  FINDINGS 2026-09-10) — this is that fix's Vector-desk sibling, missed by that fix's own
+ *  blast-radius grep because this file uses `premiumPct`/`peakPct`, not `pnlPct`/`peak`. */
 export function vectorBoardRowGivebackPct(row: VectorBoardTableRow): number | null {
-  if (row.peakPct == null || row.premiumPct == null || row.peakPct <= 0) return null;
-  return Math.max(0, Math.round(row.peakPct - row.premiumPct));
+  const peak = row.peakPct;
+  const live = row.premiumPct;
+  if (peak == null || !Number.isFinite(peak) || peak <= 0) return null;
+  if (live == null || !Number.isFinite(live)) return null;
+  const capturedPct = Math.max(0, Math.min(100, (live / peak) * 100));
+  return Math.round(100 - capturedPct);
 }
 
 /** True only for Legacy's pre-open pull (legacy-board-table-utils.ts's `legacyVectorStatus`
@@ -78,9 +90,14 @@ export function vectorBoardTimeline(row: VectorBoardTableRow): VectorBoardTimeli
       events.push({ at: row.timestamp, label: "Setup invalidated", tone: "down" });
     }
     if (peak != null && pct != null && peak - pct >= 20) {
+      // Gate stays point-based (an absolute-point drop is when this timeline event fires at
+      // all) but the DISPLAYED number must be the proportional giveback, not the raw point
+      // difference — same fix as `vectorBoardRowGivebackPct` above, this is its only other
+      // independent reimplementation of the same math in this file.
+      const gb = vectorBoardRowGivebackPct(row);
       events.push({
         at: row.timestamp,
-        label: `Gave back ${Math.round(peak - pct)}% from peak`,
+        label: gb != null ? `Gave back ${gb}% from peak` : "Gave back from peak",
         tone: "down",
       });
     }
