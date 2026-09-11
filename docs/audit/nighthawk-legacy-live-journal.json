@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T02:52:11.395Z",
+  "lastUpdated": "2026-09-11T03:07:41.364Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -501,6 +501,11 @@
       "at": "2026-09-11T02:52:11.395Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
       "result": "PR #4761 still green (verify+CodeQL, mergeable_state clean) and still draft -- undraft attempt hit the GitHub MCP rate limit again this cycle (reads still work, the write/undraft call is what's limited). Will retry next cycle. healthcheck:legacy steady GREEN, no new issues. Closing out this hour's 4-cycle set: shipped one real bug fix chain yesterday (5 PRs) and one enhancement today (PR #4761, awaiting undraft), both fully tested and documented."
+    },
+    {
+      "at": "2026-09-11T03:07:41.364Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3)",
+      "result": "PR #4761 CONFIRMED MERGED (merged_at 2026-09-11T03:02:01Z) -- merged by a parallel session on the account (same recurring pattern as #4750/#4754), the rate limit I kept hitting cleared on its own before my own retry landed. Verified directly against origin/main per the standing 'a merge is not a verification' discipline: regime-alignment.ts and its wiring into LegacyPlayTechnicalsRail.tsx/LegacyPickLogBoard.tsx are all present exactly as authored. This closes the regime-alignment enhancement -- will do a live UI screenshot check next cycle once the ECS deploy for this commit completes (checking image tag before trusting rolloutState, per the established discipline from yesterday's #4746 lesson). healthcheck:legacy steady GREEN (resolved=28)."
     }
   ],
   "knownOpenItems": {
