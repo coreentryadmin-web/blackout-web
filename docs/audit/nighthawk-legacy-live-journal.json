@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T06:52:09.870Z",
+  "lastUpdated": "2026-09-11T07:09:37.050Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -586,6 +586,11 @@
       "at": "2026-09-11T06:52:09.870Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). PR #4772 (the retracted live-UI finding) still draft -- undraft retry hit the GitHub MCP rate limit again. Low priority to chase further: it's a retraction record now, docs-only, no live risk either way whether it merges this cycle or later. Both live plays (AAPL, SWKS) still WATCH; 9:15am ET morning-confirm still hours out. Summary of this hour's work for continuity: closed the regime-alignment deployment-tracking thread, found+reported+got-merged the BIE-router-unwired finding (PR #4767, real and durable), then investigated+filed+self-corrected a live-UI finding within the same cycle (PR #4772, retracted before merge once a second control sample disproved it) -- a genuinely productive, disciplined hour with two real deliverables and one caught-before-shipping false alarm."
+    },
+    {
+      "at": "2026-09-11T07:09:37.066Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3, new hour)",
+      "result": "PR #4772 (retraction) confirmed MERGED at 07:06:07Z. Checked #4076 for a reply to last hour's BIE-router finding -- none yet (still the latest comment on the thread), not urgent. Enhancement hunt this cycle: a parallel Swing-lane Claude session found (00:55 UTC comment on #4076) that swing's play-brief shows raw co-tagged news headlines with no relevance filtering (a Crown Castle brief citing a congressional-stock-disclosure roundup that only CO-TAGS CCI, not about it). Checked whether Legacy has the same defect class -- traced dossier.ts's news_headlines -> format.ts's prompt-builder (not a raw member-facing list): Legacy feeds headlines + Benzinga catalysts into an LLM PROMPT with explicit prompt rules pinning catalyst citations ('the ONLY catalyst line Claude may cite'), so a co-tagged-but-irrelevant headline is filtered by the LLM's own reasoning before it reaches the published thesis, not shown raw like swing's mechanical top-4 slice. Different, more robust architecture -- concluded this specific defect class does NOT apply to Legacy as currently built. No new finding filed (checked and ruled out, not skipped). healthcheck:legacy steady GREEN (A_edition/B_marks/C_record, resolved=28). Quiet, clean cycle overall after a very active prior hour (2 findings landed net of one self-correction)."
     }
   ],
   "knownOpenItems": {
