@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T23:21:47.323Z",
+  "lastUpdated": "2026-09-11T23:40:59.744Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -941,6 +941,11 @@
       "at": "2026-09-11T23:21:47.324Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy fully GREEN, stable (HPE mark=2.91, DELL mark=18.15). PR #4813 CI still running (mergeable_state:blocked), no undraft needed this time -- already open/non-draft. Will check CI status next cycle."
+    },
+    {
+      "at": "2026-09-11T23:40:59.745Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "PR #4813 confirmed MERGED (sha ab3781aae) -- verified both via pull_request_read (merged:true, merged_by:coreentryadmin-web, merged_at 23:31:23Z) AND by direct grep of deterministic-edition.ts line 443 on freshly-synced main: 'const rrDisplay = Math.floor(rr * 10 + 1e-9) / 10;' is live in source, not just merged in git history. This closes out the third and final fix shipped this session (Stage D pull-status consistency #4792, all-pulled scorecard hit-rate #4797, R:R display rounding-boundary #4813 -- all three merged and independently re-verified live). healthcheck:legacy this cycle: fully GREEN -- A_edition GREEN (HPE/DELL, fresh, not degraded), B_marks GREEN (HPE mark=2.91 in [2.72,3.1], DELL mark=18.15 in [17.95,18.35]), C_record GREEN (resolved=30, buckets consistent), D_pull_status correctly SKIPPED (Monday 9/14 morning-confirm not yet run, expected Friday evening). No new bugs found this cycle. Continuing to watch for the Monday 9/14 morning-confirm cron -- first live exercise of Stage D + pull-overlay together on a fresh trading day after a weekend transition."
     }
   ],
   "knownOpenItems": {
