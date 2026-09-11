@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T00:52:26.147Z",
+  "lastUpdated": "2026-09-11T01:08:03.994Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -461,6 +461,11 @@
       "at": "2026-09-11T00:52:26.147Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, 4th of 4)",
       "result": "Checked LegacyManageGeometry (command-deck/legacy-play-geometry.tsx, the stop/entry/target visual track) for direction-sign bugs, the same class of defect this session's earlier fixes were -- specifically the entryFrac calculation for SHORT vs LONG plays. Both are internally consistent: LONG uses (entryMid-stop)/(target-stop), SHORT uses (stop-entryMid)/(stop-target), and both correctly normalize to 0=stop/1=target on the shared visual track regardless of direction. distTarget/distStop dollar-and-pct figures are raw distance-from-spot (not direction-adjusted), which is the correct convention since the stop/target CSS classes (nh-deck-neg/nh-deck-pos) are already fixed by role, not by current sign. No bug found -- this is now the third consecutive component-level deep-read (manage rail, geometry) turning up nothing after yesterday's 5-bug sweep, consistent with the surface actually being cleaner now. Not forcing a finding. healthcheck:legacy steady GREEN (resolved=28). This closes out the day's/night's cycle set."
+    },
+    {
+      "at": "2026-09-11T01:08:03.994Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3)",
+      "result": "Outcome-honesty forensics, fresh angle: pulled segments.current from GET /api/market/nighthawk/record?days=14 -- 28 resolved, only 1 DECIDED (0 wins/1 loss), 20 still open, low_n:true correctly flagged (honest about the tiny decided sample, not overstating confidence). Verified low_n is NOT silently computed-and-dropped (the exact class of bug this session found 3 times already): grepped for real render sites, confirmed HawkRecordStrip.tsx genuinely renders a <LowNChip /> component gated on cur.low_n in both its render paths. Also read through TradeExcursionGraphic (TerminalPremiumPanels.tsx, entry/peak/current excursion bar) -- correctly branches closed-vs-open pnl source (exitPnlPct for closed, legacyPrimaryPnlPct for open), no issues found on this pass (this is Vector/0DTE-shared code, not Legacy-exclusive, so a deeper dive would risk cross-lane duplication of effort). Fourth consecutive cycle with no new finding after yesterday's 5-bug sweep -- the honesty/wiring checks keep coming back genuinely clean, not just unexamined. healthcheck:legacy steady GREEN (resolved=28, stable)."
     }
   ],
   "knownOpenItems": {
