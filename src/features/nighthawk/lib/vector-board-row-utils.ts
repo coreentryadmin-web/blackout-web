@@ -178,7 +178,15 @@ export function vectorBoardScorecard(rows: VectorBoardTableRow[]): VectorBoardSc
     }
   }
 
-  const hitDenom = closedResolved > 0 ? closedResolved : rows.length;
+  // The live-status fallback (no real close has happened yet) must exclude never-entered pulls
+  // from its denominator exactly as the closedResolved/closedWinners path already excludes them
+  // from ITS denominator — otherwise a session where every published play got pulled pre-open
+  // (closedResolved stays 0, since a pull is never a "real" resolution) falls through to
+  // `rows.length`, which is 100% phantom rows in that case, and reports a fabricated "0%" rather
+  // than the honest "no resolved data yet" (null). A mixed day (some real open/closed rows plus a
+  // pull) is unaffected: the real rows already dominate `nonPulledTotal`.
+  const nonPulledTotal = rows.reduce((n, r) => (isNeverEnteredPull(r) ? n : n + 1), 0);
+  const hitDenom = closedResolved > 0 ? closedResolved : nonPulledTotal;
   const hitNum = closedResolved > 0 ? closedWinners : winners;
 
   return {
