@@ -14,6 +14,7 @@ import { fetchMeridianPeerForBrief } from "./play-brief-meridian-peer";
 import type { PortfolioPosition } from "./portfolio";
 import { readSwingArchetypeTrackRecord } from "./calibration-cache";
 import { withBriefSourceTimeout } from "./brief-source-timeout";
+import { swingRollHistoryLegFromRow } from "./play-brief-roll-history";
 
 /**
  * The network-bound reads below (Meridian timeline/peer-cohort, ecosystem context, Vector
@@ -84,13 +85,7 @@ async function loadRollHistory(positionId: number | null | undefined): Promise<S
     if (chain.length < 2) return null; // never rolled — nothing to disclose
     return {
       rollCount: chain.length - 1,
-      legs: chain.map((r) => ({
-        rollSeq: r.roll_seq,
-        strike: r.contract_strike,
-        right: r.contract_type,
-        expiry: r.contract_expiry,
-        committedAt: r.committed_at,
-      })),
+      legs: chain.map((r) => swingRollHistoryLegFromRow(r)),
     };
   } catch {
     return null;
