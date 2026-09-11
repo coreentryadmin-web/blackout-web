@@ -52,6 +52,7 @@ import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 import { isAuthFailureStatus } from "./lib/auth-status.mjs";
 import { rollupVerdict, verdictForStaleness } from "./lib/zerodte-healthcheck-eval.mjs";
+import { resolveSwingPositionMark } from "./lib/swing-healthcheck-mark-eval.mjs";
 
 import { subprocessErrorMessage } from "./lib/redact.mjs";
 // ── args ──────────────────────────────────────────────────────────────────────────
@@ -378,8 +379,13 @@ function stageF_marks() {
     return;
   }
   for (const p of livePositions) {
-    const mark = p.mark ?? p.last_mark ?? p.optionMark;
-    const markTs = p.mark_ts ?? p.last_mark_ts ?? p.mark_updated_at;
+    // WHY resolveSwingPositionMark instead of p.mark/.last_mark/.optionMark directly: the
+    // real TerminalPlay-shaped row never carried those flat field names — the live option
+    // mark is `contract.mid` with freshness at the sibling `markAsOf` field. Reading the
+    // wrong names made every live position report a false "mark=null" AMBER regardless of
+    // whether the real mark was fresh, stale, or actually missing. See
+    // lib/swing-healthcheck-mark-eval.mjs's header for the full trace.
+    const { mark, markTs } = resolveSwingPositionMark(p);
     let ageMs = null;
     if (markTs) {
       const ts = typeof markTs === "string" ? new Date(markTs).getTime() : Number(markTs);
@@ -390,7 +396,7 @@ function stageF_marks() {
       "F",
       freshV,
       `mark ${p.ticker}`,
-      `mark=${mark ?? "null"} age=${ageMs == null ? "unknown" : (ageMs / 1000 / 60).toFixed(1) + "min"} section=${p.setupState ?? p.status ?? "?"}`
+      `mark=${mark ?? "null"} age=${ageMs == null ? "unknown" : (ageMs / 1000 / 60).toFixed(1) + "min"} section=${p.status ?? p.liveStatus ?? "?"}`
     );
   }
 }
