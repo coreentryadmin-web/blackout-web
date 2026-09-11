@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T15:08:02.135Z",
+  "lastUpdated": "2026-09-11T15:09:03.247Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -761,6 +761,11 @@
       "at": "2026-09-11T15:08:02.153Z",
       "via": "GitHub PR event (pull_request.ready_for_review on #4792)",
       "result": "PR #4792 (Stage D) closed the loop: undraft succeeded, verify was already green, merged (squash, sha 669dffae1). Re-synced main and re-ran healthcheck:legacy to confirm the fix actually works live rather than trusting the merge alone -- Stage D now reports GREEN for both AAPL and SWKS, 'INVALIDATED <-> pulled=true agree' for both. All four stages (A/B/C/D) now GREEN on merged main. Marks continuing to climb (AAPL 10.18, SWKS 7.65) -- SWKS remains well clear of its 88.52 target (spot was 91.26 last check), still tracking toward a likely real pulled_wrongly grade at close."
+    },
+    {
+      "at": "2026-09-11T15:09:03.248Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, v3 full brief)",
+      "result": "healthcheck:legacy fully GREEN across all 4 stages (A/B/C/D), Stage D confirmed holding in production a cycle after merge. Marks: AAPL=10.10, SWKS=7.65. Live spot refresh: AAPL=335.42 (~38.9% of entry-high-to-target distance), SWKS=91.84 (still well clear of its 88.52 target, +3.75% beyond). Both pulled plays continuing to hold/extend their moves through the afternoon -- still on track for a likely pulled_wrongly grade at close, nothing new to add to that thread until the actual EOD grade lands. No new correctness issues or enhancement gaps found this cycle; scope already well-covered (R:R math, catalyst flags, dossier fields, RSI framing, pulled_wrongly data-access, healthcheck Stage D) -- staying quiet on new findings this cycle rather than manufacturing scope."
     }
   ],
   "knownOpenItems": {
