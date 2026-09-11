@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T21:08:28.428Z",
+  "lastUpdated": "2026-09-11T21:22:00.062Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -891,6 +891,11 @@
       "at": "2026-09-11T21:08:28.447Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, v3 full brief)",
       "result": "healthcheck:legacy unchanged from last cycle -- overall AMBER (Stage A market-close staleness, expected), B/C/D GREEN, resolved=30. Post-close, nothing new to check that hasn't already been covered this session (correctness swept clean, Stage D shipped, scorecard bug found+fixed+shipped, pulled-play tracking thread flagged for next-session follow-up). PR #4797 undraft still rate-limited."
+    },
+    {
+      "at": "2026-09-11T21:22:00.085Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully stable, unchanged from last 2 cycles (AMBER/GREEN/GREEN/GREEN). Noted a platform-wide critical Next.js RCE dependency fix (#4804) merged from another lane -- outside Legacy's scope, no action needed here. PR #4797 undraft still rate-limited."
     }
   ],
   "knownOpenItems": {
