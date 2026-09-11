@@ -478,6 +478,40 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   return null;
 }
 
+/**
+ * Resolves THIS brief's own contract expiry (YYYY-MM-DD) by matching `ctx.play` against
+ * `ctx.laneRows` on ticker + entry premium — the same disambiguation key `siblingPositionsNote`
+ * (play-brief.ts) uses, since `TerminalPlay.contract` is a human label string ("110C · 13DTE"),
+ * not a structured `{expiry}` the earnings comparison below can read directly.
+ */
+function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
+  const { play } = ctx;
+  if (play.entry == null || !Number.isFinite(play.entry)) return null;
+  const ticker = play.ticker.toUpperCase();
+  const own = ctx.laneRows.find((r) => {
+    if (r.ticker.toUpperCase() !== ticker) return false;
+    if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+    return Math.abs(r.entryPremium - play.entry!) <= 0.005;
+  });
+  return own?.contract?.expiry ?? null;
+}
+
+/**
+ * BUG FOUND 2026-09-11 (Ask Largo standing mandate — adversarial follow-up to #4764's sibling-
+ * position disclosure). This earnings warning fires purely off `days_until` (calendar days from
+ * TODAY to the print) and never checked which contract the brief is actually about — a ticker-
+ * level fact applied identically regardless of the covered position's own expiry. #4764 made this
+ * a live, visible problem rather than a theoretical one: two concurrent positions on the same
+ * ticker can have genuinely different expiries (that's the whole reason the disclosure exists),
+ * and one can expire BEFORE the earnings print while its sibling expires after. Before this fix,
+ * both briefs printed the identical "size down or exit before report" instruction — nonsensical
+ * for the position that will already be closed/expired before the print ever lands, and correct
+ * only for the other. Fix: when this brief's own contract expiry resolves and is on/before the
+ * earnings date, say so explicitly (no gap exposure) instead of issuing an instruction that
+ * cannot apply to this contract. Falls through to the original warning when the expiry can't be
+ * resolved (matches nothing in laneRows, e.g. a closed/historical play) or genuinely sits after
+ * the print — same behavior as before for the population this never affected.
+ */
 /** Earnings + Meridian catalyst window. */
 export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
   const earnings = ctx.ecosystem?.arsenal?.earnings;
@@ -485,6 +519,14 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
 
   if (earnings?.days_until != null && earnings.days_until <= 14) {
     const timing = earnings.report_time ? ` (${earnings.report_time})` : "";
+    const expiry = earnings.earnings_date ? ownContractExpiry(ctx) : null;
+    if (expiry && earnings.earnings_date && expiry <= earnings.earnings_date) {
+      return (
+        `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date}${timing}) — ` +
+        `this contract expires ${expiry}, on/before the print, so no earnings-gap exposure from ` +
+        `this position (a concurrent sibling with a later expiry may still be exposed — check its own brief).`
+      );
+    }
     return (
       `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date}${timing}) — ` +
       `size down or exit before report unless thesis is earnings-driven.`
