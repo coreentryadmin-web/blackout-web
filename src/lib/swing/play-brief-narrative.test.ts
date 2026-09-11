@@ -79,6 +79,33 @@ test("tradeManagerNarrativeSection: narrates dark pool + dealer posture", () => 
   assert.match(section!.body, /Break watch/i);
 });
 
+test("tradeManagerNarrativeSection: LONG Break watch never cites a level ABOVE spot as 'support' (2026-09-11)", () => {
+  // breakTrigger picked the NEAREST put_wall/dark_pool match by unsigned distance without checking
+  // which side of spot it sat on. A dark-pool print can be printed above OR below spot (see
+  // narrateDarkPool's own price<spot side check a few lines down in this same file) — here the
+  // nearest dark-pool level (101, 1% above spot=100) sat above spot while the real put wall (90)
+  // was further away below spot. Pre-fix this produced "Break watch — lose 101.00 on a closing
+  // basis" for a LONG at spot 100 — a level the play hasn't even reached yet, not a support it
+  // could "lose". The fix requires a support candidate to actually be below spot.
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 105, // also above spot — must not be used as the LONG break fallback either
+        darkPoolLevels: [{ strike: 101, premium: 5_000_000, pct: 30 }],
+        gexWalls: { callWalls: [], putWalls: [{ strike: 90, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*90\.00/i);
+  assert.doesNotMatch(section!.body, /Break watch.*101\.00/i);
+  assert.doesNotMatch(section!.body, /Break watch.*105\.00/i);
+});
+
 test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
