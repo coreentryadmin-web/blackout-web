@@ -196,6 +196,7 @@ function openRow(ticker: string, id: number): SwingPositionRow {
 }
 
 let mockOpenRows: SwingPositionRow[] = [];
+let mockClosedRows: SwingPositionRow[] = [];
 let mockDiscovered: {
   dossiers: ReturnType<typeof buildSwingDossier>[];
   plays: never[];
@@ -207,7 +208,7 @@ mock.module("../db", {
   namedExports: {
     fetchOpenSwingPositions: async () => mockOpenRows,
     fetchLatestSwingSnapshotEvents: async () => new Map(),
-    fetchSwingPositionsRange: async () => [],
+    fetchSwingPositionsRange: async () => mockClosedRows,
     fetchSwingPositionChain: async () => [],
   },
 });
@@ -302,5 +303,52 @@ describe("resolveSwingPlayForBrief: WATCH lane restores factors/regime (parity w
     assert.ok(resolved, "the WATCH lane play must resolve");
     assert.ok((resolved!.play.factors?.length ?? 0) > 0, "factors must be restored from dossier");
     assert.ok(resolved!.play.regime != null, "regime must be restored from dossier for WATCH rows");
+  });
+});
+
+// A caller supplying `positionId` as a SEPARATE query param (the route's own documented shape —
+// `?playId=SWING:NRG&ticker=NRG&positionId=34` — and Largo's tool-call convention, distinct from
+// the frontend hook's playId-embedded `SWING:TICKER:ID` form) must resolve a CLOSED position just
+// as reliably as one that embeds the id in playId. Live repro (2026-09-11, SWING:INTC): a caller
+// asking for a specific closed/graded position by separate positionId got back an unrelated LIVE
+// WATCH-lane row for the same ticker instead, because the two closed-play lookups in
+// resolveSwingPlayForBrief guarded on `parsed.positionId` (parsed ONLY from the playId string) —
+// always null for this call shape — rather than the fully-resolved `positionId` variable that
+// already merges the separate query param.
+describe("resolveSwingPlayForBrief: a separately-supplied positionId must resolve the CLOSED position, not an unrelated live WATCH row for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("positionId as a query param (playId has no embedded id) still finds the closed position over a same-ticker WATCH row", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("INTC", 30),
+        status: "CLOSED",
+        graded_at: "2026-09-08T20:00:00.000Z",
+        closed_at: "2026-09-08T20:00:00.000Z",
+        realized_pnl_pct: 12.3,
+      },
+    ];
+    // A DIFFERENT, currently-live WATCH candidate for the same ticker — exactly the shape that
+    // silently won before this fix, because the closed-play guard never fired.
+    mockLaneRows = [laneRow({ ticker: "INTC", status: "WATCH" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:INTC", // no embedded position id — parsed.positionId is null
+      ticker: "INTC",
+      positionId: 30, // supplied separately, as the route's own docstring example shows
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.equal(
+      resolved!.play.status,
+      "CLOSED",
+      `must resolve the CLOSED position (id 30), not the live WATCH row — got status "${resolved!.play.status}"`,
+    );
   });
 });
