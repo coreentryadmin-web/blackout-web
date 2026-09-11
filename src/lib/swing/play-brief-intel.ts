@@ -526,7 +526,7 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
 
 /** Hold plan — time/theta, earnings risk, session stops, thesis-health coaching for open rows. */
 export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null {
-  const { play, ecosystem } = ctx;
+  const { play } = ctx;
   if (statusBucket(play) !== "open") return null;
 
   const lines: string[] = [];
@@ -539,12 +539,12 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
     lines.push(`Contract runway: **${dte} DTE** — theta accelerates inside ~7 DTE`);
   }
 
-  const earnings = ecosystem?.arsenal?.earnings;
-  if (earnings?.days_until != null && earnings.days_until <= 14) {
-    lines.push(
-      `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date}) — size down or exit before report unless thesis is earnings-driven`,
-    );
-  }
+  // Near-term-earnings warning is NOT repeated here — catalystCoaching (play-brief-narrative-
+  // coaching.ts) already renders the same "Earnings in Nd (DATE) — size down or exit before
+  // report..." sentence into "Trade manager read" for every WATCH/OPEN play within 14 days of a
+  // known earnings date, and both sections render together for any live OPEN play. Same
+  // duplication class as the thesis-health advisory and recNote/rails fixes above (#4261,
+  // 2026-09-06) — found during the 2026-09-11 Ask Largo catalysts-timing pass.
 
   if (play.exitPolicy) {
     const ep = play.exitPolicy;
