@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T10:53:06.495Z",
+  "lastUpdated": "2026-09-11T11:08:57.063Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -666,6 +666,11 @@
       "at": "2026-09-11T10:53:06.512Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). Quiet cycle. Both live plays still WATCH, ~3h35m to 9:15am ET morning-confirm."
+    },
+    {
+      "at": "2026-09-11T11:08:57.081Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hour)",
+      "result": "Traced tonight's 'Watch: ...' line (AAPL: guidance update; SWKS: M&A involvement; short-seller activity; guidance update) all the way to scoreCatalystAwareness() in scorer.ts -- confirmed genuinely ticker-specific and data-driven, not boilerplate: each flag corresponds to a real Benzinga catalyst-channel hit (binary/buyback/m&a/guidance/insider/offering/short) fetched per-ticker in dossier.ts (fetchBenzingaCatalysts), with sensible direction-aware scoring (M&A/buyback tailwind for longs, headwind for shorts; binary FDA events penalized regardless of direction; guidance/insider/short-seller flagged as side-neutral awareness notes with no score weight, since the channel alone doesn't reveal raise-vs-cut). Well-designed, single-count-per-type dedup so a name with 3 FDA headlines isn't triple-penalized. No issue found -- genuinely clean, good-quality feature. healthcheck:legacy steady GREEN (A_edition/B_marks/C_record, resolved=28). Both live plays still WATCH, ~3h05m to 9:15am ET morning-confirm."
     }
   ],
   "knownOpenItems": {
