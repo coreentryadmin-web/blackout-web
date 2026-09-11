@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T16:11:26.568Z",
+  "lastUpdated": "2026-09-11T16:16:50.568Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -786,6 +786,11 @@
       "at": "2026-09-11T16:11:26.585Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, v3 full brief)",
       "result": "healthcheck:legacy fully GREEN across all 4 stages, holding steady (AAPL mark=8.88, SWKS mark=6.85). Given several consecutive clean cycles, digging into something genuinely unexercised this session per the aggressive mandate: a LIVE UI screenshot of the actual Legacy board (via proxy-browser.cjs, the documented sandbox workaround for Chromium's blocked egress) to visually confirm the pulled/morning-confirm badges I've only verified at the API level (Stage D) actually render correctly for a real member. Capture in progress as a background task."
+    },
+    {
+      "at": "2026-09-11T16:16:50.574Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
+      "result": "REAL FIND from the live UI screenshot: today's Legacy board scorecard reads '0 winners * 0 runners * 2 closed * Hit rate 0%' even though both AAPL/SWKS (the day's only 2 plays, both pulled pre-open) carry strongly positive counterfactual premium moves (+85%/+162%, SWKS at 100% to stock target). Traced to vectorBoardScorecard's hit-rate fallback (shared file, src/features/nighthawk/lib/vector-board-row-utils.ts): closedResolved correctly excludes pulled rows, but when closedResolved is 0 the code falls back to rows.length/winners -- a fallback that was only ever tested against MIXED populations (a pull plus real open/closed rows) where real rows dominate. On a day where 100% of rows are pulled, that fallback denominator is entirely phantom rows, producing a fabricated 0% that reads as 'today's picks lost' when the honest state is 'no capital was ever at risk.' Fixed: fallback denominator now excludes never-entered pulls (nonPulledTotal) same as closedResolved already does -- when every row is pulled, nonPulledTotal=0 and the existing hitDenom>0?...:null guard correctly returns null instead of 0%. Confirmed the fix doesn't touch Vector's own desk numbers at all (isNeverEnteredPull only ever true for Legacy's PULLED label, one call site in the whole codebase). New regression test reproduces today's exact live population, RED (hitRate:0) before / GREEN (hitRate:null) after; full file 12/12 pass (was 11/12); sibling legacy-board-table-utils.test.ts 11/11 unaffected; tsc clean. Findings-staging + MARKET-OPEN-VALIDATION entry #106 written. Full suite running in background before push+PR."
     }
   ],
   "knownOpenItems": {
