@@ -15,6 +15,10 @@
  *                  uses): each mark positive, within [bid, ask], not stale.
  *   C  RECORD    — GET /api/market/nighthawk/record: reachable, and the segment's own
  *                  win/loss/open/etc. buckets actually sum to its own reported resolved count.
+ *   D  PULL-STATUS — GET /api/nighthawk/play-status vs the edition's own pulled/pulled_reason
+ *                  overlay: the two independently-read surfaces (Redis-cached morning-confirm
+ *                  verdict vs the DB-merged read-time latch) must agree on every ticker.
+ *                  SKIPPED before the 9:15am ET morning-confirm cron has fired for the date.
  *
  * READ-ONLY. Auth via scripts/audit/lib/audit-auth-fetch.mjs (cron bearer first, Clerk
  * temp-user fallback — released at the end). Writes nothing, mutates no board state.
@@ -35,6 +39,7 @@ import {
   rollupVerdict,
   verdictForEdition,
   verdictForMarks,
+  verdictForPullConsistency,
   verdictForRecord,
 } from "./lib/legacy-healthcheck-eval.mjs";
 
@@ -90,6 +95,17 @@ async function checkRecord() {
   return verdictForRecord({ fetchOk: res.ok, segment: res.json?.segments?.current ?? null });
 }
 
+async function checkPullConsistency(plays, editionFor) {
+  if (!editionFor) return { verdict: "SKIPPED", evidence: "no edition date to check against" };
+  const res = await fetchAuditJson(BASE, `/api/nighthawk/play-status?date=${editionFor}`);
+  return verdictForPullConsistency({
+    fetchOk: res.ok,
+    available: res.json?.available,
+    editionPlays: plays,
+    statusPlays: Array.isArray(res.json?.plays) ? res.json.plays : [],
+  });
+}
+
 async function main() {
   log(`[legacy-healthcheck] base=${BASE} days=${DAYS}`);
 
@@ -102,7 +118,15 @@ async function main() {
   const recordResult = await checkRecord();
   log(`  C RECORD   ${recordResult.verdict}  ${recordResult.evidence}`);
 
-  const overall = rollupVerdict([editionResult.stage.verdict, marksResult.verdict, recordResult.verdict]);
+  const pullResult = await checkPullConsistency(editionResult.plays, editionResult.editionFor);
+  log(`  D PULL-STATUS  ${pullResult.verdict}  ${JSON.stringify(pullResult.evidence)}`);
+
+  const overall = rollupVerdict([
+    editionResult.stage.verdict,
+    marksResult.verdict,
+    recordResult.verdict,
+    pullResult.verdict,
+  ]);
 
   const out = {
     ranAt: new Date().toISOString(),
@@ -113,6 +137,7 @@ async function main() {
       A_edition: editionResult.stage,
       B_marks: marksResult,
       C_record: recordResult,
+      D_pull_status: pullResult,
     },
   };
 

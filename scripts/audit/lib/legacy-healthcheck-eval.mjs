@@ -76,6 +76,48 @@ export function verdictForMarks({ fetchOk, requestedOccs, rows }) {
 }
 
 /**
+ * Stage D: cross-consistency between the morning-confirm verdict (GET /api/nighthawk/play-status —
+ * the CONFIRMED/DEGRADED/INVALIDATED/UNVERIFIED per-play verdict the 9:15am ET cron writes, served
+ * from a Redis cache with a DB fallback) and the edition's own read-time pulled/pulled_reason overlay
+ * (GET /api/market/nighthawk/edition — pull-overlay.ts, merged from the SAME morning-confirm DB row
+ * at read time). Both ultimately trace back to one recordNighthawkMorningVerdict() write, but they
+ * are two independently-read surfaces (one cached, one live-merged) describing the same event — if
+ * they ever disagree (INVALIDATED without pulled:true, or pulled:true without an INVALIDATED
+ * verdict), a member could see a genuine split-brain (e.g. a play struck through as pulled with no
+ * verdict badge, or a verdict badge with no pulled styling), not a mere staleness blip.
+ *
+ * `available: false` is the expected, non-error state before the cron has fired for this date
+ * (overnight / pre-9:15am ET) — SKIPPED, not AMBER/RED, matching rollupVerdict's own "never fabricate
+ * a verdict for a stage that hasn't run yet" discipline used elsewhere in this file.
+ */
+export function verdictForPullConsistency({ fetchOk, available, editionPlays, statusPlays }) {
+  if (!fetchOk) return { verdict: "RED", evidence: "play-status fetch failed (auth or network)" };
+  if (available === false) {
+    return { verdict: "SKIPPED", evidence: "morning confirmation not yet run for this date" };
+  }
+  const statusByTicker = new Map((statusPlays ?? []).map((p) => [String(p.ticker ?? "").toUpperCase(), p]));
+  const perTicker = (editionPlays ?? []).map((play) => {
+    const ticker = String(play.ticker ?? "").toUpperCase();
+    const status = statusByTicker.get(ticker);
+    if (!status) {
+      return { ticker, verdict: "AMBER", evidence: "no morning-confirm verdict recorded for this ticker" };
+    }
+    const expectedPulled = status.status === "INVALIDATED";
+    const actualPulled = Boolean(play.pulled);
+    if (expectedPulled !== actualPulled) {
+      return {
+        ticker,
+        verdict: "RED",
+        evidence: `split-brain: play-status says ${status.status} (expects pulled=${expectedPulled}) but edition pulled=${actualPulled}`,
+      };
+    }
+    return { ticker, verdict: "GREEN", evidence: `${status.status} <-> pulled=${actualPulled} agree` };
+  });
+  if (perTicker.length === 0) return { verdict: "GREEN", evidence: "no plays to cross-check" };
+  return { verdict: rollupVerdict(perTicker.map((p) => p.verdict)), evidence: perTicker };
+}
+
+/**
  * Stage C: record internal consistency. The record's own reported buckets must sum to its own
  * reported total — a malformed/truncated payload would fail this even though HTTP itself was 200.
  */
