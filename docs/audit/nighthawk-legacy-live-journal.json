@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T19:22:29.792Z",
+  "lastUpdated": "2026-09-11T19:37:49.065Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -856,6 +856,11 @@
       "at": "2026-09-11T19:22:29.811Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy all 4 stages GREEN, stable (AAPL mark=7.75, SWKS mark=5.35). Noted the 0DTE lane's 2nd board-upstream-degradation occurrence today (tracking toward their own 3-instance threshold) -- confirmed again via this run that Legacy's endpoints are fully unaffected, same as the earlier incident. PR #4797 undraft rate-limited again, CI remains green/mergeable."
+    },
+    {
+      "at": "2026-09-11T19:37:49.082Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy all 4 stages GREEN. SWKS mark keeps declining (5.35->4.85) so re-checked spot: SWKS last=88.25 vs target=88.52 -- has now pulled back BELOW the full target line for the first time today (-0.3%), after touching as high as ~91-92 and sitting above target for several hours. AAPL last=332.73 vs target=344.57 -- still trending positive overall vs its pulled-pre-open entry range, well below target. Updating the pulled_wrongly tracking thread: SWKS's counterfactual grade is now genuinely uncertain into the close rather than a near-certain target hit -- the exact kind of case debrief.ts's strict next_day_close-based grading exists to handle correctly (an intraday touch above target that fades back below it by day's end should NOT count as a counterfactual win if it closes under target, and the system doesn't grade on intraday touches, only the session's actual close). Nothing to fix -- this is the system correctly waiting for the real close rather than a premature grade. PR #4797 undraft rate-limited again."
     }
   ],
   "knownOpenItems": {
