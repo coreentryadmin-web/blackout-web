@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T20:53:19.655Z",
+  "lastUpdated": "2026-09-11T21:08:28.428Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -886,6 +886,11 @@
       "at": "2026-09-11T20:53:19.678Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "Tried to get per-ticker confirmation on the AAPL/SWKS pulled_wrongly/pulled_correctly question from last cycle via GET /api/admin/nighthawk/analytics (admin-gated, reachable with the default admin+premium temp session audit-auth-fetch.mjs already mints) -- no luck: that route's debrief_report only breaks down by conviction/tier (A/B/C), never by ticker. 30-day window context: A-tier (SWKS's conviction) shows n=9, pulled=4, dominant_failure_mode='pulled_wrongly' -- suggestive given SWKS's close was right at its target line, but still aggregate, not proof. No route anywhere in this app exposes a per-ticker debrief; genuine dead end without raw DB access (same conclusion the earlier pulled_wrongly=2 investigation reached this session). Leaving this as a flagged-but-unconfirmed thread rather than asserting a specific ticker's grade. healthcheck:legacy stable: overall AMBER (Stage A market-close staleness, expected/tracked), B/C/D all GREEN, resolved count settled at 30 (no further change since last cycle). PR #4797 undraft still rate-limited."
+    },
+    {
+      "at": "2026-09-11T21:08:28.447Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, v3 full brief)",
+      "result": "healthcheck:legacy unchanged from last cycle -- overall AMBER (Stage A market-close staleness, expected), B/C/D GREEN, resolved=30. Post-close, nothing new to check that hasn't already been covered this session (correctness swept clean, Stage D shipped, scorecard bug found+fixed+shipped, pulled-play tracking thread flagged for next-session follow-up). PR #4797 undraft still rate-limited."
     }
   ],
   "knownOpenItems": {
