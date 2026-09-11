@@ -118,6 +118,29 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-11 Ask Largo Position-section Mark-sync-echo fix (read this before the routine pass)
+
+### Position section's "Mark" line silently echoed Entry for unsynced Engine-B/banger quotes — fix/swing-position-mark-sync-echo (PR #4775)
+
+**What was broken:** live capture from `GET /api/market/swing/play-brief?playId=SWING:IMPP` (and
+`SWING:EBS`, `SWING:QCML` — all real open Engine-B/banger-lane positions) showed `Entry: **$0.10**
+/ Mark: **$0.10** / P&L: **—** / Peak: **—**` — Mark byte-identical to Entry because
+`horizonPlayFromBangerPosition`'s `mid = last_mark ?? entry_premium` fallback flows straight into
+`play.mark` with no disclosure on the Position section itself (the rest of the brief already
+disclosed it via `unavailableSources`/"Data freshness", just not on this specific line). See
+`docs/audit/findings-staging/2026-09-11-swing-position-mark-sync-echo.md`.
+
+**Fix:** `pnlSection()` (`play-brief.ts`) now renders `Mark: **unknown** _(sync quote, no live
+price yet — do not read as flat)_` instead of the raw fallback number whenever
+`play.markIsSync === true` for an OPEN/HOLD/TRIM row (`playExpectsLiveOptionMark`).
+
+**Check at the open:** re-pull the play-brief for any Engine-B/banger swing position that is open
+but has not yet received a live quote sync this session (check the "Data freshness" section for
+"Mark age unknown") and confirm the Position section's own Mark line now reads "unknown", not a
+specific dollar figure equal to Entry. Also confirm a position that HAS synced (a real, different
+`mark` value, `markAsOf` populated) still shows its real Mark price normally — this fix must not
+suppress genuine live marks, only the sync-fallback case.
+
 ## WATCH LIST — 2026-09-10 Ask Largo CLOSED-play run-on bullet fix (read this before the routine pass)
 
 ### CLOSED-play "Trade manager read" jammed 2-3 post-mortem points into one illegible bullet — fix/swing-closed-coaching-run-on-bullet
