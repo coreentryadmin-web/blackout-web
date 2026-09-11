@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T07:38:02.192Z",
+  "lastUpdated": "2026-09-11T07:51:56.086Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -601,6 +601,11 @@
       "at": "2026-09-11T07:38:02.209Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "Outcome-honesty check this cycle: pulled fresh GET /api/market/nighthawk/record?days=14 and cross-checked bucket math by hand -- fully consistent (scoreable 21 = 1 decided + 20 opens; excluded_total 7 = 5 pulled + 2 unfilled; resolved 28 = 21 + 7; matches healthcheck:legacy's own resolved=28). Debrief coverage 28/28 (100%) -- no gap. Failure-mode breakdown: wrong_direction 13, target_unreachable 8, pulled_correctly 3, pulled_wrongly 2, unfilled_never_traded_back 2 (sums to 28, consistent). New WATCH item (below 3-instance noise threshold, not escalating): pulled_wrongly=2 -- 2 of the 5 pulled plays this window graded as would-have-won had they not been pulled pre-open. n=2 is too thin to call a pattern; noting for continuity so a 3rd instance triggers the existing noise-discipline escalation rather than restarting the count from zero. wrong_direction=13/28 (46%) remains the dominant failure mode, consistent with the already-tracked knownOpenItems.geometryWinRateGap_2026-08-06 (deliberately parked, monthly re-check, not due). healthcheck:legacy steady GREEN (A_edition/B_marks/C_record). No new bugs/enhancements this cycle beyond the WATCH note above."
+    },
+    {
+      "at": "2026-09-11T07:51:56.104Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). Quiet cycle, no new bugs/enhancements beyond what's already tracked (pulled_wrongly WATCH n=2, geometryWinRateGap monthly re-check not due). No open Legacy PRs/threads needing attention. Both live plays still WATCH, ~5h35m to 9:15am ET morning-confirm."
     }
   ],
   "knownOpenItems": {
