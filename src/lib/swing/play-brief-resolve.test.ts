@@ -274,6 +274,35 @@ describe("loadOpenTerminalPlay: restores factors/regime for a committed row (Lar
       "no dossier means no regime read — the honest default must stand, never an invented one",
     );
   });
+
+  test("C4 IDENTITY: a committed row's real ledger contract_occ is preferred over a reconstructed guess (LARGO-PRODUCT-CONTRACT.md)", async () => {
+    // commit.ts stamps contract_occ at insert via occFromChainContract, and roll-plan.ts
+    // re-stamps it on a roll — it is the ledger's own authoritative record of exactly which
+    // contract is held. play-brief-resolve.ts's horizonRowToDeckSource() used to discard it
+    // unconditionally (occ: null) even though the row carrying it was already in scope at this
+    // exact call site, silently falling back on terminalPlayFromHorizon's strike/expiry/right
+    // RECONSTRUCTION (adapters.ts's own occFromChainContract fallback) instead of the ledger's
+    // stored value. The two agree in the common case (this test uses a strike/expiry/right that
+    // reconstructs to the SAME symbol) — the fix's value is preferring the authoritative source
+    // when they could diverge (e.g. mid-roll), and unblocking the SSE live-marks overlay
+    // (use-live-marks.ts's overlayLiveMarks gates its lookup on `p.occ`) from depending on that
+    // reconstruction path at all for a position the ledger already identifies unambiguously.
+    const row = openRow("NRG", 34);
+    // Deliberately mismatched vs strike/expiry/right (110/2026-09-18/C, which reconstruction
+    // would use) — proves the ledger's stored occ WINS over reconstruction, not merely that the
+    // two happen to agree. A real divergence like this can occur transiently around a roll.
+    row.contract_occ = "NRG261016C00115000";
+    mockOpenRows = [row];
+    mockDiscovered = { dossiers: [buildSwingDossier(dossierInput("NRG"))], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("NRG", { positionId: 34 });
+    assert.ok(play, "the committed play must resolve");
+    assert.equal(
+      play!.occ,
+      "O:NRG261016C00115000",
+      "a committed row's stored contract_occ must win over a strike/expiry/right reconstruction, normalized O:-prefixed",
+    );
+  });
 });
 
 describe("resolveSwingPlayForBrief: WATCH lane restores factors/regime (parity with open path)", () => {

@@ -37,6 +37,7 @@ import {
   resolveBriefIvRank,
   type ParsedSwingPlayId,
 } from "./play-brief-resolve-pure";
+import { occSymbolFromSwingRow } from "./occ-from-row";
 
 export { parseSwingPlayId, pickLanePlayForBrief, resolveBriefIvRank, type ParsedSwingPlayId };
 
@@ -55,6 +56,7 @@ export function horizonRowToDeckSource(
   p: HorizonPlay,
   positionId?: number | null,
   cortex?: unknown,
+  occ?: string | null,
 ): HorizonDeckSource {
   return {
     ticker: p.ticker,
@@ -102,7 +104,12 @@ export function horizonRowToDeckSource(
     thesisBreak:
       p.thesisLevel != null ? { level: p.thesisLevel, note: p.thesisNote ?? undefined } : undefined,
     sectorLeadershipFacts: p.sectorLeadershipFacts ?? null,
-    occ: null,
+    // C4 IDENTITY (LARGO-PRODUCT-CONTRACT.md): committed positions have a real OCC symbol,
+    // stamped at commit by `commit.ts` via `occFromChainContract` and stored as `contract_occ` —
+    // the caller passes it through for a live ledger row. A WATCH/lane-only candidate has no
+    // ledger row yet, so this stays null there (honest absence, never reconstructed — see
+    // occ-from-row.ts's fail-closed doc comment: a guessed OCC can mismark the wrong contract).
+    occ: occ ?? null,
     positionId: positionId ?? null,
     // Cortex is only pinned on a COMMITTED ledger row (swing commit.ts) — the caller passes
     // row.entry_context?.cortex for an open position; a WATCH/lane-only candidate has no row
@@ -226,7 +233,12 @@ export async function loadOpenTerminalPlay(
   lanePlay = attachThesisExplanation(lanePlay, dossier, reads);
 
   const play = terminalPlayFromHorizon(
-    horizonRowToDeckSource(lanePlay, row.id, row.entry_context?.cortex ?? null),
+    horizonRowToDeckSource(
+      lanePlay,
+      row.id,
+      row.entry_context?.cortex ?? null,
+      occSymbolFromSwingRow(row),
+    ),
   );
   const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank, featureVector: row.feature_vector });
   return ivRank != null ? { ...play, ivRank } : play;
