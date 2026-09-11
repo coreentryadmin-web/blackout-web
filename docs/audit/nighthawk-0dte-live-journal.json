@@ -135,6 +135,9 @@
     },
     "2026-09-11T14:17Z": {
       "note": "NVDA still commit_ready=1 (score drifted 90->86, same top-band-inversion zone) but STILL not landed in ledger after ~9 min across 2 polls. Checked governor: completely clean (not halted, 0 stops, 0 open, 0 realized losses, no reentry lock) -- nothing there explains the lag. Not escalating yet (only 2 observations, not the 3-instance threshold, and this may just be normal latency between the scan/scoring poll producing a COMMIT verdict and a separate, less-frequent commit-execution cron tick). Watching one more cycle before treating this as a real gap between \"gate says COMMIT\" and \"actually commits.\""
+    },
+    "2026-09-11T14:38Z": {
+      "note": "RESOLVED (no bug): NVDA commit-ready lag from the prior 2 cycles explained -- now BLOCKED by plan_thin_size (G-21, contract resting-quote size below floor, fail-closed), score also faded 90->86->79 out of the top band. The gate verdict is a point-in-time scan snapshot; liquidity thinned before the actual commit-execution tick could fire, and the system correctly declined to commit into a now-untradeable contract rather than blindly acting on a stale COMMIT read. Fail-closed working as designed. Ledger still 0 rows for the day, commit_ready now 0."
     }
   },
   "sessions": {
