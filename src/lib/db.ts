@@ -2126,6 +2126,29 @@ async function runMigrations(): Promise<void> {
             OR peak_premium < entry_premium
             OR trough_premium > entry_premium);
   `);
+  // FINDINGS 2026-09-11 (SEV-2, unbracketed watermarks at EXIT): the fix above only brackets
+  // peak/trough_premium around ENTRY. Those columns are latched ONLY during RTH, on a 15-minute
+  // cadence (swing-active-refresh's updateSwingLiveState), so they can never see an overnight/
+  // pre-market gap or an intrabar move between polls — a CLOSED position's REALIZED exit can
+  // land outside the very range its own command-deck card presents as "the full excursion since
+  // entry" (PlayTerminal.tsx's Peak/Trough caption). Live proof 2026-09-11: AAPL (positionId 36)
+  // showed trough -30.5% while its actual realized exit was -56.2%; INTC/MSTR/CCI/IGV all showed
+  // the same shape the same window. Same repair discipline as the entry-premium fix above: only
+  // WIDENS (GREATEST/LEAST), never narrows a genuinely-ratcheted extreme; the WHERE clause makes
+  // it a no-op once converged, so it is safe (and cheap) to re-run on every boot. Going forward,
+  // gradeSwingPosition itself performs the same widening at grade time (mirrored in the pure
+  // swingGradeWatermarkBracket helper below) so newly-closed rows never regress into this state —
+  // this migration only needs to repair rows graded before that fix shipped.
+  await p.query(`
+    UPDATE swing_positions
+       SET peak_premium = GREATEST(peak_premium, entry_premium * (1 + realized_pnl_pct / 100.0)),
+           trough_premium = LEAST(trough_premium, entry_premium * (1 + realized_pnl_pct / 100.0))
+     WHERE entry_premium IS NOT NULL
+       AND realized_pnl_pct IS NOT NULL
+       AND graded_at IS NOT NULL
+       AND (peak_premium < entry_premium * (1 + realized_pnl_pct / 100.0)
+            OR trough_premium > entry_premium * (1 + realized_pnl_pct / 100.0));
+  `);
 
   // ── swing_shadow_positions (2026-08-06, member-authorized) — a DELIBERATELY SEPARATE table, never
   // read by fetchOpenSwingPositions/active-refresh/the member board. A candidate that clears every
@@ -7276,6 +7299,34 @@ export function isMonotonicSwingStatusTransition(from: string, to: string): bool
   return toRank >= fromRank;
 }
 
+/**
+ * Pure mirror of the peak/trough-premium bracket widening in gradeSwingPosition's SQL (and the
+ * matching one-time backfill in ensureSchema — see its FINDINGS 2026-09-11 comment). The ledger's
+ * peak_premium/trough_premium watermarks are latched ONLY during RTH, on a 15-minute cadence
+ * (swing-active-refresh's updateSwingLiveState), so they can never capture an overnight/pre-market
+ * gap or an intrabar move between polls — a CLOSED position's REALIZED exit can therefore land
+ * outside the [trough, peak] range its own command-deck card presents as "the full excursion
+ * since entry" (PlayTerminal.tsx). Live proof 2026-09-11: AAPL (positionId 36) showed trough
+ * -30.5% while its actual realized exit was -56.2%; INTC/MSTR/CCI/IGV showed the same pattern the
+ * same window. Same repair discipline as the entry_premium bracket (FINDINGS 2026-08-06, SEV-2):
+ * only ever WIDENS the bracket, never narrows a genuinely-ratcheted extreme.
+ */
+export function swingGradeWatermarkBracket(
+  entryPremium: number | null,
+  peakPremium: number | null,
+  troughPremium: number | null,
+  realizedPnlPct: number | null
+): { peakPremium: number | null; troughPremium: number | null } {
+  if (entryPremium == null || realizedPnlPct == null) {
+    return { peakPremium, troughPremium };
+  }
+  const exitPremium = entryPremium * (1 + realizedPnlPct / 100);
+  return {
+    peakPremium: Math.max(peakPremium ?? entryPremium, exitPremium),
+    troughPremium: Math.min(troughPremium ?? entryPremium, exitPremium),
+  };
+}
+
 /** Parse a JSONB column value into a plain object. node-pg usually hands back an already
  *  parsed object for jsonb, but some pool/type-parser configs surface it as a string —
  *  handle both so the mappers never leak a raw JSON string to a consumer. */
@@ -7700,7 +7751,22 @@ export async function gradeSwingPosition(
        status = CASE WHEN status = 'ROLLED' THEN 'ROLLED' ELSE $6 END,
        closed_at = COALESCE(closed_at, NOW()),
        graded_at = NOW(),
-       updated_at = NOW()
+       updated_at = NOW(),
+       -- FINDINGS 2026-09-11 (SEV-2, unbracketed watermarks at EXIT) — same widen-only bracket as
+       -- the entry_premium fix (2026-08-06), mirrored in the pure swingGradeWatermarkBracket
+       -- helper above. Applied HERE (at grade time) so a newly-CLOSED row's realized exit can
+       -- never land outside the range its own card presents as "the full excursion since entry" —
+       -- the one-time ensureSchema backfill only repairs rows graded before this shipped.
+       peak_premium = CASE
+         WHEN $5 IS NOT NULL AND entry_premium IS NOT NULL
+           THEN GREATEST(COALESCE(peak_premium, entry_premium), entry_premium * (1 + $5 / 100.0))
+         ELSE peak_premium
+       END,
+       trough_premium = CASE
+         WHEN $5 IS NOT NULL AND entry_premium IS NOT NULL
+           THEN LEAST(COALESCE(trough_premium, entry_premium), entry_premium * (1 + $5 / 100.0))
+         ELSE trough_premium
+       END
      WHERE id = $1 AND graded_at IS NULL`;
   const params = [
     id,

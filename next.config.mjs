@@ -65,9 +65,18 @@ const embedSecurityHeaders = securityHeaders
       : h,
   );
 
-const remotePatterns = [
-  { protocol: "https", hostname: "images.unsplash.com" },
-];
+// Empty on purpose. `images.unsplash.com` was scaffold boilerplate from the original
+// Next.js starter template (present since the very first commit) — grepped the whole
+// codebase and found ZERO `<Image>` usages (or any other reference) pointing at it or
+// any other external host; every real `<Image src=...>` in the app resolves to a static
+// local asset under public/images/. Next's `/​_next/image` optimizer accepts a `url` query
+// param for ANY host listed here regardless of whether the app's own components ever
+// reference it — so an unused remotePattern is pure attack surface for zero product
+// benefit, most concretely for image-processing CVEs like the AVIF RCE this repo just
+// patched (GHSA-2xp9-vwfh-vxw4, PR #4804) against a Next.js version that had it. Add a
+// real entry back here only alongside an actual `<Image src="https://...">` call site
+// that needs it.
+const remotePatterns = [];
 
 import os from "os";
 import path from "path";

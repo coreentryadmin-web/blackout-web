@@ -9,6 +9,7 @@ import {
   isMonotonicSwingStatusTransition,
   coalescePinnedColumns,
   SWING_POSITION_PINNED_COLUMNS,
+  swingGradeWatermarkBracket,
 } from "./db";
 
 // The swing ledger (PR-10) is schema-only and Postgres is NOT exercised in CI (same
@@ -773,4 +774,63 @@ test("ensureSchema: the watermark backfill only ever WIDENS the bracket, and con
   // NEVER fabricates: a row with no entry premium has no observed mark to bracket around, so it is
   // left entirely alone rather than seeded from a mark it never traded at.
   assert.doesNotMatch(stmt, /entry_premium IS NULL/);
+});
+
+// FINDINGS 2026-09-11 (SEV-2, unbracketed watermarks at EXIT): peak_premium/trough_premium are
+// latched ONLY during RTH on swing-active-refresh's 15-minute cadence, so a CLOSED position's
+// REALIZED exit — which can reflect an overnight/pre-market gap or an intrabar move the poll
+// never sampled — can land outside the [trough, peak] range the command-deck card presents as
+// "the full excursion since entry" (PlayTerminal.tsx). Live proof: AAPL (positionId 36) closed
+// -56.19% while its tracked trough was only -30.5%; INTC/MSTR/CCI/IGV showed the same shape the
+// same window. swingGradeWatermarkBracket is the pure mirror of the same widen-only bracket now
+// applied both at grade time (gradeSwingPosition) and via a one-time backfill (ensureSchema).
+
+test("swingGradeWatermarkBracket: widens the trough to include a realized exit worse than any tracked low", () => {
+  // AAPL's real numbers: entry 5.90, tracked trough 4.10 (-30.5%), but realized_pnl_pct -56.19%
+  // implies an exit premium of ~2.585 — below the tracked trough.
+  const { peakPremium, troughPremium } = swingGradeWatermarkBracket(5.9, 5.98, 4.1, -56.19);
+  assert.ok(troughPremium! < 2.6 && troughPremium! > 2.57, `trough should widen to ~2.585, got ${troughPremium}`);
+  assert.equal(peakPremium, 5.98, "peak is untouched — the exit was not a new high");
+});
+
+test("swingGradeWatermarkBracket: widens the peak to include a realized exit better than any tracked high", () => {
+  // Mirror case: a winning exit whose implied premium exceeds the tracked peak (a gap UP the
+  // 15-min poll never sampled) must widen peak_premium, not leave a card showing a peak below
+  // the position's own realized win.
+  const { peakPremium, troughPremium } = swingGradeWatermarkBracket(2.0, 2.5, 1.8, 150);
+  assert.equal(peakPremium, 5.0, "peak widens to the implied exit premium (2.0 * 2.5 = 5.0)");
+  assert.equal(troughPremium, 1.8, "trough is untouched — the exit was not a new low");
+});
+
+test("swingGradeWatermarkBracket: a realized exit inside the already-tracked range never narrows the bracket", () => {
+  const { peakPremium, troughPremium } = swingGradeWatermarkBracket(5.0, 6.0, 4.0, 10); // exit = 5.5, inside [4,6]
+  assert.equal(peakPremium, 6.0);
+  assert.equal(troughPremium, 4.0);
+});
+
+test("swingGradeWatermarkBracket: never fabricates a bracket without an entry premium or a grade", () => {
+  assert.deepEqual(swingGradeWatermarkBracket(null, 6.0, 4.0, -56.19), { peakPremium: 6.0, troughPremium: 4.0 });
+  assert.deepEqual(swingGradeWatermarkBracket(5.9, 5.98, 4.1, null), { peakPremium: 5.98, troughPremium: 4.1 });
+});
+
+test("swingGradeWatermarkBracket: a null tracked watermark (never latched at all) seeds from entry, then widens", () => {
+  const { peakPremium, troughPremium } = swingGradeWatermarkBracket(5.9, null, null, -56.19);
+  assert.ok(troughPremium! < 2.6, `trough should widen to the implied exit, got ${troughPremium}`);
+  assert.equal(peakPremium, 5.9, "peak seeds from entry (the implied exit did not exceed it)");
+});
+
+test("gradeSwingPosition: SQL brackets peak/trough around the implied exit premium at grade time", () => {
+  const src = dbSource();
+  const start = src.indexOf("export async function gradeSwingPosition");
+  const end = src.indexOf("export async function", start + 1);
+  const body = src.slice(start, end > 0 ? end : undefined);
+  // Same widen-only GREATEST/LEAST shape as the entry-premium bracket, keyed off the implied exit
+  // premium (entry_premium * (1 + realized_pnl_pct / 100)) rather than entry_premium itself.
+  assert.match(body, /peak_premium = CASE/);
+  assert.match(body, /GREATEST\(COALESCE\(peak_premium, entry_premium\), entry_premium \* \(1 \+ \$5 \/ 100\.0\)\)/);
+  assert.match(body, /trough_premium = CASE/);
+  assert.match(body, /LEAST\(COALESCE\(trough_premium, entry_premium\), entry_premium \* \(1 \+ \$5 \/ 100\.0\)\)/);
+  // Guarded — a grade call with no realized_pnl_pct (e.g. a bare status flip) must never touch
+  // the watermarks at all, and a row with no entry_premium has nothing to bracket around.
+  assert.match(body, /WHEN \$5 IS NOT NULL AND entry_premium IS NOT NULL/);
 });
