@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T01:23:56.475Z",
+  "lastUpdated": "2026-09-11T01:37:40.225Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -471,6 +471,11 @@
       "at": "2026-09-11T01:23:56.475Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "Full read-through of LegacyPlayTechnicalsRail.tsx (214 lines, the 'Why we picked it'/'Scoring factors'/'Levels & technicals'/'Gates & checks' four-column technicals footer) -- all fields trace correctly to real data, no dead-wiring, no sign errors. confluence/flowStreakDays confirmed genuinely mapped from confirming_signals/flow_streak_days (reinforcing the earlier finding that this data reaches real UI). tierFactors-vs-ThesisChecklistPanel fallback (only show the older checklist panel when the newer tier.factors array is empty) is a sensible, intentional design, not a gap. Attempted to populate the v5 picksTaxonomySchema (defined 2026-09-10, never populated) with the one real DECIDED pick from the 90-day window -- could not get individual ticker/thesis without admin API access (GET /api/admin/nighthawk/analytics is admin-gated); the aggregate by_conviction data confirms only 1 decided pick exists (conviction A, loss) with the large wrong_direction=13/target_unreachable=8 failure-mode counts being pre-decision diagnostic tags on still-open positions (per the already-documented geometryWinRateGap pattern), not additional confirmed losses. Correctly did NOT fabricate a taxonomy entry from insufficient data -- schema status remains accurate as-is ('no resolved picks classified yet, insufficient sample'). No new issues this cycle. healthcheck:legacy steady GREEN."
+    },
+    {
+      "at": "2026-09-11T01:37:40.225Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "Traced the Legacy->Swing cross-navigation link end to end ('Active on Swings Open ->' button, shown when play.swingPromoted): dispatchGotoSwing(ticker) fires a CustomEvent (goto-swing.ts) -> NightHawkFeed.tsx's listener catches it, calls setSwingFocusTicker(ticker.toUpperCase()) + selectView('SWING') -> swingFocusTicker is genuinely passed through as HorizonDeck's focusTicker prop (not a dead state variable). Fully wired, no gap. This is now 6 consecutive cycles of genuine, thorough verification (manage rail, geometry, technicals rail, low_n chip, cross-nav link) turning up zero new issues after yesterday's real 5-bug sweep -- reading as the surface actually being clean now, not neglect. healthcheck:legacy steady GREEN (resolved=28). Not forcing a finding."
     }
   ],
   "knownOpenItems": {
