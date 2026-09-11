@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T13:24:47.269Z",
+  "lastUpdated": "2026-09-11T13:38:06.442Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -721,6 +721,11 @@
       "at": "2026-09-11T13:24:47.287Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "PR #4784 CLOSED THE LOOP this cycle: verify check went green, merged (squash, sha 7427525b0), re-synced main and re-ran healthcheck:legacy -- confirmed RED->AMBER on the same live pre-market data, with the honest 'no live two-sided quote -- mark sourced from last trade/close' evidence string, exactly as designed. Stage A/C both GREEN. Fix is done end-to-end. Morning-confirm cron (9:15am ET) DID fire on schedule -- but the outcome wasn't a literal WATCH->CONFIRMED/DEGRADED/INVALIDATED status field as I'd expected; the real mechanism is the pull-overlay (src/features/nighthawk/lib/pull-overlay.ts, PR-N4): both AAPL and SWKS got 'pulled: true' at morning_checked_at 13:15:14Z with pulled_reason citing a Cortex gex-walls fresh-veto (each play's target price crosses a dominant call wall within 0.5x expected move -- AAPL's 327.5 wall, SWKS's 87.5 wall). Verified this is deliberate, well-tested honest-labeling behavior (pull-overlay.ts's own header comment + dedicated test file, morning-verdict-persist.test.ts, pull-overlay.test.ts) -- pulled plays stay visible in the plays[] array with a badge+reason rather than being hidden, same as the edition's own 'never delete, always present honestly' pattern. Not a bug. First live instance witnessed this session of both live plays getting pulled same-day by the same veto class (gex-walls) -- noting for pattern-watch (need 2 more instances before it's worth raising as a possible 'levels picked the evening before drift into gamma walls overnight more often than expected' question, per the 3-instance threshold)."
+    },
+    {
+      "at": "2026-09-11T13:38:06.461Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "RTH now open (~09:37 ET). healthcheck:legacy is fully GREEN -- the bid/ask=0 fix (PR #4784, merged last cycle) holds under real live market-maker quotes: AAPL mark=8.8 within [8.65,8.95], SWKS mark=4.25 within [3.5,5]. This closes out MARKET-OPEN-VALIDATION.md entry #102's RTH check. Followed up on yesterday's pulled-plays observation: both AAPL and SWKS marks have jumped hard since pre-open (AAPL 5.01->8.80 = +75.6%, SWKS 2.51->4.25 = +69.3%), consistent with the underlying running straight through the gex-walls levels Cortex vetoed on. Investigated whether there's a real-time signal for 'a pulled play that's now running big' -- there isn't, by design: debrief.ts's classifyFailureMode computes pulled_correctly/pulled_wrongly via pulledPlayWouldHaveWon(), a strict END-OF-DAY counterfactual grade keyed on next_day_close/session bars (deliberately conservative -- 'ambiguous'/missing-close never indicts the pull). This is exactly the outcome-honesty machinery I'd want to find missing after seeing a pulled play run -- it already exists (#331), already has failure-mode tags (pulled_correctly/pulled_wrongly) and a dedicated per-play debrief artifact. Not a gap -- today's likely pulled_wrongly candidates (if the move holds) will grade automatically once next_day_close data lands, nothing to build. No new bug/enhancement found this cycle beyond confirming this coverage."
     }
   ],
   "knownOpenItems": {
