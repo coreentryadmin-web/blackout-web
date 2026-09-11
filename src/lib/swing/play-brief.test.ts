@@ -4,6 +4,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { composeSwingPlayBrief } from "./play-brief";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
+import type { HorizonPlay } from "@/lib/horizon-plays";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -51,6 +52,84 @@ test("composeSwingPlayBrief: WATCH WAIT recommendation uses WAIT label, not raw 
   assert.ok(entry, "expected Entry section");
   assert.match(entry!.body, /\*\*Entry stance:\*\* WAIT/);
   assert.doesNotMatch(entry!.body, /\*\*Entry stance:\*\* HOLD/);
+});
+
+// Live repro 2026-09-11 (Ask Largo standing mandate — multi-position-same-ticker identity check):
+// APPS/BAND/INSP/TWST each carried TWO concurrent, genuinely independent live Banger-engine
+// positions on the same ticker (different strike/expiry/entry/P&L) because
+// `horizonPlayFromBangerPosition` never stamps `HorizonPlay.positionId` even though it is
+// documented as the ticker-collision disambiguator. A ticker-only brief request silently resolved
+// to ONE of them with no indication the other existed. This must now be disclosed.
+test("composeSwingPlayBrief: OPEN play with a same-ticker sibling live position discloses it (does not silently hide it)", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "APPS",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 64,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:APPS260918C00013000",
+      strike: 13,
+      expiry: "2026-09-18",
+      right: "C",
+      dte: 8,
+      mid: 0.2,
+      bid: null,
+      ask: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: 0,
+    },
+    scoreFloor: 60,
+    reason: "Banger breakout +8.7% · 13C 2026-09-18",
+    entryPremium: 0.2,
+    livePnlPct: -12.5,
+    liveStatus: "OPEN",
+    committedAt: "2026-09-10T20:15:25.368Z",
+  };
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      ticker: "APPS",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.37,
+      mark: 0.475,
+      pnlPct: 28.4,
+    }),
+    asOf: "2026-09-11T15:00:00.000Z",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(sib, "must disclose the concurrent sibling position instead of silently omitting it");
+  assert.match(sib!.body, /13C 2026-09-18/);
+  assert.match(sib!.body, /2 concurrent live position/);
+});
+
+test("composeSwingPlayBrief: OPEN play with no same-ticker siblings omits the disclosure section", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", entry: 0.37, mark: 0.475, pnlPct: 28.4 }),
+    asOf: "2026-09-11T15:00:00.000Z",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.equal(sib, undefined, "no sibling exists — section must not appear");
 });
 
 test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope headline, not raw status (2026-09-10 gap fix)", () => {
