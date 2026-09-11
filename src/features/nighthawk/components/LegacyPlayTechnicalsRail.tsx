@@ -3,7 +3,6 @@
 import { clsx } from "clsx";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { targetReachabilityNote } from "@/features/nighthawk/lib/target-reachability";
-import { regimeAlignmentNote } from "@/features/nighthawk/lib/regime-alignment";
 import {
   legacyMorningHeadline,
   legacyScorecardLine,
@@ -25,17 +24,7 @@ function factorTone(points: number): "up" | "down" | "muted" | undefined {
   return "muted";
 }
 
-export function LegacyPlayTechnicalsRail({
-  row,
-  currentRegime = null,
-}: {
-  row: LegacyBoardTableRow | null;
-  /** Today's live macro regime (LegacyMacroContext.regime) — compared against the pick's own
-   *  regime, captured at ~7pm ET publish time, to flag a next-day thesis that has gone stale
-   *  overnight. Optional so callers without macro context (e.g. tests, closed-day review) still
-   *  render everything else unchanged. */
-  currentRegime?: string | null;
-}) {
+export function LegacyPlayTechnicalsRail({ row }: { row: LegacyBoardTableRow | null }) {
   if (!row) return null;
 
   const play: TerminalPlay = row.play;
@@ -44,7 +33,6 @@ export function LegacyPlayTechnicalsRail({
     play.targetAtrMultiple != null ? targetReachabilityNote(play.targetAtrMultiple) : null;
   const morningLine = legacyMorningHeadline(play);
   const tierFactors = play.tierFactors ?? [];
-  const regimeAlignment = regimeAlignmentNote(play.regime, currentRegime);
 
   return (
     <footer className="legacy-board-technicals" aria-label={`${row.ticker} pick reasoning and technicals`}>
@@ -174,9 +162,6 @@ export function LegacyPlayTechnicalsRail({
 
         <LegacyDetailSection title="Gates & checks" className="legacy-board-technicals-col">
           <LegacyDetailBullets>
-            {regimeAlignment ? (
-              <LegacyDetailBullet label="Regime" value={regimeAlignment.label} tone={regimeAlignment.tone} />
-            ) : null}
             {morningLine ? (
               <LegacyDetailBullet
                 label="Pre-market"
