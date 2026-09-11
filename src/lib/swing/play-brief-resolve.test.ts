@@ -381,3 +381,50 @@ describe("resolveSwingPlayForBrief: a separately-supplied positionId must resolv
     );
   });
 });
+
+// BUG FOUND 2026-09-11 (Ask Largo standing mandate — roll-narrative trace, follow-up to #4794's
+// OCC-identity fix). root_position_id is STICKY to the very first leg (roll.ts), never to an
+// immediate parent, so a chain rolled TWICE — root(id=1)→rolled child(id=2, root_position_id=1)→
+// currently-open grandchild(id=3, root_position_id=1) — cannot be found via id=2: no open row has
+// id=2 or root_position_id=2, and the graded row that IS id=2 is ROLLED (not CLOSED), which
+// closedDeckSourceFromRow correctly refuses. Before the fix this silently fell through to an
+// unrelated ticker-only fallback instead of the live continuation.
+describe("resolveSwingPlayForBrief: a chain rolled TWICE still resolves via an INTERMEDIATE leg's id", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("positionId pointing at the first (already-rolled-again) child resolves to the currently-OPEN grandchild leg", async () => {
+    const root = { ...openRow("NRG", 1), status: "ROLLED", graded_at: "2026-09-05T20:00:00.000Z", root_position_id: null, roll_seq: 0 };
+    const child = { ...openRow("NRG", 2), status: "ROLLED", graded_at: "2026-09-08T20:00:00.000Z", root_position_id: 1, roll_seq: 1, contract_strike: 115 };
+    const grandchild = { ...openRow("NRG", 3), status: "OPEN", graded_at: null, root_position_id: 1, roll_seq: 2, contract_strike: 120 };
+    // An UNRELATED second open NRG position (a totally different chain) — without this, a single
+    // open row for the ticker would trivially "win" via loadOpenTerminalPlay's own `matches.length
+    // === 1` fallback regardless of id matching, masking whether the chain-root resolution is
+    // actually doing any work. With two open candidates, only correct id/root/chain-root matching
+    // can pick the right one.
+    const unrelated = { ...openRow("NRG", 99), status: "OPEN", graded_at: null, root_position_id: null, roll_seq: 0, contract_strike: 200 };
+
+    mockOpenRows = [grandchild, unrelated];
+    mockClosedRows = [root, child, grandchild, unrelated];
+    mockLaneRows = []; // no unrelated WATCH candidate should be needed or picked
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:NRG",
+      ticker: "NRG",
+      positionId: 2, // the INTERMEDIATE leg's id — not the root (1), not the live leg (3)
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    // TerminalPlay.contract is a formatted label string (types.ts), e.g. "120C · 14DTE" — not an
+    // object; the strike is embedded in it, which is enough to prove which leg actually resolved.
+    assert.ok(
+      resolved!.play.contract.includes("120"),
+      `must resolve the currently-OPEN grandchild leg (strike 120), not fall through to an unrelated fallback — got contract "${resolved!.play.contract}"`,
+    );
+    assert.equal(resolved!.play.status, "OPEN", "the resolved play must be the live OPEN leg, not a terminal one");
+  });
+});

@@ -134,6 +134,45 @@ function rowContractMatches(row: SwingPositionRow, strike: number | null, right:
   return rowRight === right;
 }
 
+/**
+ * BUG FOUND 2026-09-11 (Ask Largo standing mandate — roll-narrative end-to-end trace, the natural
+ * follow-up to #4794's OCC-identity fix which explicitly flagged rolls as the one case reconstruction
+ * and ledger values could diverge). Every id-matching test in this file (`loadOpenTerminalPlay`'s
+ * `r.id === hints.positionId || r.root_position_id === hints.positionId`, and `loadClosedPlay`'s
+ * identical shape) assumes a referenced `positionId` is EITHER the live/terminal leg itself OR the
+ * chain's ROOT id. That holds for a chain rolled exactly once (roll_seq 0→1): the child's
+ * `root_position_id` sticks to the very first leg's own id (roll.ts's header: "the chain root is
+ * sticky" — `root_position_id = parent.root_position_id ?? parent.id`), so the root id a caller
+ * bookmarked before the roll still resolves the live child via `root_position_id === positionId`.
+ *
+ * It does NOT hold once a chain rolls a SECOND time. Consider root(id=1)→rolled child(id=2,
+ * root_position_id=1)→currently-open grandchild(id=3, root_position_id=1 — sticky, not 2). A caller
+ * who has id=2 cached (e.g. from a brief shown between the two rolls, or a client that stored the
+ * position id at the time it first became OPEN) gets NO match anywhere: `loadOpenTerminalPlay`'s
+ * openRows (status OPEN/HOLD/TRIM only) contain row 3, whose root_position_id is 1, not 2 — so
+ * `r.root_position_id === 2` never matches; `loadClosedPlay`'s graded rows contain row 2 itself
+ * (`r.id === 2` matches, but its own status is ROLLED so `closedDeckSourceFromRow` correctly refuses
+ * it — CLOSED-only, see closed-plays.ts). The request then silently falls through to the ticker-only
+ * lane/WATCH fallback (`pickLanePlayForBrief`) or a `closedFallback` for an UNRELATED chain on the
+ * same ticker — the exact "silently returns the wrong play" failure mode PR-era comment above already
+ * fixed for the single-roll case, reopened one roll deeper. Confirmed by tracing `root_position_id`'s
+ * assignment in roll.ts (line ~10-13) against every id-matching test in this file — no code path
+ * resolves an INTERMEDIATE leg's id to its chain's current state.
+ *
+ * FIX: resolve the referenced id's own chain root ONCE (a single extra range fetch, since
+ * `fetchSwingPositionsRange` already returns every status including the intermediate ROLLED leg)
+ * and retry both the open and closed lookups against that root — additively, ONLY when the direct
+ * matches already in `resolveSwingPlayForBrief` come back empty, so a single-roll-or-fewer chain
+ * (the overwhelming common case) pays zero extra cost and behaves byte-identically to before.
+ */
+async function resolveChainRootId(ticker: string, positionId: number): Promise<number> {
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const rows = await fetchSwingPositionsRange(since, 500).catch(() => []);
+  const row = rows.find((r) => r.id === positionId && r.ticker.toUpperCase() === ticker.toUpperCase());
+  if (!row) return positionId;
+  return row.root_position_id ?? row.id;
+}
+
 async function loadClosedPlay(ticker: string, positionId: number | null): Promise<TerminalPlay | null> {
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const rows = await fetchSwingPositionsRange(since, 500).catch(() => []);
@@ -293,6 +332,21 @@ export async function resolveSwingPlayForBrief(
 
   if (openPlay && (!status || WORKING.has(status.toUpperCase()))) {
     return { play: openPlay, scanAsOf, scanSessionDay, laneRows: rows };
+  }
+
+  // MULTI-ROLL CHAIN FALLBACK (see resolveChainRootId's doc comment) — only reached when the direct
+  // id matches above (open ledger + closed-by-id) both came back empty, so this never runs for a
+  // chain rolled once or not at all; it only pays its extra lookup for the genuinely rare deeper case.
+  if (positionId != null) {
+    const chainRootId = await resolveChainRootId(ticker, positionId);
+    if (chainRootId !== positionId) {
+      const chainOpenPlay = await loadOpenTerminalPlay(ticker, { positionId: chainRootId, strike, right, status });
+      if (chainOpenPlay && (!status || WORKING.has(status.toUpperCase()))) {
+        return { play: chainOpenPlay, scanAsOf, scanSessionDay, laneRows: rows };
+      }
+      const chainClosed = await loadClosedPlay(ticker, chainRootId);
+      if (chainClosed) return { play: chainClosed, scanAsOf, scanSessionDay, laneRows: rows };
+    }
   }
 
   const lanePlay = pickLanePlayForBrief(rows, ticker, { status, strike, right });
