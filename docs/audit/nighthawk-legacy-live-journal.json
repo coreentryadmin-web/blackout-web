@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T05:22:02.633Z",
+  "lastUpdated": "2026-09-11T05:37:35.268Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -551,6 +551,11 @@
       "at": "2026-09-11T05:22:02.633Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy steady GREEN (A_edition/B_marks/C_record, resolved=28, same AAPL/SWKS cohort). PR #4767 (the BIE-router-unwired finding from last cycle) still draft -- undraft retry hit the GitHub MCP rate limit again (recurring pattern this session), mergeable_state 'blocked' pending CI + undraft. No new CI/review events on it yet. Record data (win_rate_pct still null, 0 decided of 22 scoreable, all still OPEN) is unchanged from the last pull ~25h ago -- consistent with the existing 'daily, not every-15-min' cadence for that check (nothing resolves faster than next-session close for a next-day digest product). No new bugs/enhancements surfaced this lighter cycle after last cycle's major finding; will retry PR #4767 undraft + CI check next cycle and resume deeper hunting once that's clear."
+    },
+    {
+      "at": "2026-09-11T05:37:35.286Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). PR #4767 undraft failed a THIRD consecutive cycle on the GitHub MCP write rate limit ('API rate limit already exceeded for user ID 284440397') -- confirmed via get_status that CI has not even started yet (0 statuses, pending), consistent with CLAUDE.md's documented draft-deadlock mechanics (many CI configs skip draft PRs entirely, so nothing runs until undraft succeeds). Not escalating yet -- this exact rate-limit pattern has cleared within 1-3 cycles every other time this session (PRs #4750/#4754/#4761/#4765 all eventually got undrafted/merged, usually by a parallel session beating my own retry). Will keep retrying each cycle; if it's still stuck past ~5-6 cycles (unusually long for this pattern) will consider posting the report finding as a plain comment on #4076 instead of relying on the PR merging (already done -- see prior cycle) and flag the undraft-stuck state explicitly. No new Legacy bugs/enhancements surfaced this cycle; nothing else due for periodic re-check per knownOpenItems (geometryWinRateGap/legacyDte5Gap not due, gate-compound-funnel pull not due)."
     }
   ],
   "knownOpenItems": {
