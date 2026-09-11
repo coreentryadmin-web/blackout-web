@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T23:19:25.493Z",
+  "lastUpdated": "2026-09-11T23:21:47.323Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -936,6 +936,11 @@
       "at": "2026-09-11T23:19:25.494Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
       "result": "Full suite came back clean (13776 pass / 0 fail / 3 skipped). Merged latest main into the R:R-display fix branch (clean, no conflicts), re-verified 45/45 tests post-merge, pushed, opened PR #4813 -- undraft succeeded on the FIRST attempt this time (no rate-limit hit). PR confirmed open, not draft, CI pending."
+    },
+    {
+      "at": "2026-09-11T23:21:47.324Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN, stable (HPE mark=2.91, DELL mark=18.15). PR #4813 CI still running (mergeable_state:blocked), no undraft needed this time -- already open/non-draft. Will check CI status next cycle."
     }
   ],
   "knownOpenItems": {
