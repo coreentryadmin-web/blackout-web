@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T01:08:03.994Z",
+  "lastUpdated": "2026-09-11T01:23:56.475Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -466,6 +466,11 @@
       "at": "2026-09-11T01:08:03.994Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3)",
       "result": "Outcome-honesty forensics, fresh angle: pulled segments.current from GET /api/market/nighthawk/record?days=14 -- 28 resolved, only 1 DECIDED (0 wins/1 loss), 20 still open, low_n:true correctly flagged (honest about the tiny decided sample, not overstating confidence). Verified low_n is NOT silently computed-and-dropped (the exact class of bug this session found 3 times already): grepped for real render sites, confirmed HawkRecordStrip.tsx genuinely renders a <LowNChip /> component gated on cur.low_n in both its render paths. Also read through TradeExcursionGraphic (TerminalPremiumPanels.tsx, entry/peak/current excursion bar) -- correctly branches closed-vs-open pnl source (exitPnlPct for closed, legacyPrimaryPnlPct for open), no issues found on this pass (this is Vector/0DTE-shared code, not Legacy-exclusive, so a deeper dive would risk cross-lane duplication of effort). Fourth consecutive cycle with no new finding after yesterday's 5-bug sweep -- the honesty/wiring checks keep coming back genuinely clean, not just unexamined. healthcheck:legacy steady GREEN (resolved=28, stable)."
+    },
+    {
+      "at": "2026-09-11T01:23:56.475Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "Full read-through of LegacyPlayTechnicalsRail.tsx (214 lines, the 'Why we picked it'/'Scoring factors'/'Levels & technicals'/'Gates & checks' four-column technicals footer) -- all fields trace correctly to real data, no dead-wiring, no sign errors. confluence/flowStreakDays confirmed genuinely mapped from confirming_signals/flow_streak_days (reinforcing the earlier finding that this data reaches real UI). tierFactors-vs-ThesisChecklistPanel fallback (only show the older checklist panel when the newer tier.factors array is empty) is a sensible, intentional design, not a gap. Attempted to populate the v5 picksTaxonomySchema (defined 2026-09-10, never populated) with the one real DECIDED pick from the 90-day window -- could not get individual ticker/thesis without admin API access (GET /api/admin/nighthawk/analytics is admin-gated); the aggregate by_conviction data confirms only 1 decided pick exists (conviction A, loss) with the large wrong_direction=13/target_unreachable=8 failure-mode counts being pre-decision diagnostic tags on still-open positions (per the already-documented geometryWinRateGap pattern), not additional confirmed losses. Correctly did NOT fabricate a taxonomy entry from insufficient data -- schema status remains accurate as-is ('no resolved picks classified yet, insufficient sample'). No new issues this cycle. healthcheck:legacy steady GREEN."
     }
   ],
   "knownOpenItems": {
