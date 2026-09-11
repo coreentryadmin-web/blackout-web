@@ -70,6 +70,14 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   if (play.archetype) lines.push(`**Archetype:** ${play.archetype.replace(/_/g, " ")}`);
   if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
   if (play.regime) lines.push(`**Discovery read:** ${play.regime}`);
+  if (play.sectorLeadershipFacts) {
+    const f = play.sectorLeadershipFacts;
+    const verb = f.deltaPct >= 0 ? "leading" : "lagging";
+    lines.push(
+      `**Industry read:** ${verb} **${f.benchmarkLabel}** (${f.benchmarkEtf}) by ${Math.abs(f.deltaPct).toFixed(1)}% ` +
+        `over 10 sessions (${fmtPct(f.nameReturnPct)} vs ${fmtPct(f.groupReturnPct)}).`,
+    );
+  }
   // recNote is NOT repeated here — Management (open bucket, play-brief.ts) and Verdict (watch
   // bucket) already render it verbatim. Duplicating it produced the same sentence twice in one
   // brief (FINDINGS 2026-09-06, live NRG SWING_NRG_34) and crowded out this section's actual job:

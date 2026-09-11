@@ -225,6 +225,54 @@ function pctReturnOverSessions(closes: number[], n: number): number | null {
 }
 
 /**
+ * The RAW facts behind `industryGroupRs01`'s 0-1 score — the name's and the benchmark's own %-returns
+ * over the lookback, plus their delta. Computed and discarded by `industryGroupRs01` today (nothing
+ * downstream of the 0-1 score ever sees WHICH ETF a name benchmarks against or BY HOW MUCH it is
+ * leading/lagging) — this is the additive, thin wrapper that recovers those facts so a consumer (the
+ * swing play-brief's "Why this setup" section) can surface a concrete, checkable read instead of a bare
+ * pillar score. NOT direction-signed (unlike the 0-1 score) — `deltaPct` is the raw name-vs-group spread,
+ * so a trader reads "leading/lagging" in the same sense for a long or a short.
+ *
+ * Null (honest absence, never fabricated) when there's no benchmark or either return can't be computed —
+ * mirrors `industryGroupRs01`'s own null discipline exactly.
+ */
+export interface IndustryGroupRsFacts {
+  benchmarkEtf: string;
+  benchmarkLabel: string;
+  kind: "industry" | "sector";
+  /** The name's own %-return over the lookback. */
+  nameReturnPct: number;
+  /** The benchmark ETF's %-return over the same lookback. */
+  groupReturnPct: number;
+  /** nameReturnPct − groupReturnPct — positive ⇒ leading the group, negative ⇒ lagging it. */
+  deltaPct: number;
+}
+
+export function industryGroupRsFacts(args: {
+  benchmark: GroupBenchmark | null | undefined;
+  nameCloses: number[];
+  benchmarkCloses: number[] | null | undefined;
+  lookback?: number;
+}): IndustryGroupRsFacts | null {
+  const { benchmark, nameCloses, benchmarkCloses } = args;
+  if (!benchmark) return null;
+  const lookback = args.lookback ?? INDUSTRY_GROUP_RS_LOOKBACK;
+
+  const nameRet = pctReturnOverSessions(nameCloses, lookback);
+  const groupRet = pctReturnOverSessions(benchmarkCloses ?? [], lookback);
+  if (nameRet == null || groupRet == null) return null;
+
+  return {
+    benchmarkEtf: benchmark.etf,
+    benchmarkLabel: benchmark.label,
+    kind: benchmark.kind,
+    nameReturnPct: nameRet,
+    groupReturnPct: groupRet,
+    deltaPct: nameRet - groupRet,
+  };
+}
+
+/**
  * The industry-group relative-strength read (0–1) that GROUNDS `sectorLeadership01` and thus drives the
  * SECTOR_ROTATION fit. It is the name's return vs its GROUP benchmark's return over the lookback, DIRECTION-
  * SIGNED exactly like the SPY rel-strength pillar: for a SHORT both returns are negated so LEADING the group

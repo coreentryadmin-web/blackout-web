@@ -725,6 +725,17 @@ export interface HorizonDeckSource {
    *  pre-commit WATCH/lane candidate (Cortex only runs on committed rows), a pre-wire-in row,
    *  or a non-SWING caller — honest absence, never fabricated (Largo contract §3 absence). */
   cortex?: unknown;
+  /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal, echoed off the
+   *  dossier (`HorizonPlay.sectorLeadershipFacts`) — see `whyThisSetupSection`. Null/absent when no
+   *  benchmark resolved or not enough history. */
+  sectorLeadershipFacts?: {
+    benchmarkEtf: string;
+    benchmarkLabel: string;
+    kind: "industry" | "sector";
+    nameReturnPct: number;
+    groupReturnPct: number;
+    deltaPct: number;
+  } | null;
 }
 
 /**
@@ -980,6 +991,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     exitAt: src.exitAt ?? null,
     exitPnlPct: fin(src.exitPnlPct),
     tierLabel: convictionFromScore(Math.round(src.score)),
+    sectorLeadershipFacts: src.sectorLeadershipFacts ?? null,
     // Pinned Cortex evidence from entry_context.cortex — parsed structurally, honestly null
     // when absent (pre-commit candidate, pre-wire-in row, or a malformed/foreign blob).
     cortex: readCortexView(src.cortex ?? null),
