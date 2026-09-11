@@ -1898,6 +1898,53 @@ test("flowIntelSection: prior-session 0DTE must not render desk alignment (Largo
   assert.equal(section, null, "yesterday's 0DTE stance must not read as live flow intel");
 });
 
+test("flowIntelSection: a committed CONDOR's nominal direction must not read as a directional alignment/conflict claim", () => {
+  // A CONDOR's `direction` column is NOMINAL provenance only (the fade side of the pin it came
+  // from) — the structure is delta-neutral, so comparing it against swing's directional call and
+  // printing "aligned"/"conflict" fabricates a directional signal the 0DTE desk never took.
+  const eco = {
+    ticker: "SPY",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    zerodte_today: {
+      session_date: "2026-09-11",
+      direction: "long", // nominal fade-side only — real structure is neutral
+      score: 78,
+      conviction: "high",
+      status: "committed",
+      first_flagged_at: "2026-09-11T14:00:00Z",
+      is_condor: true,
+    },
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-11");
+  assert.ok(section, "condor row should still render a flow section");
+  assert.doesNotMatch(section!.body, /\*\*aligned\*\*/);
+  assert.doesNotMatch(section!.body, /\*\*conflict\*\*/);
+  assert.match(section!.body, /sold iron condor/);
+});
+
+test("flowIntelSection: a non-condor directional 0DTE row still renders the aligned\\/conflict claim", () => {
+  const eco = {
+    ticker: "SPY",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    zerodte_today: {
+      session_date: "2026-09-11",
+      direction: "long",
+      score: 78,
+      conviction: "high",
+      status: "committed",
+      first_flagged_at: "2026-09-11T14:00:00Z",
+      is_condor: false,
+    },
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-11");
+  assert.ok(section);
+  assert.match(section!.body, /\*\*aligned\*\*/);
+});
+
 test("watchForSection: CLOSED bucket suppresses the live ticker-level thesis note (not this trade's thesis)", () => {
   // serving-ingest.ts computes thesisBreak from a LIVE, present-tense "is there a fresh setup on
   // this ticker right now" read — unrelated to the specific, already-resolved CLOSED position. Live
