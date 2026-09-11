@@ -162,6 +162,9 @@
     },
     "2026-09-11T19:07Z": {
       "note": "RECURRING: 2nd instance today of the same board-upstream-degradation pattern -- upstream_ok:false + empty ledger (0 rows), starting by 19:07 UTC, still degraded at 19:08:33 UTC (20+s in, ongoing at time of this write). Same signature as the first incident (17:38-~17:43 UTC, resolved in ~5min): /record stays available:true throughout and confirms SMR still open/ungraded, no data loss -- isolated to /board ledger-construction path again. This is now 2 instances of the identical failure mode in ~90 minutes during live RTH, each with a real open winning position (SMR) temporarily invisible to members. Not yet at the 3-instance escalation threshold but getting close -- watching for a 3rd occurrence, which would warrant a stronger follow-up on the PR #4076 thread (already reported the 1st instance there) rather than a fresh report. Still no AWS creds this session to check infra directly."
+    },
+    "2026-09-11T19:15Z": {
+      "note": "RESOLVED: 2nd board-upstream incident self-healed by 19:14:11 UTC (started ~19:07, so ~7min duration -- longer than the 1st incidents ~5min but same pattern, self-resolving, no data loss). All 4 rows correctly restored. Pattern now: 2 incidents in ~90 min, ~5-7min each, both self-healing, both isolated to /board ledger-construction (record stays healthy throughout both). SMR back to +27.03%, still HOLD. Watching for a 3rd occurrence -- if it recurs again this session, will post a follow-up on the PR #4076 thread with the full 3-instance pattern (durations, timestamps) since that crosses the noise-discipline threshold for a stronger escalation."
     }
   },
   "sessions": {
