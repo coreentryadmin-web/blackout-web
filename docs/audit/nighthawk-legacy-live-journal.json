@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T02:21:52.104Z",
+  "lastUpdated": "2026-09-11T02:37:27.735Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -491,6 +491,11 @@
       "at": "2026-09-11T02:21:52.104Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "PR #4761 CI still verify/CodeQL in_progress (~10min elapsed, normal range). healthcheck:legacy steady GREEN, no changes since last cycle. Quiet cycle -- just shipped the regime-alignment enhancement last cycle, not forcing another new item immediately after."
+    },
+    {
+      "at": "2026-09-11T02:37:27.736Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "PR #4761: verify + CodeQL both GREEN (verify ran 02:17-02:28 UTC), mergeable_state clean. Attempted undraft via mcp__github__update_pull_request -- hit the documented GitHub MCP server rate limit again ('API rate limit already exceeded for user ID 284440397'), same recurring pattern as PR #4754 yesterday -- clears in 1-3 cycles typically. Still draft, not yet merged. Will retry next cycle. healthcheck:legacy steady GREEN, no new issues."
     }
   ],
   "knownOpenItems": {
