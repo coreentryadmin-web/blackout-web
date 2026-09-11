@@ -630,6 +630,65 @@ test("tradeManagerNarrativeSection: TRIM recommendation keeps the 'into strength
   assert.match(section!.body, /Bank partial into strength; don't give back peak/);
 });
 
+// Live NRG repro, 2026-09-11: the position round-tripped from +132.7% to +2% with ZERO trim
+// ever banked — the desk had been recommending TRIM the whole way up, but "Desk says TRIM —
+// bank partial into strength" never disclosed that nothing auto-executes, so a member reading
+// that line has no way to tell "already protected" from "still 100% exposed, act yourself".
+// This is the product-honesty gap: disclose plainly whenever trimsFired is 0 (the trigger has
+// already been crossed — that's why rec is TRIM at all — but nothing has actually been banked).
+test("tradeManagerNarrativeSection: TRIM recommendation discloses advisory-only when nothing has been banked yet (live NRG repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "TRIM",
+        pnlPct: 132.7,
+        peak: 132.7,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 5.0, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Nothing's banked yet — this is advisory only; place the trim yourself, the desk does not execute trades/,
+    `expected an explicit advisory-only disclosure when trimsFired is 0, got: ${section!.body}`,
+  );
+});
+
+// Sibling: once at least one trim rung HAS actually fired (mechanical + status===TRIM, per
+// adapters.ts's gating comment), the position is no longer 100% exposed — the costliest gap
+// (silent full exposure) no longer applies, so the disclosure should not fire.
+test("tradeManagerNarrativeSection: TRIM recommendation does NOT add the advisory-only disclosure once a trim rung has already fired", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "TRIM",
+        recommendation: "TRIM",
+        pnlPct: 8.6,
+        peak: 129.7,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Nothing's banked yet — this is advisory only/);
+});
+
 // FINDINGS 2026-09-10: degradedReadLine (the "Live read" fallback bullet, fires only when Vector
 // spot isn't wired on this tick) independently carried the SAME peak-pnlPct point-difference bug
 // right beside actionNarrative's copy in this same file — a 4th call site found while fixing the
