@@ -1126,6 +1126,32 @@ test("dataFreshnessSection: WATCH play with markIsSync does not warn mark age un
   assert.equal(section, null, "WATCH static chain mid should not emit mark-age warning");
 });
 
+test("dataFreshnessSection: bias is never directional — a sync-quote-without-timestamp caveat is a DATA QUALITY fact, not a market read, and must not render as a Bearish pill (Ask Largo 2026-09-11)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", direction: "LONG", markIsSync: true, markAsOf: null }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(section, "OPEN play with an unsynced mark must still emit the freshness caveat");
+  assert.match(section!.body, /Mark age unknown/);
+  // BieBias (bullish/bearish/neutral/mixed) renders a directional pill in the UI
+  // (BiasPill, src/features/largo/answer/BieChips.tsx) — labeling a data-freshness
+  // caveat "bearish" tells a member the desk sees a bearish signal on a LONG play
+  // that has none; freshness/data-quality gaps are neutral facts, not market reads.
+  assert.equal(
+    section!.bias,
+    "neutral",
+    "a mark-timestamp caveat must never render as a directional (bearish) pill",
+  );
+});
+
 test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is false", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

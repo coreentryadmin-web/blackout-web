@@ -983,11 +983,14 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
     );
   }
   if (!lines.length) return null;
-  return {
-    title: "Data freshness",
-    body: lines.join("\n"),
-    bias: play.markIsSync && playExpectsLiveOptionMark(play.status) ? "bearish" : "neutral",
-  };
+  // `bias` is a DIRECTIONAL read (bullish/bearish/neutral/mixed) — the UI renders it as a
+  // literal "Bullish"/"Bearish" pill (BiasPill, src/features/largo/answer/BieChips.tsx). This
+  // section carries only data-QUALITY facts (mark timestamp missing, scan/vector/GEX staleness,
+  // HELIX pipeline lag) — none of them are a market read, so tagging the section "bearish"
+  // whenever the mark lacks a live timestamp told members the desk saw a bearish signal on
+  // plays that could just as easily be LONG, with zero connection to actual direction. Always
+  // "neutral" here — a caveat about data quality, never a synthesized market call.
+  return { title: "Data freshness", body: lines.join("\n"), bias: "neutral" };
 }
 
 /** Build all intelligence sections for the current play state. */
