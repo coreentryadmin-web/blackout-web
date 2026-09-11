@@ -1945,6 +1945,53 @@ test("flowIntelSection: a non-condor directional 0DTE row still renders the alig
   assert.match(section!.body, /\*\*aligned\*\*/);
 });
 
+test("flowIntelSection: a persisting anomaly re-written across two 30min cron cycles must render once, not twice", () => {
+  // Live reproduction (NRG 2026-09-11): the market-regime-detector cron writes flow_anomalies
+  // every 30min but only dedups (anomaly_type, ticker) within a 15-minute window at WRITE time,
+  // so a pattern still active on the next cron cycle writes a second row with identical
+  // anomaly_type/detail and only a newer detected_at. Undeduped, the brief rendered the exact
+  // same "DIRECTIONAL_FLOW_SKEW" bullet twice in the "Flow anomalies" section.
+  const eco = {
+    ticker: "NRG",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    recent_anomalies: [
+      {
+        anomaly_type: "DIRECTIONAL_FLOW_SKEW",
+        detail: "NRG: one-sided call flow — $0.7M calls vs no put premium",
+        direction: "bullish",
+      },
+      {
+        anomaly_type: "DIRECTIONAL_FLOW_SKEW",
+        detail: "NRG: one-sided call flow — $0.7M calls vs no put premium",
+        direction: "bullish",
+      },
+    ],
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay());
+  assert.ok(section);
+  const occurrences = section!.body.split("DIRECTIONAL_FLOW_SKEW").length - 1;
+  assert.equal(occurrences, 1, "identical anomaly_type+detail must render once, not once per write cycle");
+});
+
+test("flowIntelSection: two genuinely DIFFERENT anomalies on the same ticker both render", () => {
+  const eco = {
+    ticker: "NRG",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    recent_anomalies: [
+      { anomaly_type: "DIRECTIONAL_FLOW_SKEW", detail: "NRG: call-skewed", direction: "bullish" },
+      { anomaly_type: "PREMIUM_SPIKE", detail: "NRG: premium spike vs 20d avg", direction: null },
+    ],
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay());
+  assert.ok(section);
+  assert.match(section!.body, /DIRECTIONAL_FLOW_SKEW/);
+  assert.match(section!.body, /PREMIUM_SPIKE/);
+});
+
 test("watchForSection: CLOSED bucket suppresses the live ticker-level thesis note (not this trade's thesis)", () => {
   // serving-ingest.ts computes thesisBreak from a LIVE, present-tense "is there a fresh setup on
   // this ticker right now" read — unrelated to the specific, already-resolved CLOSED position. Live
