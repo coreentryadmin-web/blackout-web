@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T18:37:40.053Z",
+  "lastUpdated": "2026-09-11T18:52:13.922Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -841,6 +841,11 @@
       "at": "2026-09-11T18:37:40.070Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy all 4 stages GREEN. SWKS mark pulled back more noticeably this cycle (6.05->5.25) so did a live spot check: SWKS last=88.79 vs target=88.52 -- has pulled back from its earlier ~91-92 peak but is STILL just barely above the full target line (+0.3%). AAPL last=332.94 vs target=344.57 -- still trending positive, well off target. Both remain net favorable vs their pulled-pre-open levels; normal intraday pullback, not a reversal below target yet. PR #4797 undraft rate-limited again, CI remains green/mergeable."
+    },
+    {
+      "at": "2026-09-11T18:52:13.938Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy all 4 stages GREEN, stable (AAPL mark=7.93, SWKS mark=5.30). PR #4797 undraft rate-limited again, CI remains green/mergeable. No new correctness issues this cycle."
     }
   ],
   "knownOpenItems": {
