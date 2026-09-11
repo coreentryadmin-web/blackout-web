@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T06:24:43.975Z",
+  "lastUpdated": "2026-09-11T06:45:25.811Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -571,6 +571,11 @@
       "at": "2026-09-11T06:24:43.988Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). Coordinator check-in ping (separate trigger, trig_01RsAyqaGDY4x4vEH1dpeVjA) fired this cycle -- answered with a full summary (regime-alignment self-correction, BIE-router finding, all-clean on marks/edition otherwise). Started the live-UI secondary-priority check (proxy-browser.cjs screenshot of /nighthawk, per the standing 'secondary priority, not every cycle' discipline -- overdue this session, hadn't done one yet) -- running in background, will review the screenshot next cycle since it didn't finish within this turn's window. No new bugs/enhancements surfaced yet this cycle pending that screenshot review."
+    },
+    {
+      "at": "2026-09-11T06:45:25.811Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset, extended live-UI investigation)",
+      "result": "Followed up the overdue live-UI check (started last cycle) into a real investigation. Screenshotting /nighthawk with no view param (default 0DTE) rendered the real app shell fine. Screenshotting /nighthawk?view=legacy directly (6 attempts, mixed mobile/desktop UA, 10-18s waits incl. one reaching networkidle) got stuck on the outer NightHawkLoadingSkeleton in all 4 screenshot-confirmed attempts -- no 'Night Hawk' branding, no desk toggle bar. Ran a same-session CONTROL test (?view=zero_dte, 2 dedicated screenshot runs + a separate 3x console-only run) which rendered correctly every screenshot attempt, though one of the 3 console-only zero_dte runs did surface an unrelated chunk-load/404 error -- confirming this sandbox's proxy tunnel has real independent flakiness that could inflate the Legacy failure count. Weighed this carefully (the exact same discipline the regime-alignment mistake earlier today taught): the split (0/4 legacy vs 2/2+1/1 zero_dte, screenshot-confirmed) held even accounting for that noise, so filed it as a real, evidenced but explicitly MODERATE-CONFIDENCE finding rather than either staying silent or overclaiming -- did NOT attempt a code fix since no root cause was identified (NightHawkFeed's outer shell isn't view-gated, so there's no obvious code reason Legacy specifically would differ) and did NOT confirm whether the everyday in-app 'click the Legacy tab' path is also affected (one selector-based click attempt found 0 matches, inconclusive, not re-verified before time ran out this cycle). Filed docs/audit/findings-staging/2026-09-11-legacy-view-cold-load-stuck-skeleton.md, opened PR #4772 -- undraft hit the recurring GitHub MCP rate limit again, will retry. healthcheck:legacy steady GREEN throughout (A_edition/B_marks/C_record, resolved=28). Next concrete step if picked up again: confirm the in-app tab-click path cleanly (fix the selector issue), and/or ask Cursor to reproduce outside this sandbox to settle the proxy-flakiness confound definitively."
     }
   ],
   "knownOpenItems": {
