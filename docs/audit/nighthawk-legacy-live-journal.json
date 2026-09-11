@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T16:22:45.779Z",
+  "lastUpdated": "2026-09-11T16:37:14.302Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -796,6 +796,11 @@
       "at": "2026-09-11T16:22:45.779Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy all 4 API stages GREEN (AAPL mark=9.07, SWKS mark=6.50). Background full suite came back clean (13748 pass / 0 fail / 3 skipped). Merged latest main into the scorecard-hitrate fix branch (clean, no conflicts), re-verified 12/12 tests post-merge, pushed, opened PR #4797 as draft. Undraft hit the recurring GitHub MCP rate limit on the first attempt -- will retry next cycle, same established pattern as #4784/#4792."
+    },
+    {
+      "at": "2026-09-11T16:37:14.317Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy all 4 stages GREEN, stable (AAPL mark=9.07, SWKS mark=6.55). PR #4797 (scorecard all-pulled hit-rate fix) now shows mergeable_state:clean (CI passed) but undraft rate-limited again -- confirmed via a direct merge attempt too ('Pull Request is still a draft'), purely waiting on the GitHub MCP write-limiter, same established pattern. Will keep retrying."
     }
   ],
   "knownOpenItems": {
