@@ -101,12 +101,36 @@ function snapshotAgeSec(asof: string | null): number | null {
   return ageSecFromIso(asof);
 }
 
+// Aligned with the underlying matrix's own max-stale bound (GEX_HEATMAP_MAX_STALE_SEC ?? 90,
+// polygon-options-gex.ts). That layer's never-block stale-handoff (`pickStaleHeatmapForHandoff`)
+// falls back to "any cached copy" once a background rebuild has been failing — with no upper
+// bound on how old that copy is. Observed live 2026-09-11 (RTH): the SAME `calculation_id` served
+// for 4+ minutes (271s+) while this endpoint's own `degraded` flag stayed `false` the whole time —
+// only `buildSnapshotFromHeatmap`'s hardcoded `degraded: false` on any non-null heatmap, with no
+// check of how stale that heatmap turned out to be. The UI already discloses real age honestly
+// (`publicFreshnessCopy`'s "Levels computed N min ago"), but any consumer that trusts `degraded`
+// as the freshness signal instead — a programmatic API caller, an AI crawler reading the JSON
+// directly — was told the feed was fine when it had stalled well past this platform's own
+// definition of "too stale to serve as fresh."
+const STALE_DEGRADED_SEC = 90;
+
 function withAgeFields(snapshot: PublicGexSnapshot): PublicGexSnapshot {
+  const ageSec = snapshotAgeSec(snapshot.asof);
+  const staleButUndeclared =
+    snapshot.available && !snapshot.degraded && ageSec != null && ageSec > STALE_DEGRADED_SEC;
   return {
     ...snapshot,
-    snapshot_data_age_seconds: snapshotAgeSec(snapshot.asof),
+    snapshot_data_age_seconds: ageSec,
     warming_reason:
       snapshot.available || snapshot.degraded ? null : snapshot.warming_reason ?? "warming",
+    ...(staleButUndeclared
+      ? {
+          degraded: true,
+          degraded_note: `Live refresh has stalled — showing the most recent computed snapshot (${Math.round(
+            ageSec / 60
+          )}m old).`,
+        }
+      : {}),
   };
 }
 
