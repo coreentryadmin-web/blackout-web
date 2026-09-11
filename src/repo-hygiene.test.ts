@@ -144,6 +144,45 @@ test("known-orphaned modules stay removed", () => {
   );
 });
 
+/**
+ * Guards against a raw NUL byte (U+0000) silently landing in a tracked source file.
+ *
+ * Found live 2026-09-11 in `src/lib/swing/play-brief-intel.ts` (introduced by #4799): a dedup-key
+ * template literal — intended as `` `${a.anomaly_type} ${a.detail}` `` with a plain space
+ * separator — instead carried a literal `\x00` byte in that exact position. It renders as
+ * invisible whitespace in an editor/terminal (this file's own diff and `git blame` both showed
+ * what looked like an ordinary space), so nothing about reading the code would ever catch it —
+ * the only way to see it was a byte-level scan, which is exactly what this test does. Concretely
+ * it broke line-oriented tooling on the file: plain `grep` (no `-a`) reported it as a binary file
+ * and silently skipped every future search inside it, and `file` classified it as "data" instead
+ * of source. The DEDUP LOGIC itself did not break (V8 strings tolerate an embedded NUL as any
+ * other code unit, so Set-based dedup still worked) — the damage was entirely to the file's
+ * byte-level cleanliness and to every text tool that assumes source files don't contain control
+ * bytes. The exact same pattern (a NUL used as a template-literal join separator) was found
+ * independently in `src/lib/zerodte/calibration.ts` in the same sweep — not fixed here (0DTE is a
+ * different lane's surface), flagged separately.
+ */
+test("no tracked source file contains a raw NUL byte", () => {
+  const files = tracked().filter((p) => /\.(ts|tsx|mjs|cjs|js|jsx)$/.test(p));
+  const bad: string[] = [];
+  for (const file of files) {
+    let buf: Buffer;
+    try {
+      buf = readFileSync(file);
+    } catch {
+      continue; // deleted-but-still-listed in a stale git ls-files cache — not this test's concern
+    }
+    const idx = buf.indexOf(0);
+    if (idx >= 0) bad.push(`${file} (offset ${idx})`);
+  }
+  assert.deepEqual(
+    bad,
+    [],
+    `these tracked files contain a raw NUL byte — almost certainly an accidental control-character ` +
+      `paste where a plain space/character was intended (see this test's doc comment):\n  ${bad.join("\n  ")}`
+  );
+});
+
 test("gitignore entries for node_modules have no trailing slash", () => {
   // A trailing slash restricts the pattern to directories, leaving a same-named symlink or file
   // un-ignored. Every node_modules rule must match regardless of file type.
