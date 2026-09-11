@@ -1126,6 +1126,32 @@ test("dataFreshnessSection: WATCH play with markIsSync does not warn mark age un
   assert.equal(section, null, "WATCH static chain mid should not emit mark-age warning");
 });
 
+test("dataFreshnessSection: bias is never directional — a sync-quote-without-timestamp caveat is a DATA QUALITY fact, not a market read, and must not render as a Bearish pill (Ask Largo 2026-09-11)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", direction: "LONG", markIsSync: true, markAsOf: null }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(section, "OPEN play with an unsynced mark must still emit the freshness caveat");
+  assert.match(section!.body, /Mark age unknown/);
+  // BieBias (bullish/bearish/neutral/mixed) renders a directional pill in the UI
+  // (BiasPill, src/features/largo/answer/BieChips.tsx) — labeling a data-freshness
+  // caveat "bearish" tells a member the desk sees a bearish signal on a LONG play
+  // that has none; freshness/data-quality gaps are neutral facts, not market reads.
+  assert.equal(
+    section!.bias,
+    "neutral",
+    "a mark-timestamp caveat must never render as a directional (bearish) pill",
+  );
+});
+
 test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is false", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
@@ -1583,6 +1609,75 @@ test("meridianCatalystSection: empty successful read states quiet calendar, not 
   assert.ok(section);
   assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
   assert.match(section!.body, /quiet, not missing/);
+});
+
+test("meridianCatalystSection: does not restate the same earnings date catalystsSection already surfaced (audit #16)", () => {
+  // Both sections read the SAME ticker's own upcoming earnings from two independently-sourced
+  // reads: catalystsSection from arsenal.earnings (UW), meridianCatalystSection from the Meridian
+  // Benzinga-backed timeline. When they land on the same date, showing both is the same fact
+  // stated twice with no cross-reference — this test locks meridianCatalystSection to omit its
+  // own copy of that one fact (while still surfacing any OTHER catalyst in the window).
+  const ecosystem = {
+    arsenal: {
+      scope: "single_name",
+      earnings: { earnings_date: "2026-09-10", days_until: 4, report_time: "premarket", is_confirmed: true },
+      fundamentals: null,
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as unknown as EcosystemContext;
+
+  const catalysts = catalystsSection(ecosystem);
+  assert.ok(catalysts);
+  assert.match(catalysts!.body, /2026-09-10/);
+
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "BBWI" }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    ecosystem,
+    vector: null,
+    meridian: {
+      as_of: "2026-09-06 09:00 ET",
+      items: [
+        {
+          id: "earnings:BBWI:2026-09-10",
+          kind: "earnings",
+          title: "BBWI earnings",
+          subtitle: null,
+          date: "2026-09-10",
+          time: null,
+          impact: "high",
+          days_until: 4,
+          ticker: "BBWI",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 8.5,
+          sector_label: "Retail",
+        },
+      ],
+      total_matched: 1,
+    },
+  };
+  ctx.play.ticker = "BBWI";
+
+  const meridian = meridianCatalystSection(ctx);
+  // Not asserting null outright — Meridian may still have something to say (an "other catalyst"
+  // framing), but it must never restate the exact earnings date catalystsSection already showed.
+  if (meridian) {
+    assert.doesNotMatch(
+      meridian.body,
+      /2026-09-10/,
+      "meridianCatalystSection must not restate the same earnings date catalystsSection already surfaced",
+    );
+  }
 });
 
 test("meridianPeerSection: surfaces peer beat rates as dedicated section (not coaching-cap dependent)", () => {

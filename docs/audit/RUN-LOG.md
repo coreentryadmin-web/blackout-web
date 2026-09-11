@@ -4,6 +4,31 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-11 (12:21 UTC) — [SEO] Lane heartbeat: fresh CLS purge+measure GREEN (one transient outlier noted), GSC unchanged 3rd check running
+
+**Severity.** — (no defect found)
+
+Pre-market heartbeat (08:19 ET). PR sweep: 1 open agent PR fleet-wide (#4784, CI-RUNNING,
+nighthawk-legacy — not SEO-lane, not conflicted, nothing to unblock).
+
+Fresh Cloudflare purge + CLS measurement (last full purge+measure was ~12h earlier): purged `/`,
+confirmed first fetch `cf-cache-status: MISS`. Desktop 1440x900 ran **three times** for a clean
+picture: 0.0779 GOOD, then 0.0002 GOOD, then 0.0006 GOOD — the first run's outlier (still under
+the 0.1 threshold either way) did not repeat on two immediate re-runs with zero recorded shifts,
+so read as run-to-run measurement noise (plausibly a live-ticker re-render racing the scroll-
+triggered animation sweep), not a regression — noted rather than silently discarded. Mobile
+430x932: 0.0329 GOOD, consistent with every prior mobile reading. `/api/og` re-fetched with
+Googlebot UA: HTTP 200 `image/png`, still crawlable.
+
+GSC opportunities report: byte-identical to both prior checks today (00:19 UTC and 06:21 UTC) —
+same window (2026-06-11 → 2026-09-08), same 2 striking-distance queries, same 12 deep-demand
+entries. Three consecutive identical pulls over ~12h is consistent with GSC's known 2-3 day
+reporting lag, not a stuck pull (confirmed advancing day-to-day in yesterday's checks). No new
+opportunities. GA4→Ads gap remains the one known, already-escalated blocked item.
+
+No defects found.
+
+---
 ## 2026-09-11 (06:21 UTC) — [SEO] Lane heartbeat: quiet overnight pass, no defects
 
 **Severity.** — (no defect found)
