@@ -4,6 +4,26 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-11 (00:19 UTC) — [SEO] Lane heartbeat: full CLS re-measure GREEN, PR queue empty, GSC unchanged
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET). Three-step check:
+1. Validate-what-shipped, full re-measurement this time (last full purge+measure was ~11h earlier,
+   13:33 UTC): purged Cloudflare edge HTML for `/` (confirmed first fetch `cf-cache-status: MISS`
+   before it re-cached), then measured live — desktop 1440x900 CLS **0.0002 GOOD**, mobile 430x932
+   CLS **0.0337 GOOD**, both against the freshly-purged page, not a stale edge copy. `/api/og`
+   re-fetched with a Googlebot UA: HTTP 200 `image/png` — still crawlable.
+2. PR sweep (`agent-pr-sweep.mjs`): **0 open agent PRs fleet-wide** — nothing to unblock.
+3. New-work scan: `gsc-opportunities-report.mjs` — window genuinely advanced a day
+   (2026-06-10→09-07 to 2026-06-11→09-08, confirming the pull isn't stuck), same 2
+   striking-distance queries as every check yesterday (`gamma three trading` pos 16.4→14.9,
+   `is 0dte gambling` pos 11.5 flat) — minor natural position drift, not a new opportunity. GA4→Ads
+   gap remains the one known, already-escalated blocked item; not re-investigated this cycle.
+
+No defects found.
+
+---
 ## 2026-09-10 (20:38 UTC) — [DISCOVERY] Legacy `healthcheck:legacy` AMBER on stage A investigated and ruled out — pre-5:30pm-ET, not a bug
 
 `npm run healthcheck:legacy` returned overall AMBER: stage A (EDITION) flagged `edition is stale
