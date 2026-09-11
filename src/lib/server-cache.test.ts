@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { serverCache, isDegraded } from "./server-cache";
+import { serverCache, isDegraded, withServerCache, peekServerCache } from "./server-cache";
 
 // Covers the load-bearing guarantee behind null-commentary-cache: when the loader
 // THROWS, serverCache stores nothing and clears the in-flight entry, so the next
@@ -186,6 +186,38 @@ test("maxBlockMs on expired fast lane serves stale instead of blocking refresh",
   // Fast lane must not block on rebuild; background refresh may start after return.
   await new Promise((r) => setImmediate(r));
   assert.ok(invoked <= 1, `expected at most one background refresh, got ${invoked}`);
+});
+
+// Regression for the live 2026-09-11 spx/play staleness bug: peekServerCache's final fallback
+// (`if (hit) return hit.value`) had NO staleness ceiling, unlike withServerCache's own
+// MAX_STALE_AGE_MS guard — so a replica that stopped refreshing served an arbitrarily old cached
+// entry forever via the "instant read" path every peek-first route (spx/play, nighthawk/edition,
+// spx-desk-loader, flows-member-cache, flow-brief) relies on. `maxStaleMs` is test-only surface
+// area so this doesn't need a real 10-minute wait to exercise the real MAX_STALE_AGE_MS ceiling.
+test("peekServerCache refuses to serve a locally-cached entry past its staleness ceiling", async () => {
+  const key = `test:peek-stale-ceiling:${Math.random()}`;
+  const ttl = 5;
+
+  // Populate the local store (short TTL, so it's already logically "expired" almost immediately).
+  await withServerCache(key, ttl, async () => ({ n: 1 }));
+  await new Promise((r) => setTimeout(r, ttl + 5));
+
+  // Redis is a no-op in this test env (REDIS_URL unset), so the entry now lives ONLY in the local
+  // store, past its TTL. Before the fix: peekServerCache still returned { n: 1 } here regardless of
+  // age. After the fix: a tiny maxStaleMs (well under the real age of this entry) makes it refuse.
+  const stale = await peekServerCache(key, { maxStaleMs: 1 });
+  assert.equal(stale, null, "an entry older than the staleness ceiling must not be served via peek");
+
+  // Sanity: the SAME entry, read with a generous ceiling, still comes back — this proves the miss
+  // above is the new ceiling doing its job, not some unrelated store/key bug.
+  const withinCeiling = await peekServerCache(key, { maxStaleMs: 60_000 });
+  assert.deepEqual(withinCeiling, { n: 1 });
+
+  // Default (no opts) uses the real MAX_STALE_AGE_MS (10 minutes) — this entry is only
+  // milliseconds old, so the default path must still serve it (no behavior change for the
+  // overwhelming majority of real callers, which never approach that ceiling).
+  const defaultPeek = await peekServerCache(key);
+  assert.deepEqual(defaultPeek, { n: 1 });
 });
 
 test("maxBlockMs serves fallback instead of blocking on a slow cold loader", async () => {

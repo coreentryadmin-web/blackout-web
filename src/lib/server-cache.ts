@@ -293,8 +293,36 @@ export async function serverCache<T>(
   return withServerCache(key, ttlMs, fn);
 }
 
-/** Read a cached value without invoking the loader (in-memory + Redis, capped read). */
-export async function peekServerCache<T>(key: string): Promise<T | null> {
+/**
+ * Read a cached value without invoking the loader (in-memory + Redis, capped read).
+ *
+ * BUG (found 2026-09-11, live on `/api/market/spx/play`): unlike `withServerCache`, this had NO
+ * staleness ceiling on the final fallback (`if (hit) return hit.value;`). Every "instant read, fire
+ * a background refresh" route (spx/play via `peekSpxPlayState`, nighthawk/edition, spx-desk-loader,
+ * flows-member-cache, flow-brief) calls this FIRST and returns whatever it gets immediately, with no
+ * freshness check of its own — the staleness bound was assumed to live here.
+ *
+ * `store` is a per-PROCESS in-memory Map (one per ECS replica), and `writeRedisCache` sets the Redis
+ * copy's TTL to the SAME short `ttlMs` as the in-memory entry (5s for spx-play-read) — so once ~5s
+ * pass with no fresh write anywhere, the Redis backstop expires too. A replica that only occasionally
+ * serves traffic then has nothing to refresh its own local entry, and this function's old fallback
+ * happily returned that entry's `.value` no matter how old — measured live: `as_of` timestamps 20+
+ * minutes stale, and three consecutive polls from the SAME client landing on different replicas
+ * returned three DIFFERENT scores (24, 10, then a correctly-fresh 0), because each replica's local
+ * cache lagged independently with no shared floor.
+ *
+ * Fix: apply the identical `MAX_STALE_AGE_MS` ceiling `withServerCache` already enforces (see the
+ * "FIX 5a" comment above) to the LOCAL-fallback path here too — measured from the entry's own
+ * `refreshedAt`, not `expiresAt` (an entry can be long past its TTL while still well under the
+ * staleness ceiling; those two are deliberately different budgets). Once a locally-cached entry is
+ * older than the ceiling AND Redis has nothing newer, this now returns `null` instead of the stale
+ * value, so every caller's existing "peek → null → do a real blocking compute" fallback path (already
+ * the design in every route listed above) kicks in rather than silently handing out ancient data.
+ * `maxStaleMs` is overridable (default `MAX_STALE_AGE_MS`) purely so a regression test can exercise
+ * the ceiling without a real 10-minute wait; no caller currently overrides it.
+ */
+export async function peekServerCache<T>(key: string, opts?: { maxStaleMs?: number }): Promise<T | null> {
+  const maxStaleMs = opts?.maxStaleMs ?? MAX_STALE_AGE_MS;
   const now = Date.now();
   const hit = store.get(key) as CacheEntry<T> | undefined;
   if (hit && hit.expiresAt > now) return hit.value;
@@ -307,7 +335,7 @@ export async function peekServerCache<T>(key: string): Promise<T | null> {
     });
     return redisHit.value;
   }
-  if (hit) return hit.value;
+  if (hit && now - hit.refreshedAt <= maxStaleMs) return hit.value;
   return null;
 }
 
