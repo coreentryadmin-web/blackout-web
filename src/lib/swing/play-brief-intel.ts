@@ -825,7 +825,13 @@ export function deskConsensusSection(
 
   return {
     title: "Desk context",
-    body: `Night Hawk's last swing on this name (**${nh.edition_for}**) ${verdict} ${tail}`,
+    // "Night Hawk Legacy's" (not the ambiguous "Night Hawk's") — inside a SWING play brief, "last
+    // swing" reads as "this same Swing engine's own history on this name," but `nighthawk_recent`
+    // is Legacy's next-day-digest pick history, a different product entirely (confirmed by the
+    // `edition_for` field name, Legacy's own vocabulary). Same underlying data source and confusion
+    // as the "Night Hawk Legacy" absence-chip fix (2026-09-10) — this is the sibling gap in the
+    // section that actually narrates it, not just the chip that flags its absence.
+    body: `Night Hawk Legacy's last pick on this name (**${nh.edition_for}**) ${verdict} ${tail}`,
   };
 }
 
