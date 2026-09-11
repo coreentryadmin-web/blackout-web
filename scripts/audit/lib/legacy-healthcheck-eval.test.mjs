@@ -5,6 +5,7 @@ import {
   verdictForEdition,
   verdictForMarkRow,
   verdictForMarks,
+  verdictForPullConsistency,
   verdictForRecord,
 } from "./legacy-healthcheck-eval.mjs";
 
@@ -170,6 +171,105 @@ test("verdictForRecord: buckets NOT summing to resolved is RED (a real payload d
   const res = verdictForRecord({
     fetchOk: true,
     segment: { resolved: 10, wins: 2, losses: 3, opens: 4, ambiguous: 0, unfilled: 0, pulled: 0, stop_data_unavailable: 0 },
+  });
+  assert.equal(res.verdict, "RED");
+});
+
+test("verdictForPullConsistency: fetch failure is RED, never silently skipped", () => {
+  assert.equal(verdictForPullConsistency({ fetchOk: false }).verdict, "RED");
+});
+
+test("verdictForPullConsistency: morning-confirm not yet run for this date is SKIPPED, not AMBER/RED", () => {
+  assert.equal(
+    verdictForPullConsistency({ fetchOk: true, available: false, editionPlays: [], statusPlays: [] }).verdict,
+    "SKIPPED"
+  );
+});
+
+test("verdictForPullConsistency: INVALIDATED verdict with pulled:true agrees — GREEN", () => {
+  const res = verdictForPullConsistency({
+    fetchOk: true,
+    available: true,
+    editionPlays: [{ ticker: "AAPL", pulled: true }],
+    statusPlays: [{ ticker: "AAPL", status: "INVALIDATED" }],
+  });
+  assert.equal(res.verdict, "GREEN");
+});
+
+test("verdictForPullConsistency: CONFIRMED verdict with pulled:false agrees — GREEN", () => {
+  const res = verdictForPullConsistency({
+    fetchOk: true,
+    available: true,
+    editionPlays: [{ ticker: "SWKS", pulled: false }],
+    statusPlays: [{ ticker: "SWKS", status: "CONFIRMED" }],
+  });
+  assert.equal(res.verdict, "GREEN");
+});
+
+test("verdictForPullConsistency: real live 2026-09-11 shape (both plays INVALIDATED+pulled) is GREEN", () => {
+  const res = verdictForPullConsistency({
+    fetchOk: true,
+    available: true,
+    editionPlays: [
+      { ticker: "AAPL", pulled: true, pulled_reason: "Pulled pre-open: Cortex fresh-veto: [gex-walls] ..." },
+      { ticker: "SWKS", pulled: true, pulled_reason: "Pulled pre-open: Cortex fresh-veto: [gex-walls] ..." },
+    ],
+    statusPlays: [
+      { ticker: "AAPL", status: "INVALIDATED", reason: "Cortex fresh-veto: [gex-walls] ..." },
+      { ticker: "SWKS", status: "INVALIDATED", reason: "Cortex fresh-veto: [gex-walls] ..." },
+    ],
+  });
+  assert.equal(res.verdict, "GREEN");
+});
+
+test("verdictForPullConsistency: INVALIDATED verdict but edition never latched pulled — RED split-brain", () => {
+  const res = verdictForPullConsistency({
+    fetchOk: true,
+    available: true,
+    editionPlays: [{ ticker: "AAPL", pulled: false }],
+    statusPlays: [{ ticker: "AAPL", status: "INVALIDATED" }],
+  });
+  assert.equal(res.verdict, "RED");
+  assert.match(res.evidence[0].evidence, /split-brain/);
+});
+
+test("verdictForPullConsistency: pulled:true but no INVALIDATED verdict — RED split-brain the other direction", () => {
+  const res = verdictForPullConsistency({
+    fetchOk: true,
+    available: true,
+    editionPlays: [{ ticker: "AAPL", pulled: true }],
+    statusPlays: [{ ticker: "AAPL", status: "CONFIRMED" }],
+  });
+  assert.equal(res.verdict, "RED");
+});
+
+test("verdictForPullConsistency: a ticker with no morning-confirm row at all is AMBER, not RED", () => {
+  const res = verdictForPullConsistency({
+    fetchOk: true,
+    available: true,
+    editionPlays: [{ ticker: "NVDA", pulled: false }],
+    statusPlays: [],
+  });
+  assert.equal(res.verdict, "AMBER");
+});
+
+test("verdictForPullConsistency: no plays to cross-check is GREEN", () => {
+  const res = verdictForPullConsistency({ fetchOk: true, available: true, editionPlays: [], statusPlays: [] });
+  assert.equal(res.verdict, "GREEN");
+});
+
+test("verdictForPullConsistency: one bad ticker drags the whole stage to RED even if others agree", () => {
+  const res = verdictForPullConsistency({
+    fetchOk: true,
+    available: true,
+    editionPlays: [
+      { ticker: "AAPL", pulled: true },
+      { ticker: "SWKS", pulled: false },
+    ],
+    statusPlays: [
+      { ticker: "AAPL", status: "INVALIDATED" },
+      { ticker: "SWKS", status: "INVALIDATED" },
+    ],
   });
   assert.equal(res.verdict, "RED");
 });
