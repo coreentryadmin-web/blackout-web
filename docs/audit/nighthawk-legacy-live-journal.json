@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T08:22:36.032Z",
+  "lastUpdated": "2026-09-11T08:37:37.172Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -616,6 +616,11 @@
       "at": "2026-09-11T08:22:36.050Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). Quiet cycle, no new bugs/enhancements. Both live plays still WATCH, ~5h20m to 9:15am ET morning-confirm."
+    },
+    {
+      "at": "2026-09-11T08:37:37.188Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "Low-confidence narrative-framing idea (not filing, thinking through it here for continuity): deterministic-edition.ts's thesis builder frames most technical factors relative to the play's direction (short-interest squeeze gated `isLong &&`, skew 'confirms bias' vs 'leans against thesis', GEX wall alignment 'supports upside/downside') but the RSI line (lines 487-489) is direction-blind -- it prints 'RSI overbought.'/'RSI oversold.' as a flat fact regardless of LONG/SHORT, with no caution framing. Tonight's SWKS LONG thesis states 'RSI overbought' sitting unflagged between two bullish factors (squeeze tailwind, relative volume). Investigated whether this is a real inconsistency worth fixing -- concluded it's genuinely ambiguous, not a clear bug: this is a MOMENTUM/breakout-style play (HOD break, gap up, bullish trend all cited), and for that style overbought RSI is often confirmatory (strong momentum), not contrarian -- unlike a mean-reversion strategy where it would be a real caution flag. Framing it as caution unconditionally would risk being WRONG for exactly the play style this system is built around; framing it as bullish confirmation would be presumptuous the other way. Correctly did NOT attempt a fix given this ambiguity (same discipline as not shipping the regime-alignment change without full understanding) -- noting for continuity only, not escalating as a finding. healthcheck:legacy steady GREEN (A_edition/B_marks/C_record, resolved=28). No new bugs this cycle."
     }
   ],
   "knownOpenItems": {
