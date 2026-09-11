@@ -224,13 +224,14 @@ async function fetchStockSnapshotPerformance(
   );
 
   const byTicker = new Map((data.tickers ?? []).map((t) => [t.ticker, t]));
+  const cashSessionOpen = isEtCashRth();
 
   return symbols.map((symbol) => {
     const snap = byTicker.get(symbol.ticker);
     return {
       name: symbol.name,
       ticker: symbol.ticker,
-      change_pct: snapshotChangePctFromRow(snap),
+      change_pct: snapshotChangePctFromRow(snap, cashSessionOpen),
       volume: snap?.day?.v,
     };
   });
@@ -379,9 +380,10 @@ export async function fetchMarketMovers(limit = 20) {
     ),
   ]);
 
+  const cashSessionOpen = isEtCashRth();
   const mapMover = (t: SnapshotTicker) => ({
     ticker: String(t.ticker ?? "").replace("X:", ""),
-    change_pct: snapshotChangePctFromRow(t),
+    change_pct: snapshotChangePctFromRow(t, cashSessionOpen),
     price: t.day?.c ?? t.prevDay?.c ?? 0,
     volume: t.day?.v,
   });
