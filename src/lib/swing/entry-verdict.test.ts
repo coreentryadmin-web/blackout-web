@@ -121,6 +121,41 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(v?.entryAction, "still_buy");
   });
 
+  it("past entry deadline + active commit gate blocks → WAIT with real gate blocks, not null (live MU repro 2026-09-11)", () => {
+    // Live repro: MU flagged 2026-07-24 (STANDARD sub-lane, 3-day entry validity), so by
+    // 2026-09-11 `pastEntryDeadline` fires FIRST inside evaluateSwingEntryEnterability
+    // (entry-enterability.ts) and returns `dont_buy` with the generic "Entry-validity window
+    // expired" reason BEFORE ever reaching its own gate-blocked check — so `commitGateBlockedBy`
+    // (3 real, live gate codes: G-S12 halt-feed-stale, G-S4 regime-degraded, G-S6 confluence)
+    // is computed but never returned on that enterability result. swingEntryVerdict's `dont_buy`
+    // branch then unconditionally set `gateBlocks: null` for anything short of
+    // INVALIDATED/persistence-gap, silently discarding those three already-computed, real gate
+    // reasons — so every consumer of `TerminalPlay.gateBlocks` (the play-brief Entry section,
+    // play-brief-intel's "Before entry, clear:", play-brief-narrative-coaching) rendered nothing,
+    // even though the underlying gate evidence existed and was already mapped to member-facing
+    // text via `commitGateBlocksForVerdict` for the sibling "wait" branch two cases above.
+    const v = swingEntryVerdict({
+      servingSection: "WATCH",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      subLane: "STANDARD",
+      anchoredAt: "2026-07-24T13:38:31.000Z",
+      commitGateBlockedBy: [
+        "gate:G-S12:halt_feed_stale",
+        "gate:G-S4:regime_degraded",
+        "gate:G-S6:confluence",
+      ],
+      nowMs: Date.parse("2026-09-11T04:37:00.000Z"),
+    });
+    assert.equal(v?.entryAction, "dont_buy");
+    assert.match(v?.recNote ?? "", /Entry-validity window expired/);
+    assert.ok(v?.gateBlocks?.length, "gateBlocks should carry the real, already-computed gate reasons");
+    const codes = v?.gateBlocks?.map((g) => g.code) ?? [];
+    assert.ok(codes.includes("g_s12_halt_feed_stale"));
+    assert.ok(codes.includes("g_s4_regime"));
+    assert.ok(codes.includes("g_s6_confluence"));
+  });
+
   it("COMMIT_NOW + legacy NIGHT HAWK only → WAIT with legacy_exempt, not BUY (Q22)", () => {
     const v = swingEntryVerdict({
       servingSection: "COMMIT_NOW",

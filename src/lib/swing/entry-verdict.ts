@@ -253,7 +253,19 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
         deckStatus: "WATCH",
         recommendation: "HOLD",
         recNote: enter.reason,
-        gateBlocks: null,
+        // `commitGateBlockedBy` is computed above regardless of which `dont_buy` reason fired
+        // (deadline-expired, contract-expired, extended-chase — see
+        // evaluateSwingEntryEnterability's ordering, entry-enterability.ts) — it is NOT specific
+        // to the "wait" branch two cases up. Dropping it here unconditionally silently discarded
+        // real, already-mapped gate evidence (live repro: MU 2026-09-11 — 3 active commit gates
+        // G-S12/G-S4/G-S6 computed and then thrown away because the entry-validity deadline had
+        // ALSO expired, which fires first in evaluateSwingEntryEnterability's if-chain and wins
+        // the `reason`/`recNote`) whenever a play was BOTH past its entry window AND still gate-
+        // blocked — a common combination for a persistently-WATCH name. `recNote`/`actionLabel`
+        // stay the deadline-expired text (that's still the primary, correct verdict); this only
+        // restores the secondary gate detail so play-brief/play-brief-intel/narrative-coaching
+        // (all gated on `play.gateBlocks?.length`) can surface it instead of rendering nothing.
+        gateBlocks: commitGateBlockedBy.length ? commitGateBlocksForVerdict(commitGateBlockedBy) : null,
         actionLabel: "WAIT",
         entryAction: "dont_buy",
       };
