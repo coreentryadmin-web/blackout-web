@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T12:18:46.500Z",
+  "lastUpdated": "2026-09-11T12:19:54.279Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -691,6 +691,11 @@
       "at": "2026-09-11T12:18:46.514Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, real bug caught and fixed mid-cycle)",
       "result": "healthcheck:legacy went RED this cycle (~08:08am ET) -- Stage B flagged AAPL/SWKS 'mark outside [bid=0, ask=0]'. Investigated rather than assuming: traced options-snapshot.ts's own documented mark ladder (mid(bid,ask) -> last trade -> day close) and midOf()'s existing convention ('bid may be 0 for deep-OTM; require ask>0 for a REAL quote') -- pre-market Polygon genuinely returns bid=ask=0 with no live NBBO yet, and the product code CORRECTLY falls the mark back to last close (hence the plausible 5.01/2.51 values). The bug was in the HEALTHCHECK'S OWN eval logic (verdictForMarkRow in legacy-healthcheck-eval.mjs), which never applied that same ask>0 convention and flagged a real, correctly-computed mark as a false sign-error. Fixed with full rigor: 2 new regression tests (RED-proven: 1/29 fail pre-fix, 29/29 pass post-fix), live-verified via the actual runner (RED->AMBER on the exact live data), full suite re-run clean (13722 pass/0 fail/3 skipped), tsc clean. Filed docs/audit/findings-staging/2026-09-11-legacy-healthcheck-bidask-zero-false-positive.md + MARKET-OPEN-VALIDATION.md entry #101, opened PR #4784 -- undraft hit the recurring GitHub MCP rate limit, will retry next cycle. This is a small, well-scoped, unambiguous fix (audit-tooling only, zero product-code blast radius) so merges via the standing CARVE-OUT once CI is green, no further review needed. Both live plays still WATCH, ~1h55m to 9:15am ET morning-confirm."
+    },
+    {
+      "at": "2026-09-11T12:19:54.279Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
+      "result": "healthcheck:legacy on main still shows the known RED (bid=ask=0 false positive, PR #4784 not yet merged) -- expected, not a new issue, confirms the live pre-market pattern is still ongoing and the fix genuinely hasn't landed yet. Undraft retry hit the GitHub MCP rate limit again (now several cycles running). All fix work (code + tests + findings + validation-log entry) is fully committed/pushed on the branch and verified multiple ways -- nothing more to do on this PR until either the rate limit clears or a parallel session merges it (the established recurring pattern). Both live plays still WATCH, ~1h50m to 9:15am ET morning-confirm."
     }
   ],
   "knownOpenItems": {
