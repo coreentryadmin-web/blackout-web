@@ -4,6 +4,29 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-11 (13:34 UTC) — [RTH — SEO] Market-open check: gamma-snapshot live refresh confirmed, gamma flip now real (was null yesterday)
+
+**Severity.** — (no defect found)
+
+RTH wake right at market open. Self-checked clock: `TZ=America/New_York date` → Fri Sep 11
+09:33:51 EDT, within Mon-Fri 09:30-13:00 ET on a trading day.
+
+`/tools/gamma-snapshot`'s live API polled twice, 6s apart: `asof`/`calculation_id` both advanced
+(`SPX:1789133632952` → `SPX:1789133655314`), spot moved (7665.09 → 7667.30) — genuine live
+refresh, not cached. Today's gamma profile differs meaningfully from every prior check this
+window: `flip: 7822.13` (a real numeric flip, not `null`) with `posture: "short"` because spot
+sits below it — a different, valid state than yesterday's "no flip at any strike" case, confirming
+the field responds to real market structure rather than being stuck. `change_pct: null` on both
+polls, right at the open — same transient-at-open pattern observed yesterday's first RTH check
+(populated shortly after) — not a defect.
+
+CLS not re-measured this cycle: already freshly confirmed GOOD on both viewports ~70 minutes
+earlier (12:21 UTC entry, full Cloudflare purge + 3x desktop + mobile runs) — re-running now would
+be pure repetition per the standing "monitor, don't churn" discipline.
+
+No defects found. Staying in the narrow RTH-only scope until 13:00 ET.
+
+---
 ## 2026-09-11 (12:21 UTC) — [SEO] Lane heartbeat: fresh CLS purge+measure GREEN (one transient outlier noted), GSC unchanged 3rd check running
 
 **Severity.** — (no defect found)
