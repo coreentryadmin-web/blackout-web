@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T12:19:54.279Z",
+  "lastUpdated": "2026-09-11T12:23:33.505Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -696,6 +696,11 @@
       "at": "2026-09-11T12:19:54.279Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
       "result": "healthcheck:legacy on main still shows the known RED (bid=ask=0 false positive, PR #4784 not yet merged) -- expected, not a new issue, confirms the live pre-market pattern is still ongoing and the fix genuinely hasn't landed yet. Undraft retry hit the GitHub MCP rate limit again (now several cycles running). All fix work (code + tests + findings + validation-log entry) is fully committed/pushed on the branch and verified multiple ways -- nothing more to do on this PR until either the rate limit clears or a parallel session merges it (the established recurring pattern). Both live plays still WATCH, ~1h50m to 9:15am ET morning-confirm."
+    },
+    {
+      "at": "2026-09-11T12:23:33.505Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "PR #4784 still draft, undraft rate-limited again (2nd cycle now). healthcheck:legacy on main still shows the known/expected RED (fix not yet merged) -- same bid=ask=0 pre-market pattern, nothing new. Will keep retrying. Both live plays still WATCH, ~1h35m to 9:15am ET morning-confirm."
     }
   ],
   "knownOpenItems": {
