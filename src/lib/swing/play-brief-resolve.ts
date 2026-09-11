@@ -266,8 +266,15 @@ export async function resolveSwingPlayForBrief(
     }),
   ]);
 
-  if (parsed.positionId != null) {
-    const closed = await loadClosedPlay(ticker, parsed.positionId);
+  // NOTE: this checks `positionId` (the fully-resolved caller ID — a `?positionId=` query
+  // param OR the playId-embedded one), never `parsed.positionId` alone. A caller supplying
+  // positionId as a separate param (the route's own documented shape: `?playId=SWING:NRG&
+  // ticker=NRG&positionId=34`, and Largo's tool-call convention) must resolve a CLOSED/ROLLED
+  // position exactly as reliably as one embedding it in the playId string — otherwise a
+  // ticker with both a historical closed position AND a current live WATCH/lane candidate
+  // would silently return the WRONG, unrelated play (live repro: SWING:INTC — see FINDINGS).
+  if (positionId != null) {
+    const closed = await loadClosedPlay(ticker, positionId);
     if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows };
   }
 
@@ -291,8 +298,8 @@ export async function resolveSwingPlayForBrief(
     };
   }
 
-  if (parsed.positionId != null || input.playId.includes("CLOSED")) {
-    const closed = await loadClosedPlay(ticker, parsed.positionId);
+  if (positionId != null || input.playId.includes("CLOSED")) {
+    const closed = await loadClosedPlay(ticker, positionId);
     if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows };
   }
 
