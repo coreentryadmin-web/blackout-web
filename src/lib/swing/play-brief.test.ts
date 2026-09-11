@@ -1832,3 +1832,75 @@ test("composeSwingPlayBrief: Position section omits blended P&L when no trim has
   assert.doesNotMatch(position!.body, /Blended P&L/, `got: ${position!.body}`);
   assert.doesNotMatch(position!.body, /open runner only/, `got: ${position!.body}`);
 });
+
+test("composeSwingPlayBrief: Position section does not silently echo entry as Mark when the quote never synced (live IMPP/EBS/QCML repro 2026-09-11)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:IMPP (and EBS, QCML — all open
+  // Engine-B/banger positions with no live-synced quote yet) rendered "Entry: $0.10 / Mark: $0.10
+  // / P&L: —" for all three. `horizonPlayFromBangerPosition` (banger-lane-merge.ts) computes
+  // `contract.mid = row.last_mark ?? entry_premium` as a deliberate numeric fallback for
+  // downstream ranking/exit-ladder math, and that `mid` flows straight into `play.mark` — so
+  // "Mark" here is byte-identical to Entry only because it IS Entry, not because the position
+  // is flat. Every other section of this brief already discloses the unsynced mark via
+  // `play.markIsSync` (unavailableSources' "option mark: sync quote without freshness
+  // timestamp", and the "Data freshness" section's "Mark age unknown" line) — this was the one
+  // place, the Position section's own Mark line, that printed the raw fallback number unguarded.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.1,
+      mark: 0.1, // banger-lane-merge.ts's `mark ?? entry` fallback — literally the entry price
+      pnlPct: null,
+      peak: null,
+      markIsSync: true,
+      markAsOf: null,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-11T08:16:00.000Z",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Entry: \*\*\$0\.10\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(
+    position!.body,
+    /Mark: \*\*\$0\.10\*\*/,
+    `Mark must not silently echo the entry-fallback price as a real quote, got: ${position!.body}`,
+  );
+  assert.match(position!.body, /Mark: \*\*unknown\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section still shows a real Mark once the quote has synced (markIsSync false)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.1,
+      mark: 0.14,
+      pnlPct: 40,
+      peak: 40,
+      markIsSync: false,
+      markAsOf: "2026-09-11T13:35:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-11T13:36:00.000Z",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.14\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /Mark: \*\*unknown\*\*/, `got: ${position!.body}`);
+});
+
