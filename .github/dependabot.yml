@@ -19,6 +19,26 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # svix >=2.2.0 (through the latest published 2.5.0, checked 2026-09-11) ships a
+      # Webhook.verify() that silently drops its return value — `this.inner.verify(...)`
+      # is called but never `return`ed, and the method's own type signature was changed
+      # to `: undefined` to match. 2.1.0 (currently pinned) still has `return
+      # this.inner.verify(...)`. This is a real regression in svix's shipped dist, not a
+      # types-only mismatch: our route.ts's `evt = wh.verify(...) as WebhookEvent` cast
+      # is what surfaces it as a `tsc` error (bumped versions correctly refuse to let
+      # `undefined` masquerade as `WebhookEvent`) — but silencing that error with a wider
+      # cast (`as unknown as WebhookEvent`) would NOT be a fix: `evt` would be `undefined`
+      # at runtime on every webhook call, and `const { type, data } = evt` would throw,
+      # breaking Clerk user.created/user.updated processing (tier sync, welcome emails)
+      # entirely. See docs/audit/findings-staging/2026-09-11-svix-2.2-verify-drops-return-value.md
+      # for the confirmed root cause (traced through svix's actual published dist across
+      # 2.1.0/2.2.0/2.3.0/2.5.0). Without this, dependabot keeps re-bundling the broken
+      # bump into the shared minor-and-patch group every week, blocking ~14 otherwise-safe
+      # updates behind one library only upstream can fix. Remove this once svix ships a
+      # patched verify() that returns the parsed payload again.
+      - dependency-name: "svix"
+        versions: [">=2.2.0"]
 
   - package-ecosystem: github-actions
     directory: "/"
