@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T04:08:03.780Z",
+  "lastUpdated": "2026-09-11T04:22:44.302Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -521,6 +521,11 @@
       "at": "2026-09-11T04:08:03.780Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3, new hour)",
       "result": "PR #4765 (the revert) CONFIRMED MERGED (merged_at 2026-09-11T04:06:45Z) -- merged by a parallel session before my own scheduled retry ran, same recurring pattern all session. Verified directly against origin/main: regime-alignment.ts no longer exists on main, and LegacyPlayTechnicalsRail.tsx/LegacyPickLogBoard.tsx byte-match their pre-#4761 originals (confirmed via git show against origin/main). This closes the self-correction loop cleanly -- the flawed regime-alignment feature is fully retracted from main, will deploy and drain the bad code from prod on the next ECS rollout automatically. Full arc for the record: found the enhancement idea (2 cycles ago) -> shipped it as PR #4761 without tracing play.regime to its real source -> merged+deployed -> live-verified it (per the standing discipline) -> caught that it silently rendered nothing on the 2 live WATCH plays -> investigated WHY instead of shrugging it off -> discovered play.regime is a morning-confirm-status label, not a market regime, meaning the feature would have shown a permanent false-positive warning on every CONFIRMED play -> reverted via PR #4765 -> confirmed merged and correctly restored. The catch depended entirely on following the 'verify the live deployed feature, don't just trust green CI' discipline this file already establishes -- reinforces why that step stays non-negotiable even for changes that look 'purely additive, can't possibly break anything.' healthcheck:legacy steady GREEN (resolved=28). Returning to normal per-cycle bug/enhancement hunting next cycle."
+    },
+    {
+      "at": "2026-09-11T04:22:44.302Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "Verified PR #4765's revert has NOT deployed yet despite being merged to main: current ECS deployment :1440 (IN_PROGRESS, 7/7) traces to commit 7e68343 (a Swings PR #4764), which is the DIRECT PARENT of my revert commit (1b9a5b7) -- confirmed via git merge-base that the revert is NOT an ancestor of :1440's image. No newer task-def revision exists yet (checked list_task_definitions, :1440 is the newest). This means the buggy regime-alignment code technically remains live in production right now, queued behind :1440's own rollout, pending its own build+deploy cycle. NOT escalating as urgent: both live plays (AAPL, SWKS) are still WATCH status (morning confirm hasn't run -- it's ~4:22am ET, the 9:15am ET cron is ~5 hours out), and the bug only manifests on CONFIRMED plays (play.regime becomes a real string only then). So there is no live risk window open right now. Will keep checking each cycle to confirm the revert's own deployment lands well before 9:15am ET. healthcheck:legacy steady GREEN."
     }
   ],
   "knownOpenItems": {
