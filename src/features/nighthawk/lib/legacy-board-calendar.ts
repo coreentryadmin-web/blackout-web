@@ -1,10 +1,21 @@
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import type { VectorBoardCalendarBucket } from "@/features/nighthawk/lib/vector-board-table-utils";
 
-/** Recent NY session dates (weekdays only) for the Legacy edition calendar strip. */
+/**
+ * Recent NY session dates (weekdays only) for the Legacy edition calendar strip.
+ *
+ * Anchored on the NEXT trading day, not literal wall-clock "now" — matching the edition API's own
+ * `editionFor = nextTradingDayEt(todayEt())` (edition/route.ts). Legacy publishes a next-day digest
+ * each evening: tonight's fresh edition is tagged with TOMORROW's date for the entire
+ * evening-to-midnight-ET window. Anchoring the walk-back on "now" meant that window's freshest
+ * edition (whose rows carry `sessionDate: editionFor`, one day ahead) never matched any date this
+ * function returned — silently dropping it from the whole calendar strip, though the pick table
+ * above it rendered those rows correctly, until the real calendar rolled over past midnight ET.
+ */
 export function legacyEditionSessionDates(count = 14, nowMs = Date.now()): string[] {
   const out: string[] = [];
-  let cursor = nowMs;
+  let cursor = new Date(`${nextTradingDayEt(todayEt(new Date(nowMs)))}T12:00:00`).getTime();
   let guard = 0;
   while (out.length < count && guard < count * 4) {
     guard += 1;
