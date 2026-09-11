@@ -290,6 +290,25 @@ would be the first real evidence against this change and should prompt revisitin
 
 ---
 
+## WATCH LIST — 2026-09-11 coordinator sweep (read this before the routine pass)
+
+- **Ask Largo swing brief: duplicate flow-anomaly bullet.** `flowIntelSection`
+  (`src/lib/swing/play-brief-intel.ts`) rendered the exact same HELIX flow-anomaly
+  bullet twice on live NRG (`DIRECTIONAL_FLOW_SKEW` printed back-to-back, byte-
+  identical) because the `flow_anomalies` write-time dedup window (15min) is
+  narrower than the writer's own 30-min cron interval, so a persisting pattern
+  writes a fresh identical-content row every cycle. Fixed by deduping on
+  `(anomaly_type, detail)` at render time (keeps the most recent, since the query
+  is already `ORDER BY detected_at DESC`). **Check at the open:** pull
+  `GET /api/market/swing/play-brief?playId=SWING:<T>&ticker=<T>&status=WATCH` (or
+  OPEN) for any ticker whose flow anomaly has been live for >30min and confirm the
+  "Flow anomalies" section shows it once, not repeated. Also worth periodically
+  re-checking whether the underlying DB-side dedup window itself should widen to
+  match the writer's cadence (noted but deliberately not touched by this fix —
+  see the staged finding for why).
+
+---
+
 ## WATCH LIST — 2026-09-08 live-incident fix (read this before the routine pass)
 
 ### 0a-2a. Largo's swing `committed_count` conflated with open positions — docs/swing-committed-vs-open-clarification
