@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T20:09:20.678Z",
+  "lastUpdated": "2026-09-11T20:22:11.254Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -871,6 +871,11 @@
       "at": "2026-09-11T20:09:20.695Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, v3 full brief)",
       "result": "First AMBER of the day: healthcheck:legacy overall AMBER, Stage A flipped from GREEN 'fresh' to AMBER 'edition is stale' right at market close (~16:07 ET). Investigated via code trace (edition/route.ts) rather than assuming a bug given it's the first time this path fired live all session: resolveNighthawkEdition's 'carry until close' branch (line 218-228) serves the active playable edition UNFLAGGED as fresh while isBeforeOrAtMarketCloseEt(activePlayable.edition_for) is true -- that helper's cutoff is exactly mins<=16*60 (4:00pm ET). Past that cutoff, the code falls through to fetchLatestNighthawkEdition(), finds the 9/11 edition is now older than the requested nextTradingDayEt() key, and correctly sets stale=true. This is the exact, honest, by-design market-close transition (verdictForEdition already treats stale as AMBER not RED) -- not a bug, no fix needed. B/C/D stages all still GREEN (AAPL mark=7.38, SWKS mark=4.90, pull-status agreement holds). Expect Stage A to stay AMBER overnight until tonight's evening-publish cron lands tomorrow's edition -- that's the expected next state, not a new finding each cycle. PR #4797 undraft still rate-limited."
+    },
+    {
+      "at": "2026-09-11T20:22:11.271Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "RTH now closed (per Swings lane's own 20:16 UTC close note). healthcheck:legacy Stage A AMBER continues as expected (market-close staleness, traced and confirmed by-design last cycle); marks frozen at closing values (AAPL 7.38, SWKS 4.90, unchanged from last cycle -- correctly frozen, not drifting post-close). Stages B/C/D all GREEN. CLOSING SPOT CAPTURE for the pulled-plays outcome-honesty thread (final numbers for tomorrow's grade comparison): AAPL closed ~332.45 vs entry_range_high=329.58 / target=344.57 -- closed net positive vs entry but well short of target, NOT a target hit. SWKS closed ~88.40 vs entry_range_high=85.47 / target=88.52 -- closed JUST BELOW the full target line by $0.12 (-0.14%), after touching as high as ~91-92 intraday and briefly clearing target for several hours around midday. This is razor-thin: whether debrief.ts's pulledPlayWouldHaveWon() grades SWKS 'target' (win) or 'open'-with-positive-return (also a win per that function's rule: outcome==='open' with realized return >0) depends on the actual persisted session-close bar, which may differ slightly from this last-trade snapshot. Either way this is very likely to grade a real pulled_wrongly instance once tomorrow's outcome cron runs the actual next_day_close-based grade -- flagged clearly here so a fresh session/cycle can pull GET /api/market/nighthawk/record (or the debrief endpoint once available) tomorrow and check the actual grade against this close-time observation, rather than re-deriving it from scratch. PR #4797 undraft still rate-limited."
     }
   ],
   "knownOpenItems": {
