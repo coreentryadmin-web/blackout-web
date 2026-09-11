@@ -165,6 +165,9 @@
     },
     "2026-09-11T19:15Z": {
       "note": "RESOLVED: 2nd board-upstream incident self-healed by 19:14:11 UTC (started ~19:07, so ~7min duration -- longer than the 1st incidents ~5min but same pattern, self-resolving, no data loss). All 4 rows correctly restored. Pattern now: 2 incidents in ~90 min, ~5-7min each, both self-healing, both isolated to /board ledger-construction (record stays healthy throughout both). SMR back to +27.03%, still HOLD. Watching for a 3rd occurrence -- if it recurs again this session, will post a follow-up on the PR #4076 thread with the full 3-instance pattern (durations, timestamps) since that crosses the noise-discipline threshold for a stronger escalation."
+    },
+    "2026-09-11T19:37Z": {
+      "note": "SMR (2nd commit) CLOSED as a real winner: +31.08% via thesis-break exit (not the ratchet floor) -- engine detected 2 opposing Cortex readings developing (gex-walls momentum-vs-mean-reversion conflict, combined weight 0.96) and exited proactively at market rather than waiting for a pullback, banking 31.08% of its 35.14% peak. Well-managed, coherent, no red flags -- thesis-break working exactly as designed to lock in gains ahead of a real reversal signal, same mechanism (different favorable outcome) as AAPLs flat-scratch and SPCXs thesis-break loss yesterday. Board upstream_ok:true throughout, no further infra incidents since the 2nd one resolved at 19:14 (2 total today, both self-healed, watching for a 3rd). Session tally, all 4 commits now closed: NVDA scratch 0%, SPXW stop -50%, AAPL flat-scratch -8.78%, SMR winner +31.08%."
     }
   },
   "sessions": {
