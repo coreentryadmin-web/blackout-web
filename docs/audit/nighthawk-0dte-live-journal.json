@@ -156,6 +156,9 @@
     },
     "2026-09-11T17:45Z": {
       "note": "RESOLVED: the /board upstream_ok:false+empty-ledger incident self-healed by ~17:42-43 UTC, board back to upstream_ok:true with all 4 rows correctly restored (SMR HOLD, AAPL/NVDA/SPXW CLOSED) -- total incident duration ~4-6 minutes (17:38 -> ~17:43 UTC), no data loss confirmed throughout via /record. Closing out the PR #4076 report as resolved-by-itself; no further action needed unless it recurs. AAPL (4th commit, caught retroactively via /record last cycle) now visible on board: flat-timeout exit -8.78%, peak only +3.93% (never left +-10% band in 25min), same coherent mechanism as yesterdays RDDT scratch -- no red flags. SMR pulled back from its 35.14% peak to current +18.92%, still well clear of its 0% floor, still HOLD. Session tally so far: NVDA scratch 0%, SPXW stop -50%, AAPL flat-scratch -8.78%, SMR still open +18.92% (peaked 35.14%)."
+    },
+    "2026-09-11T18:45Z": {
+      "note": "Consolidated status after 3 quiet cycles (18:15/18:37/18:45 UTC): SMR still the only OPEN position, oscillating 16-35% (currently +29.73%), never threatened its 0% floor, still HOLD, no new commits since AAPL (4th, 17:40Z). Board upstream_ok:true and stable since the earlier incident resolved. Session tally unchanged: NVDA scratch 0%, SPXW stop -50%, AAPL flat-scratch -8.78%, SMR still running well. Nothing to escalate."
     }
   },
   "sessions": {
