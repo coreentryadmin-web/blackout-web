@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T04:22:44.302Z",
+  "lastUpdated": "2026-09-11T04:37:24.416Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -526,6 +526,11 @@
       "at": "2026-09-11T04:22:44.302Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "Verified PR #4765's revert has NOT deployed yet despite being merged to main: current ECS deployment :1440 (IN_PROGRESS, 7/7) traces to commit 7e68343 (a Swings PR #4764), which is the DIRECT PARENT of my revert commit (1b9a5b7) -- confirmed via git merge-base that the revert is NOT an ancestor of :1440's image. No newer task-def revision exists yet (checked list_task_definitions, :1440 is the newest). This means the buggy regime-alignment code technically remains live in production right now, queued behind :1440's own rollout, pending its own build+deploy cycle. NOT escalating as urgent: both live plays (AAPL, SWKS) are still WATCH status (morning confirm hasn't run -- it's ~4:22am ET, the 9:15am ET cron is ~5 hours out), and the bug only manifests on CONFIRMED plays (play.regime becomes a real string only then). So there is no live risk window open right now. Will keep checking each cycle to confirm the revert's own deployment lands well before 9:15am ET. healthcheck:legacy steady GREEN."
+    },
+    {
+      "at": "2026-09-11T04:37:24.417Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "PROGRESS: new ECS task-def :1441 has started (0/1 running, just launched) -- confirmed via git merge-base --is-ancestor that its image commit (2f7e767) DOES include the revert commit (1b9a5b7). This is the deployment that will finally remove the buggy regime-alignment code from production. Still very early in rollout (0/1), will confirm completion next cycle. Still well ahead of the 9:15am ET morning-confirm cron (the earliest point the bug could actually manifest), so no urgency, just tracking to closure. healthcheck:legacy steady GREEN."
     }
   ],
   "knownOpenItems": {
