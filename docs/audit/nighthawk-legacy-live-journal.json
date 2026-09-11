@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T08:09:41.956Z",
+  "lastUpdated": "2026-09-11T08:22:36.032Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -611,6 +611,11 @@
       "at": "2026-09-11T08:09:41.976Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3, new hour)",
       "result": "Pulled tonight's full published edition text (AAPL/SWKS) and read the actual member-facing thesis narrative directly (hadn't done this specific check this session -- prior checks used the healthcheck API summary, not the raw narrative). Initially suspected a real discrepancy: AAPL's thesis states 'R:R 0.6:1' and SWKS 'R:R 0.5:1', but my own quick mid-based hand-calc gave ~0.75:1 and ~0.94:1 -- looked like the displayed ratio might not match the published levels. Traced it fully before concluding anything (same discipline as the regime-alignment lesson): play-levels.ts's computeRiskReward() is DELIBERATELY fill-edge-based, not mid-based (a documented 2026-08-06 fix specifically because the mid basis was concealing sub-1.0 R:R plays from members -- code comment cites 20/48 measured plays had fill-edge R:R below 1.0). Recomputed by hand using the fill edge (entry_range_high for a LONG): AAPL 14.99/27.01=0.555 -> matches 0.6:1 exactly; SWKS 3.05/6.23=0.49 -> matches 0.5:1 exactly. Both published numbers are CORRECT. Also checked the rrLabel thresholds (deterministic-edition.ts) -- >=2 strong / >=1 favorable / >=0.5 acceptable / <0.5 tight -- which explains why SWKS's unrounded 0.49 landed in 'tight' while its DISPLAYED '0.5:1' text might look like it should match AAPL's 'acceptable' bucket at a glance; that's correct behavior (threshold compares the unrounded value), not a bug. No finding filed -- checked and ruled out with full verification, not skipped. healthcheck:legacy steady GREEN (A_edition/B_marks/C_record, resolved=28)."
+    },
+    {
+      "at": "2026-09-11T08:22:36.050Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). Quiet cycle, no new bugs/enhancements. Both live plays still WATCH, ~5h20m to 9:15am ET morning-confirm."
     }
   ],
   "knownOpenItems": {
