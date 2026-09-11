@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T00:09:16.033Z",
+  "lastUpdated": "2026-09-11T00:22:22.220Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -446,6 +446,11 @@
       "at": "2026-09-11T00:09:16.033Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3, new day 2026-09-11)",
       "result": "PR #4754 CONFIRMED MERGED (89815a6) -- found already undrafted (draft:false) at this cycle's start (the earlier GitHub MCP rate limit had cleared by itself, or a parallel session/retry undrafted it), verify+CodeQL both green on the exact head SHA, merged via mcp__github__merge_pull_request (squash, expectedHeadSha pinned). Verified directly against origin/main per the standing 'a merge is not a verification' discipline: legacyEditionSessionDates's nextTradingDayEt(todayEt()) anchor is present exactly as authored. This closes ALL FIVE bugs found+fixed in yesterday's Legacy scorecard/calendar sweep: PR #4742 (scorecard pulled-play exclusion), #4746 (calendar-tile pulled-play exclusion), #4750 (calendar-tile rounding), #4752 (winner/runner status classification), #4754 (calendar-strip missing-fresh-edition-tile). All five merged, deployed, and verified live/correct. healthcheck:legacy fully GREEN (editionFor=2026-09-11, still the same AAPL/SWKS edition since it's before today's own next-day edition publishes tonight). Noted: record resolved count moved 31->28 -- plausibly a trailing-window boundary effect at the midnight ET rollover (the healthcheck's days window sliding), not investigated further as a live red flag; will note if it recurs oddly."
+    },
+    {
+      "at": "2026-09-11T00:22:22.220Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy steady GREEN (resolved=28, stable vs last cycle -- confirms the 31->28 shift last cycle was a one-time trailing-window boundary effect at the midnight rollover, not an ongoing issue). Spot-checked legacyBoardExportCsv (untouched territory) for a CSV-injection/column-misalignment risk: ticker/statusLabel are emitted unquoted while several other fields ARE JSON.stringify-quoted -- inconsistent escaping, but every unquoted field (ticker, statusLabel, direction, tierLabel) is always an internally-generated short enum-like string (tickers, CONFIRMED/WATCH/PULLED/Winner/Runner/etc., CALL/PUT/LONG/SHORT), never free text or user input, so a comma-breaking-the-CSV scenario is not realistically reachable. Not escalating as a live bug -- noting only as a very low-priority style inconsistency, not worth a fix on its own. No new issues this cycle."
     }
   ],
   "knownOpenItems": {
