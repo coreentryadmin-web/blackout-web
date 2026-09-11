@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T05:52:31.864Z",
+  "lastUpdated": "2026-09-11T06:08:59.559Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -561,6 +561,11 @@
       "at": "2026-09-11T05:52:31.880Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). PR #4767 undraft failed a FOURTH consecutive cycle on the GitHub MCP write rate limit (~45min since PR creation, longer than this session's usual 1-3 cycle clear time for this exact recurring pattern). Still open/draft/unmerged, not touched by a parallel session yet either. Not yet escalating to the operator -- the finding itself is already durably recorded in two places regardless of this PR's merge state (the findings-staging file on this branch, and the #4076 PR comment posted last hour, which is what actually needed to reach Cursor/the operator for the architectural decision) -- so the PR being stuck in draft doesn't block the actual goal of getting the finding seen. Will keep retrying each cycle per standing practice; if still stuck several more cycles will consider that the underlying #4076 comment is sufficient and stop chasing the PR merge specifically as a distinct blocker. No new Legacy bugs/enhancements this cycle."
+    },
+    {
+      "at": "2026-09-11T06:08:59.589Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3, new hour)",
+      "result": "PR #4767 (BIE-router-unwired finding) MERGED at 06:07:33Z by a parallel session (standard pattern) -- verified via git show origin/main that the finding file landed on main cleanly. Checked the #4076 collaboration thread for a Cursor reply to the finding posted last cycle -- none yet (my comment, 5629840364, is still the latest on the thread); no urgency, this is an architectural question that can sit until someone with more context (Cursor or the operator) weighs in. Noted a separate, unrelated finding on the same thread from a parallel Swings/Largo-lane Claude session (G-S14 Cortex read pinned at swing commit but never reaching the swing play-brief) -- not my lane (Swings, not Legacy), no action needed from me. healthcheck:legacy steady GREEN (A_edition/B_marks/C_record, resolved=28). This closes out the loose end from last cycle's major finding -- both the deployment-verification arc (regime-alignment revert) and the BIE-router-report arc (PR #4767 + #4076 comment) are now fully resolved/delivered. Resuming normal-pace bug/enhancement hunting next cycle."
     }
   ],
   "knownOpenItems": {
