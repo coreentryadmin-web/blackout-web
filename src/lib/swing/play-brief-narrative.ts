@@ -434,11 +434,24 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
 }
 
 function breakTrigger(play: TerminalPlay, focal: FocalLevel[], flip: number | null): string | null {
-  const support = focal.find((l) => l.kind === "put_wall" || l.kind === "dark_pool")?.price;
-  const resist = focal.find((l) => l.kind === "call_wall")?.price;
+  // Candidate levels are pulled from `focal`, which is sorted by UNSIGNED distance from spot —
+  // "nearest" does not mean "on the right side". A dark-pool print (any strike, any side — see
+  // narrateDarkPool's own side detection off `level.price < spot`) or, in theory, a put wall can
+  // sit ABOVE spot; picking the nearest match without checking its side used to let a LONG's
+  // "Break watch — lose $X on a closing basis" cite an X that is currently ABOVE spot — i.e. a
+  // level the play has not even reached yet, not a support it could "lose". Same shape for SHORT's
+  // reclaim level and for the LONG flip fallback: a flip currently above spot cannot be "lost" on
+  // a close below spot either. Filtering each candidate to the side that actually makes the
+  // English true (support strictly below spot, resistance strictly above) is the fix; distancePct
+  // is signed ((price-spot)/spot*100) so this needs no extra spot plumbing.
+  const support = focal.find(
+    (l) => (l.kind === "put_wall" || l.kind === "dark_pool") && l.distancePct < 0,
+  )?.price;
+  const resist = focal.find((l) => l.kind === "call_wall" && l.distancePct > 0)?.price;
 
   if (play.direction === "LONG") {
-    const stop = support ?? flip;
+    const flipBelowSpot = flip != null && focal.some((l) => l.kind === "gamma_flip" && l.distancePct < 0);
+    const stop = support ?? (flipBelowSpot ? flip : null);
     if (stop != null) {
       return `**Break watch** — lose **${stop.toFixed(2)}** on a closing basis → structural support failed; exit or cut size.`;
     }
