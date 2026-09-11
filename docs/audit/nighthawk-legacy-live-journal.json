@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T23:14:03.703Z",
+  "lastUpdated": "2026-09-11T23:21:47.323Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -931,6 +931,16 @@
       "at": "2026-09-11T23:14:03.726Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, v3 full brief)",
       "result": "Genuine new find this cycle from examining the fresh HPE/DELL picks: buildDeterministicThesis's R:R display rounds rr.toFixed(1) to-nearest while the quality label (acceptable/tight/etc) buckets on the true unrounded value -- so rr=0.49 (labeled 'tight') printed 'R:R 0.5:1 (tight)', a number sitting right on the label ladder's own 'acceptable' cutoff next to a contradicting label. Live-reproduced on BOTH of today's fresh picks (HPE rr=0.49, DELL rr=0.45), not a rare edge case. Fixed by flooring the display instead of rounding to-nearest (Math.floor(rr*10+1e-9)/10) so the printed number can never overstate into a higher label's territory. Full RED->GREEN regression proof (2 new tests, 45/45 file total), tsc clean, findings-staging + validation-log entries written, committed on fix/legacy-rr-display-rounding-boundary. Full suite running in background before push+PR."
+    },
+    {
+      "at": "2026-09-11T23:19:25.494Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
+      "result": "Full suite came back clean (13776 pass / 0 fail / 3 skipped). Merged latest main into the R:R-display fix branch (clean, no conflicts), re-verified 45/45 tests post-merge, pushed, opened PR #4813 -- undraft succeeded on the FIRST attempt this time (no rate-limit hit). PR confirmed open, not draft, CI pending."
+    },
+    {
+      "at": "2026-09-11T23:21:47.324Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN, stable (HPE mark=2.91, DELL mark=18.15). PR #4813 CI still running (mergeable_state:blocked), no undraft needed this time -- already open/non-draft. Will check CI status next cycle."
     }
   ],
   "knownOpenItems": {

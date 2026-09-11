@@ -299,6 +299,36 @@ test("thesis is grounded in the score breakdown and cites the leading driver", (
   assert.match(key_signal, /flow/);
 });
 
+test("R:R display never rounds up across the label's own threshold (live 2026-09-11 HPE/DELL: 0.49/0.45 both printed as \"0.5:1\")", () => {
+  // computeRiskReward's LONG formula: fillEdge = entry_range_high (100), stopDist = fillEdge-stop (10),
+  // targetDist = target-fillEdge (4.9) -> rr = 4.9/10 = 0.49, which the label ladder buckets "tight"
+  // (< 0.5). `rr.toFixed(1)` rounds that to "0.5", printing "R:R 0.5:1 (tight)" -- a member reading
+  // 0.5 against the label's own >=0.5 "acceptable" cutoff sees an apparent self-contradiction.
+  const s = scored("XYZ", "long", 50);
+  const d = dossier("XYZ", 100);
+  const levels = { entry_range: "$95.00-$100.00", target: "$104.90", stop: "$90.00" };
+  const { thesis } = buildDeterministicThesis(s, d, levels);
+  const match = thesis.match(/R:R (\d+\.\d):1 \((\w+)\)/);
+  assert.ok(match, `thesis should contain an R:R clause: ${thesis}`);
+  const [, displayed, label] = match!;
+  assert.equal(label, "tight", "0.49 is below the 0.5 'acceptable' cutoff");
+  // The displayed number must never sit AT OR ABOVE a threshold the true ratio didn't clear --
+  // that is exactly what would read as self-contradictory ("0.5:1 (tight)" beside a ladder that
+  // labels 0.5 "acceptable"). Flooring must keep the printed number under the label's own cutoff.
+  assert.ok(Number(displayed) < 0.5, `displayed "${displayed}" must stay below the 'acceptable' cutoff of 0.5`);
+  assert.equal(displayed, "0.4", "0.49 floors to 0.4, not rounds to 0.5");
+});
+
+test("R:R display: a ratio safely inside a label band still prints its true rounded value", () => {
+  // fillEdge=100, stop=80 -> stopDist=20; target=130 -> targetDist=30 -> rr=1.5, comfortably
+  // inside the "favorable" band ([1,2)) with no boundary-rounding risk either direction.
+  const s = scored("XYZ", "long", 50);
+  const d = dossier("XYZ", 100);
+  const levels = { entry_range: "$95.00-$100.00", target: "$130.00", stop: "$80.00" };
+  const { thesis } = buildDeterministicThesis(s, d, levels);
+  assert.match(thesis, /R:R 1\.5:1 \(favorable\)/);
+});
+
 test("score floor: candidates below MIN_PUBLISH_SCORE (38) are excluded (PR-N28)", () => {
   const ranked = [
     scored("STRONG", "long", 60),
