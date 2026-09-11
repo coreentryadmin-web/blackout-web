@@ -7,6 +7,7 @@ import {
   catalystsSection,
   chartLevelsSection,
   chartTechnicalsSection,
+  cortexReadSection,
   dataFreshnessSection,
   deskConsensusSection,
   flowIntelSection,
@@ -23,6 +24,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import type { PaneCortexView } from "@/lib/zerodte/pane";
 import { catalystCoaching, collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { SwingArchetypeTrackRecordSnapshot, SwingTrackRecordEntry } from "./calibration-cache";
@@ -169,6 +171,80 @@ test("archetypeTrackRecordSection: omits the point-Δ line when pointDeltaPts is
   const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ pointDeltaPts: null }) });
   const body = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap)?.body ?? "";
   assert.doesNotMatch(body, /pts.*edge/);
+});
+
+// ── cortexReadSection (swing Cortex-visibility fix — the entry_context.cortex pinned at commit,
+// previously computed honestly server-side but never reaching the play-brief; see PR comment
+// thread on #4076, 2026-09-11 cycle) ───────────────────────────────────────────────────────────
+
+function opposedCortexView(): PaneCortexView {
+  return {
+    abstained: false,
+    decision: "NET_NEGATIVE",
+    verdict: {
+      score: -1.4,
+      conviction: "C",
+      asOf: "2026-09-10T14:00:00Z",
+      vetoes: [{ source: "gex-walls", stance: "veto", weight: -2, detail: "pinned under a hard call wall" }],
+      supports: [],
+      opposes: [{ source: "wall-trend", stance: "opposes", weight: -0.6, detail: "trend fading into resistance" }],
+      absent: [],
+      narrative: [
+        "Cortex vetoed on gex-walls: pinned under a hard call wall.",
+        "wall-trend also opposed: trend fading into resistance.",
+      ],
+    },
+  };
+}
+
+test("cortexReadSection: null when the play carries no Cortex read at all (pre-wire-in row, WATCH/lane-only candidate)", () => {
+  assert.equal(cortexReadSection(fixturePlay({ cortex: null })), null);
+  assert.equal(cortexReadSection(fixturePlay({ cortex: undefined })), null);
+});
+
+test("cortexReadSection: null when Cortex abstained — an abstain is not a signal to surface here", () => {
+  const play = fixturePlay({ cortex: { abstained: true, reason: "all sources timed out" } });
+  assert.equal(cortexReadSection(play), null);
+});
+
+test("cortexReadSection: null on a CLEAN read (no vetoes, no opposes) — never fabricates a 'Cortex is fine' line", () => {
+  const clean: PaneCortexView = {
+    abstained: false,
+    decision: "PASS",
+    verdict: {
+      score: 1.2,
+      conviction: "A",
+      vetoes: [],
+      supports: [{ source: "flow", stance: "supports", weight: 1.2, detail: "call sweep confirms" }],
+      opposes: [],
+      absent: [],
+      narrative: [],
+    },
+  };
+  assert.equal(cortexReadSection(fixturePlay({ cortex: clean })), null);
+});
+
+test("cortexReadSection: renders 'Cortex read' citing the pinned narrative when Cortex actually opposed/vetoed the position", () => {
+  const section = cortexReadSection(fixturePlay({ cortex: opposedCortexView() }));
+  assert.ok(section);
+  assert.equal(section?.title, "Cortex read");
+  assert.equal(section?.bias, "bearish");
+  assert.match(section?.body ?? "", /NET_NEGATIVE/);
+  assert.match(section?.body ?? "", /1 veto/);
+  assert.match(section?.body ?? "", /1 opposing item/);
+  assert.match(section?.body ?? "", /pinned under a hard call wall/);
+  assert.match(section?.body ?? "", /trend fading into resistance/);
+});
+
+test("cortexReadSection: falls back to a constructed summary when narrative is empty but vetoes/opposes exist", () => {
+  const view = opposedCortexView();
+  const noNarrative: PaneCortexView = {
+    ...view,
+    verdict: { ...view.verdict, narrative: [] },
+  };
+  const body = cortexReadSection(fixturePlay({ cortex: noNarrative }))?.body ?? "";
+  assert.match(body, /VETO — \[gex-walls\] pinned under a hard call wall/);
+  assert.match(body, /Opposed — \[wall-trend\] trend fading into resistance/);
 });
 
 // SWING-SYSTEM-CTO-AUDIT-style finding (found live 2026-09-06 on NRG SWING_NRG_34): `recNote` is

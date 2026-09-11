@@ -51,7 +51,11 @@ export type SwingBriefResolveHints = {
   right?: string | null;
 };
 
-export function horizonRowToDeckSource(p: HorizonPlay, positionId?: number | null): HorizonDeckSource {
+export function horizonRowToDeckSource(
+  p: HorizonPlay,
+  positionId?: number | null,
+  cortex?: unknown,
+): HorizonDeckSource {
   return {
     ticker: p.ticker,
     direction: p.direction,
@@ -99,6 +103,10 @@ export function horizonRowToDeckSource(p: HorizonPlay, positionId?: number | nul
       p.thesisLevel != null ? { level: p.thesisLevel, note: p.thesisNote ?? undefined } : undefined,
     occ: null,
     positionId: positionId ?? null,
+    // Cortex is only pinned on a COMMITTED ledger row (swing commit.ts) — the caller passes
+    // row.entry_context?.cortex for an open position; a WATCH/lane-only candidate has no row
+    // yet, so this stays undefined there (honest absence, never fabricated).
+    cortex,
   };
 }
 
@@ -216,7 +224,9 @@ export async function loadOpenTerminalPlay(
   const reads = discovery?.readsByTicker?.get(ticker.toUpperCase());
   lanePlay = attachThesisExplanation(lanePlay, dossier, reads);
 
-  const play = terminalPlayFromHorizon(horizonRowToDeckSource(lanePlay, row.id));
+  const play = terminalPlayFromHorizon(
+    horizonRowToDeckSource(lanePlay, row.id, row.entry_context?.cortex ?? null),
+  );
   const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank, featureVector: row.feature_vector });
   return ivRank != null ? { ...play, ivRank } : play;
 }
