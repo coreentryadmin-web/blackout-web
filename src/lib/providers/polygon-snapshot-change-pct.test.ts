@@ -33,6 +33,30 @@ test("_rowToSnapshot uses snapshotChangePctFromRow — never fabricates flat 0%"
   assert.doesNotMatch(block, /change_pct:[\s\S]*?: 0/);
 });
 
+// ── The AH-anchor fix (#4769) only threaded isEtCashRth() through _rowToSnapshot — three
+// siblings sharing the exact same snapshotChangePctFromRow call kept the old default (cash
+// session always "open"), so leader/sector/breadth stock performance and the market-movers
+// gainers/losers list would still show the same stale, one-session-too-old change% overnight
+// that #4769 fixed for individual stock/ETF quotes. Closed here, same call graph #4769 itself
+// traced from `_rowToSnapshot`.
+test("fetchStockSnapshotPerformance passes isEtCashRth() — same AH-anchor fix as _rowToSnapshot (#4769)", () => {
+  const src = readFileSync("src/lib/providers/polygon.ts", "utf8");
+  const block = src.match(/async function fetchStockSnapshotPerformance[\s\S]*?^}/m)?.[0] ?? "";
+  assert.match(
+    block,
+    /snapshotChangePctFromRow\(snap, cashSessionOpen\)/,
+    "fetchLeaderStockSnapshots/fetchBreadthUniverseSnapshots/fetchSectorPerformance all route through here",
+  );
+  assert.match(block, /isEtCashRth\(\)/);
+});
+
+test("fetchMarketMovers passes isEtCashRth() — same AH-anchor fix as _rowToSnapshot (#4769)", () => {
+  const src = readFileSync("src/lib/providers/polygon.ts", "utf8");
+  const block = src.match(/export async function fetchMarketMovers[\s\S]*?^}/m)?.[0] ?? "";
+  assert.match(block, /snapshotChangePctFromRow\(t, cashSessionOpen\)/);
+  assert.match(block, /isEtCashRth\(\)/);
+});
+
 test("snapshotChangePctFromRow: cash session open ignores the after-hours anchor (unchanged default)", () => {
   // Same row shape as the AH-anchor test below, but with cashSessionOpen omitted (the default)
   // and explicitly true: must fall through to the standard day.c-vs-prevDay.c reading, not the
