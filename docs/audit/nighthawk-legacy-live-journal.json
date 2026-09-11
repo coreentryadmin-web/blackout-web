@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T21:37:41.083Z",
+  "lastUpdated": "2026-09-11T21:52:52.400Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -901,6 +901,11 @@
       "at": "2026-09-11T21:37:41.100Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully stable, unchanged (AMBER/GREEN/GREEN/GREEN). PR #4797 undraft rate-limited again, confirmed fleet-wide (Swings' #4808 hit the same limiter this cycle too). Nothing new to report."
+    },
+    {
+      "at": "2026-09-11T21:52:52.422Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "NEW EDITION PUBLISHED: healthcheck:legacy editionFor flipped to 2026-09-14 (correctly skipping the 9/12-9/13 weekend -- exact confirmation of the nextTradingDayEt() code trace from a few cycles ago). Stage A back to GREEN 'fresh, not degraded'. New picks: HPE ($62 C, mark=2.91) and DELL ($570 C, mark=18.15), replacing AAPL/SWKS. Stage D correctly SKIPPED ('morning confirmation not yet run for this date') since Monday's 9:15am ET morning-confirm obviously hasn't fired yet -- exactly the designed behavior. Stage C still GREEN, resolved=30 unchanged (AAPL/SWKS's eventual grade, whatever it is, is already baked into that count from earlier today). This is a clean, fully-expected end-of-day-cycle transition -- every piece of the day-roll mechanism (edition-for advance, stale->fresh flip, new picks with fresh entry/target/stop levels, Stage D honestly skipping rather than fabricating a verdict for an unrun cron) behaved exactly as designed and previously traced. Good closure to today's session. PR #4797 undraft still rate-limited (6+ consecutive cycles now, confirmed fleet-wide per Swings lane) -- will keep retrying; CI has been green/mergeable this whole time, nothing lost by the wait."
     }
   ],
   "knownOpenItems": {
