@@ -1,4 +1,5 @@
 import { dbQuery, dbConfigured, fetchClosedPlayOutcomes, fetchOpenSpxPlay, isoDateString, type FlowRow } from "@/lib/db";
+import { isCondorRow } from "@/lib/zerodte/condor-record";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isFlowFrameFreshAnywhere } from "@/lib/flow-liveness";
 import { getSpxPlayState } from "@/features/spx/lib/spx-service";
@@ -43,6 +44,17 @@ export type EcosystemZeroDteTake = {
   conviction: string | null;
   status: string | null;
   first_flagged_at: string;
+  /** True when this row is a CONDOR (`entry_context.play_type === "CONDOR"`, `isCondorRow()`).
+   *  A condor's `direction` column is NOMINAL provenance only (the fade side of the pin it came
+   *  from) — the structure itself is delta-neutral, so a directional-alignment claim built off it
+   *  is meaningless (condor-record.ts's own header explains why the directional record separates
+   *  these rows out for the identical reason). Consumers that compare `direction` against another
+   *  desk's directional call — e.g. `flowIntelSection`'s 0DTE cross-desk-alignment line — must gate
+   *  on this before doing so. Optional (not `is_condor: false`) so the many existing fixtures/
+   *  test constructions of this type that predate the condor case need no update — an absent
+   *  field reads as "unknown/non-condor", the same safe default the field's few real callers
+   *  already treat it as. */
+  is_condor?: boolean;
 };
 
 export type EcosystemNightHawkTake = {
@@ -748,8 +760,9 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
         conviction: string | null;
         status: string | null;
         first_flagged_at: string;
+        entry_context: Record<string, unknown> | null;
       }>(
-        `SELECT session_date, direction, score, conviction, status, first_flagged_at
+        `SELECT session_date, direction, score, conviction, status, first_flagged_at, entry_context
          FROM zerodte_setup_log
          WHERE ticker = $1 AND session_date = $2`,
         [upper, todayEtYmd()]
@@ -846,6 +859,7 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
             conviction: z.conviction,
             status: z.status,
             first_flagged_at: String(z.first_flagged_at),
+            is_condor: isCondorRow(z.entry_context),
           }
         : null,
       nighthawk_recent: n

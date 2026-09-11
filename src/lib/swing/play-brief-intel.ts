@@ -442,12 +442,23 @@ export function flowIntelSection(
 
   const z = zerodteLiveForSession(eco.zerodte_today, sessionDate);
   if (z) {
-    const aligned =
-      (play.direction === "LONG" && z.direction === "long") ||
-      (play.direction === "SHORT" && z.direction === "short");
-    lines.push(
-      `0DTE desk: **${z.direction}** · ${z.conviction ?? "—"} conviction${aligned ? " · **aligned**" : " · **conflict** with swing direction"}`,
-    );
+    if (z.is_condor === true) {
+      // A committed CONDOR's `direction` column is NOMINAL provenance only (the fade side of
+      // the pin it came from) — the structure is delta-neutral, so comparing it against swing's
+      // directional call and labeling it "aligned"/"conflict" would fabricate a directional
+      // signal the 0DTE desk never actually took (board.ts's own ZeroDteSetup.direction comment:
+      // "the directional gates ... do NOT apply to it"). Report the desk's real posture instead.
+      lines.push(
+        `0DTE desk: **sold iron condor** (structure-neutral, not a directional call) · ${z.conviction ?? "—"} conviction`,
+      );
+    } else {
+      const aligned =
+        (play.direction === "LONG" && z.direction === "long") ||
+        (play.direction === "SHORT" && z.direction === "short");
+      lines.push(
+        `0DTE desk: **${z.direction}** · ${z.conviction ?? "—"} conviction${aligned ? " · **aligned**" : " · **conflict** with swing direction"}`,
+      );
+    }
   }
 
   if (!lines.length) return null;
