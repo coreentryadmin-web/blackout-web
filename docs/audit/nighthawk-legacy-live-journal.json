@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T10:09:17.749Z",
+  "lastUpdated": "2026-09-11T10:21:47.342Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -651,6 +651,11 @@
       "at": "2026-09-11T10:09:17.763Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hour)",
       "result": "Dead-wired-data sweep of dossier.ts (the ~30-field per-ticker research bundle Legacy's edition generator builds each night): checked usage counts of every field across format.ts (the LLM prompt/narrative builder)/deterministic-edition.ts/scorer.ts -- every field (congress_trades, congress_unusual, institutional_activity, predictions_signal, oi_change, dark_pool, strike_stacks, fundamental_signals/ratios, benzinga_price_target, analyst_summary, price_target, insider_buys, polygon_sentiment, iv_term, realized_vol, screener_confirmed, trading_halt) has at least one real consumer, and the low-count ones (1-2 hits) were individually verified to be genuine uses (realized_vol/analyst_summary/price_target/screener_confirmed reach the LLM prompt text in format.ts; insider_buys/benzinga_price_target feed scorer.ts's numeric scoring). No dead-wired data found this pass -- clean, unlike the BIE-router finding earlier this session which WAS a real gap of this exact class. healthcheck:legacy steady GREEN (A_edition/B_marks/C_record, resolved=28)."
+    },
+    {
+      "at": "2026-09-11T10:21:47.358Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). Quiet cycle. Both live plays still WATCH, ~4h05m to 9:15am ET morning-confirm -- getting closer, will watch more closely as that approaches."
     }
   ],
   "knownOpenItems": {
