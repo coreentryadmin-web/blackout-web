@@ -12,6 +12,13 @@ import path from "node:path";
 // boilerplate) until removed here. This guard keeps that class of drift from returning
 // silently: any listed hostname must be referenced somewhere in `src/`.
 
+// `host.replace(/\./g, "\\.")` alone only escapes dots — CodeQL correctly flagged it as
+// incomplete: any other regex metacharacter in a hostname (`+`, `*`, `(`, etc.) would build
+// an unintended pattern instead of matching it literally. Escape every metacharacter.
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function collectFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     if (entry === "node_modules" || entry === ".next") continue;
@@ -39,7 +46,7 @@ test("next.config.mjs: every remotePatterns hostname is actually referenced some
   for (const host of hostnames) {
     assert.match(
       combined,
-      new RegExp(host.replace(/\./g, "\\.")),
+      new RegExp(escapeRegExp(host)),
       `remotePatterns lists "${host}" but nothing in src/ references it — dead attack surface, remove it or use it`
     );
   }
