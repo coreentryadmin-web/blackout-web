@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T15:22:21.564Z",
+  "lastUpdated": "2026-09-11T15:37:11.835Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -771,6 +771,11 @@
       "at": "2026-09-11T15:22:21.583Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy fully GREEN across all 4 stages, stable. Marks: AAPL=10.07, SWKS=7.90. Genuinely clean cycle -- staying quiet per the standing discipline rather than manufacturing new findings on top of an already well-covered day (R:R math, catalyst flags, dossier sweep, RSI framing, pulled_wrongly data-access, healthcheck Stage D shipped+verified, pulled-play target tracking ongoing)."
+    },
+    {
+      "at": "2026-09-11T15:37:11.853Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN across all 4 stages. Marks eased slightly off their highs (AAPL=9.70, SWKS=7.30, both down a touch from the last check but still well above pre-open levels) -- normal intraday pullback, nothing alarming. No new issues this cycle."
     }
   ],
   "knownOpenItems": {
