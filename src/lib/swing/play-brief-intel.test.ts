@@ -23,7 +23,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { PortfolioPosition } from "./portfolio";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
-import { collectCoachingBullets } from "./play-brief-narrative-coaching";
+import { catalystCoaching, collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { SwingArchetypeTrackRecordSnapshot, SwingTrackRecordEntry } from "./calibration-cache";
 
@@ -1807,4 +1807,85 @@ test("watchForSection: Premium stop rail omits the cushion note when mark is una
   );
   assert.match(section.body, /Premium stop rail: \*\*\$6\.66\*\* — thesis breaks if mark closes below/);
   assert.doesNotMatch(section.body, /cushion/);
+});
+
+// Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
+// duplication class as #4261 (recNote/rails) and the thesis-health advisory fix above:
+// catalystCoaching (play-brief-narrative-coaching.ts) already renders "Earnings in Nd (DATE) —
+// size down or exit before report unless thesis is earnings-driven" into "Trade manager read"
+// for every WATCH/OPEN play within 14 days of a known earnings date. holdPlanSection independently
+// renders the near-identical sentence again into "Hold plan" for OPEN plays specifically — both
+// sections render together for any live OPEN play (play-brief-intel.ts's buildIntelSections pushes
+// `narrative` unconditionally and `hold` for bucket === "open"), so a member reading the full brief
+// sees the same earnings warning twice, verbatim in substance.
+test("holdPlanSection: does not repeat the near-term-earnings warning — already narrated by Trade manager read", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 8DTE",
+    }),
+    asOf: "2026-09-10T20:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      arsenal: {
+        scope: "single_name",
+        earnings: {
+          earnings_date: "2026-09-18",
+          days_until: 8,
+          report_time: "premarket",
+          is_confirmed: true,
+        },
+        fundamentals: null,
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as unknown as EcosystemContext,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /\*\*Earnings in 8d\*\*/);
+});
+
+// The narrative sibling (catalystCoaching, play-brief-narrative-coaching.ts) still carries the
+// warning for the exact same ctx — proof the fact isn't silently dropped, just no longer duplicated.
+test("catalystCoaching: still carries the near-term-earnings warning (not duplicated, not dropped)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD", contract: "110C · 8DTE" }),
+    asOf: "2026-09-10T20:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      arsenal: {
+        scope: "single_name",
+        earnings: {
+          earnings_date: "2026-09-18",
+          days_until: 8,
+          report_time: "premarket",
+          is_confirmed: true,
+        },
+        fundamentals: null,
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as unknown as EcosystemContext,
+    vector: null,
+  };
+  const line = catalystCoaching(ctx);
+  assert.ok(line);
+  assert.match(line!, /\*\*Earnings in 8d\*\* \(2026-09-18/);
 });
