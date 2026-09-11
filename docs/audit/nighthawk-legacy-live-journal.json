@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T03:07:41.364Z",
+  "lastUpdated": "2026-09-11T03:22:48.025Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -506,6 +506,11 @@
       "at": "2026-09-11T03:07:41.364Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, FULL STANDING MANDATE v3)",
       "result": "PR #4761 CONFIRMED MERGED (merged_at 2026-09-11T03:02:01Z) -- merged by a parallel session on the account (same recurring pattern as #4750/#4754), the rate limit I kept hitting cleared on its own before my own retry landed. Verified directly against origin/main per the standing 'a merge is not a verification' discipline: regime-alignment.ts and its wiring into LegacyPlayTechnicalsRail.tsx/LegacyPickLogBoard.tsx are all present exactly as authored. This closes the regime-alignment enhancement -- will do a live UI screenshot check next cycle once the ECS deploy for this commit completes (checking image tag before trusting rolloutState, per the established discipline from yesterday's #4746 lesson). healthcheck:legacy steady GREEN (resolved=28)."
+    },
+    {
+      "at": "2026-09-11T03:22:48.025Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "Found the ECS deployment for PR #4761's merge: taskDef :1439 (created 03:16:45 UTC), image tag 661e1b22d8e0db2fd7f2978c248a14d59a710d91 -- confirmed via git merge-base --is-ancestor that this IS the exact PR #4761 merge commit (661e1b2), not a stale/wrong deployment (applying yesterday's lesson correctly this time before trusting it). rolloutState still IN_PROGRESS (2/3 running on new, old :1438 still 6/6) -- deliberately NOT screenshotting yet to avoid the mixed-traffic false-negative from yesterday's #4746 cycle. Will re-check next cycle once rollout completes. healthcheck:legacy steady GREEN."
     }
   ],
   "knownOpenItems": {
