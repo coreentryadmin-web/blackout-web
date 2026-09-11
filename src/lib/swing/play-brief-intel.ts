@@ -752,11 +752,34 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
     };
   }
 
-  const lines = slice.items.map(formatMeridianItem);
-  if (slice.total_matched > slice.items.length) {
-    lines.push(
-      `_${slice.total_matched - slice.items.length} more in window — open Meridian desk for full lane._`,
-    );
+  // `catalystsSection` (arsenal.earnings, a separate UW-sourced read) already states this
+  // ticker's own upcoming earnings date when it has one. When Meridian's Benzinga-backed
+  // timeline independently carries an earnings-kind item for the SAME ticker on the SAME
+  // date, that is the same fact told twice from two uncoordinated sources with no
+  // cross-reference — drop the duplicate here rather than restate it (audit #16, found
+  // auditing catalystsSection/meridianCatalystSection for narrative-vs-bullet-dump quality
+  // per the Largo product contract). Any OTHER Meridian item (a different date, a different
+  // kind, or a genuinely different ticker on an index read) still renders untouched.
+  const arsenalEarningsDate = ctx.ecosystem?.arsenal?.earnings?.earnings_date ?? null;
+  const ticker = ctx.play.ticker?.toUpperCase() ?? null;
+  const items = arsenalEarningsDate
+    ? slice.items.filter(
+        (i) => !(i.kind === "earnings" && i.ticker === ticker && i.date === arsenalEarningsDate),
+      )
+    : slice.items;
+
+  if (!items.length) {
+    return {
+      title: "Meridian catalysts",
+      body:
+        "This ticker's only catalyst in the **14-day** Meridian window is the earnings print already covered above.",
+    };
+  }
+
+  const lines = items.map(formatMeridianItem);
+  const droppedForWindow = slice.total_matched - slice.items.length;
+  if (droppedForWindow > 0) {
+    lines.push(`_${droppedForWindow} more in window — open Meridian desk for full lane._`);
   }
   return { title: "Meridian catalysts", body: lines.join("\n") };
 }
