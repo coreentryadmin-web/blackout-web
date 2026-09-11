@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T13:12:18.129Z",
+  "lastUpdated": "2026-09-11T13:24:47.269Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -716,6 +716,11 @@
       "at": "2026-09-11T13:12:18.149Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
       "result": "PR #4784 undraft succeeded (draft:false confirmed), but main had moved far enough (multiple parallel-lane merges) that the PR developed a real merge conflict against MARKET-OPEN-VALIDATION.md (two independent lanes appended entry #101 at the same anchor -- exactly the append-only-file collision pattern this file's own README warns about). Resolved by merging origin/main into the fix branch, renumbering my entry to #102 (kept both, no content lost), re-ran the healthcheck-eval test file (29/29 pass) and pushed (head now 6e1ce6dcd). Re-verified via pull_request_read immediately after push: still open, not merged, head sha matches -- no MIRROR FAILURE this cycle. healthcheck:legacy on main still shows the known/expected RED baseline (fix not yet merged) -- both plays still WATCH. ET time now ~09:12, 9:15am ET morning-confirm cron is imminent (~3 min) -- first live WATCH transition this session, watching closely next cycle."
+    },
+    {
+      "at": "2026-09-11T13:24:47.287Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "PR #4784 CLOSED THE LOOP this cycle: verify check went green, merged (squash, sha 7427525b0), re-synced main and re-ran healthcheck:legacy -- confirmed RED->AMBER on the same live pre-market data, with the honest 'no live two-sided quote -- mark sourced from last trade/close' evidence string, exactly as designed. Stage A/C both GREEN. Fix is done end-to-end. Morning-confirm cron (9:15am ET) DID fire on schedule -- but the outcome wasn't a literal WATCH->CONFIRMED/DEGRADED/INVALIDATED status field as I'd expected; the real mechanism is the pull-overlay (src/features/nighthawk/lib/pull-overlay.ts, PR-N4): both AAPL and SWKS got 'pulled: true' at morning_checked_at 13:15:14Z with pulled_reason citing a Cortex gex-walls fresh-veto (each play's target price crosses a dominant call wall within 0.5x expected move -- AAPL's 327.5 wall, SWKS's 87.5 wall). Verified this is deliberate, well-tested honest-labeling behavior (pull-overlay.ts's own header comment + dedicated test file, morning-verdict-persist.test.ts, pull-overlay.test.ts) -- pulled plays stay visible in the plays[] array with a badge+reason rather than being hidden, same as the edition's own 'never delete, always present honestly' pattern. Not a bug. First live instance witnessed this session of both live plays getting pulled same-day by the same veto class (gex-walls) -- noting for pattern-watch (need 2 more instances before it's worth raising as a possible 'levels picked the evening before drift into gamma walls overnight more often than expected' question, per the 3-instance threshold)."
     }
   ],
   "knownOpenItems": {
