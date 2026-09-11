@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T09:08:49.221Z",
+  "lastUpdated": "2026-09-11T09:22:16.022Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -631,6 +631,11 @@
       "at": "2026-09-11T09:08:49.237Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new hour)",
       "result": "Tried to drill into the pulled_wrongly=2 WATCH item from earlier -- pulled GET /api/admin/nighthawk/analytics?window=14 (admin-gated, richer than the member /record route: by_conviction/by_tier/by_sector/by_score_bucket/gate_validation breakdowns) but it only reports AGGREGATE counts, no per-ticker debrief detail naming which 2 plays were pulled-then-would-have-won. Without raw Postgres access (blocked from this sandbox per CLAUDE.md) there's no way to identify the specific tickers/reasons from here. Correctly stopping at WATCH (n=2, below 3-instance threshold) rather than fabricating detail -- this is a genuine investigation dead-end for this session, not a skip. Confirmed via the fuller admin analytics pull: gate_validation.blocked_value shows target_unreachable blocked 5 plays this window (4 graded, 0 would have won) and book_tape_conflict blocked 1 (would have lost) -- both small samples, consistent with existing knownOpenItems, nothing new. healthcheck:legacy steady GREEN (A_edition/B_marks/C_record, resolved=28)."
+    },
+    {
+      "at": "2026-09-11T09:22:16.040Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy steady GREEN, unchanged (A_edition/B_marks/C_record, resolved=28). Quiet cycle. Both live plays still WATCH, ~4h50m to 9:15am ET morning-confirm."
     }
   ],
   "knownOpenItems": {
