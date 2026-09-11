@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-11T14:20:11.383Z",
+  "lastUpdated": "2026-09-11T14:22:47.776Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -741,6 +741,11 @@
       "at": "2026-09-11T14:20:11.384Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
       "result": "Full background test suite came back clean (13738 pass / 0 fail / 3 skipped pre-existing). Merged latest main into the Stage D branch (clean, no conflicts -- my files untouched, re-verified 39/39 eval tests pass post-merge), pushed, opened PR #4792 as draft. Undraft hit the recurring GitHub MCP rate limit ('API rate limit already exceeded for user ID 284440397') on the first attempt -- consistent with the documented recurring pattern from #4767/#4772/#4784. Will retry next cycle."
+    },
+    {
+      "at": "2026-09-11T14:22:47.777Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "PR #4792 (Stage D) still draft -- undraft rate-limited again (2nd cycle now), verify check still in_progress at last look so nothing lost by the delay. healthcheck:legacy on main (A/B/C only, Stage D not yet merged) still fully GREEN -- both marks tracking cleanly, record consistent. No new correctness issues this cycle."
     }
   ],
   "knownOpenItems": {
