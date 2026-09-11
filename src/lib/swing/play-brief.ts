@@ -229,11 +229,36 @@ function pnlSection(play: TerminalPlay): RichSection {
   // rather than a specific dollar value. WATCH rows are correctly exempt (static chain mid is
   // the intended value there, not a fallback — see `playExpectsLiveOptionMark`'s own comment).
   const markUnsynced = play.markIsSync === true && playExpectsLiveOptionMark(play.status);
+  // Bug found 2026-09-11 (Ask Largo standing mandate, live repro SWING:ALAB): `markIsSync` is set
+  // by adapters.ts as bluntly as `src.markAsOf == null` — true whenever there is no stored
+  // freshness TIMESTAMP, regardless of whether the mark VALUE itself is real. For banger-lane
+  // positions (`horizonPlayFromBangerPosition`, banger-lane-merge.ts) that is every single row:
+  // `BangerPositionRow` (positions-db.ts) has no `mark_as_of` column at all, so `markAsOf` is never
+  // populated one way or the other — a genuinely fresh, real `last_mark` and a position that has
+  // never synced look byte-identical to this flag. The `markUnsynced` branch above (added for a
+  // real prior bug — the `mid = mark ?? entry` fallback silently echoing entry as if it were a
+  // live quote) printed "Mark: unknown" unconditionally on that flag, which was correct for the
+  // TRUE fallback case (mark IS entry, no real quote exists) but wrong for a banger row that DOES
+  // have a real, distinct last_mark: live repro showed "Mark: **unknown** _(do not read as
+  // flat)_" immediately followed by "P&L: **-35.9%**" a few lines later — a P&L that can only
+  // exist because `livePnlPct(entry, mark)` (banger-lane-merge.ts) had a real, non-null mark to
+  // divide against. Showing "unknown" while confidently deriving a specific percentage from that
+  // same "unknown" value is self-contradicting and strictly worse than the pre-fix state for this
+  // lane: a member reads "we don't know the price" one line above a number that says otherwise.
+  // Fix: the mark is genuinely unknown only when there is no P&L basis either (pnlPct null, the
+  // true entry-fallback signature) — when pnlPct is a real number, the mark behind it is real too,
+  // it just lacks a stored timestamp, so show the value with an honest "not timestamped" caveat
+  // instead of hiding it. Does not touch the true-fallback case (still "unknown", still tested by
+  // the IMPP/EBS/QCML repro test below, which already sets pnlPct: null) or the has-a-real-markAsOf
+  // path (untouched, markUnsynced is false there).
+  const markGenuinelyUnknown = markUnsynced && play.pnlPct == null;
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
-    markUnsynced
+    markGenuinelyUnknown
       ? `Mark: **unknown** _(sync quote, no live price yet — do not read as flat)_`
-      : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
+      : markUnsynced
+        ? `Mark: **${fmtUsd(play.mark)}** _(live quote, no freshness timestamp)_`
+        : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
     `P&L: **${fmtPct(play.pnlPct)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     `Peak: **${fmtPct(play.peak)}**`,
   ];

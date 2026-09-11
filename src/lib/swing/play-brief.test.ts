@@ -1904,3 +1904,48 @@ test("composeSwingPlayBrief: Position section still shows a real Mark once the q
   assert.doesNotMatch(position!.body, /Mark: \*\*unknown\*\*/, `got: ${position!.body}`);
 });
 
+test("composeSwingPlayBrief: Position section does not call a mark 'unknown' when a real P&L was computed from it (live ALAB repro 2026-09-11)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:ALAB rendered
+  // "Mark: **unknown** _(sync quote, no live price yet — do not read as flat)_" immediately
+  // followed a few lines later by "P&L: **-35.9%**" — self-contradicting, since that P&L can only
+  // exist if `livePnlPct(entry, mark)` (banger-lane-merge.ts) had a real, non-null mark to compute
+  // it from. `markIsSync` (adapters.ts: `src.markAsOf == null`) is true here not because the mark
+  // is unknown but because `BangerPositionRow` (positions-db.ts) has no `mark_as_of` column at
+  // all — every banger-lane row reads markIsSync=true regardless of whether its `last_mark` is a
+  // real, fresh quote. The true "mark is unknown" signature (from the entry-fallback bug this
+  // guard was originally built for) is `pnlPct == null`, exercised by the IMPP/EBS/QCML test above
+  // — this fixture is the other half: markIsSync true, but a real non-null pnlPct proves a real
+  // mark was behind it, so the Position section must show the mark's real value (with a
+  // not-timestamped caveat), never claim it is unknown.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 8.15,
+      mark: 5.22, // a real, distinct-from-entry mark — proves markIsSync's "no timestamp" is not "no mark"
+      pnlPct: -35.9,
+      peak: -21.5,
+      markIsSync: true,
+      markAsOf: null,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-11T09:23:00.000Z",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.doesNotMatch(
+    position!.body,
+    /Mark: \*\*unknown\*\*/,
+    `Mark must not read "unknown" when a real P&L was derived from it, got: ${position!.body}`,
+  );
+  assert.match(position!.body, /Mark: \*\*\$5\.22\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /P&L: \*\*-35\.9%\*\*/, `got: ${position!.body}`);
+});
+
