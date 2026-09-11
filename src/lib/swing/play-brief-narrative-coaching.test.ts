@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   catalystCoaching,
@@ -568,6 +569,77 @@ test("catalystCoaching: earnings within 14d", () => {
     }),
   );
   assert.match(line!, /Earnings in 5d/i);
+});
+
+// Adversarial follow-up to #4764's sibling-position disclosure (Ask Largo standing mandate,
+// 2026-09-11): this brief's own contract can expire BEFORE the earnings print even when the
+// ticker-level "earnings within 14d" fact fires, and a concurrent same-ticker sibling can carry a
+// later expiry that IS exposed. Before this fix both briefs got the identical "size down or exit
+// before report" instruction regardless of which contract each was actually about.
+function laneRow(overrides: Partial<HorizonPlay> = {}): HorizonPlay {
+  return {
+    ticker: "NRG",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 64,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:NRG260910C00050000",
+      strike: 50,
+      expiry: "2026-09-08",
+      right: "C",
+      dte: 3,
+      mid: 2.1,
+      bid: null,
+      ask: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: 0,
+    },
+    scoreFloor: 60,
+    reason: "flow",
+    entryPremium: 2.1,
+    liveStatus: "OPEN",
+    ...overrides,
+  };
+}
+
+test("catalystCoaching: contract expires BEFORE the print — no gap-exposure instruction, not the generic warning", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-08" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /expires 2026-09-08/);
+  assert.match(line!, /no earnings-gap exposure/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i);
+});
+
+test("catalystCoaching: contract expires AFTER the print — original warning still fires unchanged", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-19" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /no earnings-gap exposure/i);
 });
 
 test("closedCoaching: MFE capture lesson", () => {
