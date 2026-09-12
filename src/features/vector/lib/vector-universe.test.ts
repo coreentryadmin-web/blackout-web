@@ -19,6 +19,8 @@ let wallSampleWrites: Array<{
   horizon?: string;
   sample: { walls?: { callWalls?: { strike: number }[]; putWalls?: { strike: number }[] } };
 }> = [];
+/** Per-ticker call counter for the SLOWCOLD fixture below — first call misses, rest resolve. */
+let slowColdCallCount = 0;
 
 mock.module("../../../lib/heatmap-allowlist", {
   namedExports: {
@@ -145,6 +147,22 @@ mock.module("../../../lib/providers/polygon-options-gex", {
           asof: new Date().toISOString(),
           gex: { flip: null, flip_reason: "net_short_everywhere", strike_totals: { "100": 1 } },
           vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
+        };
+      }
+      // 2026-09-12 audit finding: a cold ticker with no recent cache entry (none of the ~11 UI
+      // preset chips get direct member-view traffic to keep the extended-allowlist names warm)
+      // can still miss fetchGexHeatmap's own live-request-tuned 3s block cap even under the
+      // bounded pool — first attempt comes back with no data at all (mirrors the real
+      // awaitHeatmapBuildWithBlockCap "nothing to hand off yet" case), the SAME background build
+      // finishes moments later so every subsequent call resolves normally.
+      if (ticker === "SLOWCOLD") {
+        slowColdCallCount += 1;
+        if (slowColdCallCount === 1) return null;
+        return {
+          spot: 250,
+          asof: new Date().toISOString(),
+          gex: { flip: 245, strike_totals: { "250": 1, "255": 2 } },
+          vex: { flip: 249, strike_totals: { "245": 1, "250": 1 } },
         };
       }
       return {
@@ -409,6 +427,46 @@ test("buildVectorUniverseSnapshot: null spot fail-closes GEX walls (no unconstra
   assert.equal(row!.spot, null);
   assert.equal(row!.topCallWall, null, "must not pick strike 90 as call wall when spot is unknown");
   assert.equal(row!.topPutWall, null, "must not pick strike 92 as put wall when spot is unknown");
+});
+
+// Regression for the 2026-09-12 audit finding: a bounded-pool build can be "complete" (every
+// ticker produced A row — isCompleteBuild's own bar) while a substantial fraction of those rows
+// carry spot:null because the underlying fetchGexHeatmap call missed its own 3s block cap on a
+// genuinely cold chain — live-measured as 35/64 null rows in GET /api/market/vector/universe,
+// every one a static-allowlist name outside the ~11 UI preset chips (so never kept warm by direct
+// member view traffic). Fixed by retrying just the null rows once the main fan-out completes.
+test("buildVectorUniverseSnapshot: retries a ticker whose first attempt missed the cold-build block cap", async () => {
+  dynamicTickers = ["SLOWCOLD"];
+  fetchCalls = [];
+  slowColdCallCount = 0;
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "SLOWCOLD");
+  assert.ok(row, "SLOWCOLD row must be present");
+  assert.equal(row!.spot, 250, "the retry pass must pick up the resolved spot once the cold build finishes");
+  assert.ok(
+    fetchCalls.filter((t) => t === "SLOWCOLD").length >= 2,
+    "must have retried the null-spot row at least once"
+  );
+});
+
+// A ticker that is genuinely, permanently unresolvable must NOT be corrupted by the retry pass —
+// it retries to another null and is left exactly as first-built (still fail-closed GEX walls).
+test("buildVectorUniverseSnapshot: a permanently-unresolvable ticker still fail-closes after the retry pass", async () => {
+  dynamicTickers = ["NOSPOT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "NOSPOT");
+  assert.ok(row, "NOSPOT row must be present");
+  assert.equal(row!.spot, null, "a genuinely unresolvable ticker must stay null, not be corrupted by the retry");
+  assert.equal(row!.topCallWall, null, "must still not pick strike 90 as call wall when spot is unknown");
+  assert.ok(
+    fetchCalls.filter((t) => t === "NOSPOT").length >= 2,
+    "the retry pass must still have attempted NOSPOT once more"
+  );
 });
 
 test("recordVectorUniverseWallSample: null spot still records bead rail (unconstrained)", async () => {
