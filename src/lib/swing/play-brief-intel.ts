@@ -10,6 +10,7 @@ import {
   gexMatrixAgeMs,
   gexMatrixStale,
   GEX_MATRIX_STALE_MS,
+  optionMarkGenuinelyUnknown,
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
@@ -648,8 +649,24 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // dollar level alone forces a member to do that subtraction themselves. Only shown when the
     // mark is actually above the stop (the normal case for an OPEN row); omitted rather than
     // shown negative/zero when data is missing or mid a stale-mark edge case — never fabricated.
+    //
+    // BUG FIX (2026-09-12, Ask Largo standing mandate, live repro EBS OPEN brief): this used to
+    // gate ONLY on `play.mark != null && play.mark > 0 && play.mark > stop`, which the TRUE
+    // entry-fallback case always satisfies — a banger-lane row with no live quote yet carries
+    // `play.mark === play.entry` (banger-lane-merge.ts's `mid = last_mark ?? entry_premium`), and
+    // the stop is set below entry by construction, so `mark > stop` is trivially true. EBS
+    // (entry/fallback-mark $0.10, stop $0.04) rendered "Premium stop rail: $0.04 — 60% cushion
+    // from current mark" here while the SAME envelope's Position section, a few lines above,
+    // correctly read "Mark: unknown _(sync quote, no live price yet — do not read as flat)_" — a
+    // confident percentage computed from the exact number the document itself says isn't known.
+    // Fix: skip the cushion (never the dollar level, which is real regardless) whenever the mark
+    // behind it is the true fallback — `optionMarkGenuinelyUnknown` (play-brief-absence.ts,
+    // extracted this same fix so `pnlSection`'s already-correct "Mark: unknown" gate and this one
+    // can't drift apart a second time).
     const cushionPct =
-      play.mark != null && play.mark > 0 && play.mark > stop ? ((play.mark - stop) / play.mark) * 100 : null;
+      play.mark != null && play.mark > 0 && play.mark > stop && !optionMarkGenuinelyUnknown(play)
+        ? ((play.mark - stop) / play.mark) * 100
+        : null;
     const cushionNote = cushionPct != null ? ` — ${cushionPct.toFixed(0)}% cushion from current mark` : "";
     lines.push(
       `Premium stop rail: **${fmtUsd(stop)}**${cushionNote} — thesis breaks if mark closes below`,
