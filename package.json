@@ -206,7 +206,7 @@
     "@sentry/nextjs": "^10.73.0",
     "@tanstack/react-virtual": "^3.14.11",
     "@types/web-push": "^3.6.4",
-    "@whop/sdk": "0.0.42",
+    "@whop/sdk": "1.1.2",
     "clsx": "^2.1.1",
     "framer-motion": "^13.2.0",
     "html-to-image": "^1.11.13",
