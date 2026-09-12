@@ -160,6 +160,33 @@ export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now(
   return freshnessFromObservedMs(markMs, readMs) === "stale";
 }
 
+/**
+ * True only when `play.mark` is the TRUE entry-fallback echo, not a real (if untimestamped) quote.
+ *
+ * `markIsSync` alone cannot distinguish the two — it is set as bluntly as `markAsOf == null`
+ * (adapters.ts), true for every banger-lane row regardless of whether `last_mark` is real (no
+ * `mark_as_of` column exists for that lane at all). When `pnlPct` is a real (non-null) number, the
+ * mark behind it must be real too — `livePnlPct(entry, mark)` cannot produce a percentage from a
+ * value that doesn't exist — so the TRUE fallback signature is `markIsSync && pnlPct == null`
+ * (play-brief.ts's `markGenuinelyUnknown`, extracted here 2026-09-12 so a second call site can
+ * share it instead of re-deriving it, and inevitably drifting from it, a second time).
+ *
+ * Centralized after a live repro (Ask Largo standing mandate, EBS OPEN brief 2026-09-12) found a
+ * SECOND call site computing straight off `play.mark` with no such gate: `watchForSection`'s
+ * "Premium stop rail" cushion (play-brief-intel.ts) divided by `play.mark` whenever it was a
+ * positive number above the stop — which the true entry-fallback case always satisfies, since the
+ * fallback mark is exactly the entry premium and the stop is set below entry by construction. EBS
+ * (stop $0.04, entry/fallback-mark $0.10) rendered "Premium stop rail: $0.04 — 60% cushion from
+ * current mark" in "What to watch" in the SAME envelope whose own Position section, a few lines
+ * above, correctly read "Mark: unknown _(sync quote, no live price yet — do not read as flat)_" —
+ * a specific, confident percentage computed from the exact number the document itself says is not
+ * known. Same self-contradiction class play-brief.ts's own comment already documents for its Mark
+ * line (2026-09-11, live repro SWING:ALAB) — this is a second, previously-unchecked instance of it.
+ */
+export function optionMarkGenuinelyUnknown(play: TerminalPlay): boolean {
+  return play.markIsSync === true && playExpectsLiveOptionMark(play.status) && play.pnlPct == null;
+}
+
 /** Structured C3 absence for option marks — sync-without-timestamp OR aged markAsOf. */
 export function collectOptionMarkStalenessAbsence(
   play: TerminalPlay | null | undefined,

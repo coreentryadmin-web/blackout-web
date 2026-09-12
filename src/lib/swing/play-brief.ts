@@ -19,6 +19,7 @@ import {
   collectBriefUnavailableSources,
   gexMatrixAgeMs,
   gexMatrixStale,
+  optionMarkGenuinelyUnknown,
   playExpectsLiveOptionMark,
   trustedHelixFlow,
   vectorSnapshotStale,
@@ -250,8 +251,12 @@ function pnlSection(play: TerminalPlay): RichSection {
   // it just lacks a stored timestamp, so show the value with an honest "not timestamped" caveat
   // instead of hiding it. Does not touch the true-fallback case (still "unknown", still tested by
   // the IMPP/EBS/QCML repro test below, which already sets pnlPct: null) or the has-a-real-markAsOf
-  // path (untouched, markUnsynced is false there).
-  const markGenuinelyUnknown = markUnsynced && play.pnlPct == null;
+  // path (untouched, markUnsynced is false there). Delegates to the shared
+  // `optionMarkGenuinelyUnknown` (play-brief-absence.ts, extracted 2026-09-12) so the exact same
+  // "true entry-fallback" test is available to other sections instead of being re-derived (and
+  // risking drift) a second time — see that function's own comment for the EBS repro that made a
+  // second call site necessary.
+  const markGenuinelyUnknown = optionMarkGenuinelyUnknown(play);
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
     markGenuinelyUnknown

@@ -2370,6 +2370,50 @@ test("watchForSection: Premium stop rail omits the cushion note when mark is una
   assert.doesNotMatch(section.body, /cushion/);
 });
 
+// BUG FIX (2026-09-12, Ask Largo standing mandate, live repro EBS OPEN brief): `mark != null` alone
+// is not "a real live mark" — a banger-lane row with no live quote synced yet carries
+// `play.mark === play.entry` (the true entry-fallback echo, `markIsSync: true` + `pnlPct: null`,
+// same signature `pnlSection`'s "Mark: unknown" already gates on) and the stop is set below entry
+// by construction, so the old `mark > 0 && mark > stop` gate always passed for it too. EBS
+// (entry/fallback-mark $0.10, stop $0.04) rendered "60% cushion from current mark" here in the
+// SAME envelope whose Position section, a few lines above, correctly read "Mark: unknown _(sync
+// quote, no live price yet — do not read as flat)_" — a confident percentage computed from the
+// exact number the document itself says isn't known. The dollar stop level is still shown
+// (real regardless of mark); only the fabricated cushion percentage is now omitted.
+test("watchForSection: Premium stop rail omits the cushion note when the mark is the true entry-fallback echo (never fabricated)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "OPEN",
+        direction: "LONG",
+        entry: 0.1,
+        mark: 0.1, // banger-lane fallback: mid = last_mark ?? entry_premium, no live quote yet
+        markIsSync: true,
+        pnlPct: null, // the true-fallback signature — no P&L basis exists because there is no real mark
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.04,
+        },
+      }),
+      asOf: "2026-09-12 07:07 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.04\*\* — thesis breaks if mark closes below/);
+  assert.doesNotMatch(section.body, /cushion/);
+});
+
 // Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
 // duplication class as #4261 (recNote/rails) and the thesis-health advisory fix above:
 // catalystCoaching (play-brief-narrative-coaching.ts) already renders "Earnings in Nd (DATE) —
