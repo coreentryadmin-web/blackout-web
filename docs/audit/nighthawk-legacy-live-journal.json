@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T15:54:16.886Z",
+  "lastUpdated": "2026-09-12T15:56:53.663Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1286,6 +1286,11 @@
       "at": "2026-09-12T15:54:16.886Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Trying the live UI check this cycle as the fresh angle (secondary priority per mandate, not yet done today): minted a temp Clerk premium session and launched proxy-browser.cjs against /nighthawk?view=legacy at desktop 1440x900 -- running in background, will check the screenshot next cycle. Noted sibling cross-lane commits this window (GOOGL posture/net-GEX check from Swings lane, inconclusive/not filed by them) -- correctly out of scope, no action needed."
+    },
+    {
+      "at": "2026-09-12T15:56:53.664Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, continued)",
+      "result": "Live UI check completed: proxy-browser.cjs screenshot of /nighthawk?view=legacy at desktop 1440x900, Routed: 96 ok, 0 fail. Board rendered cleanly -- Legacy tab active, Open(2)/Closed(0) tabs correct, evening playbook narrative present, HPE/DELL rows match the API data exactly ($2.91->$2.91, $18.15->$18.15, both WATCH/+0%), no visual defects, no overlapping text, no layout breaks. This is a genuine independent cross-check that the live UI reflects the same numbers the API-level healthcheck has been asserting all day. Temp Clerk user cleaned up (deleteAuditClerkUser, verified deleted). No findings from this pass -- clean report is honest. This closes out the 'fresh angle' options identified earlier (field-mismatch sweep exhausted, outcome-honesty checked, now live UI checked) -- next non-trivial work likely waits for Monday's market open per the standing validation plan."
     }
   ],
   "knownOpenItems": {
