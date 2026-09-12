@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T13:08:45.664Z",
+  "lastUpdated": "2026-09-12T13:31:52.753Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1226,6 +1226,11 @@
       "at": "2026-09-12T13:08:45.664Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continued)",
       "result": "While waiting out the GitHub MCP rate limit on PR #4860's undraft (retried once immediately, still limited -- not hammering further), ran this cycle's own healthcheck:legacy: fully GREEN (resolved=26 stable, edition fresh 2 plays, marks HPE/DELL both in range). No new findings this pass. Will retry #4860 undraft+merge next trigger."
+    },
+    {
+      "at": "2026-09-12T13:31:52.753Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset, continued)",
+      "result": "PR #4860 confirmed merged and verified on origin/main (grep shows ticker_symbol landed at unusual-whales.ts:1823). Follow-up shipped: while writing #4860's finding I'd flagged parseTradeDate's date-field guessing as a second, independent bug (same trade-date-vs-disclosure-date class as #4844) -- fixed it now rather than letting it go stale. dossier.ts's parseTradeDate never checked real filed_at_date (congress) or filing_date (insider) fields, only transaction_date, so getEditionCongressTrades's 30-day recency filter and isRecentInsiderBuy's window check were both measuring staleness off the trade date instead of the disclosure date. Added both real fields first in the fallback chain, exported the two previously-private helpers, wrote dossier.test.ts (new file, 5 tests) using real row shapes. RED->GREEN proven (5/5 fail before, 5/5 pass after), tsc clean, full suite 13921/0/3skip. Shipped as PR #4863 (draft, CI pending)."
     }
   ],
   "knownOpenItems": {
