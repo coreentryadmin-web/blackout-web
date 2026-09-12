@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T07:32:54.359Z",
+  "lastUpdated": "2026-09-12T07:37:09.877Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1111,6 +1111,11 @@
       "at": "2026-09-12T07:32:54.386Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS continuation (check_suite.completed webhook)",
       "result": "PR #4839 (OI-change field-mismatch fix): all checks completed GREEN (CI/verify job -- typecheck, unit tests, build, all guards -- and CodeQL, both success). Undrafted via GitHub MCP, confirmed draft:false on read-back. Merged via GitHub MCP merge_pull_request (sha 8850e853c). Re-verified against origin/main post-merge per the 'a merge is not a verification' discipline -- grepped scorer.ts on origin/main, confirmed both inline type decls and the filter body now read `kind` (not `option_type`). Local main synced to the merged state. This closes out the OI-change scoring bug found and fixed this session."
+    },
+    {
+      "at": "2026-09-12T07:37:09.877Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. PR #4839 (OI-change scoring fix) confirmed merged and verified live last cycle. One clean cycle since; next cycle without new findings will start a fresh clean-streak count toward the mandate's 'dig harder' threshold."
     }
   ],
   "knownOpenItems": {
