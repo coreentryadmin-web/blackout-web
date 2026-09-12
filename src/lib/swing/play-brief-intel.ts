@@ -588,6 +588,36 @@ export function catalystsSection(eco: EcosystemContext | null): RichSection | nu
   return { title: "Catalysts & news", body: lines.join("\n\n") };
 }
 
+/**
+ * Why the entry trigger level can no longer actually fire the setup — null when it still can.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-09-12): `watchForSection`'s "Entry trigger" bullet
+ * asserted, unconditionally, that crossing `entryTriggerUnderlyingPx` "is what actually fires the
+ * setup" — true only while the setup is still alive. Live repro, two shapes:
+ *   - SKHY WATCH brief: `setupState === "INVALIDATED"` (thesis already broke — gate `thesis_invalidated`)
+ *     with spot **190.38 already above** the 177.00 long trigger. The claimed mechanic ("break above
+ *     this fires the setup") had already been satisfied by price and had NOT fired — directly
+ *     contradicting the sentence next to the number.
+ *   - MRVL WATCH brief: `watchEntryExpired === true` (entry-validity deadline passed,
+ *     entry-enterability.ts's `pastEntryDeadline`) — the headline correctly says "EXPIRED — wait for
+ *     a fresh setup," but four sections later "Watch levels" still framed the same trigger as live
+ *     and actionable with no cross-reference to that framing.
+ * Both are the same root cause: the line rendered from `entryTriggerUnderlyingPx` alone, never
+ * checking the setup's own already-computed dead/invalidated state (`play.setupState`,
+ * `play.watchEntryExpired` — both already carried on `TerminalPlay` for exactly this kind of check
+ * elsewhere in this file). The number itself stays (still useful as "the level that would have
+ * mattered") — only the false causal claim is corrected.
+ */
+function entryTriggerDeadReason(play: TerminalPlay): string | null {
+  if (play.setupState === "INVALIDATED") {
+    return "thesis already invalidated — this level no longer fires the setup";
+  }
+  if (play.watchEntryExpired === true) {
+    return "entry-validity window expired — this level no longer fires the setup";
+  }
+  return null;
+}
+
 /** What to watch — invalidation, triggers, key levels. */
 export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "open" | "closed"): RichSection {
   const { play } = ctx;
@@ -628,8 +658,11 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // not — the two can diverge once a dossier refreshes its plan on a later scan pass.
     if (play.entryTriggerUnderlyingPx != null) {
       const verb = play.direction === "SHORT" ? "Break/reclaim below" : "Break/reclaim above";
+      const deadReason = entryTriggerDeadReason(play);
       lines.push(
-        `Entry trigger: **${play.entryTriggerUnderlyingPx.toFixed(2)}** — ${verb} this is what actually fires the setup`,
+        deadReason
+          ? `Entry trigger: **${play.entryTriggerUnderlyingPx.toFixed(2)}** — ${verb}, but ${deadReason}`
+          : `Entry trigger: **${play.entryTriggerUnderlyingPx.toFixed(2)}** — ${verb} this is what actually fires the setup`,
       );
     }
   }
