@@ -14,6 +14,9 @@ export type LaneRankSnapshot = {
   topTicker: string | null;
   topScore: number | null;
   deltaFromMedian: number;
+  /** True when THIS play's own setupState is INVALIDATED — a rank-1/top-tier self-claim must not
+   *  be rendered as praise when the same brief elsewhere says the thesis already broke. */
+  selfInvalidated: boolean;
 };
 
 const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
@@ -24,6 +27,14 @@ const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
  *  -9.5%; NN's brief still named it "Leader: CRWD @ 86.5 — confirm before adding size", which reads
  *  as "put money here" about a position the desk is actively telling members to exit). */
 const EXITING_MANAGE_ACTIONS = new Set(["EXIT", "EXIT_RUNNER"]);
+
+/** A WATCH-bucket peer whose own setup already broke is excluded from the named leader pointer for
+ *  the same reason as EXITING_MANAGE_ACTIONS above (found live 2026-09-12: SKHY sat #1 of 8 on WATCH
+ *  by raw score while its OWN brief's Entry section already read "Serving section: RESEARCH" /
+ *  "Setup: INVALIDATED" / "Thesis BREAK — structure invalidated... don't add size" — three sections
+ *  later the SAME brief's folded narrative still said "Lane leader — #1 of 8 on WATCH — Desk
+ *  attention follows the top row", directly contradicting its own disclosure). */
+const INVALIDATED_SETUP_STATES = new Set(["INVALIDATED"]);
 
 /** Parse strike/right from deck contract label, e.g. "110C · 13DTE". */
 export function parseDeckContractLabel(contract: string | null | undefined): {
@@ -86,7 +97,11 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
   // best peer still actually held open. Falls back to the raw #1 if every peer is exiting (still
   // shows something rather than nothing) — WATCH-bucket rows never carry manageAction, so this is a
   // no-op there.
-  const leaderCandidates = sorted.filter((r) => !EXITING_MANAGE_ACTIONS.has(r.manageAction ?? ""));
+  const leaderCandidates = sorted.filter(
+    (r) =>
+      !EXITING_MANAGE_ACTIONS.has(r.manageAction ?? "") &&
+      !INVALIDATED_SETUP_STATES.has(r.setupState ?? ""),
+  );
   const top = leaderCandidates[0] ?? sorted[0];
 
   return {
@@ -101,6 +116,7 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
     // produces IEEE754 artifacts like 11.800000000000004 that read straight into the "vs median"
     // narrative line unrounded (live repro: AMZN brief showed "+11.799999999999997 vs median").
     deltaFromMedian: Math.round((playScore - medianScore) * 10) / 10,
+    selfInvalidated: play.setupState === "INVALIDATED",
   };
 }
 
@@ -120,7 +136,7 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
   if (snap.topTicker && snap.topScore != null && snap.rank > 1) {
     lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**`);
   }
-  if (snap.rank === 1 && snap.total > 1) {
+  if (snap.rank === 1 && snap.total > 1 && !snap.selfInvalidated) {
     lines.push("Top-ranked play in this bucket — size and attention follow score.");
   } else if (snap.deltaFromMedian < -15) {
     lines.push("Below median — confirm thesis before adding size; leader may be absorbing flow.");
