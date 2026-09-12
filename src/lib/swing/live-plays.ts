@@ -24,6 +24,23 @@ import {
 
 const LIVE: ReadonlySet<string> = new Set(["OPEN", "HOLD", "TRIM"]);
 
+// The persisted ledger `status` (HOLD/TRIM/OPEN) only changes when a position is actually
+// executed/rolled — it can lag several ticks behind `manageAction`, which is recomputed fresh on
+// every read from the live spot/thesis-break/manage-event above. Live-verified 2026-09-12 (NRG,
+// CG): `row.status` still read "HOLD" while `manageAction` had already flipped to EXIT/
+// TAKE_PARTIAL, so a `reason` string built from `row.status` alone said "live hold — ... thesis"
+// right next to a Management section showing "Manage engine: EXIT" — a live, member-visible
+// contradiction (see docs/audit/FINDINGS.md, same date). `manageAction` is the freshest read of
+// the two, so the reason's verb must come from it whenever it names an active reduce/exit, not
+// from the stale ledger status.
+const REASON_VERB_BY_MANAGE_ACTION: Partial<Record<SwingManageAction, string>> = {
+  EXIT: "exit",
+  STOP_OUT: "stop out",
+  TAKE_PARTIAL: "trim",
+  EXIT_RUNNER: "trim",
+  ADD: "add to",
+};
+
 function liveStatusOf(status: string): SwingLiveStatus | null {
   if (status === "TRIM") return "TRIM";
   if (status === "HOLD") return "HOLD";
@@ -321,7 +338,7 @@ export function livePlayFromSwingPosition(
     status: "COMMIT", // live capital is committed — back-compat committed[] view
     contract,
     scoreFloor: HORIZONS.SWING.scoreFloor,
-    reason: `live ${row.status.toLowerCase()} — ${row.archetype ?? "swing"} thesis`,
+    reason: `live ${(manageAction && REASON_VERB_BY_MANAGE_ACTION[manageAction]) ?? row.status.toLowerCase()} — ${row.archetype ?? "swing"} thesis`,
     archetype: (row.archetype as SwingArchetype | null) ?? undefined,
     subLane: (row.sub_lane as SwingSubLane | null) ?? undefined,
     regime,

@@ -110,6 +110,32 @@ test("livePlayFromSwingPosition: structural break stamps EXIT + thesis break", (
   assert.equal(play.thesisLevel, "break");
 });
 
+test("livePlayFromSwingPosition: reason verb tracks manageAction, not the stale ledger status (live 2026-09-12 NRG/CG repro)", () => {
+  // Live-verified defect: the ledger `status` column stays "HOLD" until a position is actually
+  // executed/rolled, but `manageAction` is recomputed fresh from spot/thesis-break on every read.
+  // Before the fix, `reason` was built from `row.status` alone, so a HOLD-status row whose
+  // manageAction had already flipped to EXIT (a structural break, exactly like this fixture) still
+  // read "live hold — ... thesis" right next to a Management section showing "Manage engine: EXIT"
+  // — a real, member-visible contradiction (docs/audit/findings-staging,
+  // 2026-09-12-largo-stale-recnote-manage-mismatch.md).
+  const exitPlay = livePlayFromSwingPosition(row({ status: "HOLD" }), 160)!; // below 165 invalidation -> EXIT
+  assert.equal(exitPlay.manageAction, "EXIT");
+  assert.equal(exitPlay.reason, "live exit — BREAKOUT thesis");
+  assert.ok(!exitPlay.reason.includes("hold"), `reason must not say "hold" while manageAction is EXIT, got: ${exitPlay.reason}`);
+
+  const trimPlay = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    action: "TAKE_PARTIAL",
+    rung: "tranche_1",
+  })!;
+  assert.equal(trimPlay.manageAction, "TAKE_PARTIAL");
+  assert.equal(trimPlay.reason, "live trim — BREAKOUT thesis");
+
+  // No active manageAction (plain HOLD) -> falls back to the ledger status as before, unchanged.
+  const holdPlay = livePlayFromSwingPosition(row({ status: "HOLD" }), 178)!;
+  assert.equal(holdPlay.manageAction, undefined);
+  assert.equal(holdPlay.reason, "live hold — BREAKOUT thesis");
+});
+
 test("livePlayFromSwingPosition: latest manage snapshot overrides spot-only intact read", () => {
   const play = livePlayFromSwingPosition(
     row(),
