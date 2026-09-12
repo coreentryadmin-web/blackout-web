@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-12T09:46:00Z",
+  "last_updated": "2026-09-12T10:01:00Z",
   "notes": [
     "06:31 UTC cycle -- re-checked PR #4837 on AAPL#37: STILL unchanged, factors still sum to 75.0 vs score 84, identical to the 06:16 check 15min ago. ~35-40min since merge now -- at the outer edge of this repo's typical 30-45min deploy window, not yet concerning but worth watching closely next cycle rather than assuming it'll just resolve. No new swing PRs this cycle (#4836 GEX perf, #4838 CLAUDE.md docs update, both non-swing). Markets closed, all 5 real positions unchanged.",
     "06:16 UTC cycle -- checked PR #4837's fix live on AAPL#37: factors still sum to 75.0 (29.5+21.1+14+6.3+2.8+1.3) against a displayed score of 84 -- the SAME pre-fix gap the PR itself cited. This is NOT the fix failing -- #4837 merged only ~15-20min before this check, and this repo's own established pattern (watermark-bracket fix #4808 earlier tonight, roll-history fix #4802 before that) is that a merged fix needs an ECS deploy cycle (historically 30-45min) before it's live -- a check run this soon after merge is exactly the trap CLAUDE.md's depth-ladder tooling notes warn about ('a check run seconds after a deploy proves nothing'). Will re-check AAPL's factor sum next cycle or the one after, expecting it to read 84 once the deploy completes. No new swing PRs beyond what's already tracked (#4834 is 0DTE, not swing). Markets closed, all 5 real positions unchanged.",
@@ -435,8 +435,8 @@
       "id": "swing-lane-rank-below-median-adding-size-wording",
       "kind": "FINDING",
       "pr": 4849,
-      "status": "OPEN (draft, CI pending)",
-      "summary": "Live repro: CG sat #90/90 by raw entry-time score (dead last) while being the book's best-performing real position (+169.2%/+134.6% exec, already TAKE_PARTIAL/TRIM) -- its own brief said 'Desk says TRIM ... Bank partial into strength' three bullets before 'confirm before adding size,' backwards advice about a position already being trimmed. WATCH-lane analog of #4842's rank-1 self-praise fix, but for the below-median caution and manageAction-based reduce states (TAKE_PARTIAL/EXIT_RUNNER/STOP_OUT/EXIT) rather than setupState. New selfReducing flag gates the wording swap in both laneRankSection and laneRankCoaching; plain HOLD unaffected. 6 new tests, RED->GREEN proven, tsc clean, scoped test files 89/89 pass; full npm test run locally (result pending at PR-open time), CI verify will confirm."
+      "status": "OPEN (draft, CI pending -- title/body updated to reflect expanded scope)",
+      "summary": "Live repro: CG sat #90/90 by raw entry-time score (dead last) while being the book's best-performing real position (+169.2%/+134.6% exec, already TAKE_PARTIAL/TRIM) -- its own brief said 'Desk says TRIM ... Bank partial into strength' three bullets before 'confirm before adding size,' backwards advice about a position already being trimmed. WATCH-lane analog of #4842's rank-1 self-praise fix, but for the below-median caution and manageAction-based reduce states (TAKE_PARTIAL/EXIT_RUNNER/STOP_OUT/EXIT) rather than setupState. New selfReducing flag gates the wording swap in both laneRankSection and laneRankCoaching; plain HOLD unaffected. 6 new tests, RED->GREEN proven, tsc clean, scoped test files 89/89 pass; full npm test run locally (result pending at PR-open time), CI verify will confirm. EXPANDED same cycle: found a second live repro (CRWD, #1 of 90 OPEN by raw score, manageAction EXIT_RUNNER, 'Lane leader...Desk attention follows the top row' contradicting its own 'Desk says TRIM...protect what's left') -- selfReducing now also gates the rank-1/top-tier praise branches in both laneRankSection and laneRankCoaching, not just the below-median branch. 9 tests total, RED->GREEN proven twice, tsc clean, scoped tests 91/91."
     }
   ],
   "loss_taxonomy": {
