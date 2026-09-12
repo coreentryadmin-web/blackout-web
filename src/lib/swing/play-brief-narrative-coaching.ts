@@ -780,8 +780,27 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
   if (snap.selfInvalidated) return null;
 
   const label = snap.bucket === "open" ? "OPEN" : "WATCH";
-  if (snap.rank === 1) {
+  // Live repro 2026-09-12 (same cycle #4849 was opened): CRWD sat #1 of 90 on OPEN by raw score
+  // (87) while its own manage engine was EXIT_RUNNER (round-tripped +130% peak -> -10%, all trims
+  // banked, runner only) -- the brief's very first bullet said "Desk says TRIM ... consider
+  // protecting what's left," then three lines later this branch still said "Lane leader ... Desk
+  // attention follows the top row." #4842 only guarded this branch on selfInvalidated (setupState);
+  // it never covered a rank-1 play whose own manageAction says reduce -- the exact peer-exclusion
+  // gap #4842's own EXITING_MANAGE_ACTIONS closed for OTHER tickers' named-leader pointer, just not
+  // for THIS play's self-referential rank-1 claim. selfReducing (added earlier this same PR for the
+  // below-median branch) closes it here too.
+  if (snap.rank === 1 && !snap.selfReducing) {
     return `**Lane leader** — **#1 of ${snap.total}** on ${label} (score **${snap.playScore}**). Desk attention follows the top row.`;
+  }
+  if (snap.deltaFromMedian < -15 && snap.selfReducing) {
+    // Live repro 2026-09-12: CG sat #90/90 by raw entry-time score — a real +169.2%/+134.6% exec
+    // winner already on TRIM — and this exact bullet still said "confirm before adding size" three
+    // lines after "Desk says TRIM ... Bank partial into strength." The entry-time score standing is
+    // real context, but "adding size" is backwards advice once the position's own plan is to reduce.
+    return (
+      `**Below lane median on entry-time score** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
+      `${snap.deltaFromMedian} vs median) — not a sizing signal here; this position's own plan already calls for reducing, not adding.`
+    );
   }
   if (snap.deltaFromMedian < -15) {
     return (
@@ -789,7 +808,7 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
       `${snap.deltaFromMedian} vs median). Leader: **${snap.topTicker ?? "—"}** @ **${snap.topScore ?? "—"}** — confirm before adding size.`
     );
   }
-  if (snap.rank <= 3 && snap.deltaFromMedian >= 10) {
+  if (snap.rank <= 3 && snap.deltaFromMedian >= 10 && !snap.selfReducing) {
     return `**Top-tier setup** — **#${snap.rank}/${snap.total}** on ${label} · **+${snap.deltaFromMedian}** vs median.`;
   }
   return null;

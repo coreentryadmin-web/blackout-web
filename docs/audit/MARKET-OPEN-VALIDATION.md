@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-12 Ask Largo lane-rank praise/caution wording on reducing positions (read this before the routine pass)
+
+### Lane-rank lines said "confirm before adding size"/"Lane leader" on positions already being trimmed or exited — fix/swing-lane-rank-below-median-reduce-wording
+
+**What was broken:** `computeLaneRank`/`laneRankCoaching`/`laneRankSection` (`src/lib/swing/play-brief-lane-rank.ts`,
+`play-brief-narrative-coaching.ts`) render self-referential rank praise/caution lines with no check on
+the play's own `manageAction`. Two live repros the same cycle: **CG** sat #90/90 by raw entry-time
+score (dead last) while being the book's best-performing real position (+169.2%/+134.6% exec, already
+`TAKE_PARTIAL`) — its own brief said "Desk says TRIM ... Bank partial into strength" three bullets
+before "confirm before adding size." **CRWD** sat #1 of 90 on OPEN by raw score (87) with its own
+manage engine `EXIT_RUNNER` (round-tripped +130% peak → -10%) — its brief said "Desk says TRIM ...
+consider protecting what's left" three bullets before "Lane leader ... Desk attention follows the top
+row." See `docs/audit/findings-staging/2026-09-12-swing-lane-rank-below-median-adding-size-wording.md`.
+
+**Fix:** a new `selfReducing` flag (true for `TAKE_PARTIAL`/`EXIT_RUNNER`/`STOP_OUT`/`EXIT`) gates
+off every self-referential praise/caution branch in both functions — rank-1 "Lane leader"/"Top-ranked
+play", rank≤3 "Top-tier setup", and the below-median "adding size" line (which renders a reduce-aware
+variant instead of suppressing outright). A plain `HOLD`/`ADD` is unaffected.
+
+**Check at the open:** once Monday's session produces new reducing committed positions (`TRIM`/
+`EXIT_RUNNER`/`STOP_OUT`), spot-check their briefs for any "Lane leader"/"Top-tier setup"/"confirm
+before adding size" line — none should appear on a position the desk is telling the member to reduce,
+and a plain-HOLD position at any rank should still get the original wording.
+
 ## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: institutional smart-money leg was dead code (read this before the routine pass)
 
 ### `institutionalNetSignal`/`smartMoneyDriverNote` now read the real UW `units_changed` field — fix/nighthawk-institutional-units-changed-field
