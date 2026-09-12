@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T13:31:52.753Z",
+  "lastUpdated": "2026-09-12T13:37:50.538Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1231,6 +1231,11 @@
       "at": "2026-09-12T13:31:52.753Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset, continued)",
       "result": "PR #4860 confirmed merged and verified on origin/main (grep shows ticker_symbol landed at unusual-whales.ts:1823). Follow-up shipped: while writing #4860's finding I'd flagged parseTradeDate's date-field guessing as a second, independent bug (same trade-date-vs-disclosure-date class as #4844) -- fixed it now rather than letting it go stale. dossier.ts's parseTradeDate never checked real filed_at_date (congress) or filing_date (insider) fields, only transaction_date, so getEditionCongressTrades's 30-day recency filter and isRecentInsiderBuy's window check were both measuring staleness off the trade date instead of the disclosure date. Added both real fields first in the fallback chain, exported the two previously-private helpers, wrote dossier.test.ts (new file, 5 tests) using real row shapes. RED->GREEN proven (5/5 fail before, 5/5 pass after), tsc clean, full suite 13921/0/3skip. Shipped as PR #4863 (draft, CI pending)."
+    },
+    {
+      "at": "2026-09-12T13:37:50.538Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable, edition fresh 2 plays, marks in range). PR #4863 (dossier recency-date fix): CodeQL green, CI still in_progress as of this check -- will confirm and merge next cycle. Two real bugs shipped and merged/pending this session set (#4860 merged+verified, #4863 pending) from the systematic field-mismatch audit methodology. No new findings this specific pass -- next cycle will either finish #4863's merge or dig into a fresh angle per the 'several clean cycles -> dig harder' discipline."
     }
   ],
   "knownOpenItems": {
