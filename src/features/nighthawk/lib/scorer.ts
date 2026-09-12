@@ -237,17 +237,42 @@ export function scoreFundamentalTailwind(
  */
 export const CATALYST_CAP = 5;
 
+/** "today" / "yesterday" / "Nd ago" relative to `now`, or "" when `published` doesn't parse.
+ *  Benzinga catalyst flags ("guidance update", "insider transaction", ...) carried no freshness —
+ *  a member reading "Watch: guidance update" in tomorrow's thesis had no way to tell a headline
+ *  from last night apart from one already priced in three weeks ago, even though the dossier
+ *  already carries the real `published` timestamp (see CLAUDE.md's Largo product contract,
+ *  "freshness" is one of the ten required points for any surface exposed to Largo, and this same
+ *  thesis text is fed straight into the edition's Claude prompt). */
+export function catalystRecencySuffix(published: string, now: Date = new Date()): string {
+  const ts = Date.parse(published);
+  if (!Number.isFinite(ts)) return "";
+  const days = Math.floor((now.getTime() - ts) / 86_400_000);
+  if (days < 0) return "";
+  if (days === 0) return " (today)";
+  if (days === 1) return " (yesterday)";
+  return ` (${days}d ago)`;
+}
+
 export function scoreCatalystAwareness(
   catalysts: BenzingaCatalyst[] | null | undefined,
-  direction: "long" | "short"
+  direction: "long" | "short",
+  now: Date = new Date()
 ): { score: number; flags: string[] } {
   if (!catalysts || !catalysts.length) return { score: 0, flags: [] };
   let raw = 0;
   const flags: string[] = [];
 
+  // Catalysts arrive newest-first (fetchBenzingaCatalysts sorts by `published` desc), so the
+  // FIRST occurrence of a type is already the freshest one — flag it once, not once per headline.
   let binaryFlagged = false;
   let positiveFlagged = false;
+  let guidanceFlagged = false;
+  let insiderFlagged = false;
+  let offeringFlagged = false;
+  let shortFlagged = false;
   for (const c of catalysts) {
+    const recency = catalystRecencySuffix(c.published, now);
     switch (c.type) {
       case "binary":
         // FDA-type binary ahead — penalize a directional premium play regardless of side. Only
@@ -255,38 +280,50 @@ export function scoreCatalystAwareness(
         if (!binaryFlagged) {
           raw -= 3;
           binaryFlagged = true;
-          flags.push("binary event ahead (FDA) — directional premium is a coin-flip");
+          flags.push(`binary event ahead (FDA) — directional premium is a coin-flip${recency}`);
         }
         break;
       case "buyback":
         if (!positiveFlagged) {
           raw += direction === "long" ? 2 : -1;
           positiveFlagged = true;
-          flags.push("buyback authorization");
+          flags.push(`buyback authorization${recency}`);
         }
         break;
       case "m&a":
         if (!positiveFlagged) {
           raw += direction === "long" ? 2 : -1;
           positiveFlagged = true;
-          flags.push("M&A involvement");
+          flags.push(`M&A involvement${recency}`);
         }
         break;
       case "guidance":
         // Guidance is a known catalyst but direction-ambiguous from the channel alone — a tiny,
         // side-neutral awareness note only (no scoring weight), so we don't guess raise vs cut.
-        flags.push("guidance update");
+        if (!guidanceFlagged) {
+          guidanceFlagged = true;
+          flags.push(`guidance update${recency}`);
+        }
         break;
       case "insider":
-        flags.push("insider transaction");
+        if (!insiderFlagged) {
+          insiderFlagged = true;
+          flags.push(`insider transaction${recency}`);
+        }
         break;
       case "offering":
         // A dilutive offering is a headwind for a long; mild tailwind for a short.
-        raw += direction === "long" ? -2 : 1;
-        flags.push("offering (potential dilution)");
+        if (!offeringFlagged) {
+          raw += direction === "long" ? -2 : 1;
+          offeringFlagged = true;
+          flags.push(`offering (potential dilution)${recency}`);
+        }
         break;
       case "short":
-        flags.push("short-seller activity");
+        if (!shortFlagged) {
+          shortFlagged = true;
+          flags.push(`short-seller activity${recency}`);
+        }
         break;
       default:
         break;
