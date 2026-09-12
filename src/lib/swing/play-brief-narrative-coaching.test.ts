@@ -1345,3 +1345,34 @@ test("laneRankCoaching: still names the real leader for a healthy rank-1 WATCH s
   assert.match(line!, /Lane leader/);
   assert.match(line!, /#1 of 2/);
 });
+
+// Live repro 2026-09-12: CG sat #90/90 by raw entry-time score (3) — a real +169.2%/+134.6% exec
+// winner already on TRIM (manageAction TAKE_PARTIAL) — and this exact function still said "confirm
+// before adding size" three lines after the brief's own "Desk says TRIM ... Bank partial into
+// strength" — backwards advice about a position the desk is telling the member to bank profit on,
+// not size into.
+test("laneRankCoaching: below-median wording drops 'adding size' when the play's own plan is to reduce", () => {
+  const lanes = [
+    laneRow({ ticker: "AAPL", score: 84.4, status: "COMMIT" }),
+    laneRow({ ticker: "NN", score: 23, status: "COMMIT" }),
+    laneRow({ ticker: "CG", score: 3, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "CG", score: 3, status: "HOLD", manageAction: "TAKE_PARTIAL" }),
+    lanes,
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line, /confirm before adding size/, "backwards advice on a position already being trimmed");
+  assert.match(line, /reducing, not adding/);
+});
+
+test("laneRankCoaching: below-median wording keeps 'confirm before adding size' for a play that's just HOLDing", () => {
+  const lanes = [
+    laneRow({ ticker: "AAPL", score: 84.4, status: "COMMIT" }),
+    laneRow({ ticker: "CG", score: 23, status: "COMMIT" }),
+    laneRow({ ticker: "NN", score: 3, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "NN", score: 3, status: "HOLD", manageAction: "HOLD" }), lanes);
+  assert.ok(line);
+  assert.match(line, /confirm before adding size/, "a plain HOLD is still a legitimate add-size caution");
+});

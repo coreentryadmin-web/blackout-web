@@ -157,6 +157,38 @@ test("laneRankSection: suppresses the rank-1 praise line when the play's own the
   assert.doesNotMatch(sec!.body, /Top-ranked play in this bucket/);
 });
 
+test("computeLaneRank: selfReducing is true only when THIS play's own manageAction calls for reducing", () => {
+  const lanes = [row("AAPL", 84.4, "COMMIT"), row("NN", 23, "COMMIT"), row("CG", 3, "COMMIT")];
+  const reducing = computeLaneRank(play({ ticker: "CG", score: 3, status: "HOLD", manageAction: "TAKE_PARTIAL" }), lanes);
+  assert.ok(reducing);
+  assert.equal(reducing!.selfReducing, true);
+
+  const holding = computeLaneRank(play({ ticker: "AAPL", score: 84.4, status: "HOLD", manageAction: "HOLD" }), lanes);
+  assert.ok(holding);
+  assert.equal(holding!.selfReducing, false);
+});
+
+test("laneRankSection: below-median wording drops 'adding size' when the play's own plan is to reduce", () => {
+  // Live repro 2026-09-12: CG sat #90/90 by raw entry-time score (3) — a real +169.2%/+134.6% exec
+  // winner already on TRIM (manageAction TAKE_PARTIAL) — and this exact line said "confirm before
+  // adding size" right after the brief's own "Desk says TRIM ... Bank partial into strength."
+  const lanes = [row("AAPL", 84.4, "COMMIT"), row("NN", 23, "COMMIT"), row("CG", 3, "COMMIT")];
+  const sec = laneRankSection(
+    play({ ticker: "CG", score: 3, status: "HOLD", manageAction: "TAKE_PARTIAL" }),
+    lanes,
+  );
+  assert.ok(sec);
+  assert.doesNotMatch(sec!.body, /confirm before adding size/, "backwards advice on a position already being trimmed");
+  assert.match(sec!.body, /reducing, not adding/);
+});
+
+test("laneRankSection: below-median wording keeps 'confirm before adding size' for a play that's just HOLDing", () => {
+  const lanes = [row("AAPL", 84.4, "COMMIT"), row("CG", 23, "COMMIT"), row("NN", 3, "COMMIT")];
+  const sec = laneRankSection(play({ ticker: "NN", score: 3, status: "HOLD", manageAction: "HOLD" }), lanes);
+  assert.ok(sec);
+  assert.match(sec!.body, /confirm thesis before adding size/, "a plain HOLD is still a legitimate add-size caution");
+});
+
 test("computeLaneRank: deltaFromMedian is rounded, not a raw float subtraction artifact", () => {
   const snap = computeLaneRank(play({ ticker: "AMZN", score: 57.2, status: "WATCH" }), [
     row("AMZN", 57.2, "WATCH"),

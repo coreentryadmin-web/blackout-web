@@ -783,6 +783,16 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
   if (snap.rank === 1) {
     return `**Lane leader** — **#1 of ${snap.total}** on ${label} (score **${snap.playScore}**). Desk attention follows the top row.`;
   }
+  if (snap.deltaFromMedian < -15 && snap.selfReducing) {
+    // Live repro 2026-09-12: CG sat #90/90 by raw entry-time score — a real +169.2%/+134.6% exec
+    // winner already on TRIM — and this exact bullet still said "confirm before adding size" three
+    // lines after "Desk says TRIM ... Bank partial into strength." The entry-time score standing is
+    // real context, but "adding size" is backwards advice once the position's own plan is to reduce.
+    return (
+      `**Below lane median on entry-time score** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
+      `${snap.deltaFromMedian} vs median) — not a sizing signal here; this position's own plan already calls for reducing, not adding.`
+    );
+  }
   if (snap.deltaFromMedian < -15) {
     return (
       `**Below lane median** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
