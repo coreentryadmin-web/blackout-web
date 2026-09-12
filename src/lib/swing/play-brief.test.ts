@@ -441,8 +441,18 @@ test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavai
   const brief = composeSwingPlayBrief(ctx);
   assert.deepEqual(brief.envelope.unavailableSources, [
     { source: "short-interest", reason: "provider timeout" },
-    { source: "GEX positioning", reason: "cold matrix / no positioning read" },
-    { source: "Vector desk state", reason: "snapshot unavailable" },
+    {
+      source: "GEX positioning",
+      reason: "cold matrix / no positioning read",
+      what_is_missing: "a warm GEX positioning read for this ticker",
+      retryable: true,
+    },
+    {
+      source: "Vector desk state",
+      reason: "snapshot unavailable",
+      what_is_missing: "a live Vector desk-state snapshot with spot",
+      retryable: true,
+    },
   ]);
 });
 
