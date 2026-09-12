@@ -650,7 +650,7 @@ export function scoreVexAlignment(
 export function scoreOptionsPositioning(
   dossier: {
     dark_pool?: { total_premium?: number; bias?: string } | null;
-    oi_change?: Array<{ oi_change?: number; option_type?: string }>;
+    oi_change?: Array<{ oi_change?: number; kind?: string }>;
     positioning?: PositioningSummary | null;
     strike_stacks?: FlowStrikeStack[];
     greek_flow?: TickerGreekFlowSummary | null;
@@ -692,11 +692,20 @@ export function scoreOptionsPositioning(
   // OI change only counts when it agrees with the thesis: rising call OI backs a
   // long, rising put OI backs a short. Row count alone (the old `length >= 3`) was
   // another presence-as-signal freebie.
+  //
+  // BUG FIX (2026-09-12): this used to read `r.option_type`, a field that does not exist
+  // on the real data. `fetchUwOiChange` (unusual-whales.ts) returns `OiChangeItem[]` shaped
+  // `{strike, oi_change, kind}` -- the option side lives in `kind`, never `option_type`. So
+  // `t` was always "" against real dossiers, `t.startsWith("c"/"p")` was always false, and
+  // this +2 bonus could never fire in production regardless of real OI-change direction --
+  // pure dead code. It went unnoticed because the unit tests below hand-built fixtures using
+  // `option_type` (matching the scorer's wrong assumption) instead of `kind` (matching the
+  // real API shape), so they validated internal consistency, not reality.
   const oi = dossier.oi_change ?? [];
   const alignedOi = oi.filter((r) => {
     const grew = (r.oi_change ?? 0) > 0;
     if (!grew) return false;
-    const t = (r.option_type ?? "").toLowerCase();
+    const t = (r.kind ?? "").toLowerCase();
     return direction === "long" ? t.startsWith("c") : t.startsWith("p");
   });
   if (alignedOi.length >= 2) score += 2;
@@ -930,7 +939,7 @@ export function scoreCandidate(
   tech: TechnicalCard | null,
   dossierExtras: {
     dark_pool?: { total_premium?: number; bias?: string } | null;
-    oi_change?: Array<{ oi_change?: number; option_type?: string }>;
+    oi_change?: Array<{ oi_change?: number; kind?: string }>;
     positioning?: PositioningSummary | null;
     strike_stacks?: FlowStrikeStack[];
     news_headlines?: string[];
