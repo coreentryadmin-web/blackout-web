@@ -10052,7 +10052,12 @@ export async function fetchNighthawkOutcomeAnalytics(windowDays = 30): Promise<{
       FROM nighthawk_play_outcomes o
       INNER JOIN nighthawk_editions e ON e.edition_for = o.edition_for
       WHERE o.outcome <> 'pending'
-        AND o.edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)
+        -- ET calendar date, not the bare UTC-session date (2026-09-12) -- edition_for is an ET
+        -- trading day, and the un-anchored SQL "today" resolves in the DB session's UTC
+        -- timezone, so between 8pm and midnight ET it has already ticked to tomorrow and
+        -- prematurely drops the oldest day out of the window. Same fix as the flow-alerts DTE
+        -- query above.
+        AND o.edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
       ORDER BY o.edition_for DESC, o.ticker ASC
       `,
       [safeWindowDays]
@@ -10100,14 +10105,17 @@ export async function fetchNighthawkFunnelStats(windowDays = 30): Promise<Nighth
     dbQuery<{ count: string }>(
       `SELECT COUNT(*)::int AS count
        FROM nighthawk_play_outcomes
-       WHERE edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)`,
+       -- ET calendar date, not the bare UTC-session date -- see fetchNighthawkOutcomeAnalytics
+       -- above, which this function must stay in lockstep with (same window, published vs
+       -- rejected sides of the same funnel).
+       WHERE edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)`,
       [safeWindowDays]
     ),
     dbQuery<{ trigger_reason: string; n: string }>(
       `SELECT trigger_reason, COUNT(*)::int AS n
        FROM alert_audit_log
        WHERE alert_type = 'nighthawk_rejected'
-         AND (source_key->>'edition_for')::date >= (CURRENT_DATE - ($1::int || ' days')::interval)
+         AND (source_key->>'edition_for')::date >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
        GROUP BY trigger_reason
        ORDER BY n DESC`,
       [safeWindowDays]

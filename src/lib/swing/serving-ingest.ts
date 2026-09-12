@@ -78,6 +78,10 @@ export interface SwingServingMeta {
    *  SECTOR_ROTATION archetype signal — echoed straight off the dossier. Null when the dossier's own
    *  read is null (no benchmark resolved / not enough history). */
   sectorLeadershipFacts: IndustryGroupRsFacts | null;
+  /** The live entry-trigger level (same `triggerPx` deriveSetupState/deriveEntryPlan branch on) —
+   *  distinct from the dossier's PINNED flag-anchor price, see horizon-plays.ts's field doc. Null
+   *  when no grounded setup read was supplied (the row degrades to RESEARCH honestly either way). */
+  entryTriggerUnderlyingPx: number | null;
 }
 
 /** Grounded reads that let the meta place a name on the maturity/entry line. All optional — absent ⇒ the
@@ -236,5 +240,6 @@ export function swingServingMetaFromDossier(
     // (the desk renders "—"). PR-16 lights them up once an archetype×sub-lane bucket clears the ladder.
     calibratedProbability: null,
     expectedValue: null,
+    entryTriggerUnderlyingPx: reads?.setup?.triggerPx ?? reads?.entry?.triggerPx ?? null,
   };
 }

@@ -99,6 +99,16 @@ export interface HorizonPlay {
   firstSeenAt?: string;
   /** Underlying price when the thesis was first flagged — WATCH track anchor (stock-level proxy). */
   flagUnderlyingPx?: number | null;
+  /**
+   * The actual entry-trigger level (setup-state.ts's `triggerPx` / entry-model.ts's `triggerPx` —
+   * both read `dossier.plan.entryUnderlyingPx`), distinct from `flagUnderlyingPx` above: the flag
+   * anchor is PINNED to the price when the thesis was first flagged and never moves, while this is
+   * the CURRENT live level a break/reclaim of would flip PRE_TRIGGER/FORMING to AT_TRIGGER/TRIGGERED
+   * — the two can diverge once a dossier refreshes its plan on a later scan pass. Neither was ever
+   * surfaced to the member as "the price that actually matters for entry" before this field existed
+   * (found live 2026-09-12: a member read "Flag anchor" as the entry level, which it is not).
+   */
+  entryTriggerUnderlyingPx?: number | null;
   /** Live swing book — option entry/mark/P&L when this row is an OPEN ledger position. */
   entryPremium?: number | null;
   livePnlPct?: number | null;

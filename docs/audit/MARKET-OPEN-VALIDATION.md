@@ -140,6 +140,32 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-12 Night Hawk record/funnel UTC-anchor fix (read this before the routine pass)
+
+### `GET /api/market/nighthawk/record` and the admin funnel dashboard drifted a day near UTC midnight — fix/nighthawk-record-window-et-anchor
+
+**What was broken:** `fetchNighthawkOutcomeAnalytics` and `fetchNighthawkFunnelStats` (`src/lib/db.ts`)
+windowed their `edition_for` cutoff off bare Postgres `CURRENT_DATE`, which resolves in the DB
+session's UTC timezone, while `edition_for` is an ET trading-day date. Between ~8pm and midnight ET
+(i.e. after UTC has already ticked to the next calendar day but it's still the same ET trading
+evening), the computed cutoff was a day later than intended and prematurely dropped the oldest day
+out of the window. Live-observed: `segments.current.resolved` on `/record?days=14` dropped 30→26
+within one ~15-minute audit cycle, exactly at the UTC-midnight boundary with no market activity in
+between (Friday evening, RTH long closed). See
+`docs/audit/findings-staging/2026-09-12-nighthawk-record-window-utc-anchor.md`.
+
+**Fix:** both functions now anchor the cutoff to `(NOW() AT TIME ZONE 'America/New_York')::date`,
+matching the existing ET-day pattern already used elsewhere in `db.ts` (the flow-alerts DTE query).
+Applied at all three `edition_for` filter sites (one in `fetchNighthawkOutcomeAnalytics`, two in
+`fetchNighthawkFunnelStats`) so the record endpoint and the funnel dashboard stay windowed
+identically, per the funnel function's own "windows the same way" doc comment.
+
+**Check at the open:** during Monday 9/14's ~8pm–midnight ET evening window (or any evening this
+week), pull `GET /api/market/nighthawk/record?days=14` twice — once before ~8pm ET and once after
+midnight ET the same evening — and confirm `segments.current.resolved`/`win_rate_pct` do NOT change
+between the two reads unless a real new outcome was graded in between. Also worth a one-time spot
+check on the admin funnel dashboard's published/rejected counts for the same non-movement property.
+
 ## WATCH LIST — 2026-09-11 Ask Largo crossDeskCoaching condor-direction fix (read this before the routine pass)
 
 ### "Cross-desk friction"/"Desk alignment" narrative could mislabel a committed CONDOR's nominal direction as a real directional 0DTE call — fix/swing-crossdesk-condor-direction-mislabel
@@ -3954,9 +3980,16 @@ than an end-of-session patch.
 - **What was broken (live spot-check, 2026-09-11 evening edition's fresh HPE/DELL picks):** `buildDeterministicThesis`'s R:R clause labels quality from the true ratio (`rr >= 0.5 ? "acceptable" : "tight"`, etc.) but displayed it with `rr.toFixed(1)` (round-to-nearest) — so `rr=0.49` (labeled "tight") printed as `R:R 0.5:1 (tight)`, a number sitting right on the ladder's own "acceptable" cutoff next to the "tight" label. Live-reproduced on **both** of today's fresh picks: HPE (`rr=0.49`) and DELL (`rr=0.45`), both printing "0.5:1 (tight)" — not a rare edge case, it fires for any ratio in the last tenth below a threshold.
 - **What changed:** The displayed number now floors instead of rounding to-nearest (`Math.floor(rr * 10 + 1e-9) / 10`), so it can never read higher than the true ratio and can never cross into a higher label's territory than the label reflects. `0.49` now prints `R:R 0.4:1 (tight)`. Only the display changed — `computeRiskReward`'s own math and the label thresholds are untouched.
 - **RTH check:** Audit-tooling/narrative-text-only fix, no live data path touched — nothing to re-verify against live prices. Worth a quick visual spot-check on the next edition with a play whose R:R lands near a threshold boundary (0.45-0.49, 0.95-0.99, or 1.95-1.99) to confirm the printed number and label read as consistent (e.g. "0.4:1 (tight)", never "0.5:1 (tight)").
+- **Follow-up (2026-09-12, ~00:41 UTC) — the check above already caught a real rollout-timing gap, not a code bug.** Re-pulled the currently-published `edition_for: 2026-09-14` (Monday) edition live: both HPE (`rr_ratio: 0.49`) and DELL (`rr_ratio: 0.45`) still print **"R:R 0.5:1 (tight)"** — the PRE-fix text — not the corrected "0.4:1 (tight)" the fix should produce (verified `Math.floor(0.49*10+1e-9)/10 === 0.4` in isolation; the fix logic itself is correct). Root cause of the mismatch: this edition was published 2026-09-11T21:40:55Z (the nightly `nighthawk-playbook`/`nighthawk-edition` cron, 5:30 PM ET weekdays), and the R:R fix (`ab3781aa`, PR #4813) didn't deploy until 2026-09-11T23:31:26Z — the edition's thesis TEXT is generated once at publish time and stored, so a display-only fix that lands after that day's 5:30pm publish does not retroactively correct the already-published edition; the NEXT regeneration is Monday 5:30pm ET (for Tuesday's edition), not before Monday's market open. **So Monday 9/14's live Legacy board will show the pre-fix "0.5:1 (tight)" for HPE/DELL all session** — the true floored value is a hair tighter (0.4:1) than what members will see. Not a data-correctness bug (the underlying `rr_ratio`/label are correct, only the displayed number is one edition-cycle stale) — flagging here so nobody mistakes Monday's still-wrong display for the fix having failed, and as a general note: any Legacy thesis-TEXT fix merged after 5:30pm ET on a given day won't reach members until the FOLLOWING day's edition, a rollout lag worth remembering for any future narrative/display fix to this pipeline.
 
 ### 115. Raw NUL bytes silently corrupted three tracked source files (one swing, one 0DTE, one audit script) — fix/swing-anomaly-dedup-key-null-byte — 2026-09-11
 
 - **What was broken (found auditing `play-brief-intel.ts` for the standing Ask Largo mandate — `grep`/`file` reported the file as binary):** A byte-level scan found a raw NUL byte, introduced by PR #4799, sitting inside a dedup-key template literal where a plain space was clearly intended (`` `${a.anomaly_type}\x00${a.detail}` ``) — rendered as ordinary whitespace by every editor, this session's own `Read`/`Edit` tools, and `git blame`. A repo-wide byte scan found the identical corruption in `src/lib/zerodte/calibration.ts` (0DTE lane) and a third, functionally-harmless-but-still-stylistically-corrupting instance in `scripts/audit/upstream-ws-probe.cjs` (a control-character-stripping regex written with literal raw bytes instead of `\xHH` escapes — rigorously verified byte-for-byte behaviorally identical before/after).
 - **What changed:** All three fixed (space character restored in the two dedup keys; explicit escapes in the regex, zero behavior change). New `src/repo-hygiene.test.ts` guard scans every tracked source file for an embedded NUL byte going forward.
 - **RTH check:** No live product behavior changed (the dedup logic worked correctly either way; the regex is provably identical) — nothing to re-verify against live traffic. Worth confirming `grep` (without `-a`) now searches all three files normally instead of reporting "binary file matches" as a quick sanity check that the byte-level fix actually landed.
+
+### 116. Ask Largo swing play-brief never surfaced the actual entry-trigger price — only a "flag anchor" easily mistaken for it — fix/swing-entry-trigger-price-transparency — 2026-09-12
+
+- **What was broken (found live, in a real conversation — asked which price to watch for a WATCH-lane entry, read "Flag anchor: 175.87 — track move from here" as the breakout level, which it is not):** `flagUnderlyingPx` is the underlying price pinned when the thesis was FIRST FLAGGED — a historical reference, not the level that flips the setup from PRE_TRIGGER/FORMING to AT_TRIGGER/TRIGGERED. The real trigger level (`setup-state.ts`'s `triggerPx`, sourced from `dossier.plan.entryUnderlyingPx`) was already computed server-side for every WATCH row — it's what drives the PRE_TRIGGER/AT_TRIGGER/EXTENDED classification the brief already shows — but was never threaded through to the member-facing text. The two numbers can genuinely diverge (flag anchor is pinned; the trigger tracks the dossier's live plan) — confirmed live on COIN, where the real resistance/trigger structure sat near a $182.50 call wall, well above the $175.87 flag anchor.
+- **What changed:** Threaded the already-computed `triggerPx` through `HorizonPlay` → `TerminalPlay` as a new `entryTriggerUnderlyingPx` field (additive only, no new computation) and added an "Entry trigger: **$X** — Break/reclaim above/below this is what actually fires the setup" line to the WATCH-bucket "Watch levels" section, right after "Flag anchor" — direction-aware, omitted when absent, never fabricated.
+- **RTH check:** Pull `GET /api/market/swing/play-brief` for any live WATCH-lane candidate with a grounded plan (e.g. COIN, MRVL) once RTH data refreshes and confirm the new "Entry trigger" line renders with a real number distinct from "Flag anchor," and that the direction wording (above for LONG, below for SHORT) matches the play's actual direction.
