@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T04:37:10.929Z",
+  "lastUpdated": "2026-09-12T04:52:26.695Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1046,6 +1046,11 @@
       "at": "2026-09-12T04:37:10.930Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN, resolved=26 stable. No new findings this cycle. Per the #4820 rollout-timing lesson, the two thesis fixes shipped this session (news catalyst #4821, smart-money note #4827) won't appear in a live published edition until the next real publish -- weekends have no trading, so that's Monday 5:30pm ET (for Tuesday's edition), not sooner. Nothing to spot-check live before then. Continuing standing monitoring cadence."
+    },
+    {
+      "at": "2026-09-12T04:52:26.695Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. Both this session's shipped enhancements (#4821, #4827) remain confirmed live in source, awaiting Monday 5:30pm ET's edition regeneration to appear in a published card."
     }
   ],
   "knownOpenItems": {
