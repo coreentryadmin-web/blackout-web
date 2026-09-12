@@ -13,6 +13,7 @@ import {
   execSlippageCoaching,
   flowPrintsCoaching,
   ivRankCoaching,
+  laneRankCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
   progressRatchetCoaching,
@@ -1313,4 +1314,34 @@ test("technicalsCoaching: prior-session Vector returns null even when age is fre
     technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" }), "2026-09-06"),
     null,
   );
+});
+
+// Live repro 2026-09-12: SKHY's own Entry section already read "Serving section: RESEARCH" /
+// "Setup: INVALIDATED" (thesis broke pre-entry, gates blocking entry), yet this exact function
+// still rendered "Lane leader — #1 of 8 on WATCH ... Desk attention follows the top row" three
+// sections later in the same folded "Trade manager read" narrative — directly contradicting the
+// brief's own disclosure two sections above it.
+test("laneRankCoaching: suppresses the rank-1 leader line when the play's own thesis is invalidated", () => {
+  const lanes = [
+    laneRow({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }),
+    laneRow({ ticker: "COIN", score: 55.4, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }),
+    lanes,
+  );
+  assert.equal(line, null, "a broken thesis must never get 'leader'/'top-tier' praise text");
+});
+
+test("laneRankCoaching: still names the real leader for a healthy rank-1 WATCH setup", () => {
+  const lanes = [
+    laneRow({ ticker: "COIN", score: 59, status: "WATCH", setupState: "TRIGGERED" }),
+    laneRow({ ticker: "GOOGL", score: 51, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "COIN", score: 59, status: "WATCH", setupState: "TRIGGERED" }),
+    lanes,
+  );
+  assert.match(line!, /Lane leader/);
+  assert.match(line!, /#1 of 2/);
 });

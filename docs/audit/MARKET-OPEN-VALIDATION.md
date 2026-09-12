@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-12 Ask Largo lane-rank leader on an invalidated WATCH thesis (read this before the routine pass)
+
+### "Lane leader"/"Top-ranked play" self-praise could fire on a WATCH setup whose own thesis already broke — fix/swing-lane-rank-invalidated-leader
+
+**What was broken:** `computeLaneRank`/`laneRankCoaching` (`src/lib/swing/play-brief-lane-rank.ts`,
+`play-brief-narrative-coaching.ts`) already skip an *exiting* COMMIT-bucket peer when picking the
+named "leader" (#4825, same day — CRWD's brief). The WATCH-bucket analog was uncovered: a peer (or
+the play itself) whose `setupState` is `INVALIDATED` (thesis broke pre-entry) could still be named
+the rank-1 "leader." Live-observed: SKHY sat #1 of 8 WATCH candidates by raw score (59) while its
+own Entry section already read `Serving section: RESEARCH` / `Setup: INVALIDATED`, yet the same
+folded narrative said "Lane leader — #1 of 8 on WATCH — Desk attention follows the top row" three
+bullets after "Thesis BREAK ... don't add size." See
+`docs/audit/findings-staging/2026-09-12-swing-lane-leader-invalidated-watch-thesis.md`.
+
+**Fix:** the named-leader peer filter now also excludes `setupState === "INVALIDATED"` peers
+(alongside the existing `EXIT`/`EXIT_RUNNER` exclusion); a new `selfInvalidated` flag suppresses
+the self-referential "leader"/"top-tier" praise lines when the PLAY ITSELF is invalidated. Rank/
+median stats are unchanged — only the self-congratulatory narrative lines are gated.
+
+**Check at the open:** once Monday's discovery scan runs and the WATCH lane repopulates, spot-check
+a couple of WATCH-lane briefs for any name whose Entry section shows `Setup: INVALIDATED` — confirm
+its own brief never says "Lane leader"/"Top-ranked play" and that OTHER WATCH briefs never name it
+as `Desk leader: <ticker> @ <score>`.
+
 ## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: OI-change alignment bonus dead-coded (read this before the routine pass)
 
 ### `scoreOptionsPositioning`'s +2 OI-change-alignment bonus never fired against real data — fix/nighthawk-oi-change-field-mismatch
