@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T13:08:06.952Z",
+  "lastUpdated": "2026-09-12T13:08:45.664Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1221,6 +1221,11 @@
       "at": "2026-09-12T13:08:06.979Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "PR #4860 (insider ticker_symbol fix): CI green (run 34694873088) + CodeQL green (run 34694873093), mergeable_state=clean. Attempted undraft via GitHub MCP update_pull_request -- hit the documented budget #4 signature ('API rate limit exceeded for user ID 284440397', CLAUDE.md's GitHub-budgets table) even though this went through the MCP tool path. Known, expected, shared fleet-wide limiter -- not a defect. Will retry undraft+merge next cycle. Confirmed the unexpected main-branch commit this cycle (4949f6d71, 'WATCH board stale-candidate gap') is the Swings lane's own journal (nighthawk-swings-live-journal.json, session_01ThDiEa7iE7mM1twas1e6Kg) -- not a collision with Legacy's journal, false alarm on first glance."
+    },
+    {
+      "at": "2026-09-12T13:08:45.664Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continued)",
+      "result": "While waiting out the GitHub MCP rate limit on PR #4860's undraft (retried once immediately, still limited -- not hammering further), ran this cycle's own healthcheck:legacy: fully GREEN (resolved=26 stable, edition fresh 2 plays, marks HPE/DELL both in range). No new findings this pass. Will retry #4860 undraft+merge next trigger."
     }
   ],
   "knownOpenItems": {
