@@ -1,3 +1,32 @@
+## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: institutional smart-money leg was dead code (read this before the routine pass)
+
+### `institutionalNetSignal`/`smartMoneyDriverNote` now read the real UW `units_changed` field — fix/nighthawk-institutional-units-changed-field
+
+**What was broken:** `institutionalNetSignal` (`scorer.ts`, feeds `scoreSmartMoney`'s institutional
++3/-2 bonus) and `smartMoneyDriverNote`'s institutional presence check (`deterministic-edition.ts`,
+#4827) both guessed field names (`units_change`, `action`, `transaction_type`) that never exist on
+the real UW `/api/institution/{ticker}/ownership` row (confirmed live: the real field is
+`units_changed`, and real rows carry no transaction-verb field at all — they're 13F position
+snapshots). Both branches of the fallback logic always missed, so the ENTIRE institutional leg of
+smart-money scoring was permanent dead code — more complete a failure than the two other scorer
+bugs fixed earlier this session (OI-change #4839, congress-decay #4844), which under-weighted
+rather than never fired. See
+`docs/audit/findings-staging/2026-09-12-nighthawk-institutional-units-changed.md`.
+
+**Fix:** added `units_changed` as the first-checked field in both functions. Purely additive/
+corrective — institutional accumulation/distribution that was previously invisible to scoring can
+now contribute its intended +3/-2 (scorer) and narrative note (`smartMoneyDriverNote`); nothing
+that scored before will score differently, since the signal was always exactly 0 pre-fix.
+
+**Check at the open:** pull a fresh `GET /api/market/nighthawk/edition` play whose `key_signal`
+names "smart-money" — for the first time, `smart_money_score` can reflect real institutional
+13F accumulation/distribution instead of always excluding it. If `smartMoneyDriverNote` names
+"institutional accumulation/distribution flagged" on a live card, spot-check that ticker's real UW
+institution-ownership data to confirm the direction actually agrees (net `units_changed` positive
+for a long / negative for a short). This is a scoring-input fix, not a new UI field, so the
+confirmation is a sane, in-range `smart_money_score`/`key_signal`, same as every other cycle's
+healthcheck already verifies.
+
 ## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: congressional-trade decay measured the wrong date (read this before the routine pass)
 
 ### `congressTradeDecayMultiplier` now decays on the real UW `filed_at_date`, not stale `transaction_date` — fix/nighthawk-congress-decay-filed-date-field

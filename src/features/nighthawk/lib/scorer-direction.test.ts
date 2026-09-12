@@ -74,6 +74,25 @@ test("smart money: institutional net BUYING helps a long, penalizes a short", ()
   assert.equal(short, -2);
 });
 
+test("smart money: BUG FIX (2026-09-12) -- institutional net-signal reads real UW `units_changed`, not the guessed `units_change`", () => {
+  // Regression for the dead-leg bug: institutionalNetSignal's fallback chain never checked
+  // `units_changed` (trailing "d"), the REAL per-filing share-delta field on UW's
+  // /api/institution/{ticker}/ownership rows (confirmed live). Real rows also carry no
+  // action/transaction_type/type field at all (13F ownership snapshots, not transaction logs),
+  // so the string-fallback branch was equally dead -- together this made the entire
+  // institutional leg of scoreSmartMoney's +3/-2 bonus permanent dead code in production.
+  const realShapeBuying = [
+    { name: "BLACKROCK, INC.", units: "1162996939", units_changed: "18301514" },
+    { name: "VANGUARD", units: "959107911", units_changed: "5260263" },
+  ];
+  assert.equal(scoreSmartMoney({ institutional_activity: realShapeBuying }, "long"), 3);
+  assert.equal(scoreSmartMoney({ institutional_activity: realShapeBuying }, "short"), -2);
+
+  const realShapeSelling = [{ name: "STATE STREET CORP", units: "615129929", units_changed: "-12788520" }];
+  assert.equal(scoreSmartMoney({ institutional_activity: realShapeSelling }, "long"), -2);
+  assert.equal(scoreSmartMoney({ institutional_activity: realShapeSelling }, "short"), 3);
+});
+
 test("smart money: congress BUYS score longs, not shorts", () => {
   const fresh = new Date().toISOString();
   const rows = [

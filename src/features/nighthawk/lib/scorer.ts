@@ -733,13 +733,31 @@ function predictionAlignsWithDirection(
   return direction === "long" ? signal.direction === "bullish" : signal.direction === "bearish";
 }
 
-/** Net institutional direction: +1 net buying, -1 net selling, 0 unknown/flat. */
+/**
+ * Net institutional direction: +1 net buying, -1 net selling, 0 unknown/flat.
+ *
+ * BUG FIX (2026-09-12): the real UW `/api/institution/{ticker}/ownership` row (confirmed live --
+ * fetchUwInstitutionOwnership) carries the per-filing share delta as `units_changed` (trailing
+ * "d"), which this fallback chain never checked -- only the unaccented `units_change` was
+ * guessed. Real rows also never carry `action`/`transaction_type`/`type` (they're 13F ownership
+ * snapshots: name/units/units_changed/filing_date/report_date, no transaction-verb field at
+ * all), so the string-fallback branch below was equally dead. Together this made the ENTIRE
+ * institutional leg of scoreSmartMoney's +3/-2 bonus permanent dead code -- every real
+ * institutional_activity row scored net=0 regardless of how much real accumulation or
+ * distribution it actually reported.
+ */
 function institutionalNetSignal(rows: Record<string, unknown>[]): -1 | 0 | 1 {
   if (!rows.length) return 0;
   let net = 0;
   for (const row of rows) {
     const change = Number(
-      row.change ?? row.shares_change ?? row.units_change ?? row.change_in_shares ?? row.net_change ?? NaN
+      row.units_changed ??
+        row.change ??
+        row.shares_change ??
+        row.units_change ??
+        row.change_in_shares ??
+        row.net_change ??
+        NaN
     );
     if (Number.isFinite(change) && change !== 0) {
       net += change;
