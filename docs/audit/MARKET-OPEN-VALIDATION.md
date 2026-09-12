@@ -140,6 +140,32 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-12 Night Hawk record/funnel UTC-anchor fix (read this before the routine pass)
+
+### `GET /api/market/nighthawk/record` and the admin funnel dashboard drifted a day near UTC midnight — fix/nighthawk-record-window-et-anchor
+
+**What was broken:** `fetchNighthawkOutcomeAnalytics` and `fetchNighthawkFunnelStats` (`src/lib/db.ts`)
+windowed their `edition_for` cutoff off bare Postgres `CURRENT_DATE`, which resolves in the DB
+session's UTC timezone, while `edition_for` is an ET trading-day date. Between ~8pm and midnight ET
+(i.e. after UTC has already ticked to the next calendar day but it's still the same ET trading
+evening), the computed cutoff was a day later than intended and prematurely dropped the oldest day
+out of the window. Live-observed: `segments.current.resolved` on `/record?days=14` dropped 30→26
+within one ~15-minute audit cycle, exactly at the UTC-midnight boundary with no market activity in
+between (Friday evening, RTH long closed). See
+`docs/audit/findings-staging/2026-09-12-nighthawk-record-window-utc-anchor.md`.
+
+**Fix:** both functions now anchor the cutoff to `(NOW() AT TIME ZONE 'America/New_York')::date`,
+matching the existing ET-day pattern already used elsewhere in `db.ts` (the flow-alerts DTE query).
+Applied at all three `edition_for` filter sites (one in `fetchNighthawkOutcomeAnalytics`, two in
+`fetchNighthawkFunnelStats`) so the record endpoint and the funnel dashboard stay windowed
+identically, per the funnel function's own "windows the same way" doc comment.
+
+**Check at the open:** during Monday 9/14's ~8pm–midnight ET evening window (or any evening this
+week), pull `GET /api/market/nighthawk/record?days=14` twice — once before ~8pm ET and once after
+midnight ET the same evening — and confirm `segments.current.resolved`/`win_rate_pct` do NOT change
+between the two reads unless a real new outcome was graded in between. Also worth a one-time spot
+check on the admin funnel dashboard's published/rejected counts for the same non-movement property.
+
 ## WATCH LIST — 2026-09-11 Ask Largo crossDeskCoaching condor-direction fix (read this before the routine pass)
 
 ### "Cross-desk friction"/"Desk alignment" narrative could mislabel a committed CONDOR's nominal direction as a real directional 0DTE call — fix/swing-crossdesk-condor-direction-mislabel
