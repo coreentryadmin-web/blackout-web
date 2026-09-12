@@ -220,7 +220,19 @@ export type EcosystemArsenalMacro = {
 };
 export type EcosystemArsenalBreadth = { tone: string; summary: string; as_of: string };
 export type EcosystemArsenalNews = { count: number; newest: string | null; headlines: string[] };
-export type EcosystemArsenalUnavailable = { source: string; reason: string };
+// Mirrors BieUnavailableSource (answer-envelope.ts) — kept as its own type rather than importing
+// that one directly so this reader layer stays decoupled from the BIE envelope shape, but the
+// FIELDS must match: every composer that spreads unavailable_sources into a BieUnavailableSource[]
+// (play-brief-absence.ts's collectBriefUnavailableSources, ticker-verdict.ts) relies on structural
+// typing to accept these entries as-is. Optional so existing callers/tests are unaffected; every
+// push site below now populates both (Largo C3 absence principle — say what's missing and whether
+// a retry would help, never leave the consumer to guess).
+export type EcosystemArsenalUnavailable = {
+  source: string;
+  reason: string;
+  what_is_missing?: string;
+  retryable?: boolean;
+};
 
 export type EcosystemArsenal = {
   /** Which relevance branch ran — index/ETF market weather vs single-name color. */
@@ -272,7 +284,14 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           report_time: reads.earnings.report_time,
           is_confirmed: reads.earnings.is_confirmed,
         }
-      : (unavailable.push({ source: "earnings", reason: "no upcoming date" }), null)
+      : (unavailable.push({
+          source: "earnings",
+          reason: "no upcoming date",
+          what_is_missing: "a scheduled earnings date for this ticker",
+          // Structural: the earnings calendar simply has no confirmed print on file for this
+          // name right now — retrying the same read a moment later returns the same nothing.
+          retryable: false,
+        }), null)
     : null;
 
   const fundamentals: EcosystemArsenalFundamentals | null = single
@@ -287,13 +306,27 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           price_target: null,
           as_of: reads.fundamentals.as_of ?? null,
         }
-      : (unavailable.push({ source: "fundamentals/short-interest", reason: "no data for ticker" }), null)
+      : (unavailable.push({
+          source: "fundamentals/short-interest",
+          reason: "no data for ticker",
+          what_is_missing: "a short-interest days-to-cover or short-volume-ratio record",
+          // Structural: this provider simply carries no short-interest series for the name
+          // (common for thinly-shorted or newly-listed tickers) — a retry won't manufacture one.
+          retryable: false,
+        }), null)
     : null;
 
   const related: string[] | null = single
     ? reads.related && reads.related.related.length > 0
       ? reads.related.related.slice(0, 8)
-      : (unavailable.push({ source: "peers", reason: "none found" }), null)
+      : (unavailable.push({
+          source: "peers",
+          reason: "none found",
+          what_is_missing: "a resolvable peer/related-company list for this ticker",
+          // Structural: the provider's related-companies graph has no entries for this name —
+          // that graph doesn't change moment-to-moment, so retrying returns the same empty list.
+          retryable: false,
+        }), null)
     : null;
 
   // Macro/breadth legs (index/ETF only).
@@ -305,13 +338,27 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           cpi: reads.macro.inflation.cpi,
           as_of: reads.macro.as_of,
         }
-      : (unavailable.push({ source: "macro backdrop", reason: "unavailable" }), null)
+      : (unavailable.push({
+          source: "macro backdrop",
+          reason: "unavailable",
+          what_is_missing: "a current 10-year treasury yield or CPI reading",
+          // Transient: this is a live upstream fetch (Polygon macro backdrop) — a null/failed
+          // read here is a fetch-time miss, not a permanent absence of the underlying data series.
+          retryable: true,
+        }), null)
     : null;
 
   const breadth: EcosystemArsenalBreadth | null = !single
     ? reads.breadth && reads.breadth.tone !== "unknown"
       ? { tone: reads.breadth.tone, summary: reads.breadth.summary, as_of: reads.breadth.as_of }
-      : (unavailable.push({ source: "breadth", reason: "unavailable (thin/empty sample)" }), null)
+      : (unavailable.push({
+          source: "breadth",
+          reason: "unavailable (thin/empty sample)",
+          what_is_missing: "a market-breadth read with a large enough advancing/declining sample",
+          // Transient: a thin sample can widen later in the same session as more names print —
+          // this is a live breadth read, not a structurally missing dataset.
+          retryable: true,
+        }), null)
     : null;
 
   // News runs for BOTH scopes (ticker news for a single name, market catalysts for an index). An
@@ -319,7 +366,14 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
   // sets `.unavailable` on the NewsResult → surfaced here.
   const news: EcosystemArsenalNews | null = reads.news
     ? reads.news.unavailable
-      ? (unavailable.push({ source: "news", reason: reads.news.unavailable }), null)
+      ? (unavailable.push({
+          source: "news",
+          reason: reads.news.unavailable,
+          what_is_missing: "a successful news/headlines fetch for this ticker",
+          // Transient: this is a live news-provider fetch that errored/timed out this pass —
+          // a retry on the next composer read can succeed.
+          retryable: true,
+        }), null)
       : {
           count: reads.news.items.length,
           newest: reads.news.newest,
@@ -330,7 +384,14 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           // because it feeds the swing play-brief, not the Meridian desk.
           headlines: reads.news.items.slice(0, 4).map((i) => sanitizeFeedText(i.headline)),
         }
-    : (unavailable.push({ source: "news", reason: "read failed" }), null);
+    : (unavailable.push({
+        source: "news",
+        reason: "read failed",
+        what_is_missing: "a completed news/catalysts fetch for this ticker or market",
+        // Transient: the read itself never came back (as opposed to succeeding with zero items) —
+        // a retry can succeed.
+        retryable: true,
+      }), null);
 
   return { scope: reads.scope, earnings, fundamentals, related, news, macro, breadth, unavailable_sources: unavailable };
 }
