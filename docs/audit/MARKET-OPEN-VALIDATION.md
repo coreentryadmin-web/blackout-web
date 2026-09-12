@@ -1,3 +1,37 @@
+## WATCH LIST — 2026-09-12 Ask Largo swing Structure Ladder: OPEN-position stop labeling + duplicate levels (read this before the routine pass)
+
+### Adversarial review of #4875 (Structure Ladder) found two real, member-visible defects, both fixed same-day (#4878, #4879)
+
+**What was broken (#1 — labeling):** the new Structure Ladder widget always computes its
+"Structural stop" live from today's spot (`deriveSwingPlanLevels`), correct for a WATCH candidate
+but not for an already-committed OPEN/HOLD/TRIM position, which has a real, frozen stop
+(`thesis_invalidation_px`) that actively drives real exit recommendations and can differ from this
+recompute once the underlying has moved since entry. The widget showed the recompute under the
+plain label "Structural stop" with no indication it could be a different number from the trade's
+actual, system-governing risk level. See
+`docs/audit/findings-staging/2026-09-12-structure-ladder-open-position-stop-estimate.md`.
+
+**Fix:** added `StructureLadder.positionState`; an OPEN/HOLD/TRIM read now shows "Reference stop"
+plus an explicit caveat that it's recomputed from today's spot and may differ from the position's
+real committed invalidation level. WATCH copy is unchanged.
+
+**What was broken (#2 — duplication):** the ladder and the pre-existing Key Levels table both
+render call wall/put wall/gamma flip/GEX king/max pain/gamma magnet independently, off the same
+underlying reads, directly adjacent on the same swing OPEN/WATCH answer — so a member saw the same
+price for each level printed twice, in two different formats. See
+`docs/audit/findings-staging/2026-09-12-structure-ladder-duplicate-levels.md`.
+
+**Fix:** `BieAnswer.tsx` now filters the six single-instance labels out of the Key Levels table
+whenever a Structure Ladder is present on the same envelope (dark pool/spot/confluence rows are
+deliberately left alone — see the finding for why).
+
+**Check at the open:** pull a real swing Ask Largo play brief for an OPEN position (`GET
+/api/market/swing/play-brief?playId=SWING:<ticker>` for any live committed name) and confirm (a)
+the Structure Ladder's stop line reads "Reference stop ... may differ" rather than the unqualified
+"Structural stop" WATCH copy, and (b) the Key Levels table above it no longer repeats the same call
+wall/put wall/gamma flip prices the ladder itself shows. Then pull a WATCH candidate and confirm
+its ladder still reads the original, unqualified "Structural stop" copy (no regression there).
+
 ## WATCH LIST — 2026-09-12 Night Hawk "Flow by expiry" narrative line always printed $0 (read this before the routine pass)
 
 ### `formatTickerDossierText`'s flow-by-expiry premium used a guessed field name that never matches real UW data
