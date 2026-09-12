@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T08:37:52.230Z",
+  "lastUpdated": "2026-09-12T08:52:22.632Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1136,6 +1136,11 @@
       "at": "2026-09-12T08:37:52.230Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. PR #4844: a parallel session merged origin/main into the branch (resolving a real conflict on the shared MARKET-OPEN-VALIDATION.md prepend-at-top pattern -- another lane's entry landed above mine on main in the meantime). Verified the resolution on the new head (90e7c5044): my filed_at_date fix intact in scorer.ts, both my entry and the swing lane's lane-rank-leader entry present and uncorrupted in MARKET-OPEN-VALIDATION.md, nothing dropped or garbled. CI/CodeQL re-running on the new head sha, in_progress. Will check completion next cycle before undrafting/merging."
+    },
+    {
+      "at": "2026-09-12T08:52:22.632Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle -- all four stages stable (HPE/DELL marks unchanged, resolved=26). PR #4844 (congress decay filed_at_date fix) confirmed merged at 08:45:32 UTC (merged_by coreentryadmin-web) -- re-verified against origin/main: scorer.ts's congressTradeDecayMultiplier now reads row.filed_at_date as first-checked fallback, live in source. Session auto-unsubscribed on merge. This closes out the second scoring bug found and fixed this session (OI-change #4839, congress-decay #4844) -- both same root-cause class: a scorer's field-name assumption never checked against the real live UW API shape, both confirmed via direct live API pulls before touching code."
     }
   ],
   "knownOpenItems": {
