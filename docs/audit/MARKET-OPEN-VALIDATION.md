@@ -1,3 +1,21 @@
+## WATCH LIST — 2026-09-12 Night Hawk "Flow by expiry" narrative line always printed $0 (read this before the routine pass)
+
+### `formatTickerDossierText`'s flow-by-expiry premium used a guessed field name that never matches real UW data
+
+**What was broken:** real `/api/stock/{ticker}/flow-per-expiry` rows carry `call_premium`/
+`put_premium` (separate fields), never a single `premium`/`total_premium` field — so the "Flow by
+expiry: <date>: $X" line in the Legacy dossier text (fed into the edition's Claude prompt) always
+computed `$0`, regardless of real flow, for every ticker/expiry. See
+`docs/audit/findings-staging/2026-09-12-nighthawk-flow-by-expiry-premium-field.md`.
+
+**Fix:** extracted `flowByExpiryPremium(row)` (new, exported, tested helper) that sums the real
+`call_premium`+`put_premium` fields, falling back to the old guess only if that's falsy. 3 new
+regression tests in `format.test.ts`.
+
+**Check at the open:** pull a Legacy ticker dossier with real near-term flow-per-expiry data (any
+active name) and confirm the "Flow by expiry" text now shows real, non-zero dollar figures per
+expiry instead of a row of "$0"s.
+
 ## WATCH LIST — 2026-09-12 Ask Largo dealer gamma posture: Vector "unknown" silenced a real GEX answer (read this before the routine pass)
 
 ### `resolveGammaPosture` treated Vector's "unknown" regime as resolved, suppressing the GEX-matrix fallback — fix/swing-gamma-posture-unknown-silences-gex
