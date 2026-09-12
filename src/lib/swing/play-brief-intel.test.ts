@@ -96,6 +96,37 @@ test("bookContextSection: null for a CLOSED play even when the current book over
   assert.equal(bookContextSection(closedPlay, book), null);
 });
 
+// Live repro 2026-09-12 (CRWD positionId 19, status TRIM / manageAction EXIT_RUNNER): the same
+// "pending entry decision" tense bug the CLOSED guard above already fixed also applies to an
+// already-committed OPEN/HOLD/TRIM position — "Adding CRWD stacks the same wager..." rendered on a
+// position that is being TRIMMED OUT, not entered. There is no "adding" decision on the table for
+// an already-open managed position; only a genuinely pending WATCH candidate has one.
+test("bookContextSection: an already-open OPEN/HOLD/TRIM position reads as EXISTING exposure, not a pending 'adding' decision", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "AMD", direction: "LONG" },
+    { ticker: "SMH", direction: "LONG" },
+  ];
+  for (const status of ["OPEN", "HOLD", "TRIM"] as const) {
+    const section = bookContextSection(
+      fixturePlay({ ticker: "NVDA", direction: "LONG", status }),
+      book,
+    );
+    assert.ok(section, `expected a section for status ${status}`);
+    assert.match(section?.body ?? "", /Concentration/i);
+    assert.doesNotMatch(
+      section?.body ?? "",
+      /Adding NVDA stacks/i,
+      `status ${status} should not use the pending-entry "Adding" phrasing`,
+    );
+  }
+  // WATCH keeps the original pending-entry phrasing — there IS a decision to make there.
+  const watchSection = bookContextSection(
+    fixturePlay({ ticker: "NVDA", direction: "LONG", status: "WATCH" }),
+    book,
+  );
+  assert.match(watchSection?.body ?? "", /Adding NVDA stacks/i);
+});
+
 test("bookContextSection: reviewing the second of two independent same-ticker rows does not flag self", () => {
   const book: PortfolioPosition[] = [
     { ticker: "EWZ", direction: "LONG", positionId: 29 },
