@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T15:56:53.663Z",
+  "lastUpdated": "2026-09-12T16:07:47.886Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1291,6 +1291,11 @@
       "at": "2026-09-12T15:56:53.664Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset, continued)",
       "result": "Live UI check completed: proxy-browser.cjs screenshot of /nighthawk?view=legacy at desktop 1440x900, Routed: 96 ok, 0 fail. Board rendered cleanly -- Legacy tab active, Open(2)/Closed(0) tabs correct, evening playbook narrative present, HPE/DELL rows match the API data exactly ($2.91->$2.91, $18.15->$18.15, both WATCH/+0%), no visual defects, no overlapping text, no layout breaks. This is a genuine independent cross-check that the live UI reflects the same numbers the API-level healthcheck has been asserting all day. Temp Clerk user cleaned up (deleteAuditClerkUser, verified deleted). No findings from this pass -- clean report is honest. This closes out the 'fresh angle' options identified earlier (field-mismatch sweep exhausted, outcome-honesty checked, now live UI checked) -- next non-trivial work likely waits for Monday's market open per the standing validation plan."
+    },
+    {
+      "at": "2026-09-12T16:07:47.887Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Pulled the live /api/market/nighthawk/edition thesis text for narrative-consistency (mission item not deeply exercised today beyond the resolved-count check): HPE key_signal 'technicals + news', DELL key_signal 'technicals + news' -- both theses correctly omit positioning/smart-money narrative sub-notes since neither is a top-2 driver for these plays (consistent with #4827/#4853's additive, conditional design -- correctly NOT firing here, not a gap). DELL's catalyst watch list ('insider transaction; guidance update; offering; current ratio 0.91') reads coherently against its own fundamentals. No inconsistency found. All three fresh-angle checks planned this session (field-mismatch sweep, outcome-honesty, live UI, and now thesis-narrative-consistency) have come back clean -- this is now a genuinely quiet stretch, next substantive work likely waits for Monday's market open per the standing plan (edition regeneration will exercise #4821/#4827/#4853's shipped narrative fixes on fresh picks, and the resolved-picks population will grow enough for a real outcome-honesty pass)."
     }
   ],
   "knownOpenItems": {
