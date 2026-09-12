@@ -1,3 +1,21 @@
+## WATCH LIST — 2026-09-12 Night Hawk "Flow by expiry" narrative line always printed $0 (read this before the routine pass)
+
+### `formatTickerDossierText`'s flow-by-expiry premium used a guessed field name that never matches real UW data
+
+**What was broken:** real `/api/stock/{ticker}/flow-per-expiry` rows carry `call_premium`/
+`put_premium` (separate fields), never a single `premium`/`total_premium` field — so the "Flow by
+expiry: <date>: $X" line in the Legacy dossier text (fed into the edition's Claude prompt) always
+computed `$0`, regardless of real flow, for every ticker/expiry. See
+`docs/audit/findings-staging/2026-09-12-nighthawk-flow-by-expiry-premium-field.md`.
+
+**Fix:** extracted `flowByExpiryPremium(row)` (new, exported, tested helper) that sums the real
+`call_premium`+`put_premium` fields, falling back to the old guess only if that's falsy. 3 new
+regression tests in `format.test.ts`.
+
+**Check at the open:** pull a Legacy ticker dossier with real near-term flow-per-expiry data (any
+active name) and confirm the "Flow by expiry" text now shows real, non-zero dollar figures per
+expiry instead of a row of "$0"s.
+
 ## WATCH LIST — 2026-09-12 Ask Largo dealer gamma posture: Vector "unknown" silenced a real GEX answer (read this before the routine pass)
 
 ### `resolveGammaPosture` treated Vector's "unknown" regime as resolved, suppressing the GEX-matrix fallback — fix/swing-gamma-posture-unknown-silences-gex
@@ -4401,3 +4419,9 @@ than an end-of-session patch.
 - **What was broken (5-engine live monitor + Ask Largo deep-dive, live `GET /api/market/swing/play-brief` on real CLOSED positions NVDA and TSM):** `composeSwingPlayBrief`'s `envelope.invalidation` fallback chain (`thesisBreak.note` -> `resolveBreakInvalidation(ctx)` -> `gateBlocks?.[0]?.reason` -> premium-stop) only bucket-gated the LAST fallback (`bucket === "open"`); the first three ran unconditionally. `resolveBreakInvalidation` computes a real per-ticker break level off TODAY's live Vector spot/GEX walls/gamma flip (built 2026-09-09 for WATCH-bucket gate reasons) — for a position closed weeks earlier this produced a labeled "Invalidation" UI callout (`BieAnswer.tsx`) reading "Break watch — lose 217.50 on a closing basis -> structural support failed; exit or cut size." on NVDA (STOPPED 2026-08-21, read 2026-09-12 — three weeks later) and the same shape on TSM (STOPPED 2026-08-19). Both briefs' own "Since it closed" section correctly discloses today's spot as historical context, but the separate, unlabeled "Invalidation" callout carried no such disclosure and read as live, actionable risk-management guidance on a position with no more risk to manage.
 - **What changed:** Added a `bucket === "closed"` short-circuit to `null` ahead of the existing fallback chain in `src/lib/swing/play-brief.ts`. A CLOSED play now renders no "Invalidation" callout at all — its "Outcome"/"Since it closed"/"Lessons" sections already carry the historical read. `resolveBreakInvalidation` itself, and its use inside the bucket-gated "Trade manager read" narrative (only rendered for open/watch), are unchanged.
 - **RTH check:** Pull `GET /api/market/swing/play-brief` for any real CLOSED swing position (`status=CLOSED` in `swing/record`'s `closedDeck`) and confirm the JSON's `envelope.invalidation` is `null`/absent and the UI shows no "Invalidation" callout — while a live OPEN/WATCH position's callout is unaffected.
+
+### 143. Swing play-brief's "Desk context" narrated a weeks-old Legacy pick as live sizing context — contradicted its own unavailableSources chip — fix/swing-desk-context-stale-legacy-pick — 2026-09-12
+
+- **What was broken (5-engine live monitor + Ask Largo deep-dive, live `GET /api/market/swing/play-brief` on a real WATCH candidate GOOGL):** `deskConsensusSection` (`play-brief-intel.ts`) narrated `eco.nighthawk_recent` — "the last time this ticker appeared in a Legacy edition," queried with no date filter — unconditionally, regardless of age: "Night Hawk Legacy's last pick on this name (**2026-08-26**) is still **unresolved** — weigh that track record against today's **SHORT** setup before sizing," 17 days stale on a 2026-09-12 read. The SAME response's `unavailableSources` array (fixed 2026-09-10 for this exact staleness pattern, its own comment citing a 5-week-old GOOG example) correctly labeled the identical fact `"no recent Legacy edition for this ticker (last featured 2026-08-26)"`, non-retryable — the chip and the narrative section disagreed about the same data in the same payload.
+- **What changed:** `deskConsensusSection` now takes an optional `sessionDate` (default `null`, preserving prior behavior for any caller that omits it); the real caller now passes `ctx.sessionDate`. When supplied, the section is suppressed once `daysBetweenYmd(nh.edition_for, sessionDate) > 4` — the identical bound the 2026-09-10 absence-chip fix already uses, so the two code paths can't disagree by construction. Only the narrative section's staleness handling changed; the absence-chip path is untouched.
+- **RTH check:** Pull `GET /api/market/swing/play-brief` for any live OPEN/WATCH position on a ticker Legacy hasn't featured in over a week and confirm "Desk context" is now absent (was previously narrating the stale pick as current sizing guidance), while a ticker Legacy featured within the last few days still shows the section normally.
