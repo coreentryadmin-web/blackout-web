@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T01:52:18.441Z",
+  "lastUpdated": "2026-09-12T02:07:49.446Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -991,6 +991,11 @@
       "at": "2026-09-12T01:52:18.442Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "PR #4821 undraft retried -- still hitting the GitHub MCP rate limiter. Swings lane merged+verified PR #4819 live this cycle (COIN) per their journal. healthcheck:legacy fully GREEN this cycle, resolved=26 stable (harness self-swept 1 leaked temp Clerk user >30m old, the documented safety net working as designed). No new findings; will keep retrying the PR #4821 undraft next cycle."
+    },
+    {
+      "at": "2026-09-12T02:07:49.447Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "LIVE CONFIRMATION that PR #4816's UTC-anchor fix has deployed and works correctly: healthcheck:legacy's C_record resolved count jumped back 26 -> 30 this cycle (matching the original pre-regression baseline recorded at 23:51 UTC on 2026-09-11) -- exactly the expected effect of the fix, since it's still 2026-09-11 evening in ET even though UTC has rolled to 2026-09-12, so the ET-anchored 14-day cutoff now correctly includes the edition_for=2026-08-28 rows the old bare-CURRENT_DATE bug was prematurely dropping. This closes the loop on that finding with a real production before/after, not just the unit-test proof. PR #4821 undraft retried -- still rate-limited, will keep retrying. healthcheck fully GREEN otherwise, marks/edition all green."
     }
   ],
   "knownOpenItems": {
