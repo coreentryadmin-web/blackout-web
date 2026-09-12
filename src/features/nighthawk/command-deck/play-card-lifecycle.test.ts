@@ -455,6 +455,34 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     assert.equal(swingActionDisplay(base({ horizon: "SWING", status: "SKIP" })), null);
   });
 
+  it("WATCH past its own entry-validity deadline → EXPIRED pill, not generic WAIT (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window with no member-facing distinction from a freshly-forming setup)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: true,
+        }),
+      ),
+      { label: "EXPIRED", tone: "watch" },
+    );
+  });
+
+  it("WATCH not past deadline still reads as the plain WAIT pill", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+        }),
+      ),
+      { label: "WAIT", tone: "watch" },
+    );
+  });
+
   it("live OPEN with swingEntryAction still_buy → STILL BUY pill (not HOLD)", () => {
     assert.deepEqual(
       swingActionDisplay(

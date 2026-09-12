@@ -38,6 +38,11 @@ export type SwingEntryEnterability = {
   action: SwingEntryAction;
   reason: string;
   enterable: boolean;
+  /** True only when `dont_buy` fired because the entry-validity deadline has passed — lets a
+   *  caller distinguish "this setup's entry window is dead" from every other `dont_buy`/`wait`
+   *  reason (invalidated, extended-chase, gate-blocked, not-yet-triggered), which otherwise all
+   *  collapse into the same generic WAIT pill member-facing. */
+  expired?: boolean;
 };
 
 const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
@@ -127,6 +132,7 @@ export function evaluateSwingEntryEnterability(
       action: "dont_buy",
       enterable: false,
       reason: "Entry-validity window expired — wait for a fresh setup.",
+      expired: true,
     };
   }
 

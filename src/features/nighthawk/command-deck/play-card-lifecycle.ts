@@ -280,6 +280,12 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     if (play.swingEntryAction === "still_buy") return { label: "STILL BUY", tone: "watch" };
     if (play.swingEntryAction === "buy") return { label: "BUY", tone: "watch" };
     if (play.recommendation === "BUY") return { label: "BUY", tone: "watch" };
+    // A row past its own entry-validity deadline (entry-model.ts's ENTRY_VALIDITY_DAYS) is dead
+    // for entry purposes — distinct from a setup that simply hasn't triggered yet, which also
+    // falls through to this branch. Both previously rendered the identical generic "WAIT" pill,
+    // so a scanning member couldn't tell a live setup from one that's been stale for weeks
+    // (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window, PR #4076#issuecomment-5646063107).
+    if (play.watchEntryExpired) return { label: "EXPIRED", tone: "watch" };
     return { label: "WAIT", tone: "watch" };
   }
   if (play.status === "SKIP") return null;

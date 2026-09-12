@@ -1131,6 +1131,45 @@ test("horizon adapter: WAITING_FOR_ENTRY → WATCH + HOLD (WAIT action)", () => 
   assert.match(wait.recNote, /trigger/i);
 });
 
+test("horizon adapter: WATCH row past its own entry-validity deadline → watchEntryExpired true + EXPIRED action pill (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window)", () => {
+  const staleFirstSeenAt = new Date(Date.now() - 46 * 24 * 60 * 60 * 1000).toISOString();
+  const stale = terminalPlayFromHorizon({
+    ticker: "mu",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 72,
+    status: "COMMIT",
+    servingSection: "WAITING_FOR_ENTRY",
+    setupState: "TRIGGERED",
+    entryStatus: "PRE_TRIGGER",
+    subLane: "TACTICAL",
+    firstSeenAt: staleFirstSeenAt,
+    contract: { strike: 100, right: "C", expiry: "2026-09-19", dte: 14, mid: 3.2 },
+  });
+  assert.equal(stale.status, "WATCH");
+  assert.equal(stale.watchEntryExpired, true);
+  assert.equal(swingActionDisplay(stale)?.label, "EXPIRED");
+});
+
+test("horizon adapter: fresh WATCH row inside its entry-validity window → watchEntryExpired not true", () => {
+  const fresh = terminalPlayFromHorizon({
+    ticker: "amd",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 75,
+    status: "COMMIT",
+    servingSection: "WAITING_FOR_ENTRY",
+    setupState: "TRIGGERED",
+    entryStatus: "PRE_TRIGGER",
+    subLane: "TACTICAL",
+    firstSeenAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    contract: { strike: 160, right: "C", expiry: "2026-09-19", dte: 14, mid: 4.1 },
+  });
+  assert.equal(fresh.status, "WATCH");
+  assert.notEqual(fresh.watchEntryExpired, true);
+  assert.equal(swingActionDisplay(fresh)?.label, "WAIT");
+});
+
 test("horizon adapter: RESEARCH + INVALIDATED → SKIP with gate blocks", () => {
   const skip = terminalPlayFromHorizon({
     ticker: "tsla",
