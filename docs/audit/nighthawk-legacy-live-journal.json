@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T06:37:00.063Z",
+  "lastUpdated": "2026-09-12T06:53:58.394Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1091,6 +1091,11 @@
       "at": "2026-09-12T06:37:00.063Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings."
+    },
+    {
+      "at": "2026-09-12T06:53:58.394Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle -- A_edition GREEN (2 plays, fresh, HPE/DELL), B_marks GREEN (both OCC in range), C_record GREEN (resolved=26 stable, buckets consistent), D_pull_status SKIPPED (morning confirm not run yet for 2026-09-14 edition). No new findings this cycle. Noted PR #4837 in recent main history is the Swings lane's own AAPL factors-vs-score fix (nighthawk-swings-live-journal.json) -- out of Legacy's scope, no action needed here. Six consecutive clean cycles since #4827 merged; will dig deeper next cycle per the mandate's 'several consecutive clean cycles' escalation trigger."
     }
   ],
   "knownOpenItems": {
