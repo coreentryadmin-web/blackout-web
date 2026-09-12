@@ -24,6 +24,30 @@ not read as scoring at the 0.4x "old" tier just because the underlying transacti
 earlier. This is a scoring-input fix, not a new UI field, so the confirmation is a sane, in-range
 `smart_money_score`/`key_signal`, same as every other cycle's healthcheck already verifies.
 
+## WATCH LIST — 2026-09-12 Ask Largo lane-rank leader on an invalidated WATCH thesis (read this before the routine pass)
+
+### "Lane leader"/"Top-ranked play" self-praise could fire on a WATCH setup whose own thesis already broke — fix/swing-lane-rank-invalidated-leader
+
+**What was broken:** `computeLaneRank`/`laneRankCoaching` (`src/lib/swing/play-brief-lane-rank.ts`,
+`play-brief-narrative-coaching.ts`) already skip an *exiting* COMMIT-bucket peer when picking the
+named "leader" (#4825, same day — CRWD's brief). The WATCH-bucket analog was uncovered: a peer (or
+the play itself) whose `setupState` is `INVALIDATED` (thesis broke pre-entry) could still be named
+the rank-1 "leader." Live-observed: SKHY sat #1 of 8 WATCH candidates by raw score (59) while its
+own Entry section already read `Serving section: RESEARCH` / `Setup: INVALIDATED`, yet the same
+folded narrative said "Lane leader — #1 of 8 on WATCH — Desk attention follows the top row" three
+bullets after "Thesis BREAK ... don't add size." See
+`docs/audit/findings-staging/2026-09-12-swing-lane-leader-invalidated-watch-thesis.md`.
+
+**Fix:** the named-leader peer filter now also excludes `setupState === "INVALIDATED"` peers
+(alongside the existing `EXIT`/`EXIT_RUNNER` exclusion); a new `selfInvalidated` flag suppresses
+the self-referential "leader"/"top-tier" praise lines when the PLAY ITSELF is invalidated. Rank/
+median stats are unchanged — only the self-congratulatory narrative lines are gated.
+
+**Check at the open:** once Monday's discovery scan runs and the WATCH lane repopulates, spot-check
+a couple of WATCH-lane briefs for any name whose Entry section shows `Setup: INVALIDATED` — confirm
+its own brief never says "Lane leader"/"Top-ranked play" and that OTHER WATCH briefs never name it
+as `Desk leader: <ticker> @ <score>`.
+
 ## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: OI-change alignment bonus dead-coded (read this before the routine pass)
 
 ### `scoreOptionsPositioning`'s +2 OI-change-alignment bonus never fired against real data — fix/nighthawk-oi-change-field-mismatch
@@ -4153,6 +4177,12 @@ than an end-of-session patch.
 - **What was broken (measured live, 2026-09-12):** Pulled fresh `AWS/ApplicationELB` `TargetResponseTime` at 60s granularity and found a recurring pattern of ~1-minute windows with p99/max spiking to 41-42s (e.g. 04:21, 04:25 UTC) even AFTER PR #4822 (merged 03:13:57 UTC, fully rolled out by 04:25:19 UTC) shipped its event-loop yield fix for `buildGexHeatmapUncached`. A dedicated investigation traced the residual gap directly in the code: #4822 added a `setImmediate` yield to the `maxPainByExpiry` loop and to the depth-block loop over `nearKeep`, but left 3 sibling calls to the same expensive `buildDepthBlockForExpiries` helper (the initial whole-nearTermKeep-scope `depth` build, the `nearPresetBlock` rebuild, and the `farBlock` build for far-dated expiries) completely un-yielded — each one an O(depthContracts) pass over the same ~11K-contract (SPX) array with zero opportunity for the event loop to service concurrent member requests in between.
 - **What changed:** Added the identical `await new Promise((resolve) => setImmediate(resolve))` yield already used elsewhere in this function after each of the 3 previously-un-yielded `buildDepthBlockForExpiries` calls in `src/lib/providers/polygon-options-gex.ts`. No computation logic changed — byte-identical results, just interleaved with real macrotask yields so a large chain's depth-ladder build can no longer run as one uninterrupted synchronous block.
 - **RTH check:** Once this fix is live, re-pull `AWS/ApplicationELB` `TargetResponseTime` at 60s granularity during RTH for `blackout-production-app` and confirm the 41-42s single-task-blocking spike pattern is gone (a distinct, SEPARATE contributing mechanism was also identified — `runWithBackgroundUwSweep`'s cluster-wide UW rate-limiter reservation showing up as `[uw] queue wait 15000-18500ms` under `nighthawk-edition`'s long overnight run, visible as p50-elevated spikes like 04:36 UTC's p50=11.2s — that is a deliberate, already-mitigated tradeoff and is NOT touched by this fix, so some spikes may persist from that separate cause and should not be mistaken for this fix failing).
+
+### 134. 0DTE ratchet-mode backtest harnesses never set `exitMode`, silently grading `trim_scale` logic instead — corrected historical "ratchet wins" conclusion is now unverified — fix/zerodte-ratchet-backtest-exitmode-bug — 2026-09-12
+
+- **What was broken (found during the Night Hawk three-engine deep audit, cross-questioning a proposed new ratchet rung):** `scripts/audit/zerodte-sim.mjs`'s `gradeThroughExitEngine` and `scripts/audit/tier-exit-mode-ab.mjs`'s own copy both build the "ratchet" grading arm's input without ever setting `exitMode`, so the real `evaluateExitState` falls back to `DEFAULT_EXIT_MODE` — which is `"trim_scale"`, not `"ratchet"` as a stale doc-comment claimed. Proved directly: the same input graded through `evaluateExitState` with vs. without an explicit `exitMode:"ratchet"` produces different actions/reasons. This means the 2026-08-29 "RATCHET wins 45.5%WR/+5.5%P&L vs trim_scale" finding (cited since in `docs/audit/0DTE-RESEARCH.md` and PR history) never measured real ratchet behavior — both arms of that comparison were grading trim_scale. A quick uncommitted spot re-measurement this session found genuine ratchet grading materially worse (30%WR/−6.8% avg P&L) — directional evidence the conclusion changes, not a new authoritative number.
+- **What changed:** Both scripts' ratchet-arm builders now set `exitMode: "ratchet"` explicitly (matching the sibling `trim_scale`-arm builders in the same files, which already did this correctly); `exit-engine.ts`'s stale doc-comment on `exitMode` corrected to say the true default (`"trim_scale"`). `scripts/audit/regime-dead-zone-ab.mjs` was checked directly and does NOT share this bug (it has no separate ratchet-mode grader at all) — confirmed, not assumed. No production gate/floor/exit behavior touched — this is a backtest-tooling input-construction fix only; real committed 0DTE plays always pass an explicit `exitMode` via `resolveExitModeForTier` and were never affected.
+- **RTH check:** No live board/member-facing behavior changed, so nothing to re-verify on the live site. The follow-up that DOES matter: re-run the now-corrected `scripts/audit/tier-exit-mode-ab.mjs` for a fresh, citable ratchet-vs-trim_scale verdict, and treat every prior "ratchet wins" citation in this repo's docs as unverified until that re-run lands — do not quote the pre-fix 45.5%/+5.5% number as settled.
 
 ### 135. `swing-active-refresh`'s registry `description` still said "Hourly" after the cadence was raised to every 15 minutes — fix/swing-active-refresh-cron-description-stale — 2026-09-12
 

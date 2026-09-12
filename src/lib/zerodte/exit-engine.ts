@@ -169,8 +169,8 @@ export type ExitEngineInput = {
    *  the thesis was bought with; opposing weight must exceed it to break the thesis.
    *  Null/absent → the thesis_min_oppose_weight noise floor is the margin. */
   entryCortexScore?: number | null;
-  /** Profit-management family (A/B). Omitted → DEFAULT_EXIT_MODE ("ratchet", the
-   *  shipped floor-exit). "trim_scale" selects the E5 ⅓@+25% / ⅓@+50% / run scale-out. */
+  /** Profit-management family (A/B). Omitted → DEFAULT_EXIT_MODE ("trim_scale", the
+   *  E5 ⅓@+25% / ⅓@+50% / run scale-out). "ratchet" selects the shipped floor-exit. */
   exitMode?: ZeroDteExitMode;
   /** Day regime that conditions the trim-scale tranche thresholds (trim_scale only;
    *  ignored in ratchet mode). Omitted → "neutral" (the E5-measured base schedule). */
