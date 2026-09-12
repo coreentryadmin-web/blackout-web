@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T00:52:31.342Z",
+  "lastUpdated": "2026-09-12T01:15:54.617Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -971,6 +971,11 @@
       "at": "2026-09-12T00:52:31.342Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "PR #4816 undraft retried -- still hitting the GitHub MCP write-limiter, confirmed fleet-wide again (Swings lane's PR #4819 hit the identical limiter in the same window). CI stays green, mergeable_state clean from last check. healthcheck:legacy fully GREEN this cycle, resolved=26 stable (harness also self-swept 1 leaked temp Clerk user >30m old -- the documented per-run-identity safety net working as designed, not a bug). No new findings this cycle; will keep retrying the undraft next cycle."
+    },
+    {
+      "at": "2026-09-12T01:15:54.617Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "PR #4816 undraft succeeded this time (rate limit cleared) and it's already MERGED into main (sha 60c851381) -- confirmed both via git log and by grepping the live fetchNighthawkOutcomeAnalytics/fetchNighthawkFunnelStats source on main for the ET-anchored expression (present, CURRENT_DATE gone). Also noted: a separate PR #4820 (docs-only, another cycle/session) confirmed a real, useful rollout-timing lesson for #4813's R:R fix -- Legacy's thesis TEXT is generated ONCE at publish time (5:30pm ET nightly cron) and stored, so a thesis-text fix merged after that day's 5:30pm publish does NOT retroactively correct the already-published edition; it only takes effect on the FOLLOWING day's regeneration. Directly relevant to my new work this cycle: shipped a second enhancement PR #4821 (feat/nighthawk-legacy-thesis-catalyst-headline) -- found via aggressive improvement-hunting that dossier.news_headlines/dossier.polygon_sentiment are both real, already-fetched, already-scored-into-news_score data that buildDeterministicThesis never surfaced in its prose, so a card could say 'BULLISH -- news + flow' with zero explanation of what the news actually was. Added pickCatalystHeadline (quotes a direction-matching Polygon sentiment-reasoning string or falls back to a plain headline, only when news is a top-2 scoring driver, additive-only/never fabricates), 4 new regression tests (RED->GREEN proven via git-stash), tsc clean, full local suite run. Per the #4820 lesson, this enhancement also won't reach a live edition's thesis until the NEXT 5:30pm ET publish after merge -- noted in the validation-log entry as a forward-looking check ('once a future edition publishes...'), so no surprise when Monday's already-published 9/14 edition doesn't show it either. healthcheck:legacy fully GREEN this cycle, resolved=26 stable."
     }
   ],
   "knownOpenItems": {
