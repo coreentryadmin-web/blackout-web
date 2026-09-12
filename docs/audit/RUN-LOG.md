@@ -4,6 +4,24 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-12 (12:18 UTC) — [SEO] Lane heartbeat: Saturday pre-market, full CLS re-measure GREEN, GSC 3rd identical pull
+
+**Severity.** — (no defect found)
+
+Saturday pre-market heartbeat (08:16 ET — markets closed today, no RTH wake expected). PR sweep:
+2 open agent PRs fleet-wide (#4857, #4858, both Night Hawk Swings lane, CI-RUNNING) — not SEO-lane,
+nothing to unblock. Fresh Cloudflare purge + CLS measure (~12h since last full check): desktop
+1440x900 **0.0001 GOOD**, mobile 430x932 **0.0379 GOOD**. `/api/og` re-fetched with Googlebot UA:
+HTTP 200 `image/png`, still crawlable.
+
+GSC opportunities report byte-identical for the 3rd consecutive check (~18h span) — same window,
+same 2 striking-distance queries. Longer than the typical 2-3 day lag window would suggest by
+itself, but plausibly weekend-related GSC processing slowdown rather than a stuck pull; worth a
+closer look if it's still unchanged after the weekend. No new opportunities either way.
+
+No defects found.
+
+---
 ## 2026-09-12 (06:18 UTC) — [SEO] Lane heartbeat: quiet overnight pass, no defects
 
 **Severity.** — (no defect found)
