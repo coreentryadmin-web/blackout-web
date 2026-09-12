@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-09-12 Night Hawk Legacy thesis positioning driver note (read this before the routine pass)
+
+### Thesis now names WHICH positioning evidence drove a "positioning" scoring tag — feat/nighthawk-legacy-thesis-positioning-driver-note
+
+**What was missing:** `buildDeterministicThesis` could publish `key_signal` reading e.g.
+`"BULLISH — positioning + flow · score 78 (A)"`, but the thesis prose only ever surfaced dealer
+greek-flow bias -- never dark-pool prints, strike-stack accumulation, or aligned OI growth, the
+other three sources `scoreOptionsPositioning` blends into `pos_score`. Same gap class already
+fixed for "news" (#4821) and "smart-money" (#4827) this session. See
+`docs/audit/findings-staging/2026-09-12-legacy-thesis-positioning-driver-note.md`.
+
+**Fix:** new `positioningDriverNote` names dark-pool prints, strike-stack accumulation, or rising
+aligned OI -- whichever has direction-aligned evidence, checked in the same priority order the
+score itself weighs them -- as `Positioning: <note>.` in the thesis, but ONLY when positioning is
+already a top-2 `key_signal` driver. Additive only, coexists with the existing dealer-greek-flow
+line (a separate data source), never fabricates.
+
+**Check at the open:** once a future edition publishes a play whose `key_signal` names
+"positioning" as a driver, pull that ticker's full thesis text via `GET /api/market/nighthawk/edition`
+and confirm it carries a `Positioning: ...` sentence naming real, direction-aligned evidence
+(dark-pool/strike-stack/OI), and that plays where positioning wasn't a driver do NOT carry the
+sentence even if the ticker has some dark-pool/strike-stack data on file. Per the #4820
+rollout-timing lesson, this text is generated once at publish time (5:30pm ET nightly cron), so it
+won't appear in an already-published edition until the next regeneration.
+
 ## WATCH LIST — 2026-09-12 Ask Largo lane-rank praise/caution wording on reducing positions (read this before the routine pass)
 
 ### Lane-rank lines said "confirm before adding size"/"Lane leader" on positions already being trimmed or exited — fix/swing-lane-rank-below-median-reduce-wording

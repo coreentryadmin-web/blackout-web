@@ -448,6 +448,51 @@ function smartMoneyDriverNote(dossier: TickerDossier | undefined, isLong: boolea
   return null;
 }
 
+/**
+ * Names WHICH positioning sub-signal is driving pos_score when positioning is a top scoring
+ * driver: dark-pool prints, repeated/stacked strike accumulation, or aligned OI growth --
+ * scoreOptionsPositioning (scorer.ts) already blends all of these into pos_score, but until now
+ * the thesis only ever surfaced dealer greek-flow bias (a separate, narrower data source, always
+ * printed below regardless of whether "positioning" is even a top-2 driver) -- a card could read
+ * "BULLISH -- positioning + flow" while a member has no way to tell whether that means dark-pool
+ * buying, stacked call accumulation, rising call OI, or nothing narratable was actually behind it.
+ * Checked in the same priority order scoreOptionsPositioning weighs them (dark-pool up to 6pts,
+ * strike stacks up to 7pts, OI-change 2pts) so the note names whichever source is likeliest to be
+ * doing the real work. Additive only -- never fabricates, and coexists with the separate dealer
+ * greek-flow line since they're independent data sources, not a duplicate of the same one.
+ */
+function positioningDriverNote(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const dp = dossier?.dark_pool;
+  const dpBias = (dp?.bias ?? "").toLowerCase();
+  const dpAligns = dpBias === (isLong ? "bullish" : "bearish");
+  if (dpAligns && (dp?.total_premium ?? 0) >= 5_000_000) {
+    return `dark-pool prints leaning ${isLong ? "bullish" : "bearish"}`;
+  }
+
+  const alignedStacks = (dossier?.strike_stacks ?? []).filter((s) => {
+    const t = (s.option_type ?? "").toLowerCase();
+    if (!t) return false;
+    return isLong ? t.startsWith("c") : t.startsWith("p");
+  });
+  if (alignedStacks.some((s) => s.same_strike_accumulation)) {
+    return "repeated same-strike accumulation on the aligned side";
+  }
+  if (alignedStacks.some((s) => s.repeated_hits)) {
+    return "repeated strike hits on the aligned side";
+  }
+
+  const alignedOi = (dossier?.oi_change ?? []).filter((r) => {
+    if (!((r.oi_change ?? 0) > 0)) return false;
+    const t = (r.kind ?? "").toLowerCase();
+    return isLong ? t.startsWith("c") : t.startsWith("p");
+  });
+  if (alignedOi.length >= 2) {
+    return "rising aligned open interest";
+  }
+
+  return null;
+}
+
 export function buildDeterministicThesis(
   scored: ScoredCandidate,
   dossier: TickerDossier | undefined,
@@ -553,6 +598,11 @@ export function buildDeterministicThesis(
   if (scored.pos_score >= 8 && dossier?.greek_flow) {
     const gf = dossier.greek_flow;
     parts.push(`Dealer positioning ${gf.bias}.`);
+  }
+  // --- Positioning driver note (surfaces WHICH sub-signal when positioning is a top driver) ---
+  if (topDrivers.some((d) => d.label === "positioning")) {
+    const posNote = positioningDriverNote(dossier, isLong);
+    if (posNote) parts.push(`Positioning: ${posNote}.`);
   }
   if (scored.wall_proximity_score != null && scored.wall_proximity_score >= 4) {
     parts.push(`GEX wall alignment supports ${isLong ? "upside" : "downside"}.`);
