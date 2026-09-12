@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T16:53:05.193Z",
+  "lastUpdated": "2026-09-12T17:07:39.068Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1311,6 +1311,11 @@
       "at": "2026-09-12T16:53:05.193Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Deep-verified the tier reasoning text 'N of 9 dimensions confirming' against deterministic-edition.ts's actual confirming_signals array (9 specific per-dimension thresholds: flow>=8, tech>=6, positioning>=4, news>=2, smart_money>=2, fundamental>=2, short_interest>=2, wall_proximity>=3, vex>=2 -- catalyst/skew deliberately excluded from this count). Applied the real thresholds to both live plays' factor_breakdown: HPE (tech27/news7/fundamental6/vex3 clear their bars = 4 true) and DELL (vex3/news4/tech27/fundamental8 = 4 true) both reproduce confirming_signals=4 exactly. Tier text is accurate, not just a plausible-looking template. No bug found. This required reading scorer source to derive the real per-dimension rule rather than eyeballing -- a genuinely non-trivial verification pass, still clean. Correctness surface is now checked from many independent angles this session (marks, edition freshness, record consistency, R:R math, factor-sum-to-score, confirming-signals-to-tier-text, thesis narrative, live UI rendering) -- continuing standing cadence, watching for Monday market open."
+    },
+    {
+      "at": "2026-09-12T17:07:39.068Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Attempted to cross-check DELL's thesis catalyst callouts ('insider transaction; guidance update; offering; current ratio 0.91') against a raw catalyst_flags/catalyst_score field on the edition API -- neither field is exposed on the public play object (confirmed via full key listing: only factor_breakdown.catalyst, the numeric total, is public). Not a bug -- the flags feed thesis-TEXT generation internally (scoreCatalystAwareness) but are intentionally not re-serialized as raw data on this endpoint, just a scope correction on my own assumption. Given diminishing returns from manual spot-checks after 8+ independent verification passes this session (field-mismatch sweep x3 real bugs, outcome-honesty, live UI, R:R math, factor-sum-to-score, confirming-signals-to-tier-text all clean), treating this as a genuinely quiet stretch rather than manufacturing further marginal checks. Continuing standing cadence at normal effort; next substantive work expected at Monday market open validation."
     }
   ],
   "knownOpenItems": {
