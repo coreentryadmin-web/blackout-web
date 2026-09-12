@@ -5,6 +5,8 @@
 import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { fetchOpenSwingPositions, fetchSwingPositionById, fetchSwingPositionChain } from "@/lib/db";
+import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
+import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext, SwingRollHistory } from "./play-brief-types";
@@ -37,15 +39,51 @@ import { swingRollHistoryLegFromRow } from "./play-brief-roll-history";
  * under review is NOT filtered out here — `bookContextSection` passes the reviewed play's ledger
  * id into `checkPortfolioOverlap` so the correct row is excluded even when multiple independent
  * positions share ticker+direction.
+ *
+ * FIX (Ask Largo standing mandate, 2026-09-12): this used to return ONLY `swing_positions` rows.
+ * Engine B (Banger) open positions live in the entirely separate `banger_positions` table and are
+ * merged into the Swing lane's DISPLAY by banger-lane-merge.ts, but nothing merged them into THIS
+ * book — so `bookContextSection`'s theme/direction overlap check was blind to them. Confirmed live
+ * 2026-09-12 (GET /api/market/nighthawk/horizons?view=swings): of 85 open SWING-lane positions, 80
+ * (94%) are banger-origin — and since the 5 remaining swing-ledger-native positions independently
+ * share no theme/direction with each other right now, "Book context" was not merely under-firing,
+ * it never fired for ANY reviewed play at all (verified across every open position sampled: AAPL,
+ * NRG, NN, CG, CRWD, plus several banger-origin tickers). This is the same fail-soft,
+ * flag-gated (`isBangerEngineEnabled`) merge pattern `fetchActiveSwingPlaysForMarks`
+ * (live-marks-active.ts) already uses for the live-marks lane — mirrored here rather than
+ * reinvented, so a disabled Engine B (`BANGER_ENGINE_ENABLED=0`) correctly leaves this book
+ * swing-only, same as it already leaves the marks lane and the horizons board swing-only.
  */
 async function loadOpenBook(): Promise<PortfolioPosition[] | null> {
   try {
     const rows = await fetchOpenSwingPositions();
-    return rows.map((r) => ({
+    const swingPositions: PortfolioPosition[] = rows.map((r) => ({
       ticker: r.ticker,
       direction: r.direction === "short" ? ("SHORT" as const) : ("LONG" as const),
       positionId: r.id,
     }));
+
+    let bangerPositions: PortfolioPosition[] = [];
+    if (isBangerEngineEnabled()) {
+      try {
+        const bangerRows = await fetchBangerOpenBookRows();
+        // `positionId` is deliberately left UNSET here (never `bangerRow.id`) — banger_positions
+        // and swing_positions are separate DB sequences that CAN collide on numeric id, and
+        // `checkPortfolioOverlap`'s `excludePositionId` trusts that id as an exact identity match;
+        // stamping a banger row's id as a swing positionId risks excluding (or wrongly matching)
+        // an unrelated row on a coincidental collision — the same risk play-brief.ts's
+        // `siblingPositionsNote` (2026-09-11) already documented for this exact pair of tables.
+        // Leaving it unset falls back to `checkPortfolioOverlap`'s ticker+direction self-exclusion,
+        // which is exact here: every banger position is a long call (banger-lane-merge.ts hardcodes
+        // `direction: "LONG"` — `banger_positions` has no `direction` column at all), so there is no
+        // per-row direction to get wrong.
+        bangerPositions = bangerRows.map((r) => ({ ticker: r.ticker, direction: "LONG" as const }));
+      } catch {
+        /* fail-soft — the swing-ledger book still renders without the banger merge */
+      }
+    }
+
+    return [...swingPositions, ...bangerPositions];
   } catch {
     return null;
   }
