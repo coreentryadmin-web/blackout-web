@@ -398,18 +398,37 @@ message** — every one reads the generic reason — which means, per that funct
 reporting a SUCCESSFUL response with no matching bars for essentially every rejected candidate's session
 date, or the block timestamp being compared against those bars is systematically landing outside the
 range that exists. Neither of those was verified further here (out of scope for this measurement task —
-flagged as a follow-up rather than root-caused blind). **A plausible, NOT YET VERIFIED, hypothesis worth
-checking first:** `runSkipGrading` derives `blockedAtMs` via `Date.parse(row.observed_at)` — if
+flagged as a follow-up rather than root-caused blind). ~~A plausible, NOT YET VERIFIED, hypothesis worth
+checking first: `runSkipGrading` derives `blockedAtMs` via `Date.parse(row.observed_at)` — if
 `observed_at` round-trips through Postgres/pg without an explicit UTC marker, a timezone
 misinterpretation would systematically push `blockedAtMs` outside every session's available minute-bar
 range, producing exactly this "bars exist for the day, but none at/after the (wrong) block instant"
-signature. This is a hypothesis to check, not a diagnosis — verify against a real `observed_at` value
-before touching anything.
+signature.~~ **UPDATE (2026-09-12): this specific hypothesis was traced against the real code and
+REFUTED** — `observed_at` is a genuine `TIMESTAMPTZ`, no `setTypeParser` override exists anywhere in
+this repo, and `String(Date) → Date.parse(string)` round-trips to the exact same epoch millisecond
+regardless of process `TZ` (verified empirically under `UTC`/`America/New_York`/`Asia/Kolkata`) — V8's
+`Date.parse` is the literal inverse of its own `toString()` format, offset and all. **The real bug was
+one field over and now FIXED**: `session_date` (a plain `DATE` column, no timezone) round-trips through
+node-postgres as a JS `Date` at UTC MIDNIGHT for that calendar day, and the OLD code ran that
+midnight-UTC instant through `etYmd()` — built for converting a REAL epoch instant to its ET calendar
+day, not for reading a `DATE` column — which, because America/New_York sits behind UTC, silently
+returned the day BEFORE the row's real, stored `session_date` on every single row, every day of the
+year (deterministic, not occasional). That wrong date drove the underlying-bar fetch to the WRONG
+session's minute bars, so no bar ever landed at/after the (correctly-computed) `blockedAtMs` — exactly
+this section's observed "bars exist for the day, but none at/after the block instant" signature, just
+off the DATE column rather than the TIMESTAMPTZ one. Fixed in
+`docs/audit/findings-staging/2026-09-12-skip-grading-session-date-utc-midnight.md` by reading the UTC
+Y-M-D through `db.ts`'s own `isoDateString` helper (the established idiom for every other `DATE` column
+in this codebase) instead of `etYmd()`. **Re-run
+`scripts/audit/zerodte-gate-primary-ablation.mjs --days=90` once a fresh population of rows has been
+graded under the fix** — the primary-gate-only ablation below should now produce real Blocked-side
+numbers instead of `n=0` across the board.
 
-**No gate changed, nothing fixed.** This is evidence-gathering only, same discipline as every other A/B
-tool in this file. **Status: the primary-gate-only ablation the CTO review asked for is now BUILT and
-RUNNABLE, but currently returns INSUFFICIENT DATA for all five gates because of this separate,
-platform-wide skip-grading gap — re-run `node --import tsx scripts/audit/zerodte-gate-primary-ablation.mjs
+**No gate changed by THIS measurement pass** (the skip-grading plumbing fix above is a separate,
+already-shipped fix, not a gate change) — the ablation study itself remains evidence-gathering only,
+same discipline as every other A/B tool in this file. **Status: the primary-gate-only ablation the CTO
+review asked for is now BUILT and RUNNABLE — previously blocked by the platform-wide skip-grading gap
+above, now fixed; re-run `node --import tsx scripts/audit/zerodte-gate-primary-ablation.mjs
 --days=90` once that gap is investigated/fixed** (a distinct piece of work, flagged as a follow-up
 suggestion rather than attempted inline here). Until it is, neither the primary-gate-only nor a future
 full `blocks_json`-based ablation can produce a real Blocked WR/EV number for any gate.
