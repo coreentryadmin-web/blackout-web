@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T03:27:20.213Z",
+  "lastUpdated": "2026-09-12T03:37:09.823Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1021,6 +1021,11 @@
       "at": "2026-09-12T03:27:20.213Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
       "result": "PR #4821 (news catalyst headline) confirmed MERGED (sha ee2e19ec7) -- verified live in source via grep (pickCatalystHeadline present in deterministic-edition.ts on main). With that dependency cleared, implemented the queued follow-up: smartMoneyDriverNote in the same function, naming congressional buying/selling, institutional accumulation/distribution, or the prediction-market's own real headline (whichever has direction-aligned evidence, checked in scoreSmartMoney's own priority order) when smart-money is a top-2 key_signal driver. 5 new regression tests, RED->GREEN proven via git-stash (3/5 failed pre-fix), tsc clean, full local suite kicked off in background. Opened PR #4827 as draft, subscribed to its activity, staged finding + validation-log entry. healthcheck:legacy fully GREEN this cycle, resolved=30 stable."
+    },
+    {
+      "at": "2026-09-12T03:37:09.824Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "Full local suite from last cycle came back clean: 13791 pass / 0 fail / 3 skipped -- confirms PR #4827's smart-money note fix is safe. PR #4827: CodeQL/webhook/autopilot-dispatch green, main 'CI' (verify) workflow still in_progress. healthcheck:legacy fully GREEN this cycle, resolved=30 stable. No new findings; watching PR #4827 to green + merge."
     }
   ],
   "knownOpenItems": {
