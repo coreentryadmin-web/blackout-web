@@ -427,8 +427,36 @@ export async function ensureTickerInUniverseSnapshot(rawTicker: string): Promise
     // dedups within ONE process; with several ECS tasks appending concurrently the old
     // load -> append -> store lost whichever write landed first. Re-reading narrows the window, and
     // merging means the loser contributes its row instead of erasing everyone else's.
+    //
+    // BUG FIX (2026-09-12 audit finding): this used to call mergeUniverseSnapshot with its DEFAULT
+    // maxAgeMs (UNIVERSE_ROW_MAX_AGE_MS, 15 minutes) — a threshold tuned for the RTH cron's own
+    // 5-minute rebuild cadence (three missed cron ticks = genuinely stale). But THIS call site fires
+    // on a completely different, member-view-driven cadence that has no relationship to the cron at
+    // all — a member (or Largo's get_gex_heatmap tool) can open any ticker at any hour, including
+    // every evening after the cron's RTH gate stops firing and all weekend when it does not run at
+    // all. Passing the cron's 15-minute threshold here meant a SINGLE ticker view, any time more than
+    // 15 minutes had passed since the last full cron rebuild, expired the ENTIRE stored roster (every
+    // row older than 15 minutes) and replaced it with just the one freshly-touched ticker.
+    //
+    // Reproduced live 2026-09-12 (Saturday, cron correctly RTH-gated off since Friday 20:00 UTC):
+    // GET /api/market/vector/universe served only 5 rows (O, OR, ORC, ORCL, SPX — evidently a
+    // handful of names opened piecemeal over the weekend) where the last complete cron build had
+    // persisted 84. Every desk sharing this snapshot (Vector's own scanner table, Thermal's
+    // heatmap-warm, Largo's Vector tool) was reading a near-empty universe any time it happened to
+    // load between cron cycles. This is NOT the already-fixed "incomplete fan-out replaces a healthy
+    // roster" bug (that one was about buildVectorUniverseSnapshot's OWN completeness gate, guarded by
+    // isCompleteBuild) — it is the single-ticker append path silently applying the SAME pruning rule
+    // outside the cadence it was calibrated for.
+    //
+    // Fix: this call's only job is to ADD one missing ticker, never to police the rest of the
+    // roster's freshness — that pruning is already done correctly, on the right cadence, by the
+    // cron's own refreshVectorUniverseSnapshot() merge (line ~538, unchanged). So this call passes an
+    // effectively-unbounded maxAgeMs: no previously-stored row is ever expired here purely for being
+    // "old" — the FUTURE_STAMP_TOLERANCE_MS clock-skew guard inside mergeUniverseSnapshot still
+    // applies unchanged (it does not depend on maxAgeMs), so a bad future-dated row still gets
+    // dropped, only genuine staleness-based pruning is deferred to the cron.
     const latest = (await loadVectorUniverseSnapshot()) ?? snap;
-    const merged = mergeUniverseSnapshot(latest, [built.row], Date.now());
+    const merged = mergeUniverseSnapshot(latest, [built.row], Date.now(), Number.POSITIVE_INFINITY);
     await persistVectorUniverseSnapshot(roundFloats({ updatedAt: Date.now(), rows: merged.rows }));
   })().finally(() => {
     appendInFlight.delete(ticker);
