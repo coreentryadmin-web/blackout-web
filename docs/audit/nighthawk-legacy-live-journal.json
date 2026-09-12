@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T16:22:48.845Z",
+  "lastUpdated": "2026-09-12T16:37:27.204Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1301,6 +1301,11 @@
       "at": "2026-09-12T16:22:48.845Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Verified the R:R math shown in both live plays' thesis text (a mission-adjacent check not yet done: 'narrative consistent with marks'): HPE rr_ratio=0.49 reproduces exactly as (target 66.48 - entry_range upper 63.49) / (entry_range upper 63.49 - stop 57.41) = 2.99/6.08 = 0.49; DELL rr_ratio=0.45 reproduces the same way (606.30-580.46)/(580.46-523.40)=25.84/57.06=0.45. Confirms the R:R calc conservatively uses the entry range's UPPER (worst-case fill) bound, not the midpoint -- correct and consistent with the 'tight' framing in both theses. No bug found. Noted 2 sibling cross-lane PRs this window (#4869 swing Invalidation-callout fix, #4870 largo ticker-verdict condor-bias fix) -- both Swings/Largo scope, correctly not mine to act on."
+    },
+    {
+      "at": "2026-09-12T16:37:27.204Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Verified factor_breakdown sums exactly equal the reported score for both live plays: HPE (vex3+news7+tech27+fundamental6+positioning3=46 vs score 46), DELL (vex3+news4+tech27+catalyst-2+fundamental8+positioning1=41 vs score 41). No arithmetic drift between the scorer's internal breakdown and its published total. Genuinely quiet cycle -- correctness surface (marks, edition freshness, record consistency, R:R math, factor-sum-to-score, thesis narrative, live UI rendering) has now been cross-checked from multiple independent angles this session with nothing further found. Continuing standing cadence; will keep watching for Monday market open to validate the day's shipped fixes (#4839/#4844/#4847/#4853/#4860/#4863/#4865) against fresh live data."
     }
   ],
   "knownOpenItems": {
