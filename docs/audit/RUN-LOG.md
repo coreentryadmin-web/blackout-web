@@ -4,6 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-12 (14:06 UTC) — [SEO] Daily growth cycle: quiet day (4th identical GSC pull), flagged 2 stuck coordinator draft PRs
+
+**Severity.** — (no defect found)
+
+Quiet no-change day: GSC opportunity/28d totals byte-identical to the last check (2h earlier) —
+same 2 striking-distance queries, same totals (clicks=16, impressions=1651, ctr=0.97%,
+avgpos=35.9). Live re-verify skipped (CLS/robots.txt already fresh within the last 3 days per
+rule 6). Housekeeping surfaced 2 green, cleanly-mergeable coordinator-branch PRs stuck in draft
+with nobody watching them (#4863 nighthawk dossier-date fix, #4862 DMARC finding write-up) —
+`agent-pr-sweep.mjs --mark-ready` attempted and failed (this session lacks the GitHub MCP
+undraft tool), so posted a coordinator note on both rather than leaving them silently stuck.
+
+No defects found.
+
+---
 ## 2026-09-12 (12:18 UTC) — [SEO] Lane heartbeat: Saturday pre-market, full CLS re-measure GREEN, GSC 3rd identical pull
 
 **Severity.** — (no defect found)
