@@ -1446,6 +1446,11 @@
       "at": "2026-09-12T23:37:01Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4888 CONFIRMED MERGED (23:30:20 UTC, merged_by coreentryadmin-web, clean squash into main as commit 5d28d1565) -- verified via pull_request_read.get, not trusted from a status comment. Unsubscribed from PR activity (subscription complete). Added item #153 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check for next edition rebuild (confirm 'Watch: <flag> (Nd ago)' recency renders live, and multi-headline same-type dedup still holds)."
+    },
+    {
+      "at": "2026-09-12T23:52:28Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. No new Legacy-scope commits since last push. Confirmed PR #4888's ECR push (production) deploy is running (started 23:30:22, still in_progress at this check -- normal Docker build time, not stuck). Once deployed, the catalyst-recency fix will show on the next edition rebuild; will spot-check per the MARKET-OPEN-VALIDATION.md #153 entry once one runs against a ticker carrying a real catalyst. Improvement-hunting pass: reviewed scoreFundamentalTailwind()/passesFundamentalSanity() (scorer.ts) for the same freshness-gap pattern that produced #4888 -- these read point-in-time financial RATIOS (P/E, current ratio, margins), not dated news articles, so there is no comparable 'published' timestamp to surface; confirmed the working-capital-squeeze flag seen live in DELL's thesis ('current ratio 0.91') traces correctly to this function. Not a bug, correctly scoped differently from the catalyst-flag case. No new issue found this cycle."
     }
   ],
   "knownOpenItems": {
