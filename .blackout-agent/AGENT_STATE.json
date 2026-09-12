@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-12T05:04:39.226Z",
+  "updated_at": "2026-09-12T05:18:28.825Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8593506e54674094e9fa60b7b0222ed7a6574d6c",
+    "last_main_sha": "7a99196f38309e536da45601e834fa5ea11fa891",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-06T11:31:06.139Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T11:31:06.424Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T11:38:55.788Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
     {
       "at": "2026-09-06T11:38:55.789Z",
       "type": "handoff",
@@ -1282,9 +1264,108 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-12T05:18:28.047Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-12T05:18:28.550Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-12T05:18:28.825Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4836,
+      "title": "fix(gex): complete PR #4822's event-loop yield in buildGexHeatmapUncached",
+      "branch": "fix/gex-heatmap-depth-block-event-loop-yield",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T05:12:24Z"
+    },
+    {
+      "number": 4834,
+      "title": "fix(zerodte): close trim_scale's TREND-regime dead zone with a graduated floor",
+      "branch": "fix/trim-scale-trend-dead-zone-partial-floor",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T05:08:44Z"
+    },
+    {
+      "number": 4833,
+      "title": "fix(swing): merge banger_positions into Ask Largo's book-context overlap check",
+      "branch": "fix/swing-book-context-banger-blind-spot",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T05:09:45Z"
+    },
+    {
+      "number": 4832,
+      "title": "fix(swing): earnings-gap-safety check now accounts for BMO/AMC timing",
+      "branch": "fix/swing-earnings-gap-premarket-same-day",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T05:17:35Z"
+    },
+    {
+      "number": 4480,
+      "title": "Bump next from 15.5.25 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T00:30:39Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "Bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T00:30:20Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
