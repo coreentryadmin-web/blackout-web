@@ -1411,6 +1411,11 @@
       "at": "2026-09-12T21:52:14.314Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy fully GREEN, no change (resolved=26, HPE 2.91, DELL 18.15 stable). Sibling PR #4886 merged (Swings scope), correctly out of mine. Quiet cycle, standing cadence."
+    },
+    {
+      "at": "2026-09-12T22:08:37Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "GREEN. healthcheck:legacy -- A_edition GREEN (2 plays, fresh), B_marks GREEN (HPE 2.91 in [2.72,3.1], DELL 18.15 in [17.95,18.35]), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED (pre-morning-confirm). Aggressive-improvement-hunting pass: re-checked format.ts/dossier.ts/unusual-whales.ts for the same field-name-mismatch bug class that produced #4839/#4844/#4847/#4863/#4865 this session. Live-pulled 3 more real UW payload shapes and traced each read site: (1) /api/market/top-net-impact real shape is {ticker, net_premium} -- format.ts:298 netImpact only reads r.ticker/r.symbol, never premium, so no bug there. (2) hot_chains' total_premium (format.ts:629) is a LOCALLY-COMPUTED field from aggregateHotChains() in market-wide.ts, not a raw passthrough -- self-consistent by construction, correct. (3) dark_pool.total_premium/call_premium/put_premium (format.ts:376) are also locally computed in fetchUwDarkPool; live-pulled /api/darkpool/AAPL confirms real prints carry premium (string, correct field) but NO option_type/type field at all (equity block trades, not options) -- so callPrem/putPrem always stay 0 for equity dark pool, and darkPoolBias() already has an explicit, commented guard (line 921-923: 'No typed premium at all -> nothing was actually measured... falling through would read as measured-and-balanced') that returns honest 'neutral' rather than fabricated 'mixed' in exactly this case. Confirmed already correct by design, not a gap. No new bug found this cycle -- three real candidate sites checked and ruled out with live data rather than assumed clean."
     }
   ],
   "knownOpenItems": {
