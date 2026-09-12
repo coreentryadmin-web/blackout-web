@@ -1667,6 +1667,41 @@ test("chartLevelsSection: live Vector put wall still shown when GEX matrix is st
   assert.doesNotMatch(section!.body, /Gamma flip/);
 });
 
+// BUG FIX (2026-09-12): the "Nearest wall" line used to PREPEND "{strike} ({side}, {pct}% away) —"
+// ahead of `vec.proximity.callout` — but the real `deriveWallProximity` callout (vector-wall-
+// proximity.ts) already states the same strike/side/"wall" itself as a complete sentence. Live
+// repro: AAPL closed-position swing brief 2026-09-12 — "Nearest wall: 332.50 (put, -0.0% away) —
+// Testing 332.5 put wall (0.02% below) — dealers buy weakness...". The exact same duplication was
+// independently found and fixed the same day at a different call site reading the identical
+// `WallProximity` shape (vector-play-engine.ts's `starred` array) — this is a second instance.
+test("chartLevelsSection: Nearest wall line is the real callout verbatim, not double-prefixed with the wall it already names", () => {
+  const realisticCallout =
+    "Testing 332.50 put wall (0.02% below) — dealers buy weakness; support unless it breaks on volume.";
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      spot: 332.58,
+      proximity: { strike: 332.5, side: "put", distancePct: -0.02, nearness: "at", callout: realisticCallout },
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.equal(
+    section!.body.includes(`Nearest wall: ${realisticCallout}`),
+    true,
+    "Nearest wall line must be the callout verbatim (with its label), not a duplicated prefix ahead of it",
+  );
+  // Strike must appear exactly once — not once in a prefix and again inside the callout.
+  const occurrences = section!.body.split("332.50").length - 1;
+  assert.equal(occurrences, 1, `strike must appear exactly once, found ${occurrences}`);
+});
+
 test("chartLevelsSection: live Vector spot wins over stale GEX spot for wall distance (Largo C2)", () => {
   const section = chartLevelsSection({
     play: fixturePlay(),
