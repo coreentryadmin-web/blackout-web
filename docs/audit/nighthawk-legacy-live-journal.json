@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T07:20:05.346Z",
+  "lastUpdated": "2026-09-12T07:21:54.643Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1101,6 +1101,11 @@
       "at": "2026-09-12T07:20:05.346Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle -- no drift. Per the mandate's 'several consecutive clean cycles -> dig harder' trigger (7 clean cycles in a row), spent this cycle on a deeper code-level correctness sweep instead of a routine status log and found a real, live scoring bug: scoreOptionsPositioning (scorer.ts, shared by Legacy's hunt-builder.ts and edition-builder.ts) filtered OI-change rows on r.option_type, but the real data source fetchUwOiChange (unusual-whales.ts) returns {strike, oi_change, kind} -- option_type never exists on that shape. Live-proved with a script feeding the real {kind} shape into scoreOptionsPositioning: scored 0 where +2 was expected. The scorer's own inline param type declared the same wrong field name, so tsc never caught the mismatch, and every existing unit test hand-built fixtures using option_type (matching the scorer's wrong assumption, not the real UW API) -- so the +2 OI-alignment bonus has been silent dead code in production the whole time, regardless of how strongly real OI change agreed with a play's direction. Fixed on fix/nighthawk-oi-change-field-mismatch: renamed the field read + both inline type decls to kind, fixed 4 existing test fixtures, added a new regression test proving both directions (real kind-shaped data scores; option_type-only does not). RED->GREEN proven via git stash (2 failures stashed-out, 68/68 restored). tsc --noEmit clean. Full suite 13829 pass / 0 fail / 3 skipped. Findings-staging doc + MARKET-OPEN-VALIDATION entry added. Opened PR #4839 (draft), subscribed to activity. This is purely additive to pos_score (can only go up, never down, for tickers with real aligned OI-change data) -- no gate/behavior regression risk."
+    },
+    {
+      "at": "2026-09-12T07:21:54.643Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. PR #4839 (OI-change field-mismatch fix, opened last cycle) still draft -- CI/CodeQL both in_progress (~2min in), no failures, no review comments yet. Nothing actionable; will re-check next cycle."
     }
   ],
   "knownOpenItems": {
