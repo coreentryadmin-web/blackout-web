@@ -17,6 +17,7 @@ import {
   resolveExitMark,
   protectiveFloorMark,
   trimTranchesArmed,
+  trimScaleFloorPct,
   DEFAULT_EXIT_MODE,
   TRIM_SCALE_RULES,
   EXIT_RULES,
@@ -843,23 +844,87 @@ test("trim_scale DEAD ZONE per regime — RANGE: ratchet_early_arm_pnl_pct EQUAL
   assert.equal(d.reason, "trim_scale_first");
 });
 
-test("trim_scale DEAD ZONE per regime — TREND: the breakeven arm sits WELL BELOW the first tranche trigger (widest, unresolved-by-design gap)", () => {
-  // Trend's first tranche (+40%) is reached only long after the ratchet's breakeven
-  // arm (+20%) — there is NO peak at which a tranche is armed-but-untaken while the
-  // peak is still below +40%, so the guard never engages here and a peak in the
-  // 20-39% range that retraces still dumps to breakeven exactly like before. This is
-  // intentional (trend deliberately runs longer before its first trim — the floor is
-  // the only protection available in that window) and NOT part of what this fix
-  // resolves; asserted here so the relationship can't silently invert.
+// ── FIXED 2026-09-12 (previously "TREND: ... unresolved-by-design gap") ──────────
+// docs/audit/0DTE-RESEARCH.md's "the regime-conditioned trend dead-zone" (measured
+// 2026-09-04): a same-session sweep of `GET /api/market/zerodte/record?days=90` found
+// exactly this signature live — 37/372 graded 0DTE plays (9.9%) exited via
+// `ratchet_breakeven_floor` after a median +26.67% peak (up to +48.56%), e.g.
+// BULL +20.45%→0%, CLS +31.18%→0%. Trend's first tranche (+40%) is reached only long
+// after the ratchet's breakeven arm (+20%), so for any peak in [20%, 40%) NO tranche
+// is armed and the 2026-08-27 `trimAvailable` guard never engages — the OLD floor
+// (plain `ratchetFloorPct`, flat 0%) dumped the WHOLE position to breakeven, giving
+// back the entire peak. `trimScaleFloorPct` now floors at HALF the peak inside that
+// dead zone instead — trend's own +40/+80 schedule is UNCHANGED (still lets a trend
+// day run to its real first trim), only the floor's own generosity while waiting for
+// it improves.
+test("trim_scale DEAD ZONE per regime — TREND: a peak inside the dead zone now floors at HALF the peak instead of flat breakeven", () => {
   assert.ok(
     EXIT_RULES.ratchet_arm_pnl_pct < TRIM_SCALE_RULES.tranches_by_regime.trend[0],
-    "trend's tranche 1 trigger must stay above the breakeven arm, or this residual gap changes shape"
+    "trend's tranche 1 trigger must stay above the breakeven arm, or this dead zone changes shape"
   );
   const d = evaluateExitState(
     input({ exitMode: "trim_scale", regime: "trend", peakPremium: 4.8, currentMark: 4.0, trimsTaken: 0 }) // peak +20%, now 0%
   );
-  assert.equal(d.action, "EXIT", "no tranche armed yet at +20% peak in trend — the shared floor is the only guard");
-  assert.equal(d.reason, "ratchet_breakeven_floor");
+  assert.equal(d.action, "EXIT", "a retrace below the partial floor still exits — the position still cannot finish red");
+  assert.equal(d.reason, "trim_scale_dead_zone_floor", "distinct reason — not the old flat-breakeven bucket");
+  assert.equal(d.floorPnlPct, 10, "peak +20% * 0.5 = +10% floor, not the old flat 0%");
+});
+
+test("trim_scale DEAD ZONE fix — LIVE SHAPE: a trend peak that fully round-trips to breakeven now banks half instead of giving back everything (BULL/CLS live evidence)", () => {
+  // Same rounding pinnedLivePnlPct (marks-math.ts) applies internally, so the expected
+  // floor matches exactly what the engine actually computes off the raw premiums —
+  // not an independently-rounded approximation that could drift by a cent's worth of %.
+  const pinnedPct = (mark: number) => Math.round(((mark - ENTRY) / ENTRY) * 10000) / 100;
+
+  // BULL, 2026-09-03: peak +20.45%, retraced to breakeven.
+  const bullPeak = ENTRY * 1.2045;
+  const bull = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium: bullPeak, currentMark: ENTRY, trimsTaken: 0 })
+  );
+  assert.equal(bull.reason, "trim_scale_dead_zone_floor");
+  assert.equal(bull.floorPnlPct, Math.round(pinnedPct(bullPeak) * 0.5 * 100) / 100);
+  assert.ok(bull.floorPnlPct! > 0, "the position no longer gives back its ENTIRE peak");
+
+  // CLS, 2026-09-03: peak +31.18%, retraced to breakeven.
+  const clsPeak = ENTRY * 1.3118;
+  const cls = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium: clsPeak, currentMark: ENTRY, trimsTaken: 0 })
+  );
+  assert.equal(cls.reason, "trim_scale_dead_zone_floor");
+  assert.equal(cls.floorPnlPct, Math.round(pinnedPct(clsPeak) * 0.5 * 100) / 100);
+  assert.ok(cls.floorPnlPct! > bull.floorPnlPct!, "a bigger peak banks a bigger floor — the fix is graduated, not a new flat tier");
+});
+
+test("trim_scale DEAD ZONE fix — a trend peak still above its new partial floor just holds (the fix does not introduce a new premature exit)", () => {
+  const d = evaluateExitState(
+    // peak +30% -> new floor +15%; mark still at +17.5%, above the floor.
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium: ENTRY * 1.3, currentMark: ENTRY * 1.175, trimsTaken: 0 })
+  );
+  assert.equal(d.action, "HOLD", "above the new floor and below the first tranche — nothing fires yet, same as before the fix");
+  assert.equal(d.reason, "hold");
+});
+
+test("trimScaleFloorPct: unit coverage — dead zone only opens for TREND, identical to ratchetFloorPct everywhere else", () => {
+  // Below the shared arm point: identical to ratchetFloorPct for every regime.
+  assert.equal(trimScaleFloorPct(14.99, false, "trend"), ratchetFloorPct(14.99, false));
+  assert.equal(trimScaleFloorPct(17, false, "trend"), ratchetFloorPct(17, false));
+  // NEUTRAL: first tranche (20) equals the arm point — dead zone is empty, byte-identical.
+  assert.equal(trimScaleFloorPct(25, false, "neutral"), ratchetFloorPct(25, false));
+  assert.equal(trimScaleFloorPct(20, false, "neutral"), ratchetFloorPct(20, false));
+  // RANGE: first tranche (15) sits BELOW the arm point — dead zone is empty, byte-identical.
+  assert.equal(trimScaleFloorPct(16, false, "range"), ratchetFloorPct(16, false));
+  assert.equal(trimScaleFloorPct(25, false, "range"), ratchetFloorPct(25, false));
+  // TREND, inside the dead zone [20, 40): half the peak, not the flat ratchet value.
+  assert.equal(trimScaleFloorPct(20, false, "trend"), 10);
+  assert.equal(trimScaleFloorPct(39.99, false, "trend"), Math.round(39.99 * 0.5 * 100) / 100);
+  assert.notEqual(trimScaleFloorPct(30, false, "trend"), ratchetFloorPct(30, false), "the whole point of the fix — these must differ inside the dead zone");
+  // TREND, at/after the first tranche (40): dead zone closes, byte-identical again.
+  assert.equal(trimScaleFloorPct(40, false, "trend"), ratchetFloorPct(40, false));
+  assert.equal(trimScaleFloorPct(50, false, "trend"), ratchetFloorPct(50, false));
+  // Lock tier and the trimmed/runner-floor latch are untouched at every regime.
+  assert.equal(trimScaleFloorPct(60, false, "trend"), EXIT_RULES.ratchet_lock_floor_pct);
+  assert.equal(trimScaleFloorPct(25, true, "trend"), EXIT_RULES.runner_floor_pct);
+  assert.equal(trimScaleFloorPct(null, false, "trend"), null);
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -880,6 +945,10 @@ test("categorizeExitReason: every persisted reason maps to its coarse family; no
   assert.equal(categorizeExitReason("ratchet_early_profit_floor"), "ratchet");
   assert.equal(categorizeExitReason("ratchet_profit_floor"), "ratchet");
   assert.equal(categorizeExitReason("runner_floor"), "ratchet");
+  // The trend dead-zone floor (2026-09-12 fix) is a PROTECTIVE floor exit, not a target
+  // hit, even though its reason token starts with "trim_scale" like the tranche/runner
+  // reasons above — must bucket as "ratchet", not fall through to "target".
+  assert.equal(categorizeExitReason("trim_scale_dead_zone_floor"), "ratchet");
   // Non-exit reasons (holds / floor-arm reports / guards) and unknown tokens are NOT a family.
   assert.equal(categorizeExitReason("hold"), null);
   assert.equal(categorizeExitReason("no_live_mark"), null);
@@ -895,6 +964,15 @@ test("categorizeExitReason: a real EXIT decision's reason round-trips to a famil
   assert.equal(categorizeExitReason(stop.reason), "stop");
   const floor = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 5.0, currentMark: 4.0 }));
   assert.equal(categorizeExitReason(floor.reason), "ratchet");
+  // The trend dead-zone floor exit (2026-09-12 fix) round-trips to "ratchet", not "target",
+  // despite its reason starting with "trim_scale" — a real member-facing miscategorization
+  // this fix would otherwise have introduced (the reason and the category live in the same
+  // file, but nothing forced them to stay in sync without this explicit case + test).
+  const deadZone = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium: 4.8, currentMark: 4.0, trimsTaken: 0 })
+  );
+  assert.equal(deadZone.reason, "trim_scale_dead_zone_floor");
+  assert.equal(categorizeExitReason(deadZone.reason), "ratchet");
 });
 
 // ── protective collision: when the plan stop sits ABOVE the floor mark, plan_stop labels it ──

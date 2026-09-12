@@ -306,6 +306,77 @@ export function ratchetTargetReached(peakPnlPct: number | null, targetPct: numbe
   return peakPnlPct != null && peakPnlPct >= targetPct;
 }
 
+/**
+ * True when `peakPnlPct` sits in this regime's OWN genuine dead zone: high enough to
+ * have armed the shared ratchet breakeven floor (`EXIT_RULES.ratchet_arm_pnl_pct`,
+ * fixed at +20% for every regime) but NOT yet high enough to have armed this regime's
+ * own first trim tranche. Only non-empty for a regime whose first tranche trigger
+ * sits ABOVE the shared arm point — today that is `trend` alone (+40 vs the shared
+ * +20): `neutral`'s first tranche (+20) equals the arm point and `range`'s (+15) sits
+ * BELOW it, so for both, `peakPnlPct >= armAt` already implies a tranche is armed
+ * (`trimTranchesArmed` >= 1), making the two conditions below mutually exclusive by
+ * construction — this returns false for every neutral/range peak, never just
+ * "usually false".
+ */
+function inTrimScaleDeadZone(peakPnlPct: number | null, regime: ZeroDteRegime): boolean {
+  if (peakPnlPct == null) return false;
+  const firstTranche = TRIM_SCALE_RULES.tranches_by_regime[regime][0];
+  return peakPnlPct >= EXIT_RULES.ratchet_arm_pnl_pct && peakPnlPct < firstTranche;
+}
+
+/**
+ * trim_scale's own protective floor (P&L %) — `ratchetFloorPct` plus ONE additional
+ * tier that closes the TREND-REGIME DEAD ZONE (docs/audit/0DTE-RESEARCH.md, "the
+ * regime-conditioned trend dead-zone", measured 2026-09-04: a same-session sweep of
+ * 90 days of graded 0DTE plays found 37/372 (9.9%) exited via `ratchet_breakeven_floor`
+ * after a median +26.67% peak, up to +48.56% — e.g. BULL +20.45%→0%, CLS +31.18%→0%,
+ * still open as of the 2026-08-27 dead-zone fix below).
+ *
+ * `ratchetFloorPct`'s breakeven arm is a FIXED peak +20% regardless of regime, while
+ * `trim_scale`'s own first tranche trigger is regime-conditioned (neutral +20, range
+ * +15, trend +40). For neutral/range the two tables coincide or cross AT OR BEFORE
+ * +20%, so a peak high enough to arm the shared floor has also armed (or is about to
+ * arm) a tranche — the 2026-08-27 `trimAvailable` guard in `decideTrimScale` covers
+ * that case by banking the tranche instead of letting the floor dump the position.
+ * `trend` cannot benefit from that guard: its first tranche is +40%, so for any peak
+ * in `inTrimScaleDeadZone`'s window [20%, 40%) NO tranche is armed yet, the guard
+ * never engages, and the OLD behavior (plain `ratchetFloorPct`) floored at flat
+ * breakeven (0%) — dumping the WHOLE position and giving back 100% of a real
+ * double-digit peak instead of banking any of it, precisely because `trend`'s
+ * "let it run" schedule hadn't reached its first trim yet.
+ *
+ * THE FIX (this function): inside a regime's genuine dead zone, floor at HALF the
+ * peak instead of flat 0% — the same "floor rises with the peak instead of staying
+ * flat" principle `EXIT_RULES.ratchet_lock_pnl_pct`/`ratchet_lock_floor_pct` already
+ * uses at higher peaks (floor rises from breakeven to +20% once peak ≥ +50%), applied
+ * one tier earlier for exactly the regime/peak-range combination where no tranche can
+ * yet protect the position. This deliberately does NOT touch
+ * `TRIM_SCALE_RULES.tranches_by_regime.trend` — its own +40/+80 schedule and "let a
+ * trend day run" design intent are unchanged; a real trim still only ever banks at
+ * +40%/+80%, exactly as before. Outside the dead zone (any regime once its own first
+ * tranche is armed, or trend before its shared early-arm/lock tiers) this is
+ * byte-identical to `ratchetFloorPct` — verified by delegating to it directly for
+ * every tier except the one new dead-zone branch.
+ *
+ * Scoped to `decideTrimScale` only (its one call site) — `ratchetFloorPct` itself is
+ * untouched and remains exactly what ratchet-mode rows and the board's display floor
+ * (`zerodte-service.ts`) read, so this fix cannot change ratchet-mode behavior.
+ */
+export function trimScaleFloorPct(
+  peakPnlPct: number | null,
+  trimmed: boolean,
+  regime: ZeroDteRegime
+): number | null {
+  if (trimmed) return EXIT_RULES.runner_floor_pct;
+  if (peakPnlPct == null) return null;
+  if (peakPnlPct >= EXIT_RULES.ratchet_lock_pnl_pct) return EXIT_RULES.ratchet_lock_floor_pct;
+  if (inTrimScaleDeadZone(peakPnlPct, regime)) return round2(peakPnlPct * 0.5);
+  // Every remaining tier (early-arm +5%, breakeven arm 0%, or unarmed null) is
+  // identical to the shared ratchet floor — delegate rather than re-derive so the two
+  // can never silently drift apart outside the one new branch above.
+  return ratchetFloorPct(peakPnlPct, false);
+}
+
 export type ThesisBreak = {
   /** The evidence source that broke the thesis (veto source, or the heaviest oppose). */
   source: string;
@@ -399,16 +470,27 @@ function decideTrimScale(
   //    the first third the peak had already earned. That defeats trim_scale's whole
   //    purpose (E5: "don't scratch a momentum runner at breakeven") for exactly the
   //    peak range where it matters. The floor itself is NOT wrong — a peak that has
-  //    NOT armed a tranche yet still needs the breakeven/early-arm safety net, so it
-  //    is left fully intact for that case (unarmed dead-zone, e.g. trend @ +20-39%,
-  //    where the trim schedule deliberately runs later and the floor is the only
-  //    protection — see the PR write-up for why that residual gap is not a bug).
+  //    NOT armed a tranche yet still needs the breakeven/early-arm safety net.
   //    The fix: once a tranche is armed but not yet taken, bank it INSTEAD of letting
   //    the coarse floor dump everything — banking raises `taken` for the next tick, so
   //    `trimAvailable` (below) is only ever true for the ONE tick a NEW tranche is
-  //    pending, never forever. The shared floor itself stays the ordinary peak-based
-  //    ratchet table here (see ratchetTargetReached below for when it jumps to +50%).
-  //    Only suppresses the floor EXIT action below.
+  //    pending, never forever. Only suppresses the floor EXIT action below.
+  //
+  //    TREND DEAD-ZONE FIX (2026-09-12, docs/audit/0DTE-RESEARCH.md "the
+  //    regime-conditioned trend dead-zone", measured 2026-09-04): the guard above
+  //    cannot engage for a regime whose first tranche trigger sits ABOVE the shared
+  //    +20% arm point — only `trend` (+40) today, since neutral (+20) and range (+15)
+  //    both cross AT OR BEFORE the arm point. For a `trend` peak in [20%, 40%) NO
+  //    tranche is armed yet (`trimAvailable` stays false, correctly — there is
+  //    genuinely nothing to bank there), so the OLD `sharedFloor` (plain
+  //    `ratchetFloorPct`, flat 0% once armed) dumped the WHOLE position to breakeven —
+  //    live evidence: 37/372 graded plays (9.9%) exited via `ratchet_breakeven_floor`
+  //    after a median +26.67% peak, up to +48.56%. `trimScaleFloorPct` (this function's
+  //    own floor, replacing `ratchetFloorPct` below) floors at HALF the peak inside
+  //    that dead zone instead of flat 0% — the position still can't finish red, but a
+  //    real double-digit peak no longer evaporates entirely while `trend`'s own
+  //    schedule (unchanged: still +40/+80) waits for its first real tranche. See
+  //    `trimScaleFloorPct`'s own doc for the full before/after.
   //
   //    STOP-BREACH CARVE-OUT (2026-09-04, live-again per resolveTrimBankLive defaulting
   //    ON 2026-09-03 — see docs/audit/findings-staging/2026-09-04-trim-scale-stop-fallthrough.md):
@@ -436,7 +518,7 @@ function decideTrimScale(
   const targetPnlPct =
     input.planTarget != null ? ((input.planTarget - ctx.entryPremium) / ctx.entryPremium) * 100 : null;
   const peakClearedTarget = targetPnlPct != null && ratchetTargetReached(peakPnlPct, targetPnlPct);
-  const sharedFloor = ratchetFloorPct(peakPnlPct, peakClearedTarget);
+  const sharedFloor = trimScaleFloorPct(peakPnlPct, peakClearedTarget, regime);
   const floorBreached = sharedFloor != null && pnlPct <= sharedFloor && !trimAvailable;
   if (input.planStop != null && currentMark <= input.planStop) {
     const floorMark = sharedFloor != null ? protectiveFloorMark(ctx.entryPremium, sharedFloor) : null;
@@ -452,7 +534,13 @@ function decideTrimScale(
     }
   }
   if (floorBreached && sharedFloor != null) {
-    const reason = floorReason(sharedFloor, peakClearedTarget);
+    // A distinct, machine-readable reason for the new dead-zone tier — never folded
+    // into `floorReason`'s existing buckets — so this mechanism is greppable/
+    // auditable on its own in the ledger, separate from an ordinary early/breakeven/
+    // lock floor exit.
+    const reason = inTrimScaleDeadZone(peakPnlPct, regime)
+      ? "trim_scale_dead_zone_floor"
+      : floorReason(sharedFloor, peakClearedTarget);
     return {
       action: "EXIT",
       floorPnlPct: sharedFloor,
@@ -712,6 +800,11 @@ export function categorizeExitReason(
   if (reason.startsWith("thesis_break")) return "thesis";
   if (reason === "plan_stop") return "stop";
   if (reason === "flat_theta_bleed") return "flat";
+  // Checked BEFORE the general `trim_scale` prefix below: this is `trimScaleFloorPct`'s
+  // dead-zone tier — a PROTECTIVE floor giving back half a peak, not a target trim/
+  // runner-target hit — so it belongs in the "ratchet" (floor) family, same as an
+  // ordinary breakeven/early/lock floor exit, never "target" (profit-taking).
+  if (reason === "trim_scale_dead_zone_floor") return "ratchet";
   // Profit-taking, either mode: the ratchet's plan-target trim/final, and the trim_scale
   // tranche + runner-target exits are all "we banked profit at/toward the target".
   if (reason.startsWith("plan_target") || reason.startsWith("trim_scale")) return "target";
