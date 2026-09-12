@@ -93,6 +93,39 @@ test("index verdict cites macro + breadth (relevance-gated color)", async () => 
   assert.match(out, /breadth risk on/);
 });
 
+// A committed 0DTE IRON CONDOR's `direction` column is NOMINAL provenance only (the fade side
+// of the pin it came from) — the structure is delta-neutral, so treating it as a directional
+// call fabricates a signal the 0DTE desk never actually took. ecosystem-context.ts's own doc
+// comment on `EcosystemZeroDteTake.is_condor` names this exact trap and requires consumers to
+// gate on it before comparing `direction` against another desk's call — play-brief-intel.ts's
+// `crossDeskCoaching`/`flowIntelSection` and play-brief-narrative-coaching.ts's `zLong`/`zShort`
+// already gate on `is_condor !== true`. ticker-verdict.ts's `structuralBias`/ALIGNMENT line did
+// not, so a same-day condor (say, direction "short" from its fade side) silently pushed the
+// deterministic Largo verdict toward "bearish" and printed "0DTE SHORT score N" as if it were a
+// real desk call, with nothing else in context to justify that bias.
+test("0DTE condor's nominal direction never biases the verdict or reads as a directional call", async () => {
+  const out = await md(
+    ctx({
+      ticker: "SPX",
+      zerodte_today: {
+        session_date: "2026-09-12",
+        direction: "short",
+        score: 91,
+        conviction: "A",
+        status: "OPEN",
+        first_flagged_at: "2026-09-12T14:00:00Z",
+        is_condor: true,
+      },
+    }),
+    "what's the SPX verdict"
+  );
+  // Never fabricate a directional bias from a condor's nominal fade-side direction.
+  assert.match(out, /Structure reads \*\*neutral\*\*/);
+  assert.doesNotMatch(out, /0DTE SHORT/);
+  // The desk's real (non-directional) posture is still surfaced, honestly labeled.
+  assert.match(out, /0DTE condor \(structure-neutral\)/);
+});
+
 test("honesty: requested-but-thin arsenal legs are surfaced in an UNAVAILABLE line, never fabricated", async () => {
   const out = await md(
     ctx({ ticker: "NVDA" }, {

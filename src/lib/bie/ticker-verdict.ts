@@ -28,7 +28,12 @@ function structuralBias(ctx: EcosystemContext): "bullish" | "bearish" | "neutral
     if (nh.conviction === "A" || nh.conviction === "B") score += score > 0 ? 1 : -1;
   }
   const z = ctx.zerodte_today;
-  if (z) {
+  // A committed CONDOR's `direction` is NOMINAL provenance only (the fade side of the pin it
+  // came from) — the structure is delta-neutral, so folding it into a directional score would
+  // fabricate a signal the 0DTE desk never actually took. Same gate ecosystem-context.ts's own
+  // doc comment on `is_condor` requires and play-brief-intel.ts/play-brief-narrative-coaching.ts
+  // already apply — skip the directional read entirely when this row is a condor.
+  if (z && z.is_condor !== true) {
     if (/long|bull/i.test(z.direction)) score += 1;
     if (/short|bear/i.test(z.direction)) score -= 1;
   }
@@ -79,7 +84,11 @@ export async function synthesizeTickerVerdict(
   }
   if (ctx.zerodte_today) {
     const z = ctx.zerodte_today;
-    align.push(`0DTE ${z.direction.toUpperCase()} score ${fmt(z.score)}`);
+    align.push(
+      z.is_condor === true
+        ? `0DTE condor (structure-neutral) score ${fmt(z.score)}`
+        : `0DTE ${z.direction.toUpperCase()} score ${fmt(z.score)}`
+    );
   }
   if (ctx.recent_flow) {
     const f = ctx.recent_flow;
