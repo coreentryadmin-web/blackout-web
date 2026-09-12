@@ -1,3 +1,31 @@
+## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: OI-change alignment bonus dead-coded (read this before the routine pass)
+
+### `scoreOptionsPositioning`'s +2 OI-change-alignment bonus never fired against real data — fix/nighthawk-oi-change-field-mismatch
+
+**What was broken:** `scoreOptionsPositioning` (`scorer.ts`, shared by both Legacy's overnight
+digest and edition-builder) filtered OI-change rows on `r.option_type` to find rows whose rising
+call/put open interest aligns with a candidate's direction, worth +2 to `pos_score`. The real data
+source, `fetchUwOiChange` (`unusual-whales.ts`), returns rows shaped `{strike, oi_change, kind}` —
+`option_type` never exists on this data, so the filter always saw `""`, never matched `"c"`/`"p"`,
+and the +2 bonus has been silently dead code in production since it was written. See
+`docs/audit/findings-staging/2026-09-12-nighthawk-oi-change-field-mismatch.md` for the full root
+cause, live proof, and why the existing unit tests never caught it (their fixtures matched the
+scorer's own wrong assumption, not the real UW API shape).
+
+**Fix:** renamed the field read (and both inline type declarations) from `option_type` to `kind`.
+Purely additive to scoring — no other behavior changed, no gate touched, `pos_score` can now only
+go UP for tickers with real aligned OI-change data (never down), so any composed `key_signal`/score
+seen at the open should be read as an honest, slightly-more-complete positioning score than before,
+not a regression.
+
+**Check at the open:** pull a fresh `GET /api/market/nighthawk/edition` play and confirm nothing
+regressed — `pos_score` values should be equal-or-higher than a pre-fix run would have shown for
+tickers with real UW OI-change data on file, never lower, and no play should show `pos_score`
+suddenly swinging negative or NaN. This is a scoring-input fix, not a UI-visible field, so there is
+no direct card text to check — the confirmation is that the fixed scorer keeps producing sane,
+in-range `pos_score`/`key_signal` output exactly like every other cycle's healthcheck already
+verifies.
+
 ## WATCH LIST — 2026-09-12 Night Hawk Legacy thesis smart-money driver note (read this before the routine pass)
 
 ### Thesis now names WHICH smart-money signal drove a "smart-money" scoring tag — feat/nighthawk-legacy-thesis-smart-money-note

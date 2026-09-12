@@ -154,7 +154,7 @@ test("positioning: presence-as-signal points removed (net_vex/max_pain/oi-count)
   const presenceOnly = scoreOptionsPositioning(
     {
       positioning: { negative_gamma: false, net_vex: 123456, max_pain: 100 } as never,
-      oi_change: [{ oi_change: -5, option_type: "call" }, { oi_change: -2, option_type: "put" }, { oi_change: 0, option_type: "call" }],
+      oi_change: [{ oi_change: -5, kind: "call" }, { oi_change: -2, kind: "put" }, { oi_change: 0, kind: "call" }],
     },
     "long"
   );
@@ -163,11 +163,29 @@ test("positioning: presence-as-signal points removed (net_vex/max_pain/oi-count)
 
 test("positioning: OI growth only counts when aligned with direction", () => {
   const callGrowth = [
-    { oi_change: 1200, option_type: "call" },
-    { oi_change: 800, option_type: "call" },
+    { oi_change: 1200, kind: "call" },
+    { oi_change: 800, kind: "call" },
   ];
   assert.equal(scoreOptionsPositioning({ oi_change: callGrowth }, "long"), 2);
   assert.equal(scoreOptionsPositioning({ oi_change: callGrowth }, "short"), 0);
+});
+
+test("positioning: BUG FIX (2026-09-12) -- OI-change rows use `kind`, never `option_type` (fetchUwOiChange's real shape); `option_type` alone must NOT score", () => {
+  // Regression for the dead-code bug: the scorer used to read a field (`option_type`) that
+  // fetchUwOiChange (unusual-whales.ts) never produces -- real rows are `{strike, oi_change,
+  // kind}`. This pins both directions: the real `kind` shape scores, and a row carrying only
+  // the old wrong field name (as if some other caller supplied it) does NOT silently score.
+  const realShape = [
+    { oi_change: 1200, kind: "call" },
+    { oi_change: 800, kind: "call" },
+  ];
+  assert.equal(scoreOptionsPositioning({ oi_change: realShape }, "long"), 2);
+
+  const wrongFieldOnly = [
+    { oi_change: 1200, option_type: "call" } as unknown as { oi_change?: number; kind?: string },
+    { oi_change: 800, option_type: "call" } as unknown as { oi_change?: number; kind?: string },
+  ];
+  assert.equal(scoreOptionsPositioning({ oi_change: wrongFieldOnly }, "long"), 0);
 });
 
 // ── scoreTechnicalSetup (short branch) ───────────────────────────────────────────
@@ -367,8 +385,8 @@ test("positioning: bullish dealer greek flow penalizes SHORT (−1 before floor)
   // From a non-zero base so the -1 penalty is visible.
   const withOi = {
     oi_change: [
-      { oi_change: 100, option_type: "put" },
-      { oi_change: 200, option_type: "put" },
+      { oi_change: 100, kind: "put" },
+      { oi_change: 200, kind: "put" },
     ],
   };
   const base = scoreOptionsPositioning(withOi, "short");
@@ -412,8 +430,8 @@ test("positioning: greek flow score still capped at 18 total", () => {
       ],
       positioning: { negative_gamma: true } as any,
       oi_change: [
-        { oi_change: 100, option_type: "call" },
-        { oi_change: 200, option_type: "call" },
+        { oi_change: 100, kind: "call" },
+        { oi_change: 200, kind: "call" },
       ],
       greek_flow: { net_delta: 50_000, net_gamma: 1_000, bias: "bullish", row_count: 5 },
     },
