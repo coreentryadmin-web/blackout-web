@@ -7211,6 +7211,221 @@ html.product-shell .nav-mega {
     outline-offset: 2px;
   }
 
+  /* ── Structure Ladder (swing play-brief widget, Ask Largo standing mandate, 2026-09-12) ──
+     Bar mechanic ported from GexDepthLadderView (thermal/components/GexHeatmap.tsx): a centered
+     zero-spine with a colored fill growing toward whichever side of the spine the value sits on.
+     There the signed value was dealer order-flow direction; here it's signed %-distance from
+     spot, so a rung above spot (resistance) grows the fill RIGHT of the spine and a rung below
+     spot (support) grows it LEFT — same mechanic, a different signed quantity. */
+  .bie-ladder {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .bie-ladder-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .bie-ladder-agreement {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    font-family: var(--font-mono, monospace);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .bie-ladder-agreement-aligned {
+    color: #34f5a0;
+    border-color: rgba(52, 245, 160, 0.4);
+    background: rgba(52, 245, 160, 0.1);
+  }
+  .bie-ladder-agreement-disagreement {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.45);
+    background: rgba(251, 191, 36, 0.08);
+  }
+  .bie-ladder-agreement-note {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #fde8b8;
+  }
+  .bie-ladder-rows {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+  .bie-ladder-row {
+    display: grid;
+    grid-template-columns: minmax(3.2rem, 0.7fr) minmax(3rem, 1fr) minmax(7rem, 1.6fr) minmax(2.6rem, 0.7fr);
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.7rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.1);
+  }
+  .bie-ladder-rows > div:first-child .bie-ladder-row {
+    border-top: none;
+  }
+  .bie-ladder-row-price {
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    color: #f8fafc;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .bie-ladder-row-track {
+    position: relative;
+    height: 13px;
+    min-width: 0;
+  }
+  .bie-ladder-row-spine {
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    left: 50%;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.16);
+  }
+  .bie-ladder-row-fill {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    border-radius: 1px;
+  }
+  .bie-ladder-row-fill-above {
+    left: 50%;
+  }
+  .bie-ladder-row-fill-below {
+    right: 50%;
+  }
+  .bie-ladder-row-fill.bie-ladder-role-support {
+    background: rgba(52, 245, 160, 0.8);
+  }
+  .bie-ladder-row-fill.bie-ladder-role-resistance {
+    background: rgba(255, 107, 129, 0.8);
+  }
+  .bie-ladder-row-fill.bie-ladder-role-neutral {
+    background: rgba(125, 211, 252, 0.75);
+  }
+  .bie-ladder-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem;
+    min-width: 0;
+    font-size: 11.5px;
+  }
+  .bie-ladder-row-label {
+    color: #e2e8f0;
+  }
+  .bie-ladder-row-dist {
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    color: #9fb3c8;
+  }
+  .bie-ladder-role-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.05rem 0.35rem;
+    border-radius: 0.3rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 8.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+  }
+  .bie-ladder-role-chip.bie-ladder-role-support {
+    color: #34f5a0;
+    border-color: rgba(52, 245, 160, 0.35);
+    background: rgba(52, 245, 160, 0.08);
+  }
+  .bie-ladder-role-chip.bie-ladder-role-resistance {
+    color: #ff6b81;
+    border-color: rgba(255, 107, 129, 0.35);
+    background: rgba(255, 107, 129, 0.08);
+  }
+  .bie-ladder-role-chip.bie-ladder-role-neutral {
+    color: #7dd3fc;
+    border-color: rgba(125, 211, 252, 0.35);
+    background: rgba(125, 211, 252, 0.08);
+  }
+  .bie-ladder-row-target {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.05rem;
+    min-width: 0;
+  }
+  .bie-ladder-rr {
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    font-weight: 700;
+    color: #f8fafc;
+    white-space: nowrap;
+  }
+  .bie-ladder-horizon {
+    font-family: var(--font-mono, monospace);
+    font-size: 8.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8ba0b6;
+    white-space: nowrap;
+  }
+  .bie-ladder-row-target-empty {
+    color: #5c6b7d;
+  }
+  .bie-ladder-spot-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.7rem;
+    background: rgba(255, 255, 255, 0.04);
+    border-top: 1px solid rgba(148, 163, 184, 0.1);
+  }
+  .bie-ladder-rows > div:first-child > .bie-ladder-spot-row {
+    border-top: none;
+  }
+  .bie-ladder-spot-price {
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    font-weight: 700;
+    color: #ffffff;
+    font-variant-numeric: tabular-nums;
+  }
+  .bie-ladder-spot-line {
+    flex: 1 1 auto;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.3);
+    min-width: 0;
+  }
+  .bie-ladder-spot-label {
+    font-family: var(--font-mono, monospace);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .bie-ladder-stop,
+  .bie-ladder-track-record {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #9fb3c8;
+  }
+  .bie-ladder-track-record strong,
+  .bie-ladder-stop strong {
+    color: #e2e8f0;
+  }
+
   /* ── Admin preview harness ── */
   .bie-preview {
     display: flex;

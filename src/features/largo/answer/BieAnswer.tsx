@@ -9,6 +9,7 @@ import { BieEvidencePanel } from "./BieEvidencePanel";
 import { BieKeyLevelsTable } from "./BieKeyLevelsTable";
 import { BieScenarioCards } from "./BieScenarioCards";
 import { BieSectionCard } from "./BieSectionCard";
+import { BieStructureLadder } from "./BieStructureLadder";
 import { answeredParts, relativeTime } from "./answer-format";
 import { splitHeadline } from "./headline";
 
@@ -120,6 +121,7 @@ export function BieAnswer({
 
       <BieEvidencePanel evidence={envelope.evidence} />
       <BieKeyLevelsTable levels={envelope.levels} />
+      <BieStructureLadder ladder={envelope.structureLadder} />
       <BieScenarioCards scenarios={envelope.scenarios} />
 
       {envelope.invalidation ? (

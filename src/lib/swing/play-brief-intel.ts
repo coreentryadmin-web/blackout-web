@@ -336,7 +336,7 @@ function formatConfluenceZone(z: ConfluenceZone, spot: number | null): string {
  * from re-deriving "nearest" a third way (the risk `nearestWallFromLevels`'s own header warns
  * about for its two existing call sites).
  */
-function preferredGexWalls(ctx: SwingPlayBriefContext): {
+export function preferredGexWalls(ctx: SwingPlayBriefContext): {
   spot: number | null;
   callWall: number | null;
   putWall: number | null;
