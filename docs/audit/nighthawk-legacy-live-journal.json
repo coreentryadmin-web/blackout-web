@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T04:07:35.803Z",
+  "lastUpdated": "2026-09-12T04:22:54.610Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1036,6 +1036,11 @@
       "at": "2026-09-12T04:07:35.803Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "PR #4827 undraft retried -- still rate-limited. healthcheck:legacy C_record resolved dropped 30->26 again this cycle (04:07 UTC = 00:07 EDT, genuine ET midnight) -- this time it's CORRECT, not a regression: confirms PR #4816's fix now rolls the 14-day window boundary at the true ET day-change (04:00 UTC during EDT) instead of the old false UTC-midnight boundary (00:00 UTC / 8pm ET) the bug used to trigger on. Second piece of live production evidence the fix behaves exactly as intended. healthcheck otherwise fully GREEN. No new findings."
+    },
+    {
+      "at": "2026-09-12T04:22:54.610Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "PR #4827 (smart-money driver note) confirmed MERGED (sha 1d4fcd113) -- verified live in source via grep (smartMoneyDriverNote present in deterministic-edition.ts on main). Both queued Legacy thesis enhancements from this session (news catalyst #4821, smart-money note #4827) are now shipped and confirmed live. healthcheck:legacy fully GREEN this cycle, resolved=26 stable (post-ET-midnight value, as expected). No new findings this cycle -- will keep the standing aggressive-improvement-hunting posture going next cycle; also noting parallel lanes' activity this hour (0DTE PR #4831 momentum_abs_floor fix, Swings PR #4825 merged) purely for situational awareness, not my scope."
     }
   ],
   "knownOpenItems": {
