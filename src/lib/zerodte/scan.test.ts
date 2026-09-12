@@ -805,6 +805,211 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   }
 });
 
+test("persistZeroDteScan: pins G-23 qualification_dislocation_telemetry on commit when both snapshots are present", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+
+  const setup = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    top_strike: 145,
+    expiry: "2026-07-06",
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
+    score: 78,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    // Live-refreshed values at commit (attachContractPlans already ran) — this setup drifted
+    // 1% over 2 minutes since it qualified, well under G-23's own 1.5%/5-min trigger, so the
+    // commit is NOT blocked — the telemetry must still be pinned regardless, since the whole
+    // point is measuring the gap for the population that clears the gate, not just the rare
+    // trips.
+    underlying_price: 141.4,
+    underlying_price_as_of: "2026-07-06T14:59:00.000Z",
+    // Frozen in enrichSetup at qualification time, 2 minutes earlier and 1% lower.
+    qualification_underlying_price: 140,
+    qualification_underlying_price_as_of: "2026-07-06T14:57:00.000Z",
+    top_strike_avg_fill: 4.2,
+    last_seen: "2026-07-06T14:59:30.000Z",
+    intraday: { last_bar_ms: Date.parse("2026-07-06T14:59:00.000Z") },
+    plan: {
+      occ: "O:NVDA260706C00145000",
+      flow_avg_fill: 4.2,
+      bid: 4.0,
+      ask: 4.4,
+      mark: 4.2,
+      entry_max: 4.2,
+      vs_flow_pct: 0,
+      entry_status: "IN_RANGE",
+      spread_pct: 9.5,
+      illiquid: false,
+      stop_premium: 2.1,
+      target_premium: 8.4,
+      time_stop_et: "15:30",
+      underlying_target: null,
+      underlying_invalid: null,
+    },
+    gamma_regime: null,
+    cortex: {
+      abstained: false as const,
+      decision: "PASS" as const,
+      verdict: {
+        ticker: "NVDA",
+        direction: "long" as const,
+        asOf: "2026-07-06T15:00:00.000Z",
+        score: 2.1,
+        conviction: "A" as const,
+        vetoes: [],
+        supports: [
+          { source: "gex-walls", stance: "supports", weight: 1.0, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "path clear" },
+          { source: "wall-trend", stance: "supports", weight: 1.1, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "wall growing" },
+        ],
+        opposes: [],
+        absent: [],
+        narrative: [],
+      },
+    },
+    gate: {
+      verdict: "COMMIT" as const,
+      blocks: [],
+      calibration: {
+        score_at_commit: 78,
+        market_bias: "up",
+        committed_at_et: "11:30",
+        g4_vix: { day_open_vix: 16.1, tier: "calm", would_block: false, would_halve_size: false, note: "calm" },
+        g6_conflict: { conflict: false, against: [], would_block: false, note: "No cross-system conflict." },
+      },
+    },
+    earnings: null,
+    news_hot: null,
+    halted: false,
+    fib_note: null,
+    direction_confirmed: null,
+  };
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+
+  assert.equal(logged, 1);
+  assert.equal(state.upsertRows.length, 1);
+  const telemetry = (
+    state.upsertRows[0]!.entry_context as {
+      qualification_dislocation_telemetry?: {
+        qualification_underlying_price: number;
+        qualification_underlying_price_as_of: string;
+        current_underlying_price: number;
+        current_underlying_price_as_of: string;
+        elapsed_ms: number;
+        move_pct: number;
+      };
+    }
+  ).qualification_dislocation_telemetry;
+  assert.ok(
+    telemetry,
+    "entry_context must carry G-23 dislocation telemetry whenever both snapshots are present, even on a commit the gate does not block"
+  );
+  assert.equal(telemetry!.qualification_underlying_price, 140);
+  assert.equal(telemetry!.qualification_underlying_price_as_of, "2026-07-06T14:57:00.000Z");
+  assert.equal(telemetry!.current_underlying_price, 141.4);
+  assert.equal(telemetry!.current_underlying_price_as_of, "2026-07-06T14:59:00.000Z");
+  assert.equal(telemetry!.elapsed_ms, 120_000); // exactly 2 minutes
+  assert.equal(telemetry!.move_pct, 1); // |141.4 - 140| / 140 * 100 == 1%
+});
+
+test("persistZeroDteScan: omits qualification_dislocation_telemetry when no qualification snapshot was ever frozen", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+
+  const setup = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    top_strike: 145,
+    expiry: "2026-07-06",
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
+    score: 78,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    underlying_price: 140,
+    // No qualification_underlying_price/_as_of — the ordinary case for any test fixture or
+    // pre-enrichSetup code path that never froze one. Must NOT fabricate a telemetry blob.
+    top_strike_avg_fill: 4.2,
+    last_seen: "2026-07-06T14:59:30.000Z",
+    intraday: { last_bar_ms: Date.parse("2026-07-06T14:59:00.000Z") },
+    plan: {
+      occ: "O:NVDA260706C00145000",
+      flow_avg_fill: 4.2,
+      bid: 4.0,
+      ask: 4.4,
+      mark: 4.2,
+      entry_max: 4.2,
+      vs_flow_pct: 0,
+      entry_status: "IN_RANGE",
+      spread_pct: 9.5,
+      illiquid: false,
+      stop_premium: 2.1,
+      target_premium: 8.4,
+      time_stop_et: "15:30",
+      underlying_target: null,
+      underlying_invalid: null,
+    },
+    gamma_regime: null,
+    cortex: {
+      abstained: false as const,
+      decision: "PASS" as const,
+      verdict: {
+        ticker: "NVDA",
+        direction: "long" as const,
+        asOf: "2026-07-06T15:00:00.000Z",
+        score: 2.1,
+        conviction: "A" as const,
+        vetoes: [],
+        supports: [
+          { source: "gex-walls", stance: "supports", weight: 1.0, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "path clear" },
+          { source: "wall-trend", stance: "supports", weight: 1.1, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "wall growing" },
+        ],
+        opposes: [],
+        absent: [],
+        narrative: [],
+      },
+    },
+    gate: {
+      verdict: "COMMIT" as const,
+      blocks: [],
+      calibration: {
+        score_at_commit: 78,
+        market_bias: "up",
+        committed_at_et: "11:30",
+        g4_vix: { day_open_vix: 16.1, tier: "calm", would_block: false, would_halve_size: false, note: "calm" },
+        g6_conflict: { conflict: false, against: [], would_block: false, note: "No cross-system conflict." },
+      },
+    },
+    earnings: null,
+    news_hot: null,
+    halted: false,
+    fib_note: null,
+    direction_confirmed: null,
+  };
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+
+  assert.equal(logged, 1);
+  assert.equal(state.upsertRows.length, 1);
+  const ctx = state.upsertRows[0]!.entry_context as { qualification_dislocation_telemetry?: unknown };
+  assert.equal(
+    "qualification_dislocation_telemetry" in ctx,
+    false,
+    "must be OMITTED (not null-filled) when no qualification snapshot was ever frozen"
+  );
+});
+
 test("persistZeroDteScan: A-tier + Vector winner pins 400% runner profile on commit", async () => {
   resetState();
   state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
