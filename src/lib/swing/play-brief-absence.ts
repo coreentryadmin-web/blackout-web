@@ -194,11 +194,24 @@ export function collectOptionMarkStalenessAbsence(
 ): BieUnavailableSource | null {
   if (!play || !playExpectsLiveOptionMark(play.status)) return null;
   if (play.markIsSync === true) {
-    return { source: "option mark", reason: "sync quote without freshness timestamp" };
+    return {
+      source: "option mark",
+      reason: "sync quote without freshness timestamp",
+      what_is_missing: "a live option-quote sync with a mark_as_of timestamp",
+      // Whether the NEXT sync carries a timestamp depends on the lane's own schema (banger-lane
+      // rows have no mark_as_of column at all, per the comment above) — not something a retry of
+      // THIS read can fix, so this is honestly not retryable from the brief's own vantage point.
+      retryable: false,
+    };
   }
   if (optionMarkIsStale(play, readMs)) {
     const stamp = etStampFromIso(play.markAsOf!) ?? play.markAsOf!;
-    return { source: "option mark", reason: `stale — last synced ${stamp}` };
+    return {
+      source: "option mark",
+      reason: `stale — last synced ${stamp}`,
+      what_is_missing: "a fresh option-quote sync",
+      retryable: true,
+    };
   }
   return null;
 }
@@ -250,6 +263,8 @@ function collectVectorSectionAbsences(vec: VectorWithReadContext): BieUnavailabl
     out.push({
       source: VECTOR_SECTION_LABELS[section],
       reason: "not present on this read",
+      what_is_missing: `${VECTOR_SECTION_LABELS[section]} data for this ticker/session`,
+      retryable: true,
     });
   }
   return out;
@@ -266,11 +281,18 @@ function collectVectorStalenessAbsence(
       return {
         source: "Vector snapshot",
         reason: `prior session (${observed}) — today's desk read not yet run`,
+        what_is_missing: "today's Vector desk snapshot",
+        retryable: true,
       };
     }
   }
   if (!vectorAgeStale(vec, readMs)) return null;
-  return { source: "Vector snapshot", reason: "stale — levels may lag spot" };
+  return {
+    source: "Vector snapshot",
+    reason: "stale — levels may lag spot",
+    what_is_missing: "a fresh Vector desk snapshot",
+    retryable: true,
+  };
 }
 
 function collectGexStalenessAbsence(
@@ -278,7 +300,12 @@ function collectGexStalenessAbsence(
   readMs: number,
 ): BieUnavailableSource | null {
   if (!gexMatrixStale(gex, readMs)) return null;
-  return { source: "GEX matrix", reason: "stale — dealer posture may lag spot" };
+  return {
+    source: "GEX matrix",
+    reason: "stale — dealer posture may lag spot",
+    what_is_missing: "a fresh GEX matrix rebuild for this ticker",
+    retryable: true,
+  };
 }
 
 /** Aggregate every honest absence signal for the swing play brief envelope (Largo C3). */
@@ -298,7 +325,12 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   const isClosed = String(ctx.play?.status ?? "").toUpperCase() === "CLOSED";
 
   if (!isClosed && ctx.ecosystem?.flow_feed_fresh === false) {
-    out.push({ source: "HELIX flow", reason: "pipeline stale" });
+    out.push({
+      source: "HELIX flow",
+      reason: "pipeline stale",
+      what_is_missing: "a fresh HELIX flow-pipeline tick",
+      retryable: true,
+    });
   }
   // FINDINGS 2026-09-06 (#22) + live probe 2026-09-07: sync-without-timestamp AND aged markAsOf
   // must both reach unavailableSources — prose in dataHonestyCoaching alone is not enough (C3).
@@ -307,7 +339,12 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared
   // matrix had no positioning for this ticker.
   if (!isClosed && !ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
-    out.push({ source: "GEX positioning", reason: "cold matrix / no positioning read" });
+    out.push({
+      source: "GEX positioning",
+      reason: "cold matrix / no positioning read",
+      what_is_missing: "a warm GEX positioning read for this ticker",
+      retryable: true,
+    });
   }
   if (!isClosed) {
     const gex = ctx.ecosystem?.gex_positioning;
@@ -317,7 +354,12 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // Missing Vector desk state is distinct from vectorFetchFailed — ecosystem read succeeded but
   // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.
   if (!isClosed && !ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
-    out.push({ source: "Vector desk state", reason: "snapshot unavailable" });
+    out.push({
+      source: "Vector desk state",
+      reason: "snapshot unavailable",
+      what_is_missing: "a live Vector desk-state snapshot with spot",
+      retryable: true,
+    });
   }
   if (!isClosed) {
     const vec = vectorOf(ctx);
@@ -330,35 +372,66 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
         out.push({
           source: "Vector flow prints",
           reason: vec.flowMarkers.reason ?? "unavailable",
+          what_is_missing: "Vector flow-print markers for this ticker",
+          retryable: true,
         });
       }
     }
   }
   // Book-context concentration only informs a live/pending decision — irrelevant once a play is closed.
   if (!isClosed && ctx.openBook === null) {
-    out.push({ source: "open book", reason: "ledger read failed" });
+    out.push({
+      source: "open book",
+      reason: "ledger read failed",
+      what_is_missing: "the open-positions ledger read for book-context concentration",
+      retryable: true,
+    });
   }
   if (ctx.meridian?.unavailable) {
-    out.push({ source: "Meridian catalysts", reason: "timeline read failed" });
+    out.push({
+      source: "Meridian catalysts",
+      reason: "timeline read failed",
+      what_is_missing: "the Meridian catalyst timeline for this ticker",
+      retryable: true,
+    });
   }
   // FINDINGS 2026-09-06 (#11): `ecosystem`/`vector` being null is otherwise ambiguous between a
   // legitimately empty read and a total fetch failure — the arsenal-level unavailable_sources
   // above only covers a failure WITHIN a successful ecosystem read, not the whole call throwing.
   if (ctx.ecosystemFetchFailed === true) {
-    out.push({ source: "ecosystem context", reason: "fetch failed" });
+    out.push({
+      source: "ecosystem context",
+      reason: "fetch failed",
+      what_is_missing: "the ecosystem context read (GEX/Vector/flow aggregate) for this ticker",
+      retryable: true,
+    });
   }
   // Standalone Vector fetch can fail while ecosystem.vector_full_state still succeeded in parallel.
   if (ctx.vectorFetchFailed === true && !ctx.vector && !ctx.ecosystem?.vector_full_state) {
-    out.push({ source: "Vector state", reason: "fetch failed" });
+    out.push({
+      source: "Vector state",
+      reason: "fetch failed",
+      what_is_missing: "the standalone Vector desk-state read for this ticker",
+      retryable: true,
+    });
   }
   if (ctx.meridianPeer?.available === false) {
     const peer = ctx.meridianPeer;
     const reason = peer.error ?? peer.note ?? "unavailable";
-    out.push({ source: "Meridian peer cohort", reason });
+    out.push({
+      source: "Meridian peer cohort",
+      reason,
+      what_is_missing: "the Meridian sector peer-earnings cohort for this ticker",
+      retryable: true,
+    });
   } else if (ctx.meridianPeer?.available === true && ctx.meridianPeer.insufficient_reason?.trim()) {
     out.push({
       source: "Meridian peer cohort",
       reason: ctx.meridianPeer.insufficient_reason.trim(),
+      what_is_missing: "enough peer names in the cohort to be directional",
+      // Insufficiency here is a population-size fact (too few names printed this window), not a
+      // transient read failure — asking again a moment later will not add peers to the cohort.
+      retryable: false,
     });
   }
   // Prior-session discovery scan: WATCH rows can still carry yesterday's lane snapshot while the
@@ -373,6 +446,8 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     out.push({
       source: "swing discovery scan",
       reason: `prior session (${ctx.scanSessionDay}) — today's scan not yet run`,
+      what_is_missing: "today's swing discovery scan for this ticker",
+      retryable: true,
     });
   }
   // Prior-session 0DTE: zerodteLiveForSession() already suppresses stale direction in prose (#4424),
@@ -383,6 +458,8 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     out.push({
       source: "0DTE Command",
       reason: `prior session (${z.session_date}) — today's board not yet run`,
+      what_is_missing: "today's 0DTE Command board read",
+      retryable: true,
     });
   }
   // Prior-session Night Hawk: nighthawkLiveForSession() already suppresses stale direction in prose
@@ -425,11 +502,17 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       out.push({
         source: "Night Hawk Legacy",
         reason: `prior session (${nh.edition_for}) — today's edition not yet run`,
+        what_is_missing: "today's Night Hawk Legacy edition featuring this ticker",
+        retryable: true,
       });
     } else if (gapDays !== null && gapDays > 4) {
       out.push({
         source: "Night Hawk Legacy",
         reason: `no recent Legacy edition for this ticker (last featured ${nh.edition_for})`,
+        what_is_missing: "a recent Night Hawk Legacy feature for this specific ticker",
+        // A gap this large is a population fact (this name simply hasn't come up recently), not a
+        // stale read — retrying does not make Legacy feature the ticker sooner.
+        retryable: false,
       });
     }
   }
@@ -443,6 +526,10 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     out.push({
       source: "thesis health",
       reason: "setup/entry/signal inputs unavailable for committed positions",
+      what_is_missing: "the setup/entry/signal inputs the thesis-health score is calibrated on",
+      // Structural for a committed position, not a stale read — these inputs are never captured
+      // once a candidate is promoted to a position, so a retry cannot surface them.
+      retryable: false,
     });
   }
 
