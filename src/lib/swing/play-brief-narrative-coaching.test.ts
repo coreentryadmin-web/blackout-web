@@ -671,6 +671,58 @@ test("catalystCoaching: contract expires AFTER the print — original warning st
   assert.doesNotMatch(line!, /no earnings-gap exposure/i);
 });
 
+test("catalystCoaching: SAME-DAY expiry + PREMARKET print is NOT safe — the gap already hit before the bell", () => {
+  // A premarket print gaps the stock before the open; a contract expiring that same day was
+  // alive through the open and experienced the gap despite expiring "on or before" the print.
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-10" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10", report_time: "premarket" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i, "premarket same-day expiry must NOT be called safe");
+  assert.doesNotMatch(line!, /no earnings-gap exposure/i);
+});
+
+test("catalystCoaching: SAME-DAY expiry + confirmed AFTERHOURS print IS safe — option settles before the print lands", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-10" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /no earnings-gap exposure/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i);
+});
+
+test("catalystCoaching: SAME-DAY expiry + UNKNOWN/unconfirmed timing defaults to NOT safe", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-10" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10", report_time: "unknown" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i, "unconfirmed timing must not be assumed safe");
+});
+
 test("closedCoaching: MFE capture lesson", () => {
   const line = closedCoaching(
     play({

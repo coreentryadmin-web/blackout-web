@@ -527,7 +527,20 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
   if (earnings?.days_until != null && earnings.days_until <= 14) {
     const timing = earnings.report_time ? ` (${earnings.report_time})` : "";
     const expiry = earnings.earnings_date ? ownContractExpiry(ctx) : null;
-    if (expiry && earnings.earnings_date && expiry <= earnings.earnings_date) {
+    // A contract expiring STRICTLY before the print date is always safe — it's settled before
+    // the earnings date even exists yet. A contract expiring on the SAME day is only safe when
+    // the print is confirmed after-hours (the option already settled at that day's close before
+    // the print lands); a same-day PRE-MARKET print gaps the stock before the bell, and a
+    // contract alive through that day's open was exposed to the gap despite expiring "on" the
+    // print date. Unknown/unconfirmed timing defaults to NOT safe (the existing honest-absence
+    // discipline this file follows elsewhere) rather than guessing it landed after close.
+    const sameDay = expiry != null && earnings.earnings_date != null && expiry === earnings.earnings_date;
+    const confirmedAfterClose = /^(after|post)/i.test(earnings.report_time ?? "");
+    const noGapExposure =
+      expiry != null && earnings.earnings_date != null && expiry < earnings.earnings_date
+        ? true
+        : sameDay && confirmedAfterClose;
+    if (noGapExposure) {
       return (
         `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date}${timing}) — ` +
         `this contract expires ${expiry}, on/before the print, so no earnings-gap exposure from ` +
