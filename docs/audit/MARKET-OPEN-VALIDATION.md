@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-12 Night Hawk insider-transactions ticker filter was silently ignored (read this before the routine pass)
+
+### `fetchUwInsiderTransactions` sent the wrong query-param name — `ticker`, not the real `ticker_symbol` — so every ticker's "insider activity" was a random other ticker's
+
+**What was broken:** `/api/insider/transactions?ticker=X` (and every other spelling tried —
+`symbol`/`symbols`/`tickers`/`ticker_symbols`) silently ignores the filter and returns the
+unfiltered market-wide latest-insider-filings feed, HTTP 200, no error. The real filter param is
+`ticker_symbol`. This fed Night Hawk's shared dossier's `insider_buys` (identical across every
+ticker's dossier in the same window — not a per-ticker signal at all, feeding a `+2` scoring bonus
+and a hunt-builder eligibility gate on pure noise) and Largo's `get_insider_flow` tool (`transactions`
+field showed a random other ticker's real insider trades, not the one asked about). See
+`docs/audit/findings-staging/2026-09-12-nighthawk-insider-ticker-param.md`.
+
+**Fix:** `fetchUwInsiderTransactions` now sends `ticker_symbol` instead of `ticker` — the one-line
+root-cause fix; no consumer changes needed since the function's contract (that ticker's own
+transactions) is now actually true. Regression test pins the outgoing request param.
+
+**Check at the open:** ask Largo `get_insider_flow` for two different tickers with genuinely
+different real insider histories (e.g. one mega-cap with frequent 10b5-1 sales, one small-cap with
+none) and confirm the `transactions` arrays are now DIFFERENT and each one's rows carry that
+ticker's own name in `ticker`/`owner_name` fields — not the same handful of rows for both. Also spot-
+check two Legacy dossier tickers built in the same cache window and confirm `insider_buys` is no
+longer identical between them by coincidence of both reading the same market-wide feed.
+
 ## WATCH LIST — 2026-09-12 Ask Largo lane-rank leader could name the play's own ticker (read this before the routine pass)
 
 ### "Desk leader" pointer could self-reference the play's own ticker — fix/swing-lane-rank-self-named-leader
