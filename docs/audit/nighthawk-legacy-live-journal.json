@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T06:09:18.838Z",
+  "lastUpdated": "2026-09-12T06:13:49.693Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1076,6 +1076,11 @@
       "at": "2026-09-12T06:09:18.838Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "healthcheck:legacy fully GREEN, resolved=26 stable. Per the mandate's secondary-priority live-UI-check item (not done yet this session), minted a Clerk premium session and kicked off a proxy-browser.cjs screenshot of /nighthawk?view=legacy at 1440x900 -- running in background, result to check next cycle. No new API-level findings this cycle."
+    },
+    {
+      "at": "2026-09-12T06:13:49.693Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, continuation)",
+      "result": "Live UI spot-check completed (secondary-priority mission item, first one this session): the mobile-UA proxy-browser.cjs screenshot of /nighthawk?view=legacy at 1440x900 rendered CLEAN -- header/tabs correct (Legacy selected, Open(2)), evening-playbook narrative text intact, HPE ($62C @ $2.91) and DELL ($570C @ $18.15) rows both showing WATCH status with entry==mark (pre-market, matches this cycle's healthcheck marks exactly), progress bars/target-path columns rendering correctly, no overlapping/truncated/garbled text, no layout defects. A follow-up --desktop (real desktop UA, not the iOS-app-shell variant) render failed twice with net::ERR_CONNECTION_RESET at nav -- per CLAUDE.md this class of error on this sandbox is typically a draining ECS replica mid-rollout, not a real defect, retried once per that guidance and both attempts failed identically; also plausibly the ~72s Clerk session JWT had already expired between shots (several minutes elapsed re-authing + minting + first screenshot). Not escalating as a product finding -- the mobile-UA render already proved the page/data path is healthy, and a nav-level connection reset (not a 401 or app error) is a harness/session-timing symptom per the documented pattern. Will note if this specific failure mode recurs 3+ times before treating it as a real signal."
     }
   ],
   "knownOpenItems": {
