@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-12 Night Hawk Legacy thesis smart-money driver note (read this before the routine pass)
+
+### Thesis now names WHICH smart-money signal drove a "smart-money" scoring tag — feat/nighthawk-legacy-thesis-smart-money-note
+
+**What was missing:** `buildDeterministicThesis` could publish `key_signal` reading e.g.
+`"BULLISH — smart-money + flow · score 78 (A)"`, but the thesis prose never named which of
+`scoreSmartMoney`'s three real sub-signals (congressional trades, institutional flow,
+prediction-market consensus) actually fired — the identical gap class fixed for "news" the same
+day (see the entry below). See
+`docs/audit/findings-staging/2026-09-12-legacy-thesis-smart-money-note.md`.
+
+**Fix:** new `smartMoneyDriverNote` names congressional buying/selling, institutional
+accumulation/distribution, or the prediction-market's own real headline — whichever has
+direction-aligned evidence, checked in the same priority order the score itself sums them — as
+`Smart money: <note>.` in the thesis, but ONLY when smart-money is already a top-2 `key_signal`
+driver. Additive only, never fabricates.
+
+**Check at the open:** once a future edition publishes a play whose `key_signal` names
+"smart-money" as a driver, pull that ticker's full thesis text via
+`GET /api/market/nighthawk/edition` and confirm it carries a `Smart money: ...` sentence naming a
+real, direction-aligned source (congressional/institutional/prediction-market), and that plays
+where smart-money wasn't a driver do NOT carry the sentence even if the ticker has some
+congressional/institutional data on file.
+
 ## WATCH LIST — 2026-09-12 Night Hawk Legacy thesis catalyst-headline enhancement (read this before the routine pass)
 
 ### Thesis now quotes WHICH news drove a "news" scoring tag instead of naming it with no explanation — feat/nighthawk-legacy-thesis-catalyst-headline
