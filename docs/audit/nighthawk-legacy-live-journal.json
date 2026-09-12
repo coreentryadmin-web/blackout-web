@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T04:52:26.695Z",
+  "lastUpdated": "2026-09-12T05:08:51.833Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1051,6 +1051,11 @@
       "at": "2026-09-12T04:52:26.695Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. Both this session's shipped enhancements (#4821, #4827) remain confirmed live in source, awaiting Monday 5:30pm ET's edition regeneration to appear in a published card."
+    },
+    {
+      "at": "2026-09-12T05:08:51.834Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "healthcheck:legacy fully GREEN, resolved=26 stable. Spent this cycle on outcome-honesty forensics per the mandate: pulled the live /record?days=30 debrief block (73 graded/21 sessions: wrong_direction=33, target_unreachable=20, pulled_wrongly=8, unfilled_never_traded_back=6, pulled_correctly=4, clean_win=1, gap_win=1) -- checked journal history before writing anything up and confirmed this exact wrong_direction-dominant pattern is already thoroughly tracked across many prior cycles, already produced a real fix (PR #4725/#4726, stale FAILURE_MODE_SUGGESTION text), and was explicitly not re-escalated by a recent cycle under the noise-discipline rule. No new pattern found beyond what's already tracked -- avoided duplicating existing work. No new findings this cycle."
     }
   ],
   "knownOpenItems": {
