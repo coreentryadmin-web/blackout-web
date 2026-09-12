@@ -777,6 +777,52 @@ test("deskConsensusSection: CLOSED bucket drops the 'before sizing' live-decisio
   assert.match(section?.body ?? "", /for reference against/i);
 });
 
+test("deskConsensusSection: CLOSED bucket suppresses a Legacy pick dated AFTER the trade's own exit — cannot be 'reference against the setup this play traded' if it postdates the trade", () => {
+  // Live repro (2026-09-12, real CLOSED position AAPL positionId 36): the swing position closed
+  // 2026-09-04, but nighthawk_recent.edition_for read 2026-09-11 — a full week AFTER the trade
+  // already exited. The existing staleness gate (added 2026-09-10) compares edition_for against
+  // `sessionDate` (today), which is *always* satisfied for a CLOSED play once enough real time has
+  // passed for edition_for to fall within the 4-day window of "today" — it never checks the fact
+  // that actually matters for a CLOSED bucket: whether the Legacy pick could possibly have existed
+  // AT THE TIME the trade was live. A pick from after the trade closed cannot be "reference against
+  // the setup this play traded" (play-brief-intel.ts's own CLOSED-bucket tail wording) — it is
+  // information from the future relative to that decision.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-11",
+      direction: "long",
+      conviction: "medium",
+      outcome: "unresolved",
+    },
+  };
+  const section = deskConsensusSection(
+    eco,
+    fixturePlay({ direction: "LONG", exitAt: "2026-09-04T13:45:00.000Z" }),
+    "closed",
+    "2026-09-12",
+  );
+  assert.equal(section, null);
+});
+
+test("deskConsensusSection: CLOSED bucket still narrates a Legacy pick dated at-or-before the trade's own exit, within the window", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-02",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(
+    eco,
+    fixturePlay({ direction: "LONG", exitAt: "2026-09-04T13:45:00.000Z" }),
+    "closed",
+    "2026-09-12",
+  );
+  assert.ok(section);
+  assert.match(section?.body ?? "", /closed \*\*WIN\*\*/i);
+});
+
 test("deskConsensusSection: watch/open buckets are unchanged (default param, no regression)", () => {
   const eco: EcosystemContext = {
     nighthawk_recent: {
