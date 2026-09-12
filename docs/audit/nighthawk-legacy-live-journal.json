@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T16:37:27.204Z",
+  "lastUpdated": "2026-09-12T16:53:05.193Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1306,6 +1306,11 @@
       "at": "2026-09-12T16:37:27.204Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Verified factor_breakdown sums exactly equal the reported score for both live plays: HPE (vex3+news7+tech27+fundamental6+positioning3=46 vs score 46), DELL (vex3+news4+tech27+catalyst-2+fundamental8+positioning1=41 vs score 41). No arithmetic drift between the scorer's internal breakdown and its published total. Genuinely quiet cycle -- correctness surface (marks, edition freshness, record consistency, R:R math, factor-sum-to-score, thesis narrative, live UI rendering) has now been cross-checked from multiple independent angles this session with nothing further found. Continuing standing cadence; will keep watching for Monday market open to validate the day's shipped fixes (#4839/#4844/#4847/#4853/#4860/#4863/#4865) against fresh live data."
+    },
+    {
+      "at": "2026-09-12T16:53:05.193Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Deep-verified the tier reasoning text 'N of 9 dimensions confirming' against deterministic-edition.ts's actual confirming_signals array (9 specific per-dimension thresholds: flow>=8, tech>=6, positioning>=4, news>=2, smart_money>=2, fundamental>=2, short_interest>=2, wall_proximity>=3, vex>=2 -- catalyst/skew deliberately excluded from this count). Applied the real thresholds to both live plays' factor_breakdown: HPE (tech27/news7/fundamental6/vex3 clear their bars = 4 true) and DELL (vex3/news4/tech27/fundamental8 = 4 true) both reproduce confirming_signals=4 exactly. Tier text is accurate, not just a plausible-looking template. No bug found. This required reading scorer source to derive the real per-dimension rule rather than eyeballing -- a genuinely non-trivial verification pass, still clean. Correctness surface is now checked from many independent angles this session (marks, edition freshness, record consistency, R:R math, factor-sum-to-score, confirming-signals-to-tier-text, thesis narrative, live UI rendering) -- continuing standing cadence, watching for Monday market open."
     }
   ],
   "knownOpenItems": {
