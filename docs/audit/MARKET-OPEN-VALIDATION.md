@@ -1,3 +1,25 @@
+## WATCH LIST — 2026-09-12 Night Hawk dossier recency window used trade date, not disclosure date (read this before the routine pass)
+
+### `parseTradeDate` measured congress/insider recency off `transaction_date` instead of the real `filed_at_date`/`filing_date` disclosure fields
+
+**What was broken:** `getEditionCongressTrades`'s 30-day recency filter and `isRecentInsiderBuy`'s
+window check (`dossier.ts`) both ran through `parseTradeDate`, whose fallback chain never checked
+`filed_at_date` (real congress disclosure field) or `filing_date` (real insider disclosure field)
+— only the trade date (`transaction_date`). Congress can disclose up to 45 days after the trade,
+so a trade disclosed today but executed 40 days ago was silently dropped as "stale." Same root
+cause already fixed once this session in `congressTradeDecayMultiplier` (#4844), found again as a
+blast-radius instance while auditing #4860's insider-ticker-filter fix. See
+`docs/audit/findings-staging/2026-09-12-nighthawk-dossier-recency-disclosure-date.md`.
+
+**Fix:** added `filed_at_date`/`filing_date` as the first-checked fields in `parseTradeDate`'s
+fallback chain. Exported `parseTradeDate`/`isWithinRecentSignalWindow` for direct testing; added
+`dossier.test.ts` (new file) with 5 regression tests.
+
+**Check at the open:** pull a Legacy dossier for a ticker with a congress trade disclosed in the
+last 30 days but executed further back (or an insider Form 4 filed recently for an older
+transaction), and confirm it now appears in `congress_trades`/counts toward `insider_buys` where
+it previously would have been silently excluded.
+
 ## WATCH LIST — 2026-09-12 Night Hawk insider-transactions ticker filter was silently ignored (read this before the routine pass)
 
 ### `fetchUwInsiderTransactions` sent the wrong query-param name — `ticker`, not the real `ticker_symbol` — so every ticker's "insider activity" was a random other ticker's
