@@ -1182,6 +1182,80 @@ test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is f
   assert.match(section!.body, /tape read may lag/);
 });
 
+// ── CLOSED plays must not narrate "today's" live-desk staleness (FINDINGS 2026-09-12) ──────────
+// A CLOSED play is a historical record; scan/Vector/GEX/HELIX staleness are all claims about
+// TODAY's live desk state and fire forever once ANY time has passed since close if left ungated —
+// reproduced live on a real INTC brief read a full week after the play closed.
+
+test("dataFreshnessSection: CLOSED play suppresses prior-session scan staleness narration", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-11 16:00 ET",
+    sessionDate: "2026-09-11",
+    scanAsOf: "2026-08-04T20:00:00.000Z",
+    scanSessionDay: "2026-08-04",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "a CLOSED play must not narrate a live discovery-scan staleness claim");
+});
+
+test("dataFreshnessSection: CLOSED play suppresses stale HELIX pipeline narration", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-11 16:00 ET",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: { flow_feed_fresh: false } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "a CLOSED play must not narrate live HELIX pipeline staleness");
+});
+
+test("dataFreshnessSection: CLOSED play suppresses stale GEX matrix and Vector data-age narration", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-11 16:00 ET",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: { spot: 100, gamma_posture: "long", matrix_age_sec: 200, freshness: "cached" },
+      vector_full_state: fixtureVec({ dataAgeMs: 180_000 }),
+    } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "a CLOSED play must not narrate live GEX/Vector staleness");
+});
+
+test("dataFreshnessSection: an OPEN play with the exact same stale inputs still narrates them (not over-suppressed)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-09-11 16:00 ET",
+    sessionDate: "2026-09-11",
+    scanAsOf: "2026-08-04T20:00:00.000Z",
+    scanSessionDay: "2026-08-04",
+    laneRows: [],
+    meridian: null,
+    ecosystem: { flow_feed_fresh: false } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(section, "a live OPEN play must still get its real staleness caveats");
+  assert.match(section!.body, /today's discovery not yet run/);
+  assert.match(section!.body, /HELIX flow: \*\*pipeline stale\*\*/);
+});
+
 test("dataFreshnessSection: stale GEX matrix warns when ctx.vector is null (Largo C2)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
