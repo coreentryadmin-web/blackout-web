@@ -1031,29 +1031,44 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   } else if (play.markIsSync && playExpectsLiveOptionMark(play.status)) {
     lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
   }
-  if (scanAsOf) {
-    const staleScan =
-      scanSessionDay && sessionDate && scanSessionDay !== sessionDate;
-    const stamp = etStampFromIso(scanAsOf);
-    lines.push(
-      staleScan
-        ? `Swing scan: **${stamp}** (**prior session ${scanSessionDay}** — today's discovery not yet run)`
-        : `Swing scan: **${stamp}**`,
-    );
-  }
-  if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
-    lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
-  }
-  const gexAgeMs = gexMatrixAgeMs(ctx.ecosystem?.gex_positioning);
-  if (gexAgeMs != null && gexAgeMs > GEX_MATRIX_STALE_MS) {
-    lines.push(
-      `GEX matrix **${Math.round(gexAgeMs / 1000)}s** old — dealer posture may lag spot`,
-    );
-  }
-  if (ctx.ecosystem?.flow_feed_fresh === false) {
-    lines.push(
-      "HELIX flow: **pipeline stale** — tape read may lag; not evidence of quiet flow",
-    );
+  // FINDINGS 2026-09-12: scan/Vector/GEX/HELIX staleness all measure whether TODAY's live desk
+  // state is current — a fact that stops being meaningful the moment a play is CLOSED (a
+  // historical record, not a live position). Left ungated, these fire FOREVER once any time has
+  // passed since close, exactly the failure mode `play-brief-absence.ts`'s
+  // `collectBriefUnavailableSources` already documents and gates for its own (structured
+  // unavailableSources/UnavailableChip) output — this narrative section was the one place that
+  // isClosed gate was missed. Reproduced live 2026-09-12 on a real CLOSED INTC brief read a full
+  // week after the play closed: "Swing scan: prior session ... today's discovery not yet run" and
+  // "HELIX flow: pipeline stale" both still rendered, describing "today" for a trade that closed
+  // 2026-09-04. The option-mark lines above are untouched — `playExpectsLiveOptionMark` already
+  // scopes the live-mark-staleness claim to OPEN/HOLD/TRIM, and a bare `markAsOf` timestamp (when
+  // present) is a historical fact, not a live-staleness claim.
+  const isClosed = String(play.status ?? "").toUpperCase() === "CLOSED";
+  if (!isClosed) {
+    if (scanAsOf) {
+      const staleScan =
+        scanSessionDay && sessionDate && scanSessionDay !== sessionDate;
+      const stamp = etStampFromIso(scanAsOf);
+      lines.push(
+        staleScan
+          ? `Swing scan: **${stamp}** (**prior session ${scanSessionDay}** — today's discovery not yet run)`
+          : `Swing scan: **${stamp}**`,
+      );
+    }
+    if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
+      lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
+    }
+    const gexAgeMs = gexMatrixAgeMs(ctx.ecosystem?.gex_positioning);
+    if (gexAgeMs != null && gexAgeMs > GEX_MATRIX_STALE_MS) {
+      lines.push(
+        `GEX matrix **${Math.round(gexAgeMs / 1000)}s** old — dealer posture may lag spot`,
+      );
+    }
+    if (ctx.ecosystem?.flow_feed_fresh === false) {
+      lines.push(
+        "HELIX flow: **pipeline stale** — tape read may lag; not evidence of quiet flow",
+      );
+    }
   }
   if (!lines.length) return null;
   // `bias` is a DIRECTIONAL read (bullish/bearish/neutral/mixed) — the UI renders it as a
