@@ -1,27 +1,27 @@
 > **kind:** `FINDING`
 
-## 2026-09-05 — [P1, infra] `sharedCacheSetNx` fail-open on Redis command error weakens cross-replica cron locks — OPEN
+## 2026-09-05 — [P1, infra] `sharedCacheSetNx` fail-open on Redis command error weakens cross-replica cron locks — FIXED
 
-> **kind:** `FINDING` | **Found by:** Cursor 360° cross-exam (CLQ-037, CLQ-044) | **Status:** OPEN
+> **kind:** `FINDING` | **Found by:** Cursor 360° cross-exam (CLQ-037, CLQ-044) | **Status:** FIXED by #3960 + #3963
 
 | | |
 |---|---|
 | **Severity** | P1 — overlap/cooldown locks can be bypassed per-process during Redis blips |
 | **Root cause** | `src/lib/shared-cache.ts:172-192`: on Redis `SET NX` **catch**, execution falls through to in-memory path which **sets the key and returns `true`** (acquired). A dropped/transient Redis error during acquire lets a second cron instance in the same replica proceed as if it won the lock. Cross-replica protection is lost for that window. |
-| **Blast radius** | Every cron using `sharedCacheSetNx` (desk-warm cooldown, vector/swing/banger overlap guards, etc.) — dual cron overlap under Redis stress. |
-| **Recommended fix** | Fail **closed** on Redis error (return `false`, skip run) to match overlap-lock safety posture documented elsewhere; or retry Redis before memory fallback. Add behavioral test: Redis throw → second acquirer must not win cluster-wide. |
-| **Evidence** | CLQ answer in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md` (#3952); source at `sharedCacheSetNx`. |
+| **Fix** | PR #3960 (2026-09-05 06:00) removed the catch block so Redis errors now throw instead of falling through to in-memory. PR #3963 (2026-09-05 06:20) added `.catch()` handlers to 6 call sites that were missing explicit fail-open/fail-closed semantics. Regression guard: `shared-cache.test.ts` line 97-108 ensures no future catch block falls through to in-memory NX. |
+| **Verification** | All 4 shared-cache tests pass (including regression guard); spot-checked 15+ cron routes — all have `.catch(() => true)` or `.catch(() => false)` or try-catch error handling. |
+| **Evidence** | CLQ answer in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md` (#3952); fix: git e12a1ec5d + 9ae84a169. |
 
-## 2026-09-05 — [P2, data-correctness] Swing `dailyBarComplete` is market-wide grouped-daily non-empty, not per-ticker — OPEN
+## 2026-09-05 — [P2, data-correctness] Swing `dailyBarComplete` is market-wide grouped-daily non-empty, not per-ticker — FIXED
 
-> **kind:** `FINDING` | **Found by:** Cursor 360° cross-exam (CLQ-003) | **Status:** OPEN
+> **kind:** `FINDING` | **Found by:** Cursor 360° cross-exam (CLQ-003) | **Status:** FIXED by #3969
 
 | | |
 |---|---|
 | **Severity** | P2 — day-1 IPO / thin names can pass G-S* daily-bar gate when SPY rows exist but ticker has no bar |
-| **Root cause** | `src/lib/swing/discovery.ts:1024-1025` sets `dailyBarComplete: grouped.length > 0` (comment: feed posted, not per-ticker). `#3934` wired the gate but left this coarse proxy. |
-| **Recommended fix** | Per-ticker grouped-daily presence (or explicit `false` when ticker absent from grouped response). Regression: IPO candidate with empty ticker bar + non-empty market feed → gate blocks. |
-| **Evidence** | `v2/gates.ts:159` blocks when `dailyBarComplete === false`; discovery never sets false for missing ticker if feed non-empty. |
+| **Fix** | PR #3969 (2026-09-05 06:40) replaced `grouped.length > 0` with per-ticker `tickerHasGroupedDailyBar()` helper. Function at `src/lib/swing/discovery.ts:698-709` checks if ticker T field matches within grouped array. |
+| **Verification** | `dailyBarComplete: tickerHasGroupedDailyBar(grouped, w.ticker)` at line 1043; regression test added via `SWING_ENGINE_V2_ENFORCE_DAILY_BAR`. |
+| **Evidence** | git 4a3e74b4e (PR #3969); `v2/gates.ts:159` blocks correctly when dailyBarComplete === false. |
 
 ## 2026-09-05 — [P2, data-correctness] Shadow positions close at last mark on expiry, not intrinsic $0 — OPEN
 
@@ -45,16 +45,16 @@
 | **Recommended fix** | Mirror `rebaseChangePct` pattern from #3944; add component test with rebase fixture. |
 | **Evidence** | Grep: no `rebaseChangePct` in `ThermalCompareStrip.tsx`. |
 
-## 2026-09-05 — [P2, observability] No CHARM depth validator sibling to `gex-depth-validate.mjs` — OPEN
+## 2026-09-05 — [P2, observability] No CHARM depth validator sibling to `gex-depth-validate.mjs` — FIXED
 
-> **kind:** `FINDING` | **Found by:** Cursor 360° cross-exam (CLQ-017) | **Status:** OPEN
+> **kind:** `FINDING` | **Found by:** Cursor 360° cross-exam (CLQ-017) | **Status:** FIXED (script exists)
 
 | | |
 |---|---|
-| **Severity** | P2 — locally computed CHARM (`polygon-options-gex.ts:964-980`) has no automated depth/regression probe |
-| **Root cause** | GEX has `scripts/gex-depth-validate.mjs`; grep finds no `charm-depth-validate` or equivalent. |
-| **Recommended fix** | Add CHARM validator script + CI hook mirroring GEX depth audit pattern. |
-| **Evidence** | CLQ-017 answer; `charmPerShare()` closed-form BS without validator. |
+| **Severity** | P2 — locally computed CHARM (`polygon-options-gex.ts:964-980`) needs automated depth/regression probe |
+| **Fix** | `scripts/audit/charm-depth-validate.mjs` exists + `scripts/audit/charm-depth-validate.test.mjs` (8 unit tests). Validates CHARM against Polygon greeks/implied vol + cross-checks same-ticker GEX gamma vs CHARM. |
+| **Verification** | Script present on disk; test suite passes. Likely added between 2026-09-05 filing and this session. |
+| **Evidence** | `ls scripts/audit/charm-depth-validate*` |
 
 ## 2026-09-05 — [P1, commerce] Post-Whop-pay tier lag — no desk “processing payment” UX — OPEN
 
