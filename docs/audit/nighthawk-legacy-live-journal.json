@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T09:18:09.349Z",
+  "lastUpdated": "2026-09-12T09:21:49.029Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1146,6 +1146,11 @@
       "at": "2026-09-12T09:18:09.349Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle -- no drift (4th clean cycle since #4844 merged). Continued digging in scorer.ts per the mandate and found a THIRD bug of the identical class, this one more severe: institutionalNetSignal (feeds scoreSmartMoney's institutional +3/-2 bonus) and smartMoneyDriverNote's instHit check both guessed field names (units_change, action, transaction_type) that NEVER exist on the real UW /api/institution/{ticker}/ownership row (confirmed live: real field is units_changed with a trailing 'd', and real rows are 13F position snapshots with no transaction-verb field at all). Neither fallback branch ever matched real data -- the entire institutional leg of smart-money scoring was PERMANENT DEAD CODE in production (not just under-weighted like the prior two bugs -- literally always contributed 0 regardless of real accumulation/distribution). Existing tests used the scorer's own two independently-wrong guessed field names (action AND change) as fixtures, so they passed by construction without ever touching the real UW shape -- identical failure pattern to #4839 and #4844. Fixed on fix/nighthawk-institutional-units-changed-field: added units_changed as first-checked fallback in both functions, added regression tests using real UW shape (buying and selling) in both scorer-direction.test.ts and deterministic-edition.test.ts. RED->GREEN proven via git stash (2 failures stashed-out, 125/125 restored). tsc --noEmit clean. Full suite 13845 pass / 0 fail / 3 skipped. Findings-staging doc + MARKET-OPEN-VALIDATION entry added. Opened PR #4847 (draft), subscribed to activity. This is the third live scorer bug found and fixed this session, all the same root-cause class -- a field-name assumption never checked against the real live UW API. Worth noting for future cycles: this suggests systematically auditing EVERY dossier field the scorer reads against its real provider function may be higher-value than continuing to spot-check individually."
+    },
+    {
+      "at": "2026-09-12T09:21:49.029Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. PR #4847 (institutional units_changed fix, opened last cycle) still draft -- CI/CodeQL both in_progress (~4min in), no failures, no review comments yet. Nothing actionable; will re-check next cycle."
     }
   ],
   "knownOpenItems": {
