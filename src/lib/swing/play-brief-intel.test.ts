@@ -1750,6 +1750,89 @@ test("watchForSection: entry trigger level is shown distinctly from the flag anc
   assert.match(section.body, /Break\/reclaim above/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-09-12): the "Entry trigger" bullet used to claim,
+// unconditionally, that crossing this level "is what actually fires the setup" — false once the
+// setup itself is dead. Live repro: SKHY WATCH brief with `setupState: "INVALIDATED"` (thesis
+// already broken) where spot had ALREADY crossed the stated trigger with no entry firing —
+// directly contradicting the sentence next to the number. The level itself stays (still useful
+// context); only the false causal claim is corrected.
+test("watchForSection: entry trigger claim is corrected, not fabricated, once the setup is INVALIDATED", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 177.0,
+        setupState: "INVALIDATED",
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*177\.00\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(section.body, /thesis already invalidated — this level no longer fires the setup/);
+});
+
+// Live repro, second shape: MRVL WATCH brief past its entry-validity DEADLINE
+// (`watchEntryExpired: true`, entry-enterability.ts's `pastEntryDeadline`) — the headline
+// correctly says EXPIRED, but "Watch levels" (this section) still framed the same trigger as
+// live and actionable with no cross-reference to that framing.
+test("watchForSection: entry trigger claim is corrected, not fabricated, once the entry-validity window has expired", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 221.25,
+        watchEntryExpired: true,
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*221\.25\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(section.body, /entry-validity window expired — this level no longer fires the setup/);
+});
+
+// A live, still-enterable WATCH play (neither INVALIDATED nor past its entry-validity deadline)
+// must keep the original, correct causal claim — this fix must not soften a claim that is true.
+test("watchForSection: a live, still-enterable trigger keeps the unqualified causal claim", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 182.5,
+        setupState: "TRIGGERED",
+        watchEntryExpired: false,
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
+});
+
 test("watchForSection: entry trigger phrasing mirrors below for SHORT direction", () => {
   const section = watchForSection(
     {
