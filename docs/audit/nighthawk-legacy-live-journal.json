@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T14:47:12.752Z",
+  "lastUpdated": "2026-09-12T14:48:03.950Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1256,6 +1256,11 @@
       "at": "2026-09-12T14:47:12.752Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset, continued)",
       "result": "Third real bug this session shipped: audited flow_by_expiry (fetchUwFlowPerExpiry, /api/stock/{ticker}/flow-per-expiry) since it hadn't been checked yet -- format.ts's formatTickerDossierText computed 'Flow by expiry' premium as Number(r.premium ?? r.total_premium ?? 0), but real UW rows only carry call_premium/put_premium (confirmed live, no premium/total_premium field exists). Every 'Flow by expiry' line in the Legacy dossier text fed into the edition's Claude prompt always read $0 regardless of real flow. Cross-checked meridian-event-brief.ts's independent net_flow_by_expiry consumer -- it already correctly uses call_premium/put_premium, confirming this was the outlier. Extracted flowByExpiryPremium() as a new exported/tested helper, 3 regression tests, RED->GREEN proven, tsc clean, full suite 13925/0/3skip. Shipped as PR #4865 (draft, CI pending). Session total: 3 dossier/scorer field-mismatch bugs (#4839/#4844/#4847 scorer trio, #4860 insider ticker-filter, #4863 disclosure-date, #4865 flow-by-expiry) plus #4853 positioning-driver-note enhancement -- the raw-field-guess audit methodology continues to be productive."
+    },
+    {
+      "at": "2026-09-12T14:48:03.951Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable, edition fresh 2 plays, marks in range). PR #4865 (flow-by-expiry fix) CI just started, checking back next cycle."
     }
   ],
   "knownOpenItems": {
