@@ -53,6 +53,29 @@ test("buildSpxDeskPulse: cold replica awaits the real prior-day fetch when prior
   );
 });
 
+test("buildSpxDeskPulse: cold replica prefers TODAY's own close once the regular session has closed (2026-09-12 fix)", () => {
+  // Root-cause fix for the live 2026-09-12 bug: `prior` above (priorDayForPulseLane /
+  // fetchPriorDayCached) is EXCLUSIVE of today by design (correct for RTH/pivot callers), so
+  // once today's own session has genuinely closed (label === "EXTENDED", still the same ET
+  // calendar day) it must be overridden with today's own settled bar rather than served as-is
+  // — otherwise a cold replica serves a stale prior-day close as "today's" off-hours price.
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*let prior = await priorDayForPulseLane\(\);[\s\S]*if \(label === "EXTENDED"\) \{\s*\n\s*const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete\(\)\.catch\(\(\) => null\);\s*\n\s*if \(todaysOwnClose\?\.pdc != null && todaysOwnClose\.pdc > 0\) \{\s*\n\s*prior = todaysOwnClose;/,
+    "closed-market branch must override the exclusive-of-today prior with today's own close once the session is EXTENDED"
+  );
+});
+
+test("fetchTodaysOwnCloseIfSessionComplete: calls priorDayFromDailyBars with anchorSessionComplete=true", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /async function fetchTodaysOwnCloseIfSessionComplete\(\)[\s\S]*?return priorDayFromDailyBars\(bars, today, true\);/,
+    "must pass anchorSessionComplete=true so today's own settled bar is eligible, not skipped"
+  );
+});
+
 test("buildSpxDeskPulseMinimal: price chain includes prior.pdc", () => {
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   const minimalIdx = src.indexOf("export async function buildSpxDeskPulseMinimal");
