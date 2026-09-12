@@ -1127,6 +1127,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
       return swingHorizonForLargo();
     }
+    case "get_swing_play_brief": {
+      const { swingPlayBriefForLargo } = await import("@/lib/largo/swing-play-brief-read");
+      return swingPlayBriefForLargo(String(input.ticker ?? ""), {
+        positionId: input.positionId != null ? Number(input.positionId) : null,
+        status: input.status ? String(input.status) : null,
+        strike: input.strike != null ? Number(input.strike) : null,
+        right: input.right ? String(input.right) : null,
+      });
+    }
     case "get_nighthawk_horizons": {
       const { nighthawkHorizonsForLargo } = await import("@/lib/largo/product-reads");
       return nighthawkHorizonsForLargo();
