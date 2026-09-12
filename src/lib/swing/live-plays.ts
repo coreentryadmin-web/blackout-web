@@ -15,6 +15,12 @@ import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import type { SwingLiveStatus, SwingThesisLevel } from "./serving";
 import type { SwingManageAction, SwingManageRung } from "./manage";
 import { HORIZONS } from "../horizons";
+import {
+  contributionsToFactors,
+  scoreSwingPillars,
+  type SwingPillarSignals,
+  type SwingScoreFactor,
+} from "./swing-pillars";
 
 const LIVE: ReadonlySet<string> = new Set(["OPEN", "HOLD", "TRIM"]);
 
@@ -201,6 +207,57 @@ export function manageObservablesFromEvent(
   return { manageAction, thesisLevel, manageReason: rung ?? null };
 }
 
+const finiteOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/**
+ * Reconstruct a live committed position's "why this score" factor breakdown from its own PINNED
+ * feature_vector (the 7 raw pillar sub-scores + archetype, frozen at commit — see commit.ts's
+ * buildCommitInsert / buildSwingFeatureVector) instead of a freshly re-run dossier.
+ *
+ * THE BUG THIS AVOIDS (found live 2026-09-12, `?view=swings`, AAPL position 37 SECTOR_ROTATION):
+ * `score` on a live row is `row.feature_vector.evidence_score` — PINNED at commit on purpose (commit.ts:
+ * "so trajectory studies can echo pillars/score on every later snapshot"). But `attachThesisExplanation`
+ * (serving-lane.ts) used to borrow `factors` from a FRESH same-ticker dossier re-run TODAY against
+ * CURRENT market conditions (rel-strength/regime/structure all legitimately drift day to day). The two
+ * numbers then silently diverge the longer a position ages: AAPL showed "score 84.4" beside factor rows
+ * that only summed to 75.0 — 9.4 points (11%) unexplained, on a real open position, not a stale/off-hours
+ * artifact. Same failure MODE as the Banger/Vector-bump fixes in #4826 ("score bumped, factors never
+ * touched" / "factors measure a different quantity than score") but a THIRD, distinct occurrence: here
+ * neither side is bumped or wrong in isolation, they are just two INDEPENDENT computations (one frozen,
+ * one live) of what is supposed to read as one explained number.
+ *
+ * THE FIX: re-run `scoreSwingPillars` on the SAME frozen raw signals that produced `evidence_score`
+ * (pinned alongside it in the same feature_vector), instead of a fresh dossier's. Because
+ * `scoreSwingPillars` is pure and deterministic, calling it again on identical inputs reproduces the
+ * IDENTICAL score AND the contributions that sum to it — the sum-to-score invariant holds by
+ * construction, not by keeping two independently-computed numbers in sync by hand. Live regime/structure
+ * drift no longer matters because the frozen inputs never change.
+ *
+ * Returns [] (never fabricated) when the row predates this feature-vector shape (no `pil_*`/archetype
+ * pinned) — `attachThesisExplanation` falls back to the dossier borrow for those older rows.
+ */
+export function pinnedFactorsFromFeatureVector(
+  featureVector: Record<string, unknown> | null | undefined,
+): SwingScoreFactor[] {
+  if (!featureVector) return [];
+  const archetype =
+    typeof featureVector.archetype === "string" ? (featureVector.archetype as SwingArchetype) : null;
+  const signals: SwingPillarSignals = {
+    STRUCTURE: finiteOrNull(featureVector.pil_structure),
+    REL_STRENGTH: finiteOrNull(featureVector.pil_rel_strength),
+    FLOW: finiteOrNull(featureVector.pil_flow),
+    VOLATILITY: finiteOrNull(featureVector.pil_volatility),
+    CATALYST: finiteOrNull(featureVector.pil_catalyst),
+    REGIME: finiteOrNull(featureVector.pil_regime),
+    DATA_QUALITY: finiteOrNull(featureVector.pil_data_quality),
+  };
+  const hasAnyPillar = Object.values(signals).some((v) => v != null);
+  if (!hasAnyPillar) return [];
+  const { contributions } = scoreSwingPillars(signals, archetype);
+  return contributionsToFactors(contributions);
+}
+
 /**
  * Map one open ledger row (+ optional spot + latest manage snapshot) to a HorizonPlay for the live sections. Returns null when the
  * row is not a live status or lacks a reconstructible contract.
@@ -230,6 +287,10 @@ export function livePlayFromSwingPosition(
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
       ? (row.feature_vector.evidence_score as number)
       : 0;
+
+  // Reconstructed from the SAME pinned feature_vector `score` came from (see the function's own doc for
+  // the live bug this closes) — guaranteed to sum to `score` exactly, never a freshly re-run dossier's.
+  const factors = pinnedFactorsFromFeatureVector(row.feature_vector);
 
   // CORRECTED (live regression found 2026-09-07, prior fix in #4481): `regime` is a DISPLAY string —
   // play-brief.ts's Verdict section pushes `play.regime` verbatim with no label
@@ -264,6 +325,7 @@ export function livePlayFromSwingPosition(
     archetype: (row.archetype as SwingArchetype | null) ?? undefined,
     subLane: (row.sub_lane as SwingSubLane | null) ?? undefined,
     regime,
+    factors,
     liveStatus,
     manageAction,
     manageReason: manageReason ?? null,
