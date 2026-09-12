@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T14:52:32.374Z",
+  "lastUpdated": "2026-09-12T15:08:01.413Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1266,6 +1266,11 @@
       "at": "2026-09-12T14:52:32.374Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy fully GREEN (resolved=26 stable, edition fresh 2 plays, marks in range). PR #4865 CI still in_progress. Session productivity this hour: 3 real dossier/scorer bugs fixed and shipped (ticker-filter #4860 merged, disclosure-date #4863 merged, flow-by-expiry #4865 in CI) plus 3 from earlier cycles (#4839/#4844/#4847 scorer trio) and 1 enhancement (#4853). Genuinely honest assessment: the raw-field-mismatch sweep across dossier.ts/scorer.ts/format.ts is now close to fully exhausted for Legacy's own surface -- next fresh angle worth considering is a live UI/rendered-output check (proxy-browser.cjs) rather than another field-name audit, per the mandate's own 'secondary priority' note on that check."
+    },
+    {
+      "at": "2026-09-12T15:08:01.414Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "PR #4865: mergeable_state=clean (CI passed), but undraft hit the shared GitHub-account rate limit -- confirmed fleet-wide contention right now via the Swings lane's own journal (nighthawk-swings-live-journal.json shows the same limiter hitting its PR #4866 undraft twice in the same window). Not escalating, this is the documented shared-credential budget from CLAUDE.md. healthcheck:legacy fully GREEN (resolved=26 stable, edition fresh 2 plays, marks in range). Will retry #4865 undraft+merge next cycle."
     }
   ],
   "knownOpenItems": {
