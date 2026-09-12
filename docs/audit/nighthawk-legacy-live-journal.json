@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T11:07:51.847Z",
+  "lastUpdated": "2026-09-12T11:22:49.235Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1186,6 +1186,11 @@
       "at": "2026-09-12T11:07:51.847Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. PR #4853 undraft retried via GitHub MCP -- still rate-limited (3rd consecutive cycle on this specific limiter). Per CLAUDE.md's documented GitHub-API-budget table this is budget #3 (GitHub MCP server's own limiter), shared fleet-wide and independent of session REST -- not something fixable from this repo, will keep retrying each cycle rather than escalating a known, expected condition."
+    },
+    {
+      "at": "2026-09-12T11:22:49.235Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle -- all four stages stable. PR #4853 (positioning-driver-note thesis enhancement) confirmed merged (sha dc7b97b3f) after the GitHub MCP rate limit cleared -- re-verified against origin/main: positioningDriverNote present and wired into buildDeterministicThesis's Positioning: line, live in source. Session auto-unsubscribed on merge. This closes out the fourth Legacy shipment this session: OI-change alignment fix (#4839), congress-decay date fix (#4844), institutional units_changed fix (#4847), and now the positioning-driver-note narrative enhancement (#4853) -- three real scoring bugs plus one thesis-completeness enhancement, all found via the same disciplined dig-deeper pattern the mandate's 'several consecutive clean cycles' trigger rewards."
     }
   ],
   "knownOpenItems": {
