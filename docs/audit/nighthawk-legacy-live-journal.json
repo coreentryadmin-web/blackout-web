@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T06:22:30.693Z",
+  "lastUpdated": "2026-09-12T06:37:00.063Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1085,6 +1085,11 @@
     {
       "at": "2026-09-12T06:22:30.694Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings."
+    },
+    {
+      "at": "2026-09-12T06:37:00.063Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings."
     }
   ],
