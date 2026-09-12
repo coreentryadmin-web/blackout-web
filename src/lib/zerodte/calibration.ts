@@ -1228,7 +1228,7 @@ export function analyzeCortexVetoes(skips: GradedSkipInput[]): CortexVetoAnalysi
     if (!isSkipCounterfactual(s.counterfactual)) continue;
     totalVeto += 1;
     const hash = s.strategy_config_hash != null && s.strategy_config_hash.length > 0 ? s.strategy_config_hash : UNKNOWN_STRATEGY_HASH;
-    const key = `${source} ${hash}`;
+    const key = `${source} ${hash}`;
     const entry = byCell.get(key) ?? { source, hash, cfs: [] };
     entry.cfs.push(s.counterfactual);
     byCell.set(key, entry);

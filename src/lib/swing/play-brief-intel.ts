@@ -430,7 +430,7 @@ export function flowIntelSection(
     // the most recent one.
     const seen = new Set<string>();
     const deduped = eco.recent_anomalies.filter((a) => {
-      const key = `${a.anomaly_type} ${a.detail}`;
+      const key = `${a.anomaly_type} ${a.detail}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
