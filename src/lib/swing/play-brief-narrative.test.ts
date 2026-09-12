@@ -573,6 +573,25 @@ test("tradeManagerNarrativeSection: round-tripped-past-breakeven bullet fires wh
   );
 });
 
+// BUG FIX (2026-09-12): `degradedReadLine` (the "Live read" fallback bullet, fires whenever Vector
+// spot isn't wired — the SAME condition as the test above, which never overrides `vector`/
+// `ecosystem`) independently restated the identical round-trip fact `actionNarrative` already
+// renders unconditionally — live repro: CRWD OPEN/TRIM swing brief 2026-09-12, the fact appeared
+// twice in one "Trade manager read" section. This test pins that the fact now appears exactly
+// once even though both functions fire in this exact scenario (spot null, round_trip giveback).
+test("tradeManagerNarrativeSection: round-trip fact appears exactly once even when the degraded 'Live read' fallback also fires (live CRWD repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "HOLD", recommendation: "TRIM", pnlPct: -10, peak: 130 }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Live read/i, "the degraded fallback must still fire in this test (spot is null)");
+  const occurrences = (section!.body.match(/round-tripped past breakeven/gi) ?? []).length;
+  assert.equal(occurrences, 1, `expected the round-trip fact exactly once, found ${occurrences} in: ${section!.body}`);
+});
+
 // Live repro (NN, SWING:NN:32, 2026-09-10 12:00 ET): a TRIM recommendation whose position has
 // ALREADY round-tripped past breakeven still rendered actionNarrative's generic "Bank partial
 // into strength; don't give back peak." immediately before the accurate "Round-tripped past

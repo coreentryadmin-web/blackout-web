@@ -235,6 +235,27 @@ test("watchGateCoaching: includes reasons", () => {
   assert.match(line!, /wait for trigger/i);
 });
 
+// BUG FIX (2026-09-12): every real gate `reason` string (entry-verdict.ts's gate-block map)
+// already ends with its own period, but `watchGateCoaching` unconditionally appended a second
+// "." after joining them — producing a doubled ".." whenever the LAST rendered gate has no
+// `unlock_et` (the common case). Live repro: ORCL WATCH brief 2026-09-12 — "...desk will not
+// open..". This fixture uses a reason ending in "." (unlike the fixture above, which doesn't) to
+// actually exercise the doubling.
+test("watchGateCoaching: does not double the period when the reason already ends in one (live ORCL repro)", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+        { code: "g_s14_cortex", reason: "Cortex preflight vetoed this setup — desk will not open." },
+      ],
+    }),
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /\.\./, "must never render a doubled period");
+  assert.match(line!, /desk will not open\.$/, "must still end with exactly one closing period");
+});
+
 test("crossDeskCoaching: friction when NH conflicts", () => {
   const line = crossDeskCoaching(
     ctx({

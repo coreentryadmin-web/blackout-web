@@ -1612,6 +1612,39 @@ test("watchForSection: entry trigger is omitted (never fabricated) when null, an
   assert.doesNotMatch(openBucket.body, /Entry trigger:/);
 });
 
+// BUG FIX (2026-09-12): `watchForSection`'s "Before entry, clear:" bullet used to re-render each
+// gate's full `code: reason` text — but `watchEntrySection` (play-brief.ts, "Entry" section, which
+// composeSwingPlayBrief always places BEFORE this section for a WATCH play) already renders the
+// IDENTICAL `play.gateBlocks` list in full under "Gates blocking entry:". Live repro: ORCL WATCH
+// brief 2026-09-12, both sections printed the same `g_s4_regime`/`g_s14_cortex` reason strings
+// verbatim. This test pins the NEW behavior: a short count + pointer, not a second full copy.
+test("watchForSection: gate-block bullet is a count + pointer, not a second full copy of Entry's reason text", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        gateBlocks: [
+          { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+          { code: "g_s14_cortex", reason: "Cortex preflight vetoed this setup — desk will not open." },
+        ],
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Entry section above\./);
+  // The full reason text must NOT be duplicated here — its one home is the Entry section.
+  assert.doesNotMatch(section.body, /Broad-market regime degraded/);
+  assert.doesNotMatch(section.body, /Cortex preflight vetoed/);
+});
+
 test("chartLevelsSection: stale GEX-only walls, flip, and king omitted (Largo C2)", () => {
   const section = chartLevelsSection({
     play: fixturePlay(),

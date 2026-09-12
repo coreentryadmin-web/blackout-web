@@ -141,7 +141,14 @@ export function watchGateCoaching(play: TerminalPlay): string | null {
       return `**${g.code}**: ${g.reason}${unlock}`;
     })
     .join(" · ");
-  return `**Gates blocking entry** — ${gates}.`;
+  // BUG FIX (2026-09-12): every `reason` string in entry-verdict.ts's gate-block map already ends
+  // with its own period (e.g. "Cortex preflight vetoed this setup — desk will not open."), so
+  // unconditionally appending another "." here produced a doubled ".." on the last gate whenever
+  // it has no `unlock_et` — live repro: ORCL WATCH brief 2026-09-12, "...desk will not open..".
+  // Only add the closing period when `gates` doesn't already end in terminal punctuation, so a
+  // future reason string without one still gets sentence-closed correctly.
+  const punctuated = /[.!?]$/.test(gates) ? gates : `${gates}.`;
+  return `**Gates blocking entry** — ${punctuated}`;
 }
 
 /** Gamma magnet pin gravity. */

@@ -698,12 +698,27 @@ function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed
   // captureFloor=80 matches the sibling aside in play-brief-narrative-coaching.ts (a secondary
   // clause on an already-degraded line, not a standalone recommendation).
   const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
+  // BUG FIX (2026-09-12): `actionNarrative` (above in this same file, ALWAYS called first in
+  // `tradeManagerNarrativeSection` before this fallback ever runs) already unconditionally renders
+  // "Round-tripped past breakeven — was up X% at peak, now Y%" whenever `giveback.kind ===
+  // "round_trip"` — see its own `if (giveback?.kind === "round_trip")` block, which fires
+  // regardless of `rec`. Both functions call the exact same pure `mfeCaptureOutcome(play.pnlPct,
+  // play.peak, null)` on the exact same inputs, so they always agree on `giveback.kind` — meaning
+  // this fallback (which only ever runs ALONGSIDE actionNarrative, never instead of it — see the
+  // `spot == null` branch in tradeManagerNarrativeSection) restated an already-stated fact
+  // verbatim. Live repro: CRWD OPEN/TRIM swing brief 2026-09-12 — "**Round-tripped past
+  // breakeven** — was up **130%** at peak, now **-10%**" in the "Desk says TRIM" bullet, then
+  // "round-tripped past breakeven — was up **130%** at peak, now **-10%**" again inside this very
+  // function's "Live read" bullet. The section's own de-dup (`seen`, first-48-chars) never caught
+  // it — same shape as the "Entry stance"/"Gates blocking entry" duplication this file's own
+  // comment already documents fixing once, a case this is NOT the same call-site pair as. The
+  // `capture` branch below is untouched: actionNarrative only renders THAT one below its own 75%
+  // floor (this function's floor is 80%), so a capturePct in [75,80) is genuinely new information
+  // here, not a duplicate — no live evidence of that case duplicating, so left as-is.
   const givebackBit =
-    giveback?.kind === "round_trip"
-      ? ` · round-tripped past breakeven — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%**`
-      : giveback?.kind === "capture" && giveback.capturePct < 80
-        ? ` · gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
-        : "";
+    giveback?.kind === "capture" && giveback.capturePct < 80
+      ? ` · gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
+      : "";
   const healthBit = health != null ? ` · thesis **${health}%**` : "";
   const markBit = play.mark != null ? ` · mark **${fmtOptionUsd(play.mark)}**` : "";
   return `**Live read** — Vector spot not wired on this tick; desk still says **${rec}**${healthBit}${markBit}${givebackBit}. Levels refresh on next poll.`;
