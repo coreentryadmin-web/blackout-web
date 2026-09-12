@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T21:37:45.821Z",
+  "lastUpdated": "2026-09-12T21:52:14.314Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1406,6 +1406,11 @@
       "at": "2026-09-12T21:37:45.821Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN, no change (resolved=26, HPE 2.91, DELL 18.15 stable). Sibling PR #4886 reviewed by Swings lane itself (per their journal), correctly out of mine. Quiet cycle, standing cadence."
+    },
+    {
+      "at": "2026-09-12T21:52:14.314Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN, no change (resolved=26, HPE 2.91, DELL 18.15 stable). Sibling PR #4886 merged (Swings scope), correctly out of mine. Quiet cycle, standing cadence."
     }
   ],
   "knownOpenItems": {
