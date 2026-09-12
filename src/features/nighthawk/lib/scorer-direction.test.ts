@@ -100,6 +100,29 @@ test("smart money: unknown congress side counts at half weight", () => {
   assert.equal(scoreSmartMoney({ congress_unusual: rows }, "long"), 1);
 });
 
+test("smart money: BUG FIX (2026-09-12) -- congress decay reads real UW `filed_at_date`, not the stale `transaction_date` fallback", () => {
+  // Regression for the dead-priority bug: congressTradeDecayMultiplier's fallback chain never
+  // checked `filed_at_date`, the REAL disclosure-date field on UW's /api/congress/recent-trades
+  // rows (confirmed live). A trade disclosed close to the STOCK Act's 45-day deadline has a
+  // transaction_date that reads stale (>14 days -> 0.4x) while its filed_at_date -- the date
+  // that actually matters, per this function's own "more recent disclosures" docstring -- is
+  // brand new (<=7 days -> 1.0x). This pins the real (filed_at_date wins) behavior.
+  const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  const oldTxnFreshFiling = [
+    { txn_type: "Buy", transaction_date: iso(40), filed_at_date: iso(2) },
+  ];
+  assert.equal(
+    scoreSmartMoney({ congress_unusual: oldTxnFreshFiling }, "long"),
+    1,
+    "filed_at_date (2 days old) should give the full 1.0x multiplier, not transaction_date's 40-day-old 0.4x"
+  );
+
+  // Mirror: a row with ONLY transaction_date (no filed_at_date at all, e.g. an unexpected
+  // upstream shape) must still fall back correctly rather than silently scoring 0.
+  const onlyTransactionDate = [{ txn_type: "Buy", transaction_date: iso(2) }];
+  assert.equal(scoreSmartMoney({ congress_unusual: onlyTransactionDate }, "long"), 1);
+});
+
 // ── scoreOptionsPositioning ──────────────────────────────────────────────────────
 
 function stack(option_type: string, overrides: Record<string, unknown> = {}) {

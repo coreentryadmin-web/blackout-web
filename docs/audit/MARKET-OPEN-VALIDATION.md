@@ -1,3 +1,29 @@
+## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: congressional-trade decay measured the wrong date (read this before the routine pass)
+
+### `congressTradeDecayMultiplier` now decays on the real UW `filed_at_date`, not stale `transaction_date` — fix/nighthawk-congress-decay-filed-date-field
+
+**What was broken:** `congressTradeDecayMultiplier` (`scorer.ts`, shared smart-money scoring for
+Legacy's overnight digest and edition-builder) claims to weight congressional trades by disclosure
+recency, but its field fallback chain never checked `filed_at_date` -- the real field UW's
+`/api/congress/recent-trades` uses for the filing/disclosure date (confirmed via a live pull; see
+`docs/audit/findings-staging/2026-09-12-nighthawk-congress-decay-filed-date.md`). It always fell
+through to `transaction_date`, silently measuring trade age instead of disclosure age -- a real,
+live scoring error (a live DASH row: 15 days old by transaction date = 0.4x decay, vs 1 day old by
+actual filing date = 1.0x decay).
+
+**Fix:** added `filed_at_date` as the first-checked field. Purely additive/corrective to
+`smart_money_score` -- congressional evidence that was wrongly discounted for staleness can now
+score at its true (often higher) weight; nothing that previously scored will score lower, since the
+old wrong date only ever under- or equally-weighted a row relative to using the real filing date.
+
+**Check at the open:** pull a fresh `GET /api/market/nighthawk/edition` play whose `key_signal`
+names "smart-money" and, if `smartMoneyDriverNote` (#4827) names a congressional signal, spot-check
+that ticker's `smart_money_score` looks reasonably weighted for how recently the disclosure (not
+necessarily the trade) actually happened -- e.g. a disclosure filed within the last week should
+not read as scoring at the 0.4x "old" tier just because the underlying transaction happened weeks
+earlier. This is a scoring-input fix, not a new UI field, so the confirmation is a sane, in-range
+`smart_money_score`/`key_signal`, same as every other cycle's healthcheck already verifies.
+
 ## WATCH LIST — 2026-09-12 Ask Largo lane-rank leader on an invalidated WATCH thesis (read this before the routine pass)
 
 ### "Lane leader"/"Top-ranked play" self-praise could fire on a WATCH setup whose own thesis already broke — fix/swing-lane-rank-invalidated-leader

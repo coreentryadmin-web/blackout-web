@@ -775,9 +775,22 @@ function congressSideWeight(row: Record<string, unknown>, direction: "long" | "s
 /**
  * Recency decay for congressional trades — more recent disclosures carry more signal.
  * 0-7 days: 1.0x, 8-14 days: 0.7x, 15-30 days: 0.4x.
+ *
+ * BUG FIX (2026-09-12): the real UW `/api/congress/recent-trades` row (confirmed live --
+ * fetchUwCongressTrades/fetchUwCongressUnusualTrades both read this endpoint) carries the
+ * filing/disclosure date as `filed_at_date`, which this fallback chain never checked. Congress
+ * members can legally disclose up to 45 days after a trade (STOCK Act), and often file close to
+ * that deadline, so `transaction_date` and `filed_at_date` routinely differ by weeks on a real
+ * row. Without `filed_at_date` in the chain, every real row fell through to `transaction_date`
+ * (still present as a later fallback) -- silently measuring staleness of the TRADE instead of
+ * the DISCLOSURE, the opposite of what this function's own docstring says it does. Live example
+ * (DASH, Gilbert Cisneros, pulled today): transaction_date 15 days old (0.4x) vs filed_at_date 1
+ * day old (1.0x) -- a 2.5x scoring difference on a disclosure that was, in the sense this
+ * function is supposed to measure, brand new.
  */
 function congressTradeDecayMultiplier(row: Record<string, unknown>, nowMs: number): number {
   const raw =
+    row.filed_at_date ??
     row.filed_at ??
     row.filed_date ??
     row.transaction_date ??
