@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-12T06:31:00Z",
+  "last_updated": "2026-09-12T06:46:00Z",
   "notes": [
     "06:31 UTC cycle -- re-checked PR #4837 on AAPL#37: STILL unchanged, factors still sum to 75.0 vs score 84, identical to the 06:16 check 15min ago. ~35-40min since merge now -- at the outer edge of this repo's typical 30-45min deploy window, not yet concerning but worth watching closely next cycle rather than assuming it'll just resolve. No new swing PRs this cycle (#4836 GEX perf, #4838 CLAUDE.md docs update, both non-swing). Markets closed, all 5 real positions unchanged.",
     "06:16 UTC cycle -- checked PR #4837's fix live on AAPL#37: factors still sum to 75.0 (29.5+21.1+14+6.3+2.8+1.3) against a displayed score of 84 -- the SAME pre-fix gap the PR itself cited. This is NOT the fix failing -- #4837 merged only ~15-20min before this check, and this repo's own established pattern (watermark-bracket fix #4808 earlier tonight, roll-history fix #4802 before that) is that a merged fix needs an ECS deploy cycle (historically 30-45min) before it's live -- a check run this soon after merge is exactly the trap CLAUDE.md's depth-ladder tooling notes warn about ('a check run seconds after a deploy proves nothing'). Will re-check AAPL's factor sum next cycle or the one after, expecting it to read 84 once the deploy completes. No new swing PRs beyond what's already tracked (#4834 is 0DTE, not swing). Markets closed, all 5 real positions unchanged.",
@@ -299,6 +299,10 @@
     {
       "topic": "GOOG/GOOGL dual-listing theme-overlap resolution + NN advisory-flip re-verification",
       "verdict": "CLEAN -- resolveTheme(GOOG)===resolveTheme(GOOGL)==='megatech' via sector-map.ts's megatech bucket, so checkPortfolioOverlap correctly treats them as the same thesis for concentration purposes, not a literal-ticker-only match. NN's manage-action flip (TAKE_PARTIAL->HOLD across one 15-min tick, no enforced trim either time) re-confirmed as the documented un-enforced edge-rung design (manage-sync.ts latchSwingLiveStatus comment + manage.ts's advisory rungs 5+), same conclusion this journal already reached earlier this session -- not re-litigated."
+    },
+    {
+      "topic": "PR #4837 (AAPL factors-vs-score drift fix) post-deploy verification -- AAPL#37",
+      "verdict": "CLEAN -- CONFIRMED DEPLOYED. Re-pulled GET /api/market/swing/play-brief?playId=SWING:AAPL:37&ticker=AAPL&positionId=37 at 06:46 UTC (asOf 2026-09-12 02:49 ET). 'Why this setup' score pillars now: Rel. strength +32.9, Structure +23.5, Regime +23.5, Catalyst +3.1, Flow +1.4 = 84.4, rounds to displayed Verdict score 84 -- matches. Prior checks at 06:16 and 06:31 UTC both still showed the stale pre-fix 75.0-vs-84 gap; this is the first check where the sum agrees, ~35-50min after merge, consistent with the documented 30-45min ECS deploy-lag window. Watch item closed."
     }
   ],
   "findings_filed_this_cycle": [
