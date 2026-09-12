@@ -171,6 +171,14 @@ export type BieAnswerEnvelope = {
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];
   /**
+   * Swing play-brief "Structure Ladder" widget (`src/lib/swing/play-brief-ladder.ts`) — a
+   * single-source price ladder of every real structural node (walls/flip/king/max-pain/dark-pool/
+   * magnet) with real per-level R:R to the actual structural stop and a cross-desk gamma-regime
+   * agreement flag. Populated ONLY by `composeSwingPlayBrief` for an OPEN/WATCH swing play; absent
+   * everywhere else (never fabricated for a product that doesn't compute these levels).
+   */
+  structureLadder?: import("@/lib/swing/play-brief-ladder").StructureLadder | null;
+  /**
    * The persisted assistant-message id for this turn, when it was stored.
    *
    * Carried so the UI can ask the server to rebuild a visual from THIS turn's own tool results

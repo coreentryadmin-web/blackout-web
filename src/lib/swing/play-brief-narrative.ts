@@ -71,9 +71,9 @@ function vectorOf(ctx: SwingPlayBriefContext): (VectorFullState & Partial<Vector
   return ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
 }
 
-type LevelKind = "dark_pool" | "put_wall" | "call_wall" | "gamma_flip" | "king" | "max_pain" | "magnet";
+export type LevelKind = "dark_pool" | "put_wall" | "call_wall" | "gamma_flip" | "king" | "max_pain" | "magnet";
 
-type FocalLevel = {
+export type FocalLevel = {
   price: number;
   kind: LevelKind;
   label: string;
@@ -81,7 +81,17 @@ type FocalLevel = {
   distancePct: number;
 };
 
-function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLevel[] {
+/**
+ * All the REAL structural nodes this brief computes for a ticker, Vector-ladder-first with the
+ * GEX-matrix fallback (same precedence as `chartLevelsSection`/`preferredGexWalls`,
+ * play-brief-intel.ts), staleness-gated identically. Exported (2026-09-12, Ask Largo standing
+ * mandate — Structure Ladder widget) so `play-brief-ladder.ts`'s rung builder can reuse this SAME
+ * resolution instead of re-deriving "which wall/flip/king wins" a third way — exactly the "two
+ * different precedence rules for one conceptual level" defect class this file's own comments
+ * elsewhere (GEX king strike, nearest wall) document as already having shipped and been fixed
+ * twice. Never call this with a different spot than the one the rest of the brief uses.
+ */
+export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLevel[] {
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
   const out: FocalLevel[] = [];

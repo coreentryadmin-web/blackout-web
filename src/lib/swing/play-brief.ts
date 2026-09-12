@@ -25,6 +25,7 @@ import {
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
+import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import { fmtPremium } from "@/lib/fmt-money";
@@ -714,6 +715,9 @@ export function composeSwingPlayBrief(
     }),
     asOf: ctx.asOf,
     session_date: ctx.sessionDate,
+    // Structure Ladder widget (Ask Largo standing mandate, 2026-09-12) — null on CLOSED plays and
+    // on any read with no live spot/structural nodes to build from; never fabricated.
+    structureLadder: buildStructureLadder(ctx, play, bucket),
   };
 
   const flow = trustedHelixFlow(ctx.ecosystem);
