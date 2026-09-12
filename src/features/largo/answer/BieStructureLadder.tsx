@@ -128,7 +128,7 @@ export function BieStructureLadder({ ladder }: { ladder: StructureLadder | null 
       <div
         className="bie-ladder-rows"
         role="img"
-        aria-label={`Structure ladder for a ${ladder.direction} setup, spot ${fmtPrice(ladder.spot)}. Levels above spot resist, levels below spot support; each level's reward-to-risk is measured against the structural stop at ${fmtPrice(ladder.stop)}.`}
+        aria-label={`Structure ladder for a ${ladder.direction} setup, spot ${fmtPrice(ladder.spot)}. Levels above spot resist, levels below spot support; each level's reward-to-risk is measured against the ${ladder.positionState === "open" ? "reference" : "structural"} stop at ${fmtPrice(ladder.stop)}.`}
       >
         {ladder.rungs.map((r, i) => (
           <div key={`${r.kind}-${r.price}`}>
@@ -140,8 +140,16 @@ export function BieStructureLadder({ ladder }: { ladder: StructureLadder | null 
       </div>
 
       <p className="bie-ladder-stop">
-        Structural stop <strong>{fmtPrice(ladder.stop)}</strong> — every R:R above is measured against
-        this level, not a fixed multiple.
+        {ladder.positionState === "open" ? "Reference stop" : "Structural stop"}{" "}
+        <strong>{fmtPrice(ladder.stop)}</strong> — every R:R above is measured against this level,
+        not a fixed multiple.
+        {ladder.positionState === "open" ? (
+          <>
+            {" "}
+            Recomputed from today&rsquo;s spot — this position&rsquo;s own committed invalidation
+            level (set at entry) may differ.
+          </>
+        ) : null}
       </p>
 
       {ladder.archetypeTrackRecord ? (
