@@ -1421,6 +1421,11 @@
       "at": "2026-09-12T22:21:58Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "GREEN. healthcheck:legacy unchanged from last cycle -- A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15, both within tolerance), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. Verified #4887 (Vector single-ticker universe append fix) and the 22:20 swings-journal commit are both out of Legacy scope (different journal file / different lane) before dismissing. Improvement-hunting pass: read grounding.ts end-to-end (numeric-grounding enforcement -- strike/premium/flow/levels/price-target/prose checks). Confirmed its dossier.flows premium read (line 325-328, same f.total_premium??f.premium pattern already audited in #4865's finding doc) is correct for that data source. Traced benzinga_price_target through dossier.ts -- it's a mapped BenzingaPriceTarget type via fetchBenzingaPriceTarget, not a raw passthrough, so no field-name risk there. No new bug found this cycle."
+    },
+    {
+      "at": "2026-09-12T22:37:25Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "GREEN, unchanged from last two cycles -- A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. Identical marks across 3 consecutive cycles (22:08/22:21/22:37) is expected, not stale: 22:37 UTC = 18:37 ET, market closed (after 16:00 ET close) so no new option prints to move the mark. 22:33 UTC commit (GOOGL WATCH brief) confirmed out of scope -- Swings lane. Outcome-honesty forensics pass: read play-outcomes.ts's resolveOutcome() end-to-end -- fillability check (session must trade back into the published entry range or grade 'unfilled', excluded from win/loss), stop_data_unavailable flagging when only close data exists, and the both-hit ambiguous tiebreaker (distance-from-open heuristic, ties default to conservative 'stop') are all already correctly implemented with documented rationale from prior audits. No new bug found this cycle."
     }
   ],
   "knownOpenItems": {
