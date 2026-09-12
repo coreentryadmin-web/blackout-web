@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T09:37:13.456Z",
+  "lastUpdated": "2026-09-12T09:53:17.169Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1156,6 +1156,11 @@
       "at": "2026-09-12T09:37:13.456Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle -- all four stages stable. PR #4847 (institutional units_changed dead-code fix) confirmed merged (sha 207a41a92) -- re-verified against origin/main: both scorer.ts's institutionalNetSignal and deterministic-edition.ts's smartMoneyDriverNote now read row.units_changed as first-checked fallback, live in source. Session auto-unsubscribed on merge. This closes out the third and (for now) final scoring bug found and fixed this session: OI-change alignment (#4839), congress-decay date (#4844), institutional units_changed (#4847) -- all the same root-cause class, all confirmed via direct live UW API pulls before touching code, all shipped through the full RED->GREEN + tsc + full-suite + findings-staging + PR pipeline."
+    },
+    {
+      "at": "2026-09-12T09:53:17.169Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle -- all four stages stable (HPE/DELL marks unchanged, resolved=26). Spent part of this cycle systematically checking the remaining Record<string, unknown>[] dossier fields feeding the scorer (the exact type shape that hid all three bugs found this session -- oi_change/congress_unusual/congress_trades/institutional_activity) for the same class of issue: fda_events is presence-only (dossierExtras.fda_events.length > 0, no field-name access at all -- safe by construction); flows is the most heavily-audited path in this codebase already (many prior PRs hardened direction/ask_side_pct/premium logic per CLAUDE.md history), lower marginal probability of an undiscovered bug there. predictions_signal is NOT raw-shaped -- it's parsed into a real typed interface (PredictionConsensusSignal) by parsePredictionRow in unusual-whales.ts before ever reaching the scorer, so field-name guessing isn't possible there (compiler-checked). No new finding this pass. 2 clean cycles since #4847 merged."
     }
   ],
   "knownOpenItems": {
