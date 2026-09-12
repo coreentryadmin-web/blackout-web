@@ -3,7 +3,7 @@
  * Surfaces chart technicals, flow, GEX nodes, catalysts, watch levels, and hold plan.
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
-import { fmtPremium } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
@@ -43,10 +43,9 @@ function fmtPct(n: number | null | undefined, digits = 1): string {
   return `${sign}${n.toFixed(digits)}%`;
 }
 
-function fmtUsd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `$${n.toFixed(2)}`;
-}
+// Absolute per-contract/level PRICE formatting is `fmtUsd` (aliased from @/lib/fmt-money's
+// `fmtOptionUsd` above) — see that module for the rounding-consistency history this file's own
+// local copy needed fixing for (2026-09-12).
 
 function fmtDist(spot: number, level: number): string {
   const pct = ((level - spot) / spot) * 100;

@@ -19,7 +19,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
-import { fmtPremium } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPremium } from "@/lib/fmt-money";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
@@ -37,26 +37,11 @@ function fmtFlowUsd(n: number): string {
   return fmtPremium(n);
 }
 
-/** For a PER-CONTRACT option premium (live mark, stop/target rails) — these are typically
- *  single/low-double-digit dollars where cents are the difference between a stop and a hold.
- *  `fmtUsd`'s whole-dollar rounding was reused here for a while and it produced literal
- *  contradictions within one brief: the Position section's precise "Mark: +$9.70" (2-decimal,
- *  from play-brief.ts's own fmtUsd) sat beside this file's "Break watch — lose premium stop $2"
- *  and "Live read — mark $10" (both rounded from $1.96 / $9.70) — same underlying number,
- *  two different values on the same page. Matches play-brief.ts's fmtUsd exactly on purpose so
- *  the whole brief renders one number for one fact.
- *
- *  BUG FIXED 2026-09-09 (blast radius of the play-brief.ts fmtUsd fix, same session/PR): every
- *  call site here — live mark, the railsFallback stop/target, and the break-watch stop_premium —
- *  is the same ABSOLUTE per-contract PRICE class play-brief.ts's fmtUsd was fixed for (never a
- *  signed delta), so this file's copy carried the exact same "+" defect play-brief.ts just had
- *  removed. Left unfixed, it would have made the fix WORSE: the Position section would read the
- *  correct sign-free "$1.95" while this file's Trade manager narrative kept "+$1.95" for the
- *  identical field in the same document — a fresh cross-section contradiction of the same kind
- *  the doc comment above already warns about. */
-function fmtOptionUsd(n: number): string {
-  return `$${n.toFixed(2)}`;
-}
+// PER-CONTRACT option premium (live mark, stop/target rails) formatting is `fmtOptionUsd`,
+// imported from @/lib/fmt-money above — see that module for the rounding-consistency history
+// (this file previously carried its own byte-identical copy, first for a "+" sign defect fixed
+// 2026-09-09, then for a roundFloats-vs-toFixed rounding mismatch fixed 2026-09-12; both are now
+// fixed once, centrally, rather than re-patched in every file that copied this function).
 
 function fmtPct(n: number, digits = 1): string {
   const sign = n > 0 ? "+" : "";

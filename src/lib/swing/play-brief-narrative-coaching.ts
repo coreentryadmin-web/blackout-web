@@ -13,7 +13,7 @@ import {
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { fmtPremium } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -24,15 +24,13 @@ function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
-/** Absolute per-contract premium PRICE (stop/target rails) — never a signed delta, so no "+"/"-"
- *  prefix. BUG FIXED 2026-09-09: this carried the same sign defect just fixed in play-brief.ts's
- *  own fmtUsd and play-brief-narrative.ts's fmtOptionUsd (same root cause, third file — a
- *  signed-delta formatter reused for an absolute price) — `progressRatchetCoaching`'s only call
- *  site here renders `ep.stop_premium`/`ep.target_premium`, the identical absolute-price fields,
- *  so it inherited the identical "+$1.50" mislabel on a stop-loss trigger price. */
-function fmtUsd(n: number): string {
-  return `$${n.toFixed(2)}`;
-}
+// Absolute per-contract premium PRICE formatting (stop/target rails: `progressRatchetCoaching`'s
+// `ep.stop_premium`/`ep.target_premium`) is `fmtUsd` (aliased from @/lib/fmt-money's
+// `fmtOptionUsd` above) — see that module for why this file no longer keeps its own copy: it
+// previously carried the same sign defect fixed 2026-09-09 (this was the third file with an
+// identical copy of that bug), then the same roundFloats-vs-toFixed rounding mismatch fixed
+// 2026-09-12, each time re-patched here in lockstep with play-brief.ts purely because the two
+// were kept as separate copies of the same function.
 
 function fmtPct(n: number, digits = 1): string {
   const sign = n > 0 ? "+" : "";
