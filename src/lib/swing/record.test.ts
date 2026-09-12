@@ -7,6 +7,7 @@ import {
   LOW_N_THRESHOLD,
   type SwingLegRowLike,
 } from "./record.ts";
+import { roundFloats } from "../round-floats.ts";
 
 let idSeq = 1;
 function leg(overrides: Partial<SwingLegRowLike> = {}): SwingLegRowLike {
@@ -158,6 +159,56 @@ test("buildSwingRecordSummary: no breakeven legs → breakevens is 0, not omitte
   );
   assert.equal(summary.breakevens, 0);
   assert.equal(summary.losses, 1);
+});
+
+// ─── Live-caught 2026-09-12: summary.breakevens must agree with what the API actually SERVES ───────
+// route.ts wraps the whole response (summary + records) in roundFloats(..., 2) before it goes over
+// the wire. Before the fix, `worstLegPnlPct` was carried at FULL float precision inside
+// buildSwingRecord, and buildSwingRecordSummary's `breakevens` count tested that RAW value for an
+// exact 0 — but the client never sees the raw value, only the roundFloats(2)'d one. A tiny genuine
+// non-zero leg P&L (e.g. -0.001%, well within real float noise from a mark-freeze
+// (mark-entry)/entry*100 computation) is NOT exactly 0 (so summary correctly excluded it from
+// breakevens) but rounds to a displayed "0" (JSON.stringify(-0) is even literally "0") — so a
+// member/Largo reading the payload could count MORE records showing worstLegPnlPct:0 than
+// summary.breakevens reports. This reproduces the live discrepancy found on
+// /api/market/swing/record 2026-09-12 (summary said breakevens:3, but 5 of 21 served records
+// displayed worstLegPnlPct:0). The fix rounds worstLegPnlPct to 2dp AT SOURCE (in buildSwingRecord),
+// so summary's exact-0 test and the served display always agree — a value that rounds to 0.00% is
+// now consistently treated as a breakeven in BOTH the summary count and the served record.
+test("served (post-roundFloats) worstLegPnlPct never shows 0 for a chain summary.breakevens excludes", () => {
+  // Sub-cent noise (-0.001%) rounds to a served 0.00% — after the fix it is CONSISTENTLY treated as
+  // a breakeven in both summary.breakevens and the served worstLegPnlPct (both use the same 2dp
+  // value), unlike before the fix where summary saw the raw -0.001 (not a breakeven) while the
+  // served, rounded record showed 0 (looked exactly like one).
+  const subCentLossChain = buildSwingRecord([leg({ realized_pnl_pct: -0.001 })]);
+  // A real, cent-scale loss must still NOT be miscounted as a breakeven or displayed as 0.
+  const realLossChain = buildSwingRecord([leg({ realized_pnl_pct: -0.03 })]);
+
+  const summary = buildSwingRecordSummary([subCentLossChain, realLossChain], {
+    since: "2026-08-10",
+    through: "2026-09-09",
+    days: 30,
+  });
+  assert.equal(summary.losses, 2);
+  assert.equal(summary.breakevens, 1); // only the sub-cent chain rounds to a served 0
+
+  // Simulate the API boundary: same records + summary, wrapped in roundFloats(2) like route.ts does.
+  const served = roundFloats({ summary, records: [subCentLossChain, realLossChain] });
+
+  // The general-purpose regression guard: for EVERY served record, "worstLegPnlPct displays as 0"
+  // must imply "summary.breakevens counted it" (the two views can never disagree on this point) —
+  // this is the invariant that was broken live before the fix.
+  const servedZeroCount = served.records.filter(
+    (r: { composite: { outcome: string; worstLegPnlPct: number | null } }) =>
+      r.composite.outcome === "loss" && r.composite.worstLegPnlPct === 0,
+  ).length;
+  assert.equal(
+    servedZeroCount,
+    served.summary.breakevens,
+    "the number of SERVED records displaying worstLegPnlPct:0 must equal summary.breakevens exactly",
+  );
+  // And the real loss must never be swallowed into looking like a breakeven.
+  assert.notEqual(served.records[1].composite.worstLegPnlPct, 0);
 });
 
 test("buildSwingRecordSummary: methodology text documents that a 0% leg counts as a loss in this view", () => {

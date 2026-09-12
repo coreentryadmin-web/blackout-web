@@ -150,7 +150,18 @@ export function buildSwingRecord(chain: SwingLegRowLike[]): SwingRecord {
   const allLegsWon = gradedLegs.length > 0 && gradedLegs.every((l) => l.win);
 
   const pnls = gradedLegs.map((l) => l.realizedPnlPct!).filter(finite);
-  const worstLegPnlPct = pnls.length ? Math.min(...pnls) : null;
+  // FIX: round2'd, unlike a plain Math.min, so this matches what roundFloats() serves to the
+  // client at the API boundary (route.ts wraps the whole response in roundFloats(..., 2)). Before
+  // this fix, worstLegPnlPct was carried at full float precision while buildSwingRecordSummary's
+  // `breakevens` count (below) tested that RAW value for an exact 0. A tiny genuine non-zero P&L
+  // (e.g. -0.001%) rounds to a displayed "0" in the served `records[].composite.worstLegPnlPct" —
+  // JSON.stringify(-0) is even literally "0" — so a member/Largo reading the payload could count
+  // MORE records showing worstLegPnlPct:0 than summary.breakevens reports, a real self-contradiction
+  // within one response. Live-caught 2026-09-12: summary said breakevens:3, but 5 of 21 served
+  // records showed worstLegPnlPct:0. Rounding here first makes the exact-0 test (and every
+  // consumer of this field) agree with the number actually shown — roundFloats() at the API
+  // boundary is then a no-op on an already-2dp value, so this is the single point of truth.
+  const worstLegPnlPct = pnls.length ? round2(Math.min(...pnls)) : null;
   const sumPnlPct = pnls.length ? round2(pnls.reduce((a, b) => a + b, 0)) : null;
   // Compounded capital return — the honest money number. Deliberately SEPARATE from the outcome label:
   // it can be positive while the chain contains a real loss, and it is never allowed to relabel it.
