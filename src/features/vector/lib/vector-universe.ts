@@ -340,6 +340,28 @@ export async function buildVectorUniverseSnapshot(
     if (r.status === "fulfilled" && r.value) rows.push(r.value.row);
   }
 
+  // Retry pass for rows whose spot didn't resolve on the first attempt (2026-09-12 audit
+  // finding). `isCompleteBuild`'s own bar only asks whether every ticker produced A row
+  // (attempted === produced) — it says nothing about whether that row's PRICE resolved, and a
+  // "complete" build can still be a majority-null one. Live-measured off-hours (cold caches):
+  // GET /api/market/vector/universe served spot:null for 35 of 64 rows — every one of them a
+  // STATIC allowlist name (`HEATMAP_EXTRA_LIQUID_TICKERS`: GOOG, BAC, GS, INTC, ORCL, TSM, UNH, V,
+  // COIN, ...) that is not one of the ~11 UI preset chips, so none of them get direct member-view
+  // traffic to keep their `fetchGexHeatmap` cache warm between cron ticks — while every preset
+  // chip (SPY/QQQ/NVDA/TSLA/AAPL/...) resolved fine. A solo `GET /api/market/gex-heatmap` for
+  // several of the null names (GOOG/BAC/COIN) reproduced the same `available:false` on a first,
+  // uncontended call, then resolved with a real, current spot on a retry ~2-4s later — the build
+  // that missed `fetchGexHeatmap`'s own live-request-tuned 3s block cap (`gexHeatmapMaxBlockMs`)
+  // keeps running in the background (`heatmapInflight` is a shared, not-cancelled promise) and
+  // finishes shortly after. This build has no such latency constraint (fire-and-forget cron with
+  // a 180s route budget, or an inline scanner-poll rebuild nobody is holding a request open for),
+  // so re-attempting just the null rows costs nothing on the common path (by the time the WHOLE
+  // first pass across the universe has run, the earlier ticker's own background build has very
+  // likely already finished and warmed the cache — this retry is then a cheap cache read, not a
+  // second cold build) and self-heals the majority of these without touching the shared,
+  // widely-used `fetchGexHeatmap`/`gexHeatmapMaxBlockMs` block-cap tuning at all.
+  await retryNullSpotRows(rows, nowSec);
+
   rows.sort((a, b) => a.ticker.localeCompare(b.ticker));
   // Carry the COMPLETENESS of the fan-out, not just its survivors. Without this the caller cannot
   // tell "the universe is 4 tickers" from "17 of 21 lookups failed" — and it used to persist the
@@ -349,6 +371,37 @@ export async function buildVectorUniverseSnapshot(
     attempted: tickers.length,
     produced: rows.length,
   };
+}
+
+/**
+ * Re-attempt, bounded and in place, every row whose spot came back null on the first pass — see
+ * the call site's comment for the full incident this exists to fix. Deliberately does NOT pass
+ * `recordWallHistory` (never re-records a bead-rail sample here): this only refreshes the row's
+ * displayed price fields, and re-recording risks a duplicate/out-of-bucket wall-history write for
+ * a tick already attempted once. A ticker that is genuinely, permanently unresolvable (no real
+ * chain — the `NOSPOT`-shaped case) simply retries to another null and is left as first-built;
+ * only a row that ACTUALLY resolves this time replaces the original.
+ */
+async function retryNullSpotRows(rows: VectorUniverseRow[], nowSec: number): Promise<void> {
+  const pending = rows
+    .map((row, index) => ({ ticker: row.ticker, index }))
+    .filter(({ index }) => rows[index].spot == null);
+  if (pending.length === 0) return;
+
+  const retried = await runPolygonPool(
+    pending.map(({ ticker }) => async () => {
+      try {
+        const built = await buildVectorUniverseRow(ticker, { recordWallHistory: false, nowSec });
+        return built?.row ?? null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  retried.forEach((row, i) => {
+    if (row && row.spot != null) rows[pending[i].index] = row;
+  });
 }
 
 const appendInFlight = new Map<string, Promise<void>>();
