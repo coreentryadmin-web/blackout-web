@@ -169,6 +169,25 @@ conclude "done" — keep the coordinator loop running indefinitely, cycle after 
 "nothing found this cycle" as a report on this cycle only, never as a reason to stop scheduling the
 next one.
 
+**RECONFIRMED LIVE, 2026-09-12, directly to the coordinator session, immediately after a Night Hawk
+merge-queue drain — the operator's own words:** *"Once done on Night Hawk .. can you look through
+the entire website and see if you can improve, enhance.. find bugs .. like constantly.. running
+24/7 untill I tell you to stop .. literally checking everything on the entire website .. every
+page, every panel, UI, data, field .. and keep improving our website and platform .. Like keep
+working non stop .. it could be anything.. just dont stop .. Bring in your ideas, and go for it.."*
+This is NOT a new mandate — it is this exact section, reconfirmed verbatim, with two things worth
+naming explicitly because the operator said them again in almost the same breath as finishing a
+different piece of work (Night Hawk): (1) "once done on Night Hawk" does not mean Night Hawk itself
+stops being swept — it has its OWN standing mandate above (Ask Largo × Night Hawk Swings) that is
+independently permanent; this line only means "in addition to, not instead of." (2) "bring in your
+ideas, and go for it" is explicit standing authorization to originate product-enhancement ideas
+unprompted, not just fix defects found by an audit script — the "Product enhancement" bullet above
+already covers this, but the operator is underlining that originating ideas is wanted, not merely
+tolerated. A future session reading only this reconfirmation (without the fuller text above) should
+still land on the same behavior: sweep the WHOLE site — every page, panel, UI, data field, not just
+the desks with a dedicated OWNER lane — continuously, forever, through the same fix pipeline
+(branch → fix + test → staged finding → PR → merge), never treating a clean cycle as a stop signal.
+
 ## NEVER SIT IDLE WHILE WAITING (standing instruction, confirmed 2026-08-28)
 **Waiting on a PR — your own or a lane's — is not a stopping point.** CI pending, a review
 requested from Cursor, another PR's merge, a lane's response: none of these block you from other
