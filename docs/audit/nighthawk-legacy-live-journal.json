@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T08:22:23.124Z",
+  "lastUpdated": "2026-09-12T08:37:52.230Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1131,6 +1131,11 @@
       "at": "2026-09-12T08:22:23.125Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. PR #4844 (congress decay filed_at_date fix, opened last cycle) still draft -- CI in_progress (~5min in), CodeQL already success, no failures, no review comments yet. Nothing actionable; will re-check next cycle. Noted PR #4841/#4842 from the Swings lane merged and verified on main -- out of Legacy's scope."
+    },
+    {
+      "at": "2026-09-12T08:37:52.230Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. PR #4844: a parallel session merged origin/main into the branch (resolving a real conflict on the shared MARKET-OPEN-VALIDATION.md prepend-at-top pattern -- another lane's entry landed above mine on main in the meantime). Verified the resolution on the new head (90e7c5044): my filed_at_date fix intact in scorer.ts, both my entry and the swing lane's lane-rank-leader entry present and uncorrupted in MARKET-OPEN-VALIDATION.md, nothing dropped or garbled. CI/CodeQL re-running on the new head sha, in_progress. Will check completion next cycle before undrafting/merging."
     }
   ],
   "knownOpenItems": {

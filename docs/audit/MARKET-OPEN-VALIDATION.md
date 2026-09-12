@@ -1,3 +1,29 @@
+## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: congressional-trade decay measured the wrong date (read this before the routine pass)
+
+### `congressTradeDecayMultiplier` now decays on the real UW `filed_at_date`, not stale `transaction_date` — fix/nighthawk-congress-decay-filed-date-field
+
+**What was broken:** `congressTradeDecayMultiplier` (`scorer.ts`, shared smart-money scoring for
+Legacy's overnight digest and edition-builder) claims to weight congressional trades by disclosure
+recency, but its field fallback chain never checked `filed_at_date` -- the real field UW's
+`/api/congress/recent-trades` uses for the filing/disclosure date (confirmed via a live pull; see
+`docs/audit/findings-staging/2026-09-12-nighthawk-congress-decay-filed-date.md`). It always fell
+through to `transaction_date`, silently measuring trade age instead of disclosure age -- a real,
+live scoring error (a live DASH row: 15 days old by transaction date = 0.4x decay, vs 1 day old by
+actual filing date = 1.0x decay).
+
+**Fix:** added `filed_at_date` as the first-checked field. Purely additive/corrective to
+`smart_money_score` -- congressional evidence that was wrongly discounted for staleness can now
+score at its true (often higher) weight; nothing that previously scored will score lower, since the
+old wrong date only ever under- or equally-weighted a row relative to using the real filing date.
+
+**Check at the open:** pull a fresh `GET /api/market/nighthawk/edition` play whose `key_signal`
+names "smart-money" and, if `smartMoneyDriverNote` (#4827) names a congressional signal, spot-check
+that ticker's `smart_money_score` looks reasonably weighted for how recently the disclosure (not
+necessarily the trade) actually happened -- e.g. a disclosure filed within the last week should
+not read as scoring at the 0.4x "old" tier just because the underlying transaction happened weeks
+earlier. This is a scoring-input fix, not a new UI field, so the confirmation is a sane, in-range
+`smart_money_score`/`key_signal`, same as every other cycle's healthcheck already verifies.
+
 ## WATCH LIST — 2026-09-12 Ask Largo lane-rank leader on an invalidated WATCH thesis (read this before the routine pass)
 
 ### "Lane leader"/"Top-ranked play" self-praise could fire on a WATCH setup whose own thesis already broke — fix/swing-lane-rank-invalidated-leader
@@ -4170,7 +4196,13 @@ than an end-of-session patch.
 - **What changed:** `persistZeroDteScan` now pins a `qualification_dislocation_telemetry` blob (`qualification_underlying_price(_as_of)`, `current_underlying_price(_as_of)`, `elapsed_ms`, `move_pct`) onto `entry_context` for EVERY committed row, computed with the exact same formula the gate itself uses — deliberately recomputed rather than read off the gate verdict so the telemetry can never disagree with what actually decided a block. Omitted (never zero-filled) when either snapshot is missing. No gate/scoring/behavior change — purely additive observability.
 - **RTH check:** No live board/member-facing behavior changed, so nothing to visually re-verify. The actual follow-up: once 1-2 weeks of live commits have accumulated this field, pull `GET /api/market/zerodte/record` and build the real qualify-to-commit elapsed/move-pct distribution before considering any premium-side (contract mark) dislocation check or threshold retune — the next `NEEDS_MEASUREMENT` step this telemetry exists to unblock.
 
-### 137. Ask Largo swing play-brief's "Data freshness" section narrated live desk staleness on CLOSED (historical) positions — fix/swing-play-brief-closed-freshness-staleness — 2026-09-12
+### 137. Legacy morning-confirm-promoted Swing plays showed "score pillars" that never summed to their own score — fix/swing-legacy-promote-factors-score-mismatch — 2026-09-12
+
+- **What was broken (5-engine live monitor + Ask Largo deep-dive, live `GET /api/market/nighthawk/horizons?view=swings`):** `buildLegacySwingArtifacts` (`legacy-confirm-promote.ts`) set a Legacy-morning-confirm-promoted play's `score` to Legacy's own published edition conviction score, but its `factors` (rendered as "Score pillars" in the command deck and Ask Largo's "Why this setup" section) came from a freshly re-run swing dossier's own INDEPENDENT synthetic pillar score — two different scoring runs paired as one breakdown. Live repro, all three real Legacy-promoted rows in the same snapshot: MRVL score 81 vs factors summing to 74.7, IREN score 61 vs 75.8 (factors LARGER than score), SKHY (WATCH) score 59 vs 26.6. Confirmed live in the actual Ask Largo play-brief too (`GET /api/market/swing/play-brief?playId=SWING:MRVL...`): the "Why this setup" section literally printed "Score pillars" summing to 74.7 directly under a "Grade A+ · score 81" verdict line. Fourth occurrence of the same bug class (#4826's Banger/Vector-lane fixes; finding #130 above's live-position drift fix).
+- **What changed:** `factors` for a Legacy-promoted play is now a single honest entry, `[{ label: "Night Hawk edition score", points: swingPlay.score }]`, instead of the borrowed dossier decomposition — sums to the displayed score by construction, since Legacy's edition score is the one real signal this promotion path actually has (there is no honest way to sub-decompose a score computed entirely inside the separate Legacy pipeline). `archetype`/`regime`/`thesisLevel`/etc. are unaffected.
+- **RTH check:** Once a Legacy-morning-confirm-promoted Swing row is live during RTH (`reason` field carries "Legacy morning confirm"), open its Ask Largo play-brief "Why this setup" section and the command deck's "Why this play was picked" panel and confirm the single "Night Hawk edition score" factor now equals exactly the score shown in the Verdict line above it.
+
+### 138. Ask Largo swing play-brief's "Data freshness" section narrated live desk staleness on CLOSED (historical) positions — fix/swing-play-brief-closed-freshness-staleness — 2026-09-12
 
 - **What was broken (Ask Largo deep-dive, live `GET /api/market/swing/play-brief` on a real CLOSED position):** `play-brief-absence.ts`'s `collectBriefUnavailableSources` already gates HELIX/GEX/Vector/discovery-scan staleness behind `status !== "CLOSED"` — its own comment explains why: those all measure whether TODAY's live desk state is current, which is meaningless once a play is a historical record, and left ungated they "fire forever" once any time has passed since close. But `play-brief-intel.ts`'s `dataFreshnessSection` (the narrative "Data freshness" section body, a separate code path from that structured `unavailableSources` array) never got the same gate. Live repro: INTC's CLOSED play-brief (`playId=SWING:INTC`, closed 2026-09-04, read 2026-09-11 — a full week later) still rendered "Swing scan: prior session 2026-09-11 — today's discovery not yet run" and "HELIX flow: pipeline stale — tape read may lag" in its "Data freshness" section, both claims about "today" on a trade that had been closed for a week.
 - **What changed:** `dataFreshnessSection` now skips the scan/Vector-data-age/GEX-matrix-age/HELIX-pipeline-stale lines entirely when `play.status` is `CLOSED` — mirroring the exact gate and rationale already established in `collectBriefUnavailableSources`. The option-mark lines are untouched (already correctly scoped to OPEN/HOLD/TRIM via `playExpectsLiveOptionMark`, and a bare historical `markAsOf` timestamp is a fact, not a staleness claim). A CLOSED play with none of these lines now renders no "Data freshness" section at all, same as before this fix for a CLOSED play with no markAsOf.
