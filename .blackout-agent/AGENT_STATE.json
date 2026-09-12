@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-12T03:05:25.082Z",
+  "updated_at": "2026-09-12T04:05:16.127Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,39 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9fb98a35a1528fe4a00db3447a91f02b6f4b2439",
+    "last_main_sha": "3db7a00ad294eb2605f71a84312fa5bd0efb2342",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-06T09:43:08.803Z",
-      "type": "pr_webhook",
-      "pr": 4188,
-      "event": "sweep",
-      "head": "656b59005d206131a85ea51a1f2a2765d767a1ef",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-06T09:43:11.445Z",
-      "type": "pr_webhook",
-      "pr": 4187,
-      "event": "sweep",
-      "head": "86aff8fc854866dd11db13747eaa55594afc99ff",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-06T09:49:44.183Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-09-06T09:49:44.184Z",
       "type": "handoff",
@@ -1288,6 +1262,24 @@
     },
     {
       "at": "2026-09-12T03:05:25.082Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-12T04:05:15.349Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-12T04:05:15.882Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-12T04:05:16.127Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
