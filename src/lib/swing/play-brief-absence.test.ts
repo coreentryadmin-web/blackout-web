@@ -316,6 +316,36 @@ test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal 
   assert.ok(sources.some((s) => s.source === "open book" && s.reason === "ledger read failed"));
 });
 
+test("collectBriefUnavailableSources: every swing-populated source carries Largo C3's retryable + what_is_missing (not just reason prose)", () => {
+  // Regression for a genuine C3 gap: the shared BieUnavailableSource shape optionally supports
+  // `what_is_missing`/`retryable` (see answer-envelope.ts), but every one of this file's own
+  // push sites previously set ONLY `{source, reason}` — a model reading unavailableSources had to
+  // guess whether asking again later was worth it, exactly what C3 says must never be guessed.
+  // This asserts a representative retryable-true (transient) and retryable-false (structural) case
+  // both now carry the full shape, so this class of gap cannot silently return.
+  const ctx = {
+    ecosystem: { flow_feed_fresh: false },
+    openBook: null,
+    play: {
+      status: "OPEN",
+      thesisHealth: { uncalibrated: true },
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+
+  const helix = sources.find((s) => s.source === "HELIX flow");
+  assert.ok(helix, "HELIX flow absence should be present");
+  assert.equal(typeof helix!.what_is_missing, "string");
+  assert.ok(helix!.what_is_missing!.length > 0);
+  assert.equal(helix!.retryable, true); // a stale pipeline tick resolves on its own next tick
+
+  const openBook = sources.find((s) => s.source === "open book");
+  assert.ok(openBook, "open book absence should be present");
+  assert.equal(typeof openBook!.what_is_missing, "string");
+  assert.equal(openBook!.retryable, true); // a failed ledger read is a transient fetch failure
+});
+
 test("collectBriefUnavailableSources: Meridian timeline failure surfaces in envelope", () => {
   const ctx = {
     meridian: {
