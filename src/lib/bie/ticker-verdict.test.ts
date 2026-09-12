@@ -2,15 +2,28 @@ import { before, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { EcosystemContext, EcosystemArsenal } from "@/lib/bie/ecosystem-context";
 
-// findSimilarPrecedents pulls @/lib/db + ./knowledge (embeddings) — irrelevant to this file's concern
-// (does the verdict CITE ctx.arsenal). Mock it to [] so the test stays hermetic and precedentLine is
-// simply absent. Registered before the dynamic import below, same ordering pattern the other BIE
-// terminal tests use.
+// findSimilarPrecedents pulls @/lib/db + ./knowledge (embeddings) — irrelevant to most of this
+// file's concern (does the verdict CITE ctx.arsenal). Mutable so the PRECEDENT-tally tests below
+// can vary the corpus per test while every other test keeps the [] default (precedentLine simply
+// absent) — same mutable-mock pattern cortex-read.test.ts uses. Registered before the dynamic
+// import below, same ordering pattern the other BIE terminal tests use.
+let mockPrecedents: { source: string; kind: string; chunk: string; similarity: number }[] = [];
 mock.module("./precedent-search", {
   namedExports: {
-    findSimilarPrecedents: async () => [],
+    findSimilarPrecedents: async () => mockPrecedents,
   },
 });
+
+/** Builds a fake precedent chunk with the exact `describeAuditRow()`-shaped trailer the real
+ *  parser (`parsePrecedentOutcome`, spx-signals-shadow-precedents.ts) reads. */
+function precedent(outcome: "target" | "stop" | "ambiguous" | "unfilled"): {
+  source: string;
+  kind: string;
+  chunk: string;
+  similarity: number;
+} {
+  return { source: "alert_audit:1", kind: "precedent", chunk: `Night Hawk alert on NVDA, long. Outcome: ${outcome}.`, similarity: 0.9 };
+}
 
 let synthesizeTickerVerdict: typeof import("./ticker-verdict").synthesizeTickerVerdict;
 let formatTickerVerdictMarkdown: typeof import("./ticker-verdict").formatTickerVerdictMarkdown;
@@ -165,4 +178,48 @@ test("low (non-elevated) days-to-cover is stated as CONTEXT, not flagged as sque
   );
   assert.match(out, /CONTEXT  days-to-cover 1\.3\./);
   assert.doesNotMatch(out, /squeeze fuel/);
+});
+
+// PRECEDENT tally: "ambiguous"/"unfilled" outcomes are real corpus hits but are NOT
+// directionally informative (the alert never hit a profit target OR a stop) — they must be
+// excluded from both the numerator and denominator, exactly like the ONLY other consumer of
+// this same alert_audit_log precedent corpus (spx-signals-shadow-precedents.ts's
+// computePrecedentShadowFactor) already does. The prior implementation counted every returned
+// precedent in the denominator while only a literal "target" outcome could ever match its win
+// regex, silently deflating (or, as below, completely inverting the sign of) the printed
+// percentage whenever a thin/unresolved precedent was mixed in.
+test("PRECEDENT excludes ambiguous/unfilled outcomes from the win-rate tally, not just from wins", async () => {
+  mockPrecedents = [precedent("target"), precedent("target"), precedent("unfilled"), precedent("unfilled")];
+  try {
+    const out = await md(ctx({ ticker: "NVDA" }), "NVDA verdict");
+    // Old (buggy) behavior: wins=2, denominator=4 → "~50% positive outcomes" — reads as a coin-flip
+    // precedent set even though BOTH cleanly-resolved precedents were clean wins. Correct behavior:
+    // 2 targets of 2 cleanly-resolved (the 2 unfilled excluded from both sides) → 100%.
+    assert.match(out, /PRECEDENT {2}2 similar NVDA setups cleanly resolved in corpus — ~100% hit target/);
+  } finally {
+    mockPrecedents = [];
+  }
+});
+
+test("PRECEDENT is omitted (not a fabricated 0%) when fewer than 2 precedents cleanly resolved target/stop", async () => {
+  mockPrecedents = [precedent("target"), precedent("ambiguous"), precedent("unfilled")];
+  try {
+    const out = await md(ctx({ ticker: "NVDA" }), "NVDA verdict");
+    // Only 1 of the 3 returned precedents is directionally informative — below the usable-evidence
+    // floor, so the line must not render at all (never a fabricated/thin percentage).
+    assert.doesNotMatch(out, /PRECEDENT/);
+  } finally {
+    mockPrecedents = [];
+  }
+});
+
+test("PRECEDENT tallies stop outcomes against target, ignoring ambiguous noise mixed in", async () => {
+  mockPrecedents = [precedent("target"), precedent("stop"), precedent("stop"), precedent("ambiguous")];
+  try {
+    const out = await md(ctx({ ticker: "NVDA" }), "NVDA verdict");
+    // 1 target + 2 stop = 3 cleanly resolved (ambiguous excluded) → 1/3 ≈ 33% hit target.
+    assert.match(out, /PRECEDENT {2}3 similar NVDA setups cleanly resolved in corpus — ~33% hit target/);
+  } finally {
+    mockPrecedents = [];
+  }
 });
