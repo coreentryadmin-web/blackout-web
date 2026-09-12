@@ -82,6 +82,19 @@ test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is
   assert.equal(bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book), null);
 });
 
+// FINDINGS 2026-09-12 (live repro, closed AAPL positionId 36): this section's copy is written for a
+// PENDING entry decision ("Adding {ticker} stacks the same wager...") — wrong frame for a position
+// that has already closed and has no forward decision left, even when the CURRENT book happens to
+// overlap the ticker/theme (e.g. a later, unrelated re-entry).
+test("bookContextSection: null for a CLOSED play even when the current book overlaps", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "AMD", direction: "LONG" },
+    { ticker: "SMH", direction: "LONG" },
+  ];
+  const closedPlay = fixturePlay({ ticker: "NVDA", direction: "LONG", status: "CLOSED" });
+  assert.equal(bookContextSection(closedPlay, book), null);
+});
+
 test("bookContextSection: reviewing the second of two independent same-ticker rows does not flag self", () => {
   const book: PortfolioPosition[] = [
     { ticker: "EWZ", direction: "LONG", positionId: 29 },
