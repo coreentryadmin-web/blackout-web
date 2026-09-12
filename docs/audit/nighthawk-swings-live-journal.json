@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-12T07:46:00Z",
+  "last_updated": "2026-09-12T08:01:00Z",
   "notes": [
     "06:31 UTC cycle -- re-checked PR #4837 on AAPL#37: STILL unchanged, factors still sum to 75.0 vs score 84, identical to the 06:16 check 15min ago. ~35-40min since merge now -- at the outer edge of this repo's typical 30-45min deploy window, not yet concerning but worth watching closely next cycle rather than assuming it'll just resolve. No new swing PRs this cycle (#4836 GEX perf, #4838 CLAUDE.md docs update, both non-swing). Markets closed, all 5 real positions unchanged.",
     "06:16 UTC cycle -- checked PR #4837's fix live on AAPL#37: factors still sum to 75.0 (29.5+21.1+14+6.3+2.8+1.3) against a displayed score of 84 -- the SAME pre-fix gap the PR itself cited. This is NOT the fix failing -- #4837 merged only ~15-20min before this check, and this repo's own established pattern (watermark-bracket fix #4808 earlier tonight, roll-history fix #4802 before that) is that a merged fix needs an ECS deploy cycle (historically 30-45min) before it's live -- a check run this soon after merge is exactly the trap CLAUDE.md's depth-ladder tooling notes warn about ('a check run seconds after a deploy proves nothing'). Will re-check AAPL's factor sum next cycle or the one after, expecting it to read 84 once the deploy completes. No new swing PRs beyond what's already tracked (#4834 is 0DTE, not swing). Markets closed, all 5 real positions unchanged.",
@@ -315,6 +315,10 @@
     {
       "topic": "PR sweep (no new swing PRs -- only #4839, Night Hawk Legacy scorer fix, not swing) + full envelope read on GOOGL (WATCH #3/8, PULLBACK_CONTINUATION, SHORT, gated)",
       "verdict": "CLEAN. GOOGL correctly shows commit-gate-blocked entry (g_s4_regime + g_s14_cortex both firing -- broad-market regime degraded, desk-wide WATCH-only, consistent with the already-closed G-S4 calibration question) surfaced honestly in both 'Entry' and 'Watch levels' rather than silently withheld. Book context correctly flags an INTERNAL CONFLICT (megatech theme: GOOGL SHORT vs already-open AAPL LONG) -- opposed-direction same-theme detection working as designed, distinct from COIN's same-direction concentration case checked last cycle -- confirms checkPortfolioOverlap's conflict branch (not just its concentration branch) is live and correct. 'Live read' section honestly discloses Vector spot as 'not wired on this tick' rather than fabricating a stale number. No new gap found this pass."
+    },
+    {
+      "topic": "PR #4842 CI progress check + null-archetype WATCH rows (MU/AMD/BE) honesty audit",
+      "verdict": "CLEAN. PR #4842 (lane-rank invalidated-leader fix): CodeQL + Analyze both passed, verify still in_progress ~4min in (matches local full-suite runtime), no failures, no review comments yet -- nothing actionable this check, watching next cycle. MU/AMD/BE (the 3 WATCH rows the board showed with archetype:undefined) all correctly OMIT the 'Archetype:' line entirely in Why this setup rather than rendering a broken/null placeholder -- classifyArchetype's own null-when-thin design (EVIDENCE_FLOOR) working as intended; each still carries a real, legible Score pillars breakdown (Volatility/Regime/Flow) despite no archetype label. Noted but not actioned: MU/AMD/BE are all PUT (bearish) plays whose 'Industry read' line says 'leading' their sector -- purely descriptive (industry-relative fact, not direction-adjusted framing), consistent with how the same field renders on LONG plays elsewhere; not misleading since it's presented as raw context, not claimed support for the thesis, but worth a future look at whether it should carry an aligned/conflicts marker the way Vector/chart reads do."
     }
   ],
   "findings_filed_this_cycle": [
