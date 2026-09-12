@@ -1,3 +1,37 @@
+## WATCH LIST — 2026-09-12 `db-cleanup` nightly cron: concurrent-invocation deadlock + contentless alert (read this before the routine pass)
+
+### Investigated a live "Cron failure: db-cleanup" alert; fixed the same day
+
+**What was broken:** the nightly `db-cleanup` cron (07:00 UTC / ~3 AM ET) deadlocked
+(`deadlock detected`, Postgres 40P01) pruning `vector_wall_history` on 2026-09-12. CloudWatch
+evidence strongly points to a concurrent SECOND invocation of the same route (its own BIE-ingest
+log line fired 3x within ~4 minutes that night) racing itself for row locks across ~26 shared
+tables — `hit-cron` retries a non-2xx response, and this route had no overlap guard at all. The
+resulting Discord alert also carried zero actionable detail (`logCronRun` only ever read a
+singular `error`/`reason` field; db-cleanup's failure payload is a plural `errors[]` array, so the
+alert body collapsed to the bare word "failed"). See
+`docs/audit/findings-staging/2026-09-12-db-cleanup-concurrent-invocation-deadlock.md`.
+
+**Fix:** added a `sharedCacheSetNx` cross-invocation overlap lock (same pattern already used by
+`vector-pick-sweep`/`banger-discovery`/etc.) so a second/third concurrent invocation is now a
+cheap idempotent skip instead of racing the first; added a bounded, jittered retry
+(`src/lib/deadlock-retry.ts`) for Postgres `40P01` specifically on each batched DELETE, so a real
+deadlock against a genuine concurrent writer (not just a duplicate invocation) no longer fails
+that table's prune outright; and `cron-run.ts`'s alert-message derivation now falls back to
+summarizing a plural `errors[]` array when no singular `error`/`reason` is set, so a future
+db-cleanup failure (or any other cron shipping the same payload shape) alerts with the actual
+table + Postgres error text instead of the bare word "failed".
+
+**Check at the next 3 AM ET run (this cannot be validated outside its own real overnight
+schedule):** pull `GET /api/admin/cron-health` (or query `cron_job_runs` for `job_key='db-cleanup'`
+directly) the morning after this deploys and confirm (a) exactly one real run committed that
+night — no second `ok:true, skipped:true, reason:"previous db-cleanup run still in flight..."` row
+UNLESS a genuine overlap actually occurred, in which case confirm the skip fired cleanly instead of
+a second deadlock; (b) if any table still fails, the resulting "Cron failure: db-cleanup" Discord
+alert (if one fires) now names the actual table + Postgres error text rather than the bare word
+"failed"; (c) CloudWatch does not show `ingestBieKnowledge`'s log line firing more than once for
+that night's run now that the overlap guard is in place.
+
 ## WATCH LIST — 2026-09-12 Ask Largo swing Structure Ladder: OPEN-position stop labeling + duplicate levels (read this before the routine pass)
 
 ### Adversarial review of #4875 (Structure Ladder) found two real, member-visible defects, both fixed same-day (#4878, #4879)
