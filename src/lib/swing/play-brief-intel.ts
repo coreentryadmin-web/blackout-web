@@ -567,9 +567,19 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
 
   if (bucket === "watch") {
     if (play.gateBlocks?.length) {
-      lines.push(
-        "**Before entry, clear:**\n" + play.gateBlocks.map((g) => `• ${g.code}: ${g.reason}`).join("\n"),
-      );
+      // BUG FIX (2026-09-12): this used to re-render each gate's full `code: reason` text here —
+      // but `watchEntrySection` (play-brief.ts, "Entry" section) already renders the IDENTICAL
+      // `play.gateBlocks` list in full, under "Gates blocking entry:", and `composeSwingPlayBrief`
+      // always places that "Entry" section BEFORE this one for a WATCH play. So a gated WATCH
+      // brief carried the same gate codes+reasons TWICE — once under "Entry", once again here
+      // under "Before entry, clear:" — live repro: ORCL WATCH brief 2026-09-12, both sections
+      // printed the identical `g_s4_regime`/`g_s14_cortex` reason strings verbatim. This is the
+      // exact duplication shape `play-brief-narrative.ts`'s own "Entry stance" bullet was already
+      // fixed to avoid (see its comment: "the reason text has exactly one home below") — just a
+      // second, previously-unchecked instance of it, in a different pair of sections. State the
+      // count + a pointer here; the full reason text's one home stays the Entry section above.
+      const n = play.gateBlocks.length;
+      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Entry section above.`);
     }
     if (play.entryStatus) lines.push(`Entry geometry: **${play.entryStatus.replace(/_/g, " ")}**`);
     if (play.flagUnderlyingPx != null) {
