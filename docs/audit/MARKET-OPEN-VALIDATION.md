@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-12 Ask Largo lane-rank leader on an invalidated WATCH thesis (read this before the routine pass)
+
+### "Lane leader"/"Top-ranked play" self-praise could fire on a WATCH setup whose own thesis already broke — fix/swing-lane-rank-invalidated-leader
+
+**What was broken:** `computeLaneRank`/`laneRankCoaching` (`src/lib/swing/play-brief-lane-rank.ts`,
+`play-brief-narrative-coaching.ts`) already skip an *exiting* COMMIT-bucket peer when picking the
+named "leader" (#4825, same day — CRWD's brief). The WATCH-bucket analog was uncovered: a peer (or
+the play itself) whose `setupState` is `INVALIDATED` (thesis broke pre-entry) could still be named
+the rank-1 "leader." Live-observed: SKHY sat #1 of 8 WATCH candidates by raw score (59) while its
+own Entry section already read `Serving section: RESEARCH` / `Setup: INVALIDATED`, yet the same
+folded narrative said "Lane leader — #1 of 8 on WATCH — Desk attention follows the top row" three
+bullets after "Thesis BREAK ... don't add size." See
+`docs/audit/findings-staging/2026-09-12-swing-lane-leader-invalidated-watch-thesis.md`.
+
+**Fix:** the named-leader peer filter now also excludes `setupState === "INVALIDATED"` peers
+(alongside the existing `EXIT`/`EXIT_RUNNER` exclusion); a new `selfInvalidated` flag suppresses
+the self-referential "leader"/"top-tier" praise lines when the PLAY ITSELF is invalidated. Rank/
+median stats are unchanged — only the self-congratulatory narrative lines are gated.
+
+**Check at the open:** once Monday's discovery scan runs and the WATCH lane repopulates, spot-check
+a couple of WATCH-lane briefs for any name whose Entry section shows `Setup: INVALIDATED` — confirm
+its own brief never says "Lane leader"/"Top-ranked play" and that OTHER WATCH briefs never name it
+as `Desk leader: <ticker> @ <score>`.
+
 ## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: OI-change alignment bonus dead-coded (read this before the routine pass)
 
 ### `scoreOptionsPositioning`'s +2 OI-change-alignment bonus never fired against real data — fix/nighthawk-oi-change-field-mismatch
@@ -4133,3 +4157,9 @@ than an end-of-session patch.
 - **What was broken (5-engine live monitor + Ask Largo deep-dive, live `GET /api/market/nighthawk/horizons?view=swings`):** `buildLegacySwingArtifacts` (`legacy-confirm-promote.ts`) set a Legacy-morning-confirm-promoted play's `score` to Legacy's own published edition conviction score, but its `factors` (rendered as "Score pillars" in the command deck and Ask Largo's "Why this setup" section) came from a freshly re-run swing dossier's own INDEPENDENT synthetic pillar score — two different scoring runs paired as one breakdown. Live repro, all three real Legacy-promoted rows in the same snapshot: MRVL score 81 vs factors summing to 74.7, IREN score 61 vs 75.8 (factors LARGER than score), SKHY (WATCH) score 59 vs 26.6. Confirmed live in the actual Ask Largo play-brief too (`GET /api/market/swing/play-brief?playId=SWING:MRVL...`): the "Why this setup" section literally printed "Score pillars" summing to 74.7 directly under a "Grade A+ · score 81" verdict line. Fourth occurrence of the same bug class (#4826's Banger/Vector-lane fixes; finding #130 above's live-position drift fix).
 - **What changed:** `factors` for a Legacy-promoted play is now a single honest entry, `[{ label: "Night Hawk edition score", points: swingPlay.score }]`, instead of the borrowed dossier decomposition — sums to the displayed score by construction, since Legacy's edition score is the one real signal this promotion path actually has (there is no honest way to sub-decompose a score computed entirely inside the separate Legacy pipeline). `archetype`/`regime`/`thesisLevel`/etc. are unaffected.
 - **RTH check:** Once a Legacy-morning-confirm-promoted Swing row is live during RTH (`reason` field carries "Legacy morning confirm"), open its Ask Largo play-brief "Why this setup" section and the command deck's "Why this play was picked" panel and confirm the single "Night Hawk edition score" factor now equals exactly the score shown in the Verdict line above it.
+
+### 135. `swing-active-refresh`'s registry `description` still said "Hourly" after the cadence was raised to every 15 minutes — fix/swing-active-refresh-cron-description-stale — 2026-09-12
+
+- **What was broken (found during the Night Hawk three-engine deep audit):** `src/lib/cron-registry.ts`'s `swing-active-refresh` entry had `schedule_label: "Every 15 min (market hours)"` and `stale_after_min: 25` sitting next to a `description` that still said "Hourly refresh...". Traced to PR #1324 (2026-07-29), which correctly raised the cadence to every 15 minutes but missed the sibling `description` field. Confirmed 15-minute cadence is the real deployed behavior via three independent, convergent, recent sources already in `FINDINGS.md` (live `events.describe_rule` 2026-09-02/09-08 + 2026-09-11 CloudWatch logs); `blackout-infra`'s `cron-jobs.json` entry for this key is the stale artifact (unmodified since 2026-07-28), not this file.
+- **What changed:** `description` corrected to match the real 15-minute cadence. `schedule_label`/`stale_after_min` left untouched (already correct). Confirmed zero call sites parse/branch on `description` (display-only) — a pure text fix, no behavior change.
+- **RTH check:** None needed — display-string-only change, no live data path touched. Worth confirming the admin cron-health dashboard/`bie/discovery.ts` payload shows the corrected description text next time it's viewed. Separately flagged (not fixed here): `swing-active-refresh` only refreshes 4 real `swing_positions` rows per tick while the live Swing board serves ~73 positions (mostly Banger-origin, merged in for display) — a real staleness/architecture question worth chasing next.

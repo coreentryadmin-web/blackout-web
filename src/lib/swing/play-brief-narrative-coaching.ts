@@ -773,6 +773,11 @@ export function morningConfirmCoaching(play: TerminalPlay): string | null {
 export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefContext["laneRows"]): string | null {
   const snap = computeLaneRank(play, laneRows);
   if (!snap || snap.total < 2) return null;
+  // A broken thesis (own setupState INVALIDATED) never gets a "leader"/"top-tier" praise line —
+  // the same brief's Entry/Verdict sections already say the thesis broke; every branch below reads
+  // as encouragement, which would directly contradict that disclosure (live repro 2026-09-12: SKHY
+  // sat #1 of 8 on WATCH by raw score with its own thesis invalidated pre-entry).
+  if (snap.selfInvalidated) return null;
 
   const label = snap.bucket === "open" ? "OPEN" : "WATCH";
   if (snap.rank === 1) {

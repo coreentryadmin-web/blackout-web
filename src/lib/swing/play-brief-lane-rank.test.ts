@@ -26,6 +26,7 @@ function row(
   status: HorizonPlay["status"],
   contract?: { strike: number; right: "C" | "P" },
   manageAction?: HorizonPlay["manageAction"],
+  setupState?: HorizonPlay["setupState"],
 ): HorizonPlay {
   const c = contract ?? { strike: 100, right: "C" as const };
   return {
@@ -37,6 +38,7 @@ function row(
     contract: { strike: c.strike, right: c.right, expiry: "2026-09-20", dte: 14, mid: 1, delta: 0.5, gamma: 0, theta: 0, vega: 0, iv: 0.3 },
     factors: [],
     manageAction,
+    setupState,
   };
 }
 
@@ -115,6 +117,44 @@ test("computeLaneRank: WATCH-bucket rows never carry manageAction — leader pic
   const snap = computeLaneRank(play({ ticker: "FSLR", score: 40, status: "WATCH" }), lanes);
   assert.ok(snap);
   assert.equal(snap!.topTicker, "NRG");
+});
+
+test("computeLaneRank: named leader skips a WATCH peer whose own setupState is INVALIDATED", () => {
+  // Live repro 2026-09-12: SKHY sat #1 of 8 on WATCH by raw score (59) while its own Entry section
+  // already read "Serving section: RESEARCH" / "Setup: INVALIDATED" (thesis broke pre-entry). A
+  // different WATCH ticker's brief naming SKHY as "Desk leader: SKHY @ 59" would read as "look at
+  // this one" about a setup the desk has already downgraded out of WATCH.
+  const lanes = [
+    row("SKHY", 59, "WATCH", undefined, undefined, "INVALIDATED"),
+    row("COIN", 55.4, "WATCH", undefined, undefined, "TRIGGERED"),
+    row("GOOGL", 51, "WATCH", undefined, undefined, "TRIGGERED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "GOOGL", score: 51, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "COIN", "the raw #1 (SKHY) is invalidated — the named leader must skip it");
+  assert.equal(snap!.topScore, 55.4);
+  assert.equal(snap!.rank, 3, "rank still reflects the FULL peer set (raw score order) — invalidation doesn't change standing");
+});
+
+test("computeLaneRank: selfInvalidated is true only when THIS play's own setupState is INVALIDATED", () => {
+  const lanes = [row("SKHY", 59, "WATCH"), row("COIN", 55.4, "WATCH")];
+  const invalidated = computeLaneRank(play({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }), lanes);
+  assert.ok(invalidated);
+  assert.equal(invalidated!.selfInvalidated, true);
+
+  const healthy = computeLaneRank(play({ ticker: "COIN", score: 55.4, status: "WATCH", setupState: "TRIGGERED" }), lanes);
+  assert.ok(healthy);
+  assert.equal(healthy!.selfInvalidated, false);
+});
+
+test("laneRankSection: suppresses the rank-1 praise line when the play's own thesis is invalidated", () => {
+  // Same live repro as above — the rank-1 self-claim ("Top-ranked play... size and attention follow
+  // score") must not render when this exact response's Entry section already says the thesis broke.
+  const lanes = [row("SKHY", 59, "WATCH"), row("COIN", 55.4, "WATCH")];
+  const sec = laneRankSection(play({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }), lanes);
+  assert.ok(sec);
+  assert.match(sec!.body, /#1 of 2/, "rank stats stay honest regardless of invalidation");
+  assert.doesNotMatch(sec!.body, /Top-ranked play in this bucket/);
 });
 
 test("computeLaneRank: deltaFromMedian is rounded, not a raw float subtraction artifact", () => {
