@@ -23,6 +23,19 @@ mock.module("../db", {
       if (/^\s*SELECT/i.test(text)) return { rows: dbState.selectRows };
       return { rows: [] };
     },
+    // Real db.ts implementation (kept in lockstep deliberately — this is the exact helper
+    // runSkipGrading's session_date normalization must call through; see the 2026-09-12
+    // regression test below for why a Date-shaped DATE column must resolve via UTC, never ET).
+    isoDateString: (value: unknown): string => {
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+      }
+      const s = String(value ?? "");
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+      const reparsed = new Date(s);
+      if (!Number.isNaN(reparsed.getTime())) return reparsed.toISOString().slice(0, 10);
+      return s.slice(0, 10);
+    },
   },
 });
 const polyState = {
@@ -384,6 +397,51 @@ test("runSkipGrading: a captured Polygon failureReason (no thrown exception) is 
   } finally {
     polyState.failureReason = null;
   }
+});
+
+// REGRESSION (2026-09-12, docs/audit/0DTE-RESEARCH.md "Gate-overlap ablation" 2026-09-10 run —
+// ALL 18 hard-gate codes read n=0 graded on the Blocked side, dominant ungradeable reason "no
+// underlying bar at/after the block time" / "no bar data for the session"). node-postgres hands a
+// DATE column back as a JS Date at UTC MIDNIGHT for that calendar day (never a plain string) — the
+// OLD code ran that midnight-UTC instant through `etYmd()` (built for converting a REAL epoch
+// instant to its ET calendar day), and because America/New_York is BEHIND UTC, midnight UTC always
+// reads as the previous evening in ET — so `etYmd()` silently returned the day BEFORE the row's
+// real, stored session_date on every row, deterministically, not occasionally. That wrong date then
+// drove `barsFor` to fetch the WRONG session's minute bars, so `entryBarOf` could never find a bar
+// at/after the (correctly-computed) `blockedAtMs` — every fetched bar was ~a day too early. This
+// pins the fix (read the UTC Y-M-D via db.ts's own `isoDateString`, the established idiom for every
+// other DATE column in this codebase) by asserting the underlying-bar fetch is issued for the SAME
+// calendar day the row's session_date actually is, not the day before.
+//
+// Every earlier hermetic test in this file passed `session_date` as a plain string
+// ("2026-07-10") — never as the real pg-returned Date shape — so this exact bug shipped
+// undetected: the mock never exercised the code path it was actually hiding.
+test("runSkipGrading: a DATE-column session_date (pg's real Date-at-UTC-midnight shape) fetches bars for the SAME day, not the day before", async () => {
+  const { runSkipGrading } = await mod();
+  dbState.queries = [];
+  dbState.selectRows = [
+    {
+      id: 11,
+      observed_at: new Date(et("10:00")).toISOString(),
+      // What node-postgres actually returns for a DATE column storing '2026-07-10': a JS Date
+      // at that calendar day's UTC midnight — NOT the string "2026-07-10".
+      session_date: new Date("2026-07-10T00:00:00.000Z"),
+      ticker: "NVDA",
+      gate_failed: "score_floor",
+      direction: "long",
+    },
+  ];
+  polyState.calls = [];
+  polyState.bars = [bar("10:00", 100), bar("14:00", 105)]; // real bars, correct day
+  const summary = await runSkipGrading({ days: 3, nowMs: NOW });
+  assert.equal(summary.errors, 0);
+  // The bug: with the old etYmd(midnight-UTC) normalization this would be "2026-07-09".
+  assert.deepEqual(polyState.calls, [{ symbol: "NVDA", from: "2026-07-10" }]);
+  // And because the fetch now lands on the right day, the block IS gradeable (real bars present
+  // at/after blockedAtMs) — the pre-fix version stayed stuck on the generic "no bar data" reason
+  // even with real bars in the mock, because they were requested under the wrong date entirely.
+  assert.equal(summary.graded, 1);
+  assert.equal(summary.ungradeable, 0);
 });
 
 test("runSkipGrading / fetchGradedSkips fail soft — a dead DB is a structured summary / empty list, never a throw", async () => {
