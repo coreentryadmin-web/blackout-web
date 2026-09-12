@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T11:37:47.973Z",
+  "lastUpdated": "2026-09-12T12:08:41.855Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1196,6 +1196,16 @@
       "at": "2026-09-12T11:37:47.973Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle -- all four stages stable (HPE/DELL marks unchanged, resolved=26). Harness self-swept one leaked temp Clerk user older than 30m (routine, not a finding). No new findings. 1st clean cycle since #4853 merged."
+    },
+    {
+      "at": "2026-09-12T11:52:10.913Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle -- all four stages stable (HPE/DELL marks unchanged, resolved=26). No new findings. Noted PR #4855 (Swings lane cushion-% fix) merged and independently reviewed by a parallel session -- out of Legacy's scope. 2 clean cycles since #4853 merged."
+    },
+    {
+      "at": "2026-09-12T12:08:41.855Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable (expected -- weekend, no new resolutions until Monday). No new findings. Spot-checked scoreCatalystAwareness's BenzingaCatalyst field usage against the field-mismatch bug class found 3x this session -- it's a compiler-typed, internally-normalized type (catalystTypeFromChannels), not a raw Record<string,unknown> guess, so it's structurally safe from that bug class. 3rd clean cycle since #4853 merged."
     }
   ],
   "knownOpenItems": {
