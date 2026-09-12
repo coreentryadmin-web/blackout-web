@@ -234,15 +234,32 @@ export function cortexReadSection(play: TerminalPlay): RichSection | null {
   };
 }
 
-/** Vector chart technicals — EMA stack, VWAP, RSI, MACD, structure. */
+/**
+ * Vector chart technicals — EMA stack, VWAP, RSI, MACD, structure.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-09-12): unlike `vectorDeskSection`/`dataFreshnessSection`/
+ * `watchForSection` — all fixed the same day for the identical defect class — this section was NOT
+ * bucket-gated at all: for a CLOSED play it rendered today's live spot/EMA/VWAP/RSI/MACD/structure
+ * with no framing whatsoever, reading as if it described the trade's OWN conditions rather than the
+ * market's state now, days or weeks after the position resolved (live repro: AAPL:36, closed
+ * 2026-09-04, brief compose 2026-09-12 — "Chart technicals" printed today's spot/EMA stack/VWAP with
+ * zero indication the trade itself closed 8 days earlier under different conditions). Same identity/
+ * freshness contract violation (Largo C1/C2) `vectorDeskSection` already documents for this exact
+ * bucket; the fix is the same shape — an explicit "current, not as-traded" disclosure line — applied
+ * here for the first time.
+ */
 export function chartTechnicalsSection(
   vec: VectorFullState | null,
   sessionDate?: string | null,
+  bucket: "watch" | "open" | "closed" = "open",
 ): RichSection | null {
   if (!vec?.technicals && vec?.spot == null) return null;
   const readMs = Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const t = vec.technicals;
+  // Prepended only once real content exists below (never on an otherwise-empty section) — a
+  // disclosure with nothing to disclose about would itself be a fabricated-looking line.
+  const closedDisclosure = "_Current chart read — not the technicals this trade closed under._";
   const lines: string[] = [];
   if (vectorStale) {
     const ageMs = vec?.dataAgeMs;
@@ -251,6 +268,7 @@ export function chartTechnicalsSection(
     );
     if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}** (from prior snapshot)`);
     if (!lines.length) return null;
+    if (bucket === "closed") lines.unshift(closedDisclosure);
     return { title: "Chart technicals", body: lines.join("\n"), bias: "neutral" };
   }
   if (vec.spot != null) lines.push(`Spot: **${vec.spot.toFixed(2)}**`);
@@ -280,7 +298,13 @@ export function chartTechnicalsSection(
   }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
   if (!lines.length) return null;
-  const bias = t ? technicalsBias(t, vec.spot ?? null) : "neutral";
+  if (bucket === "closed") lines.unshift(closedDisclosure);
+  // Bias is derived from the closed trade's OWN direction elsewhere (the "Trade manager read"
+  // Lessons section already covers post-mortem framing); a closed brief's chart-technicals bias
+  // is forced neutral so this current-market read is never badged bullish/bearish as if it were
+  // live guidance on a position that has already resolved (same Largo C5 discipline
+  // `vectorDeskSection`'s closed-bucket branch above already applies).
+  const bias = bucket === "closed" ? "neutral" : t ? technicalsBias(t, vec.spot ?? null) : "neutral";
   return {
     title: "Chart technicals",
     body: lines.join("\n"),
@@ -336,7 +360,15 @@ function preferredGexWalls(ctx: SwingPlayBriefContext): {
   return { spot, callWall, putWall, callWallFromStaleGex, putWallFromStaleGex };
 }
 
-/** GEX walls, flip, max pain, expected move, confluence nodes. */
+/**
+ * GEX walls, flip, max pain, expected move, confluence nodes.
+ *
+ * Bucket-gated (Ask Largo standing mandate, 2026-09-12) same as `chartTechnicalsSection`/
+ * `gexPostureSection`/`wallDynamicsSection` this same pass: a CLOSED play's levels here are
+ * TODAY's live GEX/Vector read, unconnected to the position under review — the already-shipped
+ * "Since it closed" section (`watchForSection`) covers spot-vs-gamma-flip with explicit framing,
+ * but this section duplicated the same underlying numbers (call/put wall, gamma flip) with none.
+ */
 export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | null {
   const vec = vectorOf(ctx);
   const eco = ctx.ecosystem;
@@ -414,6 +446,9 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
     );
   }
   if (!lines.length) return null;
+  if (statusBucket(ctx.play) === "closed") {
+    lines.unshift("_Current levels — not what this trade traded under._");
+  }
   return { title: "Levels on chart", body: lines.join("\n\n") };
 }
 
@@ -943,7 +978,13 @@ export function deskConsensusSection(
   };
 }
 
-/** GEX dealer posture — gamma/vanna context for the swing. */
+/**
+ * GEX dealer posture — gamma/vanna context for the swing.
+ *
+ * Bucket-gated (Ask Largo standing mandate, 2026-09-12) same as `chartTechnicalsSection`/
+ * `wallDynamicsSection` this same pass: a CLOSED play's dealer posture here is TODAY's read, not
+ * the posture the trade actually traded under — disclosed rather than left implicit.
+ */
 export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | null {
   const gex = ctx.ecosystem?.gex_positioning;
   if (!gex) return null;
@@ -984,13 +1025,23 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
   }
   if (!stale && gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
   if (!lines.length) return null;
+  if (statusBucket(ctx.play) === "closed") {
+    lines.unshift("_Current dealer posture — not what this trade traded under._");
+  }
   return { title: "GEX posture", body: lines.join("\n") };
 }
 
-/** Wall bead dynamics — building/fading nodes from Vector wall history. */
+/**
+ * Wall bead dynamics — building/fading nodes from Vector wall history.
+ *
+ * `bucket` (Ask Largo standing mandate, 2026-09-12): same current-vs-as-traded gap fixed on
+ * `chartTechnicalsSection`/`chartLevelsSection`/`gexPostureSection` this same pass — these are
+ * TODAY's building/fading wall events, unrelated to the specific closed position under review.
+ */
 export function wallDynamicsSection(
   vec: VectorFullState | null,
   sessionDate?: string | null,
+  bucket: "watch" | "open" | "closed" = "open",
 ): RichSection | null {
   if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
   const events = vec?.wallEvents ?? [];
@@ -1000,9 +1051,11 @@ export function wallDynamicsSection(
     .map((e) => {
       const at = e.strike != null ? ` @ ${e.strike.toFixed(2)}` : e.flip != null ? ` @ flip ${e.flip.toFixed(2)}` : "";
       return `• **${e.kind.replace(/_/g, " ")}**${at} — ${e.message}`;
-    })
-    .join("\n");
-  return { title: "Wall dynamics", body: lines };
+    });
+  if (bucket === "closed") {
+    lines.unshift("_Current wall activity — not what this trade traded under._");
+  }
+  return { title: "Wall dynamics", body: lines.join("\n") };
 }
 
 /** Vector desk play read — entry zone, targets, invalidation from play engine. */
@@ -1143,7 +1196,7 @@ export function buildIntelSections(
   const rank = laneRankSection(play, ctx.laneRows);
   if (rank) out.push(rank);
 
-  const technicals = chartTechnicalsSection(vec, ctx.sessionDate);
+  const technicals = chartTechnicalsSection(vec, ctx.sessionDate, bucket);
   if (technicals) out.push(technicals);
 
   const levels = chartLevelsSection(ctx);
@@ -1152,7 +1205,7 @@ export function buildIntelSections(
   const gex = gexPostureSection(ctx);
   if (gex) out.push(gex);
 
-  const walls = wallDynamicsSection(vec, ctx.sessionDate);
+  const walls = wallDynamicsSection(vec, ctx.sessionDate, bucket);
   if (walls) out.push(walls);
 
   const vdesk = vectorDeskSection(vec, ctx.sessionDate, bucket);
