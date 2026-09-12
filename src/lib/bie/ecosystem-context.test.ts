@@ -925,6 +925,56 @@ test("assembleEcosystemArsenal: requested-but-thin legs surface in unavailable_s
   assert.ok(!sources.includes("breadth"));
 });
 
+// Live-verified 2026-09-12 (EWZ swing play-brief): every unavailable_sources entry reached the
+// member-facing envelope via play-brief-absence.ts's `[...ctx.ecosystem?.arsenal?.unavailable_sources]`
+// spread carrying only {source, reason} — the C3 what_is_missing/retryable fields #4861 added to
+// BieUnavailableSource were never populated at THIS reader layer's own push sites. Asserts every
+// site now carries both fields, and that the retryable/structural split matches the reasoning in
+// each push site's own inline comment (a provider-graph absence like "no peers found" doesn't
+// change on retry; a live fetch miss like "news read failed" can).
+test("assembleEcosystemArsenal: every unavailable_sources entry carries what_is_missing + retryable (C3)", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: null,
+    related: { ticker: "ZZZZ", related: [], as_of: null } as unknown as RelatedCompanies,
+    news: { items: [], asOf: "x", newest: null, unavailable: "timeout" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  for (const entry of ars.unavailable_sources) {
+    assert.ok(
+      typeof entry.what_is_missing === "string" && entry.what_is_missing.length > 0,
+      `${entry.source} is missing what_is_missing`,
+    );
+    assert.equal(typeof entry.retryable, "boolean", `${entry.source} is missing retryable`);
+  }
+  const bySource = Object.fromEntries(ars.unavailable_sources.map((u) => [u.source, u]));
+  // Structural absences (a provider graph genuinely has nothing for this ticker) — retry is futile.
+  assert.equal(bySource["earnings"]?.retryable, false);
+  assert.equal(bySource["fundamentals/short-interest"]?.retryable, false);
+  assert.equal(bySource["peers"]?.retryable, false);
+  // A live fetch that errored this pass — a retry can succeed.
+  assert.equal(bySource["news"]?.retryable, true);
+
+  const indexArs = assembleEcosystemArsenal({
+    scope: "index",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: null, // read failed entirely
+    macro: null, // requested (index scope) but empty → unavailable, transient
+    breadth: { as_of: "x", tone: "unknown", summary: "" } as unknown as MarketBreadthBundle,
+  });
+  const indexBySource = Object.fromEntries(indexArs.unavailable_sources.map((u) => [u.source, u]));
+  assert.equal(indexBySource["macro backdrop"]?.retryable, true);
+  assert.equal(indexBySource["breadth"]?.retryable, true);
+  assert.equal(indexBySource["news"]?.retryable, true);
+  for (const entry of indexArs.unavailable_sources) {
+    assert.ok(typeof entry.what_is_missing === "string" && entry.what_is_missing.length > 0);
+  }
+});
+
 test("assembleEcosystemArsenal: an empty-but-successful news read is 'no recent news' (count 0), not unavailable", () => {
   const ars = assembleEcosystemArsenal({
     scope: "single_name",
