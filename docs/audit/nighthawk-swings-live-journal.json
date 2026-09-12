@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-12T11:31:00Z",
+  "last_updated": "2026-09-12T11:46:00Z",
   "notes": [
     "06:31 UTC cycle -- re-checked PR #4837 on AAPL#37: STILL unchanged, factors still sum to 75.0 vs score 84, identical to the 06:16 check 15min ago. ~35-40min since merge now -- at the outer edge of this repo's typical 30-45min deploy window, not yet concerning but worth watching closely next cycle rather than assuming it'll just resolve. No new swing PRs this cycle (#4836 GEX perf, #4838 CLAUDE.md docs update, both non-swing). Markets closed, all 5 real positions unchanged.",
     "06:16 UTC cycle -- checked PR #4837's fix live on AAPL#37: factors still sum to 75.0 (29.5+21.1+14+6.3+2.8+1.3) against a displayed score of 84 -- the SAME pre-fix gap the PR itself cited. This is NOT the fix failing -- #4837 merged only ~15-20min before this check, and this repo's own established pattern (watermark-bracket fix #4808 earlier tonight, roll-history fix #4802 before that) is that a merged fix needs an ECS deploy cycle (historically 30-45min) before it's live -- a check run this soon after merge is exactly the trap CLAUDE.md's depth-ladder tooling notes warn about ('a check run seconds after a deploy proves nothing'). Will re-check AAPL's factor sum next cycle or the one after, expecting it to read 84 once the deploy completes. No new swing PRs beyond what's already tracked (#4834 is 0DTE, not swing). Markets closed, all 5 real positions unchanged.",
@@ -198,7 +198,8 @@
     "20:09 UTC: BOTH PR #4802 and #4803 MERGED cleanly (no conflict this time despite both touching MARKET-OPEN-VALIDATION.md -- the sequential merge queue evidently landed them cleanly one after another). VERIFIED both live on origin/main via git show: rollHistoryLine() present in play-brief-narrative.ts; occAlreadyExpired() present in live-marks-active.ts, called from both swing and banger row-builders. Full lifecycle closed for both -- 5 sibling-session PRs merged and verified this session so far (4794/4798/4799/4800/4801/4802/4803, plus my own 4795).",
     "20:16 UTC cycle: RTH just ended (~16:16 ET). NRG's mark correctly frozen at the 16:00 ET close price ($5.20, +6.1%) -- expected post-close behavior, not stale data. Deploy for #4802/#4803 rolling (task def :1462, image e6fa32766, 1/2 so far). No new swing PRs. Will shift to post-close/overnight cadence expectations for remaining cycles today.",
     "20:31 UTC cycle: pivoted to CLOSED-play audit now market's closed. Found a good live test case for #4802's roll-history disclosure: INTC (positionId 35, CLOSED, 'chain composite (2 legs)' -- genuinely rolled once, matches PR #4801's own cited single-roll repro case). Checked its play-brief Trade manager read -- no 'Rolled once' line yet, but deploy for #4802/#4803 (image e6fa32766) is still mid-rollout (7/9 tasks) so this is NOT conclusive either way. Concrete re-check for next cycle: re-pull GET /api/market/swing/play-brief?playId=SWING:INTC:35&ticker=INTC&positionId=35 once deploy reaches 8/8 and confirm the 'Rolled once' line now renders. No new swing PRs (#4804 is a fleet-wide deps/security fix, not swing). NRG unchanged post-close.",
-    "11:31 UTC cycle: resolved the in-progress 5-truth-grader/closedReasonFromRow investigation from the prior cycle -- confirmed via code read (grade.ts, db.ts, closed-plays.ts, play-brief-resolve.ts) that grade_json is computed+persisted but never read back by the CLOSED play-brief; raised as PR #4076 comment 5645638333 rather than a blind fix (multi-file, can't verify grade_json live shape from this sandbox -- Postgres blocked). No new swing PRs open this cycle (checked list_pull_requests equivalent via prior sweep -- known_open_prs_snapshot still empty as of 2026-09-10, re-verifying next cycle). Continuing the standing mandate."
+    "11:31 UTC cycle: resolved the in-progress 5-truth-grader/closedReasonFromRow investigation from the prior cycle -- confirmed via code read (grade.ts, db.ts, closed-plays.ts, play-brief-resolve.ts) that grade_json is computed+persisted but never read back by the CLOSED play-brief; raised as PR #4076 comment 5645638333 rather than a blind fix (multi-file, can't verify grade_json live shape from this sandbox -- Postgres blocked). No new swing PRs open this cycle (checked list_pull_requests equivalent via prior sweep -- known_open_prs_snapshot still empty as of 2026-09-10, re-verifying next cycle). Continuing the standing mandate.",
+    "11:46 UTC cycle: full position sweep clean, #4849 selfReducing fix reconfirmed live on a third manageAction value (NRG, EXIT). Noticed one open PR not yet in known_open_prs_snapshot: #4855 (fix(swing): Ask Largo cushion % fabricated from the true entry-fallback mark, EBS live repro) opened 11:28 UTC by a sibling Claude session (session_01Qtnftc16CuWyVLxR8LaMoC) -- not mine, CI still pending (0 checks reported as of this check) so nothing to act on yet; will recheck next cycle rather than block on it. Continuing the standing mandate."
   ],
   "checked_this_cycle_no_bug_found": [
     {
@@ -356,6 +357,10 @@
     {
       "topic": "5-truth grader / grade_json cross-check on AAPL#36 (CLOSED, -56.2% exit vs +1.3% peak, stopped) -- prompted the gap above",
       "verdict": "Not a bug in the sense of a wrong NUMBER -- closedReason=\"stopped\" is factually correct for AAPL#36's P&L sign. The gap is an ABSENCE: the richer thesis/management truths grade.ts already computes and db.ts already persists are silently discarded rather than surfaced. Raised as a design-level PR #4076 comment rather than filed as a FINDING/fix this cycle -- see open_experiments_scoped_not_yet_run."
+    },
+    {
+      "topic": "Full position sweep -- AAPL#37/NN#32/CG#25/CRWD#19/NRG#34 -- state changes since last cycle",
+      "verdict": "CLEAN. AAPL still OPEN/HOLD (-8.2% mid/-11.5% exec, #2/90 top-tier -- correctly NOT selfReducing so #4849 wording unaffected, correct). CG still TAKE_PARTIAL/TRIM (+169.2%/+134.6%). CRWD still EXIT_RUNNER (blended +45.3%, #4849 framing intact). NRG changed state: now full EXIT/SELL (was OPEN/HOLD last cycle), peak +132.7% -> +6.1% mid / -12.2% exec, gave back 95% of peak. Verified its below-median lane-rank line (#88/90, score 27) correctly renders the #4849 reduce-aware variant (\"not a sizing signal here; this position's own plan already calls for reducing\") -- selfReducing fix live and correct for a THIRD manageAction value (EXIT) beyond the CG/CRWD repros that shipped it. Also verified NRG's unfired \"Trim ladder: +100%\" (no checkmark) despite peak clearing the trigger is the ALREADY-FIXED #4704 enforced-gate behavior (adapters.ts: ladder fired flags are force-false unless status===\"TRIM\", so a peak that crossed +100% without an actual enforced scale-out correctly shows unfired) -- not a new bug, confirmed intentional per its own in-code comment referencing the same NRG live repro from 2026-09-10."
     }
   ],
   "findings_filed_this_cycle": [
@@ -545,8 +550,15 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-10T16:50:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-12T11:46:00Z",
+    "swing_prs": [
+      {
+        "number": 4855,
+        "title": "fix(swing): Ask Largo cushion % fabricated from the true entry-fallback mark (EBS live repro)",
+        "author": "coreentryadmin-web (sibling session)",
+        "state": "open, CI pending"
+      }
+    ]
   },
   "tickers_seen": {
     "NRG": {
