@@ -1448,6 +1448,83 @@ test("watchForSection: live Vector put wall still shown when GEX matrix is stale
   assert.match(section.body, /put wall \*\*98\.00\*\*/);
 });
 
+// Live 2026-09-12: a member read "Flag anchor" (the PINNED first-flagged reference price) as the
+// actionable entry level, which it is not — entryTriggerUnderlyingPx is the live level that
+// actually flips PRE_TRIGGER/FORMING to AT_TRIGGER/TRIGGERED, and the two can diverge once a
+// dossier refreshes its plan on a later scan pass.
+test("watchForSection: entry trigger level is shown distinctly from the flag anchor, watch bucket only", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", flagUnderlyingPx: 175.87, entryTriggerUnderlyingPx: 182.5 }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Flag anchor: \*\*175\.87\*\*/);
+  assert.match(section.body, /Entry trigger: \*\*182\.50\*\*/);
+  assert.match(section.body, /Break\/reclaim above/);
+});
+
+test("watchForSection: entry trigger phrasing mirrors below for SHORT direction", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "SHORT", entryTriggerUnderlyingPx: 342.5 }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*342\.50\*\*/);
+  assert.match(section.body, /Break\/reclaim below/);
+});
+
+test("watchForSection: entry trigger is omitted (never fabricated) when null, and never shown outside the watch bucket", () => {
+  const withoutTrigger = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", entryTriggerUnderlyingPx: null }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(withoutTrigger.body, /Entry trigger:/);
+
+  const openBucket = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", entryTriggerUnderlyingPx: 182.5 }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(openBucket.body, /Entry trigger:/);
+});
+
 test("chartLevelsSection: stale GEX-only walls, flip, and king omitted (Largo C2)", () => {
   const section = chartLevelsSection({
     play: fixturePlay(),

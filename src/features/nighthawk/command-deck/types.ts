@@ -125,6 +125,14 @@ export interface TerminalPlay {
   trackReferencePremium?: number | null;
   /** Underlying price when the swing thesis was first flagged — WATCH track anchor. */
   flagUnderlyingPx?: number | null;
+  /**
+   * The live entry-trigger level a break/reclaim of would flip the setup from PRE_TRIGGER/FORMING
+   * to AT_TRIGGER/TRIGGERED (setup-state.ts / entry-model.ts's `triggerPx`) — distinct from
+   * `flagUnderlyingPx` above, which is PINNED to the price when the thesis was first flagged and
+   * never moves. Found live 2026-09-12: a member read "Flag anchor" as the actionable entry level,
+   * which it is not — this field is the one that actually is.
+   */
+  entryTriggerUnderlyingPx?: number | null;
   peak?: number | null;
   trough?: number | null;
   /** Closed: % of peak MFE captured at exit. */

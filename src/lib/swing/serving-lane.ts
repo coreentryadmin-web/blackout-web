@@ -118,6 +118,7 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     sectorLeadershipFacts: meta.sectorLeadershipFacts,
     flagUnderlyingPx:
       typeof flagPx === "number" && Number.isFinite(flagPx) && flagPx > 0 ? flagPx : play.flagUnderlyingPx,
+    entryTriggerUnderlyingPx: meta.entryTriggerUnderlyingPx ?? play.entryTriggerUnderlyingPx ?? null,
   };
 }
 

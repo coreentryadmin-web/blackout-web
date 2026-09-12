@@ -700,6 +700,8 @@ export interface HorizonDeckSource {
   liveStatus?: "OPEN" | "HOLD" | "TRIM" | null;
   /** Underlying price when the thesis was first flagged — WATCH track anchor. */
   flagUnderlyingPx?: number | null;
+  /** The live entry-trigger level — distinct from flagUnderlyingPx above, see horizon-plays.ts. */
+  entryTriggerUnderlyingPx?: number | null;
   /** Optional live underlying for WATCH track (stock quote overlay). */
   liveSpot?: number | null;
   /** Live swing book — option entry/mark/P&L when this row is an OPEN ledger position. */
@@ -967,6 +969,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     markIsSync: src.markAsOf == null,
     trackPct,
     flagUnderlyingPx: flagPx,
+    entryTriggerUnderlyingPx: fin(src.entryTriggerUnderlyingPx),
     peak: peakDisplay,
     trough: troughDisplay,
     // FINDINGS 2026-08-06 (SEV-3, greeks never reached the desk): this was a hardcoded `null`, so the

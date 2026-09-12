@@ -553,6 +553,16 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     if (play.flagUnderlyingPx != null) {
       lines.push(`Flag anchor: **${play.flagUnderlyingPx.toFixed(2)}** — track move from here`);
     }
+    // Distinct from the flag anchor above (pinned, historical): this is the CURRENT level a
+    // break/reclaim of actually flips entry geometry from PRE_TRIGGER/FORMING to AT_TRIGGER/
+    // TRIGGERED. Found live 2026-09-12: a member read "Flag anchor" as this number, which it is
+    // not — the two can diverge once a dossier refreshes its plan on a later scan pass.
+    if (play.entryTriggerUnderlyingPx != null) {
+      const verb = play.direction === "SHORT" ? "Break/reclaim below" : "Break/reclaim above";
+      lines.push(
+        `Entry trigger: **${play.entryTriggerUnderlyingPx.toFixed(2)}** — ${verb} this is what actually fires the setup`,
+      );
+    }
   }
 
   // The `Thesis **...**` note is a LIVE, ticker-keyed read of whether Night Hawk currently sees an
