@@ -117,6 +117,34 @@ test("resolveGammaPosture: live Vector regime wins over GEX fallback", () => {
   assert.equal(resolveGammaPosture(ctx, ctx.vector), "long");
 });
 
+test("resolveGammaPosture: live Vector regime of 'unknown' defers to the live GEX posture, not itself", () => {
+  // Live repro 2026-09-12: CG's own COMMIT brief. Vector's regime read (vector-regime.ts) is a
+  // FOUR-value enum -- "long"/"short"/"transition"/"unknown" -- not the GEX matrix's own two-value
+  // "long"|"short"|null. Vector genuinely couldn't resolve a posture ("unknown"), but the GEX
+  // matrix's OWN gamma_posture field was live and said "short". The old check treated "unknown" as
+  // an equally-resolved answer and returned it outright, so dealerPostureLine rendered "dealer
+  // gamma posture not resolved on this read" in the SAME brief whose "GEX posture" section (reading
+  // gex.gamma_posture directly, bypassing this function) confidently said "dealers short gamma...
+  // Net GEX: -4.3M" -- a direct, member-visible contradiction.
+  const ctx = {
+    ecosystem: {
+      gex_positioning: {
+        spot: 42.34,
+        gamma_posture: "short",
+        matrix_age_sec: 30,
+        freshness: "cached",
+      },
+    },
+    vector: {
+      regime: { posture: "unknown", label: "UNKNOWN" },
+      freshness: "live",
+      dataAgeMs: 5_000,
+    },
+  } as SwingPlayBriefContext;
+
+  assert.equal(resolveGammaPosture(ctx, ctx.vector), "short", "unknown Vector regime must defer to the resolved GEX posture, not silence it");
+});
+
 test("trustedHelixFlow: null when feed stale even if recent_flow exists", () => {
   const eco = {
     recent_flow: {
