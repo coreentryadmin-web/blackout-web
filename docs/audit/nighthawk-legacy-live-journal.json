@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T09:53:17.169Z",
+  "lastUpdated": "2026-09-12T10:16:56.435Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1161,6 +1161,11 @@
       "at": "2026-09-12T09:53:17.169Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle -- all four stages stable (HPE/DELL marks unchanged, resolved=26). Spent part of this cycle systematically checking the remaining Record<string, unknown>[] dossier fields feeding the scorer (the exact type shape that hid all three bugs found this session -- oi_change/congress_unusual/congress_trades/institutional_activity) for the same class of issue: fda_events is presence-only (dossierExtras.fda_events.length > 0, no field-name access at all -- safe by construction); flows is the most heavily-audited path in this codebase already (many prior PRs hardened direction/ask_side_pct/premium logic per CLAUDE.md history), lower marginal probability of an undiscovered bug there. predictions_signal is NOT raw-shaped -- it's parsed into a real typed interface (PredictionConsensusSignal) by parsePredictionRow in unusual-whales.ts before ever reaching the scorer, so field-name guessing isn't possible there (compiler-checked). No new finding this pass. 2 clean cycles since #4847 merged."
+    },
+    {
+      "at": "2026-09-12T10:16:56.436Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle -- no drift (4th clean cycle since #4847 merged). Scorer field-mismatch bug class exhausted for now (checked last cycle), so pivoted to the earlier-identified thesis narrative gap: 'positioning' is a top-2 key_signal driver but buildDeterministicThesis only ever surfaced dealer greek-flow bias, never the three other sources scoreOptionsPositioning blends into pos_score (dark-pool prints up to 6pts, strike-stack accumulation up to 7pts, OI-change 2pts, now live again after #4839) -- same 'signal exists but isn't surfaced' gap class already fixed for news (#4821) and smart-money (#4827). Added positioningDriverNote checked in the same priority order the score weighs them, wired in gated on the same topDrivers check key_signal uses, coexisting with the existing dealer-flow line. Added 6 regression tests. RED->GREEN proven via git stash (3 failures stashed-out, 60/60 restored). tsc --noEmit clean. Full suite 13868 pass / 0 fail / 3 skipped. Findings-staging doc + MARKET-OPEN-VALIDATION entry added. Opened PR #4853 (draft, feat/* branch since this is a narrative enhancement not a bug fix), subscribed to activity. Per the #4820 rollout-timing lesson, won't be visible in a live published edition until the next 5:30pm ET regeneration."
     }
   ],
   "knownOpenItems": {
