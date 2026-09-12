@@ -4,6 +4,22 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-12 (06:18 UTC) — [SEO] Lane heartbeat: quiet overnight pass, no defects
+
+**Severity.** — (no defect found)
+
+Overnight heartbeat (02:17 ET). PR sweep: 1 open agent PR fleet-wide (#4836, CI-RUNNING,
+`fix(gex): complete PR #4822's event-loop yield in buildGexHeatmapUncached`) — briefly reviewed
+since it touches the same `buildGexHeatmapUncached` chain as yesterday's #4796 stale-`degraded`-
+flag fix; confirmed unrelated (event-loop yield completeness during large-chain builds, not
+staleness semantics) and no conflict — not SEO-lane, nothing to act on. `/api/og` re-fetched with
+Googlebot UA: HTTP 200 `image/png`, still crawlable. Full CLS purge+measure not repeated —
+already fresh ~6h ago (00:19 UTC entry, GOOD both viewports). GSC opportunities report
+byte-identical to the last check — expected reporting lag, no new signal.
+
+No defects found.
+
+---
 ## 2026-09-12 (00:19 UTC) — [SEO] Lane heartbeat: full CLS re-measure GREEN, PR queue clear, small mixed 28d movement
 
 **Severity.** — (no defect found)
