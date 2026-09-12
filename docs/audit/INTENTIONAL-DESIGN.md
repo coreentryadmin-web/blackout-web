@@ -51,27 +51,35 @@ precedence from this sample** — revisit once more multi-origin disagreement ro
 
 ---
 
-## 2. Cortex veto has no hysteresis / latching (recomputed each pass)
+## 2. Cortex veto — REVISITED 2026-08-25 → dwell/hysteresis SHIPPED (`cortex-veto-dwell.ts`)
 
-**The choice.** `evaluateCortexForCommit` (`src/lib/zerodte/cortex-gate.ts`) composes a **fresh**
-verdict on **every** scan pass. A veto is **stateless**: it does not latch (stay vetoed once fired)
-and does not dwell (require the block to persist for K passes before it bites). `assessCortexVerdict`
-folds *this pass's* verdict into the decision with no memory of prior passes.
+> **Correction (2026-09-12).** This item said the Cortex veto was stateless and cited a 2026-08-05
+> measurement as the reason nothing had changed. That description is **20 days stale**: PR #2904
+> (2026-08-25) shipped a real dwell/hysteresis latch and this file was never updated to say so — a
+> future reader trusting the "Prior choice" section below at face value would wrongly conclude the
+> live system still re-evaluates a veto with no memory of prior passes. It has not, in production,
+> since 2026-08-25. This is precisely the staleness trap this file's own "keep updated as the
+> measurements run" note (bottom of this document) exists to prevent, and the CLAUDE.md "Ask Largo"
+> mandate independently warns a fresh session never to trust a "shipped so far" list without
+> verifying against `main` — the same discipline applies to this file's design-decision claims.
 
-**Why it's deliberate.** The module doc is explicit that Cortex is a **precision layer stacked on the
-hard-gate safety floor** — "it can only ever *remove* additional plays." A latched veto would keep
-suppressing a setup whose blocking condition (a dealer wall, an opposing $1M cluster) has genuinely
-cleared, i.e. it would manufacture false negatives from stale state. Statelessness keeps every pass
-honest to *current* evidence, consistent with the deliberate fail-soft/ABSTAIN asymmetry documented
-in the same file.
+**Prior choice (through 2026-08-25, and still an accurate description of `evaluateCortexForCommit`/
+`assessCortexVerdict` in isolation).** `cortex-gate.ts` composes a **fresh** verdict on **every**
+call: given the same inputs it returns the same verdict every time, with no memory of its own. That
+much of the original text is still true of that one function. **Why it was deliberate:** the module
+doc is explicit that Cortex is a **precision layer stacked on the hard-gate safety floor** — "it can
+only ever *remove* additional plays." A latched veto would keep suppressing a setup whose blocking
+condition (a dealer wall, an opposing $1M cluster) has genuinely cleared, i.e. it would manufacture
+false negatives from stale state. Statelessness kept every pass honest to *current* evidence,
+consistent with the fail-soft/ABSTAIN asymmetry documented in the same file.
 
-**What would justify revisiting it → `veto-flicker-rate.mjs`.** Measure, over a session's ordered
-passes, how often a Cortex veto **flickers** — fires, then clears within N subsequent passes. A high
-flicker rate means the stateless veto whipsaws candidates on and off the board (the cost a short
-dwell/hysteresis would buy down); a low rate means statelessness is cheap and hysteresis would trade
-responsiveness for little stability. The tool tallies flicker rate, median passes-to-clear, and
-per-ticker churn from a per-pass decision export (exact) or the `zerodte_scan_rejections`
-`cortex_veto*` codes (approximate). Only a **high** flicker rate is evidence for adding a dwell.
+**What this file said would justify revisiting it → `veto-flicker-rate.mjs`.** Measure, over a
+session's ordered passes, how often a Cortex veto **flickers** — fires, then clears within N
+subsequent passes. A high flicker rate means the stateless veto whipsaws candidates on and off the
+board (the cost a short dwell/hysteresis would buy down); a low rate means statelessness is cheap and
+hysteresis would trade responsiveness for little stability. **Only a high flicker rate is evidence
+for adding a dwell** — that bar is stated here because, as shown below, it was never actually cleared
+before the dwell shipped.
 
 **First real run — 2026-08-05 (see FINDINGS.md same date).** Captured 5 real sessions
 (2026-07-28…07-31, 08-04) via `veto-flicker-capture.mjs` (built on PR #1679's `?date=` +
@@ -85,10 +93,59 @@ for the whole session — which trivially reads as "cleared next pass" by constr
 the ticker's true veto duration. Only 2026-08-04 (both tables live) showed a *real* signal: MSFT
 re-wrote a fresh veto row 15 times and INTC 6 times across one session, real repeated state
 transitions, but still not resolvable into an EXACT clear-vs-dropped-candidacy distinction without a
-`--passes` export. **Verdict: insufficient/confounded evidence — `cortex-gate.ts` NOT touched.**
-Re-run forward-looking (2026-08-04 onward only, excluding the 4 pre-#1582 artifact-only days) once
-more post-throttle-fix sessions accumulate; the durable fix for the ambiguity itself would be a new
-`cortex_cleared` discovery-event kind (not attempted — would touch the live scanner).
+`--passes` export. **Verdict at the time: insufficient/confounded evidence — `cortex-gate.ts` NOT
+touched.** No second `veto-flicker-rate.mjs` run happened between then and the ship date below.
+
+**Shipped choice (2026-08-25) — `cortex-veto-dwell.ts`, wired unconditionally into every fresh
+commit.** `scan.ts`'s `attachGateVerdicts` — the one commit path both the legacy and thesis-first
+setups run through, not a thesis-first-only surface — calls `evaluateCortexForCommit` and then
+immediately pipes the result through `applyCortexVetoDwell` before anything downstream
+(`cortexGateBlocks`, ledger persistence, the SKIP card) ever sees it:
+
+- A **VETO** verdict **latches** in Redis (`zerodte:cortex:veto-dwell:<sessionDate>:<ticker>`, 24h
+  TTL) — every subsequent pass returns the LATCHED verdict, not a fresh one, until
+  **`ZERODTE_CORTEX_VETO_DWELL_PASSES`** (env override, **default 3**) consecutive non-veto passes
+  have been seen. `0`/`off`/`false` disables the dwell (reverts to the original stateless behavior).
+- This is exactly "once vetoed, stay vetoed for N passes" — the mechanism the "Prior choice" section
+  above said, correctly at the time, that the system deliberately did **not** have.
+- `docs/audit/FINDINGS.md`'s own "Thesis-first follow-ups phase 2" entry (2026-08-25) states the
+  unconditional scope correctly in its blast-radius line ("Cortex dwell applies to all fresh commits
+  in `attachGateVerdicts`") even though its section header groups G5 alongside otherwise
+  thesis-first-only changes — read the blast-radius line, not the header, for scope.
+
+**Why it shipped without the bar above being cleared.** `docs/audit/THESIS-FIRST-DESIGN-REVIEW.md`
+(2026-08-25 review draft, git-logged ~1 hour before PR #2904's commit) named this exact behavior as
+its own gap **"G5 — Cortex veto is stateless: veto recomputed every pass, no hysteresis → flicker
+risk."** PR #2904's commit message labels the fix "G5 cortex dwell" — the SAME G5, but that review's
+own ad-hoc gap numbering (G1-G9), **not** the hard-gate stack's unrelated `G-5` (`governor.ts`'s
+session governor, referenced throughout `board.ts`/`gates.ts`) — two different things sharing a label
+by coincidence; do not conflate them when reading FINDINGS.md, this PR, or the commit history. The
+dwell was added on architecture-review judgment — a real, named design gap, not a guess — rather than
+on a fresh `veto-flicker-rate.mjs` run clearing the "only a high flicker rate is evidence" bar this
+file itself set 20 days earlier. That is a legitimate way to ship a change; it is a **different**
+justification than "evidence-driven," and this file should not have kept implying the latter applied
+by simply failing to mention the change happened at all.
+
+**What this means for `veto-flicker-rate.mjs` going forward.** The script's own header comment
+(fixed in the same commit as this correction) also still described the veto as stateless — same
+drift, now current there too. More importantly: its data sources (`zerodte_scan_rejections` /
+`zerodte_discovery_events`, the APPROXIMATE input path) record the EFFECTIVE decision *after* the
+dwell fold, not the raw pre-dwell verdict `evaluateCortexForCommit` alone would have produced. Any
+run against live data from 2026-08-25 onward now measures **"does the shipped dwell reduce observed
+flicker"** (a real, useful question — the dwell's whole reason for existing) rather than the original
+**"is the raw stateless veto's flicker rate high enough to justify adding one"** question this file
+posed on 2026-08-05 — that original system no longer runs in production, so it can no longer be
+re-measured directly from live data. **Not yet re-run.** Comparing a fresh capture against the
+2026-08-05 pre-dwell baseline (100% raw flicker, mostly a measurement artifact per that run's own
+caveats) is the honest next step and the evidence check on whether the shipped dwell is doing its
+job — a stale "re-run once more sessions accumulate" note, left over from the pre-dwell world, is not
+that check and has been removed.
+
+**Re-run (same invocation as before; now measures the post-dwell effective series):**
+```
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx \
+  scripts/audit/veto-flicker-rate.mjs --rejections=<export.json> --within=3 --json
+```
 
 ---
 
