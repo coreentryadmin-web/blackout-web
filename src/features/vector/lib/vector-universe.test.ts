@@ -388,6 +388,60 @@ test("ensureTickerInUniverseSnapshot: no-op when ticker already present", async 
   assert.equal(cacheStore.rows.find((r) => r.ticker === "HOOD")?.spot, 42);
 });
 
+// 2026-09-12 audit finding, reproduced live: a single member-view-driven append destroyed the
+// ENTIRE stored universe roster whenever more than 15 minutes had passed since the last full cron
+// rebuild (every weekday evening, and all weekend — the cron is RTH-gated and does not run then).
+// `ensureTickerInUniverseSnapshot` used to merge its one new row with `mergeUniverseSnapshot`'s
+// DEFAULT maxAgeMs (15 min, tuned for the cron's own 5-min rebuild cadence) — a threshold that has
+// nothing to do with how often a member happens to open a ticker. Live evidence: the cron last
+// completed a healthy 84-row build Friday 2026-09-11 20:00 UTC; by Saturday, GET
+// /api/market/vector/universe served only 5 rows (whatever handful had been individually viewed
+// since). This test pins a snapshot older than 15 minutes (but well inside its own 48h TTL) and
+// asserts that appending ONE new ticker does not silently expire the rest of a still-valid roster.
+test("ensureTickerInUniverseSnapshot: does not prune the rest of an aged (but still-valid) roster", async () => {
+  dynamicTickers = [];
+  fetchCalls = [];
+  const staleAsOf = Date.now() - 25 * 60 * 60 * 1000; // 25h old — past the cron's 15-min merge
+  // threshold, comfortably inside the 48h snapshot TTL (e.g. a healthy Friday-evening cron build
+  // still being read on Saturday, before Monday's cron ever runs again).
+  cacheStore = {
+    updatedAt: staleAsOf,
+    rows: [
+      {
+        ticker: "SPY",
+        spot: 500,
+        gammaFlip: 501,
+        vexFlip: 499,
+        topCallWall: 510,
+        topPutWall: 490,
+        topCallPct: 10,
+        topPutPct: 8,
+        asOf: staleAsOf,
+      },
+      {
+        ticker: "NVDA",
+        spot: 900,
+        gammaFlip: 905,
+        vexFlip: 895,
+        topCallWall: 950,
+        topPutWall: 850,
+        topCallPct: 12,
+        topPutPct: 9,
+        asOf: staleAsOf,
+      },
+    ],
+  };
+
+  await ensureTickerInUniverseSnapshot("HOOD");
+  const snap = await loadVectorUniverseSnapshot();
+  assert.ok(snap);
+  assert.deepEqual(
+    snap!.rows.map((r) => r.ticker).sort(),
+    ["HOOD", "NVDA", "SPY"],
+    "a 25h-old roster must survive a single new-ticker append, not collapse to just the new row"
+  );
+});
+
 test("warmDynamicTickerSessionWall: records session bead for dynamic ticker once", async () => {
   fetchCalls = [];
   wallSampleCalls = [];
