@@ -12,6 +12,7 @@ import { BieSectionCard } from "./BieSectionCard";
 import { BieStructureLadder } from "./BieStructureLadder";
 import { answeredParts, relativeTime } from "./answer-format";
 import { splitHeadline } from "./headline";
+import { filterLevelsCoveredByLadder } from "./level-dedup";
 
 /**
  * Whether the envelope is "shallow" — a single section with no cross-cutting
@@ -62,6 +63,9 @@ export function BieAnswer({
   showAsOf?: boolean;
 }) {
   const compact = isCompact(envelope);
+  // See `level-dedup.ts`'s own header — strip rows the Structure Ladder already renders, only when
+  // a ladder is actually present on this envelope (every other Largo product is unaffected).
+  const keyLevels = filterLevelsCoveredByLadder(envelope.levels, Boolean(envelope.structureLadder));
   const { header, rest } = splitHeadline(envelope.headline);
   const { answered, total } = answeredParts(envelope.sections);
   const asOfRel = showAsOf ? relativeTime(envelope.asOf) : null;
@@ -120,7 +124,7 @@ export function BieAnswer({
       )}
 
       <BieEvidencePanel evidence={envelope.evidence} />
-      <BieKeyLevelsTable levels={envelope.levels} />
+      <BieKeyLevelsTable levels={keyLevels} />
       <BieStructureLadder ladder={envelope.structureLadder} />
       <BieScenarioCards scenarios={envelope.scenarios} />
 
