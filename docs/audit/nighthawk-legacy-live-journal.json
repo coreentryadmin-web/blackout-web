@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T00:22:20.206Z",
+  "lastUpdated": "2026-09-12T00:37:22.588Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -961,6 +961,11 @@
       "at": "2026-09-12T00:22:20.206Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "Full local suite from last cycle came back clean: 13779 pass / 0 fail / 3 skipped -- confirms PR #4816's fix is safe. PR #4816 CI: CodeQL/webhook/autopilot-dispatch checks green, main 'CI' (verify) workflow still in_progress as of this cycle -- not yet actionable either way. healthcheck:legacy GREEN this cycle, resolved=26 (stable vs last cycle, as expected now that we're mid-UTC-day away from the next midnight boundary). No new findings this cycle; watching PR #4816 to green + merge."
+    },
+    {
+      "at": "2026-09-12T00:37:22.588Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "PR #4816: CI (verify) workflow completed SUCCESS, mergeable_state=clean. Attempted undraft via GitHub MCP update_pull_request -- hit the known fleet-wide GitHub MCP write-limiter ('API rate limit already exceeded for user ID 284440397'), documented in CLAUDE.md as a recurring, expected pattern (budget #3 of the 4 separate GitHub rate-limit budgets). Will retry undraft next cycle. healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings."
     }
   ],
   "knownOpenItems": {
