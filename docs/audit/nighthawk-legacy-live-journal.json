@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T19:22:16.352Z",
+  "lastUpdated": "2026-09-12T19:37:42.271Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1361,6 +1361,11 @@
       "at": "2026-09-12T19:22:16.352Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy fully GREEN, no change (resolved=26, HPE 2.91, DELL 18.15 stable). SELF-CORRECTION: several prior journal entries this session (approx 17:59-19:07 UTC window) logged 'own PR #4873 still rate-limited' -- verified via pull_request_read this cycle that PR #4873 (fix/swing-book-context-already-open-tense) is actually authored by session_01ThDiEa7iE7mM1twas1e6Kg (the Swings lane), touching play-brief-intel.ts's book-context TRIM/OPEN tense wording -- entirely Swings scope, never mine. All three of my own PRs this session (#4860, #4863, #4865) are confirmed merged and verified on main already. The misattribution never caused an incorrect action (no merge/undraft calls were actually made against #4873 by me), just wasted journal-entry attention repeatedly re-checking a PR that was never mine to track. Root cause: I never verified PR authorship/session-id before assuming ownership from journal-entry pattern-matching alone. Going forward: verify PR author/session_id via pull_request_read before tracking any PR as 'mine' rather than inferring from context."
+    },
+    {
+      "at": "2026-09-12T19:37:42.271Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN, no change (resolved=26, HPE 2.91, DELL 18.15 stable). Confirmed PR #4873 merged by the Swings lane itself, matching the self-correction logged last cycle. Quiet cycle otherwise, standing cadence."
     }
   ],
   "knownOpenItems": {
