@@ -423,8 +423,17 @@ function smartMoneyDriverNote(dossier: TickerDossier | undefined, isLong: boolea
   if (congressHit) return `recent congressional ${isLong ? "buying" : "selling"} disclosed`;
 
   const instHit = (dossier?.institutional_activity ?? []).some((row) => {
+    // BUG FIX (2026-09-12): the real UW ownership row's field is `units_changed` (trailing "d"),
+    // not `units_change` -- mirrors the identical fallback-chain fix in scorer.ts's
+    // institutionalNetSignal, which this note's presence check should agree with.
     const change = Number(
-      row.change ?? row.shares_change ?? row.units_change ?? row.change_in_shares ?? row.net_change ?? NaN
+      row.units_changed ??
+        row.change ??
+        row.shares_change ??
+        row.units_change ??
+        row.change_in_shares ??
+        row.net_change ??
+        NaN
     );
     if (Number.isFinite(change) && change !== 0) return isLong ? change > 0 : change < 0;
     const action = String(row.action ?? row.transaction_type ?? row.type ?? "").toLowerCase();

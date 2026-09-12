@@ -396,6 +396,23 @@ test("thesis falls back to institutional flow when no congressional data exists"
   assert.match(thesis, /Smart money: institutional distribution flagged\./);
 });
 
+test("thesis falls back to institutional flow using the real UW `units_changed` field (BUG FIX 2026-09-12)", () => {
+  // Regression: real UW /api/institution/{ticker}/ownership rows carry the share delta as
+  // `units_changed` (trailing "d"), never `units_change`/`change`/etc, and carry no action/
+  // transaction_type field at all. A fixture using only the guessed field names would pass
+  // even on the old, broken fallback chain -- this uses the REAL shape to prove the fix.
+  const s = { ...scored("INSTREAL", "long", 66), smart_money_score: 15 };
+  const d = dossier("INSTREAL", 100, {
+    direction: "long",
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [{ name: "BLACKROCK, INC.", units: "1162996939", units_changed: "18301514" }],
+    predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: institutional accumulation flagged\./);
+});
+
 test("thesis falls back to the prediction-market's own headline when no congress/institutional data exists", () => {
   const s = { ...scored("PRED", "long", 66), smart_money_score: 15 };
   const d = dossier("PRED", 100, {
