@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T02:52:37.532Z",
+  "lastUpdated": "2026-09-12T03:07:37.762Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1011,6 +1011,11 @@
       "at": "2026-09-12T02:52:37.532Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "PR #4821 undraft retried -- still rate-limited (now 5 consecutive cycles). healthcheck:legacy fully GREEN this cycle, resolved=30 stable. No new findings."
+    },
+    {
+      "at": "2026-09-12T03:07:37.762Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "PR #4821 undraft retried -- still rate-limited (6 consecutive cycles now). healthcheck:legacy fully GREEN, resolved=30 stable. Per the 'dig harder after several quiet cycles' mandate, found a SECOND genuine enhancement candidate, same shape as the just-shipped news-catalyst fix: scoreSmartMoney (scorer.ts) blends 3 real, distinct sources into smart_money_score -- prediction-market consensus (predictions_signal), congressional trading (congress_unusual/congress_trades, recency+side-weighted), and institutional net flow (institutional_activity) -- and 'smart-money' can be one of buildDeterministicThesis's top-2 key_signal drivers, but the thesis prose has ZERO sentence for smart-money the way flow/positioning/short-interest/skew each get their own explanatory line. A member could see 'BULLISH -- smart-money + flow' with no idea whether that means a senator bought calls, an institution accumulated, or a prediction market moved. NOT implementing this cycle: it touches the exact same function (buildDeterministicThesis) and the same `parts` array PR #4821 is still mid-flight on, and stacking a second unmerged branch on the identical lines risks an avoidable merge conflict between my own two PRs (CLAUDE.md's cross-PR ordering guidance). Plan: implement once #4821 merges -- add a smartMoneyDriverNote() that names which of the 3 sub-signals actually fired (checking dossier.congress_unusual/congress_trades recency+side, dossier.institutional_activity net direction, dossier.predictions_signal alignment) only when smart-money is a top-2 driver, same additive/never-fabricate discipline as the catalyst fix."
     }
   ],
   "knownOpenItems": {
