@@ -28,6 +28,7 @@ import { trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
 import { graduatedArchetypeEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
@@ -945,11 +946,36 @@ export function deskConsensusSection(
   eco: EcosystemContext | null,
   play: TerminalPlay,
   bucket: "watch" | "open" | "closed" = "open",
+  sessionDate: string | null = null,
 ): RichSection | null {
   if (!eco) return null;
 
   const nh = eco.nighthawk_recent;
   if (!nh?.outcome || !nh.edition_for) return null;
+
+  // STALENESS GATE (found 2026-09-12, live GOOGL brief): `nighthawk_recent` is "the last time
+  // THIS TICKER appeared in a Legacy edition" with NO date filter — for most tickers that is not
+  // today or yesterday, it is however long ago Legacy last happened to feature this name. This
+  // section used to narrate it unconditionally as "Night Hawk Legacy's last pick on this name
+  // (<edition_for>) is still unresolved — weigh that track record ... before sizing", regardless
+  // of age. Live reproduction: GOOGL's `edition_for` read 2026-08-26 (17 days before the
+  // 2026-09-12 session) and the section still told the member to weigh it "before sizing" as if
+  // it were current context — while `unavailableSourcesFor()` (play-brief-absence.ts), fixed
+  // 2026-09-10 for this EXACT same underlying staleness (its own comment: "GOOG's
+  // nighthawk_recent.edition_for read 2026-08-03 (5+ weeks old)"), correctly labeled the same
+  // fact "no recent Legacy edition for this ticker" and marked it non-retryable — the chip and
+  // the narrative section disagreed about the same data in the same payload. This mirrors that
+  // fix's own bound (a normal within-week gap, incl. weekends) rather than reinventing one: within
+  // the window the pick is still plausibly "recent track record," beyond it the honest read is
+  // "this ticker simply hasn't come up in Legacy lately," which has nothing useful to say about
+  // sizing today's setup, so the section is suppressed rather than asserting stale context as if
+  // fresh. `sessionDate` defaults to null (skip the gate) so existing callers/tests that construct
+  // this section without a session date keep their prior behavior; the real caller below now
+  // always passes `ctx.sessionDate`.
+  if (sessionDate) {
+    const gapDays = daysBetweenYmd(nh.edition_for, sessionDate);
+    if (gapDays !== null && gapDays > 4) return null;
+  }
 
   // `outcome` is "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled"
   // (nighthawk/lib/play-outcomes.ts) — "open"/"pending" mean the swing hasn't resolved
@@ -1226,7 +1252,7 @@ export function buildIntelSections(
   const macro = macroTapeSection(ecosystem);
   if (macro) out.push(macro);
 
-  const consensus = deskConsensusSection(ecosystem, play, bucket);
+  const consensus = deskConsensusSection(ecosystem, play, bucket, ctx.sessionDate);
   if (consensus) out.push(consensus);
 
   const fresh = dataFreshnessSection(ctx);

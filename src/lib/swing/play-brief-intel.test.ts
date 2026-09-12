@@ -768,6 +768,53 @@ test("deskConsensusSection: null when only flow anomaly (covered by flowNarrativ
   assert.equal(deskConsensusSection(eco, fixturePlay()), null);
 });
 
+test("deskConsensusSection: a stale Legacy pick (>4 days old) is suppressed when sessionDate is known", () => {
+  // Live production bug (2026-09-12, GOOGL): `nighthawk_recent` has no date filter — it is "the
+  // last time this ticker appeared in Legacy," which can be weeks old. This section used to
+  // narrate that unconditionally as current sizing context ("weigh that track record ... before
+  // sizing") even though `unavailableSourcesFor()` (fixed 2026-09-10 for the identical staleness)
+  // correctly labels the same fact "no recent Legacy edition for this ticker" in the same payload.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-08-26",
+      direction: "short",
+      conviction: "medium",
+      outcome: "pending",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "SHORT" }), "open", "2026-09-12");
+  assert.equal(section, null);
+});
+
+test("deskConsensusSection: a recent Legacy pick (within the window) still narrates when sessionDate is known", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-10",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }), "open", "2026-09-12");
+  assert.ok(section);
+  assert.match(section?.body ?? "", /closed \*\*WIN\*\*/i);
+});
+
+test("deskConsensusSection: sessionDate omitted (default null) preserves prior unconditional behavior", () => {
+  // Backward-compat: existing call sites (and the tests above this one) that don't pass a
+  // sessionDate must not regress — the staleness gate only activates when one is supplied.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-08-26",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }));
+  assert.ok(section);
+});
+
 test("lessonsSection: a round-trip past breakeven never renders a nonsensical negative MFE capture", () => {
   // Reproduces a live production case: INTC:35 peak +25.7%, exited -40.8% used to render
   // "MFE capture: -158.9% of peak move" (exitPnlPct / peak * 100), a percentage with no honest reading.
