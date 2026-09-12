@@ -136,6 +136,34 @@ test("computeLaneRank: named leader skips a WATCH peer whose own setupState is I
   assert.equal(snap!.rank, 3, "rank still reflects the FULL peer set (raw score order) — invalidation doesn't change standing");
 });
 
+test("computeLaneRank: named leader never points at the play's OWN ticker, even when it is the best eligible peer", () => {
+  // Live repro 2026-09-12: COIN's OWN brief, same board as the test above (SKHY #1 by raw score,
+  // INVALIDATED; COIN next-best and genuinely eligible). Naively skipping only invalidated/exiting
+  // peers over the FULL sorted list (which includes the play's own row) picks COIN's own row as
+  // "the leader" once SKHY is excluded — COIN's real brief rendered "**#2 of 8** on WATCH lane...
+  // Desk leader: **COIN** @ **55.4**", naming itself as the comparison peer to watch.
+  const lanes = [
+    row("SKHY", 59, "WATCH", undefined, undefined, "INVALIDATED"),
+    row("COIN", 55.4, "WATCH", undefined, undefined, "TRIGGERED"),
+    row("GOOGL", 51, "WATCH", undefined, undefined, "TRIGGERED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "COIN", score: 55.4, status: "WATCH", contract: undefined }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.rank, 2, "SKHY still occupies raw rank #1 despite being invalidated");
+  assert.notEqual(snap!.topTicker, "COIN", "the named leader must never be the play describing itself");
+  assert.equal(snap!.topTicker, "GOOGL", "next-best eligible peer excluding self and the invalidated #1");
+});
+
+test("computeLaneRank: named leader falls back to a real OTHER peer, never self, when every other peer is exiting/invalidated", () => {
+  const lanes = [
+    row("SKHY", 59, "WATCH", undefined, undefined, "INVALIDATED"),
+    row("COIN", 55.4, "WATCH", undefined, undefined, "INVALIDATED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "COIN", score: 55.4, status: "WATCH", contract: undefined }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "SKHY", "no eligible peer besides self exists -- fall back to the best real OTHER peer, not self");
+});
+
 test("computeLaneRank: selfInvalidated is true only when THIS play's own setupState is INVALIDATED", () => {
   const lanes = [row("SKHY", 59, "WATCH"), row("COIN", 55.4, "WATCH")];
   const invalidated = computeLaneRank(play({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }), lanes);
