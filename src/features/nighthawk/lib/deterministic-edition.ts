@@ -397,6 +397,48 @@ function pickCatalystHeadline(dossier: TickerDossier | undefined, isLong: boolea
   return text.length > 110 ? `${text.slice(0, 107)}...` : text;
 }
 
+/**
+ * Names WHICH of scoreSmartMoney's three sub-signals (scorer.ts) actually has direction-aligned
+ * evidence, when smart-money is a top scoring driver: congressional trades (unusual + regular
+ * disclosures), institutional net flow, or prediction-market consensus. Without this, a card
+ * could read "BULLISH -- smart-money + flow" and a member has no way to tell whether that means
+ * a senator bought calls, an institution accumulated, or a prediction market moved -- the exact
+ * same "signal exists but isn't surfaced" gap pickCatalystHeadline fixed for news.
+ *
+ * Mirrors the field/side conventions scoreSmartMoney's own helpers read (txn_type/
+ * transaction_type for congress rows, action/change for institutional rows) but checks for
+ * PRESENCE of aligned evidence rather than re-deriving its recency-decay weighting -- this is
+ * prose naming a real signal, not a second scorer, so it doesn't need bit-identical math.
+ * Checked in the same priority order scoreSmartMoney sums them (congress, then institutional,
+ * then predictions) so the note names whichever source is likeliest to be doing the real work.
+ */
+function smartMoneyDriverNote(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const congressRows = [...(dossier?.congress_unusual ?? []), ...(dossier?.congress_trades ?? [])];
+  const congressHit = congressRows.some((row) => {
+    const side = String(
+      row.txn_type ?? row.transaction_type ?? row.transaction ?? row.type ?? row.trade_type ?? ""
+    ).toLowerCase();
+    return isLong ? /buy|purchase/.test(side) : /sell|sale/.test(side);
+  });
+  if (congressHit) return `recent congressional ${isLong ? "buying" : "selling"} disclosed`;
+
+  const instHit = (dossier?.institutional_activity ?? []).some((row) => {
+    const change = Number(
+      row.change ?? row.shares_change ?? row.units_change ?? row.change_in_shares ?? row.net_change ?? NaN
+    );
+    if (Number.isFinite(change) && change !== 0) return isLong ? change > 0 : change < 0;
+    const action = String(row.action ?? row.transaction_type ?? row.type ?? "").toLowerCase();
+    return isLong ? /buy|added|increase|new|accumul/.test(action) : /sell|reduced|decrease|trim|liquidat/.test(action);
+  });
+  if (instHit) return `institutional ${isLong ? "accumulation" : "distribution"} flagged`;
+
+  const pred = dossier?.predictions_signal;
+  const predAligns = pred != null && (isLong ? pred.direction === "bullish" : pred.direction === "bearish");
+  if (predAligns) return pred.headline || "prediction-market consensus aligned";
+
+  return null;
+}
+
 export function buildDeterministicThesis(
   scored: ScoredCandidate,
   dossier: TickerDossier | undefined,
@@ -457,6 +499,12 @@ export function buildDeterministicThesis(
   if (topDrivers.some((d) => d.label === "news")) {
     const catalyst = pickCatalystHeadline(dossier, isLong);
     if (catalyst) parts.push(`Catalyst: "${catalyst}".`);
+  }
+
+  // --- Smart-money driver note (surfaces WHICH sub-signal when smart-money is a top driver) ---
+  if (topDrivers.some((d) => d.label === "smart-money")) {
+    const note = smartMoneyDriverNote(dossier, isLong);
+    if (note) parts.push(`Smart money: ${note}.`);
   }
 
   // --- Key S/R levels + R:R ---

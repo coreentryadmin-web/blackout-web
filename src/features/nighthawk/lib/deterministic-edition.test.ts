@@ -370,6 +370,62 @@ test("thesis catalyst stays quiet when news is NOT a top driver, even with real 
   assert.doesNotMatch(thesis, /Catalyst:/);
 });
 
+test("thesis names congressional buying when smart-money is a top scoring driver", () => {
+  const s = { ...scored("CONG", "long", 66), smart_money_score: 15 };
+  const d = dossier("CONG", 100, {
+    congress_unusual: [{ txn_type: "purchase", filed_at: "2026-09-01" }],
+    congress_trades: [],
+    institutional_activity: [],
+    predictions_signal: null,
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /smart-money/, "smart-money must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Smart money: recent congressional buying disclosed\./);
+});
+
+test("thesis falls back to institutional flow when no congressional data exists", () => {
+  const s = { ...scored("INST", "short", 66), smart_money_score: 15 };
+  const d = dossier("INST", 100, {
+    direction: "short",
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [{ action: "reduced position" }],
+    predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: institutional distribution flagged\./);
+});
+
+test("thesis falls back to the prediction-market's own headline when no congress/institutional data exists", () => {
+  const s = { ...scored("PRED", "long", 66), smart_money_score: 15 };
+  const d = dossier("PRED", 100, {
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [],
+    predictions_signal: { ticker: "PRED", direction: "bullish", confidence_pct: 68, sources: ["polymarket"], headline: "Polymarket: 68% odds PRED beats on guidance" },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: Polymarket: 68% odds PRED beats on guidance\./);
+});
+
+test("thesis smart-money note is omitted (never fabricated) when smart-money is a top driver but no aligned evidence exists", () => {
+  const s = { ...scored("NOEV", "long", 66), smart_money_score: 15 };
+  const d = dossier("NOEV", 100, {
+    congress_unusual: [], congress_trades: [], institutional_activity: [], predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Smart money:/);
+});
+
+test("thesis smart-money note stays quiet when smart-money is NOT a top driver, even with real congressional data present", () => {
+  const s = scored("QUIETSM", "long", 66); // default smart_money_score: 3, below tech(12)/pos(6) -- not top-2
+  const d = dossier("QUIETSM", 100, {
+    congress_unusual: [{ txn_type: "purchase", filed_at: "2026-09-01" }],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Smart money:/);
+});
+
 test("score floor: candidates below MIN_PUBLISH_SCORE (38) are excluded (PR-N28)", () => {
   const ranked = [
     scored("STRONG", "long", 60),
