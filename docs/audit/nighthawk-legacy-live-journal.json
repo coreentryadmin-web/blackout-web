@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T12:22:33.463Z",
+  "lastUpdated": "2026-09-12T12:52:55.916Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1211,6 +1211,11 @@
       "at": "2026-09-12T12:22:33.463Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable (Saturday, no new resolutions expected until Monday). No new findings. 4th clean cycle since #4853 merged."
+    },
+    {
+      "at": "2026-09-12T12:52:55.916Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable). 5th clean healthcheck cycle since #4853 -- per the 'dig harder' mandate, did a deeper field-mismatch audit: verified positioningDriverNote's strike_stacks/dark_pool fields are properly typed (FlowStrikeStack, DarkPoolSnapshot), not raw guesses -- safe. Then found a NEW real bug while auditing the remaining Record<string,unknown>[] dossier fields: fetchUwInsiderTransactions sent `ticker` to /api/insider/transactions, which SILENTLY IGNORES that param (and symbol/symbols/tickers/ticker_symbols) and returns the unfiltered market-wide feed -- live-confirmed 5 wrong spellings, found the real param is `ticker_symbol`. This meant dossier.ts's insider_buys (feeding scorer.ts +2 bonus and hunt-builder.ts eligibility gate) was IDENTICAL noise across every ticker, and Largo's get_insider_flow tool served a random other ticker's real transactions as the requested ticker's own. Fixed the one-line param name, added a regression test pinning the outgoing request, RED->GREEN proven, tsc clean, full suite 13915/0/3skip. Shipped as PR #4860 (draft, CI pending). Staged finding + MARKET-OPEN-VALIDATION entry written. Noted a second, related but independent bug (isRecentInsiderBuy/parseTradeDate missing filing_date/filed_at_date, same trade-date-vs-disclosure-date class as #4844) -- deliberately left for a separate follow-up PR per single-issue-per-PR discipline."
     }
   ],
   "knownOpenItems": {
