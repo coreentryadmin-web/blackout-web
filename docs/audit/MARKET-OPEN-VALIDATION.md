@@ -23,6 +23,30 @@ sentence even if the ticker has some dark-pool/strike-stack data on file. Per th
 rollout-timing lesson, this text is generated once at publish time (5:30pm ET nightly cron), so it
 won't appear in an already-published edition until the next regeneration.
 
+## WATCH LIST — 2026-09-12 Ask Largo lane-rank praise/caution wording on reducing positions (read this before the routine pass)
+
+### Lane-rank lines said "confirm before adding size"/"Lane leader" on positions already being trimmed or exited — fix/swing-lane-rank-below-median-reduce-wording
+
+**What was broken:** `computeLaneRank`/`laneRankCoaching`/`laneRankSection` (`src/lib/swing/play-brief-lane-rank.ts`,
+`play-brief-narrative-coaching.ts`) render self-referential rank praise/caution lines with no check on
+the play's own `manageAction`. Two live repros the same cycle: **CG** sat #90/90 by raw entry-time
+score (dead last) while being the book's best-performing real position (+169.2%/+134.6% exec, already
+`TAKE_PARTIAL`) — its own brief said "Desk says TRIM ... Bank partial into strength" three bullets
+before "confirm before adding size." **CRWD** sat #1 of 90 on OPEN by raw score (87) with its own
+manage engine `EXIT_RUNNER` (round-tripped +130% peak → -10%) — its brief said "Desk says TRIM ...
+consider protecting what's left" three bullets before "Lane leader ... Desk attention follows the top
+row." See `docs/audit/findings-staging/2026-09-12-swing-lane-rank-below-median-adding-size-wording.md`.
+
+**Fix:** a new `selfReducing` flag (true for `TAKE_PARTIAL`/`EXIT_RUNNER`/`STOP_OUT`/`EXIT`) gates
+off every self-referential praise/caution branch in both functions — rank-1 "Lane leader"/"Top-ranked
+play", rank≤3 "Top-tier setup", and the below-median "adding size" line (which renders a reduce-aware
+variant instead of suppressing outright). A plain `HOLD`/`ADD` is unaffected.
+
+**Check at the open:** once Monday's session produces new reducing committed positions (`TRIM`/
+`EXIT_RUNNER`/`STOP_OUT`), spot-check their briefs for any "Lane leader"/"Top-tier setup"/"confirm
+before adding size" line — none should appear on a position the desk is telling the member to reduce,
+and a plain-HOLD position at any rank should still get the original wording.
+
 ## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: institutional smart-money leg was dead code (read this before the routine pass)
 
 ### `institutionalNetSignal`/`smartMoneyDriverNote` now read the real UW `units_changed` field — fix/nighthawk-institutional-units-changed-field
@@ -4261,3 +4285,9 @@ than an end-of-session patch.
 - **What was broken (Ask Largo deep-dive, live `GET /api/market/swing/play-brief` on a real CLOSED position):** `play-brief-absence.ts`'s `collectBriefUnavailableSources` already gates HELIX/GEX/Vector/discovery-scan staleness behind `status !== "CLOSED"` — its own comment explains why: those all measure whether TODAY's live desk state is current, which is meaningless once a play is a historical record, and left ungated they "fire forever" once any time has passed since close. But `play-brief-intel.ts`'s `dataFreshnessSection` (the narrative "Data freshness" section body, a separate code path from that structured `unavailableSources` array) never got the same gate. Live repro: INTC's CLOSED play-brief (`playId=SWING:INTC`, closed 2026-09-04, read 2026-09-11 — a full week later) still rendered "Swing scan: prior session 2026-09-11 — today's discovery not yet run" and "HELIX flow: pipeline stale — tape read may lag" in its "Data freshness" section, both claims about "today" on a trade that had been closed for a week.
 - **What changed:** `dataFreshnessSection` now skips the scan/Vector-data-age/GEX-matrix-age/HELIX-pipeline-stale lines entirely when `play.status` is `CLOSED` — mirroring the exact gate and rationale already established in `collectBriefUnavailableSources`. The option-mark lines are untouched (already correctly scoped to OPEN/HOLD/TRIM via `playExpectsLiveOptionMark`, and a bare historical `markAsOf` timestamp is a fact, not a staleness claim). A CLOSED play with none of these lines now renders no "Data freshness" section at all, same as before this fix for a CLOSED play with no markAsOf.
 - **RTH check:** Pull `GET /api/market/swing/play-brief` for any real CLOSED Swing position (`status=CLOSED` in `swing/record`'s `closedDeck`) and confirm the brief either omits "Data freshness" entirely or, if present, contains no "today's discovery not yet run" / "HELIX flow: pipeline stale" / "GEX matrix ... old" / "Vector data ... old" language — those claims should now only ever appear on a live OPEN/WATCH/HOLD/TRIM brief.
+
+### 139. Vector's wall-proximity "callout" was double-stated (strike/side/"wall" restated verbatim) at two independent call sites — fix/vector-starred-wall-duplicate-text — 2026-09-12
+
+- **What was broken (Ask Largo deep-dive, live `GET /api/market/swing/play-brief` on a real OPEN and a real CLOSED AAPL position):** `buildVectorPlay`'s `starred` array (`vector-play-engine.ts`) and `chartLevelsSection`'s "Nearest wall" line (`play-brief-intel.ts`) each independently PREPENDED a synthesized `"{strike} {side} wall {nearness} —"` / `"{strike} ({side}, {pct}% away) —"` prefix ahead of `WallProximity.callout` (`vector-wall-proximity.ts`), which already states the same strike/side/"wall" itself as a complete sentence. Live repro (OPEN AAPL, positionId 37): Ask Largo's "Trade manager read" rendered "...starred level 332.5 put wall at — Testing 332.5 put wall (0.02% below) — dealers buy weakness...". Live repro (CLOSED AAPL, positionId 36): "Levels on chart" rendered "Nearest wall: 332.50 (put, -0.0% away) — Testing 332.5 put wall (0.02% below) — ...". `starred` also feeds Vector's own desk UI (`VectorPlayAnalyticsDrawer.tsx`), `GET /api/market/vector/contract-picks`, and BIE's `vector-desk-brief.ts`/`play-suggest-read.ts` — not swing-only.
+- **What changed:** Both call sites now push the callout as-is (no prepended prefix). Nothing is lost — the callout already states strike/side/"wall" and a precise distance %, strictly more informative than the coarse labels the old prefixes contributed.
+- **RTH check:** Pull `GET /api/market/swing/play-brief` for any live OPEN/WATCH position whose Vector desk read is currently testing/at a call or put wall and confirm the "Trade manager read"'s Vector-desk bullet and any "Levels on chart" → "Nearest wall" line each state the strike/wall exactly ONCE, not twice. Also spot-check Vector's own desk UI (`/vector`) for the same wall-proximity "starred" callout — it should read as one clean sentence, not a doubled one.

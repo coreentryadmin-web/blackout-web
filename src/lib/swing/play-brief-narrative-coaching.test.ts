@@ -1333,6 +1333,25 @@ test("laneRankCoaching: suppresses the rank-1 leader line when the play's own th
   assert.equal(line, null, "a broken thesis must never get 'leader'/'top-tier' praise text");
 });
 
+// Live repro 2026-09-12 (found in the same cycle #4849 was opened): CRWD sat #1 of 90 on OPEN by
+// raw score (87) while its own manage engine was EXIT_RUNNER (round-tripped +130% peak -> -10%,
+// all trims banked, runner only) — the same brief's first bullet said "Desk says TRIM ... consider
+// protecting what's left," yet this function still said "Lane leader ... Desk attention follows
+// the top row" three lines later. #4842's selfInvalidated guard (setupState-based) didn't cover a
+// rank-1 play whose own manageAction says reduce — selfReducing (added for the below-median branch
+// earlier this same PR) closes that gap here too.
+test("laneRankCoaching: suppresses the rank-1 leader line when the play's own manage engine calls for reducing", () => {
+  const lanes = [
+    laneRow({ ticker: "CRWD", score: 87, status: "COMMIT", manageAction: "EXIT_RUNNER" }),
+    laneRow({ ticker: "AAPL", score: 60, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "CRWD", score: 87, status: "HOLD", manageAction: "EXIT_RUNNER" }),
+    lanes,
+  );
+  assert.equal(line, null, "an exiting rank-1 position must never get 'leader'/'top-tier' praise text");
+});
+
 test("laneRankCoaching: still names the real leader for a healthy rank-1 WATCH setup", () => {
   const lanes = [
     laneRow({ ticker: "COIN", score: 59, status: "WATCH", setupState: "TRIGGERED" }),
@@ -1344,4 +1363,35 @@ test("laneRankCoaching: still names the real leader for a healthy rank-1 WATCH s
   );
   assert.match(line!, /Lane leader/);
   assert.match(line!, /#1 of 2/);
+});
+
+// Live repro 2026-09-12: CG sat #90/90 by raw entry-time score (3) — a real +169.2%/+134.6% exec
+// winner already on TRIM (manageAction TAKE_PARTIAL) — and this exact function still said "confirm
+// before adding size" three lines after the brief's own "Desk says TRIM ... Bank partial into
+// strength" — backwards advice about a position the desk is telling the member to bank profit on,
+// not size into.
+test("laneRankCoaching: below-median wording drops 'adding size' when the play's own plan is to reduce", () => {
+  const lanes = [
+    laneRow({ ticker: "AAPL", score: 84.4, status: "COMMIT" }),
+    laneRow({ ticker: "NN", score: 23, status: "COMMIT" }),
+    laneRow({ ticker: "CG", score: 3, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "CG", score: 3, status: "HOLD", manageAction: "TAKE_PARTIAL" }),
+    lanes,
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line, /confirm before adding size/, "backwards advice on a position already being trimmed");
+  assert.match(line, /reducing, not adding/);
+});
+
+test("laneRankCoaching: below-median wording keeps 'confirm before adding size' for a play that's just HOLDing", () => {
+  const lanes = [
+    laneRow({ ticker: "AAPL", score: 84.4, status: "COMMIT" }),
+    laneRow({ ticker: "CG", score: 23, status: "COMMIT" }),
+    laneRow({ ticker: "NN", score: 3, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "NN", score: 3, status: "HOLD", manageAction: "HOLD" }), lanes);
+  assert.ok(line);
+  assert.match(line, /confirm before adding size/, "a plain HOLD is still a legitimate add-size caution");
 });

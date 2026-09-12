@@ -385,9 +385,17 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
     lines.push(`Expected move: **${bandStr}**`);
   }
   if (vec?.proximity?.strike != null && !vectorStaleForLevels) {
-    lines.push(
-      `Nearest wall: **${vec.proximity.strike.toFixed(2)}** (${vec.proximity.side}, ${vec.proximity.distancePct.toFixed(1)}% away) — ${vec.proximity.callout}`,
-    );
+    // BUG FIX (2026-09-12): this used to PREPEND "{strike} ({side}, {pct}% away) —" ahead of
+    // `vec.proximity.callout` — but `deriveWallProximity` (vector-wall-proximity.ts) already builds
+    // callout as a complete sentence that independently states the same strike/side/"wall" itself
+    // (e.g. "Testing 332.50 put wall (0.02% below) — dealers buy weakness; support unless it
+    // breaks on volume."). The prefix duplicated that verbatim — live repro: AAPL closed-position
+    // swing brief 2026-09-12, "Nearest wall: 332.50 (put, -0.0% away) — Testing 332.5 put wall
+    // (0.02% below) — ...". The exact same duplication, from the exact same `WallProximity` shape,
+    // was independently found and fixed the same day at a different call site
+    // (vector-play-engine.ts's `starred` array) — this is a second, previously-unchecked instance
+    // of it. Push the callout alone; nothing is lost, see that fix's comment for why.
+    lines.push(`Nearest wall: ${vec.proximity.callout}`);
   }
   const zones = vec?.confluenceZones ?? [];
   if (zones.length && !vectorStaleForLevels) {

@@ -17,6 +17,13 @@ export type LaneRankSnapshot = {
   /** True when THIS play's own setupState is INVALIDATED — a rank-1/top-tier self-claim must not
    *  be rendered as praise when the same brief elsewhere says the thesis already broke. */
   selfInvalidated: boolean;
+  /** True when THIS play's own manageAction already calls for reducing (TAKE_PARTIAL/EXIT_RUNNER/
+   *  STOP_OUT/EXIT) rather than holding/adding — gates BOTH a below-median "confirm before adding
+   *  size" caution (backwards on a position the desk says to bank/exit) AND a rank-1/top-tier
+   *  self-praise claim (found live 2026-09-12: CRWD sat #1 of 90 on OPEN by raw score with its own
+   *  manage engine EXIT_RUNNER — "Lane leader ... Desk attention follows the top row" directly
+   *  contradicted the same brief's "Desk says TRIM ... protect what's left" three lines above it). */
+  selfReducing: boolean;
 };
 
 const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
@@ -35,6 +42,16 @@ const EXITING_MANAGE_ACTIONS = new Set(["EXIT", "EXIT_RUNNER"]);
  *  later the SAME brief's folded narrative still said "Lane leader — #1 of 8 on WATCH — Desk
  *  attention follows the top row", directly contradicting its own disclosure). */
 const INVALIDATED_SETUP_STATES = new Set(["INVALIDATED"]);
+
+/** manageAction values that already mean "reduce/exit this position" rather than "hold or add" —
+ *  used to gate the below-median "confirm before adding size" caution (found live 2026-09-12: CG
+ *  sat #90/90 by raw entry-time score — a real +169.2%/+134.6% exec winner already on TRIM — and
+ *  its own brief still said "confirm before adding size" three lines after "Desk says TRIM ...
+ *  Bank partial into strength", backwards advice about a position the desk is telling the member to
+ *  bank profit on, not size into). Distinct from EXITING_MANAGE_ACTIONS (which gates the NAMED-peer
+ *  pointer, not this play's own caution) — TAKE_PARTIAL/STOP_OUT are included here because "trim" and
+ *  "stopped out" are just as much a not-adding-size signal as a full exit. */
+const REDUCE_MANAGE_ACTIONS = new Set(["TAKE_PARTIAL", "EXIT_RUNNER", "STOP_OUT", "EXIT"]);
 
 /** Parse strike/right from deck contract label, e.g. "110C · 13DTE". */
 export function parseDeckContractLabel(contract: string | null | undefined): {
@@ -117,6 +134,7 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
     // narrative line unrounded (live repro: AMZN brief showed "+11.799999999999997 vs median").
     deltaFromMedian: Math.round((playScore - medianScore) * 10) / 10,
     selfInvalidated: play.setupState === "INVALIDATED",
+    selfReducing: REDUCE_MANAGE_ACTIONS.has(play.manageAction ?? ""),
   };
 }
 
@@ -136,8 +154,10 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
   if (snap.topTicker && snap.topScore != null && snap.rank > 1) {
     lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**`);
   }
-  if (snap.rank === 1 && snap.total > 1 && !snap.selfInvalidated) {
+  if (snap.rank === 1 && snap.total > 1 && !snap.selfInvalidated && !snap.selfReducing) {
     lines.push("Top-ranked play in this bucket — size and attention follow score.");
+  } else if (snap.deltaFromMedian < -15 && snap.selfReducing) {
+    lines.push("Below median on entry-time score — not a sizing signal here; this position's own plan already calls for reducing, not adding.");
   } else if (snap.deltaFromMedian < -15) {
     lines.push("Below median — confirm thesis before adding size; leader may be absorbing flow.");
   }
