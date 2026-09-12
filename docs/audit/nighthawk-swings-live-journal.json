@@ -303,6 +303,10 @@
     {
       "topic": "PR #4837 (AAPL factors-vs-score drift fix) post-deploy verification -- AAPL#37",
       "verdict": "CLEAN -- CONFIRMED DEPLOYED. Re-pulled GET /api/market/swing/play-brief?playId=SWING:AAPL:37&ticker=AAPL&positionId=37 at 06:46 UTC (asOf 2026-09-12 02:49 ET). 'Why this setup' score pillars now: Rel. strength +32.9, Structure +23.5, Regime +23.5, Catalyst +3.1, Flow +1.4 = 84.4, rounds to displayed Verdict score 84 -- matches. Prior checks at 06:16 and 06:31 UTC both still showed the stale pre-fix 75.0-vs-84 gap; this is the first check where the sum agrees, ~35-50min after merge, consistent with the documented 30-45min ECS deploy-lag window. Watch item closed."
+    },
+    {
+      "topic": "Open swing-lane PR sweep + full 5-position (AAPL#37/NN#32/CG#25/CRWD#19/NRG#34) live re-check, 06:46 UTC",
+      "verdict": "CLEAN -- GitHub sweep: zero open PRs touch swing code (only 4 open PRs total, all Dependabot dep bumps); no coreentryadmin-web-authored PR stuck in draft. #4101 (last swing PR by this session) confirmed already merged 2026-09-06, consistent with CLAUDE.md. All 5 real Swing-desk positions re-pulled live: data is honestly Friday-2026-09-11-close-stale across the board (weekend, no new session yet) -- every brief's unavailableSources/Data freshness section correctly discloses 'prior session' / 'pipeline stale' rather than presenting stale data as fresh. CRWD's blended P&L (+45.3% realized-trim + open-runner blend vs raw open-runner -9.5%) still renders correctly post-#4825 (EXIT_RUNNER already fired on the runner leg, consistent with the lane-rank fix's own repro). No new bugs, no new PRs to act on."
     }
   ],
   "findings_filed_this_cycle": [
