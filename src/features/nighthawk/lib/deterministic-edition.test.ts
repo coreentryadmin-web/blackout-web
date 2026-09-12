@@ -443,6 +443,64 @@ test("thesis smart-money note stays quiet when smart-money is NOT a top driver, 
   assert.doesNotMatch(thesis, /Smart money:/);
 });
 
+test("thesis names dark-pool prints when positioning is a top scoring driver", () => {
+  const s = { ...scored("DPPOS", "long", 66), pos_score: 15 };
+  const d = dossier("DPPOS", 100, {
+    dark_pool: { prints: [], total_premium: 8_000_000, call_premium: 8_000_000, put_premium: 0, bias: "bullish", pcr: null, detail: "" },
+    strike_stacks: [],
+    oi_change: [],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /positioning/, "positioning must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Positioning: dark-pool prints leaning bullish\./);
+});
+
+test("thesis falls back to strike-stack accumulation when no aligned dark-pool bias exists", () => {
+  const s = { ...scored("STACKPOS", "short", 66), pos_score: 15 };
+  const d = dossier("STACKPOS", 100, {
+    direction: "short",
+    dark_pool: null,
+    strike_stacks: [
+      { ticker: "STACKPOS", strike: 95, option_type: "put", expiry: "2026-12-18", alert_count: 4, total_premium: 2_000_000, premiums: [500_000], trade_count: 4, repeated_hits: true, same_strike_accumulation: true, alert_rules: [], kind: "repeated_and_stacked" },
+    ],
+    oi_change: [],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Positioning: repeated same-strike accumulation on the aligned side\./);
+});
+
+test("thesis falls back to rising aligned OI using the real UW `kind` field (not `option_type`)", () => {
+  const s = { ...scored("OIPOS", "long", 66), pos_score: 15 };
+  const d = dossier("OIPOS", 100, {
+    dark_pool: null,
+    strike_stacks: [],
+    oi_change: [
+      { strike: 100, oi_change: 1200, kind: "call" },
+      { strike: 105, oi_change: 800, kind: "call" },
+    ],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Positioning: rising aligned open interest\./);
+});
+
+test("thesis positioning note is omitted (never fabricated) when positioning is a top driver but no aligned evidence exists", () => {
+  const s = { ...scored("NOEVPOS", "long", 66), pos_score: 15 };
+  const d = dossier("NOEVPOS", 100, {
+    dark_pool: null, strike_stacks: [], oi_change: [],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Positioning:/);
+});
+
+test("thesis positioning note stays quiet when positioning is NOT a top driver, even with real dark-pool data present", () => {
+  const s = scored("QUIETPOS", "long", 66); // default pos_score: 6, below flow(18)/tech(12) -- not top-2
+  const d = dossier("QUIETPOS", 100, {
+    dark_pool: { prints: [], total_premium: 8_000_000, call_premium: 8_000_000, put_premium: 0, bias: "bullish", pcr: null, detail: "" },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Positioning:/);
+});
+
 test("score floor: candidates below MIN_PUBLISH_SCORE (38) are excluded (PR-N28)", () => {
   const ranked = [
     scored("STRONG", "long", 60),
