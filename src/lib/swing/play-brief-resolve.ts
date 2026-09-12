@@ -94,6 +94,7 @@ export function horizonRowToDeckSource(
     commitGateBlockedBy: p.commitGateBlockedBy ?? null,
     liveStatus: p.liveStatus ?? null,
     flagUnderlyingPx: p.flagUnderlyingPx ?? null,
+    entryTriggerUnderlyingPx: p.entryTriggerUnderlyingPx ?? null,
     entryPremium: p.entryPremium ?? null,
     livePnlPct: p.livePnlPct ?? null,
     peakPremium: p.peakPremium ?? null,
