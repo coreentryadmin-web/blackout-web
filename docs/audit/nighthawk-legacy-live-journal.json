@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T05:22:26.875Z",
+  "lastUpdated": "2026-09-12T05:38:23.274Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1061,6 +1061,11 @@
       "at": "2026-09-12T05:22:26.875Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. Noted for situational awareness only (not my scope): 0DTE lane shipped PR #4830, a UTC/ET DATE-column normalization fix -- same general bug CLASS as PR #4816 (this session's own fix) but a different, independent instance in 0DTE's own session_date column, not a duplicate or related call site."
+    },
+    {
+      "at": "2026-09-12T05:38:23.275Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings. CLAUDE.md was re-read at session start this cycle (routine, no content changes affecting Legacy's standing mandate). Continuing standing monitoring cadence."
     }
   ],
   "knownOpenItems": {
