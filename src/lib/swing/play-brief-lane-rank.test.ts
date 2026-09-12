@@ -25,6 +25,7 @@ function row(
   score: number,
   status: HorizonPlay["status"],
   contract?: { strike: number; right: "C" | "P" },
+  manageAction?: HorizonPlay["manageAction"],
 ): HorizonPlay {
   const c = contract ?? { strike: 100, right: "C" as const };
   return {
@@ -35,6 +36,7 @@ function row(
     reason: "",
     contract: { strike: c.strike, right: c.right, expiry: "2026-09-20", dte: 14, mid: 1, delta: 0.5, gamma: 0, theta: 0, vega: 0, iv: 0.3 },
     factors: [],
+    manageAction,
   };
 }
 
@@ -78,6 +80,41 @@ test("computeLaneRank: disambiguates same-ticker WATCH rows by contract", () => 
   assert.ok(snap);
   assert.equal(snap!.rank, 2, "110C ranks second behind 115C — ticker-only match would wrongly rank #1");
   assert.equal(snap!.playScore, 40);
+});
+
+test("computeLaneRank: named leader skips a peer whose own manage engine says EXIT/EXIT_RUNNER", () => {
+  // Live repro 2026-09-12: CRWD sat #1 by score (86.5) among real OPEN positions while its own
+  // manage engine had already fired EXIT_RUNNER (round-tripped from +129.7% peak to -9.5%). NN's
+  // brief still named "Leader: CRWD @ 86.5 — confirm before adding size" — reads as "put money
+  // here" about a position the desk is telling members to exit.
+  const lanes = [
+    row("CRWD", 86.5, "COMMIT", undefined, "EXIT_RUNNER"),
+    row("AAPL", 84.4, "COMMIT", undefined, "HOLD"),
+    row("NN", 23, "COMMIT", undefined, "HOLD"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "NN", score: 23 }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "AAPL", "the raw #1 (CRWD) is exiting — the named leader must skip it");
+  assert.equal(snap!.topScore, 84.4);
+  assert.equal(snap!.rank, 3, "rank still reflects the FULL peer set, exit state doesn't change standing");
+  assert.equal(snap!.total, 3);
+});
+
+test("computeLaneRank: named leader falls back to the raw #1 when every peer is exiting", () => {
+  const lanes = [
+    row("CRWD", 86.5, "COMMIT", undefined, "EXIT_RUNNER"),
+    row("NRG", 27.2, "COMMIT", undefined, "EXIT"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "NRG", score: 27.2 }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "CRWD", "no non-exiting peer exists — fall back rather than show nothing");
+});
+
+test("computeLaneRank: WATCH-bucket rows never carry manageAction — leader pick unaffected", () => {
+  const lanes = [row("NRG", 70, "WATCH"), row("FSLR", 40, "WATCH")];
+  const snap = computeLaneRank(play({ ticker: "FSLR", score: 40, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "NRG");
 });
 
 test("computeLaneRank: deltaFromMedian is rounded, not a raw float subtraction artifact", () => {

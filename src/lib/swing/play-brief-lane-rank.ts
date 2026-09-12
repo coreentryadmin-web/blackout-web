@@ -18,6 +18,13 @@ export type LaneRankSnapshot = {
 
 const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
 
+/** manageAction values whose own trade-manager verdict is "get out" — never a place to "add size".
+ *  Excluded from the named leader/comparison pointer below (found live 2026-09-12: CRWD sat #1 by
+ *  score at 86.5 while its own manage engine said EXIT_RUNNER, round-tripped from +129.7% peak to
+ *  -9.5%; NN's brief still named it "Leader: CRWD @ 86.5 — confirm before adding size", which reads
+ *  as "put money here" about a position the desk is actively telling members to exit). */
+const EXITING_MANAGE_ACTIONS = new Set(["EXIT", "EXIT_RUNNER"]);
+
 /** Parse strike/right from deck contract label, e.g. "110C · 13DTE". */
 export function parseDeckContractLabel(contract: string | null | undefined): {
   strike: number | null;
@@ -73,7 +80,14 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
 
   const scores = sorted.map((r) => r.score);
   const medianScore = scores[Math.floor(scores.length / 2)] ?? playScore;
-  const top = sorted[0];
+  // Rank/median above stay computed against the FULL peer set — "where does this score fall" is
+  // honest regardless of exit state. The NAMED leader is different: it reads as "look at this one",
+  // so a peer whose own manage engine already says EXIT/EXIT_RUNNER is skipped in favor of the next
+  // best peer still actually held open. Falls back to the raw #1 if every peer is exiting (still
+  // shows something rather than nothing) — WATCH-bucket rows never carry manageAction, so this is a
+  // no-op there.
+  const leaderCandidates = sorted.filter((r) => !EXITING_MANAGE_ACTIONS.has(r.manageAction ?? ""));
+  const top = leaderCandidates[0] ?? sorted[0];
 
   return {
     rank: Math.min(rank, sorted.length),
