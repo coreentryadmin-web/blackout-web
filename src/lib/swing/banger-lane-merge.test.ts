@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { horizonPlayFromBangerPosition, mergeBangerPositionsIntoSwingPlays } from "./banger-lane-merge.ts";
+import {
+  horizonPlayFromBangerPosition,
+  horizonPlayFromBangerWatch,
+  mergeBangerPositionsIntoSwingPlays,
+} from "./banger-lane-merge.ts";
 import type { BangerPositionRow } from "../banger/positions-db.ts";
+import type { BangerMover } from "../banger/discovery.ts";
 import type { HorizonPlay } from "../horizon-plays.ts";
 
 function bangerRow(overrides: Partial<BangerPositionRow> = {}): BangerPositionRow {
@@ -133,6 +138,43 @@ test("horizonPlayFromBangerPosition keeps an OPEN banger visible as it ages past
 test("horizonPlayFromBangerPosition still excludes an already-expired contract (dte < 0)", () => {
   const play = horizonPlayFromBangerPosition(bangerRow(), new Date("2026-09-13T16:00:00-04:00"));
   assert.equal(play, null);
+});
+
+// FINDINGS 2026-09-12 (live prod repro, ~85 of ~90 committed SWING rows): `factors[0].points` used
+// to be the RAW discovery gain% (Math.round(gainPct)), a different quantity from `score` (which
+// compounds it as 60 + gainPct/2). Both the command-deck "Why this play was picked" panel
+// (PlayTerminal.tsx) and Ask Largo's play-brief "Score pillars" section (play-brief-intel.ts)
+// render `factors` as if it sums to `score` — so a live commit read e.g. "SCORE 66" next to
+// "Discovery gain +13 pts", a ~53-point unexplained gap. `factors[].points` must equal `score`
+// exactly: this lane has no second pillar, so the whole score legitimately belongs to this one
+// signal.
+test("horizonPlayFromBangerPosition: factors sum to score exactly (no unexplained gap)", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({ discovery_gain: 0.13 }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  const factorSum = (play!.factors ?? []).reduce((n, f) => n + f.points, 0);
+  assert.equal(factorSum, play!.score);
+});
+
+test("horizonPlayFromBangerWatch: factors sum to score exactly (no unexplained gap)", () => {
+  const mover: BangerMover = {
+    ticker: "ODD",
+    close: 60,
+    gain: 0.13,
+    vol: 2_000_000,
+    dollar: 50_000_000,
+    closeStrength: 0.8,
+  };
+  const play = horizonPlayFromBangerWatch(
+    mover,
+    { strike: 60, expiry: "2026-09-18", occ: "ODD250918C00060000", entryPremium: 2.1 },
+    "2026-09-04",
+  );
+  assert.ok(play);
+  const factorSum = (play!.factors ?? []).reduce((n, f) => n + f.points, 0);
+  assert.equal(factorSum, play!.score);
 });
 
 test("horizonPlayFromBangerPosition still excludes a contract beyond HORIZONS.SWING.dteMax", () => {

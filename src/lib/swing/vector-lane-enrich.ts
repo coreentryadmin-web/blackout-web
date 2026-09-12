@@ -32,14 +32,31 @@ export function enrichPlayWithVectorLeader(
   if (!leader) return play;
   const kinds = new Set(play.signalKinds ?? []);
   kinds.add(VECTOR_SIGNAL);
-  const bump =
+  const rawBump =
     leader.peakPremiumPct != null && Number.isFinite(leader.peakPremiumPct)
       ? Math.min(8, Math.round(leader.peakPremiumPct / 5))
       : 3;
+  const nextScore = Math.min(99, play.score + rawBump);
+  // FINDINGS 2026-09-12 (same root cause as banger-lane-merge.ts's factors fix): this used to bump
+  // `score` without ever recording the bump in `factors`, so a Vector-corroborated play's own "Why
+  // this play was picked" panel (PlayTerminal.tsx) / Ask Largo "Score pillars" section
+  // (play-brief-intel.ts) summed to `rawBump` points LESS than the SCORE shown right next to it,
+  // with no line explaining the gap. Appending the bump as its own factor keeps
+  // `sum(factors.points) === score` — the invariant both of those surfaces already assume — and is
+  // also the honest read: Vector corroboration IS a real, disclosed reason this play's score is what
+  // it is. Uses the ACTUALLY-applied delta (`nextScore - play.score`), not the raw pre-clamp bump —
+  // a play already at/near the 99 ceiling gets a smaller (or zero) real increase, and crediting the
+  // full rawBump there would overstate the factor past what `score` actually moved.
+  const appliedBump = nextScore - play.score;
+  const bumpedFactors =
+    appliedBump > 0
+      ? [...(play.factors ?? []), { label: "Vector corroboration", points: appliedBump }]
+      : play.factors;
   return {
     ...play,
     signalKinds: [...kinds],
-    score: Math.min(99, play.score + bump),
+    score: nextScore,
+    factors: bumpedFactors,
     reason: play.reason.includes("Vector")
       ? play.reason
       : `${play.reason} · Vector corroboration`,
