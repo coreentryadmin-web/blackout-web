@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T14:22:08.826Z",
+  "lastUpdated": "2026-09-12T15:08:01.413Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1251,6 +1251,26 @@
       "at": "2026-09-12T14:22:08.826Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "PR #4863 merged (f284cea4c) and verified on origin/main -- grep confirms filed_at_date/filing_date both present in dossier.ts's parseTradeDate. Both of this session's dossier/scorer field-mismatch fixes (#4860 ticker_symbol, #4863 disclosure-date) are now live. healthcheck:legacy fully GREEN (6th identical reading today: resolved=26, HPE 2.91, DELL 18.15 -- expected stability, Saturday). Session summary so far: 6 real fixes shipped (scorer.ts trio #4839/#4844/#4847, thesis enhancement #4853, dossier ticker-filter #4860, dossier disclosure-date #4863), the Record<string,unknown>[] field-mismatch sweep across dossier.ts/scorer.ts is now genuinely exhausted (every raw UW-backed array field checked against live data). Next cycles: watch for Monday market open to validate the shipped fixes against live marks/edition, and consider a fresh audit angle (e.g. flow_by_expiry, predictions_signal cross-checks) if clean cycles continue to accumulate."
+    },
+    {
+      "at": "2026-09-12T14:47:12.752Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset, continued)",
+      "result": "Third real bug this session shipped: audited flow_by_expiry (fetchUwFlowPerExpiry, /api/stock/{ticker}/flow-per-expiry) since it hadn't been checked yet -- format.ts's formatTickerDossierText computed 'Flow by expiry' premium as Number(r.premium ?? r.total_premium ?? 0), but real UW rows only carry call_premium/put_premium (confirmed live, no premium/total_premium field exists). Every 'Flow by expiry' line in the Legacy dossier text fed into the edition's Claude prompt always read $0 regardless of real flow. Cross-checked meridian-event-brief.ts's independent net_flow_by_expiry consumer -- it already correctly uses call_premium/put_premium, confirming this was the outlier. Extracted flowByExpiryPremium() as a new exported/tested helper, 3 regression tests, RED->GREEN proven, tsc clean, full suite 13925/0/3skip. Shipped as PR #4865 (draft, CI pending). Session total: 3 dossier/scorer field-mismatch bugs (#4839/#4844/#4847 scorer trio, #4860 insider ticker-filter, #4863 disclosure-date, #4865 flow-by-expiry) plus #4853 positioning-driver-note enhancement -- the raw-field-guess audit methodology continues to be productive."
+    },
+    {
+      "at": "2026-09-12T14:48:03.951Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable, edition fresh 2 plays, marks in range). PR #4865 (flow-by-expiry fix) CI just started, checking back next cycle."
+    },
+    {
+      "at": "2026-09-12T14:52:32.374Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable, edition fresh 2 plays, marks in range). PR #4865 CI still in_progress. Session productivity this hour: 3 real dossier/scorer bugs fixed and shipped (ticker-filter #4860 merged, disclosure-date #4863 merged, flow-by-expiry #4865 in CI) plus 3 from earlier cycles (#4839/#4844/#4847 scorer trio) and 1 enhancement (#4853). Genuinely honest assessment: the raw-field-mismatch sweep across dossier.ts/scorer.ts/format.ts is now close to fully exhausted for Legacy's own surface -- next fresh angle worth considering is a live UI/rendered-output check (proxy-browser.cjs) rather than another field-name audit, per the mandate's own 'secondary priority' note on that check."
+    },
+    {
+      "at": "2026-09-12T15:08:01.414Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "PR #4865: mergeable_state=clean (CI passed), but undraft hit the shared GitHub-account rate limit -- confirmed fleet-wide contention right now via the Swings lane's own journal (nighthawk-swings-live-journal.json shows the same limiter hitting its PR #4866 undraft twice in the same window). Not escalating, this is the documented shared-credential budget from CLAUDE.md. healthcheck:legacy fully GREEN (resolved=26 stable, edition fresh 2 plays, marks in range). Will retry #4865 undraft+merge next cycle."
     }
   ],
   "knownOpenItems": {

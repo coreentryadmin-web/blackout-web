@@ -16,6 +16,31 @@ regression tests in `format.test.ts`.
 active name) and confirm the "Flow by expiry" text now shows real, non-zero dollar figures per
 expiry instead of a row of "$0"s.
 
+## WATCH LIST — 2026-09-12 Ask Largo dealer gamma posture: Vector "unknown" silenced a real GEX answer (read this before the routine pass)
+
+### `resolveGammaPosture` treated Vector's "unknown" regime as resolved, suppressing the GEX-matrix fallback — fix/swing-gamma-posture-unknown-silences-gex
+
+**What was broken:** `resolveGammaPosture` (`src/lib/swing/play-brief-absence.ts`) checked only
+`vecPosture != null` before trusting Vector's own regime read over the GEX-matrix fallback — but
+Vector's regime posture is a four-value enum (`long`/`short`/`transition`/`unknown`), and the
+literal string `"unknown"` is non-null. So when Vector genuinely couldn't resolve a posture, this
+function returned `"unknown"` directly instead of falling through to a live, resolved GEX-matrix
+posture. Live repro: CG's own COMMIT brief showed "GEX posture: Gamma posture: dealers **short
+gamma**... Net GEX: -4.3M" in one section, and "dealer gamma posture not resolved on this read" in
+the "Trade manager read" section three bullets earlier — same brief, same fact, contradicting
+itself. See `docs/audit/findings-staging/2026-09-12-swing-gamma-posture-unknown-vector-suppresses-gex.md`.
+
+**Fix:** `resolveGammaPosture` now defers to the GEX-matrix fallback whenever Vector's own regime is
+`"unknown"`, the same as when it's null/absent. `"transition"` is untouched (a real Vector state
+already handled gracefully downstream). Fixes every consumer (`dealerPostureLine`, `narrateMaxPain`,
+`narrateKing`, `narrateMagnet`, lane-rank coaching) at the one shared resolver.
+
+**Check at the open:** pull a live COMMIT/WATCH `GET /api/market/swing/play-brief` for any ticker
+and confirm the "Trade manager read"'s dealer-posture bullet and the "GEX posture" section never
+disagree on whether dealer posture is known — if GEX posture shows a real long/short reading, the
+Trade manager read should name the same posture, never "not resolved on this read", whenever the
+GEX matrix itself is fresh.
+
 ## WATCH LIST — 2026-09-12 Night Hawk dossier recency window used trade date, not disclosure date (read this before the routine pass)
 
 ### `parseTradeDate` measured congress/insider recency off `transaction_date` instead of the real `filed_at_date`/`filing_date` disclosure fields

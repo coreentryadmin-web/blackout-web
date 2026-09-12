@@ -132,6 +132,20 @@ export function vectorLiveForSession(
  * chartLevelsSection/narrateKing/narrateMagnet (largo C2). Live Vector regime always wins; the
  * GEX-only fallback is suppressed once the matrix is stale, since posture drives a directional
  * narrative claim ("pin risk" vs "acceleration", "long-gamma" vs not).
+ *
+ * BUG FIXED 2026-09-12 (Ask Largo standing mandate, live repro CG COMMIT brief): Vector's own
+ * `regime.posture` (`vector-regime.ts`) is a FOUR-value enum — `"long"`/`"short"`/`"transition"`/
+ * `"unknown"` — not the two-value `"long"|"short"|null` the GEX-matrix's own `gamma_posture` field
+ * uses. The old `vecPosture != null` check treated the literal string `"unknown"` (Vector
+ * genuinely could not compute a regime) as an equally-resolved answer to `"long"`/`"short"`, so it
+ * won outright over a perfectly good GEX-matrix-only posture and never fell through to the
+ * fallback below. Live: CG's own "GEX posture" section (reading `gex.gamma_posture` directly, a
+ * real, non-stale "short") rendered "Gamma posture: dealers **short gamma**... Net GEX: -4.3M" —
+ * while the SAME brief's "Trade manager read" (via this function) rendered "dealer gamma posture
+ * not resolved on this read", because Vector's OWN regime read had independently landed on
+ * "unknown" and this function let that silence a real, resolved GEX-matrix answer. `"unknown"` is
+ * semantically equivalent to "Vector has nothing to say" — it must defer to the GEX fallback the
+ * same way a null/absent Vector read already does, not out-rank it.
  */
 export function resolveGammaPosture(
   ctx: SwingPlayBriefContext,
@@ -139,7 +153,9 @@ export function resolveGammaPosture(
   readMs: number = Date.now(),
 ): string | null {
   const vecPosture = vec?.regime?.posture ?? null;
-  if (vecPosture != null && !vectorSnapshotStale(vec, readMs, ctx.sessionDate)) return vecPosture;
+  if (vecPosture != null && vecPosture !== "unknown" && !vectorSnapshotStale(vec, readMs, ctx.sessionDate)) {
+    return vecPosture;
+  }
   const gex = ctx.ecosystem?.gex_positioning;
   if (gex?.gamma_posture == null) return null;
   if (gexMatrixStale(gex, readMs)) return null;
