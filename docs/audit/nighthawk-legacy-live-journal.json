@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T07:52:30.288Z",
+  "lastUpdated": "2026-09-12T08:17:18.601Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1121,6 +1121,11 @@
       "at": "2026-09-12T07:52:30.289Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle -- all four stages consistent with prior cycles (HPE/DELL marks unchanged, resolved=26 stable). No new findings. 2 clean cycles since the OI-change scoring fix (#4839) merged and verified live."
+    },
+    {
+      "at": "2026-09-12T08:17:18.602Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle -- no drift (3rd clean cycle since #4839 merged). Continued digging in the same scorer.ts file per the mandate and found a second real, live bug of the identical shape: congressTradeDecayMultiplier (feeds scoreSmartMoney, shared by Legacy's hunt-builder.ts/edition-builder.ts) claims to decay by DISCLOSURE recency but its field fallback chain never checked filed_at_date -- the real UW /api/congress/recent-trades field for the filing date (confirmed live via a direct pull: {txn_type, transaction_date, filed_at_date}). It always fell through to transaction_date, silently measuring trade age instead of disclosure age -- congress members can legally disclose up to 45 days after a trade, so the two dates differ by weeks on real rows (live DASH example: 15 days old by transaction_date=0.4x decay vs 1 day old by filed_at_date=1.0x decay, a 2.5x scoring difference). Existing tests used filed_at (the scorer's own wrong guess) as their fixture field, not filed_at_date (the real API shape) -- identical failure pattern to the OI-change bug from two cycles ago. Fixed on fix/nighthawk-congress-decay-filed-date-field: added filed_at_date as first-checked fallback, added a regression test (real shape decays on filing date; transaction_date-only row still falls back correctly). RED->GREEN proven via git stash (1 failure stashed-out, 69/69 restored). tsc --noEmit clean. Full suite 13830 pass / 0 fail / 3 skipped. Findings-staging doc + MARKET-OPEN-VALIDATION entry added. Opened PR #4844 (draft), subscribed to activity. Purely corrective -- congressional evidence that was wrongly discounted for staleness can now score at its true (often higher) weight; nothing regresses."
     }
   ],
   "knownOpenItems": {
