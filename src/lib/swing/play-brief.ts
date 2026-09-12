@@ -681,14 +681,24 @@ export function composeSwingPlayBrief(
   // at once and tells a trader nothing about THIS setup — see resolveBreakInvalidation's own
   // comment for the live evidence. Gate reason / premium stop stay as fallbacks for when no real
   // level is computable (no live spot, no walls/flip at all).
+  //
+  // CLOSED plays are excluded entirely (live repro 2026-09-12: NVDA/TSM, both STOPPED weeks
+  // earlier, still rendered a labeled "Invalidation" callout reading "Break watch — lose X on a
+  // closing basis -> structural support failed; exit or cut size." computed off TODAY's live
+  // spot/walls). That "exit or cut size" language is live trade-management guidance for a
+  // position that no longer exists — a CLOSED play has nothing left to invalidate. None of the
+  // three fallbacks in this chain checked `bucket` (only the premium-stop fallback already did,
+  // and only for `open`), so a resolvable technical level kept firing for closed rows too.
   const invalidation =
-    play.thesisBreak?.level === "break"
-      ? play.thesisBreak.note ?? "Thesis break — structural invalidation fired."
-      : resolveBreakInvalidation(ctx) ??
-        play.gateBlocks?.[0]?.reason ??
-        (bucket === "open" && play.exitPolicy?.stop_premium != null
-          ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
-          : null);
+    bucket === "closed"
+      ? null
+      : play.thesisBreak?.level === "break"
+        ? play.thesisBreak.note ?? "Thesis break — structural invalidation fired."
+        : resolveBreakInvalidation(ctx) ??
+          play.gateBlocks?.[0]?.reason ??
+          (bucket === "open" && play.exitPolicy?.stop_premium != null
+            ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
+            : null);
 
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
