@@ -6,7 +6,7 @@
 // so the bug was branch-specific, not a universal template issue.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildMarketRecap } from "./format";
+import { buildMarketRecap, flowByExpiryPremium } from "./format";
 import type { MarketWideContext } from "./market-wide";
 
 function baseCtx(overrides: Partial<MarketWideContext> = {}): MarketWideContext {
@@ -87,4 +87,23 @@ test("recap summary rounds macro indicator values instead of printing raw floats
   assert.ok(summary.includes("Macro: GDP 23850.44 · CPI 333.92."), `expected rounded macro values, got: ${summary}`);
   assert.ok(!summary.includes("23850.442"), `expected no raw unrounded float, got: ${summary}`);
   assert.ok(!summary.includes("333.918"), `expected no raw unrounded float, got: ${summary}`);
+});
+
+// Live-verified 2026-09-12: real UW `/api/stock/{ticker}/flow-per-expiry` rows carry
+// `call_premium`/`put_premium` (separate string fields), never a single `premium`/
+// `total_premium` field. flowByExpiryPremium's old guessed field names always evaluated to 0,
+// so every "Flow by expiry" line in the Legacy dossier text (fed into the edition's Claude
+// prompt) silently read "$0" for every expiry regardless of real flow.
+test("flowByExpiryPremium: real flow-per-expiry shape sums call_premium + put_premium", () => {
+  const row = { expiry: "2026-09-14", call_premium: "47977407.00", put_premium: "23757826.00" };
+  assert.equal(flowByExpiryPremium(row), 47977407 + 23757826);
+});
+
+test("flowByExpiryPremium: falls back to premium/total_premium when call/put premium absent", () => {
+  assert.equal(flowByExpiryPremium({ premium: 500 }), 500);
+  assert.equal(flowByExpiryPremium({ total_premium: 700 }), 700);
+});
+
+test("flowByExpiryPremium: no matching field at all returns 0, not NaN", () => {
+  assert.equal(flowByExpiryPremium({ expiry: "2026-09-14" }), 0);
 });

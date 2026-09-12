@@ -338,6 +338,18 @@ export function buildMarketRecap(ctx: MarketWideContext): {
   };
 }
 
+// Real UW `/api/stock/{ticker}/flow-per-expiry` rows carry `call_premium`/`put_premium`
+// (separate string fields) — there is no single `premium`/`total_premium` field on this shape
+// (live-verified 2026-09-12). The old guess always evaluated to 0, so every "Flow by expiry"
+// line in the dossier text below (fed straight into the Legacy edition's Claude prompt via
+// buildClaudePrompt) silently read "$0" for every expiry regardless of real flow.
+export function flowByExpiryPremium(row: Record<string, unknown>): number {
+  return (
+    Number(row.call_premium ?? 0) + Number(row.put_premium ?? 0) ||
+    Number(row.premium ?? row.total_premium ?? 0)
+  );
+}
+
 export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCandidate): string {
   const lines: string[] = [];
   lines.push(`=== ${dossier.ticker} · Score ${scored.score}/100 (${scored.conviction}) · ${scored.direction.toUpperCase()} ===`);
@@ -398,8 +410,7 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
   if (dossier.flow_by_expiry.length) {
     const expLines = dossier.flow_by_expiry.slice(0, 4).map((r) => {
       const exp = String(r.expiry ?? r.expiration ?? "").slice(0, 10);
-      const prem = Number(r.premium ?? r.total_premium ?? 0);
-      return `${exp}: ${fmtPremium(prem)}`;
+      return `${exp}: ${fmtPremium(flowByExpiryPremium(r))}`;
     });
     if (expLines.length) lines.push(`Flow by expiry: ${expLines.join(" · ")}`);
   }
