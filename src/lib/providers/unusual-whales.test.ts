@@ -10,6 +10,7 @@ import {
   sym,
   optionTradePrintToFlowRaw,
   fetchUwIvRank,
+  fetchUwInsiderTransactions,
   emptyDarkPoolSnapshot,
   darkPoolBias,
 } from "./unusual-whales";
@@ -164,6 +165,35 @@ test("fetchUwIvRank caches within TTL: two sequential calls → ONE underlying f
     if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
     if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
     if (prevTtl === undefined) delete process.env.UW_IV_RANK_CACHE_SEC; else process.env.UW_IV_RANK_CACHE_SEC = prevTtl;
+  }
+});
+
+// Live-verified 2026-09-12: `/api/insider/transactions?ticker=X` silently ignores `ticker` (and
+// `symbol`/`symbols`/`tickers`/`ticker_symbols`) and returns the unfiltered market-wide feed —
+// the real per-ticker filter param is `ticker_symbol`. Pins the outgoing request shape so a future
+// regression back to the wrong param name fails loudly here instead of silently mixing every
+// ticker's dossier/Largo insider read with a random other ticker's transactions.
+test("fetchUwInsiderTransactions: sends the real `ticker_symbol` filter param, not `ticker`", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  process.env.UW_API_KEY = "test-uw-key";
+
+  let capturedUrl = "";
+  mock.method(globalThis, "fetch", async (input: string | URL) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify({ data: [{ ticker: "AAPL" }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  try {
+    await fetchUwInsiderTransactions("AAPL", 5);
+    const params = new URL(capturedUrl).searchParams;
+    assert.equal(params.get("ticker_symbol"), "AAPL", "must send the real filter param");
+    assert.equal(params.get("ticker"), null, "must NOT send the guessed, silently-ignored param");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
   }
 });
 

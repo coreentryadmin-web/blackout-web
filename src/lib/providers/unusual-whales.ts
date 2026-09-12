@@ -1811,8 +1811,16 @@ export async function fetchUwRiskReversalSkew(ticker: string, limit = 15) {
 }
 
 export async function fetchUwInsiderTransactions(ticker: string, limit = 15) {
+  // Live-verified 2026-09-12: `/api/insider/transactions` silently IGNORES a `ticker` query
+  // param (and `symbol`/`symbols`/`tickers`/`ticker_symbols`) — it 200s and returns the
+  // unfiltered market-wide latest-transactions feed regardless of what `ticker` is set to. The
+  // real per-ticker filter param is `ticker_symbol` (confirmed: `ticker_symbol=AAPL` returns only
+  // AAPL rows; every other spelling returned FSLY/GETY/DBX/... for every ticker tried). Every
+  // caller of this function was therefore reading a different, random ticker's transactions and
+  // presenting it as the requested ticker's own insider activity — see
+  // docs/audit/findings-staging/2026-09-12-nighthawk-insider-ticker-param.md.
   const data = await uwGetSafe<unknown>("/api/insider/transactions", {
-    ticker: ticker.toUpperCase(),
+    ticker_symbol: ticker.toUpperCase(),
     limit: Math.min(limit, 50),
   });
   return extractRows(data).slice(0, limit);
