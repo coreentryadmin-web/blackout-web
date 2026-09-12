@@ -1441,6 +1441,11 @@
       "at": "2026-09-12T23:22:24Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. No new commits on main since last push. PR #4888 status check: subscribed via subscribe_pr_activity, received subscription.created + ready_for_review webhook events. Checked actions_list/list_workflow_runs directly for the head SHA -- CI and CodeQL both 'in_progress' (~3-4 min elapsed, normal for the full suite per CLAUDE.md's own runtime notes), mergeable_state 'blocked' (required checks pending, not a conflict). No reviews posted yet. Nothing actionable -- will re-verify actual merge state next cycle rather than trust a status comment."
+    },
+    {
+      "at": "2026-09-12T23:37:01Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4888 CONFIRMED MERGED (23:30:20 UTC, merged_by coreentryadmin-web, clean squash into main as commit 5d28d1565) -- verified via pull_request_read.get, not trusted from a status comment. Unsubscribed from PR activity (subscription complete). Added item #153 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check for next edition rebuild (confirm 'Watch: <flag> (Nd ago)' recency renders live, and multi-headline same-type dedup still holds)."
     }
   ],
   "knownOpenItems": {
