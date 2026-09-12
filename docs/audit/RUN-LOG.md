@@ -4,6 +4,25 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-12 (00:19 UTC) — [SEO] Lane heartbeat: full CLS re-measure GREEN, PR queue clear, small mixed 28d movement
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET, ~6h since last full check). PR sweep: 1 open agent PR fleet-wide
+(#4816, CI-RUNNING, nighthawk-legacy — not SEO-lane, not conflicted). Fresh Cloudflare purge +
+CLS measure: desktop 1440x900 **0.0005 GOOD**, mobile 430x932 **0.0234 GOOD**. `/api/og` re-fetched
+with Googlebot UA: HTTP 200 `image/png`, still crawlable.
+
+GSC opportunity scan: window genuinely advanced a day (2026-06-11→09-08 to 2026-06-12→09-09), same
+2 striking-distance queries (unchanged), one new deep-demand entry (`dealer gamma news`, pos 23.8) —
+authority-limited, not on-page reach, no action per the standing rule. 28-day trend (window
+2026-08-13→09-09): clicks=16, impressions=1651, CTR=0.97%, avgpos=35.9 — vs the last recorded pull
+(clicks=14, impressions=1709, CTR=0.82%, avgpos=35.7): clicks and CTR up, impressions and position
+down slightly — mixed, small, within normal noise, no specific shipped change to attribute it to.
+
+No defects found.
+
+---
 ## 2026-09-11 (18:17 UTC) — [SEO] Lane heartbeat: PR queue empty, GSC unchanged
 
 **Severity.** — (no defect found)
