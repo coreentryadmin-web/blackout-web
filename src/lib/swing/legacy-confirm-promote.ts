@@ -236,6 +236,35 @@ export function buildLegacySwingArtifacts(params: {
   });
   const meta = swingServingMetaFromDossier(scoredDossier, readsForMeta ?? undefined);
 
+  /**
+   * FINDINGS 2026-09-12 (Ask Largo × Night Hawk Swings mandate): `meta.factors` is
+   * `contributionsToFactors(scoredDossier.score.contributions)` — a breakdown of the DOSSIER's own
+   * independently-computed synthetic pillar score (structure heuristics + a hardcoded
+   * regime01=0.55/dataQuality01=0.55 — see `buildLegacySwingArtifacts` above). But the `score` this
+   * play actually SHOWS (and the one `scoreFloor` gates/graduation compare against) is
+   * `swingPlay.score`, sourced straight from Legacy's own PUBLISHED edition conviction score
+   * (`horizonScores: { SWING: play.score ?? 70 }` above) — a completely different scoring run.
+   *
+   * Pairing them (the pre-fix behavior) violates `contributionsToFactors`'s own documented
+   * invariant in `swing-pillars.ts` — "never a freshly re-run dossier's contributions paired with
+   * a frozen/pinned score from a different run" — and is the third occurrence of the exact bug
+   * class #4826/#4832 already fixed in `banger-lane-merge.ts`/`vector-lane-enrich.ts` and
+   * `live-plays.ts`/`serving-lane.ts`: a "Why this play was picked" panel showing a SCORE next to
+   * factor rows that do not sum to it. Live evidence (2026-09-12,
+   * GET /api/market/nighthawk/horizons?view=swings): MRVL score 81 vs factors summing to 74.7,
+   * IREN score 61 vs 75.8 (factors LARGER than score), SKHY (WATCH) score 59 vs 26.6 — all three
+   * are Legacy-morning-confirm-promoted rows (`reason` carries "Legacy morning confirm").
+   *
+   * Fix, same shape as the Banger-lane fix: the Legacy edition score is the one real, authoritative
+   * signal behind this promoted play (this file's own `syntheticAccumulation` comment: "Ground
+   * strength in the published edition score — never fabricate a whale-print premium"), so the
+   * honest breakdown is a single factor equal to that score, not a synthetic dossier decomposition
+   * paired with a number it was never computed from. `meta.archetype`/`meta.regime`/
+   * `meta.thesisLevel`/etc. are unaffected — those are independent classification reads, not
+   * additive-sum-to-score fields, so they keep using the dossier's real values.
+   */
+  const factors: HorizonPlay["factors"] = [{ label: "Night Hawk edition score", points: swingPlay.score }];
+
   const enrichedPlay: HorizonPlay = {
     ...swingPlay,
     archetype: meta.archetype ?? scoredDossier.archetype.archetype ?? undefined,
@@ -246,7 +275,7 @@ export function buildLegacySwingArtifacts(params: {
     commitGateBlockedBy: ["legacy:exempt"],
     firstSeenAt: checkedAt,
     bucketGraduated: false,
-    factors: meta.factors,
+    factors,
     regime: meta.regime,
     thesisLevel: meta.thesisLevel,
     thesisNote: meta.thesisNote ?? undefined,
