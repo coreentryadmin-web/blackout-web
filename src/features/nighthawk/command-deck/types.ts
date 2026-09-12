@@ -279,6 +279,10 @@ export interface TerminalPlay {
   manageReason?: SwingManageRung | null;
   /** Member entry label when geometry still allows entry (buy / still_buy) — decoupled from desk OPEN. */
   swingEntryAction?: "buy" | "still_buy" | null;
+  /** True when this WATCH row's entry-validity deadline (entry-model.ts's `ENTRY_VALIDITY_DAYS`)
+   *  has already passed — lets the headline show EXPIRED instead of a generic WAIT pill that reads
+   *  identically to a setup that simply hasn't triggered yet. */
+  watchEntryExpired?: boolean | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;
