@@ -3685,6 +3685,11 @@ async function buildGexHeatmapUncached(
       nearTermKeep,
       gexBuilt.total ?? totalGamma,
     );
+    // Same event-loop yield as every other buildDepthBlockForExpiries call in this function
+    // (PR #4822, 2026-09-12 completion) — this is the SAME O(depthContracts) cost as the
+    // per-expiry calls in the loop below, just for the whole nearTermKeep scope; it was the
+    // first of 3 sibling calls #4822 left un-yielded (the other 2 are below).
+    await new Promise((resolve) => setImmediate(resolve));
     const scopeBlocks: Record<string, GexDepthBlock> = {};
     for (const e of nearKeep) {
       const block = buildDepthBlockForExpiries(
@@ -3708,6 +3713,9 @@ async function buildGexHeatmapUncached(
       gexBuilt.total ?? totalGamma,
     );
     if (nearPresetBlock) scopeBlocks[nearKey] = nearPresetBlock;
+    // Same event-loop yield as every other buildDepthBlockForExpiries call in this function
+    // (PR #4822, 2026-09-12 completion) — second of the 3 sibling calls #4822 left un-yielded.
+    await new Promise((resolve) => setImmediate(resolve));
     const farOnly = expiries.filter((e) => !nearKeep.includes(e));
     if (farOnly.length > 0) {
       const farSet = new Set(farOnly);
@@ -3719,6 +3727,9 @@ async function buildGexHeatmapUncached(
         netGexTotalForExpiries(gexBuilt.cells, farSet),
       );
       if (farBlock) scopeBlocks[[...farOnly].sort().join("|")] = farBlock;
+      // Same event-loop yield as every other buildDepthBlockForExpiries call in this function
+      // (PR #4822, 2026-09-12 completion) — third/last of the 3 sibling calls #4822 left un-yielded.
+      await new Promise((resolve) => setImmediate(resolve));
     }
     if (Object.keys(scopeBlocks).length > 0) depth_by_scope = scopeBlocks;
   } catch (err) {
