@@ -4,6 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-12 (18:18 UTC) — [SEO] Lane heartbeat: GSC unchanged, flagged 2 more stuck coordinator draft PRs (prior 2 confirmed merged)
+
+**Severity.** — (no defect found)
+
+Confirmed both PRs flagged in the 14:06 UTC entry (#4863, #4862) merged since — the coordinator
+note worked. PR sweep surfaced 2 NEW green, draft, coordinator-branch PRs stuck in the same jam
+(#4874 bie ticker-verdict fix, #4873 swing book-context fix) — `--mark-ready` attempted and
+failed again (same known limitation, this session lacks the GitHub MCP undraft tool), posted a
+coordinator note on both. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`, still
+crawlable. CLS not re-checked — already fresh ~4h ago. GSC opportunities byte-identical for a 5th
+consecutive check (~24h span) — same 2 striking-distance queries, no new opportunities.
+
+No defects found.
+
+---
 ## 2026-09-12 (14:06 UTC) — [SEO] Daily growth cycle: quiet day (4th identical GSC pull), flagged 2 stuck coordinator draft PRs
 
 **Severity.** — (no defect found)
