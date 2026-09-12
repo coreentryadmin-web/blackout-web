@@ -3625,12 +3625,21 @@ async function buildGexHeatmapUncached(
   // Cost is N numbers, not an N x M OI grid: shipping raw OI cells would be far heavier and would
   // put a second, independently-derivable copy of max pain in the client, which is how two
   // surfaces start disagreeing about one product.
+  // Yielded per expiry (not batched): `computeMaxPainFromChain` is O(strikes²) and `sortedAll`
+  // spans ~20+ expiries over an 11K+-contract chain (SPX) — measured live at 40-86s wall-clock
+  // with ZERO yields anywhere in this function, blocking the shared web ECS event loop and
+  // stalling concurrent member requests on whichever task ran the warm cron (ALB p99 hit 58-70s
+  // during RTH, same root-cause shape as the vector-pick-sweep/full-state-snapshot fix). A real
+  // macrotask yield (not a microtask-only Promise.resolve()) between EVERY iteration, not just
+  // every N, keeps each contiguous block down to one expiry's own O(n) filter + O(s²) max-pain
+  // pass instead of the whole per-expiry sweep.
   const maxPainByExpiry: Record<string, number | null> = {};
   for (const e of sortedAll) {
     const forExpiry = contracts.filter(
       (c) => String(c.details?.expiration_date ?? "").slice(0, 10) === e
     );
     maxPainByExpiry[e] = forExpiry.length > 0 ? computeMaxPainFromChain(forExpiry) : null;
+    await new Promise((resolve) => setImmediate(resolve));
   }
 
   // GEX levels + regime. Gamma flip = CUMULATIVE zero-gamma boundary (SpotGamma-standard), the
@@ -3686,6 +3695,9 @@ async function buildGexHeatmapUncached(
         netGexTotalForExpiries(gexBuilt.cells, new Set([e])),
       );
       if (block) scopeBlocks[e] = block;
+      // Same event-loop yield as the max-pain loop above — each pass re-scans the full
+      // (~11K-contract) depthContracts array per near-term expiry.
+      await new Promise((resolve) => setImmediate(resolve));
     }
     const nearKey = [...nearKeep].sort().join("|");
     const nearPresetBlock = buildDepthBlockForExpiries(
