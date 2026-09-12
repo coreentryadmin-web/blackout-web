@@ -232,7 +232,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     weekdays_only: true,
     market_hours_only: true,
     description:
-      "Hourly refresh of held swing positions: appends an eod/tick snapshot per position + runs management sync (capital-preservation rungs act; edge rungs evidence-only). Never opens or closes a position (PR-15 rolls).",
+      "Every 15 minutes during market hours, refreshes held swing positions: appends an eod/tick snapshot per position + runs management sync (capital-preservation rungs act; edge rungs evidence-only). Never opens or closes a position (PR-15 rolls).",
   },
   {
     key: "gex-eod-snapshot",
