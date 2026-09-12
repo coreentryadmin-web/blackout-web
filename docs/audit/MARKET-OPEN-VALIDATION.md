@@ -1,3 +1,24 @@
+## WATCH LIST — 2026-09-12 Ask Largo lane-rank leader could name the play's own ticker (read this before the routine pass)
+
+### "Desk leader" pointer could self-reference the play's own ticker — fix/swing-lane-rank-self-named-leader
+
+**What was broken:** `computeLaneRank`'s leader-eligibility filter (`src/lib/swing/play-brief-lane-rank.ts`)
+excluded exiting/invalidated peers from the "Desk leader" pointer (per #4842/#4849) but never excluded
+the play's OWN row from that same filtered list. Whenever the play is not raw rank #1 but IS the best
+real eligible candidate (because the actual #1 is excluded), the pointer resolves to the play's own
+ticker. Live repro: COIN's own WATCH brief (SKHY #1 by raw score but INVALIDATED, COIN next-best and
+eligible) rendered "**#2 of 8** on WATCH lane... Desk leader: **COIN** @ **55.4**" — naming itself.
+See `docs/audit/findings-staging/2026-09-12-swing-lane-rank-self-named-leader.md`.
+
+**Fix:** `computeLaneRank` now excludes the play's own matching row(s) from the leader candidate list
+(and its exiting/invalidated fallback) before picking `topTicker`/`topScore`. `rank`/`total`/
+`medianScore` are untouched. Both `laneRankSection` and `laneRankCoaching` inherit the fix for free.
+
+**Check at the open:** pull `GET /api/market/swing/play-brief` for a WATCH or OPEN ticker that is NOT
+raw rank #1 in its bucket but whose real rank #1 is invalidated/exiting (or any ticker at all — the
+"Desk leader" line, when shown, should now always name a DIFFERENT ticker than the one the brief is
+for). Confirm the "Desk leader: **X** @ **Y**" line never matches the brief's own headline ticker.
+
 ## WATCH LIST — 2026-09-12 Night Hawk Legacy thesis positioning driver note (read this before the routine pass)
 
 ### Thesis now names WHICH positioning evidence drove a "positioning" scoring tag — feat/nighthawk-legacy-thesis-positioning-driver-note

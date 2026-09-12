@@ -114,12 +114,24 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
   // best peer still actually held open. Falls back to the raw #1 if every peer is exiting (still
   // shows something rather than nothing) — WATCH-bucket rows never carry manageAction, so this is a
   // no-op there.
-  const leaderCandidates = sorted.filter(
+  //
+  // BUG FIXED 2026-09-12 (Ask Largo standing mandate, live repro COIN, WATCH lane): `sorted`
+  // includes the play's OWN row (that's how `idx`/`rank` above are found at all), so a naive
+  // exiting/invalidated filter over the FULL sorted list can select the play's own row as the
+  // "leader" whenever it is the best real candidate but does not itself rank #1 by raw score —
+  // which happens exactly when the actual #1 is excluded (invalidated/exiting) and this play is
+  // the next-best. Live: SKHY sat #1 by raw score (59) but INVALIDATED; COIN (55.4) was next best
+  // and genuinely eligible, so COIN's own brief rendered "**#2 of 8** on WATCH lane... Desk leader:
+  // **COIN** @ **55.4**" — naming itself as the comparison peer to watch, which is meaningless (a
+  // "leader" pointer exists to point at something ELSE). `others` excludes the play's own matching
+  // row(s) up front so neither the eligible-candidate list nor its fallback can ever select self.
+  const others = sorted.filter((r) => !laneRowMatchesPlay(r, play));
+  const leaderCandidates = others.filter(
     (r) =>
       !EXITING_MANAGE_ACTIONS.has(r.manageAction ?? "") &&
       !INVALIDATED_SETUP_STATES.has(r.setupState ?? ""),
   );
-  const top = leaderCandidates[0] ?? sorted[0];
+  const top = leaderCandidates[0] ?? others[0] ?? null;
 
   return {
     rank: Math.min(rank, sorted.length),
