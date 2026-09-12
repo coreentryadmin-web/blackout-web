@@ -2732,6 +2732,83 @@ test("watchForSection: Premium stop rail omits the cushion note when the mark is
   assert.doesNotMatch(section.body, /cushion/);
 });
 
+// BUG FIX (2026-09-12, live operator conversation, real NN#32 position): the cushion percentage
+// is computed purely from `play.mark` (the MID) vs `stop` — it never checks whether the position's
+// actual EXECUTABLE price (`play.execMark`, the bid a long would actually sell into) has already
+// fallen to or through the stop. Live repro: NN's real contract carried mark $1.10 / stop $0.78 /
+// execMark (bid) $0.70 — the brief rendered "Premium stop rail: $0.78 — 29% cushion from current
+// mark", a confident safety-margin claim that does not survive the real bid/ask spread: a member
+// selling right now would already be filling BELOW the stop rail the brief just told them they had
+// 29% of room above. Same "plausible wrong number is worse than an obvious one" trap the Largo
+// product contract's C4 identity section exists to prevent, and the same shape as the two fixes
+// immediately above this one (mark-unavailable, entry-fallback-echo) — this is the third distinct
+// way the mid-only cushion computation could misstate real safety margin.
+test("watchForSection: Premium stop rail flags 'no real cushion' when the executable price has already reached the stop, even though mid is still above it", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 1.1,
+        execMark: 0.7, // real bid — already AT/THROUGH the stop despite mid reading a 29% cushion
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.78,
+        },
+      }),
+      asOf: "2026-09-12 16:47 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\*/);
+  assert.match(section.body, /no real cushion/i);
+  assert.doesNotMatch(section.body, /29% cushion/);
+});
+
+test("watchForSection: Premium stop rail keeps the normal cushion percentage when the executable price is still comfortably above the stop", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 1.1,
+        execMark: 1.0, // executable price still well above the stop — normal case
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.78,
+        },
+      }),
+      asOf: "2026-09-12 16:47 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (1.10 - 0.78) / 1.10 * 100 = 29.09% -> 29%
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 29% cushion from current mark/);
+  assert.doesNotMatch(section.body, /no real cushion/i);
+});
+
 // Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
 // duplication class as #4261 (recNote/rails) and the thesis-health advisory fix above:
 // catalystCoaching (play-brief-narrative-coaching.ts) already renders "Earnings in Nd (DATE) —

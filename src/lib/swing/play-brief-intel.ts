@@ -746,11 +746,30 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // behind it is the true fallback — `optionMarkGenuinelyUnknown` (play-brief-absence.ts,
     // extracted this same fix so `pnlSection`'s already-correct "Mark: unknown" gate and this one
     // can't drift apart a second time).
+    //
+    // BUG FIX (2026-09-12, live operator conversation, real NN#32 position): the cushion was still
+    // computed purely from `play.mark` (the MID), which never checks whether the position's real
+    // EXECUTABLE price (`play.execMark`, the bid a long would actually sell into) has already
+    // fallen to or through the stop. Live repro: NN carried mark $1.10 / stop $0.78 / execMark
+    // (bid) $0.70 — this rendered "29% cushion from current mark", a confident safety-margin claim
+    // that does not survive the real bid/ask spread the member would actually have to sell into.
+    // Fix: when `execMark` is known and already at/through the stop, drop the percentage and say so
+    // plainly instead — the dollar stop level itself is untouched either way.
+    const execMark = play.execMark;
+    const executableCushionGone = execMark != null && execMark <= stop;
     const cushionPct =
-      play.mark != null && play.mark > 0 && play.mark > stop && !optionMarkGenuinelyUnknown(play)
+      play.mark != null &&
+      play.mark > 0 &&
+      play.mark > stop &&
+      !optionMarkGenuinelyUnknown(play) &&
+      !executableCushionGone
         ? ((play.mark - stop) / play.mark) * 100
         : null;
-    const cushionNote = cushionPct != null ? ` — ${cushionPct.toFixed(0)}% cushion from current mark` : "";
+    const cushionNote = executableCushionGone
+      ? ` — **no real cushion on the executable side** (bid already at/through this level)`
+      : cushionPct != null
+        ? ` — ${cushionPct.toFixed(0)}% cushion from current mark`
+        : "";
     lines.push(
       `Premium stop rail: **${fmtUsd(stop)}**${cushionNote} — thesis breaks if mark closes below`,
     );
