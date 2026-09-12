@@ -1,23 +1,26 @@
-## WATCH LIST — 2026-09-12 Ask Largo lane-rank "adding size" wording on a below-median trim (read this before the routine pass)
+## WATCH LIST — 2026-09-12 Ask Largo lane-rank praise/caution wording on reducing positions (read this before the routine pass)
 
-### "Below lane median" caution said "confirm before adding size" on a position already flagged TRIM — fix/swing-lane-rank-below-median-reduce-wording
+### Lane-rank lines said "confirm before adding size"/"Lane leader" on positions already being trimmed or exited — fix/swing-lane-rank-below-median-reduce-wording
 
 **What was broken:** `computeLaneRank`/`laneRankCoaching`/`laneRankSection` (`src/lib/swing/play-brief-lane-rank.ts`,
-`play-brief-narrative-coaching.ts`) render a below-median caution purely from `deltaFromMedian < -15`,
-with no check on the play's own `manageAction`. Live-observed: CG sat #90/90 by raw entry-time score
-(dead last) while being the book's best-performing real position (+169.2%/+134.6% exec, already on
+`play-brief-narrative-coaching.ts`) render self-referential rank praise/caution lines with no check on
+the play's own `manageAction`. Two live repros the same cycle: **CG** sat #90/90 by raw entry-time
+score (dead last) while being the book's best-performing real position (+169.2%/+134.6% exec, already
 `TAKE_PARTIAL`) — its own brief said "Desk says TRIM ... Bank partial into strength" three bullets
-before "confirm before adding size," backwards advice about a position already being trimmed, not
-entered. See `docs/audit/findings-staging/2026-09-12-swing-lane-rank-below-median-adding-size-wording.md`.
+before "confirm before adding size." **CRWD** sat #1 of 90 on OPEN by raw score (87) with its own
+manage engine `EXIT_RUNNER` (round-tripped +130% peak → -10%) — its brief said "Desk says TRIM ...
+consider protecting what's left" three bullets before "Lane leader ... Desk attention follows the top
+row." See `docs/audit/findings-staging/2026-09-12-swing-lane-rank-below-median-adding-size-wording.md`.
 
 **Fix:** a new `selfReducing` flag (true for `TAKE_PARTIAL`/`EXIT_RUNNER`/`STOP_OUT`/`EXIT`) gates
-the "adding size" framing off in favor of an explicit "not a sizing signal here" wording when the
-play's own plan is already to reduce. A plain `HOLD` is unaffected.
+off every self-referential praise/caution branch in both functions — rank-1 "Lane leader"/"Top-ranked
+play", rank≤3 "Top-tier setup", and the below-median "adding size" line (which renders a reduce-aware
+variant instead of suppressing outright). A plain `HOLD`/`ADD` is unaffected.
 
-**Check at the open:** once Monday's session produces new below-median committed positions, spot-check
-a couple of `TRIM`/`STOP_OUT` briefs for the "Below lane median" line — confirm it never says "confirm
-before adding size" on a position the desk is telling the member to reduce, and that a plain-HOLD
-below-median position still gets the original wording.
+**Check at the open:** once Monday's session produces new reducing committed positions (`TRIM`/
+`EXIT_RUNNER`/`STOP_OUT`), spot-check their briefs for any "Lane leader"/"Top-tier setup"/"confirm
+before adding size" line — none should appear on a position the desk is telling the member to reduce,
+and a plain-HOLD position at any rank should still get the original wording.
 
 ## WATCH LIST — 2026-09-12 Night Hawk overnight scorer: institutional smart-money leg was dead code (read this before the routine pass)
 

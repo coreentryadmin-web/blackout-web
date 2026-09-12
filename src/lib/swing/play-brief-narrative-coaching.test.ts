@@ -1333,6 +1333,25 @@ test("laneRankCoaching: suppresses the rank-1 leader line when the play's own th
   assert.equal(line, null, "a broken thesis must never get 'leader'/'top-tier' praise text");
 });
 
+// Live repro 2026-09-12 (found in the same cycle #4849 was opened): CRWD sat #1 of 90 on OPEN by
+// raw score (87) while its own manage engine was EXIT_RUNNER (round-tripped +130% peak -> -10%,
+// all trims banked, runner only) — the same brief's first bullet said "Desk says TRIM ... consider
+// protecting what's left," yet this function still said "Lane leader ... Desk attention follows
+// the top row" three lines later. #4842's selfInvalidated guard (setupState-based) didn't cover a
+// rank-1 play whose own manageAction says reduce — selfReducing (added for the below-median branch
+// earlier this same PR) closes that gap here too.
+test("laneRankCoaching: suppresses the rank-1 leader line when the play's own manage engine calls for reducing", () => {
+  const lanes = [
+    laneRow({ ticker: "CRWD", score: 87, status: "COMMIT", manageAction: "EXIT_RUNNER" }),
+    laneRow({ ticker: "AAPL", score: 60, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "CRWD", score: 87, status: "HOLD", manageAction: "EXIT_RUNNER" }),
+    lanes,
+  );
+  assert.equal(line, null, "an exiting rank-1 position must never get 'leader'/'top-tier' praise text");
+});
+
 test("laneRankCoaching: still names the real leader for a healthy rank-1 WATCH setup", () => {
   const lanes = [
     laneRow({ ticker: "COIN", score: 59, status: "WATCH", setupState: "TRIGGERED" }),

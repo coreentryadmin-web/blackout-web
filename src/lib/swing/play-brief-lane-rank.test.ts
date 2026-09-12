@@ -157,6 +157,21 @@ test("laneRankSection: suppresses the rank-1 praise line when the play's own the
   assert.doesNotMatch(sec!.body, /Top-ranked play in this bucket/);
 });
 
+test("laneRankSection: suppresses the rank-1 praise line when the play's own manageAction calls for reducing", () => {
+  // Live repro 2026-09-12: CRWD sat #1 of 90 on OPEN by raw score (87) with its own manage engine
+  // EXIT_RUNNER (round-tripped +130% peak -> -10%, all trims banked, runner only) — "Top-ranked
+  // play in this bucket — size and attention follow score" would directly contradict the same
+  // brief's own "Desk says TRIM ... consider protecting what's left."
+  const lanes = [row("CRWD", 87, "COMMIT", undefined, "EXIT_RUNNER"), row("AAPL", 60, "COMMIT")];
+  const sec = laneRankSection(
+    play({ ticker: "CRWD", score: 87, status: "HOLD", manageAction: "EXIT_RUNNER" }),
+    lanes,
+  );
+  assert.ok(sec);
+  assert.match(sec!.body, /#1 of 2/, "rank stats stay honest regardless of exit state");
+  assert.doesNotMatch(sec!.body, /Top-ranked play in this bucket/);
+});
+
 test("computeLaneRank: selfReducing is true only when THIS play's own manageAction calls for reducing", () => {
   const lanes = [row("AAPL", 84.4, "COMMIT"), row("NN", 23, "COMMIT"), row("CG", 3, "COMMIT")];
   const reducing = computeLaneRank(play({ ticker: "CG", score: 3, status: "HOLD", manageAction: "TAKE_PARTIAL" }), lanes);

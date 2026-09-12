@@ -18,9 +18,11 @@ export type LaneRankSnapshot = {
    *  be rendered as praise when the same brief elsewhere says the thesis already broke. */
   selfInvalidated: boolean;
   /** True when THIS play's own manageAction already calls for reducing (TAKE_PARTIAL/EXIT_RUNNER/
-   *  STOP_OUT/EXIT) rather than holding/adding — a below-median "confirm before adding size" caution
-   *  is backwards advice when the desk is telling the member to bank/exit this exact position, not
-   *  size into it. */
+   *  STOP_OUT/EXIT) rather than holding/adding — gates BOTH a below-median "confirm before adding
+   *  size" caution (backwards on a position the desk says to bank/exit) AND a rank-1/top-tier
+   *  self-praise claim (found live 2026-09-12: CRWD sat #1 of 90 on OPEN by raw score with its own
+   *  manage engine EXIT_RUNNER — "Lane leader ... Desk attention follows the top row" directly
+   *  contradicted the same brief's "Desk says TRIM ... protect what's left" three lines above it). */
   selfReducing: boolean;
 };
 
@@ -152,7 +154,7 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
   if (snap.topTicker && snap.topScore != null && snap.rank > 1) {
     lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**`);
   }
-  if (snap.rank === 1 && snap.total > 1 && !snap.selfInvalidated) {
+  if (snap.rank === 1 && snap.total > 1 && !snap.selfInvalidated && !snap.selfReducing) {
     lines.push("Top-ranked play in this bucket — size and attention follow score.");
   } else if (snap.deltaFromMedian < -15 && snap.selfReducing) {
     lines.push("Below median on entry-time score — not a sizing signal here; this position's own plan already calls for reducing, not adding.");
