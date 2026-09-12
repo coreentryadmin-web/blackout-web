@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T04:22:54.610Z",
+  "lastUpdated": "2026-09-12T04:37:10.929Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1041,6 +1041,11 @@
       "at": "2026-09-12T04:22:54.610Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "PR #4827 (smart-money driver note) confirmed MERGED (sha 1d4fcd113) -- verified live in source via grep (smartMoneyDriverNote present in deterministic-edition.ts on main). Both queued Legacy thesis enhancements from this session (news catalyst #4821, smart-money note #4827) are now shipped and confirmed live. healthcheck:legacy fully GREEN this cycle, resolved=26 stable (post-ET-midnight value, as expected). No new findings this cycle -- will keep the standing aggressive-improvement-hunting posture going next cycle; also noting parallel lanes' activity this hour (0DTE PR #4831 momentum_abs_floor fix, Swings PR #4825 merged) purely for situational awareness, not my scope."
+    },
+    {
+      "at": "2026-09-12T04:37:10.930Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN, resolved=26 stable. No new findings this cycle. Per the #4820 rollout-timing lesson, the two thesis fixes shipped this session (news catalyst #4821, smart-money note #4827) won't appear in a live published edition until the next real publish -- weekends have no trading, so that's Monday 5:30pm ET (for Tuesday's edition), not sooner. Nothing to spot-check live before then. Continuing standing monitoring cadence."
     }
   ],
   "knownOpenItems": {
