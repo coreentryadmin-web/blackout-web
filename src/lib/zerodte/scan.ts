@@ -1982,6 +1982,45 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
         },
         committedAtMs
       ),
+      // G-23 dislocation TELEMETRY (2026-09-12, evidence only — never gates, mirrors the
+      // input_age_manifest role above). qualificationDislocationGateBlocks (gates.ts) already
+      // computes elapsed-ms/move-pct from these same four fields to decide whether to BLOCK a
+      // commit, but that verdict only ever exposes a formatted `reason` string on a real trip —
+      // there was no way to ask, after the fact, how large the real qualify-to-commit gap is for
+      // the population of commits that DIDN'T trip it (the population the gate is calibrated
+      // against). This pins the raw inputs and the same derived elapsedMs/movePct math on every
+      // committed row, tripped or not, so a future measurement (an audit script reading
+      // GET /api/market/zerodte/record) can build the real distribution before considering
+      // whether the gate's threshold/window need retuning, instead of guessing from anecdotes.
+      // Deliberately recomputed from s.qualification_underlying_price(_as_of)/s.underlying_price
+      // (_as_of) — the SAME fields and the SAME formula qualificationDislocationGateBlocks uses —
+      // rather than reading the gate verdict, so the telemetry can never disagree with what
+      // actually decided the block. Omitted (not zero-filled) when either snapshot is missing,
+      // same "never fabricate" discipline as origin_direction_conflict/session_gap_days above.
+      ...((): Record<string, unknown> => {
+        const qp = s.qualification_underlying_price;
+        const qAt = parseIsoMs(s.qualification_underlying_price_as_of);
+        const cp = s.underlying_price;
+        const cAt = parseIsoMs(s.underlying_price_as_of);
+        if (
+          qp == null || !Number.isFinite(qp) || qp <= 0 ||
+          cp == null || !Number.isFinite(cp) || cp <= 0 ||
+          qAt == null || !Number.isFinite(qAt) ||
+          cAt == null || !Number.isFinite(cAt)
+        ) {
+          return {};
+        }
+        return {
+          qualification_dislocation_telemetry: {
+            qualification_underlying_price: qp,
+            qualification_underlying_price_as_of: s.qualification_underlying_price_as_of,
+            current_underlying_price: cp,
+            current_underlying_price_as_of: s.underlying_price_as_of,
+            elapsed_ms: cAt - qAt,
+            move_pct: Math.round((Math.abs((cp - qp) / qp) * 100) * 10_000) / 10_000,
+          },
+        };
+      })(),
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
