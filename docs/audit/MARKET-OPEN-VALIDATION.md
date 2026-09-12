@@ -1,3 +1,25 @@
+## WATCH LIST — 2026-09-12 Night Hawk Legacy thesis catalyst-headline enhancement (read this before the routine pass)
+
+### Thesis now quotes WHICH news drove a "news" scoring tag instead of naming it with no explanation — feat/nighthawk-legacy-thesis-catalyst-headline
+
+**What was missing:** `buildDeterministicThesis` (`deterministic-edition.ts`) could publish a card
+with `key_signal` reading e.g. `"BULLISH — news + flow · score 82 (A)"`, but the thesis prose never
+read `dossier.news_headlines` or `dossier.polygon_sentiment` — both already fetched and already
+scored into `news_score` by `scoreNewsCatalyst` — so a member had no way to see WHAT the news
+actually was anywhere on the card. See
+`docs/audit/findings-staging/2026-09-12-legacy-thesis-catalyst-headline.md`.
+
+**Fix:** new `pickCatalystHeadline` surfaces one real, direction-matching piece of text (preferring
+Polygon's own sentiment-reasoning string over a plain headline) as `Catalyst: "<text>".` in the
+thesis, but ONLY when news is already one of the top-2 scoring drivers (the same `topDrivers` gate
+`key_signal` itself uses) — additive only, never fabricates a catalyst when no real text exists.
+
+**Check at the open:** once Monday 9/14's edition (or a future one) publishes a play whose
+`key_signal` names "news" as a driver, pull that ticker's full thesis text via
+`GET /api/market/nighthawk/edition` and confirm it now carries a `Catalyst: "..."` sentence quoting
+real, direction-relevant text (not a fabricated or generic line), and that plays where news wasn't a
+driver do NOT carry the sentence even if the ticker has news coverage.
+
 ## WATCH LIST — 2026-09-11 swing/banger zombie-OCC follow-up (read before the routine pass)
 
 - **What was broken:** `src/lib/swing/live-marks-active.ts`'s `swingRowToActivePlay()`/

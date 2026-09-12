@@ -329,6 +329,47 @@ test("R:R display: a ratio safely inside a label band still prints its true roun
   assert.match(thesis, /R:R 1\.5:1 \(favorable\)/);
 });
 
+test("thesis quotes the actual catalyst when news is a top scoring driver (2026-09-12: news_score could make key_signal but the thesis text never said why)", () => {
+  // flow(18) > news(20)? no -- set news above tech/pos/smart so it lands in the top-2 by
+  // |value| alongside flow, without needing to also touch flow itself.
+  const s = { ...scored("NEWS", "long", 66), news_score: 15 };
+  const d = dossier("NEWS", 100, {
+    polygon_sentiment: ["positive: strong iPhone pre-order checks from supply chain", "negative: unrelated bearish note"],
+    news_headlines: ["Some plain headline"],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /news/, "news must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Catalyst: "strong iPhone pre-order checks from supply chain"\./,
+    "must quote the DIRECTION-MATCHING (positive, for a long) sentiment entry, sentiment tag stripped");
+});
+
+test("thesis catalyst falls back to a plain headline when no polygon_sentiment exists", () => {
+  const s = { ...scored("HDLN", "short", 66), news_score: 15 };
+  const d = dossier("HDLN", 100, {
+    direction: "short",
+    polygon_sentiment: [],
+    news_headlines: ["Analyst downgrades HDLN on weak guidance"],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Catalyst: "Analyst downgrades HDLN on weak guidance"\./);
+});
+
+test("thesis catalyst is omitted (never fabricated) when news is a top driver but no headline/sentiment data exists", () => {
+  const s = { ...scored("EMPTY", "long", 66), news_score: 15 };
+  const d = dossier("EMPTY", 100, { polygon_sentiment: [], news_headlines: [] } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Catalyst:/);
+});
+
+test("thesis catalyst stays quiet when news is NOT a top driver, even with real headlines present (keeps thesis scoped to what actually drove the score)", () => {
+  const s = scored("QUIET", "long", 66); // default news_score: 2, well below the top-2 cut
+  const d = dossier("QUIET", 100, {
+    polygon_sentiment: ["positive: this should not appear -- news wasn't a driver here"],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Catalyst:/);
+});
+
 test("score floor: candidates below MIN_PUBLISH_SCORE (38) are excluded (PR-N28)", () => {
   const ranked = [
     scored("STRONG", "long", 60),

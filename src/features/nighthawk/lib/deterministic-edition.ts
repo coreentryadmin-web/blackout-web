@@ -372,6 +372,31 @@ function resolveLevels(
  * risk/reward context, and flags catalysts. Members should read this and immediately understand
  * the trade idea — not decode a score breakdown.
  */
+/**
+ * Pick one real, direction-relevant piece of news text to quote in the thesis. `news_score`
+ * (scoreNewsCatalyst) already reads both `dossier.news_headlines` (plain titles) and
+ * `dossier.polygon_sentiment` (Polygon's own per-article sentiment + reasoning, sliced to 120
+ * chars at fetch time in dossier.ts) to compute the score that can make "news" a top driver in
+ * key_signal — but until now nothing surfaced WHICH headline or WHY to the member, so a card
+ * could read "BULLISH — news + flow" with no stated reason. Prefers a sentiment entry whose
+ * polarity matches the play's own direction (real reasoning, not just a title); falls back to
+ * any sentiment entry, then to a plain headline. Returns null when there's nothing to show —
+ * this is additive only, never fabricates a catalyst.
+ */
+function pickCatalystHeadline(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const wantSentiment = isLong ? "positive" : "negative";
+  const sentiment = dossier?.polygon_sentiment ?? [];
+  const headlines = dossier?.news_headlines ?? [];
+  const matching = sentiment.find((s) => s.toLowerCase().startsWith(`${wantSentiment}:`));
+  const raw = matching ?? sentiment[0] ?? headlines[0];
+  if (!raw) return null;
+  // Strip a leading "positive:"/"negative:"/"neutral:" sentiment tag -- the thesis already
+  // states direction via dirWord, so repeating it as a label would be redundant.
+  const text = raw.replace(/^(positive|negative|neutral)\s*:\s*/i, "").trim();
+  if (!text) return null;
+  return text.length > 110 ? `${text.slice(0, 107)}...` : text;
+}
+
 export function buildDeterministicThesis(
   scored: ScoredCandidate,
   dossier: TickerDossier | undefined,
@@ -426,6 +451,12 @@ export function buildDeterministicThesis(
   }
   if (trendConflicts) {
     parts.push(`Flow conviction overrides ${trend} technicals — institutional money is ${dirWord}.`);
+  }
+
+  // --- Catalyst headline (surfaces WHY when news is a top scoring driver, not just THAT it is) ---
+  if (topDrivers.some((d) => d.label === "news")) {
+    const catalyst = pickCatalystHeadline(dossier, isLong);
+    if (catalyst) parts.push(`Catalyst: "${catalyst}".`);
   }
 
   // --- Key S/R levels + R:R ---
