@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T15:22:35.624Z",
+  "lastUpdated": "2026-09-12T15:38:29.479Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1276,6 +1276,11 @@
       "at": "2026-09-12T15:22:35.624Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "PR #4865 merged (f62003a71) and verified on origin/main -- grep confirms flowByExpiryPremium present in format.ts. Rate limit cleared (confirmed by Swings lane's #4866/#4867 merging in the same window). healthcheck:legacy fully GREEN (resolved=26 stable, edition fresh 2 plays, marks in range). Session total for this Legacy lane today: 4 real dossier/scorer/format bugs shipped+merged (scorer.ts trio #4839/#4844/#4847 -- wait, those + insider ticker-filter #4860 + disclosure-date #4863 + flow-by-expiry #4865 = 4 dossier-layer fixes this cycle-block, plus the earlier scorer trio and #4853 thesis enhancement from prior cycles). The Record<string,unknown>[] field-mismatch sweep across dossier.ts/scorer.ts/format.ts is now genuinely exhausted for Legacy's own code surface. Next fresh angle to consider in upcoming cycles: a live UI/rendered-output spot-check via proxy-browser.cjs (secondary priority per the mandate), or wait for Monday market open to validate all shipped fixes against live data as originally planned."
+    },
+    {
+      "at": "2026-09-12T15:38:29.480Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Did a genuine outcome-honesty pass this cycle (mission item not deeply exercised yet today, only the resolved-count stability was checked): pulled /api/market/nighthawk/record?days=14 directly and verified internal consistency -- segments.current buckets (wins 0 + losses 1 + opens 16 + unfilled 2 + pulled 7 = 26 resolved) and debrief.failure_modes tags (wrong_direction 9 + target_unreachable 8 + pulled_wrongly 4 + pulled_correctly 3 + unfilled_never_traded_back 2 = 26 debriefed) both sum correctly. decided_count is only 1 this window (mostly weekend opens still live) -- too thin to evaluate reasoning-soundness patterns against the 3-instance threshold. No inconsistency found. Noted sibling PR #4868 (Swings lane, play-brief-intel.ts staleness suppression for a Legacy-sourced nighthawk_recent field) -- reads Legacy data but doesn't touch Legacy's own code, correctly out of my scope, no action needed. Field-mismatch sweep remains exhausted; next fresh angle candidates: live UI spot-check via proxy-browser.cjs, or wait for Monday's real decided-trade population to do a substantive outcome-honesty pass."
     }
   ],
   "knownOpenItems": {
