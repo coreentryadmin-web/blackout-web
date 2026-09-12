@@ -112,16 +112,25 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
  *
  * CLOSED-bucket guard (FINDINGS 2026-09-12): this section's copy is written in the present/future
  * tense of a PENDING entry decision — "Adding {ticker} stacks the same wager..." — which is the
- * right frame for a WATCH candidate or a still-open managed position (there IS a decision to make:
- * add, hold, or avoid). A CLOSED position has no such decision left; live-repro on a real closed
- * AAPL brief (positionId 36, exited 2026-09-04) rendered "Book context: ... Adding AAPL stacks the
- * same wager..." against the CURRENT book (which happens to hold a live AAPL long entered a week
- * later) — confusing a member reviewing a historical trade into thinking this is live guidance
- * about a decision they're about to make, when it is neither about THAT trade (already closed) nor
- * actionable going forward from this brief. Gated out entirely rather than reworded past-tense:
- * "book overlap at review time" isn't a fact about the closed trade being reviewed, so it doesn't
- * belong on this bucket's brief at all — `archetypeTrackRecordSection` already carries the
- * legitimate "how did trades like this one do" retrospective for CLOSED.
+ * right frame for a WATCH candidate (there IS a decision to make: enter or pass). A CLOSED position
+ * has no such decision left; live-repro on a real closed AAPL brief (positionId 36, exited
+ * 2026-09-04) rendered "Book context: ... Adding AAPL stacks the same wager..." against the CURRENT
+ * book (which happens to hold a live AAPL long entered a week later) — confusing a member reviewing
+ * a historical trade into thinking this is live guidance about a decision they're about to make,
+ * when it is neither about THAT trade (already closed) nor actionable going forward from this
+ * brief. Gated out entirely rather than reworded past-tense: "book overlap at review time" isn't a
+ * fact about the closed trade being reviewed, so it doesn't belong on this bucket's brief at all —
+ * `archetypeTrackRecordSection` already carries the legitimate "how did trades like this one do"
+ * retrospective for CLOSED.
+ *
+ * ALREADY-OPEN wording fix (FINDINGS 2026-09-12, second instance of the same tense bug): an
+ * OPEN/HOLD/TRIM position is not a pending entry decision either — the position already exists.
+ * Live-repro on a real TRIM/EXIT_RUNNER CRWD brief (positionId 19): "Adding CRWD stacks the same
+ * wager rather than diversifying risk" rendered on a position the desk was actively telling members
+ * to TRIM OUT, not add to — there is no "adding" decision on the table for an already-committed,
+ * being-reduced position. Unlike the CLOSED case, the overlap fact is still live and relevant here
+ * (the position IS open, the book overlap IS real right now), so this stays rendered — only the
+ * "Adding..." phrasing changes to reflect existing exposure rather than a forward decision.
  */
 export function bookContextSection(
   play: TerminalPlay,
@@ -137,13 +146,18 @@ export function bookContextSection(
   );
   if (!overlap.hasOverlap) return null;
 
+  const isPendingEntryDecision = play.status === "WATCH";
+
   const lines: string[] = [];
   if (overlap.sameThemeSameDirection.length) {
     const names = overlap.sameThemeSameDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
+    const closer = isPendingEntryDecision
+      ? `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`
+      : `${play.ticker} stacks the same wager rather than diversifying risk.`;
     lines.push(
       `**Concentration** — already holding ${overlap.sameThemeSameDirection.length} same-direction ` +
         `position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in theme "${overlap.theme}": ${names}. ` +
-        `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`,
+        closer,
     );
   }
   if (overlap.sameThemeOpposedDirection.length) {
