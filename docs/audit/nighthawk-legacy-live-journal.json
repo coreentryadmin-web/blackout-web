@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T12:08:41.855Z",
+  "lastUpdated": "2026-09-12T12:22:33.463Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1206,6 +1206,11 @@
       "at": "2026-09-12T12:08:41.855Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable (expected -- weekend, no new resolutions until Monday). No new findings. Spot-checked scoreCatalystAwareness's BenzingaCatalyst field usage against the field-mismatch bug class found 3x this session -- it's a compiler-typed, internally-normalized type (catalystTypeFromChannels), not a raw Record<string,unknown> guess, so it's structurally safe from that bug class. 3rd clean cycle since #4853 merged."
+    },
+    {
+      "at": "2026-09-12T12:22:33.463Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN this cycle, resolved=26 stable (Saturday, no new resolutions expected until Monday). No new findings. 4th clean cycle since #4853 merged."
     }
   ],
   "knownOpenItems": {
