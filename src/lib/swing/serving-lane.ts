@@ -144,17 +144,43 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
  * from ongoing management, and a pre-entry read would overwrite a real "thesis broken" with a stale
  * "intact".
  *
- * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) leaves the row
- * untouched and the honest placeholder stands — a committed play never gets an invented explanation.
+ * FACTORS NO LONGER BORROWED FROM A FRESH DOSSIER (FINDINGS 2026-09-12). `play.score` on a live row is
+ * `row.feature_vector.evidence_score` — PINNED at commit (commit.ts: "so trajectory studies can echo
+ * pillars/score on every later snapshot"). This function used to overwrite `factors` with `meta.factors`
+ * from a dossier RE-RUN TODAY, whose pillar reads (rel-strength/regime/structure) legitimately drift
+ * from commit day — so the two numbers silently diverged the longer a position aged (live: AAPL
+ * position 37 SECTOR_ROTATION showed "score 84.4" beside factors summing to 75.0, a 9.4pt/11%
+ * unexplained gap; same failure mode as #4826's Banger/Vector-bump fixes, a third distinct occurrence).
+ * `live-plays.ts`'s `livePlayFromSwingPosition` now reconstructs `play.factors` from that SAME pinned
+ * feature_vector (`pinnedFactorsFromFeatureVector`), so it sums to `play.score` by construction. This
+ * function therefore PREFERS the play's own (pinned) factors and borrows the dossier's fresh ones only
+ * as a fallback for rows committed before the feature vector carried pillar detail (no `pil_*`/archetype
+ * pinned) — those still get SOME explanation rather than none, same as before this fix, just no longer
+ * at the cost of a mismatched score once a pinned one exists.
+ *
+ * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) AND no pinned
+ * factors on the row leaves it untouched and the honest placeholder stands — a committed play never
+ * gets an invented explanation.
  */
 export function attachThesisExplanation(
   play: HorizonPlay,
   dossier: SwingDossier | undefined,
   reads?: SwingServingReads,
 ): HorizonPlay {
+  const pinnedFactors = Array.isArray(play.factors) && play.factors.length > 0;
   if (!dossier) return play;
   const meta = swingServingMetaFromDossier(dossier, reads);
   const hasFactors = Array.isArray(meta.factors) && meta.factors.length > 0;
+  if (pinnedFactors) {
+    // Score-consistent factors already reconstructed from the row's own frozen feature_vector — only
+    // regime/sectorLeadershipFacts (not score-summing fields) still benefit from the live dossier read.
+    if (meta.regime == null && meta.sectorLeadershipFacts == null) return play;
+    return {
+      ...play,
+      regime: meta.regime ?? play.regime,
+      sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
+    };
+  }
   if (!hasFactors && meta.regime == null && meta.sectorLeadershipFacts == null) return play;
   return {
     ...play,

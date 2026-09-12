@@ -15,6 +15,7 @@ import {
   relStrengthSignal,
   flowSignal,
   volatilitySignal,
+  contributionsToFactors,
   type SwingPillarSignals,
 } from "./swing-pillars.ts";
 
@@ -87,4 +88,44 @@ test("signal helpers: return null when the primary signal is absent, 0–1 when 
   const tac = volatilitySignal({ contractQuality01: 1, thetaBurden01: 1 }, "TACTICAL");
   const ext = volatilitySignal({ contractQuality01: 1, thetaBurden01: 1 }, "EXTENDED");
   assert.ok(tac != null && ext != null && tac < ext, "tactical theta penalty is harsher than extended");
+});
+
+// FINDINGS 2026-09-12: `contributionsToFactors` is the shared factor-building helper both
+// `serving-ingest.ts` (fresh pre-entry dossiers) and `live-plays.ts` (pinned commit-time
+// reconstruction) now call — this locks the one invariant every caller depends on: feed it a
+// SINGLE `scoreSwingPillars` call's own contributions and the factor points always sum to that
+// SAME call's score, for any archetype and any mix of present/absent pillars (partial pillar
+// sets — the realistic case, per the live SECTOR_ROTATION/AAPL case that had 6 of 7 present).
+test("contributionsToFactors: factor points always sum to the score that produced them (partial + full pillar sets)", () => {
+  const partial: SwingPillarSignals = {
+    STRUCTURE: 1,
+    REL_STRENGTH: 1,
+    REGIME: 0.665,
+    VOLATILITY: 0.598,
+    CATALYST: 0.532,
+    FLOW: 0.103,
+    // DATA_QUALITY absent — mirrors the live AAPL SECTOR_ROTATION read (6/7 pillars present).
+  };
+  for (const a of [...SWING_ARCHETYPES, null]) {
+    const { score, contributions } = scoreSwingPillars(partial, a);
+    const factors = contributionsToFactors(contributions);
+    const sum = Math.round(factors.reduce((n, f) => n + f.points, 0) * 10) / 10;
+    assert.equal(sum, score, `${a ?? "base"}: factor points must sum to score`);
+    // every returned factor is a real, positive, labeled contribution — never a bare pillar key
+    for (const f of factors) {
+      assert.ok(f.points > 0, "a zero/negative-point pillar must not appear in the display");
+      assert.ok(f.label.length > 0);
+    }
+  }
+
+  // full pillar set (every archetype) — the other end of the present/absent spectrum.
+  const full: SwingPillarSignals = Object.fromEntries(SWING_PILLARS.map((p) => [p, 0.5]));
+  const { score: fullScore, contributions: fullContributions } = scoreSwingPillars(full, "BREAKOUT");
+  const fullFactors = contributionsToFactors(fullContributions);
+  const fullSum = Math.round(fullFactors.reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(fullSum, fullScore);
+  assert.equal(fullFactors.length, 7);
+
+  // no pillars present at all → honest empty factors, not a fabricated row.
+  assert.deepEqual(contributionsToFactors(scoreSwingPillars({}, "BREAKOUT").contributions), []);
 });

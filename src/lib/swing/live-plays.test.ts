@@ -4,8 +4,10 @@ import {
   livePlayFromSwingPosition,
   livePlaysFromOpenPositions,
   liveQuoteFromEvent,
+  pinnedFactorsFromFeatureVector,
   structuralBreakFromSpot,
 } from "./live-plays.ts";
+import { scoreSwingPillars, type SwingPillarSignals } from "./swing-pillars.ts";
 import type { SwingPositionRow } from "../db.ts";
 
 /**
@@ -278,4 +280,59 @@ test("Q40: markAsOf falls back to manage snapshot quote.asOf when last_mark_at i
     { quote: { bid: 5.4, ask: 5.6, asOf: "2026-09-05T13:00:00.000Z" } },
   )!;
   assert.equal(play.markAsOf, "2026-09-05T13:00:00.000Z");
+});
+
+// FINDINGS 2026-09-12 (live 0DTE/swing monitor sweep): a committed live position's `score` is
+// `feature_vector.evidence_score`, PINNED at commit (commit.ts) so trajectory studies can echo it
+// on every later snapshot. Before this fix, `serving-lane.ts`'s `attachThesisExplanation` overwrote
+// `factors` with a dossier RE-RUN TODAY — whose pillar reads legitimately drift from commit day — so
+// the two numbers silently diverged the longer a position aged. Live repro: AAPL position 37
+// (SECTOR_ROTATION, committed 2026-09-11) showed "score 84.4" beside factor rows summing to only
+// 75.0 (a 9.4pt/11% unexplained gap) once today's dossier had moved on from commit-day conditions.
+// `pinnedFactorsFromFeatureVector` closes this by reconstructing factors from the SAME frozen raw
+// pillar signals that produced `evidence_score`, so the sum-to-score invariant holds by construction
+// (re-running the same pure `scoreSwingPillars` on the same inputs cannot produce a different total)
+// rather than by two independently-computed numbers happening to agree.
+test("pinnedFactorsFromFeatureVector: reconstructed factors ALWAYS sum to the pinned evidence_score, for a live position's own frozen pillar signals", () => {
+  // The live AAPL SECTOR_ROTATION read that exposed the bug: 6/7 pillars pinned, DATA_QUALITY absent.
+  const pillars: SwingPillarSignals = {
+    STRUCTURE: 1,
+    REL_STRENGTH: 1,
+    REGIME: 0.665,
+    VOLATILITY: 0.598,
+    CATALYST: 0.532,
+    FLOW: 0.103,
+    // DATA_QUALITY intentionally absent
+  };
+  // commit.ts pins `evidence_score: cand.score` and `pillars: cand.pillars` from the SAME
+  // scoreSwingPillars call, so a real row's evidence_score and pil_* are ALWAYS mutually consistent
+  // this way in production — deriving it here (never a hand-picked literal) mirrors that guarantee.
+  const evidenceScore = scoreSwingPillars(pillars, "SECTOR_ROTATION").score;
+  const fv = {
+    evidence_score: evidenceScore,
+    archetype: "SECTOR_ROTATION",
+    pil_structure: pillars.STRUCTURE,
+    pil_rel_strength: pillars.REL_STRENGTH,
+    pil_regime: pillars.REGIME,
+    pil_volatility: pillars.VOLATILITY,
+    pil_catalyst: pillars.CATALYST,
+    pil_flow: pillars.FLOW,
+  };
+  const factors = pinnedFactorsFromFeatureVector(fv);
+  assert.ok(factors.length > 0, "a fully-pinned feature vector must reconstruct real factors, not []");
+  const sum = Math.round(factors.reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(sum, evidenceScore);
+
+  // The live symptom, directly: a full committed play's score and its own factors must never disagree.
+  const play = livePlayFromSwingPosition(
+    row({ archetype: "SECTOR_ROTATION", feature_vector: fv as unknown as SwingPositionRow["feature_vector"] }),
+    null,
+  )!;
+  const playFactorSum = Math.round((play.factors ?? []).reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(playFactorSum, play.score, "a live play's factors must sum to exactly its own score");
+});
+
+test("pinnedFactorsFromFeatureVector: no pinned pillars (older/pre-fix row) → honest empty, never fabricated", () => {
+  assert.deepEqual(pinnedFactorsFromFeatureVector({ evidence_score: 82 }), []);
+  assert.deepEqual(pinnedFactorsFromFeatureVector(null), []);
 });

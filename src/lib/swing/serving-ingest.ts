@@ -29,25 +29,14 @@ import type { SwingThesisLevel } from "./serving";
 import { deriveSetupState, type SetupStateReads } from "./setup-state";
 import { deriveEntryPlan, type EntryReads } from "./entry-model";
 import type { ChainContract } from "../horizon-fanout";
-import type { SwingPillar } from "./swing-archetype";
+import { contributionsToFactors, type SwingScoreFactor } from "./swing-pillars";
 
 /** A signed, point-weighted factor — structurally the command-deck's DeckFactor, kept lib-local so this
- *  pure module never imports the features layer (the adapter reads this shape via HorizonDeckSource). */
-export interface SwingServingFactor {
-  label: string;
-  points: number;
-}
-
-/** Human labels for the 7 pillars — the factor rows the desk renders (biggest lever first). */
-const PILLAR_LABELS: Record<SwingPillar, string> = {
-  STRUCTURE: "Structure",
-  REL_STRENGTH: "Rel. strength",
-  FLOW: "Flow",
-  VOLATILITY: "Volatility",
-  CATALYST: "Catalyst",
-  REGIME: "Regime",
-  DATA_QUALITY: "Data quality",
-};
+ *  pure module never imports the features layer (the adapter reads this shape via HorizonDeckSource).
+ *  Alias of `SwingScoreFactor` (swing-pillars.ts) — SHARED with `live-plays.ts`'s pinned-factor
+ *  reconstruction so a live and a pre-entry factor row are structurally the same thing, not two
+ *  independently-typed lookalikes. */
+export type SwingServingFactor = SwingScoreFactor;
 
 /** The per-ticker serving meta a swing row carries — the real reads behind the desk's thesis panel. */
 export interface SwingServingMeta {
@@ -93,8 +82,6 @@ export interface SwingServingReads {
   contract?: ChainContract;
   asOf?: string | number | Date;
 }
-
-const round1 = (n: number): number => Math.round(n * 10) / 10;
 
 /**
  * Build the deck-ready thesis-break object from the meta — the exact `{ level, note? }` shape the
@@ -192,10 +179,7 @@ export function swingServingMetaFromDossier(
       : null;
 
   // ── factors: the dossier's real, present-pillar contributions, biggest lever first ──
-  const factors: SwingServingFactor[] = dossier.score.contributions
-    .filter((c) => c.present && c.points > 0)
-    .map((c) => ({ label: PILLAR_LABELS[c.pillar], points: round1(c.points) }))
-    .sort((a, b) => b.points - a.points);
+  const factors: SwingServingFactor[] = contributionsToFactors(dossier.score.contributions);
 
   // ── regime: archetype label blended with the normalized regime pillar read (null when neither exists) ──
   const regime01 = dossier.pillarSignals.REGIME;

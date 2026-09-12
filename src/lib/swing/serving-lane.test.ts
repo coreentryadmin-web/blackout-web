@@ -15,6 +15,7 @@ import type { SwingServingReads } from "./serving-ingest.ts";
 import type { HorizonPlay } from "../horizon-plays.ts";
 import type { ChainContract } from "../horizon-fanout.ts";
 import { swingThesisKey, type SwingWatchCandidate } from "./accumulation-store.ts";
+import { scoreSwingPillars } from "./swing-pillars.ts";
 
 function accum(direction: "bull" | "bear", days: number): ZeroDteFlowAccumulation {
   return {
@@ -387,6 +388,60 @@ test("the live LIFECYCLE is not overwritten by the pre-entry read", async () => 
   assert.deepEqual(lane.sections.SCALING_OUT.map((p) => p.ticker), ["AAA"]);
   assert.equal(lane.sections.MANAGING.length, 0, "a trimming position must not fall back to MANAGING");
   assert.ok((lane.sections.SCALING_OUT[0].factors ?? []).length > 0);
+});
+
+// FINDINGS 2026-09-12 (live monitor sweep): before this fix, `attachThesisExplanation` overwrote a
+// committed row's `factors` with a dossier RE-RUN TODAY, even though `play.score` is the position's
+// OWN `feature_vector.evidence_score` PINNED at commit — so the two silently disagreed once today's
+// dossier read diverged from commit-day conditions (live: AAPL SECTOR_ROTATION, score 84.4 next to
+// factors summing to 75.0). `live-plays.ts` now reconstructs `factors` from that SAME pinned
+// feature_vector, and this test proves `attachThesisExplanation` PREFERS that pinned reconstruction
+// over the fresh dossier's own (different) factors/score, even when a same-ticker dossier exists and
+// disagrees — the position's own frozen record must win, not whichever was computed most recently.
+test("a COMMITTED row's OWN pinned factors win over a fresh same-day dossier's — score/factors never disagree even as the dossier drifts", async () => {
+  const d = buildSwingDossier(dossier("AAA")); // today's re-run — its OWN score/pillars, unrelated to the position's pin
+  // The live AAPL SECTOR_ROTATION read that exposed the bug: 6/7 pillars pinned, DATA_QUALITY absent.
+  // evidence_score is DERIVED (never a hand-picked literal) so the fixture is internally consistent
+  // exactly the way commit.ts guarantees a real row is (evidence_score and pil_* come from ONE call).
+  const pinnedPillars = {
+    STRUCTURE: 1,
+    REL_STRENGTH: 1,
+    REGIME: 0.665,
+    VOLATILITY: 0.598,
+    CATALYST: 0.532,
+    FLOW: 0.103,
+  };
+  const pinnedScore = scoreSwingPillars(pinnedPillars, "SECTOR_ROTATION").score;
+  const pinnedFeatureVector = {
+    evidence_score: pinnedScore,
+    archetype: "SECTOR_ROTATION",
+    pil_structure: pinnedPillars.STRUCTURE,
+    pil_rel_strength: pinnedPillars.REL_STRENGTH,
+    pil_regime: pinnedPillars.REGIME,
+    pil_volatility: pinnedPillars.VOLATILITY,
+    pil_catalyst: pinnedPillars.CATALYST,
+    pil_flow: pinnedPillars.FLOW,
+  };
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [play({ ticker: "AAA" })] }),
+    fetchOpenPositions: async () => [
+      openRow("AAA", "OPEN", { feature_vector: pinnedFeatureVector, archetype: "SECTOR_ROTATION" }),
+    ],
+    spotsByTicker: { AAA: 105 },
+  });
+  const live = lane.sections.MANAGING[0];
+  assert.ok(live, "the open position must render in MANAGING");
+  assert.equal(live.score, pinnedScore, "score is the position's own pinned evidence_score");
+  const sum = Math.round((live.factors ?? []).reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(sum, pinnedScore, "factors must sum to the position's OWN pinned score");
+  assert.notEqual(
+    sum,
+    d.score.score,
+    "sanity: the fresh dossier's own score must differ from the pinned one in this fixture, or this " +
+      "test would pass even if the bug reappeared and the pinned factors were silently replaced",
+  );
+  // regime/sectorLeadershipFacts still benefit from the live dossier read — only factors are pinned.
+  assert.ok(live.regime != null, "regime is still allowed to borrow the fresh dossier's read");
 });
 
 test("no dossier for the ticker → the row is left honest, never given an invented explanation", async () => {
