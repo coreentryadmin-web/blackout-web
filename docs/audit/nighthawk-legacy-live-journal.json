@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T01:37:20.244Z",
+  "lastUpdated": "2026-09-12T01:52:18.441Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -986,6 +986,11 @@
       "at": "2026-09-12T01:37:20.244Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "PR #4821: CI (verify) completed SUCCESS, mergeable_state=clean. Attempted undraft via GitHub MCP -- hit the known fleet-wide rate limiter again ('API rate limit already exceeded for user ID 284440397'). Will retry next cycle. healthcheck:legacy fully GREEN this cycle, resolved=26 stable. No new findings."
+    },
+    {
+      "at": "2026-09-12T01:52:18.442Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "PR #4821 undraft retried -- still hitting the GitHub MCP rate limiter. Swings lane merged+verified PR #4819 live this cycle (COIN) per their journal. healthcheck:legacy fully GREEN this cycle, resolved=26 stable (harness self-swept 1 leaked temp Clerk user >30m old, the documented safety net working as designed). No new findings; will keep retrying the PR #4821 undraft next cycle."
     }
   ],
   "knownOpenItems": {
