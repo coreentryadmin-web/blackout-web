@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T17:07:39.068Z",
+  "lastUpdated": "2026-09-12T17:22:41.846Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1316,6 +1316,11 @@
       "at": "2026-09-12T17:07:39.068Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Attempted to cross-check DELL's thesis catalyst callouts ('insider transaction; guidance update; offering; current ratio 0.91') against a raw catalyst_flags/catalyst_score field on the edition API -- neither field is exposed on the public play object (confirmed via full key listing: only factor_breakdown.catalyst, the numeric total, is public). Not a bug -- the flags feed thesis-TEXT generation internally (scoreCatalystAwareness) but are intentionally not re-serialized as raw data on this endpoint, just a scope correction on my own assumption. Given diminishing returns from manual spot-checks after 8+ independent verification passes this session (field-mismatch sweep x3 real bugs, outcome-honesty, live UI, R:R math, factor-sum-to-score, confirming-signals-to-tier-text all clean), treating this as a genuinely quiet stretch rather than manufacturing further marginal checks. Continuing standing cadence at normal effort; next substantive work expected at Monday market open validation."
+    },
+    {
+      "at": "2026-09-12T17:22:41.846Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN, no change (resolved=26, HPE 2.91, DELL 18.15 -- same stable readings for many consecutive cycles, expected Saturday). Continuing standing cadence at normal effort after a thorough multi-angle verification stretch this session; nothing new to report this cycle."
     }
   ],
   "knownOpenItems": {
