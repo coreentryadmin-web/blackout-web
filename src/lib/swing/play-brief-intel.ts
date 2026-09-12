@@ -107,11 +107,25 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
  * Reuses the same theme resolver the swing entry gate itself uses (`portfolio.ts`/`theme-cluster.ts`,
  * SEV-9), so this reports the SAME partition the gate would flag — not a second, diverging notion
  * of "similar." Only rendered when the book actually overlaps; a clean book says nothing new.
+ *
+ * CLOSED-bucket guard (FINDINGS 2026-09-12): this section's copy is written in the present/future
+ * tense of a PENDING entry decision — "Adding {ticker} stacks the same wager..." — which is the
+ * right frame for a WATCH candidate or a still-open managed position (there IS a decision to make:
+ * add, hold, or avoid). A CLOSED position has no such decision left; live-repro on a real closed
+ * AAPL brief (positionId 36, exited 2026-09-04) rendered "Book context: ... Adding AAPL stacks the
+ * same wager..." against the CURRENT book (which happens to hold a live AAPL long entered a week
+ * later) — confusing a member reviewing a historical trade into thinking this is live guidance
+ * about a decision they're about to make, when it is neither about THAT trade (already closed) nor
+ * actionable going forward from this brief. Gated out entirely rather than reworded past-tense:
+ * "book overlap at review time" isn't a fact about the closed trade being reviewed, so it doesn't
+ * belong on this bucket's brief at all — `archetypeTrackRecordSection` already carries the
+ * legitimate "how did trades like this one do" retrospective for CLOSED.
  */
 export function bookContextSection(
   play: TerminalPlay,
   openBook: PortfolioPosition[] | null | undefined,
 ): RichSection | null {
+  if (play.status === "CLOSED") return null;
   if (openBook == null || !openBook.length) return null;
   const { positionId } = parseSwingPlayId(play.id);
   const overlap = checkPortfolioOverlap(
