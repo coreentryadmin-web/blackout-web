@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-12T16:07:47.886Z",
+  "lastUpdated": "2026-09-12T16:22:48.845Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -1296,6 +1296,11 @@
       "at": "2026-09-12T16:07:47.887Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Pulled the live /api/market/nighthawk/edition thesis text for narrative-consistency (mission item not deeply exercised today beyond the resolved-count check): HPE key_signal 'technicals + news', DELL key_signal 'technicals + news' -- both theses correctly omit positioning/smart-money narrative sub-notes since neither is a top-2 driver for these plays (consistent with #4827/#4853's additive, conditional design -- correctly NOT firing here, not a gap). DELL's catalyst watch list ('insider transaction; guidance update; offering; current ratio 0.91') reads coherently against its own fundamentals. No inconsistency found. All three fresh-angle checks planned this session (field-mismatch sweep, outcome-honesty, live UI, and now thesis-narrative-consistency) have come back clean -- this is now a genuinely quiet stretch, next substantive work likely waits for Monday's market open per the standing plan (edition regeneration will exercise #4821/#4827/#4853's shipped narrative fixes on fresh picks, and the resolved-picks population will grow enough for a real outcome-honesty pass)."
+    },
+    {
+      "at": "2026-09-12T16:22:48.845Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "healthcheck:legacy fully GREEN (resolved=26 stable). Verified the R:R math shown in both live plays' thesis text (a mission-adjacent check not yet done: 'narrative consistent with marks'): HPE rr_ratio=0.49 reproduces exactly as (target 66.48 - entry_range upper 63.49) / (entry_range upper 63.49 - stop 57.41) = 2.99/6.08 = 0.49; DELL rr_ratio=0.45 reproduces the same way (606.30-580.46)/(580.46-523.40)=25.84/57.06=0.45. Confirms the R:R calc conservatively uses the entry range's UPPER (worst-case fill) bound, not the midpoint -- correct and consistent with the 'tight' framing in both theses. No bug found. Noted 2 sibling cross-lane PRs this window (#4869 swing Invalidation-callout fix, #4870 largo ticker-verdict condor-bias fix) -- both Swings/Largo scope, correctly not mine to act on."
     }
   ],
   "knownOpenItems": {
