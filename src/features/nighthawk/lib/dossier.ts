@@ -168,8 +168,18 @@ let _defaultBuildCache: DossierBuildCache = createDossierBuildCache();
 
 const RECENT_SIGNAL_DAYS = 30;
 
-function parseTradeDate(row: Record<string, unknown>): Date | null {
+// `filed_at_date` (real UW congress field) and `filing_date` (real UW insider/institutional
+// field) are checked FIRST, ahead of `transaction_date` — a congress member or corporate
+// insider can legally disclose a trade up to 45/2+ days after the trade itself (STOCK Act /
+// Form 4 windows), so the DISCLOSURE date, not the trade date, is when this recency window
+// should measure from. Same root cause already fixed once this session in
+// `congressTradeDecayMultiplier` (scorer.ts, #4844) — this is the blast-radius instance that
+// governs whether a row is even considered "recent" at all (getEditionCongressTrades's window,
+// isRecentInsiderBuy's window), not just how it's decayed/weighted.
+export function parseTradeDate(row: Record<string, unknown>): Date | null {
   const raw =
+    row.filed_at_date ??
+    row.filing_date ??
     row.filed_at ??
     row.filed_date ??
     row.transaction_date ??
@@ -183,7 +193,7 @@ function parseTradeDate(row: Record<string, unknown>): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function isWithinRecentSignalWindow(row: Record<string, unknown>, days = RECENT_SIGNAL_DAYS): boolean {
+export function isWithinRecentSignalWindow(row: Record<string, unknown>, days = RECENT_SIGNAL_DAYS): boolean {
   const tradeDate = parseTradeDate(row);
   if (!tradeDate) return false;
   const cutoff = new Date();
