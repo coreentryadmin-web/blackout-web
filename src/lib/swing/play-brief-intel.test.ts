@@ -16,6 +16,7 @@ import {
   lessonsSection,
   meridianCatalystSection,
   meridianPeerSection,
+  wallDynamicsSection,
   watchForSection,
   whyThisSetupSection,
   vectorDeskSection,
@@ -905,6 +906,66 @@ test("chartTechnicalsSection: Vector regime is labeled as dealer GAMMA posture, 
   assert.doesNotMatch(section!.body, /Vector regime:/);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-09-12): chartTechnicalsSection rendered TODAY's spot/
+// EMA/VWAP/RSI/structure for a CLOSED play with no disclosure and a directional bias badge — unlike
+// vectorDeskSection's already-fixed closed-bucket branch (forced neutral, "since this play closed"
+// framing) a few sections later in the same envelope. Live repro: AAPL:36 (closed 2026-09-04)
+// rendered "Chart technicals" full of live 2026-09-12 numbers with zero as-of-close framing.
+test("chartTechnicalsSection: CLOSED bucket prefixes a current-not-as-traded disclosure and forces neutral bias", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  });
+  const closedSection = chartTechnicalsSection(vec, null, "closed");
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current chart read — not the technicals this trade closed under/);
+  assert.equal(closedSection!.bias, "neutral", "closed bucket must not badge a directional bias");
+
+  const openSection = chartTechnicalsSection(vec, null, "open");
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current chart read/, "open/watch buckets are unchanged");
+  assert.equal(openSection!.bias, "bullish", "open bucket keeps its real technicals-derived bias");
+
+  // Default (no bucket arg) must match every pre-existing call site — behavior unchanged.
+  const defaultSection = chartTechnicalsSection(vec);
+  assert.doesNotMatch(defaultSection!.body, /Current chart read/);
+});
+
+// A closed play with a live Vector snapshot carrying no actual technicals/spot content must still
+// return null (not a section containing only the disclosure line, which would be a caveat about
+// nothing).
+test("chartTechnicalsSection: CLOSED bucket returns null rather than a disclosure-only section when there is no real content", () => {
+  const vec = { spot: null, technicals: null, regime: null, play: null } as unknown as VectorFullState;
+  assert.equal(chartTechnicalsSection(vec, null, "closed"), null);
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-12): same defect class — wallDynamicsSection
+// rendered TODAY's building/fading wall events for a CLOSED play with no framing at all.
+test("wallDynamicsSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
+  const vec = fixtureVec({
+    dataAgeMs: 1_000,
+    wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+  });
+  const closedSection = wallDynamicsSection(vec, null, "closed");
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current wall activity — not what this trade traded under/);
+
+  const openSection = wallDynamicsSection(vec, null, "open");
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current wall activity/, "open/watch buckets are unchanged");
+
+  // Default (no bucket arg) must match every pre-existing call site — behavior unchanged.
+  const defaultSection = wallDynamicsSection(vec);
+  assert.doesNotMatch(defaultSection!.body, /Current wall activity/);
+});
+
 test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (Largo C2)", () => {
   const vec = fixtureVec({
     freshness: "stale",
@@ -1354,6 +1415,58 @@ test("gexPostureSection: nearest wall prefers a live Vector ladder wall over the
   assert.doesNotMatch(section!.body, /120\.00/);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-09-12): gexPostureSection rendered TODAY's dealer
+// posture for a CLOSED play with no disclosure at all — unlike vectorDeskSection/watchForSection/
+// dataFreshnessSection, which were already fixed the same day for the identical defect class (a
+// closed brief presenting live/current data as if it described the trade's own conditions). Live
+// repro: AAPL:36 (closed 2026-09-04) rendered "Gamma posture: dealers long gamma" on 2026-09-12
+// with zero indication this was today's read, not the trade's.
+test("gexPostureSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
+  const closedSection = gexPostureSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        matrix_age_sec: 10,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current dealer posture — not what this trade traded under/);
+
+  const openSection = gexPostureSection({
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        matrix_age_sec: 10,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current dealer posture/, "open/watch buckets are unchanged");
+});
+
 test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and omits live-looking technicals (Largo C2)", () => {
   const vec = fixtureVec({
     spot: 95,
@@ -1668,6 +1781,50 @@ test("chartLevelsSection: stale GEX-only walls, flip, and king omitted (Largo C2
     vector: null,
   });
   assert.equal(section, null);
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-12): same defect class as gexPostureSection above —
+// "Levels on chart" rendered TODAY's call/put wall + gamma flip for a CLOSED play with no framing,
+// duplicating the already-disclosed "Since it closed" section's numbers but without its caveat.
+test("chartLevelsSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
+  const ecosystem = {
+    gex_positioning: {
+      spot: 100,
+      call_wall: 105,
+      put_wall: 95,
+      flip: 99,
+      gex_king_strike: 100,
+      matrix_age_sec: 10,
+      freshness: "live",
+    },
+  } as EcosystemContext;
+  const closedSection = chartLevelsSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem,
+    vector: null,
+  });
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current levels — not what this trade traded under/);
+
+  const openSection = chartLevelsSection({
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem,
+    vector: null,
+  });
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current levels/, "open/watch buckets are unchanged");
 });
 
 test("chartLevelsSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
