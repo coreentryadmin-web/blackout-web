@@ -66,7 +66,7 @@ describe("evaluateSwingEntryEnterability", () => {
     assert.match(r.reason, /chase/i);
   });
 
-  it("past entry deadline → dont_buy", () => {
+  it("past entry deadline → dont_buy, flagged expired: true (distinguishes from every other dont_buy/wait reason)", () => {
     const r = evaluateSwingEntryEnterability({
       setupState: "TRIGGERED",
       entryStatus: "AT_TRIGGER",
@@ -76,6 +76,33 @@ describe("evaluateSwingEntryEnterability", () => {
     });
     assert.equal(r.action, "dont_buy");
     assert.match(r.reason, /expired/i);
+    assert.equal(r.expired, true);
+  });
+
+  it("expired is NOT set on other dont_buy/wait reasons (invalidated, extended-chase, gate-blocked)", () => {
+    const invalidated = evaluateSwingEntryEnterability({
+      setupState: "INVALIDATED",
+      aboveFloor: true,
+    });
+    assert.equal(invalidated.action, "dont_buy");
+    assert.notEqual(invalidated.expired, true);
+
+    const extended = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "EXTENDED_CHASE",
+      aboveFloor: true,
+    });
+    assert.equal(extended.action, "dont_buy");
+    assert.notEqual(extended.expired, true);
+
+    const gateBlocked = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      commitGateBlockedBy: ["gate:G-S6:confluence"],
+    });
+    assert.equal(gateBlocked.action, "wait");
+    assert.notEqual(gateBlocked.expired, true);
   });
 
   it("commit gate block → wait", () => {

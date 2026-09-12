@@ -822,6 +822,13 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     (swingEnterability.action === "buy" || swingEnterability.action === "still_buy")
       ? swingEnterability.action
       : null;
+  // Same `swingEnterability` computation above already resolves whether the entry-validity
+  // deadline has passed (evaluateSwingEntryEnterability's `expired` flag) — it was previously
+  // discarded along with every other `dont_buy` reason when narrowing to `swingEntryAction`
+  // above. Carried through separately so swingActionDisplay can render EXPIRED instead of a
+  // generic WAIT pill (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past their own 2-5 day
+  // entry window with no member-facing distinction from a freshly-forming setup).
+  const watchEntryExpired = swingEnterability?.expired === true;
   const swingPreEntry =
     src.horizon === "SWING" &&
     !src.liveStatus &&
@@ -985,6 +992,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     entryStatus: src.entryStatus ?? null,
     servingSection: src.servingSection ?? null,
     swingEntryAction,
+    watchEntryExpired,
     detectedAt: src.firstSeenAt ?? null,
     firstFlaggedAt: src.committedAt ?? null,
     committedAt: src.committedAt ?? null,
