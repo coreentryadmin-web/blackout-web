@@ -1,3 +1,37 @@
+## WATCH LIST — 2026-09-12 Ask Largo swing Structure Ladder: OPEN-position stop labeling + duplicate levels (read this before the routine pass)
+
+### Adversarial review of #4875 (Structure Ladder) found two real, member-visible defects, both fixed same-day (#4878, #4879)
+
+**What was broken (#1 — labeling):** the new Structure Ladder widget always computes its
+"Structural stop" live from today's spot (`deriveSwingPlanLevels`), correct for a WATCH candidate
+but not for an already-committed OPEN/HOLD/TRIM position, which has a real, frozen stop
+(`thesis_invalidation_px`) that actively drives real exit recommendations and can differ from this
+recompute once the underlying has moved since entry. The widget showed the recompute under the
+plain label "Structural stop" with no indication it could be a different number from the trade's
+actual, system-governing risk level. See
+`docs/audit/findings-staging/2026-09-12-structure-ladder-open-position-stop-estimate.md`.
+
+**Fix:** added `StructureLadder.positionState`; an OPEN/HOLD/TRIM read now shows "Reference stop"
+plus an explicit caveat that it's recomputed from today's spot and may differ from the position's
+real committed invalidation level. WATCH copy is unchanged.
+
+**What was broken (#2 — duplication):** the ladder and the pre-existing Key Levels table both
+render call wall/put wall/gamma flip/GEX king/max pain/gamma magnet independently, off the same
+underlying reads, directly adjacent on the same swing OPEN/WATCH answer — so a member saw the same
+price for each level printed twice, in two different formats. See
+`docs/audit/findings-staging/2026-09-12-structure-ladder-duplicate-levels.md`.
+
+**Fix:** `BieAnswer.tsx` now filters the six single-instance labels out of the Key Levels table
+whenever a Structure Ladder is present on the same envelope (dark pool/spot/confluence rows are
+deliberately left alone — see the finding for why).
+
+**Check at the open:** pull a real swing Ask Largo play brief for an OPEN position (`GET
+/api/market/swing/play-brief?playId=SWING:<ticker>` for any live committed name) and confirm (a)
+the Structure Ladder's stop line reads "Reference stop ... may differ" rather than the unqualified
+"Structural stop" WATCH copy, and (b) the Key Levels table above it no longer repeats the same call
+wall/put wall/gamma flip prices the ladder itself shows. Then pull a WATCH candidate and confirm
+its ladder still reads the original, unqualified "Structural stop" copy (no regression there).
+
 ## WATCH LIST — 2026-09-12 Night Hawk "Flow by expiry" narrative line always printed $0 (read this before the routine pass)
 
 ### `formatTickerDossierText`'s flow-by-expiry premium used a guessed field name that never matches real UW data
@@ -4432,7 +4466,13 @@ than an end-of-session patch.
 - **What changed:** `SwingEntryEnterability` gained an additive `expired?: boolean` field (true only in the deadline-passed branch); `terminalPlayFromHorizon` now also carries `watchEntryExpired` onto `TerminalPlay` from the same already-computed result; `swingActionDisplay`'s WATCH branch renders `EXPIRED` instead of `WAIT` when set. Flows straight into the Ask Largo play-brief headline (`play-brief.ts` uses `action?.label` there) with the one change. Ships the smaller, presentational half of the original design question — whether to actively prune stale WATCH rows from the board remains open, still held for Cursor's input per the CARVE-OUT discipline (architecturally-significant, not this PR's scope).
 - **RTH check:** Pull the live swing WATCH lane and confirm any candidate past its own entry-validity deadline now shows `EXPIRED` (both on the command-deck pill and in the Ask Largo play-brief headline) instead of the generic `WAIT`, while a genuinely fresh, still-enterable candidate is unaffected.
 
-### 145. Ask Largo swing play-brief's "Entry trigger" line claimed a level "actually fires the setup" even after the setup was provably dead — fix/swing-entry-trigger-dead-setup-claim — 2026-09-12
+### 145. "Book context" narrated an already-open, being-trimmed position as a pending "adding" decision — fix/swing-book-context-already-open-tense — 2026-09-12
+
+- **What was broken (Ask Largo deep audit, live `GET /api/market/swing/play-brief` on a real TRIM position CRWD, positionId 19):** `bookContextSection`'s concentration copy is written in the present/future tense of a pending entry decision — "Adding {ticker} stacks the same wager rather than diversifying risk." — correct for a WATCH candidate but not for an already-committed position. A prior fix the same day gated this section out entirely for CLOSED plays for the identical tense reason, but left OPEN/HOLD/TRIM untouched. Live repro: CRWD's brief reads "Desk says TRIM" / `manageAction: EXIT_RUNNER` ("all trims banked — runner only") in "Trade manager read", then a few sections later "Book context" reads "Adding CRWD stacks the same wager..." — framed as a pending new-entry decision on a position the desk is actively telling members to reduce.
+- **What changed:** The "Adding {ticker} stacks..." phrasing now only fires when `play.status === "WATCH"`. Every other rendered bucket (OPEN/HOLD/TRIM) reads as an existing-exposure state fact instead: "{ticker} stacks the same wager rather than diversifying risk." The overlap FACT itself is unchanged and still shown — only the one sentence's tense changed.
+- **RTH check:** Pull `GET /api/market/swing/play-brief` for any live OPEN/HOLD/TRIM position whose book overlaps a theme it already holds, and confirm "Book context" reads as an existing-exposure fact (no "Adding" framing), while a WATCH candidate with the same overlap still reads "Adding {ticker} stacks...".
+
+### 146. Ask Largo swing play-brief's "Entry trigger" line claimed a level "actually fires the setup" even after the setup was provably dead — fix/swing-entry-trigger-dead-setup-claim — 2026-09-12
 
 - **What was broken (Ask Largo deep-dive, live `GET /api/market/swing/play-brief` on real WATCH candidates SKHY and MRVL):** `watchForSection`'s "Entry trigger" bullet (`play-brief-intel.ts`) unconditionally appended "this is what actually fires the setup" to `play.entryTriggerUnderlyingPx`, regardless of whether the setup could still fire. Live repro, SKHY (`setupState: "INVALIDATED"`, thesis already broke): rendered "Entry trigger: **177.00** — Break/reclaim above this is what actually fires the setup" while spot was already **190.38** — above the stated trigger — with no entry ever firing, directly contradicting the sentence next to the number. Live repro, MRVL (`watchEntryExpired: true`, entry-validity deadline passed): the Verdict headline correctly read `EXPIRED — wait for a fresh setup`, but "Watch levels" four sections later still rendered the same unqualified claim with no cross-reference. Both dead-state fields (`setupState`, `watchEntryExpired`) were already computed and used elsewhere in the same file/finding (#144 above added `watchEntryExpired` specifically for this "is the setup still alive" question) — this bullet was the one place that didn't consult either.
 - **What changed:** Added `entryTriggerDeadReason(play)` — returns a short honest reason when `setupState === "INVALIDATED"` or `watchEntryExpired === true`, else `null`. The bullet now reads e.g. "Entry trigger: **177.00** — Break/reclaim above, but thesis already invalidated — this level no longer fires the setup" when dead; a live, still-enterable trigger keeps the original sentence verbatim (this fix narrows a false claim, never softens a true one). The numeric level itself is unchanged either way.

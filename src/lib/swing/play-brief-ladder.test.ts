@@ -307,4 +307,19 @@ test("buildStructureLadder: builds for a WATCH candidate too (forward risk/rewar
   const ladder = buildStructureLadder(ctx, play, "watch");
   assert.ok(ladder);
   assert.ok(ladder!.rungs.length > 0);
+  assert.equal(ladder!.positionState, "watch");
+});
+
+// ── positionState — the OPEN-position "stop is a live estimate, not the real committed one" ─────
+// caveat this field exists to drive (see StructureLadder.positionState's own header). `stop` is
+// ALWAYS a fresh recompute from today's spot, never `TerminalPlay`'s real per-position value (not
+// threaded onto the type today) — positionState just tells the UI which case it's in so an
+// OPEN/HOLD/TRIM read can say so, instead of presenting a recompute as the position's real,
+// frozen risk level.
+
+test("buildStructureLadder: positionState is \"open\" for an already-committed OPEN position", () => {
+  const play = fixturePlay({ status: "OPEN", direction: "LONG" });
+  const ctx = fixtureCtx({ play, vector: fixtureVec({ spot: 100, gammaFlip: 110 }) });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.equal(ladder!.positionState, "open");
 });

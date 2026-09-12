@@ -27,6 +27,15 @@
  * a CLOSED position has no forward risk/reward left to show, matching the identical bucket gate
  * `chartTechnicalsSection`/`gexPostureSection`/`wallDynamicsSection` already apply in
  * play-brief-intel.ts for the same "today's read vs the trade's own conditions" reason.
+ *
+ * CORRECTNESS NOTE on `stop`/point 2 above for an already-OPEN position: `stop` is always computed
+ * LIVE from today's spot (see `StructureLadderTarget`'s own comment) — it is never the real,
+ * frozen `thesis_invalidation_px` a committed position's actual entry pinned, because that value
+ * is not threaded onto `TerminalPlay` today. For a WATCH candidate this is exactly right (there is
+ * no real position yet to disagree with). For an OPEN/HOLD/TRIM position it is an honest estimate
+ * that can diverge from the real, system-governing stop once the underlying has moved since entry
+ * — `StructureLadder.positionState` exists so the UI can caveat this specifically for that case
+ * rather than silently presenting a recompute as the trade's actual risk level.
  */
 import type { DeckDirection, TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { PlayDirection } from "../horizon-fanout";
@@ -115,10 +124,34 @@ export type StructureLadderArchetypeTrackRecord = {
 export type StructureLadder = {
   spot: number;
   direction: DeckDirection;
-  /** The real ATR-derived structural stop every rung's R:R is measured against (see `StructureLadderTarget`). */
+  /**
+   * The real ATR-derived structural stop every rung's R:R is measured against (see
+   * `StructureLadderTarget`) — ALWAYS computed live from TODAY's spot via `deriveSwingPlanLevels`,
+   * never read back from a frozen per-position value (see that type's own comment and
+   * `positionState` immediately below for why this matters on an already-OPEN position).
+   */
   stop: number;
   /** The ATR value the stop/horizon classification were derived from. */
   atr: number;
+  /**
+   * "watch" for a pre-entry candidate, "open" for an already-committed OPEN/HOLD/TRIM position.
+   *
+   * This does NOT mean `stop` reflects the real per-position value — it never does; `stop` above
+   * is always a fresh live recompute from TODAY's spot (see its own comment), never the frozen
+   * per-position one. It exists so the UI can render the honest caveat only where it is needed:
+   * for a WATCH candidate, "if you enter here, this is the plan" is exactly the right claim, since
+   * no position exists yet to disagree with it. For an OPEN/HOLD/TRIM position, a REAL committed
+   * stop already exists — `thesis_invalidation_px`, frozen at the position's actual entry price
+   * and actually read by `manage-sync.ts` to decide whether to recommend an exit — and it can be
+   * materially different from this live recompute once the underlying has moved since entry.
+   * `thesis_invalidation_px` is not threaded onto `TerminalPlay` today (see `buildStructureLadder`'s
+   * own comment — real, separate plumbing, out of scope here), so this widget cannot show the real
+   * number; the honest fix available NOW is telling the member it's showing an estimate rather than
+   * silently labeling a recomputed number as if it were their trade's actual, frozen risk level —
+   * exactly the "plausible wrong number is worse than an obvious one" trap the Largo product
+   * contract's C4 identity section warns about.
+   */
+  positionState: "watch" | "open";
   /** Sorted high price → low price (the convention every price ladder in this codebase already uses —
    *  see `GexDepthLadderView`, thermal's depth ladder). */
   rungs: StructureLadderRung[];
@@ -265,6 +298,8 @@ export function buildStructureLadder(
     direction: play.direction,
     stop: plan.thesisInvalidationPx,
     atr: plan.atr,
+    // "closed" already returned above; only "watch"/"open" reach here.
+    positionState: bucket,
     rungs,
     ...(crossDeskAgreement ? { crossDeskAgreement } : {}),
     ...(archetypeTrackRecord ? { archetypeTrackRecord } : {}),
