@@ -323,3 +323,81 @@ test("buildStructureLadder: positionState is \"open\" for an already-committed O
   const ladder = buildStructureLadder(ctx, play, "open");
   assert.equal(ladder!.positionState, "open");
 });
+
+// ── Gatekeeper (competitor-panel parity, 2026-09-13) ─────────────────────────
+// Every favorable-side rung except the single farthest one is a "gatekeeper": clearing it is
+// what exposes the next rung out. The farthest favorable rung is never a gatekeeper.
+
+test("buildStructureLadder: nearer favorable rungs are gatekeepers, the farthest one is not", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gammaFlip: 105, // favorable, nearer (+5)
+    gexWalls: { callWalls: [{ strike: 112 }], putWalls: [{ strike: 95 }] }, // call wall favorable, farther (+12)
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+
+  const byKind = Object.fromEntries(ladder!.rungs.map((r) => [r.kind, r]));
+  assert.equal(byKind.gamma_flip.target?.gatekeeper, true, "nearer favorable rung IS a gatekeeper");
+  assert.equal(byKind.call_wall.target?.gatekeeper, false, "farthest favorable rung is NOT a gatekeeper");
+  // The unfavorable-side put wall never carries a target at all, so gatekeeper is moot for it.
+  assert.equal(byKind.put_wall.target, undefined);
+});
+
+test("buildStructureLadder: a single favorable rung is never a gatekeeper (nothing further out to open)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({ spot: 100, gammaFlip: 110 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  const flip = ladder!.rungs.find((r) => r.kind === "gamma_flip");
+  assert.equal(flip?.target?.gatekeeper, false);
+});
+
+// ── Risk — the other side ────────────────────────────────────────────────────
+// The nearest real rung WITHOUT a target (i.e. on the unfavorable side) — always a reference into
+// the same rungs array, never a second independently-derived level.
+
+test("buildStructureLadder: riskTheOtherSide names the nearest unfavorable-side rung", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gammaFlip: 110,
+    gexWalls: { callWalls: [{ strike: 115 }], putWalls: [{ strike: 97 }] }, // put wall unfavorable, nearest
+    maxPain: 90, // also unfavorable (neutral role) but farther than the put wall
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide, "an unfavorable-side rung exists and must be named");
+  assert.equal(ladder!.riskTheOtherSide!.kind, "put_wall", "nearest unfavorable rung, not just any of them");
+  assert.equal(ladder!.riskTheOtherSide!.price, 97);
+  assert.equal(ladder!.riskTheOtherSide!.role, "support");
+});
+
+test("buildStructureLadder: riskTheOtherSide is OMITTED when every rung sits on the favorable side", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  // Only favorable-side (above spot) structure — nothing on the wrong side to name.
+  const vec = fixtureVec({ spot: 100, gammaFlip: 105, gexWalls: { callWalls: [{ strike: 112 }] } });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.equal(ladder!.riskTheOtherSide, undefined);
+});
+
+test("buildStructureLadder: riskTheOtherSide flips sides correctly for a SHORT thesis", () => {
+  const play = fixturePlay({ direction: "SHORT" });
+  const vec = fixtureVec({
+    spot: 100,
+    gammaFlip: 90, // favorable for SHORT (below spot)
+    gexWalls: { callWalls: [{ strike: 103 }], putWalls: [{ strike: 80 }] }, // call wall above spot = unfavorable for SHORT
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(ladder!.riskTheOtherSide!.kind, "call_wall");
+  assert.equal(ladder!.riskTheOtherSide!.price, 103);
+});
