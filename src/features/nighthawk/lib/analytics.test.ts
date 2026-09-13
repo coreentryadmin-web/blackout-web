@@ -12,6 +12,7 @@ import {
   profitableRate,
   profitableRateEdge,
   groupWithReturn,
+  buildRecordSegment,
 } from "./analytics";
 import { REJECTION_TRIGGER_REASON } from "./play-outcomes";
 
@@ -181,6 +182,27 @@ test("profitableRate is null when no row has a computable return (corrupt ranges
   const corrupt = row({ entry_range_low: 17, entry_range_high: 452 }); // realizedReturnPct → null
   assert.equal(realizedReturnPct(corrupt), null);
   assert.equal(profitableRate([corrupt]), null);
+});
+
+// 2026-09-13 finding: buildRecordSegment's avg_return_pct was guarded against an EMPTY
+// scoreable set (scoreable.length > 0 ? ... : null) but not against a NON-empty scoreable
+// set where every row still has no computable return (e.g. next_day_close missing) — that
+// case fell through to avgReturn's avgOf([]) default of 0, reporting a fabricated "+0.00%"
+// instead of the honest "no evidence yet" null, the exact false-zero trap profitableRate's
+// own comment above already documents ("no priced rows -> no rate, not a 0%").
+test("buildRecordSegment: avg_return_pct is null (not a fabricated 0%) when scoreable rows exist but none have a computable return", () => {
+  const noClose = row({ outcome: "open", next_day_close: null });
+  const seg = buildRecordSegment("current", [noClose]);
+  assert.equal(seg.scoreable, 1);
+  assert.equal(seg.avg_return_pct, null);
+});
+
+test("buildRecordSegment: avg_return_pct still averages only the rows with a real return, ignoring unpriced ones", () => {
+  const priced = row({ outcome: "target", next_day_close: 460 }); // (460-450)/450*100 ≈ 2.222%
+  const unpriced = row({ outcome: "open", next_day_close: null });
+  const seg = buildRecordSegment("current", [priced, unpriced]);
+  assert.equal(seg.scoreable, 2);
+  assert.ok(seg.avg_return_pct != null && Math.abs(seg.avg_return_pct - 2.2222) < 0.01);
 });
 
 test("groupWithReturn emits win_rate: null for an empty cut (matches calibration.ts null-on-empty)", () => {
