@@ -4,6 +4,19 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-13 (06:17 UTC) — [SEO] Lane heartbeat: quiet overnight pass, no defects
+
+**Severity.** — (no defect found)
+
+Overnight heartbeat (02:17 ET Sunday). PR sweep: 1 open agent PR fleet-wide (#4905, CI-RUNNING,
+swing-lane, not SEO). `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`, still
+crawlable. Full CLS purge+measure not repeated — already fresh ~6h ago (00:19 UTC entry, GOOD
+both viewports). GSC opportunities report same window as 6h ago, same 2 striking-distance
+queries — expected short-gap lag, no new signal.
+
+No defects found.
+
+---
 ## 2026-09-13 (00:19 UTC) — [SEO] Lane heartbeat: full CLS re-measure GREEN, PR jam cleared, GSC window resumed advancing
 
 **Severity.** — (no defect found)
