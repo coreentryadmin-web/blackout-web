@@ -1671,6 +1671,12 @@
         "branch": "fix/publish-context-atr14-estimated-label",
         "ciState": "in_progress"
       }
+    },
+    {
+      "at": "2026-09-13T08:07:34.427Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. PR #4909 confirmed merged, unsubscribed. Logged MARKET-OPEN-VALIDATION.md #167 for it. This closes out a five-fix cycle window this session: #4899 (marks-verdict false-GREEN), #4903 (findings-reconcile status-skip), #4906 (debrief regime-factor backwards-read), #4909 (publish-context atr14 unlabeled), on top of the earlier #4888/#4890/#4892/#4894/#4897 batch -- all found via the same discipline (read the code's own stated contract/docstring, verify the implementation actually matches it, reproduce directly before touching anything, RED before GREEN). Continuing the standing cadence into the next cycle.",
+      "prStatus": null
     }
   ],
   "knownOpenItems": {
