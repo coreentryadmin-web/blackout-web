@@ -1959,6 +1959,14 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "Swept edition-stale.ts (edition-freshness window logic -- directly the 'edition correctness: fresh not stale' mission pillar). shouldRebuildStalePublishedEdition's date/minutes comparison, isInEditionWindow's 17:30-19:30 ET window (matches the cron's own 5:30 PM ET schedule confirmed earlier this session), nighthawkStaleJobIdleMinutes' shorter-during-window timeout, and inNighthawkEditionCatchupAlertWindow's 60-min ops-paging grace period all checked consistent with each other and with the cron schedule. Already carries a fixed ET-midnight-as-24-not-00 ICU quirk (#4703) with an explicit % 24 guard. No bug found -- clean, well-reasoned file. Quiet cycle.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T17:24:00Z",
+      "cycle": "17:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Aggressive improvement-hunting into analytics.ts (the record-segment aggregation feeding GET /api/market/nighthawk/record + HawkRecordStrip.tsx) found a real, P2 false-zero bug: buildRecordSegment's avg_return_pct guarded only against an EMPTY scoreable set (scoreable.length > 0 ? avgReturn(...) : null), not against a non-empty scoreable set where every row still lacks a computable return (e.g. next_day_close unpopulated) -- avgReturn's avgOf([]) default of 0 would then report a fabricated '+0.00%' instead of null. This is the exact same false-zero class this file already has TWO documented, tested prior fixes for (winRate's 2026-08-06 '0% win rate on 68.2% profitable' incident, profitableRate's 'no priced rows -> no rate, not a 0%') -- avg_return_pct was the one field in the same function that never got the equivalent guard, even though its own type (number | null) already promised it. Fixed by gating on the actual realized-return list length instead of scoreable.length; groupWithReturn's own separately-tested 0-default contract left untouched. RED (1/26 subtests fail pre-fix, 0 !== null) -> GREEN (26/26 post-fix) via git-stash proof. Full suite 14101/14101 pass, tsc clean. Opened PR #4936, logged MARKET-OPEN-VALIDATION.md watch-list entry (worth checking a real thin/fresh segment at the open).",
+      "action": "opened_pr_fix",
+      "prNumber": 4936
     }
   ],
   "knownOpenItems": {

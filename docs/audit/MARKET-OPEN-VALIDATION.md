@@ -1,3 +1,23 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: record-segment avg_return_pct false-zero (member/admin track-record number — check at the open) (read this before the routine pass)
+
+### PR #4936 (merged): `buildRecordSegment`'s `avg_return_pct` could report a fabricated "+0.00%"
+
+**What was broken:** `analytics.ts`'s `buildRecordSegment` (per-methodology record slice,
+`GET /api/market/nighthawk/record`, rendered on `HawkRecordStrip.tsx`/`PlaybookBoard.tsx`) guarded
+`avg_return_pct` against a segment with ZERO scoreable rows, but not against a segment whose
+scoreable rows all lack a computable return (e.g. `next_day_close` not yet backfilled) — that case
+fell through `avgReturn`'s empty-array default and reported `0` instead of `null`, the same
+false-zero class this file already fixed on `winRate` (the 2026-08-06 "0% win rate on 68.2%
+profitable" incident) and `profitableRate`. See
+`docs/audit/findings-staging/2026-09-13-record-segment-avg-return-false-zero.md`.
+
+**Fix:** gate `avg_return_pct` on the actual list of computed returns, not on `scoreable.length`.
+
+**Check at the open:** pull `GET /api/market/nighthawk/record` for a fresh/thin methodology
+segment (or right after `regrade-legacy.ts` promotes a batch of rows) and confirm `avg_return_pct`
+reads `null` rather than `0.00` when that segment's rows are still mid-grading — the member-facing
+`HawkRecordStrip` should show the low-n/no-data state instead of a flat "+0.00%".
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: technical-summary dangling separator (dossier/LLM-prompt text quality, no member-facing UI change) (read this before the routine pass)
 
 ### PR #4929 (merged): `buildTechnicalCard`'s `summary` field left `"trend · "` dangling when `setup_tags` was empty
