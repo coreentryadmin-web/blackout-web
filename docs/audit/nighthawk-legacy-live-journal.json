@@ -1584,6 +1584,27 @@
         "branch": "fix/legacy-healthcheck-null-bid-ask-verdict",
         "ciState": "fresh run in_progress on updated head (post-#4900 main fix)"
       }
+    },
+    {
+      "at": "2026-09-13T05:53:31.067Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. PR #4899 confirmed green (mergeable_state=clean) and merged via squash, unsubscribed. Ran the standard post-merge pipeline: node scripts/audit/findings-fold-staging.mjs (folded 41 staged findings from other lanes into FINDINGS.md, per the standing coordinator maintenance step) then node scripts/audit/findings-reconcile.mjs --apply. That surfaced a real, second bug this cycle: findings-hygiene.test.ts's idempotency test failed post-fold (0 UNRECONCILED in the committed file vs 2 from a from-scratch regen). Root-caused it to findings-reconcile.mjs's --apply: its 'already tagged, return unchanged' shortcut fired on the mere presence of a `> **kind:**` line, wrongly treating that as proof the WHOLE entry (status included) had already been reconciled -- but findings-fold-staging.mjs stamps that same kind line on every staged file it folds, independent of whether the file's own author ever wrote a status. Two long-standing entries (one no-status, one stale 'Fixed, PR pending') had been silently skipping this check on every prior --apply run. Fixed the shortcut to compute the status note unconditionally and only truly skip when nothing is left to add. Also fixed the hygiene test's own vacuous-pass guard regex (unanchored, looser than the real stripping regex, false-failed on a folded entry's prose that quoted the tag syntax as a doc example). New scripts/audit/findings-reconcile.test.mjs (5 tests) drives the real script over throwaway fixtures. RED: reverted the .mjs fix only, exactly the 2 targeted tests failed, 3 unrelated ones still passed. GREEN: 5/5 pass, findings-hygiene.test.ts 9/9 (was 8/9), --apply run twice on the real FINDINGS.md byte-identical (idempotent), tsc clean, full suite 14040/14043 pass 0 fail 3 skipped. PR #4903 opened, undrafted, subscribed -- includes the routine 41-entry fold as well as both fixes.",
+      "prStatus": {
+        "number": 4903,
+        "state": "open",
+        "branch": "fix/findings-fold-and-hygiene-guard-anchor"
+      }
+    },
+    {
+      "at": "2026-09-13T05:54:53.390Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. PR #4903 CI still fresh/in_progress (opened ~1 min prior), nothing actionable yet -- will check next cycle. Improvement-hunting: reviewed morning-cortex-reveto.ts (the 9:15am ET fresh-veto pass that can pull a play post-publish if Cortex now vetoes it). Logic itself is clean -- correct one-way latch (already-INVALIDATED skipped), correct ticker-case normalization on the verdict map lookup, never downgrades a status, returns a new array without mutating input. One minor observability gap noted, not fixed: CortexRevetoResult.skipped conflates two very different reasons under one bucket -- 'already INVALIDATED by the mechanical check' (healthy, latch working as intended) vs 'Cortex returned no verdict at all for this ticker' (could mean a Cortex outage/blind spot for the whole morning re-veto pass on that name). Only consumer is a single aggregate count in the nighthawk-morning-confirm cron's own log line (route.ts:414) -- not member-facing, not gating anything, and Stage D of the healthcheck already independently verifies the morning-confirm-vs-edition-pulled consistency per ticker, so this conflation doesn't hide a live correctness defect today. Logged as a low-priority follow-up (split the skip reason into two counts) rather than a fix -- doesn't meet the bar for a standalone PR on its own.",
+      "prStatus": {
+        "number": 4903,
+        "state": "open",
+        "branch": "fix/findings-fold-and-hygiene-guard-anchor",
+        "ciState": "fresh, in_progress"
+      }
     }
   ],
   "knownOpenItems": {

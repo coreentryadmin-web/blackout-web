@@ -75,6 +75,15 @@ export type StructureLadderTarget = {
    * target price or date.
    */
   horizon: "short_term" | "swing";
+  /**
+   * True when at least one OTHER favorable-side rung sits further from spot than this one —
+   * i.e. clearing this rung is what exposes the next target, not the final one. Derived purely
+   * from the real rung set already built (never a fabricated tier): among the favorable-side
+   * rungs ordered by distance from spot, every rung except the single farthest one is a
+   * gatekeeper for whichever rung comes after it. The farthest favorable rung is never a
+   * gatekeeper — there is nothing further out on THIS ladder for it to open up.
+   */
+  gatekeeper: boolean;
 };
 
 export type StructureLadderRung = {
@@ -121,6 +130,21 @@ export type StructureLadderArchetypeTrackRecord = {
   n: number;
 };
 
+/**
+ * The single nearest rung on the unfavorable side of spot (`StructureLadder.riskTheOtherSide`) —
+ * always a REFERENCE into the same `rungs` array (kind/label/price/distancePct copied verbatim),
+ * never an independently-derived level. `role` is carried through so the UI can phrase it
+ * correctly ("support" the price would have to break down through, vs "resistance" it would have
+ * to break up through) rather than re-deriving that from price/spot a second time.
+ */
+export type StructureLadderRisk = {
+  kind: StructureLadderRungKind;
+  label: string;
+  price: number;
+  distancePct: number;
+  role: StructureLadderRungRole;
+};
+
 export type StructureLadder = {
   spot: number;
   direction: DeckDirection;
@@ -162,6 +186,14 @@ export type StructureLadder = {
    *  `graduatedArchetypeEntry`, the exact same gate `archetypeTrackRecordSection` uses elsewhere in
    *  this brief; never a second, independently-computed confidence number). */
   archetypeTrackRecord?: StructureLadderArchetypeTrackRecord;
+  /**
+   * The nearest real rung on the UNFAVORABLE side of spot — i.e. a level the thesis has to work
+   * against, not toward. Omitted (not present) when every rung on this ladder happens to sit on
+   * the favorable side (nothing on the wrong side to name). Never a second, independently-derived
+   * level — always one of the SAME `rungs` above, so this can never disagree with the ladder it
+   * summarizes.
+   */
+  riskTheOtherSide?: StructureLadderRisk;
   /** ET stamp ("YYYY-MM-DD HH:mm ET") this ladder was assembled — Largo product-contract C1: a
    *  bare UTC instant with no session anchor reads a full session ahead after ~20:00 ET (see
    *  `src/lib/largo/contract/session-anchor.test.ts`), so this uses `etStamp()` rather than a raw
@@ -264,6 +296,21 @@ export function buildStructureLadder(
   const plan = deriveSwingPlanLevels(play.direction as PlayDirection, spot, null);
   if (!plan) return null; // unreachable given the spot>0 guard above, kept for type-safety/defense
 
+  // Distance a favorable rung sits from spot, on the SAME |price - spot| basis distancePct is
+  // signed from — used only to order favorable rungs near->far for the gatekeeper pass below.
+  const favorableGap = (f: FocalLevel) => Math.abs(f.price - spot);
+
+  // The FARTHEST favorable rung (if any) is never a gatekeeper — nothing on this ladder sits
+  // beyond it for clearing it to open up. Every closer favorable rung IS one: clearing it is what
+  // exposes the next rung out, exactly the "clearing it opens the next level up" read the
+  // competitor panel's ladder makes explicit per-rung rather than leaving implicit in a sorted list.
+  const farthestFavorablePrice = focal
+    .filter((f) => (play.direction === "LONG" ? f.price > spot : f.price < spot))
+    .reduce<{ price: number; gap: number } | null>(
+      (far, f) => (far == null || favorableGap(f) > far.gap ? { price: f.price, gap: favorableGap(f) } : far),
+      null,
+    );
+
   const rungs: StructureLadderRung[] = focal
     .map((f): StructureLadderRung => {
       const role = roleForKind(f.kind, f.price, spot);
@@ -273,6 +320,7 @@ export function buildStructureLadder(
             rewardRisk:
               Math.abs(f.price - plan.entryUnderlyingPx) / Math.abs(plan.entryUnderlyingPx - plan.thesisInvalidationPx),
             horizon: Math.abs(f.price - spot) <= 2 * plan.atr ? "short_term" : "swing",
+            gatekeeper: farthestFavorablePrice != null && f.price !== farthestFavorablePrice.price,
           }
         : undefined;
       return {
@@ -287,6 +335,18 @@ export function buildStructureLadder(
     })
     // Sort high → low (point 1 + the ladder convention every other price ladder in this codebase uses).
     .sort((a, b) => b.price - a.price);
+
+  // Nearest real rung WITHOUT a target — i.e. on the unfavorable side, the side price would have
+  // to move through for this thesis to break, not toward. A direct reference into `rungs` above
+  // (never a second, independently-derived level), so it can never disagree with the ladder it
+  // summarizes. Omitted when every rung on this ladder happens to sit on the favorable side.
+  const riskTheOtherSide = rungs
+    .filter((r) => !r.target)
+    .reduce<StructureLadderRung | null>(
+      (nearest, r) =>
+        nearest == null || Math.abs(r.distancePct) < Math.abs(nearest.distancePct) ? r : nearest,
+      null,
+    );
 
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gexStale = gexMatrixStale(gex, readMs);
@@ -303,6 +363,17 @@ export function buildStructureLadder(
     rungs,
     ...(crossDeskAgreement ? { crossDeskAgreement } : {}),
     ...(archetypeTrackRecord ? { archetypeTrackRecord } : {}),
+    ...(riskTheOtherSide
+      ? {
+          riskTheOtherSide: {
+            kind: riskTheOtherSide.kind,
+            label: riskTheOtherSide.label,
+            price: riskTheOtherSide.price,
+            distancePct: riskTheOtherSide.distancePct,
+            role: riskTheOtherSide.role,
+          },
+        }
+      : {}),
     // etStamp(readMs) cannot return null for a real Date.now() instant — the fallback only guards
     // against a future refactor that feeds this something else, never silently reverting to a bare
     // ISO instant with no ET anchor.

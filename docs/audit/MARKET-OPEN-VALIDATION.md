@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-09-13 Meridian estimate-revision timeline: "+0%" noise entries (read this before the routine pass)
+
+### DISCOVERY-cycle live spot-check found a real-but-invisible revision polluting the feed; fixed same cycle
+
+**What was broken:** `GET /api/market/meridian/timeline`'s `estimate_revision_timeline`/
+`recent_earnings_revisions` surfaced a live entry `{"ticker":"ZS", "change_kind":"revenue",
+"revenue_delta_pct":0, "headline":"ZS Rev est revised +0%"}` — a real underlying revenue-estimate
+change (raw values differed) that rounded to `0.0` at the 1-decimal display precision on a
+~$958M revenue base still got pushed as a visible timeline entry. See
+`docs/audit/findings-staging/2026-09-13-meridian-estimate-revision-zero-delta-noise.md`.
+
+**Fix:** `diffEstimateRevisionTimeline` (`src/lib/meridian/meridian-benzinga-analytics.ts`) now
+skips emitting a revenue-revision entry when the DISPLAYED `revenue_delta_pct` rounds to exactly
+`0` — the Redis snapshot still updates unconditionally so the next diff compares against the
+latest value rather than accumulating unreported drift.
+
+**Check at next market open (Monday RTH, live earnings-estimate activity resumes):** pull
+`GET /api/market/meridian/timeline?days=14` and confirm (a) no entry in
+`estimate_revision_timeline`/`recent_earnings_revisions` has `revenue_delta_pct: 0` or a headline
+ending in `+0%`/`-0%`; (b) a genuine material revenue revision (any ticker whose estimate moves by
+a rounded-nonzero percentage that session) still appears normally — the fix should be invisible to
+real revisions and only suppress the zero-display noise case.
+
 ## WATCH LIST — 2026-09-12 `db-cleanup` nightly cron: concurrent-invocation deadlock + contentless alert (read this before the routine pass)
 
 ### Investigated a live "Cron failure: db-cleanup" alert; fixed the same day
@@ -4598,3 +4621,9 @@ than an end-of-session patch.
 - **What was broken (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13):** `pickCatalystHeadline()` (`deterministic-edition.ts`) fell back to `sentiment[0]` regardless of its own tag whenever no direction-matching entry existed in `dossier.polygon_sentiment`. `scoreNewsCatalyst` can make news a top driver purely from a plain-text keyword hit (upgrade/beat/etc.) in `news_headlines`, independent of what's tagged in `polygon_sentiment` (same underlying fetch, scored separately). Reproduced: a LONG pick scored bullish via a "beat" keyword, but the only `polygon_sentiment` entries were both negative-tagged — the thesis quoted "guidance disappoints analysts" as the "Catalyst:" line for a BULLISH play.
 - **What changed:** falls back to a plain (untagged) headline from `news_headlines` instead of an opposite-direction sentiment entry; omits the line entirely if neither exists.
 - **RTH check:** Pull `GET /api/market/nighthawk/edition` for any published play whose thesis includes a "Catalyst: ..." line and confirm the quoted text's tone actually agrees with the play's stated direction (LONG → the quote should read positive/supportive; SHORT → negative/cautionary) — never the opposite.
+
+### 161. Structure Ladder gains gatekeeper annotations + a "risk — the other side" callout (operator direct request, competitor-panel parity) — feat/structure-ladder-gatekeeper-risk-callout — 2026-09-13
+
+- **What was missing:** The Structure Ladder widget (#4875/#4878, shipped 2026-09-12) already beats a competitor's single-source "Launchpad Ladder" panel on real per-level R:R and cross-desk agreement, but the operator flagged two of that panel's presentation ideas as still worth having: (1) a "gatekeeper" annotation on each favorable-side level explaining that clearing it is what exposes the next one out, and (2) a "risk — the other side" callout naming the nearest real structural level on the unfavorable side of the thesis, not just the favorable-side targets. Deliberately NOT attempted here: the competitor's "moonshot"/far-dated tier — `buildStructureLadder`'s own header still documents why (needs new Thermal-matrix far-expiry plumbing this pass doesn't have; fabricating a placeholder tier would violate the Largo product contract's absence principle).
+- **What changed:** `buildStructureLadder` (`play-brief-ladder.ts`) now derives `target.gatekeeper` (true on every favorable-side rung except the single farthest one) and `riskTheOtherSide` (the nearest real rung WITHOUT a target — i.e. on the unfavorable side) purely from the SAME rung set already built, never a second independently-derived level. `BieStructureLadder.tsx` renders a small "gatekeeper" tag next to a qualifying rung's R:R and a bordered "Risk — the other side" callout below the ladder when `riskTheOtherSide` is present.
+- **RTH check:** Pull `GET /api/market/swing/play-brief` for a live OPEN/WATCH swing ticker with structure on both sides of spot and confirm: (a) the nearer of two-or-more favorable-side rungs shows a "gatekeeper" tag and the farthest one does not, (b) a "Risk — the other side" box appears naming the nearest real level on the wrong side of the thesis with a role-correct verb (closing above/below, or trading through for a neutral pivot), (c) the box is absent entirely when every real rung on that ticker's ladder happens to sit on the favorable side.
