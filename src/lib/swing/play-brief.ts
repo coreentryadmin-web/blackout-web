@@ -254,6 +254,19 @@ function pnlSection(play: TerminalPlay): RichSection {
   ];
   if (blended != null) {
     lines.push(`Blended P&L (realized trim + open runner): **${fmtPct(blended)}**`);
+    // The blended composite above is otherwise opaque arithmetic a member has to trust —
+    // name the fired rung(s) that produced it (fraction @ trigger, plus the ladder's own
+    // frozen absolute premium level when one was priced) so the number is self-verifying
+    // instead of a black box. `premium` is null only when the row had no entry basis to
+    // price the level off (terminal-ladder.ts) — never fabricate one in that case.
+    const banked = (play.exitPolicy?.trim_levels ?? []).filter((t) => t.fired);
+    if (banked.length) {
+      const parts = banked.map((t) => {
+        const pct = `**${Math.round(t.fraction * 100)}% @ +${t.trigger_pct}%**`;
+        return t.premium != null ? `${pct} (${fmtUsd(t.premium)})` : pct;
+      });
+      lines.push(`Banked: ${parts.join(" · ")}`);
+    }
   }
   if (play.execPnlPct != null) lines.push(`Exec P&L: **${fmtPct(play.execPnlPct)}**`);
   if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
