@@ -1840,6 +1840,14 @@
       "note": "After a long streak of confirming clean/already-fixed files, shifted toward the aggressive-improvement side of the mandate: re-read docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md's PR ladder (N1-N9) end to end and confirmed ALL nine items are now shipped (cross-edition-governor.ts=N8, bearish-posture.ts=N9, alongside the already-confirmed N2/N6/N7). While verifying bearish-posture.ts (N9) found and fixed a real bug: applyBearishPosture's PostureResult.flipped field was declared, initialized to 0, and NEVER incremented -- the function only adjusts score (bonus/penalty) and re-sorts, deliberately never flipping direction (per its own comment: a long's sub-scores are direction-specific and would be wrong on a flipped short). But edition-builder.ts's own comment claimed 'Thin-flow longs get flipped to short' -- directly contradicting bearish-posture.ts's own comment -- and its console.info log printed '${flipped} candidate(s) flipped to short', which could structurally never report anything but 0, on every bearish-posture-engaged night, forever. All 6 pre-existing tests already asserted flipped===0, confirming this was known-dead but never cleaned up. Fixed: replaced the dead flipped field with two real ones (shortsBoosted/longsPenalized) reflecting actual behavior, corrected edition-builder.ts's comment+log to match. Full suite 14081/14084 pass, tsc clean. No live/member-facing impact (internal diagnostic only) but a real, provable code/comment/log inconsistency. Opened PR #4924.",
       "action": "opened_pr_fix",
       "prNumber": 4924
+    },
+    {
+      "ts": "2026-09-13T13:23:00Z",
+      "cycle": "13:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "PR #4924 (bearish-posture.ts dead-field fix) CI still fresh/in_progress, nothing actionable yet -- will confirm next cycle. Other new commit (#4923, 'swing-e2e-healthcheck's Stage G read Night Hawk Legacy's record endpoint, not swing's') is a Swings-lane fix that happened to touch my /api/market/nighthawk/record endpoint -- checked it's purely beneficial (someone else's healthcheck script was accidentally reading my endpoint instead of its own; now correctly points at swing's own record route), no action needed on my side. Kept this cycle short given a fix is already in flight.",
+      "action": "monitoring_pr_ci",
+      "prNumber": 4924
     }
   ],
   "knownOpenItems": {
