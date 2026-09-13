@@ -1,3 +1,13 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: flow-polarity bid-put-share measurement gap (research-tool only, no live check needed) (read this before the routine pass)
+
+### PR #4921 (merged): `compareFlowPolarity`'s `bid_put_share_of_puts` silently dropped moderate `ask_side_pct` rows
+
+**What was broken:** `flow-polarity.ts`'s `compareFlowPolarity` (a measurement-only research probe, `npm run probe:nighthawk-flow-polarity` — does NOT feed live Legacy scoring) computed its "classic misread bucket" statistic with a gap: a put row with a finite `ask_side_pct` strictly between 40 and 100 (e.g. 45, genuinely 55% bid-side) contributed **zero** to `bid_put_share_of_puts` instead of its real proportional share. `docs/audit/FINDINGS.md` cites this exact statistic as the gate for a future real scorer change, so an under-counted measurement could mislead that eventual decision. See `docs/audit/findings-staging/2026-09-13-flow-polarity-bid-put-share-gap.md` for the full root-cause writeup.
+
+**Fix:** any finite `ask_side_pct` in `[0, 100]` now contributes its real proportional bid share; only a genuinely missing/non-finite value falls back to 50/50.
+
+**Check at the open:** none needed — this is a pure measurement-tool correctness fix with no live UI, board, or scoring surface. If `npm run probe:nighthawk-flow-polarity` is ever re-run against real live flow data, its `bid_put_share_of_puts` numbers will now be accurate; no regression to watch for on the member-facing product.
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: `resolveOutcome` vs `debrief.ts` fillability disagreement — OPEN, needs a product decision (read this before the routine pass)
 
 ### PR #4910 (docs-only, merged) flagged a real grading-logic disagreement; no code changed, no fix to validate at the open

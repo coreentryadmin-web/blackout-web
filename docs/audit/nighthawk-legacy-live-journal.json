@@ -1796,6 +1796,14 @@
       "note": "PR #4921 (flow-polarity.ts bid-put-share fix) CI still in_progress (~5 min in), mergeable_state:'blocked' as expected pre-completion -- nothing actionable yet, will confirm next cycle. Only new commit since last cycle was Swings-lane journal, out of scope. Kept this cycle short given a real fix is already in flight and the standing context-discipline guidance -- no additional fresh-file review forced this cycle.",
       "action": "monitoring_pr_ci",
       "prNumber": 4921
+    },
+    {
+      "ts": "2026-09-13T11:55:00Z",
+      "cycle": "11:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "PR #4921 (flow-polarity.ts bid-put-share fix) confirmed merged -- landed via automerge.yml (merged_by: coreentryadmin-web) between cycles, no manual merge action needed this time. Unsubscribed. Added a MARKET-OPEN-VALIDATION.md WATCH LIST entry noting this is a pure research-tool correctness fix with no live UI/board/scoring surface -- nothing to regression-check at the open. This closes out the fix cleanly: found, RED->GREEN proven, merged, documented. Other commits since last cycle (#4919 tooling fix, #4920 heartbeat) are Swings-lane/shared-infra, out of scope.",
+      "action": "merged_pr",
+      "prNumber": 4921
     }
   ],
   "knownOpenItems": {
