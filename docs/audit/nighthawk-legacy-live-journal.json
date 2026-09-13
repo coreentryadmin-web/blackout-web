@@ -1486,6 +1486,11 @@
       "at": "2026-09-13T01:36:48Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. No new Legacy-scope commits since last push. PR #4892 status: CI + CodeQL both in_progress (~3 min, normal), mergeable_state 'blocked' on pending checks (not a conflict), no reviews yet. Nothing actionable this cycle; will re-verify next cycle."
+    },
+    {
+      "at": "2026-09-13T01:51:47Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4892 CONFIRMED MERGED (01:46:08 UTC, merged_by coreentryadmin-web, clean squash into main as commit e61cb3abd) -- verified via pull_request_read.get. Unsubscribed from PR activity. Added item #157 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check (cross-check a published flow-streak claim against the ticker's real recent options-flow history). Session summary this ~1hr45min block: 3 real fixes shipped and merged (PR #4888 catalyst flag recency, #4890 ticker-C option-parse collision, #4892 flow-streak direction mislabel), all verified merged/stable, all logged to MARKET-OPEN-VALIDATION.md for next-session RTH validation. Several additional live-looking discrepancies were investigated and correctly ruled out as false leads after full tracing (top-net-impact/hot_chains/dark_pool field names, direction-normalization in Discord notify, score-vs-conviction-letter mismatch)."
     }
   ],
   "knownOpenItems": {
