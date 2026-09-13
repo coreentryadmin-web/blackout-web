@@ -254,13 +254,19 @@ export function wallIntegrityCoaching(
 /** Vector desk play thesis / invalidation alignment.
  *  `conflictAlreadyNoted` — crossDeskCoaching (this same file) independently derives the identical
  *  misalignment (vp.bias vs play.direction) from the identical vec.play input and, when it fires,
- *  already names this exact headline in its "Cross-desk friction" bullet. Without this flag both
- *  functions render the same "Vector bearish/bullish (<headline>)" fact as two separate bullets —
- *  live repro: NRG brief 2026-09-09, "Cross-desk friction — Vector bearish (...)" immediately
- *  followed later by "Vector desk: ... — cross-check Vector thesis vs swing direction", both citing
- *  the identical headline. This function still surfaces its own non-duplicative content (headline,
- *  invalidation, starred level) when the flag is set — only the redundant "cross-check" framing
- *  clause is dropped, since crossDeskCoaching already told the reader desks disagree. */
+ *  already names this exact headline in its "Cross-desk friction" bullet (its `conflict("Vector",
+ *  \`bearish (${vp.headline})\`, ...)` call quotes `vp.headline` verbatim).
+ *  BUG FIXED 2026-09-13 (Ask Largo standing mandate, live AAPL brief repro): the 2026-09-09 fix
+ *  for this exact duplication only dropped the trailing "— cross-check Vector thesis vs swing
+ *  direction" clause below and left `vp.headline` itself in the `parts` array unconditionally —
+ *  so the "Cross-desk friction" bullet and this "Vector desk:" bullet still both rendered the
+ *  identical headline text ("POSITION · momentum short on continuation → target 1σ 327.77")
+ *  as two separate facts in the same document. The doc comment here even claimed the headline was
+ *  "non-duplicative content" while the very same paragraph described crossDeskCoaching quoting
+ *  "this exact headline" — a direct self-contradiction that the tests then codified as intended
+ *  behavior (`assert.match(line!, /Fade into wall/)` with `conflictAlreadyNoted=true`). Now the
+ *  headline itself is also dropped when the flag is set; invalidation and starred level (which
+ *  crossDeskCoaching never surfaces) are unaffected and still render. */
 export function vectorPlayCoaching(
   vec: VectorFullState | null,
   play: TerminalPlay,
@@ -277,7 +283,7 @@ export function vectorPlayCoaching(
     (play.direction === "SHORT" && vp.bias === "short");
 
   const parts: string[] = [];
-  if (vp.headline) parts.push(`Vector desk: **${vp.headline}**`);
+  if (vp.headline && !conflictAlreadyNoted) parts.push(`**${vp.headline}**`);
   if (vp.invalidation) parts.push(`invalidation **${vp.invalidation}**`);
   // `starred[0]` is documented (VectorPlayEmit.starred, vector-play-engine.ts) to ALWAYS be the
   // headline itself — skip it here since the headline is already rendered above; showing it again
@@ -285,7 +291,11 @@ export function vectorPlayCoaching(
   const nextStarred = vp.starred?.slice(1)?.find(Boolean);
   if (nextStarred) parts.push(`starred level **${nextStarred}**`);
 
-  let line = parts.join(" · ");
+  // Nothing left to say once the headline is the only content and it's already been noted
+  // elsewhere — a bare "Vector desk:" label with no facts after it is worse than no bullet.
+  if (!parts.length) return null;
+
+  let line = `Vector desk: ${parts.join(" · ")}`;
   if (!aligned && vp.thesis && !conflictAlreadyNoted) {
     line += " — **cross-check** Vector thesis vs swing direction.";
   } else if (aligned) {
