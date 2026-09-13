@@ -53,6 +53,7 @@ import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 import { isAuthFailureStatus } from "./lib/auth-status.mjs";
 import { rollupVerdict, verdictForStaleness } from "./lib/zerodte-healthcheck-eval.mjs";
 import { resolveSwingPositionMark } from "./lib/swing-healthcheck-mark-eval.mjs";
+import { evaluateSwingGradingRecord } from "./lib/swing-healthcheck-grading-eval.mjs";
 
 import { subprocessErrorMessage } from "./lib/redact.mjs";
 // ── args ──────────────────────────────────────────────────────────────────────────
@@ -404,48 +405,8 @@ function stageF_marks() {
 // ── Stage G — GRADING ────────────────────────────────────────────────────────────────
 function stageG_grading() {
   ensureStage("G", "GRADING/RECORD");
-  if (!record) {
-    check("G", "AMBER", "record endpoint", "no record response — grading check skipped");
-    return;
-  }
-  if (record.available === false) {
-    check("G", "AMBER", "record unavailable", `available=false — ${record.error ?? "temporarily unavailable"}`);
-    return;
-  }
-  // Overall record summary.
-  const total = record.total_resolved ?? 0;
-  const winRate = record.win_rate_pct;
-  const methodology = record.methodology ?? "unknown";
-  const pendingCount = record.pending_count ?? 0;
-
-  if (total > 0) {
-    check(
-      "G",
-      "GREEN",
-      "graded positions",
-      `${total} resolved · WR ${winRate}% · pending ${pendingCount} · methodology=${methodology}`
-    );
-  } else {
-    check("G", "AMBER", "no graded positions", `0 resolved plays in the record window — the swing ladder has not graduated yet`);
-  }
-
-  // Per-segment breakdown (current vs legacy methodology).
-  const segments = record.segments;
-  if (segments?.current) {
-    const curr = segments.current;
-    check(
-      "G",
-      curr.scoreable > 0 ? "GREEN" : "AMBER",
-      "current methodology",
-      `scoreable=${curr.scoreable} wins=${curr.wins} losses=${curr.losses} WR=${curr.win_rate_pct ?? "—"}% CI=[${curr.win_rate_ci_low_pct ?? "—"}, ${curr.win_rate_ci_high_pct ?? "—"}]%`
-    );
-  }
-
-  // By-conviction breakdown as sample-size evidence.
-  const byConviction = record.by_conviction;
-  if (Array.isArray(byConviction) && byConviction.length > 0) {
-    const summary = byConviction.map((c) => `${c.conviction}:n=${c.n}`).join(" ");
-    check("G", "GREEN", "per-conviction sample sizes", summary);
+  for (const c of evaluateSwingGradingRecord(record)) {
+    check("G", c.status, c.label, c.detail);
   }
 }
 
@@ -510,8 +471,11 @@ async function main() {
   board = app("/api/market/nighthawk/horizons?view=SWING");
   swingLane = board?.board?.lanes?.SWING ?? null;
 
-  // Record endpoint (for grading stage).
-  if (wantStage("G")) record = app("/api/market/nighthawk/record");
+  // Record endpoint (for grading stage). BUG FIX (2026-09-13): this used to call
+  // /api/market/nighthawk/record, the Night Hawk LEGACY digest's own outcome endpoint —
+  // a different product, a different table (nighthawk_play_outcomes), never swing's own
+  // ledger. See swing-healthcheck-grading-eval.mjs's header for the full root cause.
+  if (wantStage("G")) record = app("/api/market/swing/record");
 
   if (wantStage("A")) stageA_cron();
   if (wantStage("B")) stageB_persistence();
