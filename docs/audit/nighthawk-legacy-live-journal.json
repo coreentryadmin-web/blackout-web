@@ -1729,6 +1729,14 @@
       "note": "PR #4913 merged (squash, sha 1a63c3bcc) after CodeQL + verify both came back green (check_suite.completed webhook + pull_request_read mergeable_state:'clean' confirmed). mcp__github__merge_pull_request not retried this time -- went straight to the direct REST PUT fallback (known-good from #4910's three transient 500s) and it succeeded first try. Unsubscribed. No MARKET-OPEN-VALIDATION.md entry needed for this one -- pure documentation addendum to the already-logged #4910 finding, nothing new to regression-check at the open. The fillability finding itself remains OPEN/HOLD with the fuller N-2 evidence trail now on main for whoever makes the product call.",
       "action": "merged_pr",
       "prNumber": 4913
+    },
+    {
+      "ts": "2026-09-13T09:45:00Z",
+      "cycle": "09:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM)",
+      "healthcheck": "GREEN, unchanged (HPE260925C00062000 @2.91, DELL260918C00570000 @18.15, resolved=26, D_pull_status SKIPPED pre-confirmation as usual)",
+      "note": "Continued the fillability-finding thread (#4910/#4913): found my own tooling bug from last cycle -- fetchAuditJson(base, path) takes TWO separate args, not one combined URL; my prior call passed one concatenated string, which is why it 401'd. Corrected, authenticated cleanly (via cron bearer) and pulled the real live GET /api/market/nighthawk/record?days=90: unfilled_not_pulled=23 of 141 current-segment resolved rows, decided=5 (40% WR, low-n) -- confirms the exclusion population is real and non-trivial today. More importantly, re-read debrief.ts's debriefPlay() failure-mode classifier precedence list closely: its PRIMARY tag is gated on the already-PERSISTED row.outcome (resolveOutcome's stored verdict) -- computeFill's own filled/detail fields are used only for descriptive nuance within that branch, NEVER to override win/loss/unfilled. Every aggregate in debrief_report and the record route's win rate defer to resolveOutcome as sole source of truth. So the two graders never actually produce two different LIVE answers about the same play today -- confirmed on the AMD 2026-07-07 row itself (stored outcome 'stop' is what debrief classifies by). Opened PR #4917 (docs-only, second addendum to the same finding file) downgrading severity P2->P3 with this correction plus the fresh live numbers. Underlying product question (asymmetric loss-exclusion) unchanged and still needs a decision -- this only narrows where the consequence lands (future grading only, never a live cross-module contradiction). Still OPEN/HOLD, no code changed.",
+      "action": "opened_pr_hold",
+      "prNumber": 4917
     }
   ],
   "knownOpenItems": {
