@@ -1,3 +1,46 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: technical-summary dangling separator (dossier/LLM-prompt text quality, no member-facing UI change) (read this before the routine pass)
+
+### PR #4929 (merged): `buildTechnicalCard`'s `summary` field left `"trend · "` dangling when `setup_tags` was empty
+
+**What was broken:** `technicals.ts`'s `classifySetup()` was fixed 2026-07-28 to return `[]`
+instead of a sentinel string when nothing matches — specifically so callers "fall through
+cleanly." `buildTechnicalCard`'s own `summary` field never implemented that fallback: plain
+`${trend_stack} · ${tags.join(" · ")}` interpolation left `"mixed · "` (dangling separator,
+nothing after) whenever `setup_tags` is empty — the documented, common "nothing notable" state.
+Feeds `format.ts`'s `formatTickerDossierText`, read by `edition-builder.ts`'s evening compose and
+`play-explainer.ts`'s LLM briefing prompt. See
+`docs/audit/findings-staging/2026-09-13-technical-summary-trailing-separator.md`.
+
+**Fix:** extracted `buildTechnicalSummary(trendStack, setupTags)` returning the bare trend stack
+when tags are empty; non-empty case unchanged (same join, same 4-tag cap).
+
+**Check at the open:** no member-facing UI surface reads this directly — it's LLM-prompt/dossier
+text only. Nothing to regression-check on the live board.
+
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: play-explainer risk signals not surfaced (member-visible text change — worth a glance at the open) (read this before the routine pass)
+
+### PR #4928 (merged): "Full Hawk Intel" briefing now reports `earnings_risk` and `gate_promoted`/`gate_warnings`
+
+**What was broken:** `play-explainer.ts`'s LLM data block (`formatPlayBlock`) and
+`play-explainer-fallback.ts`'s no-LLM fallback (`buildGroundedPlayExplanationFallback`) both
+promise a "Risks & invalidation" section, but neither ever read `PlaybookPlay.earnings_risk` or
+`.gate_promoted`/`.gate_warnings` — real, already-computed risk signals present on the published
+play object. A member requesting the deep-dive briefing for a play with an upcoming earnings print
+or that was rescued past a failed publish-time gate would get a Risks section silent about either.
+See `docs/audit/findings-staging/2026-09-13-play-explainer-risk-signals-not-surfaced.md`.
+
+**Fix:** added a shared `playRiskLines(play)` helper (in the fallback module, imported by the LLM
+path) so both consumers read the exact same risk facts off the same object. Also surfaced
+`sector`/`rr_ratio`/`target_atr_multiple`/`confirming_signals`/`exit_style` into the LLM data block.
+Purely additive to the grounding-guard's known-numbers set — strengthens grounding, never loosens it.
+
+**Check at the open:** this DOES change member-visible text (the `explanation` string returned from
+`POST /api/market/nighthawk/play-explain`, shown when a member clicks "Full Hawk Intel" on a play).
+Not a regression risk in the usual sense (additive only, no schema change), but worth pulling one
+real briefing for a play carrying `earnings_risk:true` or `gate_promoted:true` once the market opens
+and plays are live, and confirming the "Risks & invalidation" section now actually names the
+earnings/gate-promotion fact instead of reading like before.
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: morning Cortex re-veto skip-reason conflation (cron log/meta only, no live check needed) (read this before the routine pass)
 
 ### PR #4927 (merged): `applyCortexMorningReveto`'s `skipped` bucket mixed two different meanings
