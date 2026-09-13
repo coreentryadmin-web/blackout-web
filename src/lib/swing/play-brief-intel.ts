@@ -703,12 +703,31 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // Closed plays get NEUTRAL, informational framing ("trades at X vs flip Y") rather than the
     // "reclaim/lose ... invalidates thesis" imperative used for watch/open — that phrasing reads as
     // guidance on a still-live position, but a CLOSED play has no thesis left to invalidate.
+    //
+    // BUG FIX (2026-09-13, Ask Largo standing mandate, live repro COIN WATCH brief): the watch/open
+    // branch used to pick "Lose gamma flip" for every LONG and "Reclaim gamma flip" for every SHORT
+    // — purely from `play.direction`, never checking which side of the flip spot is ACTUALLY on.
+    // "Lose" only makes sense while spot is still above the flip (there's something left to lose);
+    // once spot has already fallen through it, the play is already in the unfavorable regime and
+    // needs to "Reclaim," not "Lose" it again — and vice versa for a SHORT already above the flip.
+    // Live COIN repro: spot 174.98 vs flip 183.49 (spot well BELOW), direction LONG, dealer regime
+    // already independently reported a few lines above (line ~310) as "short gamma" — yet this line
+    // said "Lose gamma flip 183.49 — dealer posture turns against longs" as if that were still a
+    // future risk, contradicting the brief's own dealer-regime line in the same document. This is
+    // the exact "same class of bug" `narrateMaxPain` was already fixed for elsewhere in this lane
+    // (see play-brief-narrative.ts's own comment on the live RDDT repro, 2026-09-11) — comparing
+    // spot to the level itself, not inferring posture from trade direction alone.
+    const spotAboveFlip = spot > flip;
     const watch =
       bucket === "closed"
         ? `Now trades **${spot.toFixed(2)}** vs gamma flip **${flip.toFixed(2)}** — where the dealer regime sits since this play closed`
         : play.direction === "LONG"
-          ? `Lose gamma flip **${flip.toFixed(2)}** — dealer posture turns against longs`
-          : `Reclaim gamma flip **${flip.toFixed(2)}** — invalidates short thesis`;
+          ? spotAboveFlip
+            ? `Lose gamma flip **${flip.toFixed(2)}** — dealer posture turns against longs`
+            : `Reclaim gamma flip **${flip.toFixed(2)}** — needed to restore dealer support for longs`
+          : spotAboveFlip
+            ? `Lose gamma flip **${flip.toFixed(2)}** — needed to confirm the short thesis`
+            : `Reclaim gamma flip **${flip.toFixed(2)}** — invalidates short thesis`;
     lines.push(watch);
   }
 

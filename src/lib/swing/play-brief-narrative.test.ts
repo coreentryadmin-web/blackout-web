@@ -304,6 +304,75 @@ test("tradeManagerNarrativeSection: live Vector gamma flip still shown when GEX 
   assert.match(section!.body, /γ-flip \*\*97\.00\*\*/i, "live Vector flip must still render");
 });
 
+// narrateFlip used to pick "Lose"/"Reclaim" purely from `play.direction`, never checking which
+// side of the flip spot was actually on — same class of bug as narrateMaxPain's own fix above
+// (live RDDT repro, 2026-09-11). Live repro this time: the swing play-brief's "Watch levels"
+// section (play-brief-intel.ts's sibling watchForSection) hit the identical bug for COIN, spot
+// 174.98 well BELOW flip 183.49, direction LONG — "Lose gamma flip" when there was nothing left
+// to lose. These four pin narrateFlip's own (direction × spot-side) combinations, gated within
+// the same `Math.abs(distancePct) < 3` window narrateFlip requires to fire at all.
+test("tradeManagerNarrativeSection: Gamma flip narration — LONG with spot ABOVE flip still says 'Lose'", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: { spot: 100, flip: 98 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Lose \*\*98\.00\*\* → dealer posture turns against longs/);
+});
+
+test("tradeManagerNarrativeSection: Gamma flip narration — LONG with spot BELOW flip says 'Reclaim', not 'Lose' an already-lost level", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 98,
+        gammaFlip: 100,
+        regime: { posture: "short", label: "SHORT GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: { spot: 98, flip: 100 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Lose \*\*100\.00\*\*/);
+  assert.match(section!.body, /Reclaim \*\*100\.00\*\* → needed to restore dealer support for longs/);
+});
+
+test("tradeManagerNarrativeSection: Gamma flip narration — SHORT with spot ABOVE flip says 'Lose', needs to confirm the short (mirror of the LONG fix)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: { spot: 100, flip: 98 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Reclaim \*\*98\.00\*\*/);
+  assert.match(section!.body, /Lose \*\*98\.00\*\* → needed to confirm the short thesis/);
+});
+
 test("tradeManagerNarrativeSection: stale GEX-only gamma flip must not drive Break watch (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
