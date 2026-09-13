@@ -1594,6 +1594,17 @@
         "state": "open",
         "branch": "fix/findings-fold-and-hygiene-guard-anchor"
       }
+    },
+    {
+      "at": "2026-09-13T05:54:53.390Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. PR #4903 CI still fresh/in_progress (opened ~1 min prior), nothing actionable yet -- will check next cycle. Improvement-hunting: reviewed morning-cortex-reveto.ts (the 9:15am ET fresh-veto pass that can pull a play post-publish if Cortex now vetoes it). Logic itself is clean -- correct one-way latch (already-INVALIDATED skipped), correct ticker-case normalization on the verdict map lookup, never downgrades a status, returns a new array without mutating input. One minor observability gap noted, not fixed: CortexRevetoResult.skipped conflates two very different reasons under one bucket -- 'already INVALIDATED by the mechanical check' (healthy, latch working as intended) vs 'Cortex returned no verdict at all for this ticker' (could mean a Cortex outage/blind spot for the whole morning re-veto pass on that name). Only consumer is a single aggregate count in the nighthawk-morning-confirm cron's own log line (route.ts:414) -- not member-facing, not gating anything, and Stage D of the healthcheck already independently verifies the morning-confirm-vs-edition-pulled consistency per ticker, so this conflation doesn't hide a live correctness defect today. Logged as a low-priority follow-up (split the skip reason into two counts) rather than a fix -- doesn't meet the bar for a standalone PR on its own.",
+      "prStatus": {
+        "number": 4903,
+        "state": "open",
+        "branch": "fix/findings-fold-and-hygiene-guard-anchor",
+        "ciState": "fresh, in_progress"
+      }
     }
   ],
   "knownOpenItems": {
