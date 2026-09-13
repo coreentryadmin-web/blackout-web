@@ -546,7 +546,25 @@ export function buildDeterministicThesis(
     parts.push(`${scored.ticker} ${dirWord} setup.`);
   }
   if (trendConflicts) {
-    parts.push(`Flow conviction overrides ${trend} technicals — institutional money is ${dirWord}.`);
+    // This sentence used to hard-code "Flow conviction... institutional money is {dirWord}"
+    // whenever the technical trend disagreed with the play's final direction — regardless of
+    // whether flow had anything to do with the pick. Reproduced: a candidate driven entirely by
+    // news_score(20) + smart_money_score(15) with flow_score(0) still printed "Flow conviction
+    // overrides bearish technicals — institutional money is bullish", inventing a flow signal
+    // that never existed. Name whichever dimension is ACTUALLY the top scoring driver instead —
+    // same `topDrivers` computation the catalyst/smart-money sections below already gate on.
+    const overrideDriver = topDrivers[0]?.label;
+    const overridePhrase =
+      overrideDriver === "flow"
+        ? `Flow conviction overrides ${trend} technicals — institutional money is ${dirWord}.`
+        : overrideDriver === "smart-money"
+          ? `Smart-money conviction overrides ${trend} technicals.`
+          : overrideDriver === "news"
+            ? `News conviction overrides ${trend} technicals.`
+            : overrideDriver === "positioning"
+              ? `Options-positioning conviction overrides ${trend} technicals.`
+              : null;
+    if (overridePhrase) parts.push(overridePhrase);
   }
 
   // --- Catalyst headline (surfaces WHY when news is a top scoring driver, not just THAT it is) ---
