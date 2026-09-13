@@ -1562,6 +1562,17 @@
         "branch": "fix/legacy-healthcheck-null-bid-ask-verdict",
         "ciState": "pending (CI + CodeQL in_progress)"
       }
+    },
+    {
+      "at": "2026-09-13T05:10:59.978Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged marks. Only new commit since last cycle was Swings-lane journal-only, out of scope. PR #4899's CI came back RED -- investigated and confirmed it is NOT this PR's failure: both failures are in src/lib/swing/banger-lane-merge.test.ts (mergeBangerPositionsIntoSwingPlays x2 -- COMMIT/WATCH and BANGER/undefined assertion mismatches), a file this PR never touches. Downloaded and grepped the actual CI job logs (get_job_logs tail_lines didn't reach far enough back in the 14000+ test TAP output, so pulled the run's logs.zip directly and grepped verify/13_Unit tests.txt) to confirm the exact failing assertions match my own local full-suite run byte-for-byte. Then checked main's own CI history directly: the identical verify job is RED on main across the last 4 completed pushes (04:31/04:46/04:51/05:01 UTC, none touching banger-lane-merge or this PR's files) -- this is a genuine pre-existing regression on main, not a flake and not introduced by this branch. Posted one standing-down comment on PR #4899 naming the failure, the main-branch evidence, and that no fix exists yet (root cause is Banger/Swing merge logic, outside Legacy's scope -- left for the Swings/Banger lane, which is actively committing to main this same window). Not widening this PR to fix it myself. This PR remains otherwise green and will merge once main's unrelated failure is fixed.",
+      "prStatus": {
+        "number": 4899,
+        "state": "open",
+        "branch": "fix/legacy-healthcheck-null-bid-ask-verdict",
+        "ciState": "red on main (unrelated banger-lane-merge regression), commented, standing down"
+      }
     }
   ],
   "knownOpenItems": {
