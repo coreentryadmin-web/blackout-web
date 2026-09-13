@@ -719,14 +719,17 @@ export async function buildEveningEdition(opts?: {
     funnel.governor_passed = ranked.length;
 
     // STAGE 4c — Bearish-tape posture (PR-N9): when ≥2 of tide/breadth/regime signal
-    // bearish, re-rank to prefer SHORT candidates. Thin-flow longs get flipped to short;
-    // strong-flow longs are penalized but kept for downstream gates to decide.
+    // bearish, re-rank to prefer SHORT candidates via a score bonus/penalty. Candidates
+    // are NEVER flipped from long to short — bearish-posture.ts's own comment explains
+    // why (a long's sub-scores are direction-specific and would be wrong on a flipped
+    // short) — so this log reports the real re-ranking effect (boosted/penalized counts),
+    // not a "flipped" count that this stage structurally can never produce.
     const postureResult = applyBearishPosture(ranked, regime);
     if (postureResult.posture === "SHORT") {
       ranked = postureResult.ranked;
       console.info(
         `[nighthawk/edition] bearish-posture: SHORT posture engaged (${postureResult.reasons.join("; ")}), ` +
-        `${postureResult.flipped} candidate(s) flipped to short`
+        `${postureResult.shortsBoosted} short(s) boosted, ${postureResult.longsPenalized} long(s) penalized`
       );
     }
     funnel.posture_applied = ranked.length;
