@@ -83,7 +83,11 @@ test("mergeBangerPositionsIntoSwingPlays replaces pre-entry row on same ticker",
     reason: "forming",
     contract: { strike: 150, expiry: "2026-09-12", right: "C", dte: 8, mid: 4.0 },
   };
-  const merged = mergeBangerPositionsIntoSwingPlays([watch], [bangerRow()]);
+  const merged = mergeBangerPositionsIntoSwingPlays(
+    [watch],
+    [bangerRow()],
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
   assert.equal(merged.length, 1);
   assert.equal(merged[0]!.status, "COMMIT");
   assert.equal(merged[0]!.signalKinds?.[0], "BANGER");
@@ -102,7 +106,11 @@ test("mergeBangerPositionsIntoSwingPlays keeps canonical swing OPEN when banger 
     serving: "MANAGING",
     contract: { strike: 145, expiry: "2026-09-12", right: "C", dte: 8, mid: 5.1 },
   };
-  const merged = mergeBangerPositionsIntoSwingPlays([managing], [bangerRow()]);
+  const merged = mergeBangerPositionsIntoSwingPlays(
+    [managing],
+    [bangerRow()],
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
   assert.equal(merged.length, 1);
   assert.equal(merged[0]!.liveStatus, "OPEN");
   assert.equal(merged[0]!.reason, "swing ledger open");
@@ -121,7 +129,11 @@ test("mergeBangerPositionsIntoSwingPlays replaces discovery COMMIT (no ledger) w
     serving: "COMMIT_NOW",
     contract: { strike: 150, expiry: "2026-09-12", right: "C", dte: 8, mid: 4.0 },
   };
-  const merged = mergeBangerPositionsIntoSwingPlays([discoveryCommit], [bangerRow()]);
+  const merged = mergeBangerPositionsIntoSwingPlays(
+    [discoveryCommit],
+    [bangerRow()],
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
   assert.equal(merged.length, 1);
   assert.equal(merged[0]!.signalKinds?.[0], "BANGER");
   assert.equal(merged[0]!.serving, "MANAGING");
