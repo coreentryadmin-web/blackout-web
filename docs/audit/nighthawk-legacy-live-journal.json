@@ -1481,6 +1481,11 @@
       "at": "2026-09-13T01:22:22Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 01:15/01:34 UTC commits confirmed Swings-lane (PR #4891), out of scope. AGGRESSIVE MODE dig found a real narrative-correctness bug: buildDeterministicThesis()'s flow-conviction sentence (deterministic-edition.ts) labeled dossier.flow_streak (a TICKER-level, direction-independent 10-day net-premium rollup) using the PLAY's own direction word (dirWord) rather than the streak's own measured direction -- even when they disagree. scorer.ts's scoreFlowQuality already guards its SCORING bonus on this exact agreement check (flowStreak.direction===direction), but that guard never reached the thesis TEXT, and flow_score can clear its own >=20 gate purely from tonight's live flow with zero streak contribution. Reproduced live: a 4-day PUT-dominated (bearish) streak on a LONG play rendered as '4-day bullish flow streak with aggressive options activity' -- fabricated corroboration, the opposite of what the streak data showed. FIXED: PR #4892 (fix/nighthawk-flow-streak-direction-mislabel) -- streak clause now uses the streak's own measured direction, falling back to the play's dirWord only when a dossier carries no streak direction at all (matches every existing test fixture). RED (1/3 new tests fail, exactly the disagreement case) -> GREEN (63/63 in the file) -> tsc clean -> full suite 14023/0/3skipped. Opened draft->undrafted per CARVE-OUT, subscribed to PR activity. Will verify CI/merge next cycle."
+    },
+    {
+      "at": "2026-09-13T01:36:48Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. No new Legacy-scope commits since last push. PR #4892 status: CI + CodeQL both in_progress (~3 min, normal), mergeable_state 'blocked' on pending checks (not a conflict), no reviews yet. Nothing actionable this cycle; will re-verify next cycle."
     }
   ],
   "knownOpenItems": {
