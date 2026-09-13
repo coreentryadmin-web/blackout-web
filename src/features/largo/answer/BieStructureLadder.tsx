@@ -1,7 +1,7 @@
 "use client";
 
 import { clsx } from "clsx";
-import type { StructureLadder, StructureLadderRung } from "@/lib/swing/play-brief-ladder";
+import type { StructureLadder, StructureLadderRisk, StructureLadderRung } from "@/lib/swing/play-brief-ladder";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 
 function fmtPrice(n: number): string {
@@ -65,6 +65,11 @@ function LadderRow({ rung, maxAbsDistPct }: { rung: StructureLadderRung; maxAbsD
           <>
             <span className="bie-ladder-rr">{rung.target.rewardRisk.toFixed(1)}R</span>
             <span className="bie-ladder-horizon">{HORIZON_LABEL[rung.target.horizon]}</span>
+            {rung.target.gatekeeper ? (
+              <span className="bie-ladder-gatekeeper" title="Clearing this level is what opens the next one out">
+                gatekeeper
+              </span>
+            ) : null}
           </>
         ) : (
           <span aria-hidden className="bie-ladder-row-target-empty">
@@ -72,6 +77,33 @@ function LadderRow({ rung, maxAbsDistPct }: { rung: StructureLadderRung; maxAbsD
           </span>
         )}
       </span>
+    </div>
+  );
+}
+
+/**
+ * "Risk — the other side" — names the one real rung nearest spot on the unfavorable side, so a
+ * member sees what stands between here and the thesis breaking, not just what's ahead if it works.
+ * Always a reference into the ladder's own `rungs` (see `StructureLadderRisk`'s header) — never a
+ * second, independently-derived level, so this can never disagree with the ladder above it.
+ */
+function RiskTheOtherSide({ risk }: { risk: StructureLadderRisk }) {
+  const verb =
+    risk.role === "resistance"
+      ? `closing above ${fmtPrice(risk.price)}`
+      : risk.role === "support"
+        ? `closing below ${fmtPrice(risk.price)}`
+        : `trading through ${fmtPrice(risk.price)}`;
+  return (
+    <div className="bie-ladder-risk">
+      <p className="bie-ladder-risk-head">Risk — the other side</p>
+      <p className="bie-ladder-risk-body">
+        <strong>
+          {risk.label} {fmtPrice(risk.price)}
+        </strong>{" "}
+        ({fmtDist(risk.distancePct)} from spot) is the nearest real structure on the wrong side of
+        this thesis — {verb} works against it, not for it.
+      </p>
     </div>
   );
 }
@@ -162,6 +194,8 @@ export function BieStructureLadder({ ladder }: { ladder: StructureLadder | null 
           {ladder.archetypeTrackRecord.n})
         </p>
       ) : null}
+
+      {ladder.riskTheOtherSide ? <RiskTheOtherSide risk={ladder.riskTheOtherSide} /> : null}
     </div>
   );
 }
