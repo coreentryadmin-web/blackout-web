@@ -11,6 +11,11 @@ import type { SwingDiscoveryPath } from "./discovery";
 import { isSwingConfluenceEnforced } from "./v2/config";
 import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
 import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
+// Pure calendar math (Intl-based, no IO) — same NYSE trading-day/holiday table
+// `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s temporal contract already relies on elsewhere
+// (session-calendar.ts). Needed here so a multi-day entry window counts real trading
+// sessions, not raw calendar days — see the `advanceTradingDaysMs` comment below.
+import { isTradingDayEt, formatEtDate } from "@/features/nighthawk/lib/session";
 
 export type SwingEntryAction = "buy" | "still_buy" | "wait" | "dont_buy";
 
@@ -82,6 +87,34 @@ function resolveCommitGateBlockedBy(input: SwingEntryEnterabilityInput): string[
   return blockedByFromSwingGates(fails);
 }
 
+/**
+ * Advance `tradingDays` real NYSE sessions past `anchorMs`, counting only trading days but
+ * otherwise stepping in exact 24h increments (so the deadline lands at the same clock time as
+ * the anchor, just on a later session).
+ *
+ * THE BUG THIS FIXES: the old `anchorMs + days * DAY_MS` counted raw calendar days, so a
+ * multi-day entry window silently SHRINKS whenever it spans a weekend (or holiday) — a setup
+ * flagged Thursday with a 3-day STANDARD window read as EXPIRED by Sunday evening, before
+ * Monday's market had even reopened, even though only ONE real trading session (Friday) had
+ * actually elapsed. Live-reproduced 2026-09-13: GOOGL (flagged Thu 2026-09-10 12:05 ET,
+ * `Entry stance: EXPIRED`) and ORCL (flagged Wed 2026-09-09) both read EXPIRED on a Sunday with
+ * only one intervening trading day, member-facing copy telling holders to abandon a setup that
+ * had barely had a chance to play out.
+ */
+function advanceTradingDaysMs(anchorMs: number, tradingDays: number): number {
+  let cursorMs = anchorMs;
+  let counted = 0;
+  // Bounded rather than an unconditional loop: tradingDays is at most 5 (EXTENDED sub-lane) and
+  // no real NYSE calendar strings together more than a handful of non-trading days in a row
+  // (a long weekend plus an adjacent holiday), so this comfortably terminates — the cap just
+  // stops a corrupted holiday table from spinning forever instead of failing loudly.
+  for (let i = 0; i < tradingDays + 14 && counted < tradingDays; i++) {
+    cursorMs += DAY_MS;
+    if (isTradingDayEt(formatEtDate(new Date(cursorMs)))) counted++;
+  }
+  return cursorMs;
+}
+
 function entryDeadlineMs(input: SwingEntryEnterabilityInput): number | null {
   if (input.entryDeadline) {
     const t = Date.parse(input.entryDeadline);
@@ -92,7 +125,7 @@ function entryDeadlineMs(input: SwingEntryEnterabilityInput): number | null {
   const anchorMs = Date.parse(anchor);
   if (!Number.isFinite(anchorMs)) return null;
   const days = input.subLane ? ENTRY_VALIDITY_DAYS[input.subLane] : DEFAULT_ENTRY_VALIDITY_DAYS;
-  return anchorMs + days * DAY_MS;
+  return advanceTradingDaysMs(anchorMs, days);
 }
 
 function pastEntryDeadline(input: SwingEntryEnterabilityInput, nowMs: number): boolean {
