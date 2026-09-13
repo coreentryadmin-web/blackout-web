@@ -1,3 +1,13 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: bearish-posture's dead 'flipped' field (internal diagnostic only, no live check needed) (read this before the routine pass)
+
+### PR #4924 (merged): `applyBearishPosture`'s "flipped to short" count was structurally always zero
+
+**What was broken:** `bearish-posture.ts`'s `PostureResult.flipped` field was declared, initialized to `0`, and never incremented — the function only adjusts candidate scores (bonus for existing SHORT, penalty for LONG) and re-sorts; it deliberately never changes a candidate's direction (a long's sub-scores are direction-specific and would be wrong on a flipped short). But `edition-builder.ts`'s own comment claimed "Thin-flow longs get flipped to short," and its `console.info` log printed `${flipped} candidate(s) flipped to short` — which could never report anything but 0, on every bearish-posture-engaged night, forever. See `docs/audit/findings-staging/2026-09-13-bearish-posture-flipped-dead-field.md` for the full writeup.
+
+**Fix:** replaced the dead `flipped` field with two real ones — `shortsBoosted`/`longsPenalized` — reflecting what the function actually does, and corrected the caller's stale comment/log to match.
+
+**Check at the open:** none needed — this only changes an internal `console.info` diagnostic log line and a code comment; no member-facing UI, API response, or grading path reads this field. If curious, the next real BEARISH-tape evening build's CloudWatch logs will show the corrected `"N short(s) boosted, M long(s) penalized"` line instead of the old always-`"0 candidate(s) flipped to short"` line — purely informational, not something to regression-test.
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: flow-polarity bid-put-share measurement gap (research-tool only, no live check needed) (read this before the routine pass)
 
 ### PR #4921 (merged): `compareFlowPolarity`'s `bid_put_share_of_puts` silently dropped moderate `ask_side_pct` rows

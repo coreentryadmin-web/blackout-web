@@ -1848,6 +1848,14 @@
       "note": "PR #4924 (bearish-posture.ts dead-field fix) CI still fresh/in_progress, nothing actionable yet -- will confirm next cycle. Other new commit (#4923, 'swing-e2e-healthcheck's Stage G read Night Hawk Legacy's record endpoint, not swing's') is a Swings-lane fix that happened to touch my /api/market/nighthawk/record endpoint -- checked it's purely beneficial (someone else's healthcheck script was accidentally reading my endpoint instead of its own; now correctly points at swing's own record route), no action needed on my side. Kept this cycle short given a fix is already in flight.",
       "action": "monitoring_pr_ci",
       "prNumber": 4924
+    },
+    {
+      "ts": "2026-09-13T13:40:00Z",
+      "cycle": "13:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "PR #4924 (bearish-posture.ts dead-field fix) confirmed merged -- landed via automerge.yml between cycles, no manual merge needed. Unsubscribed. Added a MARKET-OPEN-VALIDATION.md WATCH LIST entry noting this only changes an internal diagnostic log line/comment, nothing to regression-check at the open. Other commits since last cycle: #4923 confirmed merged/verified (Swings-lane, out of scope), and #4925 ('docs: write up largo-stress-nightly's persistent two-mode failure') is another lane's docs-only finding, also out of scope -- noted in passing, no action needed.",
+      "action": "merged_pr",
+      "prNumber": 4924
     }
   ],
   "knownOpenItems": {
