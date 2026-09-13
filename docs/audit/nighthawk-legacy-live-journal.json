@@ -1531,6 +1531,11 @@
       "at": "2026-09-13T03:52:04Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 03:47 UTC commit confirmed Swings-lane, out of scope. Re-pulled live edition -- theses still show pre-#4897 text as expected (edition hasn't rebuilt since the fix deployed), consistent with the logged RTH check. Improvement-hunting pass: audited smartMoneyDriverNote() and positioningDriverNote() (deterministic-edition.ts) for the same 'falls back to wrong-direction evidence' bug class just fixed in pickCatalystHeadline (#4897). Both are structurally safe -- congressHit/instHit/predAligns/dpAligns/alignedStacks/alignedOi are all boolean CONFIRM-alignment checks before returning a narrative; if nothing aligns, both correctly return null (omit) rather than ever falling back to an unaligned/wrong-direction signal. Confirmed clean by design, no new bug found this cycle."
+    },
+    {
+      "at": "2026-09-13T04:07:37Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 04:01/04:0x UTC commits confirmed Swings-lane, out of scope. Improvement-hunting pass this cycle: reviewed edition-quality.ts's merit-scoring/publish-eligibility logic (effectiveMeritScore, countRankedClearingMerit, anyRankedClearsScoreFloor, playMeritTier) -- already carefully documented from prior 08-05 thin-output root-cause work, cross-references stay internally consistent (score-only vs score+tier guards deliberately differ for a stated reason). No new issue found this cycle."
     }
   ],
   "knownOpenItems": {
