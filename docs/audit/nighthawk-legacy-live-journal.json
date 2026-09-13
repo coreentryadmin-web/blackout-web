@@ -1526,6 +1526,11 @@
       "at": "2026-09-13T03:37:36Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4897 CONFIRMED MERGED (03:30:03 UTC, merged_by coreentryadmin-web, clean squash into main as commit d9f0837e0) -- verified via pull_request_read.get. Unsubscribed from PR activity. Added item #160 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check. Other new main commits (SEO robots/sitemap cache note, Swings desk-context spot-check journal entry) confirmed out of scope. Session tally: 5 real Legacy fixes shipped+merged today -- #4888 (catalyst recency), #4890 (ticker-C option-parse), #4892 (flow-streak direction), #4894 (trend-conflict attribution), #4897 (catalyst opposite-direction sentiment) -- all verified merged/stable, all logged to MARKET-OPEN-VALIDATION.md."
+    },
+    {
+      "at": "2026-09-13T03:52:04Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 03:47 UTC commit confirmed Swings-lane, out of scope. Re-pulled live edition -- theses still show pre-#4897 text as expected (edition hasn't rebuilt since the fix deployed), consistent with the logged RTH check. Improvement-hunting pass: audited smartMoneyDriverNote() and positioningDriverNote() (deterministic-edition.ts) for the same 'falls back to wrong-direction evidence' bug class just fixed in pickCatalystHeadline (#4897). Both are structurally safe -- congressHit/instHit/predAligns/dpAligns/alignedStacks/alignedOi are all boolean CONFIRM-alignment checks before returning a narrative; if nothing aligns, both correctly return null (omit) rather than ever falling back to an unaligned/wrong-direction signal. Confirmed clean by design, no new bug found this cycle."
     }
   ],
   "knownOpenItems": {
