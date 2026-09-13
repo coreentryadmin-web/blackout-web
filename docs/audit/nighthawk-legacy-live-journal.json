@@ -1516,6 +1516,11 @@
       "at": "2026-09-13T03:06:58Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 03:02 UTC commit confirmed Swings-lane (PR #4896), out of scope. AGGRESSIVE MODE dig found a 5th real bug this session (same 'thesis contradicts its own evidence' family as #4892/#4894, different function): pickCatalystHeadline() fell back to sentiment[0] regardless of ITS OWN tag when no direction-matching polygon_sentiment entry existed. scoreNewsCatalyst can make news a top driver purely from a plain-text keyword hit (upgrade/beat/etc.) in news_headlines, independent of what's tagged in polygon_sentiment (same array, fed separately). Reproduced: LONG pick scored bullish via a 'beat' keyword, but the only polygon_sentiment entries were both negative-tagged -- thesis quoted 'guidance disappoints analysts' as the Catalyst line for a BULLISH play. FIXED: PR #4897 (fix/nighthawk-catalyst-opposite-direction-sentiment) -- falls back to a plain (untagged) headline instead of an opposite-direction sentiment entry; omits the line entirely if neither exists. RED (1/1 new test fails, exactly the mismatch case) -> GREEN (66/66 in the file) -> tsc clean -> full suite 14033/0/3skipped. Opened draft->undrafted per CARVE-OUT, subscribed to PR activity. Will verify CI/merge next cycle. 5 real Legacy fixes shipped this session block so far: #4888, #4890, #4892, #4894, #4897 (pending merge)."
+    },
+    {
+      "at": "2026-09-13T03:22:04Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 03:20 UTC commit confirmed Swings-lane, out of scope. PR #4897 status: CI running normally (~5 min, not stuck), mergeable_state pending, no reviews yet. Nothing actionable this cycle; will re-verify next cycle."
     }
   ],
   "knownOpenItems": {
