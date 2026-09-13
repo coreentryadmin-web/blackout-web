@@ -376,7 +376,14 @@ export async function GET(req: NextRequest) {
     // Fail-soft: a total Cortex failure skips the re-veto; the mechanical verdicts
     // (Phase 3) still proceed to persist.
     let finalStatuses = playStatuses;
-    let cortexRevetoMeta: { vetoed: number; cleared: number; skipped: number; error?: string } = {
+    let cortexRevetoMeta: {
+      vetoed: number;
+      cleared: number;
+      skipped: number;
+      skipped_already_invalidated?: number;
+      skipped_no_verdict?: number;
+      error?: string;
+    } = {
       vetoed: 0, cleared: 0, skipped: 0,
     };
     try {
@@ -411,7 +418,9 @@ export async function GET(req: NextRequest) {
         cortexRevetoMeta = {
           vetoed: revetoResult.vetoed.length,
           cleared: revetoResult.cleared.length,
-          skipped: revetoResult.skipped.length,
+          skipped: revetoResult.skipped_already_invalidated.length + revetoResult.skipped_no_verdict.length,
+          skipped_already_invalidated: revetoResult.skipped_already_invalidated.length,
+          skipped_no_verdict: revetoResult.skipped_no_verdict.length,
         };
 
         if (revetoResult.vetoed.length > 0) {
