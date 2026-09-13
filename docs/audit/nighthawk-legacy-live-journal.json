@@ -1660,6 +1660,17 @@
         "state": "open",
         "branch": "fix/publish-context-atr14-estimated-label"
       }
+    },
+    {
+      "at": "2026-09-13T07:52:40.932Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. No new Legacy-scope commits since last cycle. PR #4909 CI still fresh/in_progress, nothing actionable yet. Improvement-hunting: reviewed edition-stale.ts (the evening-edition rebuild-window logic). Noticed isInEditionWindow/inNighthawkEditionCatchupAlertWindow compute ET hour/minute via the same Intl hour12:false pattern that publishedAtEtMeta needed a `% 24` fix for elsewhere in this same file (a documented ICU quirk rendering ET midnight as hour '24' rather than '00', already fixed once as #4703) -- but traced that these two functions' window checks are anchored around the evening edition window (17:30-19:30 ET by default, plus a configurable catchup), nowhere near midnight, so the missing wraparound fix is unreachable under any plausible config today. Not pursued as a live bug -- correctly distinguished from publishedAtEtMeta's case, which parses arbitrary timestamps that legitimately can be near midnight. No new issue found this cycle.",
+      "prStatus": {
+        "number": 4909,
+        "state": "open",
+        "branch": "fix/publish-context-atr14-estimated-label",
+        "ciState": "in_progress"
+      }
     }
   ],
   "knownOpenItems": {
