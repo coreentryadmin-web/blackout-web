@@ -126,6 +126,14 @@ export function classifySetup(params: {
   return tags;
 }
 
+/** Joins the trend stack with up to 4 setup tags, WITHOUT the dangling "trend · " separator
+ *  that plain string interpolation produces when setup_tags is empty — the same empty-array
+ *  state classifySetup() was fixed (2026-07-28) to return instead of a sentinel string, so
+ *  callers could "fall through cleanly." This is the one caller that hadn't. */
+export function buildTechnicalSummary(trendStack: string, setupTags: string[]): string {
+  return setupTags.length ? `${trendStack} · ${setupTags.slice(0, 4).join(" · ")}` : trendStack;
+}
+
 export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard | null> {
   const mtf = await fetchPolygonMtfTechnicals(ticker);
   if (mtf?.price == null) return null;
@@ -188,6 +196,6 @@ export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard 
     ema20: mtf.emas?.ema20 ?? null,
     ema50: mtf.emas?.ema50 ?? null,
     ema200: mtf.emas?.ema200 ?? null,
-    summary: `${mtf.trend_stack} · ${setupTags.slice(0, 4).join(" · ")}`,
+    summary: buildTechnicalSummary(mtf.trend_stack ?? "mixed", setupTags),
   };
 }
