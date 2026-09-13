@@ -110,6 +110,22 @@ test("verdictForMarkRow: bid=0 with a real positive ask (deep-OTM, genuinely quo
   assert.equal(verdictForMarkRow({ mark: 5, bid: 0, ask: 0.1 }).verdict, "RED");
 });
 
+test("verdictForMarkRow: bid=null/ask=null (no quote object at all) with a real mark is AMBER, not a false GREEN", () => {
+  // Same underlying "no live two-sided quote" state as the bid=0/ask=0 case above, just produced by
+  // a different upstream path (legacy-option-mark-row.ts's WS branch after a trade-print-only update
+  // with no prior quote on file, or options-snapshot.ts's REST parse when the provider returns no
+  // last_quote object at all) — before the fix this fell through the `bid != null && ask != null`
+  // guard entirely and reported a bare GREEN "within [?, ?]", claiming a validation that never
+  // happened for the exact risk category this stage exists to catch.
+  const result = verdictForMarkRow({ mark: 5.01, bid: null, ask: null });
+  assert.equal(result.verdict, "AMBER");
+});
+
+test("verdictForMarkRow: one side null (bid present, ask missing) is also AMBER — can't check a band with only one side", () => {
+  assert.equal(verdictForMarkRow({ mark: 1.5, bid: 1, ask: null }).verdict, "AMBER");
+  assert.equal(verdictForMarkRow({ mark: 1.5, bid: null, ask: 2 }).verdict, "AMBER");
+});
+
 test("verdictForMarks: fetch failure is RED", () => {
   assert.equal(verdictForMarks({ fetchOk: false, requestedOccs: ["A"], rows: [] }).verdict, "RED");
 });

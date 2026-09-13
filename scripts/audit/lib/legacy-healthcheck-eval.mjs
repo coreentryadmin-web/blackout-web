@@ -45,6 +45,18 @@ export function verdictForEdition({ fetchOk, available, stale, degraded, playsCo
  * not one that ever lived inside a [0,0] "band". Reproduced live 2026-09-11 pre-market on AAPL/SWKS
  * (mark ~5.01/~2.51 from the prior session's close, bid=ask=0 with no pre-market NBBO yet) — the
  * unconditional band check read that as a sign/data error when it is an honest no-live-quote state.
+ *
+ * A MISSING bid/ask (null, not 0) is the SAME "no live two-sided quote" state, just produced by a
+ * different upstream path — legacy-option-mark-row.ts's WS branch carries `bid: null, ask: null`
+ * forward whenever a trade print (options-socket.ts's handleTrade) updates the mark with no prior
+ * quote on file for that OCC, and options-snapshot.ts's REST parse (`finiteOrNull(r.last_quote?.bid)`)
+ * does the same when the provider returns no last_quote object at all — both are at least as common
+ * as the explicit 0/0 case above, arguably more so (0/0 requires the provider to affirmatively report
+ * a quote object with zero values; null/null just means no quote object was present). Before this fix
+ * the `bid != null && ask != null` guard skipped the whole band check for null/null and fell through
+ * to a bare GREEN "within [?, ?]" — reporting the exact same unvalidated-mark situation the 0/0 branch
+ * exists to catch as if it had been checked and passed. Folded into one guard so both representations
+ * of "no live two-sided quote" get the same honest AMBER instead of one being silently GREEN.
  */
 export function verdictForMarkRow(row) {
   if (!row) return { verdict: "RED", evidence: "no mark row returned for this OCC" };
@@ -53,14 +65,12 @@ export function verdictForMarkRow(row) {
   if (!Number.isFinite(mark) || mark <= 0) return { verdict: "RED", evidence: `mark is not a positive finite number: ${mark}` };
   if (bid != null && !Number.isFinite(bid)) return { verdict: "RED", evidence: `bid is not finite: ${bid}` };
   if (ask != null && !Number.isFinite(ask)) return { verdict: "RED", evidence: `ask is not finite: ${ask}` };
-  if (bid != null && ask != null) {
-    if (ask <= 0) {
-      return { verdict: "AMBER", evidence: `no live two-sided quote (bid=${bid}, ask=${ask}) — mark sourced from last trade/close` };
-    }
-    if (bid > ask) return { verdict: "RED", evidence: `bid (${bid}) > ask (${ask}) — crossed book` };
-    if (mark < bid - 1e-9 || mark > ask + 1e-9) {
-      return { verdict: "RED", evidence: `mark (${mark}) outside [bid=${bid}, ask=${ask}]` };
-    }
+  if (bid == null || ask == null || ask <= 0) {
+    return { verdict: "AMBER", evidence: `no live two-sided quote (bid=${bid ?? "null"}, ask=${ask ?? "null"}) — mark sourced from last trade/close` };
+  }
+  if (bid > ask) return { verdict: "RED", evidence: `bid (${bid}) > ask (${ask}) — crossed book` };
+  if (mark < bid - 1e-9 || mark > ask + 1e-9) {
+    return { verdict: "RED", evidence: `mark (${mark}) outside [bid=${bid}, ask=${ask}]` };
   }
   if (stale) return { verdict: "AMBER", evidence: "mark flagged stale by the API" };
   return { verdict: "GREEN", evidence: `mark=${mark} within [${bid ?? "?"}, ${ask ?? "?"}]` };
