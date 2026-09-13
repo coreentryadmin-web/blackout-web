@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | OPEN — holding per the standing escalation policy ("ambiguous/live-picks-logic → report, hold"). This changes what counts as a win/loss in the live member-facing track record; it should not be resolved by picking a side without operator/product sign-off. |
+| **Status** | OPEN — holding per the standing escalation policy ("ambiguous/live-picks-logic → report, hold"). This changes what counts as a win/loss in the live member-facing track record; it should not be resolved by picking a side without operator/product sign-off. **Updated same day, later cycle:** found the deliberate design history (N-2, `grade-methodology.ts`) behind `resolveOutcome`'s behavior — see the Update section below. Still OPEN; the evidence trail is fuller, the decision is still not made. |
 | **Surface** | `resolveOutcome` (`src/features/nighthawk/lib/play-outcomes.ts`, the LIVE mechanical outcome grader run by `resolvePendingNighthawkOutcomes`) vs. `computeFill` (`src/features/nighthawk/lib/debrief.ts`, the per-play post-mortem's own fill check) |
 | **Severity** | P2 — a real, reproducible disagreement between two graders that read the SAME row fields to answer what should be the SAME question ("was this play ever fillable"), with opposite answers on the same real historical shape. Affects future grading of the exact class of play CLAUDE.md's own decision doc calls out as a real, recurring pattern (a large overnight gap through the entire published band). |
 
@@ -85,3 +85,46 @@ Either direction requires touching tests that currently assert the OTHER answer 
 - Reproduced directly: `resolveOutcome` on the real AMD 2026-07-07 shape returns `"unfilled"`; the real historical record and `debrief.test.ts` both treat it as filled (graded `"stop"`).
 - `play-outcomes.test.ts`'s own existing test (line ~109, "LONG that gapped BELOW its entry band and never recovered grades 'unfilled'") asserts the CURRENT behavior as intended, on the same shape class.
 - Grepped `docs/audit/OUTCOME-GRADING-SPEC.md` for any documented resolution of this specific Legacy tension: none found (that spec covers 0DTE/Swing/Banger graders, not Legacy's `resolveOutcome`/`computeFill` pair).
+
+## Update (same day, later cycle): found the decision history behind `resolveOutcome`'s design — it deepens, not resolves, the question
+
+Improvement-hunting the same lane later this session surfaced `grade-methodology.ts` and
+`docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md` (PR-N2, 2026-07-14) — neither was checked before this
+finding was originally written. They show `resolveOutcome`'s full-band-intersection ("plan-integrity")
+behavior is **not an accidental design** — it was shipped deliberately, with real measured evidence,
+specifically to kill a "phantom win" pattern: bucketing the app's 14 then-resolved plays by
+"open-beyond-band", the gapped-away group graded **6 target / 1 stop, +5.11% avg (100% of the
+record's wins)** while genuinely fillable plays graded **0 target / 4 stop, −1.39% avg**. The
+`"unfilled"` verdict for a full-band gap-through exists specifically so a play that was never really
+enterable at its published entry can't mint a win it didn't earn. On the *gap-through-to-a-win* side,
+`resolveOutcome`'s plan-integrity philosophy is the one with real evidence behind it, not an
+arbitrary or equally-weighted alternative to `debrief.ts`'s mechanical-fill.
+
+**But that evidence is one-directional, and this finding's own AMD reproduction is the other
+direction — which N-2 never measured.** N-2's dataset bucketed by whether the gap-through row graded
+a WIN; it never asked the mirror question: does blanket-excluding every full-band gap-through row
+*also* exclude real, gap-through LOSSES (like this finding's AMD case, which historically graded
+`"stop"` — a loss) from the win/loss denominator? Excluding a genuine loss from the denominator is
+not symmetrically conservative the way excluding a phantom win is — it can *inflate* the reported win
+rate by shrinking the denominator on the loss side while the win side (already fixed by N-2) stays
+protected. N-2's own historical numbers hint at how large this could be: of the 26 plays published as
+of 2026-07-14, only 14 were app-resolved at all, and re-grading all 26 under current
+`resolveOutcome` rules produced **1 target / 5 stop / 3 open / 17 unfilled** — a large `"unfilled"`
+bucket that N-2's analysis never split by "would this have graded a loss under debrief.ts's
+mechanical-fill logic." That 17-of-26 figure is now two months stale (this session's live
+`healthcheck:legacy` reports `resolved=26` today, a different cohort) and unauthenticated access
+to `GET /api/market/nighthawk/record` from this sandbox returned 401 rather than the real current
+breakdown, so this could not be re-measured live this cycle.
+
+**Net effect on the recommendation:** this does not resolve the finding — plan-integrity is now
+better-evidenced on the phantom-win side, but the *product decision* the original finding calls for
+is unchanged, and is now sharper: whoever decides should also see whether the current `"unfilled"`
+population contains asymmetric loss-exclusion, not just re-litigate the win-side case N-2 already
+settled. **Recommended follow-up measurement** (not attempted here — needs authenticated access to
+the live record, which this sandbox could not obtain this cycle): for every currently-`"unfilled"`
+graded row, replay it through `debrief.ts`'s `computeFill`/mechanical-fill logic and split the result
+by whether it would have graded a win or a loss. If the unfilled bucket skews toward loss-shaped rows
+being excluded, that is independent evidence for tightening `resolveOutcome` (or for debrief.ts's
+computeFill to gain a matching band-integrity mode) beyond what N-2 alone shows. No gate/grading
+logic changed by this update — still OPEN, still holding for a product decision, now with the fuller
+evidence trail in one place.
