@@ -28,8 +28,11 @@ import type { NighthawkPublishGateResult } from "./publish-gates";
 import type { MarketBreadthMetrics } from "@/lib/providers/polygon";
 
 /** Bump when the pinned shape changes so calibration reads can segment by version.
- *  v2 (PR-N3): + `gates` (publish-gate verdict/blocks/checks) and `quote_session`. */
-export const PUBLISH_CONTEXT_VERSION = 2;
+ *  v2 (PR-N3): + `gates` (publish-gate verdict/blocks/checks) and `quote_session`.
+ *  v3: + `atr14_estimated` — atr14 could already be a synthetic estimate (PR-N21) with no
+ *  way for a calibration read to tell measured and guessed volatility apart; see
+ *  estimateAtr()'s header. */
+export const PUBLISH_CONTEXT_VERSION = 3;
 
 /** The slice of the evening MarketWideContext the pin actually uses — narrow on purpose
  *  so tests don't have to build the full context object and the pin can't silently grow
@@ -73,8 +76,8 @@ import type { TechnicalCard } from "./technicals";
  * PR-N21: estimate ATR when the real ATR14 is unavailable (Polygon returned fewer than
  * 14 daily bars). Uses prior-day H/L range when available, else 1.5% of spot — conservative
  * defaults that let the target_unreachable gate evaluate rather than fail-closed with
- * geometry_unknown. The estimate is CLEARLY labeled in the geometry so calibration knows
- * it's synthetic.
+ * geometry_unknown. The caller (computeNighthawkPublishGeometry) is what actually labels
+ * the estimate via `atr14_estimated` — this function only returns the number.
  */
 function estimateAtr(
   tech: TechnicalCard | null | undefined,
@@ -103,6 +106,11 @@ export type NighthawkPublishGeometry = {
   spot: number | null;
   prior_close: number | null;
   atr14: number | null;
+  /** True when `atr14` came from estimateAtr() (prior-day range, or 1.5% of spot) rather
+   *  than Polygon's own 14-day true-range average — false when atr14 is null (nothing to
+   *  label) or genuinely measured. Calibration/gate reads must be able to tell a measured
+   *  volatility figure from a guessed one; see estimateAtr()'s own header. */
+  atr14_estimated: boolean;
   /** ET session date the spot quote came from (tech.price_session) — G-N3's subject. */
   quote_session: string | null;
   entry_range_low: number | null;
@@ -137,11 +145,15 @@ export function computeNighthawkPublishGeometry(
   // Nearest fillable band edge: the level the member would actually transact at.
   const fillEdge = (isLong ? levels.entry_range_high : levels.entry_range_low) ?? null;
 
+  const realAtr14 = finiteOrNull(tech?.atr14);
+  const atr14 = realAtr14 ?? estimateAtr(tech, spot);
+
   return {
     direction,
     spot,
     prior_close: finiteOrNull(tech?.prior_day?.close),
-    atr14: finiteOrNull(tech?.atr14) ?? estimateAtr(tech, spot),
+    atr14,
+    atr14_estimated: realAtr14 == null && atr14 != null,
     quote_session: typeof tech?.price_session === "string" ? tech.price_session : null,
     entry_range_low: levels.entry_range_low,
     entry_range_high: levels.entry_range_high,
@@ -210,6 +222,7 @@ export function buildNighthawkPublishContext(opts: {
     spot_at_publish: geo.spot,
     prior_close: geo.prior_close,
     atr14: geo.atr14,
+    atr14_estimated: geo.atr14_estimated,
     quote_session: geo.quote_session,
 
     // ── Published geometry, re-parsed with the same parser grading uses ────────
