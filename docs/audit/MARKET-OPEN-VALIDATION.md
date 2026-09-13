@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: `resolveOutcome` vs `debrief.ts` fillability disagreement — OPEN, needs a product decision (read this before the routine pass)
+
+### PR #4910 (docs-only, merged) flagged a real grading-logic disagreement; no code changed, no fix to validate at the open
+
+**What was found:** `play-outcomes.ts`'s `resolveOutcome` (the live mechanical outcome grader) and
+`debrief.ts`'s `computeFill` (the per-play post-mortem's own fill check) disagree on whether a LONG
+that gaps clean through and below its entire published entry band counts as "filled". Reproduced
+against the real AMD 2026-07-07 shape: `resolveOutcome` grades it `"unfilled"`; `debrief.ts` and the
+actual historical record both treat it as filled (graded `"stop"`). A draft fix aligning the two was
+written and verified, then reverted on discovering `play-outcomes.test.ts` has an existing,
+deliberately-written test asserting the current `"unfilled"` behavior as correct on the same shape
+class — two defensible, undocumented fillability philosophies (mechanical-fill vs plan-integrity),
+each with its own test. See `docs/audit/findings-staging/2026-09-13-play-outcomes-fillability-vs-debrief-disagreement.md`.
+
+**No fix shipped** — this is a genuine product decision (which philosophy should govern Legacy's
+live win-rate), not something to resolve unilaterally by picking a side and rewriting whichever test
+disagrees. Status: OPEN, held per the standing escalation policy.
+
+**Check at the open (informational, not a regression check):** there is no code change to validate
+here. The item to watch for is any LIVE session where a Legacy play gaps clean through its entire
+entry band (same shape as the AMD anchor) — if one occurs, that is a live, concrete instance of the
+disagreement (not just a historical reconstruction) and is worth surfacing on the PR/finding thread
+as fresh evidence toward whichever direction the product decision eventually goes.
+
 ## WATCH LIST — 2026-09-13 Meridian estimate-revision timeline: "+0%" noise entries (read this before the routine pass)
 
 ### DISCOVERY-cycle live spot-check found a real-but-invisible revision polluting the feed; fixed same cycle

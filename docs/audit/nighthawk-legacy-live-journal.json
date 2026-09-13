@@ -1699,6 +1699,13 @@
       "note": "PR #4910's CodeQL 'Analyze (javascript-typescript)' check failed on first run -- traced the job log: all queries interpreted and SARIF exported cleanly, then 'Uploading results' -> 'CodeQL job status was failure' with zero error text anywhere in the log (a silent upload failure, not an analysis/diff issue). Confirmed via actions_list that the same CodeQL workflow succeeded on the two immediately-preceding main pushes (e7e85ee46, 6edc536550), ruling out a base-wide break. Re-ran the failed job once via actions_run_trigger.rerun_failed_jobs per the standing flake-confirmation allowance (docs-only PR, zero code touched, so a real analysis regression from this diff was already implausible). Re-run still in_progress as of this check-in; will confirm result and merge next cycle. Improvement-hunting this cycle: reviewed entry-range.ts's entryRangeMid corruption guard and traced every entry_range_low/high consumer repo-wide (analytics.ts, play-constraints.ts, debrief-aggregate.ts, debrief-persist.ts, track-record-page.ts, morning-verdict-persist.ts, PlayHistoryTable.tsx, db.ts) -- every midpoint computation correctly routes through the shared guard, no duplicated/unguarded raw (low+high)/2 found anywhere. Clean, no new finding.",
       "action": "monitoring_pr_ci",
       "prNumber": 4910
+    },
+    {
+      "ts": "2026-09-13T08:58:00Z",
+      "cycle": "post-CodeQL-rerun confirmation",
+      "note": "PR #4910 merged (squash, sha 492e4469c) after the CodeQL 'Analyze (javascript-typescript)' re-run came back green (confirmed via check_suite.completed webhook + pull_request_read mergeable_state:'clean') -- the first failure was a genuine one-off upload-step flake (all queries interpreted, SARIF exported cleanly both times; only the code-scanning upload step failed silently the first run, with zero error text). mcp__github__merge_pull_request hit three consecutive transient 500s from GitHub's merge API; fell back to a direct REST PUT with GITHUB_TOKEN which succeeded on the first try (HTTP 200, merged:true). Unsubscribed from PR activity. Added a docs/audit/MARKET-OPEN-VALIDATION.md WATCH LIST entry noting this is a docs-only, no-code-change merge -- nothing to regression-check at the open, but flagging that a LIVE session where a Legacy play gaps clean through its entire entry band would be fresh, concrete evidence toward the still-open resolveOutcome-vs-debrief.ts fillability product decision. Finding remains OPEN/HOLD pending an operator/product call; no further action needed from this lane on the fillability question itself.",
+      "action": "merged_pr",
+      "prNumber": 4910
     }
   ],
   "knownOpenItems": {
