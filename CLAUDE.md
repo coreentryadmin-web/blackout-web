@@ -867,6 +867,19 @@ conclusion) **and merge manually via GitHub MCP** rather than trusting `automerg
    `/pricing`, `/faq`, and all `(site)` desk pages are already `DYNAMIC` (uncached) and fine. Codify
    the CF cache rules in terraform as the durable follow-up so a dashboard edit can't silently
    regress this.
+6. **`/robots.txt` and `/sitemap.xml` are edge-cached 24h — a merged content change to either
+   needs a manual purge to go live quickly (found 2026-09-13).** A separate rule (`d400e4fc…`,
+   "Cache public static assets (icons/images/fonts/manifest/robots) 1 day at edge") explicitly
+   lists `/robots.txt` and `/sitemap.xml` alongside favicon/manifest/fonts, `edge_ttl 86400`,
+   `override_origin` — same `override_origin`-ignores-origin's-`Cache-Control: no-store` shape as
+   item 5 above, deliberate here rather than a bug (these files are expected to change rarely, so
+   trading a day of edge staleness for reduced origin load on crawler traffic is a reasonable
+   choice). Confirmed live: `/robots.txt` served `cf-cache-status: HIT`/`age: 30411` (~8.4h stale)
+   hours after a merged content fix (#4895) had already deployed to ECS. `curl -X POST
+   api.cloudflare.com/.../purge_cache {"files":["https://blackouttrades.com/robots.txt"]}` (a
+   targeted single-file purge, not `purge_everything`) made the change visible immediately. **Do
+   this any time a PR changes `robots.ts` or the sitemap route**, the same way item 4's full purge
+   is routine after a visible deploy.
 
 ## Auth model (quick ref)
 - Admin: Clerk `publicMetadata.role === "admin"` (or `ADMIN_EMAILS`). Tier: `publicMetadata.tier` (Whop-driven; 60s cache). `role:admin` bypasses per-tool launch gates.
