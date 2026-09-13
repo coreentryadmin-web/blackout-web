@@ -154,7 +154,15 @@ test("the reconciler is idempotent — a second --apply is a no-op", () => {
   rmSync(dir, { recursive: true, force: true });
 
   // Guard against a vacuous pass: the input must really have been untagged and really got tagged.
-  assert.ok(!/> \*\*kind:\*\*/.test(untagged), "stripping failed — the fixture was already tagged, so nothing was exercised");
+  // Anchored to a LINE START, matching the exact stripping regex above — an unanchored substring
+  // check false-fails the moment any entry's own prose quotes the tag syntax as an example (e.g. an
+  // entry documenting this very reconciler's skip criteria, which legitimately contains the literal
+  // text "`> **kind:**` line found" mid-sentence). That prose is not a real tag line and stripping it
+  // would be wrong; the guard must ask the same question the stripping regex answers, not a looser one.
+  assert.ok(
+    !/^> \*\*(kind|status):\*\*/m.test(untagged),
+    "stripping failed — the fixture was already tagged, so nothing was exercised"
+  );
   assert.match(pass1, /> \*\*kind:\*\* `FINDING`/, "the reconciler did not tag the fixture");
   assert.match(pass1, /## How to read this file/, "the legend was dropped from the output");
   // Regenerating from scratch must reproduce the committed file's count. This is what covers the
