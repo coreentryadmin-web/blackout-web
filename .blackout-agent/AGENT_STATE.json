@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-13T05:23:36.214Z",
+  "updated_at": "2026-09-13T05:49:44.911Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "3653a37d79b54ac8e79585872c60eece5d2ed7a7",
+    "last_main_sha": "3987580c323decf498ebd39010989e2f6eda647c",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-06T23:20:32.897Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T23:20:33.147Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-07T00:18:09.090Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 1
-    },
     {
       "at": "2026-09-07T00:18:09.452Z",
       "type": "context_sync",
@@ -1275,9 +1257,68 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-13T05:49:43.866Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-13T05:49:44.582Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-13T05:49:44.911Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4480,
+      "title": "Bump next from 15.5.25 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T00:30:39Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4478,
+      "title": "chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.2",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:11:10Z"
+    },
+    {
+      "number": 4477,
+      "title": "Bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T00:30:20Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
