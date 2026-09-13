@@ -45,6 +45,45 @@ test("buildLegacyOptionMarkRow: no mark anywhere → stale", () => {
   assert.equal(row.stale, true);
 });
 
+test("buildLegacyOptionMarkRow: a genuinely stale quote (real last_updated far in the past) is STALE even when our own fetch just succeeded (2026-09-13 fix)", () => {
+  // The live bug: a thinly-traded contract's last_quote hasn't moved in 45 minutes, but this
+  // server successfully re-fetched it moments ago (observedAtMs = just now). The OLD code
+  // preferred observedAtMs, so asof read "just now" and stale was always false — no matter how
+  // old the real quote was. quoteUpdatedMs (the real market clock) must win instead.
+  const staleQuoteMs = NOW - 45 * 60_000;
+  const row = buildLegacyOptionMarkRow(
+    "MRNA260904C00155000",
+    null,
+    {
+      ticker: "O:MRNA260904C00155000",
+      mark: 4.85,
+      bid: 4.8,
+      ask: 4.9,
+      last: null,
+      dayClose: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: null,
+      bidSize: null,
+      askSize: null,
+      dayVolume: null,
+      underlyingPrice: null,
+      strike: 155,
+      optionType: "call",
+      expiry: "2026-09-04",
+      sharesPerContract: 100,
+      quoteUpdatedMs: staleQuoteMs,
+      observedAtMs: NOW, // our own fetch clock — just succeeded, but proves nothing about the quote
+    },
+    NOW
+  );
+  assert.equal(row.stale, true, "a 45-min-old real quote must be STALE regardless of fetch recency");
+  assert.equal(row.asof, new Date(staleQuoteMs).toISOString(), "asof reflects the real quote clock, not the fetch clock");
+});
+
 test("buildLegacyOptionMarkRow: a WS tick timestamped minutes ahead of now is stale, not treated as freshest", () => {
   // A future ts (clock skew between the quote source and this server, or a corrupted field)
   // previously made the raw `nowMs - asofMs` age negative, which never exceeded

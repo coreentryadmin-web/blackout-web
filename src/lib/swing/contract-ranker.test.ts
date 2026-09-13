@@ -167,3 +167,40 @@ test("mapper skips malformed snapshots (no throw, null out)", () => {
   assert.ok(snap); // OptionSnapshot still maps (strike/expiry null)
   assert.equal(chainContractFromSnapshot(snap!, "X", "2026-07-24"), null);
 });
+
+test("mapper: quoteUpdatedMs prefers the REAL quote clock over our own fetch clock (2026-09-13 fix)", () => {
+  // A genuinely stale last_quote (an untouched book) re-fetched successfully just now: the field
+  // is literally named quoteUpdatedMs and evaluateQuoteStaleGate (v2/gates.ts) trusts it to mean
+  // "when the market last updated this quote" — stamping our own observedAtMs there instead would
+  // read a stale book as fresh every time it happens to be re-fetched.
+  const staleQuoteMs = Date.parse("2026-08-01T00:00:00.000Z");
+  const freshFetchMs = Date.parse("2026-08-01T00:45:00.000Z"); // 45 min later
+  const snap = mapUnifiedSnapshotResult({
+    ticker: "O:NVDA260807C00098000",
+    type: "options",
+    last_quote: { bid: 3.9, ask: 4.1, last_updated: staleQuoteMs * 1_000_000 }, // provider ns
+    details: { strike_price: 98, contract_type: "call", expiration_date: "2026-08-07" },
+  } as never);
+  assert.ok(snap);
+  assert.equal(snap!.quoteUpdatedMs, staleQuoteMs, "sanity: the provider quote clock parsed");
+  const withLiveObservation = { ...snap!, observedAtMs: freshFetchMs };
+
+  const cc = chainContractFromSnapshot(withLiveObservation, "NVDA", "2026-07-24");
+  assert.ok(cc);
+  assert.equal(cc!.quoteUpdatedMs, staleQuoteMs, "the real (stale) quote clock wins, not the fresh fetch clock");
+});
+
+test("mapper: falls back to observedAtMs only when the provider gives no quote timestamp at all", () => {
+  const snap = mapUnifiedSnapshotResult({
+    ticker: "O:NVDA260807C00098000",
+    type: "options",
+    last_quote: { bid: 3.9, ask: 4.1 }, // no last_updated
+    details: { strike_price: 98, contract_type: "call", expiration_date: "2026-08-07" },
+  } as never);
+  assert.ok(snap);
+  assert.equal(snap!.quoteUpdatedMs, null);
+  const fetchMs = Date.parse("2026-08-01T00:45:00.000Z");
+  const cc = chainContractFromSnapshot({ ...snap!, observedAtMs: fetchMs }, "NVDA", "2026-07-24");
+  assert.ok(cc);
+  assert.equal(cc!.quoteUpdatedMs, fetchMs);
+});
