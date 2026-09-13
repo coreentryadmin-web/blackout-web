@@ -1,3 +1,32 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: options_play year-inference used real "now" instead of the edition's publish date (calendar-strip historical view — check at the open) (read this before the routine pass)
+
+### Fix (branch `fix/legacy-options-play-year-inference-historical-view`): reopening an old Legacy edition could resolve the wrong-year OCC for its plays
+
+**What was broken:** `options_play` strings never carry a year (`shortExpiry()` prints "Aug 28",
+never "2026-08-28"). `resolveLegacyPlayOcc`/`parseOptionsContract` reconstructed the missing year
+from real wall-clock "now" every time — correct for a live/still-open play, but wrong for the
+Legacy edition **calendar strip** (`legacy-board-calendar.ts`, up to 14 trading days back):
+reopening an old, already-expired edition re-parsed its plays' `options_play` text anchored on
+today's real date, and for an already-past month/day that reads as "before today" almost every
+time, rolling the resolved expiry a full year FORWARD — a completely different, never-traded
+contract. For a liquid underlying with a matching weekly/monthly strike, that wrong-year OCC can
+resolve to a REAL, live Polygon quote and silently render a plausible but wrong mark/P&L for a
+historical position. See
+`docs/audit/findings-staging/2026-09-13-legacy-options-play-year-inference-historical-view.md`.
+
+**Fix:** threaded an optional `referenceDate` through `parseOptionsContract` →
+`resolveLegacyPlayOcc`; `terminalPlayFromEdition` now anchors it on the edition's own
+`published_at` instead of real now. The two live-position call sites (`fetchLegacyDiscordLiveRows`,
+the Discord notify path) keep the default (real now) — they only ever resolve near-term plays and
+were never exposed to this bug.
+
+**Check at the open:** on the live site, open `/nighthawk?view=legacy`, use the edition calendar
+strip to jump to an edition from ~2-3 weeks back that had at least one real, already-expired play,
+and open that play's detail panel. Confirm any mark/P&L shown (if the position still resolves a
+live quote at all) is plausible for the ACTUAL expiry printed in the thesis panel, not a wildly
+different number — and ideally cross-check the resolved OCC's expiry year directly via the
+`/api/market/nighthawk/legacy-marks` network request in devtools while that old edition is open.
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: morning-status DB fallback dropped unverified plays (member-facing status list — check at the open) (read this before the routine pass)
 
 ### PR #4937 (merged): a play lacking a pinned morning_verdict was silently missing from the DB-fallback status list
