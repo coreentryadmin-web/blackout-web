@@ -1945,6 +1945,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "More Swings/Largo-lane commits in the log (#4931 trim-rung display, #4932 Structure Ladder card shell) -- confirmed out of scope by path/context, no action. Swept publish-context.ts's buildNighthawkPublishContext -- checked whether entry_context.catalysts.earnings_risk (a separate pinned audit-trail derivation, scored?.earnings_risk ?? false) could ever disagree with PlaybookPlay.earnings_risk (the field play-explainer.ts's playRiskLines now surfaces, fixed this session in #4928) -- both derive from the same `scored` object at publish time, so they stay consistent; entry_context.catalysts also carries a separate, narrower earnings_tomorrow flag (specifically next-session, vs earnings_risk's wider 'within hold window') -- confirmed intentionally two different concepts per types.ts's own comment, not a naming collision. No bug found. Quiet cycle.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T16:54:00Z",
+      "cycle": "16:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "More out-of-scope Largo/Swings-lane commits noted and correctly skipped. Reviewed regrade-legacy.ts (the admin-invoked PR-N2 legacy-methodology re-grade migration tool) -- idempotent (SQL guard + in-process re-filter), dry-runnable, preserves the superseded grade, correctly leaves a row quarantined ('pending' under current rules) rather than fabricating a verdict when persisted bars can't support one. Directly downstream of resolveOutcome, the same function whose fillability disagreement with debrief.ts was flagged OPEN earlier today (PR #4910) -- noted the connection but this module's own logic (re-grading historic rows under whichever rules resolveOutcome currently implements) is correct regardless of which side of that open question resolveOutcome eventually lands on; nothing new to escalate here. No bug found. Quiet cycle -- 4 PRs shipped today (#4917 docs, #4921 flow-polarity, #4924 bearish-posture, #4927 cortex-reveto, #4928 risk-signals, #4929 technical-summary -- 6 total incl. earlier session) plus one held finding (#4930); continuing to sweep for more on the next cycle.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
