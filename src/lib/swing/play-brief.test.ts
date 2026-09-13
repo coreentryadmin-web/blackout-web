@@ -2005,6 +2005,92 @@ test("composeSwingPlayBrief: Position section shows a BLENDED P&L once a trim ha
     /Blended P&L \(realized trim \+ open runner\): \*\*\+51\.2%\*\*/,
     `got: ${position!.body}`,
   );
+  // The blended composite is otherwise opaque arithmetic a member has to trust — show the fired
+  // rung's own fraction/trigger/absolute premium so the +51.2% is self-verifying (0.5 @ +100% =
+  // $33.30, the ladder's own frozen premium level for this tranche).
+  assert.match(
+    position!.body,
+    /Banked: \*\*50% @ \+100%\*\* \(\$33\.30\)/,
+    `got: ${position!.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: Position section lists every fired rung when a trim-scale ladder has banked more than one tranche", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "TRIM",
+      recommendation: "TRIM",
+      entry: 10,
+      mark: 12,
+      pnlPct: 20,
+      peak: 210,
+      manageAction: "TAKE_PARTIAL",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 50,
+        trim_levels: [
+          { trigger_pct: 25, fraction: 0.33, premium: 12.5, fired: true },
+          { trigger_pct: 50, fraction: 0.33, premium: 15, fired: true },
+        ],
+        runner_fraction: 0.34,
+        stop_premium: 4,
+        target_premium: 15,
+        time_stop_et: "16:00",
+      },
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /Banked: \*\*33% @ \+25%\*\* \(\$12\.50\) · \*\*33% @ \+50%\*\* \(\$15\.00\)/,
+    `got: ${position!.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: Position section omits the Banked line when a fired rung has no priced premium (no entry basis)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "TRIM",
+      recommendation: "TRIM",
+      entry: 10,
+      mark: 12,
+      pnlPct: 20,
+      peak: 210,
+      manageAction: "EXIT_RUNNER",
+      exitPolicy: {
+        policy: "ratchet",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: null,
+        target_premium: null,
+        time_stop_et: "16:00",
+      },
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  // Still shows the fraction/trigger (known) but never fabricates a dollar level it doesn't have.
+  assert.match(position!.body, /Banked: \*\*50% @ \+100%\*\*(?!\s*\()/, `got: ${position!.body}`);
 });
 
 test("composeSwingPlayBrief: Position section omits blended P&L when no trim has fired yet (no false precision)", () => {
