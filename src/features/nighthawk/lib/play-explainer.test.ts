@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildGroundedPlayExplanationFallback } from "./play-explainer-fallback";
+import { buildGroundedPlayExplanationFallback, playRiskLines } from "./play-explainer-fallback";
 import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
 import type { PlaybookPlay } from "./types";
 
@@ -48,4 +48,52 @@ test("grounding guard: a briefing citing a hallucinated level fails", () => {
   const result = checkNumbersGrounded(briefing, known);
   assert.equal(result.grounded, false);
   assert.equal(result.ungroundedValue, 415);
+});
+
+// 2026-09-13 finding: earnings_risk and gate_promoted/gate_warnings are real, already-computed
+// risk signals on the play object that used to be silently dropped from the "Risks &
+// invalidation" section of both the LLM data block (play-explainer.ts's formatPlayBlock) and
+// this no-LLM fallback, even though that section explicitly promises risk/invalidation coverage.
+test("playRiskLines: plain risk_note-only play reports just the risk note", () => {
+  const lines = playRiskLines(play);
+  assert.deepEqual(lines, []);
+});
+
+test("playRiskLines: earnings_risk surfaces as an explicit risk line", () => {
+  const lines = playRiskLines({ ...play, earnings_risk: true });
+  assert.ok(lines.some((l) => /earnings risk/i.test(l) && /hold window/i.test(l)));
+});
+
+test("playRiskLines: gate_promoted surfaces the promotion warning plus every gate_warnings entry", () => {
+  const lines = playRiskLines({
+    ...play,
+    gate_promoted: true,
+    gate_warnings: ["Did not clear the score floor", "Target distance exceeds the reachability band"],
+  });
+  assert.ok(lines.some((l) => /gate-promoted/i.test(l)));
+  assert.ok(lines.some((l) => l.includes("Did not clear the score floor")));
+  assert.ok(lines.some((l) => l.includes("Target distance exceeds the reachability band")));
+});
+
+test("fallback briefing's Risks & invalidation section includes earnings_risk and gate_promoted warnings when present", () => {
+  const text = buildGroundedPlayExplanationFallback({
+    play: {
+      ...play,
+      earnings_risk: true,
+      gate_promoted: true,
+      gate_warnings: ["Play did not pass the critic's quality review — use extra caution"],
+    },
+  });
+  assert.match(text, /Earnings risk: this name reports earnings within the play's hold window\./);
+  assert.match(text, /Gate-promoted:/);
+  assert.match(text, /Play did not pass the critic's quality review/);
+});
+
+test("fallback briefing omits risk_note fallback text once a real risk signal exists, but keeps a real risk_note alongside it", () => {
+  const text = buildGroundedPlayExplanationFallback({
+    play: { ...play, risk_note: "Watch the $310 gap fill", earnings_risk: true },
+  });
+  assert.match(text, /Watch the \$310 gap fill/);
+  assert.match(text, /Earnings risk:/);
+  assert.doesNotMatch(text, /no additional risk note was generated/);
 });
