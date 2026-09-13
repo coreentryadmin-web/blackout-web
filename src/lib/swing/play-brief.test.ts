@@ -938,6 +938,102 @@ test("composeSwingPlayBrief: stale Vector snapshot envelope levels must not cite
   assert.equal(postureEvidence, undefined, "stale Vector regime must not ground envelope dealer posture");
 });
 
+test("composeSwingPlayBrief: a confluence zone citing a DIFFERENT call wall than the primary displayed one is disambiguated with its own price", () => {
+  // Live repro (2026-09-13, real NRG/MU/SKHY positions, confirmed a 3-instance pattern, raised on
+  // #4076 comments 5649059880/5649697371/5649766952): the confluence engine
+  // (vector-full-state.ts) feeds confluenceZones() the FULL ranked gexWalls.callWalls list, not
+  // just [0] -- so a lower-ranked call wall can cluster with max-pain/flip/golden-pocket under the
+  // same "call-wall" kind this file's OWN primary "call wall" level (callWalls[0]) already uses,
+  // at a materially different price. Before the fix this rendered "call wall: 145" (Key levels)
+  // beside "confluence (call-wall+max-pain): 125" with no indication these are different strikes.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-13 16:00 ET",
+    sessionDate: "2026-09-13",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-09-13 16:00 ET",
+      spot: 113,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      gexWalls: { callWalls: [{ strike: 145, pct: 8 }], putWalls: [{ strike: 110, pct: 7 }] },
+      gammaFlip: 124.09,
+      maxPain: 125,
+      confluenceZones: [
+        {
+          center: 125,
+          kinds: ["call-wall", "max-pain"],
+          score: 5,
+          levels: [
+            { price: 125, kind: "call-wall" },
+            { price: 125, kind: "max-pain" },
+          ],
+        },
+      ],
+      darkPoolLevels: [],
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const labels = (brief.envelope.levels ?? []).map((l) => l.label);
+  assert.ok(labels.includes("call wall"), "primary call wall level must still render");
+  const callWallLevel = brief.envelope.levels?.find((l) => l.label === "call wall");
+  assert.equal(callWallLevel?.price, 145, "primary call wall must be the top-ranked strike, unaffected");
+  const confluenceLabel = labels.find((l) => l.startsWith("confluence"));
+  assert.equal(
+    confluenceLabel,
+    "confluence (call-wall@125+max-pain)",
+    "confluence citing a call-wall strike different from the primary must disclose the actual strike",
+  );
+});
+
+test("composeSwingPlayBrief: a confluence zone whose call wall MATCHES the primary is unaffected (no spurious @price qualifier)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-09-13 16:00 ET",
+    sessionDate: "2026-09-13",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-09-13 16:00 ET",
+      spot: 113,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      gexWalls: { callWalls: [{ strike: 145, pct: 8 }], putWalls: [{ strike: 110, pct: 7 }] },
+      gammaFlip: 124.09,
+      maxPain: 144.5,
+      confluenceZones: [
+        {
+          center: 144.75,
+          kinds: ["call-wall", "max-pain"],
+          score: 5,
+          levels: [
+            { price: 145, kind: "call-wall" },
+            { price: 144.5, kind: "max-pain" },
+          ],
+        },
+      ],
+      darkPoolLevels: [],
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const labels = (brief.envelope.levels ?? []).map((l) => l.label);
+  const confluenceLabel = labels.find((l) => l.startsWith("confluence"));
+  assert.equal(
+    confluenceLabel,
+    "confluence (call-wall+max-pain)",
+    "confluence agreeing with the primary wall keeps the original, unqualified label",
+  );
+});
+
 test("composeSwingPlayBrief: stale Vector wall must fall through to a LIVE GEX wall, not drop the level entirely (Largo C2)", () => {
   // Both sources exist for the same level, only Vector has gone stale — the live GEX-sourced
   // wall must still render. Suppressing the whole entry because Vector happened to be
