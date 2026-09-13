@@ -577,4 +577,19 @@ describe("closedCapturePct — honest post-trade attribution (2026-08-29)", () =
     );
     assert.ok(pct != null, "expected a real number, not null, once closedRealizedPct has a stop-blend fallback");
   });
+
+  it("a round-trip past breakeven into a realized loss → null, never a sign-flipped blowup ratio", () => {
+    // Reproduces a real production render: peak +1.4%, realized -56.2% → naive ratio math gives
+    // "captured -4014% of peak", a number with no honest reading. Mirrors the same guard already
+    // shipped in mfe-capture.ts's mfeCaptureOutcome and zerodte-service.ts's mfeCapturePct.
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: -56.2, peak: 1.4 })),
+      null,
+    );
+    // A small negative realized still nulls out even against a large peak.
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: -0.5, peak: 90 })),
+      null,
+    );
+  });
 });
