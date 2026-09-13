@@ -1886,6 +1886,13 @@
       "note": "PR #4927 (morning-cortex-reveto.ts skip-reason fix) CI still in_progress (~6 min in), mergeable_state:'blocked' as expected pre-completion -- nothing actionable yet, will confirm next cycle. Only new commit since last cycle was Swings-lane journal, out of scope. Kept this cycle short given a fix is already in flight.",
       "action": "monitoring_pr_ci",
       "prNumber": 4927
+    },
+    {
+      "ts": "2026-09-13T14:56:00Z",
+      "cycle": "14:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "PR #4927 confirmed merged (auto-merged 14:44 UTC, before this cycle started) -- unsubscribed, logged MARKET-OPEN-VALIDATION.md watch-list entry (cron log/meta only). Swept legacy-primary-pnl.ts + its two overlay callers (use-legacy-quotes.ts's overlayLegacyQuotes, use-legacy-option-marks.ts's overlayLegacyOptionMarks) for a suspected NaN-fallback inconsistency: legacyPrimaryPnlPct() uses bare `??` (no Number.isFinite guard) while its three sibling functions (peak/trough/legacyUsesOptionPnl) all explicitly check finiteness -- looked like a real divergence if pnlPct were ever NaN. Traced the full pipeline: pinnedLivePnlPct (marks-math.ts) is the only writer of a non-null pnlPct for Legacy and hard-guards entryPremium<=0 -> null, so pnlPct is always either null or finite in production, never NaN -- the inconsistency is real but structurally unreachable. Also confirmed call order (containers.tsx:449) is overlayLegacyOptionMarks(overlayLegacyQuotes(...)) -- quotes overlay fail-closes pnlPct/peak/trough to null (deliberate, well-commented re: the MU 2026-08-07 incident) and stores stock-only figures on stockMovePct/stockPeakPct/stockTroughPct; option-marks overlay then correctly overrides with real option-premium figures when a mark exists. No fix needed -- correctly designed, confirmed clean rather than assumed.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
