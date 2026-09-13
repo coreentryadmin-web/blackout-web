@@ -480,6 +480,14 @@ export function closedRealizedPct(play: TerminalPlay): number | null {
  * metric — omitted (null) whenever either side is unusable, rather than showing a misleading
  * number: `peak` must be a genuine positive excursion (a trade that never went positive has no
  * "available P&L" to have captured a % of), and the realized figure must be finite.
+ *
+ * `realized` must also be non-negative. Once a trade round-trips past breakeven into a realized
+ * loss, "captured X% of peak" stops being a meaningful sentence — dividing a negative realized
+ * return by a small positive peak blows up to an arbitrarily large, sign-flipped number (e.g.
+ * peak +1.4%, realized -56.2% → "captured -4014% of peak", reproduced live on a real closed AAPL
+ * swing position). `mfe-capture.ts`'s `mfeCaptureOutcome` and `zerodte-service.ts`'s
+ * `mfeCapturePct` both already withhold (null) in exactly this case — this third, independent
+ * copy of the same math never got that guard.
  */
 export function closedCapturePct(play: TerminalPlay): number | null {
   if (play.status !== "CLOSED") return null;
@@ -487,7 +495,7 @@ export function closedCapturePct(play: TerminalPlay): number | null {
     return play.mfeCapturePct;
   }
   const realized = closedRealizedPct(play);
-  if (realized == null || !Number.isFinite(realized)) return null;
+  if (realized == null || !Number.isFinite(realized) || realized < 0) return null;
   if (play.peak == null || !Number.isFinite(play.peak) || play.peak <= 0) return null;
   const pct = (realized / play.peak) * 100;
   return Number.isFinite(pct) ? pct : null;
