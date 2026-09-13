@@ -144,4 +144,39 @@ describe("evaluateSwingEntryEnterability", () => {
     assert.equal(fromStaleDiscovery.action, "dont_buy");
     assert.match(fromStaleDiscovery.reason, /expired/i);
   });
+
+  it("entry-validity window counts real trading days, not raw calendar days across a weekend (live GOOGL/ORCL repro, 2026-09-13)", () => {
+    // Flagged Thursday 2026-09-10 12:05 ET, STANDARD sub-lane (3-day window). Only Friday
+    // 2026-09-11 is a real trading day between then and Sunday evening — the old
+    // anchorMs + days*DAY_MS math counted Sat+Sun as if they were tradeable and expired this
+    // by Sunday 16:05 UTC, well before Monday's market ever reopened.
+    const anchoredAt = "2026-09-10T16:05:00.000Z"; // Thu 12:05 ET
+    const sundayEveningNowMs = Date.parse("2026-09-13T21:00:00.000Z"); // Sun ~17:00 ET
+
+    const r = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      subLane: "STANDARD",
+      anchoredAt,
+      nowMs: sundayEveningNowMs,
+    });
+    assert.notEqual(r.expired, true);
+    assert.equal(r.action, "buy");
+
+    // Sanity check the other direction: once TWO real trading days (Fri + Mon) plus the
+    // weekend have actually elapsed, a 3-day STANDARD window should still expire on schedule —
+    // this guards against overcorrecting into "never expires".
+    const tuesdayAfternoonNowMs = Date.parse("2026-09-15T20:00:00.000Z"); // Tue ~16:00 ET
+    const expired = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      subLane: "STANDARD",
+      anchoredAt,
+      nowMs: tuesdayAfternoonNowMs,
+    });
+    assert.equal(expired.expired, true);
+    assert.equal(expired.action, "dont_buy");
+  });
 });
