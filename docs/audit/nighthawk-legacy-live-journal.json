@@ -1521,6 +1521,11 @@
       "at": "2026-09-13T03:22:04Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 03:20 UTC commit confirmed Swings-lane, out of scope. PR #4897 status: CI running normally (~5 min, not stuck), mergeable_state pending, no reviews yet. Nothing actionable this cycle; will re-verify next cycle."
+    },
+    {
+      "at": "2026-09-13T03:37:36Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4897 CONFIRMED MERGED (03:30:03 UTC, merged_by coreentryadmin-web, clean squash into main as commit d9f0837e0) -- verified via pull_request_read.get. Unsubscribed from PR activity. Added item #160 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check. Other new main commits (SEO robots/sitemap cache note, Swings desk-context spot-check journal entry) confirmed out of scope. Session tally: 5 real Legacy fixes shipped+merged today -- #4888 (catalyst recency), #4890 (ticker-C option-parse), #4892 (flow-streak direction), #4894 (trend-conflict attribution), #4897 (catalyst opposite-direction sentiment) -- all verified merged/stable, all logged to MARKET-OPEN-VALIDATION.md."
     }
   ],
   "knownOpenItems": {
