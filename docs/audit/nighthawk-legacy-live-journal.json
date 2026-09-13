@@ -1605,6 +1605,12 @@
         "branch": "fix/findings-fold-and-hygiene-guard-anchor",
         "ciState": "fresh, in_progress"
       }
+    },
+    {
+      "at": "2026-09-13T06:09:43.651Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. PR #4903 confirmed merged (branch update triggered fresh CI, went green, auto-merged) -- unsubscribed. Logged MARKET-OPEN-VALIDATION.md entries #162 (PR #4899, null bid/ask false-GREEN) and #163 (PR #4903, findings-reconcile kind-tag skip) for both fixes shipped this session -- both are audit-tooling-only so their RTH checks are scoped accordingly (next healthcheck run against an illiquid OCC; next fold+reconcile cycle). Improvement-hunting: reviewed play-critic.ts (the deterministic quality-gate pass replacing the old LLM critic) -- score floor, direction-mismatch cut, tier-engine downgrade, thin-confirming-signal downgrade, and regime-headwind downgrade all use consistent nhConvictionRank arithmetic (A+=4/A=3/B=2/C=1) and apply in a coherent sequential order (each downgrade reads the already-possibly-downgraded conviction from the prior step, never stomping it). Found one harmless dead-code redundancy (countConfirmingSignals's own internal early-return duplicates its single call site's outer `??` guard, so the manual signal-counting body is unreachable via that path) -- not worth a standalone PR, pure no-op cleanup with zero behavior change. No live bug found in this file this cycle.",
+      "prStatus": null
     }
   ],
   "knownOpenItems": {
