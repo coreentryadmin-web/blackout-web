@@ -370,6 +370,40 @@ test("thesis catalyst stays quiet when news is NOT a top driver, even with real 
   assert.doesNotMatch(thesis, /Catalyst:/);
 });
 
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13): the thesis's
+// flow-streak sentence used the PLAY's own direction word (dirWord) to label a TICKER-level flow
+// streak that is measured independently (a 10-day DB rollup of net daily premium, per
+// flow-streak.ts) and can legitimately disagree with the play's chosen direction -- exactly the
+// same disagreement scorer.ts's scoreFlowQuality already guards its own scoring bonus against
+// (`flowStreak.direction === direction`). A real 4-day PUT-dominated (bearish) streak on a LONG
+// play rendered as "4-day bullish flow streak" -- fabricated corroboration, the opposite of what
+// the streak data showed.
+test("thesis flow-streak sentence uses the STREAK's own measured direction, not the play's direction (fabricated-corroboration bug)", () => {
+  const s = { ...scored("MISMATCH", "long", 55), flow_score: 30 };
+  const d = dossier("MISMATCH", 100, {
+    flow_streak: { streak_days: 4, direction: "short", net_3d: -1_000_000, net_5d: -2_000_000 },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /4-day bearish flow streak/, `expected the streak's true (bearish) direction, got: ${thesis}`);
+  assert.doesNotMatch(thesis, /4-day bullish flow streak/, `must not fabricate agreement with the LONG play's direction, got: ${thesis}`);
+});
+
+test("thesis flow-streak sentence still reads correctly when the streak direction genuinely agrees with the play", () => {
+  const s = { ...scored("AGREE", "long", 55), flow_score: 30 };
+  const d = dossier("AGREE", 100, {
+    flow_streak: { streak_days: 3, direction: "long", net_3d: 1_000_000, net_5d: 2_000_000 },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /3-day bullish flow streak/);
+});
+
+test("thesis flow-streak sentence falls back to the play's direction when a dossier carries no streak direction at all (defensive default, unchanged from before)", () => {
+  const s = { ...scored("NODIR", "long", 55), flow_score: 30 };
+  const d = dossier("NODIR", 100); // default fixture's flow_streak has no `direction` field
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /3-day bullish flow streak/);
+});
+
 test("thesis names congressional buying when smart-money is a top scoring driver", () => {
   const s = { ...scored("CONG", "long", 66), smart_money_score: 15 };
   const d = dossier("CONG", 100, {

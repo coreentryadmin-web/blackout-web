@@ -582,7 +582,21 @@ export function buildDeterministicThesis(
   if (scored.flow_score >= 20) {
     const flowParts: string[] = [];
     if (dossier?.flow_streak?.streak_days && dossier.flow_streak.streak_days >= 2) {
-      flowParts.push(`${dossier.flow_streak.streak_days}-day ${dirWord} flow streak`);
+      // The streak is a TICKER-level measurement (net premium direction over the last N trading
+      // days, from a DB rollup independent of tonight's live flow) — it can legitimately disagree
+      // with the play's own chosen direction (scorer.ts's scoreFlowQuality already guards its own
+      // scoring bonus on this exact agreement check). Labeling the streak with the PLAY's dirWord
+      // regardless of what the streak itself measured fabricated corroboration: a real 4-day
+      // PUT-dominated (bearish) streak on a LONG play rendered as "4-day bullish flow streak" —
+      // the opposite of what the streak data showed. Use the streak's own measured direction; only
+      // fall back to the play's dirWord when a dossier carries no streak direction at all.
+      const streakDirWord =
+        dossier.flow_streak.direction === "short"
+          ? "bearish"
+          : dossier.flow_streak.direction === "long"
+            ? "bullish"
+            : dirWord;
+      flowParts.push(`${dossier.flow_streak.streak_days}-day ${streakDirWord} flow streak`);
     }
     if (scored.flow_score >= 30) {
       flowParts.push("aggressive options activity");
