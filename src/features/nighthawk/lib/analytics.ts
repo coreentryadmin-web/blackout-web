@@ -435,6 +435,14 @@ export function buildRecordSegment(
   // is the exclusion-accounting/return-averaging population and still carries opens +
   // ambiguous. Both numbers ship so no consumer has to guess which one a rate came from.
   const decided = wins + losses;
+  // Same false-zero trap winRate/profitableRate above are already guarded against: a
+  // non-empty `scoreable` set can still have ZERO rows with a computable return (e.g. every
+  // row missing next_day_close) if `avgOf`'s empty-array-defaults-to-0 fallback is reached
+  // through avgReturn — reporting a fabricated "+0.00%" instead of the honest "no evidence
+  // yet" null. Gate on rows that actually resolved a return, not on scoreable.length.
+  const scoreableReturns = scoreable
+    .map(realizedReturnPct)
+    .filter((v): v is number => v != null);
   return {
     methodology,
     label: gradeMethodologyLabel(methodology),
@@ -451,7 +459,7 @@ export function buildRecordSegment(
     unfilled_not_pulled: unfilled.filter((r) => r.pulled !== true).length,
     decided,
     win_rate: decided > 0 ? wins / decided : null,
-    avg_return_pct: scoreable.length > 0 ? avgReturn(scoreable) : null,
+    avg_return_pct: scoreableReturns.length > 0 ? avgOf(scoreableReturns) : null,
     low_n: decided < LOW_N_THRESHOLD,
   };
 }

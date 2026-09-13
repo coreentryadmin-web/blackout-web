@@ -1,3 +1,23 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: record-segment avg_return_pct false-zero (member/admin track-record number — check at the open) (read this before the routine pass)
+
+### PR #4936 (merged): `buildRecordSegment`'s `avg_return_pct` could report a fabricated "+0.00%"
+
+**What was broken:** `analytics.ts`'s `buildRecordSegment` (per-methodology record slice,
+`GET /api/market/nighthawk/record`, rendered on `HawkRecordStrip.tsx`/`PlaybookBoard.tsx`) guarded
+`avg_return_pct` against a segment with ZERO scoreable rows, but not against a segment whose
+scoreable rows all lack a computable return (e.g. `next_day_close` not yet backfilled) — that case
+fell through `avgReturn`'s empty-array default and reported `0` instead of `null`, the same
+false-zero class this file already fixed on `winRate` (the 2026-08-06 "0% win rate on 68.2%
+profitable" incident) and `profitableRate`. See
+`docs/audit/findings-staging/2026-09-13-record-segment-avg-return-false-zero.md`.
+
+**Fix:** gate `avg_return_pct` on the actual list of computed returns, not on `scoreable.length`.
+
+**Check at the open:** pull `GET /api/market/nighthawk/record` for a fresh/thin methodology
+segment (or right after `regrade-legacy.ts` promotes a batch of rows) and confirm `avg_return_pct`
+reads `null` rather than `0.00` when that segment's rows are still mid-grading — the member-facing
+`HawkRecordStrip` should show the low-n/no-data state instead of a flat "+0.00%".
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: technical-summary dangling separator (dossier/LLM-prompt text quality, no member-facing UI change) (read this before the routine pass)
 
 ### PR #4929 (merged): `buildTechnicalCard`'s `summary` field left `"trend · "` dangling when `setup_tags` was empty
@@ -4816,8 +4836,14 @@ than an end-of-session patch.
 - **What changed:** `pnlSection` now appends a `Banked:` line whenever the blended line shows, naming every fired `trim_levels` rung's fraction, trigger, and (when priced) absolute premium level, e.g. "Banked: 50% @ +100% ($33.30)". Never fabricates a dollar figure for a rung with no priced `premium`.
 - **RTH check:** Pull a live Ask Largo swing play-brief for any position that has fired at least one trim rung (`GET /api/market/swing/play-brief?ticker=<T>`, look for "Blended P&L" in the Position section) and confirm the new `Banked:` line appears directly below it, its fraction/trigger/dollar figure match the position's actual exit-policy ladder, and — for a multi-tranche trim_scale position if/when one exists live — multiple fired rungs join with " · " rather than only showing the first.
 
-### 175. Ask Largo's CLOSED-play "round-tripped past breakeven" lesson gave trim-discipline advice even when the peak never got near a trim rail (product enhancement) — feat/swing-closed-round-trip-small-peak-coaching — 2026-09-13
+### 175. `closedCapturePct` rendered "Captured -4014% of peak" on a real closed swing position — fix/closed-capture-pct-round-trip — 2026-09-13
 
-- **What was broken (Night Hawk Swings standing mandate, aggressive-mode enhancement hunt):** not a defect — every number in the CLOSED-play Lessons section was correct. But the round-trip lesson always said "tighten at first trim rail next time" regardless of peak size; for a position whose peak (e.g. AAPL#36, +1.3%) never got anywhere near the swing ladder's first real trim rail (+100%), that advice implies a trim decision was missed when there was never room to make one.
+- **What was broken (found live via a `proxy-browser.cjs` post-deploy visual check of the Ask Largo Structure Ladder redesign):** `closedCapturePct()` (`play-card-lifecycle.ts`) guarded `peak <= 0` but never `realized < 0` — once a closed trade round-trips past breakeven into a loss, `(realized/peak)*100` blows up to an arbitrary sign-flipped magnitude. Live screenshot of a real closed AAPL 327.5C 5DTE (peak +1.4%, realized -56%) rendered "Captured -4014% of peak" on `ZeroDteCommandPanel.tsx`'s trade-outcome rail. This exact failure mode was already fixed TWICE elsewhere in this codebase (`mfe-capture.ts`'s `mfeCaptureOutcome`, `zerodte-service.ts`'s `mfeCapturePct`) — `closedCapturePct` was a third, independent copy of the same math that never got the guard.
+- **What changed:** added `|| realized < 0` to the existing guard, so a round-tripped loss returns `null` (the panel already omits the "Captured" line entirely when null) — consistent with both sibling implementations.
+- **RTH check:** Open any CLOSED swing/LEAPS position whose realized P&L is negative and whose peak excursion was small/positive (the "round-tripped past a tiny peak into a loss" shape) and confirm the trade-outcome rail's "Captured X% of peak" line is simply ABSENT rather than showing any negative/absurd percentage. Also spot-check a few ordinary CLOSED wins still show a sane positive "Captured" percentage (the fix only narrows the guard, doesn't touch the winning-trade path).
+
+### 176. Ask Largo's CLOSED-play "round-tripped past breakeven" lesson gave trim-discipline advice even when the peak never got near a trim rail (product enhancement) — feat/swing-closed-round-trip-small-peak-coaching — 2026-09-13
+
+- **What was broken (Night Hawk Swings standing mandate, aggressive-mode enhancement hunt):** not a defect — every number in the CLOSED-play Lessons section was correct. But the round-trip lesson always said "tighten at first trim rail next time" regardless of peak size; for a position whose peak (e.g. AAPL#36, +1.3%) never got anywhere near the swing ladder's first real trim rail (+100%), that advice implies a trim decision was missed when there was never room to make one. (Same live AAPL#36 shape — small peak, round-tripped to a loss — independently surfaced entry #175's `closedCapturePct` display bug too; two unrelated fixes from the same repro.)
 - **What changed:** `closedCoaching()` now reuses the sibling capture-branch's existing `peak > 20` threshold to pick the trailing advice clause: a real peak (>20%) still gets the unchanged trim-rail advice; a near-zero peak (<=20%) instead gets "barely cleared breakeven before reversing — a trim rail wouldn't have helped here; review entry timing or thesis strength instead."
 - **RTH check:** On the next CLOSED swing position whose peak was small (<=20%) before it round-tripped into a loss, pull its Ask Largo brief's Lessons section and confirm it shows the new entry/thesis-strength advice, not "tighten at first trim rail next time." Also spot-check a position with a large peak (>20%) that round-tripped and confirm the trim-rail advice still shows unchanged.
