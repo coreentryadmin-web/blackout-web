@@ -2126,6 +2126,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness, long-confirmed non-actionable).",
       "note": "Swept flow-streak.ts (consecutive-trading-day streak computation, audit-hardened against the Mon/Wed/Fri false-streak bug -- verified the loop's expectedDay/priorTradingDayYmd walk-back is correctly self-consistent, including the net===0 edge case on the first bucket zeroing the streak) and flow-polarity.ts (a MEASUREMENT-ONLY research probe comparing legacy call/put-premium direction vs signed-aggression direction -- explicitly documented as not affecting live Legacy scoring; already carries its own documented 45%-ask/55%-bid proportional-credit fix). Both clean, no new bugs. No open PRs.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T23:12:00Z",
+      "cycle": "23:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm), full v3 mandate",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness, long-confirmed non-actionable).",
+      "note": "Swept vol-metrics.ts and ticker-greek-flow-summary.ts. vol-metrics.ts: noted rowNumeric's shared generic 'value' fallback key is used identically by parseLatestRealizedVol/parseLatestImpliedVol/parseLatestRiskReversalSkew, all of which the file's own comment says can read the SAME UW row (realized+implied side by side) -- if a row ever lacked its named field but carried a generic 'value', two different parsers could silently return the identical number as if they were distinct metrics. Not pursued: the file's own live-verified example shows the real UW row always carries both named fields explicitly, so this fallback branch looks defensive/unreached rather than a demonstrated live bug. ticker-greek-flow-summary.ts: found a real asymmetry -- net_gamma correctly distinguishes 'absent' from 'present but zero' via a presence flag (gammaPresent), but net_delta does NOT (gfNum silently defaults to 0 with no presence tracking), so if delta data were ever entirely absent while gamma was present, the function would return a fabricated 'net_delta: 0, bias: neutral' instead of the honest omission the file documents for gamma. Traced whether this is reachable: the file's own test file's header comment confirms the REAL, live, tested UW per-ticker endpoint shape is the OPPOSITE case (delta always present via dir_delta_flow, gamma field never present at all) -- so the failure mode I found (gamma present, delta absent) has no known live data source that would trigger it. Logged as a defensive-code asymmetry worth knowing about, not shipped as a fix -- no evidence it's reachable today. No new bugs found this cycle. No open PRs.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
