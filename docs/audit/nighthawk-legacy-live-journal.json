@@ -1506,6 +1506,11 @@
       "at": "2026-09-13T02:37:11Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4894 CONFIRMED MERGED (02:29:59 UTC, merged_by coreentryadmin-web, clean squash into main as commit 60a6e3b9a) -- verified via pull_request_read.get. Unsubscribed from PR activity. Added item #159 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check. 1ea518903 (SEO robots.ts fix) confirmed out of scope. This session block now has 4 real Legacy fixes shipped+merged today: #4888 (catalyst recency), #4890 (ticker-C option-parse), #4892 (flow-streak direction mislabel), #4894 (trend-conflict driver attribution) -- all verified merged/stable, all logged to MARKET-OPEN-VALIDATION.md for next-session RTH checks."
+    },
+    {
+      "at": "2026-09-13T02:52:29Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26 in the healthcheck's own OCC-scoped check), D_pull_status correctly SKIPPED. 02:44 UTC commit confirmed Swings-lane (PR #4896), out of scope. Outcome-honesty forensics pass: live-pulled full GET /api/market/nighthawk/record (30-day window, 73 resolved) and cross-checked every bucket relationship by hand beyond what the healthcheck's own basic sum-check covers -- resolved(73)=scoreable(55)+excluded_total(18); excluded_total(18)=unfilled(6)+pulled(12)+stop_data_unavailable(0); scoreable(55)=decided(3)+opens(52); decided(3)=wins(2)+losses(1); top-level fields (total_resolved/win_rate_pct/decided_count/opens_count/unfilled_count/pulled_count) all match segments.current verbatim; debrief.failure_modes sums to exactly debrief.graded(73); by_conviction A(n=5)+B(n=50) sums to exactly scoreable(55). Every cross-reference checked out -- no discrepancy found. No new bug this cycle."
     }
   ],
   "knownOpenItems": {
