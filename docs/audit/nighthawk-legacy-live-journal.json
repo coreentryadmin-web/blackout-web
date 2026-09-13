@@ -1745,6 +1745,13 @@
       "note": "PR #4917 confirmed green (mergeable_state:'clean' after check_suite.completed) and merged (squash, sha 089067598). Unsubscribed. No MARKET-OPEN-VALIDATION.md entry -- pure documentation clarification of the already-logged #4910 finding, nothing new to validate. This closes out a 3-PR same-day thread on the resolveOutcome-vs-debrief.ts fillability question (#4910 raised it, #4913 added the N-2 design-history context, #4917 downgraded severity P2->P3 after live data + a closer read of debrief.ts's classifier) -- still genuinely OPEN/HOLD pending a product decision, but the evidence trail is now complete and the practical stakes are correctly scoped (future grading only, never a live cross-module contradiction today). Noted in passing: PR #4914 ('fix(nighthawk): Legacy marks staleness used fetch clock instead of quote clock') landed on main this cycle, authored by claude[bot] -- not this session's work, looks like a parallel session also covering Legacy scope. healthcheck:legacy's B_marks stage is GREEN post-merge so no immediate conflict, but worth keeping an eye on for the cross-session consistency issues CLAUDE.md documents (the MIRROR FAILURE sections).",
       "action": "merged_pr",
       "prNumber": 4917
+    },
+    {
+      "ts": "2026-09-13T10:10:00Z",
+      "cycle": "10:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm)",
+      "healthcheck": "GREEN, unchanged (HPE260925C00062000 @2.91, DELL260918C00570000 @18.15, resolved=26, D_pull_status SKIPPED pre-confirmation as usual)",
+      "note": "Reviewed PR #4914 (merged this session by a parallel Claude session, session_01Qtnftc16CuWyVLxR8LaMoC, Legacy-scope: legacy-option-mark-row.ts preferred fetch clock over real quote clock for staleness) -- root cause, fix, and tests are all correct and well-evidenced; no issue found, nothing to add. Also verified the old NIGHTHAWK-OVERNIGHT-DECISION.md N-6 finding (mechanical score>=55->A conviction inversion, 2026-07-14) is already fully resolved by the PR-N7 tier engine (nighthawk-tiers.ts's assignNighthawkTier, measured-band-aware, A+ gated behind a real 10-graded/80%-WR unlock) -- confirmed via FINDINGS.md grep + reading the current tier logic, not a live issue. Briefly reviewed deck-empty-hint.ts (lives under the shared nighthawk/lib/ directory but its own docstring says '0DTE deck's empty-state sentence' -- out of Legacy scope, correctly not pursued further). Clean cycle, no new bugs or enhancement ideas found beyond what's already in flight from the fillability-finding thread (closed out last cycle with PR #4917).",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
