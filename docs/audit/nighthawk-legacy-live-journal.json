@@ -1931,6 +1931,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "Both PR #4929 (technicals.ts separator fix) and PR #4930 (held finding on recap-reason cross-engine heartbeat) confirmed merged -- unsubscribed both. Swept grounding.ts (the numeric-grounding enforcement layer for Claude-generated play JSON, still actively used by deterministic-edition.ts/claude-edition.ts/play-backfill.ts). Dense but carefully reasoned file. One thing initially looked like a bug: Check 6's prose-strike-mismatch detector explicitly `continue`s (skips) any number with isDollar:true, so a prose strike written as '$185 calls' would never be checked against the grounded/chain strikes -- only a bare 'at 185 calls' form gets caught. Traced this to a defensible design choice rather than a gap: it avoids conflating a legitimate dollar-formatted price LEVEL (entry/target/stop, already covered by the separate Check 4 levels test) with an actual malformed STRIKE claim of similar magnitude -- the comment's own example ('calls at 185') is deliberately non-dollar-prefixed. No fix filed. Also skipped deck-empty-hint.ts entirely once its header confirmed it's the 0DTE desk's own empty-state copy, not Legacy's -- correctly out of scope, not reviewed further.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T16:24:00Z",
+      "cycle": "16:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Noticed unfamiliar commits in the log (GOOGL WATCH deep audit / banked-trim-detail / PR #4931, session_01ThDiEa7iE7mM1twas1e6Kg) -- verified via `git show --stat` before assuming anything: they touch docs/audit/nighthawk-swings-live-journal.json, not mine, a different lane (Swings) on a :01/:16/:31/:46 offset cadence, correctly out of scope, no action taken. Continued the sweep into dossier.ts -- spot-checked insider_buys' isRecentInsiderBuy() classifier (tx==='P' OR type includes BUY/PURCHASE OR buy_sell includes BUY, gated on a real recency window via parseTradeDate/isWithinRecentSignalWindow) -- correctly excludes insider SELLS, no miscounting bug. Quiet cycle otherwise.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
