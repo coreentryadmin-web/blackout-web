@@ -1870,6 +1870,14 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "Only new commits since last cycle were other lanes (growth/SEO daily cycle, Swings journal), out of scope. Improvement-hunting: re-checked morning-cortex-reveto.ts's skip-reason conflation (result.skipped mixing already-INVALIDATED rows with Cortex-errored/no-data rows into one array) -- this is the same low-severity issue already flagged earlier this session, not re-pursued without new evidence. Reviewed regrade-stuck.ts (the PR-N1 historical stuck-pending-row repair tool) end to end -- isStuckNighthawkOutcome's ISO-date string comparison, the bounded+idempotent regrade loop, the matched-vs-limit distinction (documented as intentional bounding, not a bug) -- all correct, matches its own extensive design documentation exactly. No new bugs found this cycle.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T14:30:00Z",
+      "cycle": "14:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Decided to fix the previously-flagged (twice now) morning-cortex-reveto.ts skip-reason conflation rather than defer a third time -- small, unambiguous, CARVE-OUT-eligible. applyCortexMorningReveto's result.skipped mixed 'already INVALIDATED by the mechanical check' (expected, benign) with 'no Cortex verdict at all' (errored fetch or absent from the caller's map -- the re-veto never actually ran for that play, a real coverage gap worth watching if it grows) into one indistinguishable bucket, propagated into the cron's own logged cortex_reveto.skipped meta. Split into skipped_already_invalidated and skipped_no_verdict, threaded both through nighthawk-morning-confirm/route.ts's cortexRevetoMeta (kept the old total skipped count for backward-compat). New test explicitly asserts the two buckets stay disjoint on a mixed batch; all 5 pre-existing tests updated. Full suite 14089/14092 pass, tsc clean. No grading/win-loss impact (diagnostic-only), but a real, provable loss-of-signal fix. Opened PR #4927.",
+      "action": "opened_pr_fix",
+      "prNumber": 4927
     }
   ],
   "knownOpenItems": {
