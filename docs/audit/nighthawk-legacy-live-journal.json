@@ -1451,6 +1451,11 @@
       "at": "2026-09-12T23:52:28Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. No new Legacy-scope commits since last push. Confirmed PR #4888's ECR push (production) deploy is running (started 23:30:22, still in_progress at this check -- normal Docker build time, not stuck). Once deployed, the catalyst-recency fix will show on the next edition rebuild; will spot-check per the MARKET-OPEN-VALIDATION.md #153 entry once one runs against a ticker carrying a real catalyst. Improvement-hunting pass: reviewed scoreFundamentalTailwind()/passesFundamentalSanity() (scorer.ts) for the same freshness-gap pattern that produced #4888 -- these read point-in-time financial RATIOS (P/E, current ratio, margins), not dated news articles, so there is no comparable 'published' timestamp to surface; confirmed the working-capital-squeeze flag seen live in DELL's thesis ('current ratio 0.91') traces correctly to this function. Not a bug, correctly scoped differently from the catalyst-flag case. No new issue found this cycle."
+    },
+    {
+      "at": "2026-09-13T00:07:23Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset, new day 2026-09-13)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 00:07 UTC commit confirmed Swings-lane (PR #4889), out of scope. PR #4888 deploy confirmed COMPLETE (ecr-push-production run 34725583936, success, finished 00:06:05Z). Re-pulled live edition to check: HPE/DELL theses still show the OLD undated 'Watch: guidance update.' text -- EXPECTED, not a regression: the edition is a persisted DB record built before this deploy, so the fix applies only to the NEXT rebuild, exactly as predicted in MARKET-OPEN-VALIDATION.md #153's RTH check. Will re-verify once a fresh edition rebuilds with a ticker carrying a real catalyst."
     }
   ],
   "knownOpenItems": {
