@@ -438,10 +438,19 @@ export function buildThesisScorecard(row: DebriefRowLike, pin: DebriefPinLike | 
     });
   } else if (reference != null && close != null && close !== reference) {
     const sessionBias = close > reference ? "LONG" : "SHORT";
+    const playDir = isLong ? "LONG" : "SHORT";
+    // Per this factor's own definition above: the regime must have SUPPORTED THIS
+    // PLAY'S direction, not merely have predicted the session correctly. A contrarian
+    // play (published against the pinned regime) that loses because the regime's own
+    // call came true is not a "confirmed" regime factor for this play — the regime
+    // never aligned with it in the first place. Without the playDir check, a SHORT
+    // published against a bullish pin that then rallied (stopping the SHORT out) read
+    // as "regime: confirmed", the opposite of what the factor claims to measure.
+    const confirmed = regimeBias === playDir && sessionBias === regimeBias;
     factors.push({
       label: "regime",
-      verdict: sessionBias === regimeBias ? "confirmed" : "refuted",
-      detail: `pinned regime read ${regimeBias === "LONG" ? "bullish" : "bearish"} (${pin.composite_regime ?? "—"}/${pin.tide_bias ?? "—"}); the session actually moved ${sessionBias === "LONG" ? "up" : "down"}`,
+      verdict: confirmed ? "confirmed" : "refuted",
+      detail: `pinned regime read ${regimeBias === "LONG" ? "bullish" : "bearish"} (${pin.composite_regime ?? "—"}/${pin.tide_bias ?? "—"})${regimeBias !== playDir ? ` — did not support the published ${row.direction} direction` : ""}; the session actually moved ${sessionBias === "LONG" ? "up" : "down"}`,
     });
   } else {
     factors.push({ label: "regime", verdict: "untestable", detail: "no close-to-close move measurable against the pinned regime" });
