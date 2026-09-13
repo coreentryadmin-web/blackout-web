@@ -1856,6 +1856,13 @@
       "note": "PR #4924 (bearish-posture.ts dead-field fix) confirmed merged -- landed via automerge.yml between cycles, no manual merge needed. Unsubscribed. Added a MARKET-OPEN-VALIDATION.md WATCH LIST entry noting this only changes an internal diagnostic log line/comment, nothing to regression-check at the open. Other commits since last cycle: #4923 confirmed merged/verified (Swings-lane, out of scope), and #4925 ('docs: write up largo-stress-nightly's persistent two-mode failure') is another lane's docs-only finding, also out of scope -- noted in passing, no action needed.",
       "action": "merged_pr",
       "prNumber": 4924
+    },
+    {
+      "ts": "2026-09-13T13:56:00Z",
+      "cycle": "13:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Only new commits since last cycle were other lanes (Largo stress-test fixes, Swings journal/heartbeat), out of scope. Improvement-hunting: reviewed hunt-builder.ts (runHuntScan) -- this appears to be a separate interactive/on-demand hunt-scan tool distinct from the Legacy evening-digest cron pipeline (edition-builder.ts), so likely adjacent to but outside my 'Legacy next-day digest board' scope; noted for awareness, not pursuing deeply. Did trace flowDteDays's hardcoded '-04:00' (EDT) offset used for both the expiry and today anchors -- initially looked like a winter/EST bug, but confirmed self-canceling: both anchors shift by the identical (wrong-in-absolute-terms but consistent) amount, so the subtracted day-count difference stays correct regardless of season. Also noted the file's HELIX-confirmation-bonus block already carries its own 'audit HIGH' fix history in comments -- previously hardened, not fresh ground. No new Legacy-scope bugs found this cycle.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
