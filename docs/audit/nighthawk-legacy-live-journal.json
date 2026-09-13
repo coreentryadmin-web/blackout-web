@@ -1878,6 +1878,14 @@
       "note": "Decided to fix the previously-flagged (twice now) morning-cortex-reveto.ts skip-reason conflation rather than defer a third time -- small, unambiguous, CARVE-OUT-eligible. applyCortexMorningReveto's result.skipped mixed 'already INVALIDATED by the mechanical check' (expected, benign) with 'no Cortex verdict at all' (errored fetch or absent from the caller's map -- the re-veto never actually ran for that play, a real coverage gap worth watching if it grows) into one indistinguishable bucket, propagated into the cron's own logged cortex_reveto.skipped meta. Split into skipped_already_invalidated and skipped_no_verdict, threaded both through nighthawk-morning-confirm/route.ts's cortexRevetoMeta (kept the old total skipped count for backward-compat). New test explicitly asserts the two buckets stay disjoint on a mixed batch; all 5 pre-existing tests updated. Full suite 14089/14092 pass, tsc clean. No grading/win-loss impact (diagnostic-only), but a real, provable loss-of-signal fix. Opened PR #4927.",
       "action": "opened_pr_fix",
       "prNumber": 4927
+    },
+    {
+      "ts": "2026-09-13T14:37:30Z",
+      "cycle": "14:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "PR #4927 (morning-cortex-reveto.ts skip-reason fix) CI still in_progress (~6 min in), mergeable_state:'blocked' as expected pre-completion -- nothing actionable yet, will confirm next cycle. Only new commit since last cycle was Swings-lane journal, out of scope. Kept this cycle short given a fix is already in flight.",
+      "action": "monitoring_pr_ci",
+      "prNumber": 4927
     }
   ],
   "knownOpenItems": {
