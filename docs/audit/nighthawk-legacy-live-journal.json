@@ -1621,6 +1621,17 @@
         "state": "open",
         "branch": "fix/debrief-regime-factor-contrarian-play"
       }
+    },
+    {
+      "at": "2026-09-13T06:37:48.188Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. No new commits since last cycle beyond own journal entries. PR #4906 CI still running (~4.5 min in, mergeable_state=blocked which is normal pre-completion), nothing actionable yet. Improvement-hunting: reviewed legacy-edition-dates.ts (activeLegacyEditionDates -- clean, well-documented, correctly covers the evening-publish-to-next-day handoff window) and session.ts's date-walking helpers (nextTradingDayEt/previousTradingDayEt/isTradingDayEt). Initially flagged the `new Date(`${ymd}T12:00:00`)` construction as a potential local-timezone-parsing bug (a timezone-less datetime string parses in the JS environment's LOCAL time, not ET), but concluded this is a deliberate, correct defensive pattern: anchoring at NOON specifically makes the exact interpreted timezone irrelevant, since noon in any real-world server timezone (UTC, ET, or any US timezone) still falls on the same ET calendar date after formatting back through formatEtDate -- the offset would have to exceed +/-12h to cross a day boundary, which no plausible server timezone does. Not a bug. No new issue found this cycle.",
+      "prStatus": {
+        "number": 4906,
+        "state": "open",
+        "branch": "fix/debrief-regime-factor-contrarian-play",
+        "ciState": "in_progress"
+      }
     }
   ],
   "knownOpenItems": {
