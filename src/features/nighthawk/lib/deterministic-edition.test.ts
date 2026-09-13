@@ -563,6 +563,40 @@ test("thesis explains flow/tech divergence when direction opposes trend (PR-N28)
   assert.match(thesis, /Flow conviction overrides bearish technicals/);
 });
 
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13): the
+// trend-conflict sentence hard-coded "Flow conviction overrides... institutional money is
+// {dirWord}" whenever the technical trend disagreed with the play's final direction, REGARDLESS
+// of whether flow had anything to do with the pick. A candidate driven entirely by news+smart-
+// money with flow_score:0 still claimed a flow signal that never existed.
+test("trend-conflict sentence names the ACTUAL top driver, not a hard-coded 'flow' claim (fabricated-attribution bug)", () => {
+  const s = {
+    ...scored("NEWSDRIVEN", "long", 45),
+    flow_score: 0,
+    tech_score: 5,
+    pos_score: 3,
+    news_score: 20,
+    smart_money_score: 15,
+  };
+  const d = dossier("NEWSDRIVEN", 100, { tech: { ...dossier("NEWSDRIVEN", 100).tech!, trend: "bearish" } } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /News conviction overrides bearish technicals/, `expected the real top driver named, got: ${thesis}`);
+  assert.doesNotMatch(thesis, /Flow conviction|institutional money/, `must not invent a flow signal that never existed, got: ${thesis}`);
+});
+
+test("trend-conflict sentence still uses the original flow wording when flow genuinely IS the top driver", () => {
+  const s = {
+    ...scored("FLOWDRIVEN", "long", 45),
+    flow_score: 30,
+    tech_score: 2,
+    pos_score: 1,
+    news_score: 1,
+    smart_money_score: 0,
+  };
+  const d = dossier("FLOWDRIVEN", 100, { tech: { ...dossier("FLOWDRIVEN", 100).tech!, trend: "bearish" } } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Flow conviction overrides bearish technicals — institutional money is bullish/);
+});
+
 test("thesis keeps a gap tag paired with its own gap-fill explanation instead of truncating it away", () => {
   // Mirrors a real live thesis (FICO, 2026-09-10): "prior day HOD break, gap up 49.89 in
   // bearish trend" for a SHORT play — a bullish-sounding break+gap-up pair with no stated
