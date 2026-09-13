@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-13T17:15:26.642Z",
+  "updated_at": "2026-09-13T18:41:38.169Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,33 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "e0ec378c5d04c563c7452e2ef675b340fc8dbd73",
+    "last_main_sha": "e9509ac347b16b734cb3b87d79e553ed163ad873",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-07T17:49:11.102Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "27ec0749-0268-4c09-aa7b-c721601736ea",
-      "summary": "Workflow wake cycle complete. Merged: #4511/#4516/#4517/#4518/#4519. Platform GREEN. Dependabot majors held."
-    },
-    {
-      "at": "2026-09-07T18:08:02.615Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-09-07T18:08:02.616Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "a5792231-bc47-45d5-a207-311f3d5fdf5d",
-      "summary": "PR #4520 merged (platform-warm holiday gate). validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Dependabot majors held (red CI). Updated handoff state post-rebase."
-    },
     {
       "at": "2026-09-07T19:58:51.559Z",
       "type": "context_sync",
@@ -1272,6 +1252,24 @@
     },
     {
       "at": "2026-09-13T17:15:26.642Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-13T18:41:37.425Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-13T18:41:37.929Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-13T18:41:38.169Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
