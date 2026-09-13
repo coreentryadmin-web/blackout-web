@@ -264,8 +264,6 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
   const pillars: ThesisPillarState[] = defs.map((d) => {
     const weight = DEFAULT_WEIGHTS[d.id];
     const status = pillarStatus(d.commit.score, d.current.score);
-    const contributionPts = Math.round(weight * d.current.score * 100);
-    const deltaPts = Math.round(weight * (d.current.score - d.commit.score) * 100);
     return {
       id: PILLAR_ID_MAP[d.id],
       label: PILLAR_LABELS[d.id],
@@ -275,12 +273,27 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
       commitLabel: d.commit.label,
       currentLabel: d.current.label,
       status,
-      contributionPts,
-      deltaPts,
+      // Placeholder — degradeFromManage below can still mutate currentScore, so the real
+      // contributionPts/deltaPts are computed AFTER it runs, not here. See that recompute pass.
+      contributionPts: 0,
+      deltaPts: 0,
     };
   });
 
   degradeFromManage(input.manageAction, pillars);
+
+  // Bug fixed 2026-09-13 (live audit): contributionPts/deltaPts used to be computed BEFORE
+  // degradeFromManage ran, so a pillar it mutated (persistence, on EXIT/STOP_OUT/TAKE_PARTIAL/
+  // EXIT_RUNNER) showed its OLD, pre-degrade point values alongside its NEW, post-degrade
+  // currentScore/status/currentLabel — e.g. a pillar labeled "lost"/"exit signal" could still
+  // display a positive contributionPts as if nothing had changed. The aggregate `health` below
+  // was never affected (it always read the post-mutation currentScore straight off `pillars`),
+  // only each pillar's OWN displayed point values were stale. Recomputed here, after the mutation,
+  // from each pillar's own (possibly-updated) currentScore/commitScore/weight.
+  for (const p of pillars) {
+    p.contributionPts = Math.round(p.weight * p.currentScore * 100);
+    p.deltaPts = Math.round(p.weight * (p.currentScore - p.commitScore) * 100);
+  }
 
   const health = Math.round(
     pillars.reduce((sum, p) => sum + p.weight * p.currentScore, 0) * 100,
