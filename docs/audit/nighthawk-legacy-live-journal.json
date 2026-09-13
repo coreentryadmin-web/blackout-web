@@ -1938,6 +1938,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "Noticed unfamiliar commits in the log (GOOGL WATCH deep audit / banked-trim-detail / PR #4931, session_01ThDiEa7iE7mM1twas1e6Kg) -- verified via `git show --stat` before assuming anything: they touch docs/audit/nighthawk-swings-live-journal.json, not mine, a different lane (Swings) on a :01/:16/:31/:46 offset cadence, correctly out of scope, no action taken. Continued the sweep into dossier.ts -- spot-checked insider_buys' isRecentInsiderBuy() classifier (tx==='P' OR type includes BUY/PURCHASE OR buy_sell includes BUY, gated on a real recency window via parseTradeDate/isWithinRecentSignalWindow) -- correctly excludes insider SELLS, no miscounting bug. Quiet cycle otherwise.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T16:39:00Z",
+      "cycle": "16:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "More Swings/Largo-lane commits in the log (#4931 trim-rung display, #4932 Structure Ladder card shell) -- confirmed out of scope by path/context, no action. Swept publish-context.ts's buildNighthawkPublishContext -- checked whether entry_context.catalysts.earnings_risk (a separate pinned audit-trail derivation, scored?.earnings_risk ?? false) could ever disagree with PlaybookPlay.earnings_risk (the field play-explainer.ts's playRiskLines now surfaces, fixed this session in #4928) -- both derive from the same `scored` object at publish time, so they stay consistent; entry_context.catalysts also carries a separate, narrower earnings_tomorrow flag (specifically next-session, vs earnings_risk's wider 'within hold window') -- confirmed intentionally two different concepts per types.ts's own comment, not a naming collision. No bug found. Quiet cycle.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
