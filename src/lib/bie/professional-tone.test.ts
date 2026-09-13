@@ -88,3 +88,17 @@ test("platform_read with named desks does not require digits when caches are col
     "Cross-product snapshot: SPX Slayer desk is live, HELIX flow tape is scanning, Night Hawk edition is recap-only off-hours, 0DTE Command board is empty, Thermal matrix is warming.";
   assert.deepEqual(honestyIssues(platform, "platform_read"), []);
 });
+
+test("self-critical and comparative questions do not require grounded numbers", () => {
+  const selfCritical =
+    "Where is the desk wrong on SPX if anything? The core limitation is that gamma shifts faster than the pinned wall can update, especially on high-vol tape moves.";
+  assert.deepEqual(honestyIssues(selfCritical), []);
+
+  const comparative =
+    "Difference between Vector and Thermal in Largo? Vector focuses on realized vol and tape momentum, while Thermal emphasizes dealer gamma positioning and mean-reversion setups.";
+  assert.deepEqual(honestyIssues(comparative), []);
+
+  const weakness =
+    "What's the weakness in this approach? The biggest issue is that overnight gaps can invalidate the entire thesis without any real-time signal to react to.";
+  assert.deepEqual(honestyIssues(weakness), []);
+});

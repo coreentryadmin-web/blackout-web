@@ -104,6 +104,14 @@ export function honestyIssues(answer: string, intent?: string | null): string[] 
   ) {
     return issues;
   }
+  // Self-critical and comparative questions legitimately may be qualitative without numerics.
+  // e.g. "where is the desk wrong", "difference between Vector and Thermal" — answering these
+  // requires architectural/feature comparison, not data lookup. Skip the no-grounded-numbers check.
+  if (
+    /\b(wrong|better|worse|difference|compare|versus|gap|limitation|weakness|strength|issue|problem|approach|strategy|design|architecture)\b/i.test(answer)
+  ) {
+    return issues;
+  }
   if (answer.length > 80 && !/\d/.test(answer) && !/\b(none|flat|inactive|scanning)\b/i.test(answer)) {
     issues.push("no-grounded-numbers");
   }
