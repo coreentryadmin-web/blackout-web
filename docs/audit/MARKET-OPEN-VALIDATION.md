@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-09-13 Meridian estimate-revision timeline: "+0%" noise entries (read this before the routine pass)
+
+### DISCOVERY-cycle live spot-check found a real-but-invisible revision polluting the feed; fixed same cycle
+
+**What was broken:** `GET /api/market/meridian/timeline`'s `estimate_revision_timeline`/
+`recent_earnings_revisions` surfaced a live entry `{"ticker":"ZS", "change_kind":"revenue",
+"revenue_delta_pct":0, "headline":"ZS Rev est revised +0%"}` — a real underlying revenue-estimate
+change (raw values differed) that rounded to `0.0` at the 1-decimal display precision on a
+~$958M revenue base still got pushed as a visible timeline entry. See
+`docs/audit/findings-staging/2026-09-13-meridian-estimate-revision-zero-delta-noise.md`.
+
+**Fix:** `diffEstimateRevisionTimeline` (`src/lib/meridian/meridian-benzinga-analytics.ts`) now
+skips emitting a revenue-revision entry when the DISPLAYED `revenue_delta_pct` rounds to exactly
+`0` — the Redis snapshot still updates unconditionally so the next diff compares against the
+latest value rather than accumulating unreported drift.
+
+**Check at next market open (Monday RTH, live earnings-estimate activity resumes):** pull
+`GET /api/market/meridian/timeline?days=14` and confirm (a) no entry in
+`estimate_revision_timeline`/`recent_earnings_revisions` has `revenue_delta_pct: 0` or a headline
+ending in `+0%`/`-0%`; (b) a genuine material revenue revision (any ticker whose estimate moves by
+a rounded-nonzero percentage that session) still appears normally — the fix should be invisible to
+real revisions and only suppress the zero-display noise case.
+
 ## WATCH LIST — 2026-09-12 `db-cleanup` nightly cron: concurrent-invocation deadlock + contentless alert (read this before the routine pass)
 
 ### Investigated a live "Cron failure: db-cleanup" alert; fixed the same day
