@@ -1501,6 +1501,11 @@
       "at": "2026-09-13T02:22:26Z",
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. No new Legacy-scope commits since last push (01:56/02:17 UTC commits confirmed Swings-lane PR #4893). PR #4894 status: CI/CodeQL running normally (~5 min), mergeable_state 'blocked' on pending checks (not a conflict), no reviews yet. Nothing actionable this cycle; will re-verify next cycle."
+    },
+    {
+      "at": "2026-09-13T02:37:11Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4894 CONFIRMED MERGED (02:29:59 UTC, merged_by coreentryadmin-web, clean squash into main as commit 60a6e3b9a) -- verified via pull_request_read.get. Unsubscribed from PR activity. Added item #159 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check. 1ea518903 (SEO robots.ts fix) confirmed out of scope. This session block now has 4 real Legacy fixes shipped+merged today: #4888 (catalyst recency), #4890 (ticker-C option-parse), #4892 (flow-streak direction mislabel), #4894 (trend-conflict driver attribution) -- all verified merged/stable, all logged to MARKET-OPEN-VALIDATION.md for next-session RTH checks."
     }
   ],
   "knownOpenItems": {
