@@ -1788,6 +1788,14 @@
       "note": "Improvement-hunting found and fixed a real bug this cycle: flow-polarity.ts's compareFlowPolarity (a measurement-only research probe, npm run probe:nighthawk-flow-polarity, quantifying Legacy call/put-direction vs signed-aggression disagreement -- explicitly gates a future scorer change per FINDINGS.md, 'no scorer change until measured rate justifies it') computed its 'bid_put_share_of_puts' statistic (the 'classic misread bucket') with a gap: rows with a finite ask_side_pct strictly between 40 and 100 (e.g. 45, genuinely 55% bid-side) hit neither the <=40 branch nor the !Number.isFinite fallback, silently contributing ZERO instead of their real proportional share -- not caught by tradeSide()'s own >=60 'A' threshold either, which leaves (40,60) unclassified. Inconsistent with the file's own documented 'share' semantics and with signedAggressionDirection's already-continuous askPct treatment one function up. RED->GREEN proven (new test: ask_side_pct=45 -> must yield 0.55, failed at 0 pre-fix), tsc clean, full suite 14080/14083 pass. No live product impact (measurement-only), but the exact statistic a future real decision might cite. Opened PR #4921, staged finding filed, discarded the usual incidental .blackout-agent/data-x-intel file noise before staging.",
       "action": "opened_pr_fix",
       "prNumber": 4921
+    },
+    {
+      "ts": "2026-09-13T11:37:30Z",
+      "cycle": "11:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "PR #4921 (flow-polarity.ts bid-put-share fix) CI still in_progress (~5 min in), mergeable_state:'blocked' as expected pre-completion -- nothing actionable yet, will confirm next cycle. Only new commit since last cycle was Swings-lane journal, out of scope. Kept this cycle short given a real fix is already in flight and the standing context-discipline guidance -- no additional fresh-file review forced this cycle.",
+      "action": "monitoring_pr_ci",
+      "prNumber": 4921
     }
   ],
   "knownOpenItems": {
