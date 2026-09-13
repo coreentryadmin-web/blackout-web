@@ -1471,6 +1471,11 @@
       "at": "2026-09-13T00:51:56Z",
       "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4890 CONFIRMED MERGED (00:44:50 UTC, merged_by coreentryadmin-web, clean squash into main as commit d8a5540f2) -- verified via pull_request_read.get, not trusted from a status comment. Unsubscribed from PR activity. Added item #155 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check (if/when a ticker-C PUT play is ever picked, confirm correct put-side grounding + correct SHORT Discord direction). 00:49 UTC commit confirmed Swings-lane, out of scope."
+    },
+    {
+      "at": "2026-09-13T01:07:10Z",
+      "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. No new Legacy-scope commits since last push. Improvement-hunting pass: noticed a live-looking discrepancy -- HPE score=46/conviction='A' and DELL score=41/conviction='A', but conviction.ts's convictionFromScore(46) would return 'B' (score>=40 threshold), not 'A'. Traced all 3 call sites of convictionFromScore (adapters.ts, play-card-display.ts, terminal-display.ts) -- all three are explicitly SWING/LEAPS-only display fallbacks (used only when play.tierLabel is empty, gated on play.horizon==='SWING'||'LEAPS', or living inside a Swing-specific mapping function with preEntrySwingMgmt/watchEntryExpired/subLane fields). Legacy's own conviction always comes from the correct assignNighthawkTier() path (factoring in confirming_signals + earningsRisk, not raw score alone) and convictionFromScore never runs for Legacy plays. Confirmed NOT a bug after full trace -- another false lead correctly ruled out before escalating."
     }
   ],
   "knownOpenItems": {
