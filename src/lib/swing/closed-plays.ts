@@ -135,11 +135,29 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     if (!src || seen.has(src.positionId)) continue;
     seen.add(src.positionId);
     const compositePnl = record.composite.worstLegPnlPct;
+    // BUG FIX (2026-09-13, Ask Largo standing mandate, live repro NFLX#12/WULF#13/IGV#16/WULF#17/
+    // PYPL#24): `record.composite.outcome` is deliberately conservative — `isSwingWin` requires
+    // `pnl > 0`, so a leg that closed at EXACTLY its entry price (pnl === 0, a true flat/breakeven
+    // close, not a rounding artifact) makes `allLegsWon` false, which the composite unconditionally
+    // reports as `"loss"` (record.ts's own "preserved-loss invariant" — a leg that didn't WIN is
+    // treated as not-won for win-rate purposes, a defensible, intentionally strict scoring choice
+    // this fix does NOT change). But this function then mapped `"loss"` straight to the closedReason
+    // LABEL `"stopped"` — which is not conservative, it's factually wrong: "stopped" means a
+    // stop-loss actually fired, and a position that closed unchanged from entry never triggered one.
+    // All five live examples confirmed `entryPremium === peakPremium === troughPremium` (the premium
+    // never moved even a cent across the whole holding period) yet displayed "stopped" — misleading
+    // members reading trade history, and silently corrupting win-rate/track-record math that reads
+    // `closedReason` as a stop-vs-target signal. The sibling single-leg mapper (`closedReasonFromRow`
+    // just above) already gets this right with a real three-way split (target/stopped/flat) — this
+    // brings the chain-composite path in line with it, changing ONLY the label text for the exact-0
+    // case, not the win/loss scoring semantics `record.ts` documents as intentional.
     const compositeReason =
       record.composite.outcome === "win"
         ? "target"
         : record.composite.outcome === "loss"
-          ? "stopped"
+          ? compositePnl === 0
+            ? "flat"
+            : "stopped"
           : src.closedReason;
     out.push({
       ...src,

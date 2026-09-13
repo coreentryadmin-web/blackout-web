@@ -113,4 +113,24 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.exitPnlPct, -20, "worst-leg composite, not terminal-leg +15");
     assert.equal(out[0]!.closedReason, "stopped");
   });
+
+  // BUG FIX (2026-09-13, live repro NFLX#12/WULF#13/IGV#16/WULF#17/PYPL#24): a single-leg chain
+  // that closes at EXACTLY its entry price (realized_pnl_pct === 0, not a rounding artifact — the
+  // live rows all carried entry_premium === peak_premium === trough_premium, the premium never
+  // moved a cent) reported closedReason "stopped", implying a stop-loss actively fired. It didn't
+  // — `isSwingWin(0)` is false (correctly, `pnl > 0` is a strict win bar) so the composite outcome
+  // is "loss" by the file's own preserved-loss design, but the LABEL for that case must say "flat"
+  // (matching what the sibling single-leg closedReasonFromRow already does), not "stopped".
+  it("labels a chain that closed EXACTLY flat (0% P&L) as 'flat', never 'stopped' — nothing actually stopped out", () => {
+    const flat = row({ id: 20, roll_seq: 0, realized_pnl_pct: 0, entry_premium: 1.4, peak_premium: 1.4, trough_premium: 1.4 });
+    const out = closedDeckSourcesFromChains([[flat]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, 0);
+    assert.equal(out[0]!.closedReason, "flat");
+  });
+
+  it("still labels a real, non-zero loss 'stopped' — the flat fix does not weaken the loss label", () => {
+    const out = closedDeckSourcesFromChains([[row({ id: 21, roll_seq: 0, realized_pnl_pct: -0.01 })]]);
+    assert.equal(out[0]!.closedReason, "stopped");
+  });
 });
