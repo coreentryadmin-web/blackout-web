@@ -388,7 +388,16 @@ function pickCatalystHeadline(dossier: TickerDossier | undefined, isLong: boolea
   const sentiment = dossier?.polygon_sentiment ?? [];
   const headlines = dossier?.news_headlines ?? [];
   const matching = sentiment.find((s) => s.toLowerCase().startsWith(`${wantSentiment}:`));
-  const raw = matching ?? sentiment[0] ?? headlines[0];
+  // This section only renders when news is a top scoring driver (topDrivers gate below), but
+  // scoreNewsCatalyst can reach that threshold from plain-text keyword hits (upgrade/beat/etc.)
+  // in `news_headlines` alone, independent of what's actually tagged in `polygon_sentiment` --
+  // the two arrays are fed from the same fetch but scored differently. Falling back to
+  // `sentiment[0]` regardless of its own tag reproduced a real case: a LONG pick (bullish via a
+  // "beat" keyword in a plain headline) quoted a "negative: guidance disappoints analysts"
+  // sentiment entry as its "Catalyst:" line -- a bearish-toned quote presented as supporting
+  // evidence for a bullish thesis. Never fall back to a sentiment entry of the OPPOSITE
+  // direction; prefer a plain (untagged) headline instead, or omit the line entirely.
+  const raw = matching ?? headlines[0];
   if (!raw) return null;
   // Strip a leading "positive:"/"negative:"/"neutral:" sentiment tag -- the thesis already
   // states direction via dirWord, so repeating it as a label would be redundant.
