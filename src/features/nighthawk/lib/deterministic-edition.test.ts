@@ -354,6 +354,27 @@ test("thesis catalyst falls back to a plain headline when no polygon_sentiment e
   assert.match(thesis, /Catalyst: "Analyst downgrades HDLN on weak guidance"\./);
 });
 
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13):
+// pickCatalystHeadline fell back to `sentiment[0]` regardless of ITS OWN tag when no
+// direction-matching entry existed. scoreNewsCatalyst can make news a top driver purely from a
+// plain-text keyword hit (upgrade/beat/etc.) in `news_headlines`, entirely independent of what's
+// tagged in `polygon_sentiment` -- so a LONG pick could quote a "negative:"-tagged sentiment
+// entry as its "Catalyst:" line, presenting bearish-toned evidence as support for a bullish
+// thesis.
+test("thesis catalyst never quotes a sentiment entry of the OPPOSITE direction (fabricated-catalyst-agreement bug)", () => {
+  const s = { ...scored("OPPOSITE", "long", 45), news_score: 3, flow_score: 2, tech_score: 2, pos_score: 1, smart_money_score: 0 };
+  const d = dossier("OPPOSITE", 100, {
+    // No positive-tagged entry exists at all -- only negative ones.
+    polygon_sentiment: ["negative: guidance disappoints analysts", "negative: margin compression continues"],
+    news_headlines: ["Company reports strong beat on quarterly earnings"],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /news/, "news must actually be the top driver for this fixture to test anything");
+  assert.match(thesis, /Catalyst: "Company reports strong beat on quarterly earnings"\./,
+    "must fall back to the plain headline that actually drove the score, not an opposite-direction sentiment tag");
+  assert.doesNotMatch(thesis, /disappoints|margin compression/, `must never quote bearish sentiment as a bullish catalyst, got: ${thesis}`);
+});
+
 test("thesis catalyst is omitted (never fabricated) when news is a top driver but no headline/sentiment data exists", () => {
   const s = { ...scored("EMPTY", "long", 66), news_score: 15 };
   const d = dossier("EMPTY", 100, { polygon_sentiment: [], news_headlines: [] } as any);
