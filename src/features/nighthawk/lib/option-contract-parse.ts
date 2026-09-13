@@ -20,7 +20,15 @@ export function parseOptionsContract(optionsPlay: string): ParsedOptionsContract
   const text = optionsPlay.trim();
   if (!text || text === "—") return null;
 
-  const sideMatch = text.match(/\b(CALL|PUT|C|P)\b/i);
+  // Prefer a full "CALL"/"PUT" word match before ever considering the bare "C"/"P" abbreviation.
+  // A single combined alternation (CALL|PUT|C|P) tries alternatives in listed order but at the
+  // FIRST position where any of them can match — for a real single-letter ticker like Citigroup
+  // ("C"), the bare "C" alternative matched the TICKER itself (leftmost) before the regex engine
+  // ever reached the real "PUT" token later in the string, e.g. "C $62 PUT @ $2.91" misparsed as
+  // a CALL. Trying the unambiguous full-word pattern first, and only falling back to the bare
+  // abbreviation when no full word exists, means an explicit "PUT"/"CALL" anywhere in the string
+  // always wins over a same-letter ticker symbol.
+  const sideMatch = text.match(/\b(CALL|PUT)\b/i) ?? text.match(/\b(C|P)\b/i);
   const sideRaw = sideMatch?.[1]?.toUpperCase() ?? "";
   const side: "call" | "put" | null =
     sideRaw.startsWith("C") ? "call" : sideRaw.startsWith("P") ? "put" : null;
