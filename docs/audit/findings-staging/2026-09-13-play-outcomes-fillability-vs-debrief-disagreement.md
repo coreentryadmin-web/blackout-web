@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Status** | OPEN — holding per the standing escalation policy ("ambiguous/live-picks-logic → report, hold"). This changes what counts as a win/loss in the live member-facing track record; it should not be resolved by picking a side without operator/product sign-off. **Updated same day, later cycle:** found the deliberate design history (N-2, `grade-methodology.ts`) behind `resolveOutcome`'s behavior — see the Update section below. Still OPEN; the evidence trail is fuller, the decision is still not made. |
+| **Status** | OPEN — holding per the standing escalation policy ("ambiguous/live-picks-logic → report, hold"). This changes what counts as a win/loss in the live member-facing track record; it should not be resolved by picking a side without operator/product sign-off. **Updated twice, same day:** (1) found the deliberate design history (N-2, `grade-methodology.ts`) behind `resolveOutcome`'s behavior; (2) got live data + found `debrief.ts` always defers to `resolveOutcome`'s persisted outcome for every aggregate/failure-mode tag, so the two never actually disagree on a LIVE stat today — see the Update sections below. Still OPEN; evidence trail is fuller, severity is narrower than originally scored, decision is still not made. |
 | **Surface** | `resolveOutcome` (`src/features/nighthawk/lib/play-outcomes.ts`, the LIVE mechanical outcome grader run by `resolvePendingNighthawkOutcomes`) vs. `computeFill` (`src/features/nighthawk/lib/debrief.ts`, the per-play post-mortem's own fill check) |
-| **Severity** | P2 — a real, reproducible disagreement between two graders that read the SAME row fields to answer what should be the SAME question ("was this play ever fillable"), with opposite answers on the same real historical shape. Affects future grading of the exact class of play CLAUDE.md's own decision doc calls out as a real, recurring pattern (a large overnight gap through the entire published band). |
+| **Severity** | P3 (downgraded from P2 — see Update 2) — a real, reproducible logic disagreement between two functions that read the same row fields, but `debrief.ts` never lets `computeFill` override `resolveOutcome`'s persisted verdict in any live aggregate, so this is not currently a live cross-module contradiction — only a latent inconsistency that affects FUTURE grading of a real, recurring shape (a large overnight gap through the entire published band; 23 currently-unfilled non-pulled rows in the live 90-day record). |
 
 ## The two implementations, side by side
 
@@ -128,3 +128,48 @@ being excluded, that is independent evidence for tightening `resolveOutcome` (or
 computeFill to gain a matching band-integrity mode) beyond what N-2 alone shows. No gate/grading
 logic changed by this update — still OPEN, still holding for a product decision, now with the fuller
 evidence trail in one place.
+
+## Update 2 (same day, next cycle): the 401 was a self-inflicted usage bug; got live data — and a real severity downgrade
+
+The previous update's "could not obtain authenticated access" was this session's own mistake, not a
+real access limit: `fetchAuditJson(base, path)` (`scripts/audit/lib/audit-auth-fetch.mjs`) takes
+`base` and `path` as **two separate arguments**; the prior attempt passed one concatenated URL as
+`base` with `path` undefined, which 401'd. Corrected, it authenticates cleanly (`via: "cron"`).
+
+**Live `GET /api/market/nighthawk/record?days=90` (2026-09-13):** current segment (`v2_fillability`,
+resolved 141, opens 86) — `unfilled: 25`, `pulled: 27`, **`unfilled_not_pulled: 23`**, decided 5
+(2 wins / 3 losses), win rate 40% (CI 11.8–76.9%, genuinely low-n). This confirms the exclusion
+population is real and non-trivial today, not just a 2026-07-14 artifact — roughly a quarter of all
+non-open resolved rows are excluded as unfilled.
+
+**A more important correction, from reading `debrief.ts`'s failure-mode classifier itself
+(`debriefPlay`, precedence list at line ~487):** its PRIMARY per-play tag is gated on the
+already-**persisted** `row.outcome` — step 2 of the precedence is literally `outcome unfilled →
+band_detached | unfilled_never_traded_back`. `computeFill`'s own `filled`/`detail` fields are used
+only for descriptive nuance WITHIN that branch (distinguishing "near-miss" from "structurally
+detached" via distance-from-gate-threshold, and for MFE/MAE excursion narrative) — **never to
+re-decide or override whether the row counts as a win, loss, or unfilled.** Every aggregate stat in
+`debrief_report` (`failure_modes`, `improvement_queue`, etc.) and the whole `record` win-rate
+computation defer to `resolveOutcome`'s stored `outcome` as the single source of truth.
+
+**What this changes:** the original finding's severity (P2) assumed two competing graders could
+produce two different live answers about the SAME play. They can't, today — `computeFill` never gets
+a chance to override `resolveOutcome`'s persisted verdict anywhere in the product. The AMD 2026-07-07
+row itself proves this precisely: its stored `outcome` is `"stop"` (graded before/under different
+logic), so `debriefPlay` classifies it via the `outcome === "stop"` branch, matching the real record —
+`computeFill.filled === true` on that row is consistent color, not a contradiction anyone sees.
+**The live risk is narrower than originally scored: it is entirely about what `resolveOutcome`
+produces for a FUTURE full-band-gap-through row (excluding it from win/loss), not about `debrief.ts`
+silently disagreeing with a live stat anywhere today.** Downgrading blast-radius language
+accordingly; the underlying product question (is blanket "unfilled" exclusion, including gap-through
+LOSSES, the right rule) is unchanged and still needs the same decision — this only narrows WHERE the
+consequence of that decision is felt (future grading only, not a live cross-module inconsistency).
+
+Live population for the recommended follow-up measurement (replay each of the 23 currently
+`unfilled_not_pulled` rows through `computeFill` and split win/loss-shaped vs. genuinely never-close):
+`debrief_report.summary.failure_modes` (different window/report, so not a direct subtraction) shows
+`unfilled_never_traded_back: 16` of 141 debriefed rows — still requires a per-row replay to answer
+the loss-exclusion question precisely; the admin analytics/debrief-aggregate routes only expose
+aggregates, not a raw per-play list, so this remains a follow-up needing a small dedicated script
+(same shape as this toolkit's other `*-ab.mjs` measurement tools), not something answerable from the
+existing endpoints alone. No gate/grading logic changed by this update — still OPEN/HOLD.
