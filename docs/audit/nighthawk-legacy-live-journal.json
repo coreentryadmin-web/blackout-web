@@ -1804,6 +1804,13 @@
       "note": "PR #4921 (flow-polarity.ts bid-put-share fix) confirmed merged -- landed via automerge.yml (merged_by: coreentryadmin-web) between cycles, no manual merge action needed this time. Unsubscribed. Added a MARKET-OPEN-VALIDATION.md WATCH LIST entry noting this is a pure research-tool correctness fix with no live UI/board/scoring surface -- nothing to regression-check at the open. This closes out the fix cleanly: found, RED->GREEN proven, merged, documented. Other commits since last cycle (#4919 tooling fix, #4920 heartbeat) are Swings-lane/shared-infra, out of scope.",
       "action": "merged_pr",
       "prNumber": 4921
+    },
+    {
+      "ts": "2026-09-13T12:12:00Z",
+      "cycle": "12:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Only new commits since last cycle were Swings-lane, out of scope. Improvement-hunting: reviewed legacy-board-detail-copy.ts (legacyWhyPickedSummary/legacyMorningHeadline/legacyTopFactors/legacyScorecardLine/legacyMarkAgeLabel) end to end -- all correct, no bugs, sensible fallback chains and honest-absence handling. Also reviewed legacy-board-calendar.ts's legacyEditionSessionDates (already carries a documented prior fix -- anchored on the NEXT trading day, not wall-clock now, matching the edition API's own editionFor). Traced its day-by-day walk-back for a DST edge case (fixed 24h ms subtraction from a noon-ET anchor could land at 11am/1pm ET on a transition day) -- confirmed safe since etSessionDate maps any daytime timestamp to the correct calendar date regardless of the +/-1hr shift, and noon was deliberately chosen as a midnight-boundary safety margin (same defensive pattern used elsewhere in this codebase per session.ts). No new bugs found this cycle.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
