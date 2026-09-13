@@ -933,6 +933,28 @@ test("lessonsSection: omits the round-trip sentence when the Trade manager read 
   assert.match(suppressed!.body, /pullback continuation/i);
 });
 
+// Live repro 2026-09-13 (EWZ:29, CLOSED, real production play-brief): lessonsSection's own archetype
+// tag used the same underscore-replace-only transform already fixed in play-brief.ts's Verdict line
+// and play-brief-intel.ts's whyThisSetupSection (PR #4896) -- a third, missed call site. The SAME
+// brief's Verdict/Why-this-setup lines correctly showed "Pullback continuation" (the canonical
+// ARCHETYPE_META label) while this section's own tag showed the raw "PULLBACK CONTINUATION" --
+// underscores replaced with spaces but never cased, and never routed through archetypeLabelFromRaw.
+test("lessonsSection: Archetype tag uses the canonical humanized label, not the underscore-replace-only raw enum", () => {
+  const section = lessonsSection(
+    fixturePlay({
+      status: "CLOSED",
+      peak: 447.4,
+      exitPnlPct: 438.8,
+      mfeCapturePct: 98.1,
+      closedReason: "target",
+      archetype: "PULLBACK_CONTINUATION",
+    }),
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Archetype \*\*Pullback continuation\*\*/);
+  assert.doesNotMatch(section!.body, /PULLBACK CONTINUATION|PULLBACK_CONTINUATION/);
+});
+
 function fixtureVec(overrides: Partial<VectorFullState> = {}): VectorFullState {
   return {
     spot: 100,

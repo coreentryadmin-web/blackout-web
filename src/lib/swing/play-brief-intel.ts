@@ -897,8 +897,9 @@ export function lessonsSection(play: TerminalPlay, roundTripAlreadyNoted?: boole
       lines.push("Thesis break exit — pillar degradation was the signal; review which pillar failed first.");
     }
   }
-  if (play.archetype) {
-    lines.push(`Archetype **${play.archetype.replace(/_/g, " ")}** — tag this outcome in your playbook review.`);
+  const lessonsArchetypeLabel = archetypeLabelFromRaw(play.archetype);
+  if (lessonsArchetypeLabel) {
+    lines.push(`Archetype **${lessonsArchetypeLabel}** — tag this outcome in your playbook review.`);
   }
   if (play.execPnlPct != null && play.exitPnlPct != null && Math.abs(play.execPnlPct - play.exitPnlPct) > 5) {
     lines.push(
