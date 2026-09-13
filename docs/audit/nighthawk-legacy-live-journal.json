@@ -1714,6 +1714,14 @@
       "note": "Improvement-hunting: reviewed edition-quality.ts (global-strongest selection policy, filterPlaysByMerit/effectiveMeritScore) -- clean, matches its own documented product rules, no issue. Then read grade-methodology.ts and it led directly back to PR #4910's fillability-disagreement finding: grade-methodology.ts + docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md's N-2 section (PR-N2, 2026-07-14) show resolveOutcome's full-band-intersection ('plan-integrity') behavior was a DELIBERATE, evidence-backed fix for a measured phantom-win pattern (open-beyond-band plays graded 6T/1S +5.11% avg -- 100% of the record's wins -- vs genuinely fillable plays 0T/4S -1.39%). Neither doc was checked when #4910's finding was written. This is real, valuable new context that deepens rather than closes the question: N-2's evidence is one-directional (gap-through-to-a-WIN); it never measured whether blanket-excluding every full-band gap-through row ALSO excludes real gap-through LOSSES (like #4910's own AMD reproduction, historically graded 'stop') from the win/loss denominator -- which would inflate, not protect, the reported win rate. N-2's own historical numbers (17 of 26 plays graded 'unfilled' as of 2026-07-14) suggest this could be a real population worth measuring, not just theoretical. Tried to get a current live breakdown via GET /api/market/nighthawk/record through audit-auth-fetch.mjs -- got 401, could not re-measure live this cycle. Opened PR #4913 (docs-only, updates the existing finding file with this evidence trail + a concrete follow-up measurement recommendation) rather than letting this context sit only in my own reasoning -- same standing-escalation posture as #4910, still OPEN/HOLD, no code changed, no verdict picked.",
       "action": "opened_pr_hold",
       "prNumber": 4913
+    },
+    {
+      "ts": "2026-09-13T09:22:30Z",
+      "cycle": "09:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS)",
+      "healthcheck": "GREEN, unchanged (HPE260925C00062000 @2.91, DELL260918C00570000 @18.15, resolved=26, D_pull_status SKIPPED pre-confirmation as usual)",
+      "note": "PR #4913 (N-2 context addendum to the #4910 finding): CodeQL already green this time (no repeat of the prior upload flake), 'verify' still in_progress ~10 min after open -- nothing actionable yet, will confirm next cycle. No new improvement-hunting depth added this cycle beyond what already went into #4913 -- kept this cycle short given the standing 3-instance noise/context-discipline guidance and the fact that a real, substantive finding (the N-2 asymmetric-exclusion question) is already in flight and doesn't need re-deriving.",
+      "action": "monitoring_pr_ci",
+      "prNumber": 4913
     }
   ],
   "knownOpenItems": {
