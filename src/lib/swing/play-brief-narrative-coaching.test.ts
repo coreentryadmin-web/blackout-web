@@ -776,6 +776,49 @@ test("closedCoaching: a round-trip past breakeven never renders a nonsensical ne
   assert.match(line!, /round-tripped past breakeven/i);
 });
 
+test("closedCoaching: a round-trip with a real peak (>20%) gets trim-discipline advice", () => {
+  // A meaningful favorable excursion existed (well past any plausible trim rail) before the
+  // round-trip — the miss really was a trim-timing/discipline problem, so that advice fits.
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 129.7,
+      exitPnlPct: -10,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /\*\*Round-tripped past breakeven\*\* — was up \*\*\+129\.7%\*\* at peak, closed at \*\*-10\.0%\*\*; tighten at first trim rail next time\./);
+});
+
+test("closedCoaching: a round-trip with a near-zero peak (<=20%) gets entry/thesis advice instead of trim-rail advice", () => {
+  // Live repro AAPL:36 (2026-09-13, Ask Largo standing mandate): peak only +1.3% -- nowhere near
+  // any real trim rail (SWING_SCALE_OUT_POLICY fires at +100%) -- yet the generic "tighten at
+  // first trim rail next time" advice fired anyway, implying a trim decision was missed when
+  // there was never enough room to make one. The sibling MFE-capture branch two lines below
+  // already gates similar advice on `play.peak > 20` (`else if (capture < 35 && play.peak > 20)`)
+  // -- this reuses that exact same threshold for round_trip instead of inventing a new one, and
+  // swaps the trailing clause only; the leading "**Round-tripped past breakeven**" phrase and the
+  // peak/exit figures are unchanged, so this stays compatible with the existing prefix-matching
+  // tests above.
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 1.3,
+      exitPnlPct: -56.2,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(line);
+  assert.match(
+    line!,
+    /\*\*Round-tripped past breakeven\*\* — was up \*\*\+1\.3%\*\* at peak, closed at \*\*-56\.2%\*\*; barely cleared breakeven before reversing — a trim rail wouldn't have helped here; review entry timing or thesis strength instead\./,
+  );
+  assert.doesNotMatch(line!, /tighten at first trim rail next time/);
+});
+
 // Regression for the run-on "Trade manager read" bullet (live repro AAPL:36, 2026-09-10, found
 // during the standing Ask Largo deep-dive): closedCoaching joined its 2-3 distinct post-mortem
 // points (outcome, MFE-capture/round-trip verdict, exit-reason lesson) with a bare space, and
