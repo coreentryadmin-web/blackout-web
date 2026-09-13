@@ -244,6 +244,67 @@ test("diffBriefSnapshots: detects trim rail fires", () => {
   assert.ok(lines.some((l) => l.includes("Trim rail")));
 });
 
+test("diffBriefSnapshots: option mark shift narrates built/slipped, not a bare delta", () => {
+  const up = diffBriefSnapshots(
+    snapshotFromBrief(env(), play({ mark: 5.9 })),
+    snapshotFromBrief(env(), play({ mark: 6.18 })),
+  );
+  const upLine = up.find((l) => l.includes("Option mark"));
+  assert.ok(upLine, `expected an option-mark line, got: ${JSON.stringify(up)}`);
+  assert.match(upLine!, /\*\*Option mark built\*\*/);
+  assert.match(upLine!, /\$5\.90 → \$6\.18/);
+
+  const down = diffBriefSnapshots(
+    snapshotFromBrief(env(), play({ mark: 6.18 })),
+    snapshotFromBrief(env(), play({ mark: 5.9 })),
+  );
+  const downLine = down.find((l) => l.includes("Option mark"));
+  assert.match(downLine!, /\*\*Option mark slipped\*\*/);
+});
+
+test("diffBriefSnapshots: a structural wall closing in on spot reads as compressing room, not a bare delta", () => {
+  const prev = snapshotFromBrief(env(), play(), { spot: 100, callWall: 110 });
+  const next = snapshotFromBrief(env(), play(), { spot: 100, callWall: 104 });
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Call wall"));
+  assert.ok(line, `expected a call-wall line, got: ${JSON.stringify(lines)}`);
+  assert.match(line!, /\*\*Call wall closing in\*\*/);
+  assert.match(line!, /\$110\.00 → \$104\.00/);
+  assert.match(line!, /now \$4\.00 away \(was \$10\.00\)/);
+  assert.match(line!, /less room before it matters/);
+});
+
+test("diffBriefSnapshots: a structural wall receding from spot reads as more room, not a bare delta", () => {
+  const prev = snapshotFromBrief(env(), play(), { spot: 100, putWall: 95 });
+  const next = snapshotFromBrief(env(), play(), { spot: 100, putWall: 88 });
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Put wall"));
+  assert.ok(line, `expected a put-wall line, got: ${JSON.stringify(lines)}`);
+  assert.match(line!, /\*\*Put wall receding\*\*/);
+  assert.match(line!, /now \$12\.00 away \(was \$5\.00\)/);
+  assert.match(line!, /more room before it matters/);
+});
+
+test("diffBriefSnapshots: a wall move falls back to a plain delta when spot is unavailable", () => {
+  const prev = snapshotFromBrief(env(), play(), { gammaFlip: 99 });
+  const next = snapshotFromBrief(env(), play(), { gammaFlip: 101 });
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Gamma flip"));
+  assert.ok(line, `expected a gamma-flip line, got: ${JSON.stringify(lines)}`);
+  assert.equal(line, "Gamma flip moved 99 → 101 (+2.0)");
+});
+
+test("diffBriefSnapshots: a wall move falls back to a plain delta when the room-to-spot is actually unchanged", () => {
+  // Spot and the wall both drift up by the same amount — the level moved, but the cushion to
+  // spot never actually changed, so the room-framed read would be misleading; must fall back.
+  const prev = snapshotFromBrief(env(), play(), { spot: 100, callWall: 110 });
+  const next = snapshotFromBrief(env(), play(), { spot: 103, callWall: 113 });
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Call wall"));
+  assert.ok(line, `expected a call-wall line, got: ${JSON.stringify(lines)}`);
+  assert.equal(line, "Call wall moved 110 → 113 (+3.0)");
+});
+
 test("envelopeWithNarrativePulse: weaves pulse into Trade manager read", () => {
   const base = {
     ...env(),

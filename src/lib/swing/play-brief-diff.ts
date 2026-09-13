@@ -55,6 +55,40 @@ function narrateSpotShift(prev: number, next: number): string {
   return `**Spot drifted ${dir}** — **$${next.toFixed(2)}** (${d >= 0 ? "+" : ""}${d.toFixed(2)} vs prior read)`;
 }
 
+function narrateMarkShift(prev: number, next: number): string {
+  const d = next - prev;
+  const tone = d >= 0 ? "built" : "slipped";
+  return `**Option mark ${tone}** — $${prev.toFixed(2)} → $${next.toFixed(2)} (${d >= 0 ? "+" : ""}${d.toFixed(2)})`;
+}
+
+/** A structural GEX level (call wall/put wall/gamma flip) moving is a distinct fact from spot
+ *  moving — dealers' own hedging structure shifted, not just price. Framed as room-to-spot
+ *  compressing/receding (using each snapshot's OWN contemporaneous spot, so the read is honest
+ *  about whether the wall moving actually changed the cushion, not just that a number changed)
+ *  rather than a bare "$X → $Y" a reader has to interpret themselves. Deliberately does NOT judge
+ *  favorable/adverse by direction here (unlike `adverseSpotDrift`, which already owns that
+ *  judgment for spot itself moving toward a wall) — a wall's own drift affects both a LONG and a
+ *  SHORT reading the same level, so "less/more room before it matters" is the honest, direction-
+ *  neutral fact; falls back to the plain delta when spot is unavailable on either side, or when
+ *  spot moved together with the level and left the room itself unchanged. */
+function narrateStructuralLevelShift(
+  label: string,
+  prev: number,
+  next: number,
+  prevSpot: number | null,
+  nextSpot: number | null,
+): string {
+  const plain = `${label} moved ${fmtDelta(prev, next)}`;
+  if (prevSpot == null || nextSpot == null) return plain;
+  const prevRoom = Math.abs(prev - prevSpot);
+  const nextRoom = Math.abs(next - nextSpot);
+  if (Math.abs(nextRoom - prevRoom) < 0.05) return plain;
+  const compressing = nextRoom < prevRoom;
+  const verb = compressing ? "closing in" : "receding";
+  const readout = compressing ? "less room before it matters" : "more room before it matters";
+  return `**${label} ${verb}** — $${prev.toFixed(2)} → $${next.toFixed(2)}, now $${nextRoom.toFixed(2)} away (was $${prevRoom.toFixed(2)}) — ${readout}`;
+}
+
 /** BUY > HOLD > TRIM > SELL — matches the ACTION vocabulary `swingActionDisplay` renders
  *  (play-card-lifecycle.ts): SELL surfaces as "EXIT", the most defensive action. Used only to
  *  classify a recommendation change as an upgrade/downgrade for cross-field synthesis below —
@@ -256,19 +290,19 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     lines.push(narratePnlShift(prev.pnlPct!, next.pnlPct!));
   }
   if (prev.mark != null && next.mark != null && Math.abs(prev.mark - next.mark) >= 0.05) {
-    lines.push(`Option mark $${prev.mark.toFixed(2)} → $${next.mark.toFixed(2)}`);
+    lines.push(narrateMarkShift(prev.mark, next.mark));
   }
   if (!spotConsumed && spotMoved) {
     lines.push(narrateSpotShift(prev.spot!, next.spot!));
   }
   if (prev.gammaFlip != null && next.gammaFlip != null && Math.abs(prev.gammaFlip - next.gammaFlip) >= 0.05) {
-    lines.push(`Gamma flip moved ${fmtDelta(prev.gammaFlip, next.gammaFlip)}`);
+    lines.push(narrateStructuralLevelShift("Gamma flip", prev.gammaFlip, next.gammaFlip, prev.spot, next.spot));
   }
   if (prev.callWall != null && next.callWall != null && Math.abs(prev.callWall - next.callWall) >= 0.05) {
-    lines.push(`Call wall ${fmtDelta(prev.callWall, next.callWall)}`);
+    lines.push(narrateStructuralLevelShift("Call wall", prev.callWall, next.callWall, prev.spot, next.spot));
   }
   if (prev.putWall != null && next.putWall != null && Math.abs(prev.putWall - next.putWall) >= 0.05) {
-    lines.push(`Put wall ${fmtDelta(prev.putWall, next.putWall)}`);
+    lines.push(narrateStructuralLevelShift("Put wall", prev.putWall, next.putWall, prev.spot, next.spot));
   }
   const callMoved =
     prev.flowCallPremium != null &&
