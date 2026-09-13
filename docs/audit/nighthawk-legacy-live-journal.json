@@ -1811,6 +1811,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "Only new commits since last cycle were Swings-lane, out of scope. Improvement-hunting: reviewed legacy-board-detail-copy.ts (legacyWhyPickedSummary/legacyMorningHeadline/legacyTopFactors/legacyScorecardLine/legacyMarkAgeLabel) end to end -- all correct, no bugs, sensible fallback chains and honest-absence handling. Also reviewed legacy-board-calendar.ts's legacyEditionSessionDates (already carries a documented prior fix -- anchored on the NEXT trading day, not wall-clock now, matching the edition API's own editionFor). Traced its day-by-day walk-back for a DST edge case (fixed 24h ms subtraction from a noon-ET anchor could land at 11am/1pm ET on a transition day) -- confirmed safe since etSessionDate maps any daytime timestamp to the correct calendar date regardless of the +/-1hr shift, and noon was deliberately chosen as a midnight-boundary safety margin (same defensive pattern used elsewhere in this codebase per session.ts). No new bugs found this cycle.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T12:26:00Z",
+      "cycle": "12:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Only new commits since last cycle were other lanes (SEO heartbeat, Swings journal), out of scope. Improvement-hunting: re-checked conviction.ts's convictionFromScore (the OLD mechanical score->letter mapping, >=70 A+/>=55 A/>=40 B, that PR-N7's nighthawk-tiers.ts explicitly replaced for Legacy overnight after finding the same top-band inversion pattern 0DTE had). Confirmed it's not dead code -- still has 4 live call sites (scorer.ts re-export, command-deck/adapters.ts, play-card-display.ts, terminal-display.ts) -- but verified each one is now explicitly gated to SWING/LEAPS horizon plays only (play-card-display.ts/terminal-display.ts both check `play.horizon === 'SWING' || 'LEAPS'` before calling it; adapters.ts's call site is inside a swing-position-building function, confirmed via surrounding archetype/subLane/setupState fields and an explicit 'SWING/LEAPS greek strip' comment). Legacy's own conviction path correctly stays on assignNighthawkTier everywhere -- no regression, the N-6 fix holds. Noting for cross-lane awareness only (not escalating, out of my scope): convictionFromScore's mechanical thresholds were found miscalibrated for BOTH Legacy overnight and 0DTE independently -- whether Swing/LEAPS has ever been separately measured for the same inversion pattern is an open question the Swings lane would need to check, not something I'm pursuing here.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
