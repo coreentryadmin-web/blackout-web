@@ -1078,6 +1078,14 @@ function parseEntryMid(range: string | null | undefined): number | null {
   return (nums[0] + nums[nums.length - 1]) / 2;
 }
 
+/** Parse `published_at` into a Date for resolveLegacyPlayOcc's year-inference anchor, or undefined
+ *  (falls back to real now) when absent/unparseable — never hands a NaN Date downstream. */
+function publishedAtRef(publishedAt: string | null | undefined): Date | undefined {
+  if (typeof publishedAt !== "string" || publishedAt.length === 0) return undefined;
+  const d = new Date(publishedAt);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
 export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   const factors: DeckFactor[] = Object.entries(src.factor_breakdown ?? {})
     .filter(([, v]) => typeof v === "number" && v !== 0)
@@ -1202,7 +1210,11 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     ticker: src.ticker.toUpperCase(),
     direction,
     contract: contractLabel,
-    occ: resolveLegacyPlayOcc(src.ticker, src.options_play ?? null),
+    // Anchor OCC year-inference on the edition's own publish instant, not real wall-clock now —
+    // the Legacy calendar strip lets a member reopen an edition up to 14 trading days old, and
+    // re-resolving an already-expired play's bare "Mon DD" label against real "now" rolls it a
+    // full year forward (see resolveLegacyPlayOcc's own doc comment + option-contract-parse.ts).
+    occ: resolveLegacyPlayOcc(src.ticker, src.options_play ?? null, publishedAtRef(src.published_at)),
     rank: src.rank ?? null,
     score: rawScore != null ? Math.round(rawScore) : 0,
     status,

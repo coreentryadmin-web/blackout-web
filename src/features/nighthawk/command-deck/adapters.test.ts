@@ -1312,6 +1312,25 @@ test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () 
   assert.match(p.regime ?? "", /unverified/i);
 });
 
+// Regression (Night Hawk Legacy aggressive-improvement mandate, 2026-09-13): the Legacy edition
+// calendar strip (legacy-board-calendar.ts) lets a member reopen an OLD edition, and
+// terminalPlayFromEdition re-parses that edition's options_play text fresh on every view. Anchoring
+// OCC year-inference on real wall-clock "now" (whenever the test/request runs) instead of the
+// edition's own `published_at` rolled an already-expired play's bare "Mon DD" label a full year
+// forward — resolving a completely different, never-traded contract. published_at must anchor it.
+test("legacy adapter: occ year-inference anchors on the edition's published_at, not real now", () => {
+  const p = terminalPlayFromEdition({
+    ticker: "NVDA",
+    direction: "long",
+    rank: 1,
+    score: 85,
+    options_play: "NVDA $180 CALL @ $4.00 — Aug 28",
+    published_at: "2026-08-24T20:00:00Z",
+  });
+  assert.ok(p.occ);
+  assert.match(p.occ!, /^NVDA260828C/, "must resolve 2026-08-28 from published_at, not roll to 2027");
+});
+
 test("0DTE adapter (Wave 3): absent why_now → whyNow null (ribbon omitted, no fabrication)", () => {
   const p = terminalPlayFromZeroDte({
     ticker: "coin", status: "HOLD", score: 60, entry_premium: 5.0, last_mark: 5.0, live_pnl_pct: 0,

@@ -16,7 +16,20 @@ export type ParsedOptionsContract = {
   expiryYmd: string | null;
 };
 
-export function parseOptionsContract(optionsPlay: string): ParsedOptionsContract | null {
+/**
+ * `referenceDate` anchors the year-inference for a bare "Mon DD" label (formatOptionsPlay never
+ * prints a year — see shortExpiry in deterministic-edition.ts). Defaults to real wall-clock now,
+ * correct for a freshly-published or still-live play. A caller re-parsing an OLD edition (the
+ * Legacy calendar strip lets a member reopen editions up to 14 trading days back — see
+ * legacy-board-calendar.ts) MUST pass the edition's own publish instant instead: anchoring on
+ * real "now" for an already-expired play rolls the label a full year FORWARD (today is almost
+ * always "after" a past month/day within the same year), producing an OCC for a contract that was
+ * never actually traded. Bug found 2026-09-13 — see option-contract-parse.test.ts.
+ */
+export function parseOptionsContract(
+  optionsPlay: string,
+  referenceDate: Date = new Date(),
+): ParsedOptionsContract | null {
   const text = optionsPlay.trim();
   if (!text || text === "—") return null;
 
@@ -46,7 +59,7 @@ export function parseOptionsContract(optionsPlay: string): ParsedOptionsContract
   if (!expiryYmd) {
     const labelMatch = text.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*(\d{1,2})\b/i);
     if (labelMatch) {
-      const today = new Date();
+      const today = new Date(referenceDate);
       today.setHours(0, 0, 0, 0);
       const year = today.getFullYear();
       let parsed = new Date(`${labelMatch[1]} ${labelMatch[2]}, ${year} 12:00:00`);
