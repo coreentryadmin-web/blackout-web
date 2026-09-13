@@ -1722,6 +1722,13 @@
       "note": "PR #4913 (N-2 context addendum to the #4910 finding): CodeQL already green this time (no repeat of the prior upload flake), 'verify' still in_progress ~10 min after open -- nothing actionable yet, will confirm next cycle. No new improvement-hunting depth added this cycle beyond what already went into #4913 -- kept this cycle short given the standing 3-instance noise/context-discipline guidance and the fact that a real, substantive finding (the N-2 asymmetric-exclusion question) is already in flight and doesn't need re-deriving.",
       "action": "monitoring_pr_ci",
       "prNumber": 4913
+    },
+    {
+      "ts": "2026-09-13T09:25:00Z",
+      "cycle": "post-CI confirmation",
+      "note": "PR #4913 merged (squash, sha 1a63c3bcc) after CodeQL + verify both came back green (check_suite.completed webhook + pull_request_read mergeable_state:'clean' confirmed). mcp__github__merge_pull_request not retried this time -- went straight to the direct REST PUT fallback (known-good from #4910's three transient 500s) and it succeeded first try. Unsubscribed. No MARKET-OPEN-VALIDATION.md entry needed for this one -- pure documentation addendum to the already-logged #4910 finding, nothing new to regression-check at the open. The fillability finding itself remains OPEN/HOLD with the fuller N-2 evidence trail now on main for whoever makes the product call.",
+      "action": "merged_pr",
+      "prNumber": 4913
     }
   ],
   "knownOpenItems": {
