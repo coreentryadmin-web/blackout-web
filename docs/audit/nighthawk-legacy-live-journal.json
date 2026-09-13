@@ -1677,6 +1677,12 @@
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. PR #4909 confirmed merged, unsubscribed. Logged MARKET-OPEN-VALIDATION.md #167 for it. This closes out a five-fix cycle window this session: #4899 (marks-verdict false-GREEN), #4903 (findings-reconcile status-skip), #4906 (debrief regime-factor backwards-read), #4909 (publish-context atr14 unlabeled), on top of the earlier #4888/#4890/#4892/#4894/#4897 batch -- all found via the same discipline (read the code's own stated contract/docstring, verify the implementation actually matches it, reproduce directly before touching anything, RED before GREEN). Continuing the standing cadence into the next cycle.",
       "prStatus": null
+    },
+    {
+      "at": "2026-09-13T08:23:09.322Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. Only new commit was Swings journal, out of scope. Improvement-hunting: read publish-gates.ts end to end (G-N1 band-vs-spot, G-N2 achievable target, G-N3 stale-quote, G-N4 book-tape-conflict) following up on yesterday's atr14_estimated fix (PR #4909). Considered surfacing geo.atr14_estimated in the target_unreachable block's human-readable 'reason' string (a play rejected on a guessed ATR is a less certain rejection than one on measured ATR) -- decided NOT to implement: the field is already available at the top level of the pinned publish_context (my own PR #4909 already put it there), so any future calibration/admin read has the data without needing it duplicated into the gate's prose reason string too. This would be cosmetic, not a correctness gap -- declined per this session's discipline of shipping evidenced fixes, not speculative niceties. Rest of the gate file reviewed clean, no bug found.",
+      "prStatus": null
     }
   ],
   "knownOpenItems": {
