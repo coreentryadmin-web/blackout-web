@@ -1,3 +1,24 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: morning-status DB fallback dropped unverified plays (member-facing status list — check at the open) (read this before the routine pass)
+
+### PR #4937 (merged): a play lacking a pinned morning_verdict was silently missing from the DB-fallback status list
+
+**What was broken:** `GET /api/nighthawk/play-status`'s DB fallback (used once the 24h Redis cache
+for a given edition's morning-confirm result expires) rebuilt the play-status list from durable
+`morning_verdict` pins, but skipped any edition play that never got a pinned verdict instead of
+showing it as `UNVERIFIED` — the same honest-absence status the LIVE cron already uses for exactly
+this case. A member polling after the TTL window, for an edition with even one per-ticker
+Cortex/data failure during the live 9:15 ET run, would see fewer plays than the edition actually
+publishes. See `docs/audit/findings-staging/2026-09-13-morning-status-db-fallback-drops-plays.md`.
+
+**Fix:** push an `UNVERIFIED` entry for any edition play lacking a pinned verdict, matching the
+live cron's own convention exactly.
+
+**Check at the open:** next trading day, once any edition's Redis play-status cache is old enough
+to fall back to the DB path (or force it by checking status ~24h+ after a morning-confirm run),
+confirm the returned play count always equals the edition's published play count — never fewer.
+Most useful to check on a morning where CloudWatch shows at least one per-ticker Cortex/data error
+during that day's `nighthawk-morning-confirm` run, since that's the exact condition this bug needed.
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: record-segment avg_return_pct false-zero (member/admin track-record number — check at the open) (read this before the routine pass)
 
 ### PR #4936 (merged): `buildRecordSegment`'s `avg_return_pct` could report a fabricated "+0.00%"

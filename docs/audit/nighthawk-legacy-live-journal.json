@@ -1988,6 +1988,14 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "Swept legacy-publish-fields.ts (clean, correct fallback chain final_output -> publish_context -> editionPlay) and nighthawk-view.ts (the view-toggle/parsing/labeling module) -- both well-documented with real prior bugs already fixed and guarded by tests (isKnownNightHawkView's 2026-08-10 200-with-wrong-lane incident, MAX_COMPACT_LANE_LABEL_LEN's mobile-overlap tripwire, targetHitCompositionLabel's rate-times-wrong-denominator bug). No new bug found. More out-of-scope Swings-lane commits noted and correctly skipped (PR #4935 build/conflict-resolution cycle, MSFT freshness finding posted to #4076). Quiet cycle.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T18:27:00Z",
+      "cycle": "18:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Aggressive improvement-hunting into morning-status-from-db.ts (the DB fallback GET /api/nighthawk/play-status uses once the 24h Redis cache expires) found a real, P2 bug: the live cron (nighthawk-morning-confirm/route.ts) always emits ONE PlayStatus per edition play via plays.map(), with an honest UNVERIFIED fallback (morning-confirm-verdict.ts's own 'zero checks ran' branch) when a play's data couldn't be checked -- but this DB-fallback reconstruction's loop `continue`d past any play lacking a pinned morning_verdict instead of emitting that same UNVERIFIED entry, silently DROPPING it from the returned list. Confirmed reachability: play-status/route.ts's loadMorningStatusFromDb passes the edition's FULL play list as editionPlays, so any edition with even one per-ticker Cortex/data failure during the live run would, after the 24h TTL expired, show a member fewer plays than the edition actually publishes -- reading as 'never on tonight's board' instead of 'checked, but unverified.' Fixed by pushing an UNVERIFIED entry instead of skipping, matching the live cron's own convention exactly. RED (1 !== 2 play-list length) -> GREEN (3/3 post-fix) via git-stash proof. Full suite 14105/14105 pass, tsc clean. Opened PR #4937, logged MARKET-OPEN-VALIDATION.md watch-list entry (check play-count parity on a morning with a real per-ticker Cortex error).",
+      "action": "opened_pr_fix",
+      "prNumber": 4937
     }
   ],
   "knownOpenItems": {
