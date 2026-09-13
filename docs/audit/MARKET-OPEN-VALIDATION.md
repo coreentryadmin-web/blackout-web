@@ -1,3 +1,21 @@
+## WATCH LIST — 2026-09-13 Night Hawk: globalDiagnostics unbounded memory growth (platform-wide, CloudWatch check — no member-facing symptom) (read this before the routine pass)
+
+### Fix: `nighthawk/lib/diagnostics.ts`'s `globalDiagnostics` singleton now bounds its trail/rejection arrays
+
+**What was broken:** `recordDataSourceing` (called 3x per ticker from `polygon-largo.ts`'s
+`fetchPolygonMtfTechnicals`, a shared hot path used by every Night Hawk product) pushed onto the
+module-level singleton's `trails` array with no cap and no consumer ever draining it (`.summary()`
+has zero production call sites) — unbounded growth for the life of the ECS container. See
+`docs/audit/findings-staging/2026-09-13-nighthawk-diagnostics-unbounded-memory-growth.md`.
+
+**Fix:** bounded `trails` and `gateRejections` to a 2000-entry ring buffer (oldest evicted first).
+
+**Check at the open:** this has no member-facing symptom to click through — it's a pure memory-
+growth issue in a background ECS process. Instead, check CloudWatch: `blackout-production-web`'s
+container memory utilization graph should stop its slow upward drift over the following days/deploy
+cycle (the leak was small-per-call, so the effect is a long-run trend, not a step change — compare
+the memory trend over several days post-deploy against the days before).
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: morning-confirm DEGRADED reason quoted the same SPX gap twice (member-facing tooltip text — check at the open) (read this before the routine pass)
 
 ### Fix: check 1 and check 4 of `computePlayVerdict` both fired on the same against-direction gap
