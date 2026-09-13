@@ -8,6 +8,7 @@ import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
 import { ZeroDteCommandPanel } from "./ZeroDteCommandPanel";
+import { SwingLargoInsightsPanel } from "./SwingLargoInsightsPanel";
 import { LegacyPlayDetailPanel } from "./LegacyPlayDetailPanel";
 import { LegacyManageGeometry } from "./legacy-play-geometry";
 import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
@@ -361,6 +362,19 @@ export function PlayTerminal({
         </div>
       ))}
 
+      {play.horizon === "SWING" && (
+        // Desktop already shows this in the dedicated 3-column `.nh-deck-largo` rail
+        // (CommandDeck.tsx) — that rail is CSS-hidden below the 1100px 3-column breakpoint with
+        // no fallback, so a member on a phone or narrow tablet who taps a Swing play into this
+        // mobile detail overlay never saw the Structure Ladder / Ask Largo read at all. This
+        // second mount is CSS-gated the opposite way (`.nh-deck-right-largo-mobile`, hidden above
+        // 1100px) so it fills exactly that gap without duplicating the desktop rail. Same
+        // component + same useSwingPlayBrief SWR key as the desktop copy, so mounting it here
+        // costs no extra fetch when both are visible during a resize.
+        <div className="nh-deck-right-largo-mobile">
+          <SwingLargoInsightsPanel play={play} />
+        </div>
+      )}
       {commandSinglePanel ? (
         <ZeroDteCommandPanel play={play} nowMs={nowMs} sessionClosed={sessionClosed} />
       ) : legacySinglePanel ? (

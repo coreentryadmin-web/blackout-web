@@ -23307,6 +23307,21 @@ html.product-shell .nav-mega {
 .nh-swing-deck-chrome .nh-deck-ck--compact .ckv b{font-size:13px;color:#F8FAFC}
 
 @media (max-width:1100px){.nh-deck--swing-largo .nh-deck-largo{display:none}}
+/* Mobile/narrow-tablet fallback for the rule above — PlayTerminal.tsx mounts a SECOND
+   SwingLargoInsightsPanel (still carrying `.nh-deck-largo` for its full existing styling) inside
+   its own mobile detail overlay (`.nh-deck-right`) specifically so the Structure Ladder / Ask
+   Largo read isn't invisible below the 1100px 3-column breakpoint with no fallback (member report
+   2026-09-13: tapping a Swing play on a phone showed the position stats but never the Largo read
+   at all). Hidden by default so the desktop 3-column copy is never duplicated; shown only where
+   that copy is hidden. The 3-class override selector beats the 2-class rule above on specificity
+   regardless of source order — the same cascade-trap this file already documents elsewhere, so no
+   `!important` needed. */
+.nh-deck-right-largo-mobile{display:none}
+@media (max-width:1100px){
+  .nh-deck-right-largo-mobile{display:block;margin-bottom:12px}
+  .nh-deck--swing-largo .nh-deck-right-largo-mobile .nh-deck-largo{
+    display:flex;width:100%;min-width:0;height:auto;max-height:70vh}
+}
 .nh-deck-play-grid{display:grid;grid-template-columns:var(--nh-play-cols);column-gap:20px;align-items:center;min-width:0;width:100%}
 .nh-deck-play-table-head{padding:8px 12px 10px;margin:0 6px;border-bottom:1px solid rgba(110,122,153,.18);
   position:sticky;top:0;z-index:2;background:linear-gradient(180deg,#0C0C0E 0%,#0C0C0E 100%)}

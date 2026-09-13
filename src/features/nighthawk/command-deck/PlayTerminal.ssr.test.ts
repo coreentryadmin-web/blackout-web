@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { TerminalPlay } from "./types";
@@ -7,6 +7,15 @@ import type { TerminalPlay } from "./types";
 // Classic JSX runtime in this test context expects a global React (same idiom as
 // PlaybookBoard.test.ts) — set it BEFORE importing the component.
 (globalThis as unknown as { React: typeof React }).React = React;
+
+// PlayTerminal now mounts SwingLargoInsightsPanel (mobile fallback for the 3-column desktop rail
+// — see globals.css's `.nh-deck-right-largo-mobile`), which calls next/navigation's useRouter()
+// for its follow-up-chip links. A real App Router context is only ever absent in this raw
+// renderToStaticMarkup harness, never in production (every real page has one) — mock it here
+// rather than reach for AppRouterContext.Provider boilerplate this file has never needed before.
+mock.module("next/navigation", {
+  namedExports: { useRouter: () => ({ push: () => {} }) },
+});
 
 const load = () => import("./PlayTerminal");
 
@@ -332,4 +341,25 @@ test("Legacy single panel: stock move uses from-entry label in header stream", a
   const html = await render(legacyPlay({ stockMovePct: 4.2, pnlPct: 4.2 }));
   assert.match(html, /4\.2% from entry/);
   assert.match(html, /stock entry/);
+});
+
+// Mobile fallback for the Structure Ladder / Ask Largo read (2026-09-13, operator report: tapping
+// a Swing play on a phone showed the position stats but never the Largo panel — the desktop-only
+// 3-column `.nh-deck-largo` rail is CSS-hidden below 1100px with no fallback). PlayTerminal now
+// mounts a second SwingLargoInsightsPanel wrapped in `.nh-deck-right-largo-mobile`, CSS-gated the
+// opposite way so it fills exactly that gap without duplicating the desktop rail. See globals.css.
+test("Swing play: mobile Largo fallback mounts (fills the gap below the 1100px 3-column breakpoint)", async () => {
+  const html = await render(play({ horizon: "SWING", status: "OPEN" }));
+  assert.match(html, /nh-deck-right-largo-mobile/);
+  assert.match(html, /nh-deck-largo/); // SwingLargoInsightsPanel's own root class
+});
+
+test("0DTE play: no mobile Largo fallback mounted (Swing-only feature)", async () => {
+  const html = await render(play({ horizon: "ZERO_DTE", status: "OPEN" }));
+  assert.doesNotMatch(html, /nh-deck-right-largo-mobile/);
+});
+
+test("Legacy play: no mobile Largo fallback mounted (Swing-only feature)", async () => {
+  const html = await render(legacyPlay());
+  assert.doesNotMatch(html, /nh-deck-right-largo-mobile/);
 });
