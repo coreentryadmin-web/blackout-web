@@ -72,9 +72,19 @@ PRs with a stale allowlist entry). Corrected against `main` directly, not agains
   live closed-swing population is only ~31-37 trades total split across ~5-6 archetypes, nowhere
   near enough per-bucket n to graduate yet. Re-check once the closed population grows — this
   section should start firing on its own once an archetype bucket clears the bar, no code change
-  needed. Still genuinely open: narrating the live "what changed" diff the same trade-manager way
-  instead of numeric deltas; narrating cross-desk disagreement instead of listing it; steelmanning
-  the counter-thesis.
+  needed. **Corrected 2026-09-13 — all three "still genuinely open" narrative items this line used
+  to name are shipped; this was itself the exact staleness trap this file warns about two
+  paragraphs down.** Steelmanning the counter-thesis: `counterThesisLine()` labels evidence weight
+  honestly (`#4939`, 2026-09-13 — "a single, uncorroborated signal" vs "corroborated across N
+  independent reads", never flattening 1 reason and 3 reasons to identical prose). Narrating cross-
+  desk disagreement: `crossDeskCoaching` (play-brief-narrative-coaching.ts) already ranks and weighs
+  conflicting desks into one connected "Cross-desk friction" sentence, not a bullet list — its own
+  code comments trace this back through #4104/#4110/#4116, predating this correction. Narrating the
+  live "what changed" diff: `diffBriefSnapshots` (play-brief-diff.ts) synthesizes co-occurring
+  thesis/spot/P&L/recommendation shifts into one causal line (#4682, 2026-09-09) and the remaining
+  bare-delta fields (option mark, gamma flip, call/put wall) got the same treatment in `#4941`
+  (2026-09-13 — "closing in"/"receding" room-to-spot framing). **Do not re-open any of these three
+  without first re-reading the actual current source** — verify against `main`, not this line.
 
 **A fresh session must verify against `main` (PR state via the API), never trust a "shipped so
 far" list here at face value** — that is exactly how the previous version of this section went
