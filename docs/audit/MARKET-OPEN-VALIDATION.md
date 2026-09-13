@@ -1,3 +1,21 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: morning-confirm DEGRADED reason quoted the same SPX gap twice (member-facing tooltip text — check at the open) (read this before the routine pass)
+
+### Fix: check 1 and check 4 of `computePlayVerdict` both fired on the same against-direction gap
+
+**What was broken:** a single-name LONG whose SPX gapped hard against it, but whose own premarket
+was still within its plan (stop not breached), got a DEGRADED reason quoting the same gap twice:
+`"SPX gapped -25.0 pts against LONG direction — ... treat as caution; SPX gapped -25.0 pts —
+verify entry levels, stop may be unsafe"`. See
+`docs/audit/findings-staging/2026-09-13-morning-confirm-duplicate-gap-reason.md`.
+
+**Fix:** check 4 (the generic large-gap catch-all) now skips when check 1 already described the
+identical gap event.
+
+**Check at the open:** during the 9:10-9:45 ET `nighthawk-morning-confirm` cron window, watch for
+any Legacy play whose DEGRADED reason mentions a gap — confirm the reason text names the SPX gap
+exactly once, not twice back to back. Most likely to actually trigger on a morning with a real
+macro gap ≥20 SPX points against at least one published single-name play's direction.
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: options_play year-inference used real "now" instead of the edition's publish date (calendar-strip historical view — check at the open) (read this before the routine pass)
 
 ### Fix (branch `fix/legacy-options-play-year-inference-historical-view`): reopening an old Legacy edition could resolve the wrong-year OCC for its plays
