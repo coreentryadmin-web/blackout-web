@@ -1650,6 +1650,16 @@
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. Only new commit was Swings-lane journal, out of scope. Improvement-hunting: reviewed legacy-play-contract.ts (resolveLegacyPlayOcc/legacyOccForSnapshot/lookupLegacyOptionSnapshot -- the OCC-resolution path feeding the B_marks healthcheck stage and the live marks route). Its main dependency (option-contract-parse.ts's parseOptionsContract) was already fixed for a real ticker/side-collision bug this session (PR #4890); traced the downstream buildOccContractId (strike*1000, 8-digit-padded, SPX->SPXW root mapping) and confirmed the strike units match (parseOptionsContract returns a raw dollar value, buildOccContractId expects exactly that). lookupLegacyOptionSnapshot defensively tries all 3 plausible key shapes (as-is, bare, O:-prefixed) against the snapshot map. No bug found -- this whole OCC-resolution path is now clean end to end.",
       "prStatus": null
+    },
+    {
+      "at": "2026-09-13T07:48:01.293Z",
+      "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. No new Legacy-scope commits since last cycle (a Swings-lane docs correction landed). Improvement-hunting found and fixed a real data-honesty gap: publish-context.ts's estimateAtr() docstring explicitly promised 'the estimate is CLEARLY labeled in the geometry so calibration knows it's synthetic' (PR-N21) but NighthawkPublishGeometry carried only a single atr14 field -- no label existed anywhere, grepped repo-wide. This ATR is load-bearing: publish-gates.ts's target_unreachable gate thresholds on it, and target-reachability.ts's member-facing reachability sentence is calibrated against a population of REAL provider-measured ATR14s -- a synthetic estimate would silently borrow from a different, uncalibrated population with zero signal that happened. Added atr14_estimated:boolean to the geometry type and threaded it through to the pinned publish_context, bumped PUBLISH_CONTEXT_VERSION 2->3 per the file's own convention, and corrected the docstring's false claim. 4 new tests (real ATR, prior-day-range fallback, 1.5%-of-spot fallback, no-ATR-at-all) -- no existing test had ever exercised the estimation path at all. RED: reverted fix only, exactly 4 targeted assertions failed; 8 pre-existing tests unaffected. GREEN: 12/12 pass. tsc clean. Full suite: 14052/14055 pass, 0 fail, 3 skipped. PR #4909 opened, undrafted, subscribed.",
+      "prStatus": {
+        "number": 4909,
+        "state": "open",
+        "branch": "fix/publish-context-atr14-estimated-label"
+      }
     }
   ],
   "knownOpenItems": {
