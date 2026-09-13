@@ -193,14 +193,30 @@ const keep = rows.filter((r) => r.kind !== "PASS-LOG");
 const moved = rows.filter((r) => r.kind === "PASS-LOG");
 
 const tagged = keep.map((r) => {
-  if (/\n> \*\*kind:\*\*/.test(r.block)) return r.block.replace(/\s+$/, ""); // already tagged
-  const lines = r.block.split("\n");
   const needsStatus = r.status == null;
   const note = needsStatus
     ? "> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED."
     : r.stale
       ? "> **status:** `UNRECONCILED` — recorded mid-flight (\"PR pending\"/\"auto-merge\") and never revisited. Confirm the merge and restamp."
       : null;
+  const hasKindLine = /\n> \*\*kind:\*\*/.test(r.block);
+  const hasUnreconciledNote = /\n> \*\*status:\*\* `UNRECONCILED`/.test(r.block);
+  // A kind line can already be present without this script ever having reconciled the entry —
+  // findings-fold-staging.mjs stamps `> **kind:** FINDING` on every staged file it folds in,
+  // independently of whatever status (or lack of one) that file's own author wrote. The old
+  // unconditional "already tagged, return unchanged" shortcut here treated the kind line alone as
+  // proof the status had ALSO already been checked, so a freshly-folded entry with no status line
+  // (or a stale "PR pending"/"auto-merge" one) sailed through --apply forever with neither its
+  // missing status nor an UNRECONCILED flag ever added — found live 2026-09-13 when a fold brought
+  // in exactly such an entry and a from-scratch regeneration (this file's own idempotency test)
+  // disagreed with the committed file's UNRECONCILED count.
+  if (hasKindLine && (note == null || hasUnreconciledNote)) {
+    return r.block.replace(/\s+$/, ""); // truly nothing left to add
+  }
+  // Strip any existing kind line (and the blank line immediately around it) so a block that already
+  // carries one is rebuilt through the exact same insertion path as a fresh block below — this is
+  // what lets a kind-tagged-but-status-incomplete entry still pick up its missing/stale-status note.
+  const lines = r.block.replace(/\n\n> \*\*kind:\*\* `[A-Z-]+`\n/, "\n").split("\n");
   // Only the OPTIONAL annotations may be dropped. The body lines are passed through as-is: an
   // earlier version ran .filter(Boolean) over the whole array, which also ate the trailing empty
   // line every block carries — so each --apply erased one blank separator and, after enough runs,
