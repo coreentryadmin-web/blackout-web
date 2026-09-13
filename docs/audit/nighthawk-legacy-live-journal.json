@@ -2119,6 +2119,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness, long-confirmed non-actionable).",
       "note": "Swept index-dossier.ts and positioning.ts. Found index-dossier.ts's formatIndexDossierBlock is genuinely dead code -- zero references anywhere in the repo (grep confirmed, not even a test) -- a leftover from the pre-Phase-3 Claude-LLM prompt-building pipeline (claude-edition.ts's own header documents that removal); fetchIndexDossiers in the SAME file is still very much live (edition-builder.ts, x2). Not shipping a cleanup PR for this, matching this session's established proportionate-judgment precedent on zero-behavioral-impact dead code (nighthawk-seed-props.ts, the edition-quality.ts dead ternary). Also traced positioning.ts's fetchPositioningSummary primary path: `net_vex: gex.net_vex !== 0 ? gex.net_vex : null` conflates a genuinely-zero net-vanna reading with 'no vanna data' (unlike the FALLBACK path's buildSummary, which tracks presence via a separate hasVex flag specifically to avoid that exact conflation) -- looked like a real inconsistency at first, but confirmed via grep that the identical `p.net_vex !== 0` pattern is ALREADY the established convention in the shared gex-positioning.ts itself (used identically in its own prose-builders at two call sites) for deciding whether to mention vanna at all -- so this is consistent repo-wide handling of a field whose true zero is indistinguishable from absent data by design/precedent, not a fresh bug introduced here. No new bugs found this cycle. No open PRs.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T22:56:00Z",
+      "cycle": "22:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness, long-confirmed non-actionable).",
+      "note": "Swept flow-streak.ts (consecutive-trading-day streak computation, audit-hardened against the Mon/Wed/Fri false-streak bug -- verified the loop's expectedDay/priorTradingDayYmd walk-back is correctly self-consistent, including the net===0 edge case on the first bucket zeroing the streak) and flow-polarity.ts (a MEASUREMENT-ONLY research probe comparing legacy call/put-premium direction vs signed-aggression direction -- explicitly documented as not affecting live Legacy scoring; already carries its own documented 45%-ask/55%-bid proportional-credit fix). Both clean, no new bugs. No open PRs.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
