@@ -27,7 +27,7 @@ import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
-import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
@@ -1037,9 +1037,20 @@ export function deskConsensusSection(
   // fresh. `sessionDate` defaults to null (skip the gate) so existing callers/tests that construct
   // this section without a session date keep their prior behavior; the real caller below now
   // always passes `ctx.sessionDate`.
-  if (sessionDate) {
-    const gapDays = daysBetweenYmd(nh.edition_for, sessionDate);
-    if (gapDays !== null && gapDays > 4) return null;
+  // For a CLOSED play, "today" is the wrong reference point for this gate — a Legacy pick can
+  // fall within 4 days of TODAY while still being dated AFTER the trade's own exit (live repro
+  // 2026-09-12, AAPL positionId 36: closed 2026-09-04, nighthawk_recent.edition_for read
+  // 2026-09-11 — 7 days AFTER exit but only 1 day before "today" at read time). The tail wording
+  // for this bucket ("for reference against the ... setup this play traded") asserts the pick
+  // could have informed that decision — impossible if it postdates the trade. Anchor the gate to
+  // the play's own exit date for CLOSED, `sessionDate` (today) otherwise; `gapDays < 0` (the
+  // Legacy pick date, in ET, is AFTER the reference date) is the anachronism this adds — a case
+  // the sessionDate-only gate could never trip since Legacy history is never dated after "today".
+  const referenceDate =
+    bucket === "closed" ? (play.exitAt ? etSessionDate(Date.parse(play.exitAt)) : null) : sessionDate;
+  if (referenceDate) {
+    const gapDays = daysBetweenYmd(nh.edition_for, referenceDate);
+    if (gapDays === null || gapDays < 0 || gapDays > 4) return null;
   }
 
   // `outcome` is "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled"
