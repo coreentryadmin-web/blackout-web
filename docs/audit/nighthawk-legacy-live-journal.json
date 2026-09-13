@@ -1611,6 +1611,16 @@
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. PR #4903 confirmed merged (branch update triggered fresh CI, went green, auto-merged) -- unsubscribed. Logged MARKET-OPEN-VALIDATION.md entries #162 (PR #4899, null bid/ask false-GREEN) and #163 (PR #4903, findings-reconcile kind-tag skip) for both fixes shipped this session -- both are audit-tooling-only so their RTH checks are scoped accordingly (next healthcheck run against an illiquid OCC; next fold+reconcile cycle). Improvement-hunting: reviewed play-critic.ts (the deterministic quality-gate pass replacing the old LLM critic) -- score floor, direction-mismatch cut, tier-engine downgrade, thin-confirming-signal downgrade, and regime-headwind downgrade all use consistent nhConvictionRank arithmetic (A+=4/A=3/B=2/C=1) and apply in a coherent sequential order (each downgrade reads the already-possibly-downgraded conviction from the prior step, never stomping it). Found one harmless dead-code redundancy (countConfirmingSignals's own internal early-return duplicates its single call site's outer `??` guard, so the manual signal-counting body is unreachable via that path) -- not worth a standalone PR, pure no-op cleanup with zero behavior change. No live bug found in this file this cycle.",
       "prStatus": null
+    },
+    {
+      "at": "2026-09-13T06:33:30.079Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. Only new commits since last cycle were Swings-lane (PR #4905 merged + verified, RUN-LOG heartbeat), out of scope. Improvement-hunting found and fixed a real outcome-honesty bug: debrief.ts's buildThesisScorecard (the persisted per-play post-mortem 'thesis scorecard' -- outcome-honesty is explicitly this session's own mandate). The 'regime' factor's own docstring defines it as 'pinned regime supported THIS DIRECTION and the session moved that way' but the code only checked the second half (sessionBias===regimeBias), never whether the regime actually supported the PLAY's own direction. Legacy does publish contrarian plays that fight the pinned regime (play-critic.ts's tideContradictsDirection flags, doesn't veto, exactly this). Reproduced: a SHORT against a bullish pin, stopped out by a rally exactly as the bullish pin predicted, read regime:'confirmed' while direction correctly read 'refuted' -- two factors in the same scorecard contradicting each other on the same play. Fixed to require BOTH conditions (regimeBias matches play direction AND session moved that way). No live UI currently renders .thesis (debriefPlay's only caller is debrief-persist.ts, which persists it as the durable audit record) but this corrupts ground truth for any future outcome-honesty tool built on it -- squarely in scope even pre-UI. RED: reverted fix only, exactly 1 targeted assertion failed (the mirror contrarian-win case already passed by coincidence under old code). GREEN: 36/36 pass. tsc clean. Full suite: 14048/14051 pass, 0 fail, 3 skipped. PR #4906 opened, undrafted, subscribed.",
+      "prStatus": {
+        "number": 4906,
+        "state": "open",
+        "branch": "fix/debrief-regime-factor-contrarian-play"
+      }
     }
   ],
   "knownOpenItems": {
