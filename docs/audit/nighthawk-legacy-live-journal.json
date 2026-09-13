@@ -1644,6 +1644,12 @@
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged (deep overnight window, same marks since ~04:07 UTC -- no live movement to react to). Only new commit was Swings-lane journal, out of scope. Improvement-hunting: reviewed legacy-board-table-utils.ts (the Vector-board-shared row/scorecard/CSV-export adapter for Legacy). This file already carries extensive scar tissue from real prior fixes with live evidence cited inline (2026-09-10 FICO +24.19% winner/runner misclassification, SIG/FICO pulled-counterfactual inflating net premium) -- read it end to end looking for a similar remaining gap and found none: legacyRowKind/legacyVectorStatus/legacyBoardCalendarBuckets are internally consistent and the pulled-counterfactual exclusion is applied uniformly. Noted one low-confidence, low-severity observation not pursued: legacyBoardExportCsv selectively JSON.stringify-wraps some fields (contractLabel, stopLevel, target, entryRange, riskNote, factors) but not others (ticker, statusLabel, tierLabel, direction, morningStatus, timestamp) -- fine today since those unwrapped fields are short fixed enums with no commas, but not a general CSV-injection-safe implementation. No live reproduction of a bad CSV row, so not treated as a bug.",
       "prStatus": null
+    },
+    {
+      "at": "2026-09-13T07:22:35.183Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. Only new commit was Swings-lane journal, out of scope. Improvement-hunting: reviewed legacy-play-contract.ts (resolveLegacyPlayOcc/legacyOccForSnapshot/lookupLegacyOptionSnapshot -- the OCC-resolution path feeding the B_marks healthcheck stage and the live marks route). Its main dependency (option-contract-parse.ts's parseOptionsContract) was already fixed for a real ticker/side-collision bug this session (PR #4890); traced the downstream buildOccContractId (strike*1000, 8-digit-padded, SPX->SPXW root mapping) and confirmed the strike units match (parseOptionsContract returns a raw dollar value, buildOccContractId expects exactly that). lookupLegacyOptionSnapshot defensively tries all 3 plausible key shapes (as-is, bare, O:-prefixed) against the snapshot map. No bug found -- this whole OCC-resolution path is now clean end to end.",
+      "prStatus": null
     }
   ],
   "knownOpenItems": {
