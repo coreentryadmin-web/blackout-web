@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-09-13 Night Hawk Legacy: morning Cortex re-veto skip-reason conflation (cron log/meta only, no live check needed) (read this before the routine pass)
+
+### PR #4927 (merged): `applyCortexMorningReveto`'s `skipped` bucket mixed two different meanings
+
+**What was broken:** `morning-cortex-reveto.ts`'s `CortexRevetoResult.skipped: string[]` pushed a
+ticker into the same array whether it was already INVALIDATED by the mechanical morning check
+(expected, benign) or had **no Cortex verdict at all** (errored fetch, or absent from the caller's
+map — the re-veto never actually ran for that play). Both were indistinguishable in the returned
+result and in `nighthawk-morning-confirm/route.ts`'s own logged/persisted `cortex_reveto.skipped`
+meta, so a real coverage gap (Cortex silently not running for some plays) could grow invisibly
+inside a bucket dominated by the harmless case.
+
+**Fix:** split into `skipped_already_invalidated: string[]` and `skipped_no_verdict: string[]`,
+threaded both through the cron route's `cortexRevetoMeta` (old total `skipped` count kept for
+backward-compat). New test asserts the two buckets stay disjoint on a mixed batch.
+
+**Check at the open:** none needed on the member-facing product — this only affects the cron's own
+logged/persisted diagnostic meta, never grading or the live board. If curious, the next real
+`nighthawk-morning-confirm` cron run (9:15 ET on a session day) should show `cortex_reveto` meta
+with both new split fields populated instead of one merged `skipped` count; worth a glance if
+`skipped_no_verdict` is ever unexpectedly large, since that would now be visible as a real signal
+instead of hidden inside the old mixed bucket.
+
 ## WATCH LIST — 2026-09-13 Night Hawk Legacy: bearish-posture's dead 'flipped' field (internal diagnostic only, no live check needed) (read this before the routine pass)
 
 ### PR #4924 (merged): `applyBearishPosture`'s "flipped to short" count was structurally always zero
