@@ -1466,6 +1466,11 @@
       "at": "2026-09-13T00:36:39Z",
       "via": "trig_01KJF6Dh2k4fQa3FUJRCSzJM (:36 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 00:35 UTC commit confirmed Swings-lane, out of scope. PR #4890 status: CI + CodeQL both in_progress (~4 min, normal), mergeable_state 'blocked' on pending checks (not a conflict), no reviews yet. Nothing actionable this cycle; will re-verify next cycle."
+    },
+    {
+      "at": "2026-09-13T00:51:56Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. PR #4890 CONFIRMED MERGED (00:44:50 UTC, merged_by coreentryadmin-web, clean squash into main as commit d8a5540f2) -- verified via pull_request_read.get, not trusted from a status comment. Unsubscribed from PR activity. Added item #155 to docs/audit/MARKET-OPEN-VALIDATION.md documenting the fix + a concrete RTH check (if/when a ticker-C PUT play is ever picked, confirm correct put-side grounding + correct SHORT Discord direction). 00:49 UTC commit confirmed Swings-lane, out of scope."
     }
   ],
   "knownOpenItems": {
