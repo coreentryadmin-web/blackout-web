@@ -7220,7 +7220,11 @@ html.product-shell .nav-mega {
   .bie-ladder {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.6rem;
+    padding: 0.85rem 0.9rem 0.9rem;
+    border: 1px solid rgba(125, 211, 252, 0.16);
+    border-radius: 0.6rem;
+    background: linear-gradient(180deg, rgba(56, 189, 248, 0.05), rgba(15, 23, 42, 0.35));
   }
   .bie-ladder-head {
     display: flex;
@@ -7228,6 +7232,12 @@ html.product-shell .nav-mega {
     justify-content: space-between;
     gap: 0.6rem;
     flex-wrap: wrap;
+  }
+  .bie-ladder-head .bie-block-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    color: #7dd3fc;
   }
   .bie-ladder-agreement {
     display: inline-flex;
@@ -7417,6 +7427,9 @@ html.product-shell .nav-mega {
   .bie-ladder-stop,
   .bie-ladder-track-record {
     margin: 0;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.35rem;
+    background: rgba(148, 163, 184, 0.06);
     font-size: 11.5px;
     line-height: 1.45;
     color: #9fb3c8;
