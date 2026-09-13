@@ -283,11 +283,23 @@ function narrateMagnet(level: FocalLevel, posture: string | null): string {
   return `**Gamma magnet ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} from spot) — ${pin}${meta}`;
 }
 
-function narrateFlip(level: FocalLevel, play: TerminalPlay): string {
+function narrateFlip(level: FocalLevel, play: TerminalPlay, spot: number): string {
+  // BUG FIX (2026-09-13, Ask Largo standing mandate) — same class of bug as narrateMaxPain's own
+  // fix above (live RDDT repro, 2026-09-11): this picked "Lose"/"Reclaim" purely from
+  // `play.direction`, never checking which side of the flip spot is actually on. "Lose" only
+  // makes sense while spot is still above the flip; once spot has already crossed through it the
+  // play is already in the unfavorable regime and needs to "Reclaim," not "Lose" it again — and
+  // the mirror case for a SHORT already trading above the flip. Comparing spot to the level
+  // itself (like narrateMaxPain does) rather than inferring posture from trade direction alone.
+  const spotAboveFlip = spot > level.price;
   const longBreak =
     play.direction === "LONG"
-      ? `Lose **${level.price.toFixed(2)}** → dealer posture turns against longs — tighten or trim.`
-      : `Reclaim **${level.price.toFixed(2)}** → invalidates short gamma thesis.`;
+      ? spotAboveFlip
+        ? `Lose **${level.price.toFixed(2)}** → dealer posture turns against longs — tighten or trim.`
+        : `Reclaim **${level.price.toFixed(2)}** → needed to restore dealer support for longs.`
+      : spotAboveFlip
+        ? `Lose **${level.price.toFixed(2)}** → needed to confirm the short thesis.`
+        : `Reclaim **${level.price.toFixed(2)}** → invalidates short gamma thesis.`;
   return `**Gamma flip ${level.price.toFixed(2)}** — regime line. ${longBreak}`;
 }
 
@@ -799,7 +811,7 @@ export function tradeManagerNarrativeSection(
         add(narrateMaxPain(level, spot, resolveGammaPosture(ctx, vec)));
         used.add("max_pain");
       } else if (level.kind === "gamma_flip" && !used.has("gamma_flip") && Math.abs(level.distancePct) < 3) {
-        add(narrateFlip(level, play));
+        add(narrateFlip(level, play, spot));
         used.add("gamma_flip");
       }
     }

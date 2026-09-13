@@ -2706,6 +2706,76 @@ test("watchForSection: watch/open buckets are unchanged — still show live thes
   assert.equal(section.title, "Watch levels");
 });
 
+// Live repro 2026-09-13 (COIN WATCH brief): spot 174.98 vs flip 183.49 (spot well BELOW), direction
+// LONG. The old code picked "Lose gamma flip" purely from `direction === "LONG"`, regardless of
+// which side of the flip spot was actually on — but you can't "lose" a level you're already below.
+// This directly contradicted the SAME brief's own "Dealer gamma regime: short gamma" line a few
+// sections earlier. The four tests below pin all four (direction × spot-side) combinations.
+test("watchForSection: LONG with spot ABOVE flip — still 'Lose', the level has something to lose", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ status: "WATCH", direction: "LONG" }),
+      asOf: "2026-09-07 16:15 ET",
+      sessionDate: "2026-09-07",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 190, flip: 183.49, freshness: "live" },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Lose gamma flip \*\*183\.49\*\* — dealer posture turns against longs/);
+});
+
+test("watchForSection: LONG with spot BELOW flip (live COIN repro) — 'Reclaim', not 'Lose' an already-lost level", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ status: "WATCH", direction: "LONG" }),
+      asOf: "2026-09-13 05:17 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 174.98, flip: 183.49, freshness: "live" },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /Lose gamma flip/);
+  assert.match(
+    section.body,
+    /Reclaim gamma flip \*\*183\.49\*\* — needed to restore dealer support for longs/,
+  );
+});
+
+test("watchForSection: SHORT with spot ABOVE flip — 'Lose', needs to confirm the short (mirror of the LONG fix)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ status: "WATCH", direction: "SHORT" }),
+      asOf: "2026-09-07 16:15 ET",
+      sessionDate: "2026-09-07",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 103, flip: 99.31, freshness: "live" },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /Reclaim gamma flip/);
+  assert.match(section.body, /Lose gamma flip \*\*99\.31\*\* — needed to confirm the short thesis/);
+});
+
 // Premium stop rail showed only the absolute dollar level ("thesis breaks if mark closes below
 // $6.66"), forcing a member to mentally compute how much room the current mark still has before
 // invalidation. Added a cushion percentage alongside the dollar level, computed the same way
