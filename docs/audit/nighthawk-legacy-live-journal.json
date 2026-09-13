@@ -2148,6 +2148,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness). One leaked temp Clerk user swept by the healthcheck's own >30min cleanup sweep -- routine, documented behavior, not an issue.",
       "note": "PR #4948 (globalDiagnostics memory-leak fix) CI still in progress (verify + CodeQL running ~3min so far, normal); undraft still blocked by the same shared PAT rate limit on retry. Partial review of market-wide.ts (the multi-provider context-fetch aggregator feeding edition synthesis) -- mostly I/O-orchestration plumbing (parallel provider fetches, simple row-shaping helpers like aggregateHotChains/mapBars/fetchVixTermPreferPolygon) rather than complex derived-value logic, lower bug-density than the calculation-heavy files swept earlier this session. Reviewed the helpers actually doing aggregation (aggregateHotChains's per-ticker premium/volume summing, excluding index tickers) and found them correctly implemented. Did not complete the full 401-line file this cycle; flagging for a deeper pass in a later cycle -- specifically fetchMarketWideContext's main body (not yet read) which composes all these fetches together. No new bugs found this cycle. One open PR to watch (#4948).",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T23:56:00Z",
+      "cycle": "23:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "PR #4948: CI now fully GREEN (verify + CodeQL both success), but update_pull_request(draft:false) still fails with the AGENT_RELEASE_TOKEN PAT rate limit on retry -- this one has stayed limited noticeably longer than #4945/#4946 did earlier in the session (those cleared within ~30-45 min); will keep retrying once per cycle without hammering it further. Finished the market-wide.ts review started last cycle: fetchMarketWideContext's main body (~150 lines) is a textbook 'RECAP-MUST-NOT-THROW' hardened aggregator -- every one of ~20 parallel provider fetches has its own .catch() default, and the two synchronous derivations that can't be .catch()-guarded (computeMarketBreadthFromSummary, computeSpxGapContext) are wrapped in explicit try/catch. No new bugs found. market-wide.ts now fully reviewed across two cycles, clean. One open PR to watch (#4948, green, awaiting undraft).",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
