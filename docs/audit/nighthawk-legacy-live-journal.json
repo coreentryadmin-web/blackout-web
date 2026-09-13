@@ -1496,6 +1496,11 @@
       "at": "2026-09-13T02:07:13Z",
       "via": "trig_013hBo7PnRYHLUpx2D1Yxcfm (:06 offset)",
       "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. 01:56/02:xx UTC commits confirmed Swings-lane (PR #4893), out of scope. AGGRESSIVE MODE dig found a 4th real bug this session (same class as #4892's flow-streak fix, different sentence): buildDeterministicThesis()'s trend-conflict sentence hard-coded 'Flow conviction overrides {trend} technicals -- institutional money is {dirWord}' whenever technical trend disagreed with the play's direction, with NO check on whether flow actually drove the pick. Reproduced: flow_score=0, news_score=20+smart_money_score=15-driven candidate still printed a fabricated flow/institutional-money claim. FIXED: PR #4894 (fix/nighthawk-trend-conflict-driver-attribution) -- sentence now names whichever dimension is ACTUALLY the top scoring driver (reusing the same topDrivers computation the catalyst/smart-money sections already gate on), falling back to silence when the top driver doesn't map to a clean phrase. Confirmed the existing PR-N28 test (flow genuinely top driver there) still gets identical original wording. RED (1/2 new tests fail, exactly the misattribution case) -> GREEN (65/65 in the file) -> tsc clean -> full suite 14027/0/3skipped. Opened draft->undrafted per CARVE-OUT, subscribed to PR activity. Will verify CI/merge next cycle."
+    },
+    {
+      "at": "2026-09-13T02:22:26Z",
+      "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
+      "result": "GREEN, unchanged. A_edition GREEN (2 plays), B_marks GREEN (HPE 2.91, DELL 18.15), C_record GREEN (resolved=26), D_pull_status correctly SKIPPED. No new Legacy-scope commits since last push (01:56/02:17 UTC commits confirmed Swings-lane PR #4893). PR #4894 status: CI/CodeQL running normally (~5 min), mergeable_state 'blocked' on pending checks (not a conflict), no reviews yet. Nothing actionable this cycle; will re-verify next cycle."
     }
   ],
   "knownOpenItems": {
