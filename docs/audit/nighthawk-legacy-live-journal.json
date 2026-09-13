@@ -1863,6 +1863,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "Only new commits since last cycle were other lanes (Largo stress-test fixes, Swings journal/heartbeat), out of scope. Improvement-hunting: reviewed hunt-builder.ts (runHuntScan) -- this appears to be a separate interactive/on-demand hunt-scan tool distinct from the Legacy evening-digest cron pipeline (edition-builder.ts), so likely adjacent to but outside my 'Legacy next-day digest board' scope; noted for awareness, not pursuing deeply. Did trace flowDteDays's hardcoded '-04:00' (EDT) offset used for both the expiry and today anchors -- initially looked like a winter/EST bug, but confirmed self-canceling: both anchors shift by the identical (wrong-in-absolute-terms but consistent) amount, so the subtracted day-count difference stays correct regardless of season. Also noted the file's HELIX-confirmation-bonus block already carries its own 'audit HIGH' fix history in comments -- previously hardened, not fresh ground. No new Legacy-scope bugs found this cycle.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T14:11:00Z",
+      "cycle": "14:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm)",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Only new commits since last cycle were other lanes (growth/SEO daily cycle, Swings journal), out of scope. Improvement-hunting: re-checked morning-cortex-reveto.ts's skip-reason conflation (result.skipped mixing already-INVALIDATED rows with Cortex-errored/no-data rows into one array) -- this is the same low-severity issue already flagged earlier this session, not re-pursued without new evidence. Reviewed regrade-stuck.ts (the PR-N1 historical stuck-pending-row repair tool) end to end -- isStuckNighthawkOutcome's ISO-date string comparison, the bounded+idempotent regrade loop, the matched-vs-limit distinction (documented as intentional bounding, not a bug) -- all correct, matches its own extensive design documentation exactly. No new bugs found this cycle.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
