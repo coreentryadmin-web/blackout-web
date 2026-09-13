@@ -1981,6 +1981,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "PR #4936 confirmed merged (auto-merged 17:45 UTC) -- unsubscribed. Swept platform-intel-snapshot.ts: regime_stale gate (captured_at's ET session vs mostRecentTradingDayEt) and the premarket-brief freshness gate (isPremarketBriefFresh) both correctly null their respective fields on staleness before formatPlatformIntelForPrompt ever sees them; critical_anomaly_count is already time-windowed in SQL (60min) so needs no separate staleness gate. No bug found. Summary for this ~1hr window (4 v3-mandate cycles, :06/:21/:36/:51): 3 real bugs found+fixed (play-explainer.ts risk-signal gap #4928, technicals.ts dangling separator #4929, analytics.ts avg_return_pct false-zero #4936), 1 held design finding (#4930, recap-reason cross-engine heartbeat), plus several files swept clean (play-critic.ts, grounding.ts, dossier.ts, publish-context.ts, regrade-legacy.ts, edition-stale.ts, legacy-live-sync.ts, platform-intel-snapshot.ts) and two candidate legacy-live-sync.ts observations logged as zero-impact (no PR). Quiet cycle to close out the window.",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-13T18:09:00Z",
+      "cycle": "18:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm), full v3 mandate",
+      "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
+      "note": "Swept legacy-publish-fields.ts (clean, correct fallback chain final_output -> publish_context -> editionPlay) and nighthawk-view.ts (the view-toggle/parsing/labeling module) -- both well-documented with real prior bugs already fixed and guarded by tests (isKnownNightHawkView's 2026-08-10 200-with-wrong-lane incident, MAX_COMPACT_LANE_LABEL_LEN's mobile-overlap tripwire, targetHitCompositionLabel's rate-times-wrong-denominator bug). No new bug found. More out-of-scope Swings-lane commits noted and correctly skipped (PR #4935 build/conflict-resolution cycle, MSFT freshness finding posted to #4076). Quiet cycle.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
