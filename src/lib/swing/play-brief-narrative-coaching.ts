@@ -950,7 +950,17 @@ export function closedCoaching(play: TerminalPlay): string | null {
     const outcome = mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct);
     lines.push(`Exited **${fmtPct(play.exitPnlPct)}** vs peak **${fmtPct(play.peak)}**`);
     if (outcome?.kind === "round_trip") {
-      lines.push(`**Round-tripped past breakeven** — was up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**; tighten at first trim rail next time.`);
+      // Live repro AAPL:36 (2026-09-13, Ask Largo standing mandate): a peak of only +1.3% -
+      // nowhere near SWING_SCALE_OUT_POLICY's first real trim rail (+100%) - still got the
+      // generic "tighten at first trim rail next time" advice, implying a trim decision was
+      // missed when there was never enough room to make one. Reuses the exact same >20 threshold
+      // the sibling capture branch below already established for this judgment, rather than
+      // inventing a new one - below it, the miss reads as an entry-timing/thesis problem, not a
+      // trim-discipline one.
+      const advice = outcome.peakPct > 20
+        ? "tighten at first trim rail next time."
+        : "barely cleared breakeven before reversing — a trim rail wouldn't have helped here; review entry timing or thesis strength instead.";
+      lines.push(`**Round-tripped past breakeven** — was up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**; ${advice}`);
     } else if (outcome?.kind === "capture") {
       const capture = outcome.capturePct;
       if (capture >= 75) lines.push(`**Strong discipline** — captured **${fmtPct(capture)}** of peak; replicate trim timing.`);
