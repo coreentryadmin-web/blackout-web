@@ -181,14 +181,16 @@ export function swingServingMetaFromDossier(
   // ── factors: the dossier's real, present-pillar contributions, biggest lever first ──
   const factors: SwingServingFactor[] = contributionsToFactors(dossier.score.contributions);
 
-  // ── regime: archetype label blended with the normalized regime pillar read (null when neither exists) ──
+  // ── regime: archetype label blended with the normalized regime pillar read. Without an archetype
+  // label, the bare pillar score has no honest trader-facing meaning on its own (it's a 0-1 fit
+  // number, already shown labeled under "Score pillars"), so it must NOT be surfaced alone — that
+  // shipped "Discovery read: regime 0.33" (a raw fallback string with no context) into a real
+  // member's live WATCH-bucket play brief (BE, 2026-09-13; play-brief-intel.ts's `whyThisSetupSection`
+  // pushes this field verbatim). Mirrors the honest-omission (null, never a synthesized value) fix
+  // already applied on 2026-09-07 to this field's committed-row twin in live-plays.ts. ──
   const regime01 = dossier.pillarSignals.REGIME;
   const regimePart = regime01 != null && Number.isFinite(regime01) ? `regime ${regime01.toFixed(2)}` : null;
-  const regime = archetypeLabel
-    ? regimePart
-      ? `${archetypeLabel} · ${regimePart}`
-      : archetypeLabel
-    : regimePart;
+  const regime = archetypeLabel ? (regimePart ? `${archetypeLabel} · ${regimePart}` : archetypeLabel) : null;
 
   // ── thesis level: broken > thin (degraded) > intact > unknown. A data-absent thesis is UNKNOWN, never
   //    a fabricated "intact" (9-6c honesty) — the desk shows amber "unknown", not a false green. ──
