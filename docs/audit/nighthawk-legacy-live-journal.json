@@ -1683,6 +1683,14 @@
       "via": "trig_018sriVFNHL5Yf1YshwPktRS (:21 offset)",
       "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. Only new commit was Swings journal, out of scope. Improvement-hunting: read publish-gates.ts end to end (G-N1 band-vs-spot, G-N2 achievable target, G-N3 stale-quote, G-N4 book-tape-conflict) following up on yesterday's atr14_estimated fix (PR #4909). Considered surfacing geo.atr14_estimated in the target_unreachable block's human-readable 'reason' string (a play rejected on a guessed ATR is a less certain rejection than one on measured ATR) -- decided NOT to implement: the field is already available at the top level of the pinned publish_context (my own PR #4909 already put it there), so any future calibration/admin read has the data without needing it duplicated into the gate's prose reason string too. This would be cosmetic, not a correctness gap -- declined per this session's discipline of shipping evidenced fixes, not speculative niceties. Rest of the gate file reviewed clean, no bug found.",
       "prStatus": null
+    },
+    {
+      "ts": "2026-09-13T08:45:00Z",
+      "cycle": "08:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM)",
+      "healthcheck": "GREEN, unchanged (HPE260925C00062000 @2.91, DELL260918C00570000 @18.15, resolved=26, D_pull_status SKIPPED as usual pre-confirmation)",
+      "note": "PR #4910 opened this cycle: docs(audit) flag resolveOutcome (play-outcomes.ts) vs computeFill (debrief.ts) fillability disagreement on LONG plays that gap clean through and below their entire entry band. Reproduced against the real AMD 2026-07-07 anchor fixture -- resolveOutcome grades 'unfilled', debrief.ts and the actual historical record both treat it as filled ('stop'). Drafted a fix aligning resolveOutcome to debrief.ts's single-edge logic, verified it corrected the AMD repro, then REVERTED it on discovering play-outcomes.test.ts has an existing, deliberately-written test asserting the current 'unfilled' behavior as intended on the same shape class. Two defensible, undocumented philosophies (mechanical-fill vs plan-integrity) with no resolution between them -- a real product decision, not something to pick unilaterally. PR is docs-only (one staged finding file, no code change), status OPEN/HOLD per the standing escalation policy. CI still queued as of this check-in; will confirm green + merge next cycle.",
+      "action": "opened_pr_hold",
+      "prNumber": 4910
     }
   ],
   "knownOpenItems": {
