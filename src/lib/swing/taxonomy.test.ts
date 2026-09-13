@@ -11,6 +11,7 @@ import {
   SWING_SUB_LANES_ORDER,
   subLaneForDte,
   allSwingSubLanes,
+  archetypeLabelFromRaw,
 } from "./taxonomy.ts";
 
 test("archetypes: 8 members, each has meta, priority is a permutation", () => {
@@ -114,4 +115,17 @@ test("sub-lanes: directional stance is baked in (targetDelta >= 0.50), floors pr
   assert.equal(SWING_SUB_LANES.TACTICAL.grader, "minute");
   assert.equal(SWING_SUB_LANES.STANDARD.grader, "hour");
   assert.equal(SWING_SUB_LANES.EXTENDED.grader, "day");
+});
+
+test("archetypeLabelFromRaw: every real archetype maps to its own ARCHETYPE_META label; null/foreign/empty are honestly null", () => {
+  for (const a of SWING_ARCHETYPES) {
+    assert.equal(archetypeLabelFromRaw(a), ARCHETYPE_META[a].label);
+  }
+  assert.equal(archetypeLabelFromRaw(null), null);
+  assert.equal(archetypeLabelFromRaw(undefined), null);
+  assert.equal(archetypeLabelFromRaw(""), null);
+  assert.equal(archetypeLabelFromRaw("not_a_real_archetype"), null);
+  // Lowercased real enum text is NOT the same string as the canonical uppercase key — must not
+  // loosely match, only an exact SWING_ARCHETYPES member resolves.
+  assert.equal(archetypeLabelFromRaw("breakout"), null);
 });

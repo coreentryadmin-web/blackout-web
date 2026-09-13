@@ -135,6 +135,20 @@ export const ARCHETYPE_META: Record<SwingArchetype, ArchetypeMeta> = {
   },
 };
 
+/** Safely narrow a play's loosely-typed `archetype?: string | null` field (TerminalPlay's shape is
+ *  shared beyond swing, so it can't carry the real `SwingArchetype` union) to this taxonomy's own
+ *  human-readable `ARCHETYPE_META[...].label` ("Pullback continuation"), or null when the value is
+ *  absent/foreign. Callers should use THIS rather than ad hoc `raw.replace(/_/g, " ")` or printing the
+ *  raw enum verbatim — both of those produced two additional, inconsistent renderings of the identical
+ *  archetype ("PULLBACK_CONTINUATION", "PULLBACK CONTINUATION") alongside this same label already
+ *  shown elsewhere in the same play-brief (live repro: COIN, 2026-09-13). */
+export function archetypeLabelFromRaw(raw: string | null | undefined): string | null {
+  const archetype = (SWING_ARCHETYPES as readonly string[]).includes(raw ?? "")
+    ? (raw as SwingArchetype)
+    : null;
+  return archetype == null ? null : ARCHETYPE_META[archetype].label;
+}
+
 // ─── Archetype-aware persistence policy (operator critique #3) ─────────────────
 // WHY THIS EXISTS: the swing WATCH-promotion persistence gate used to be uniform — EVERY archetype
 // had to persist across ≥2 DISTINCT session days before it could be promoted. That is correct for a

@@ -166,6 +166,31 @@ test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope h
   assert.doesNotMatch(verdict!.body, /· SKIP/, "Verdict must not show the raw internal SKIP deckStatus");
 });
 
+// Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the same PULLBACK_CONTINUATION
+// archetype rendered as raw-enum "PULLBACK_CONTINUATION" here in Verdict, underscore-replaced-only
+// "PULLBACK CONTINUATION" in Why-this-setup's own Archetype line, and the already-humanized
+// "Pullback continuation" (ARCHETYPE_META label) on the Discovery-read/Cross-desk-friction lines --
+// three different renderings of one value in one document. Verdict now uses the same canonical
+// label as the rest of the brief.
+test("composeSwingPlayBrief: Verdict's Archetype line uses the canonical humanized label, not the raw enum", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ archetype: "PULLBACK_CONTINUATION" }),
+    asOf: "2026-09-13T13:47:00.000Z",
+    sessionDate: "2026-09-13",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "expected Verdict section");
+  assert.match(verdict!.body, /Archetype: Pullback continuation/);
+  assert.doesNotMatch(verdict!.body, /PULLBACK_CONTINUATION/);
+});
+
 test("composeSwingPlayBrief: WATCH play with detectedAt narrates real days-on-watch age (2026-09-10 gap fix)", () => {
   // detectedAt (the deck's "WATCH Published clock") was already threaded onto TerminalPlay and
   // shown on the Command Deck panel, but never narrated in the play-brief text — a live sweep

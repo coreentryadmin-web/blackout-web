@@ -16,6 +16,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
+import { archetypeLabelFromRaw } from "./taxonomy";
 import {
   collectBriefUnavailableSources,
   gexMatrixAgeMs,
@@ -672,7 +673,8 @@ export function composeSwingPlayBrief(
   if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
   // Dossier regime (discovery-pillar read, e.g. "Breakout · regime 0.82") belongs in "Why this setup"
   // — not Verdict. It is not Vector/SPX market regime and duplicates archetype when both are present.
-  if (play.archetype) verdictLines.push(`Archetype: ${play.archetype}`);
+  const verdictArchetypeLabel = archetypeLabelFromRaw(play.archetype);
+  if (verdictArchetypeLabel) verdictLines.push(`Archetype: ${verdictArchetypeLabel}`);
   if (play.recNote && bucket === "watch") verdictLines.push(play.recNote);
 
   const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
