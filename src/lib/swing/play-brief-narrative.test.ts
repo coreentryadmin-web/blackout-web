@@ -1313,6 +1313,59 @@ test("counterThesisLine: calibrated thesisHealth with a genuinely faded pillar s
   assert.match(line!, /fading pillar \*\*Persistence\*\*/);
 });
 
+// A single-reason counter-thesis and a 3-reason one rendered with identical prose weight —
+// "Counter-thesis (bear case) — <reason(s)>" either way — live-confirmed both shapes exist today
+// (AAPL: 3 corroborating reasons; NRG/NN/META: exactly 1 each), so a member had no way to tell an
+// isolated signal from a genuinely corroborated one without counting clauses themselves.
+test("counterThesisLine: a single reason is labeled as uncorroborated, not silently equal-weighted", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: { spot: 100, technicals: { emaStack: "down" } } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.ok(line);
+  assert.match(line!, /a single, uncorroborated signal/i);
+  assert.doesNotMatch(line!, /corroborated across/i);
+  assert.match(line!, /bear EMA stack on chart/i);
+});
+
+test("counterThesisLine: 2+ reasons are labeled as corroborated, with the real count", () => {
+  const line = counterThesisLine(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 10,
+          call_premium: 400_000,
+          put_premium: 1_200_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: null,
+        },
+        zerodte_today: null,
+        gex_positioning: null,
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: { spot: 100, technicals: { emaStack: "down" } } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.ok(line);
+  assert.match(line!, /corroborated across 3 independent reads/i);
+  assert.doesNotMatch(line!, /a single, uncorroborated signal/i);
+});
+
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

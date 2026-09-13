@@ -661,7 +661,20 @@ export function counterThesisLine(
   if (!reasons.length) return null;
 
   const side = play.direction === "LONG" ? "bear" : "bull";
-  return `**Counter-thesis (${side} case)** — ${reasons.slice(0, 3).join(" · ")}. If this wins, honor invalidation — don't hope.`;
+  const shown = reasons.slice(0, 3);
+  // A single-reason counter-thesis and one where 3 independent desks/reads agree were rendering
+  // with identical prose weight — "Counter-thesis (bear case) — <reason(s)>" either way — so a
+  // member had no way to tell an isolated signal from a corroborated one without counting clauses
+  // themselves. Live-confirmed both shapes exist today (AAPL: 3 reasons: call wall + EMA stack +
+  // dealer posture; NRG/NN/META: exactly 1 reason each). The count itself is never fabricated —
+  // it's `reasons.length`, the same array already gathered above — so this only labels evidence
+  // strength honestly, the same discipline as the Largo product contract's confidence-omission
+  // rule (state real weight, never invent it, never flatten it away either).
+  const weight =
+    shown.length >= 2
+      ? `corroborated across ${shown.length} independent reads — `
+      : "a single, uncorroborated signal — ";
+  return `**Counter-thesis (${side} case)** — ${weight}${shown.join(" · ")}. If this wins, honor invalidation — don't hope.`;
 }
 
 /**
