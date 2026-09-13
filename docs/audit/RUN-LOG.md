@@ -4,6 +4,24 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-13 (00:19 UTC) — [SEO] Lane heartbeat: full CLS re-measure GREEN, PR jam cleared, GSC window resumed advancing
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET Saturday). PR sweep: **0 open agent PRs fleet-wide** — the two
+draft-jam PRs flagged in the last entry (#4874, #4873) are gone from the sweep, confirming they
+were resolved. Fresh Cloudflare purge + CLS measure: desktop 1440x900 **0.0002 GOOD**, mobile
+430x932 **0.0376 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`, still
+crawlable.
+
+GSC opportunities: window advanced a day (2026-06-12→09-09 to 2026-06-13→09-10) after sitting flat
+across the weekend — confirms the multi-day identical-pull streak noted in prior entries was
+benign weekend processing lag, not a stuck pull. Same 2 striking-distance queries, no new
+opportunities.
+
+No defects found.
+
+---
 ## 2026-09-12 (18:18 UTC) — [SEO] Lane heartbeat: GSC unchanged, flagged 2 more stuck coordinator draft PRs (prior 2 confirmed merged)
 
 **Severity.** — (no defect found)
