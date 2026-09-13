@@ -1551,6 +1551,17 @@
         "state": "open",
         "branch": "fix/legacy-healthcheck-null-bid-ask-verdict"
       }
+    },
+    {
+      "at": "2026-09-13T04:55:40.503Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged marks. No new commits since last cycle. PR #4899 CI (CI workflow + CodeQL) still in_progress a couple minutes after push -- nothing red or actionable yet, will re-check next cycle. Improvement-hunting: investigated whether the Command Deck's terminalPlayFromEdition (adapters.ts) applies the same corrupt-entry-range guard entry-range.ts's entryRangeMid() centralizes for 6 other consumers (analytics.ts, debrief.ts, play-constraints.ts, debrief-persist.ts, track-record-page.ts, nighthawk-edition-read.ts). It does not -- its own parseEntryMid() naively averages the first/last regex-matched numbers out of the already-FORMATTED entry_range string with no width-vs-average sanity check, and EditionDeckSource never even carries the raw entry_range_low/high numeric fields entryRangeMid needs, only the pre-formatted string. Traced the actual source of that string (deterministic-edition.ts's resolveLevels -> buildDirectionalStockLevels) and found it is NOT the same raw/admin-entered corruption vector entry-range.ts's header describes (a stray digit like the '17 vs $450' example) -- it is deterministically computed from real support/resistance/ATR/spot, which structurally keeps the band tight under normal conditions. A theoretical corruption path still exists (a bad upstream OHLC print inflating ATR would widen the band and this path would not catch it, unlike the other 6 consumers), but with no live reproduction of an actual corrupt live entry_range on the Command Deck, this reads as a real defense-in-depth gap worth a follow-up, not a proven live defect -- not shipped as a fix per this session's verify-before-concluding discipline. Noted for a future cycle to revisit if a live corrupt entry_range is ever actually observed on the board.",
+      "prStatus": {
+        "number": 4899,
+        "state": "open",
+        "branch": "fix/legacy-healthcheck-null-bid-ask-verdict",
+        "ciState": "pending (CI + CodeQL in_progress)"
+      }
     }
   ],
   "knownOpenItems": {
