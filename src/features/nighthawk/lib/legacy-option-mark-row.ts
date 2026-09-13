@@ -16,7 +16,20 @@ export type LegacyOptionMarkRow = {
 
 type WsMark = { mark?: number | null; bid?: number | null; ask?: number | null; ts: number } | null;
 
-/** Merge WS tick + REST snapshot into one mark row. REST observedAtMs counts as fresh when WS is absent. */
+/**
+ * Merge WS tick + REST snapshot into one mark row.
+ *
+ * Bug fixed 2026-09-13 (live audit): the REST branch used to prefer `snap.observedAtMs` (our OWN
+ * fetch clock — when this server successfully called the provider) over `snap.quoteUpdatedMs`
+ * (the REAL market clock — `last_quote.last_updated`, when the quote itself last changed). A
+ * successful fetch is not proof the underlying quote is fresh: a thinly-traded/far-dated Legacy
+ * contract can go quiet for many minutes while every re-fetch still returns HTTP 200 with the same
+ * old `last_quote`, restamping `observedAtMs` to "now" each time. Against `ZERODTE_MARK_STALE_MS`
+ * (5s — shared with 0DTE), that made `stale` measure "did our request just succeed" instead of "is
+ * this quote current," so a genuinely stale price rendered `stale: false` and `asof` read as "just
+ * now" indefinitely. Now `quoteUpdatedMs` (the real quote clock) is preferred; `observedAtMs` is
+ * used only as a fallback when the provider gives no `last_quote` timestamp at all.
+ */
 export function buildLegacyOptionMarkRow(
   occ: string,
   ws: WsMark,
@@ -30,10 +43,10 @@ export function buildLegacyOptionMarkRow(
 
   const wsAsofMs = ws != null && Number.isFinite(ws.ts) ? ws.ts : null;
   const snapAsofMs =
-    snap?.observedAtMs != null && Number.isFinite(snap.observedAtMs)
-      ? snap.observedAtMs
-      : snap?.quoteUpdatedMs != null && Number.isFinite(snap.quoteUpdatedMs)
-        ? snap.quoteUpdatedMs
+    snap?.quoteUpdatedMs != null && Number.isFinite(snap.quoteUpdatedMs)
+      ? snap.quoteUpdatedMs
+      : snap?.observedAtMs != null && Number.isFinite(snap.observedAtMs)
+        ? snap.observedAtMs
         : null;
   const asofMs = wsAsofMs ?? snapAsofMs;
   const asof = asofMs != null ? new Date(asofMs).toISOString() : null;
