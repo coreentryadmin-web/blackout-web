@@ -2450,10 +2450,27 @@ test("meridianPeerSection: dedicated section — coaching bullets must not dupli
 
 test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
   const section = whyThisSetupSection(
-    fixturePlay({ archetype: "momentum_breakout", subLane: "earnings_lead" }),
+    fixturePlay({ archetype: "BREAKOUT", subLane: "earnings_lead" }),
   );
-  assert.match(section.body, /\*\*Archetype:\*\* momentum breakout/);
+  assert.match(section.body, /\*\*Archetype:\*\* Breakout continuation/);
   assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
+});
+
+// Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the SAME archetype value
+// rendered THREE differently-styled ways within one brief -- Verdict's raw enum ("Archetype:
+// PULLBACK_CONTINUATION"), this section's own underscore-replace-only line ("Archetype: PULLBACK
+// CONTINUATION"), and the Discovery-read/Cross-desk-friction lines' already-humanized
+// ARCHETYPE_META label ("Pullback continuation"). A foreign/unclassifiable string (never seen on a
+// real committed archetype in production -- TerminalPlay.archetype is populated only from
+// classifyArchetype's own SwingArchetype union or null) now renders NOTHING rather than a blindly
+// humanized guess, matching this repo's honest-absence discipline.
+test("whyThisSetupSection: Archetype line uses the canonical humanized label, and omits a foreign/unclassifiable value rather than guessing", () => {
+  const real = whyThisSetupSection(fixturePlay({ archetype: "PULLBACK_CONTINUATION" }));
+  assert.match(real.body, /\*\*Archetype:\*\* Pullback continuation/);
+  assert.doesNotMatch(real.body, /PULLBACK_CONTINUATION/);
+
+  const foreign = whyThisSetupSection(fixturePlay({ archetype: "some_foreign_value" }));
+  assert.doesNotMatch(foreign.body, /\*\*Archetype:\*\*/);
 });
 
 test("flowIntelSection: stale HELIX feed must not render recent prints or anomalies", () => {

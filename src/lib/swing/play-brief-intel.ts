@@ -30,7 +30,7 @@ import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { thesisHealthUncalibrated } from "./thesis-health";
-import { ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
+import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
 import { graduatedArchetypeEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 import {
   meridianPeerEarningsCoaching,
@@ -69,7 +69,8 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   if (play.discoveryOrigin?.length) {
     lines.push(`**Signals fired:** ${play.discoveryOrigin.join(" · ")}`);
   }
-  if (play.archetype) lines.push(`**Archetype:** ${play.archetype.replace(/_/g, " ")}`);
+  const whyArchetypeLabel = archetypeLabelFromRaw(play.archetype);
+  if (whyArchetypeLabel) lines.push(`**Archetype:** ${whyArchetypeLabel}`);
   if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
   if (play.regime) lines.push(`**Discovery read:** ${play.regime}`);
   if (play.sectorLeadershipFacts) {
