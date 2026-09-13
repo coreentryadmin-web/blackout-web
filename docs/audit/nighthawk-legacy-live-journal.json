@@ -1632,6 +1632,12 @@
         "branch": "fix/debrief-regime-factor-contrarian-play",
         "ciState": "in_progress"
       }
+    },
+    {
+      "at": "2026-09-13T06:52:10.304Z",
+      "via": "trig_014EstpdmzdmgjkwYYFj5Cwe (:51 offset)",
+      "summary": "GREEN, stable. healthcheck:legacy all 4 stages pass, unchanged. PR #4906 confirmed merged, unsubscribed. Logged MARKET-OPEN-VALIDATION.md #165 for it (no live UI consumer yet -- RTH check deferred to when a future admin/audit surface reads .thesis). This closes out a strong cycle window: 4 real bugs found and fixed this session (PRs #4899 marks-verdict false-GREEN, #4903 findings-reconcile status-skip, #4906 debrief regime-factor backwards-read, plus the earlier #4888/#4890/#4892/#4894/#4897 batch from before this summary's visible window), several false leads correctly ruled out with full tracing (peak/trough asymmetry, entry-range corruption guard gap, session.ts date parsing, cortex-reveto skip conflation, play-critic dead code), and zero quiet/idle cycles despite an off-hours overnight window with no live market movement to react to.",
+      "prStatus": null
     }
   ],
   "knownOpenItems": {
