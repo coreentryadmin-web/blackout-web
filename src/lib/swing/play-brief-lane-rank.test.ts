@@ -236,8 +236,37 @@ test("computeLaneRank: deltaFromMedian is rounded, not a raw float subtraction a
   const snap = computeLaneRank(play({ ticker: "AMZN", score: 57.2, status: "WATCH" }), [
     row("AMZN", 57.2, "WATCH"),
     row("FSLR", 45.4, "WATCH"),
+    row("GOOGL", 45.4, "WATCH"),
   ]);
   assert.ok(snap);
+  // Odd peer count (3) so the median is a single element (45.4), isolating the rounding behavior
+  // under test from the even-n averaging behavior covered separately below.
   // Live repro (AMZN brief, 2026-09-09): 57.2 - 45.4 === 11.800000000000004 in raw IEEE754 math.
+  assert.equal(snap!.medianScore, 45.4);
   assert.equal(snap!.deltaFromMedian, 11.8, "must round to 1dp, not leak 11.800000000000004 into the narrative");
+});
+
+test("computeLaneRank: median for an EVEN peer count averages the two middle scores, not just the lower one", () => {
+  // Live repro 2026-09-14 (TSM brief, WATCH lane, exactly 2 peers): pre-fix code read
+  // scores[floor(2/2)] = scores[1] off the descending-sorted array, which is the LOWER of the two
+  // scores (51.8), not the statistical median of a 2-element set (their average, 55.5).
+  const snap = computeLaneRank(play({ ticker: "TSM", score: 59.2, status: "WATCH" }), [
+    row("TSM", 59.2, "WATCH"),
+    row("ORCL", 51.8, "WATCH"),
+  ]);
+  assert.ok(snap);
+  assert.equal(snap!.medianScore, 55.5, "median of {59.2, 51.8} is their average, not the lower value 51.8");
+  assert.equal(snap!.deltaFromMedian, 3.7);
+});
+
+test("computeLaneRank: median for a 4-peer (even) lane averages the two middle scores", () => {
+  const snap = computeLaneRank(play({ ticker: "B", score: 60, status: "HOLD" }), [
+    row("A", 80, "COMMIT"),
+    row("B", 60, "COMMIT"),
+    row("C", 40, "COMMIT"),
+    row("D", 20, "COMMIT"),
+  ]);
+  assert.ok(snap);
+  // Sorted desc: 80, 60, 40, 20 — middle two are 60 and 40, average 50 (not scores[2]=40).
+  assert.equal(snap!.medianScore, 50);
 });
