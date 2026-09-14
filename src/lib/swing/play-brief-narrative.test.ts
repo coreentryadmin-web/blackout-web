@@ -1019,6 +1019,70 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   assert.match(section!.body, /Break watch.*lose premium stop \*\*\$1\.96\*\*/i, "stop_premium must render precise, not rounded to $2, and not signed");
 });
 
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro RKLX/PGY OPEN briefs, forensic
+// batch 8): degradedReadLine's markBit rendered `play.mark` unconditionally whenever it was
+// non-null, including the TRUE entry-fallback case (a fresh banger-lane row with no synced quote
+// carries mark === entry, per horizonPlayFromBangerPosition). RKLX's real brief showed "Live
+// read ... mark **$0.51**" (the entry premium) a few lines below a Position section correctly
+// reading "Mark: **unknown** _(sync quote, no live price yet — do not read as flat)_" — the exact
+// self-contradiction class `optionMarkGenuinelyUnknown` (play-brief-absence.ts) already guards at
+// two sibling call sites (pnlSection's own "Mark: unknown" line, the "Premium stop rail" cushion)
+// but never picked up here, a 3rd instance of the same root cause.
+test("tradeManagerNarrativeSection: degraded-read 'Live read' omits mark entirely for the TRUE entry-fallback case (live RKLX/PGY repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 0.51, // entry-fallback echo, not a real quote
+        markIsSync: true,
+        pnlPct: null, // the TRUE entry-fallback signature per optionMarkGenuinelyUnknown
+        peak: null,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.3,
+          target_premium: 1.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Live read/i);
+  assert.doesNotMatch(
+    section!.body,
+    /Live read.*mark \*\*\$/i,
+    "a genuinely-unknown mark (entry-fallback echo) must never render as a confident dollar figure",
+  );
+});
+
+// Same shape, but with a real (if untimestamped) mark distinct from entry — pnlPct is a real
+// number, so optionMarkGenuinelyUnknown is false and the mark must still render, proving the fix
+// above narrows to the true-fallback case rather than suppressing every synced-without-timestamp
+// mark.
+test("tradeManagerNarrativeSection: degraded-read 'Live read' still shows mark when markIsSync but pnlPct is a real number", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 3.1,
+        markIsSync: true,
+        pnlPct: 12.5, // a real P&L basis exists -- the mark behind it is real too
+        peak: 20,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 1.5,
+          target_premium: 6,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Live read.*mark \*\*\$3\.10\*\*/i);
+});
+
 // Live repro (SKHY WATCH brief, 2026-09-14): thesis already INVALIDATED pre-entry (never
 // traded, never will be per this setup), yet a degraded-spot read rendered "Manage rails --
 // trim ladder +100%. Honor stops on closing basis; bank trims into strength" -- open-position
