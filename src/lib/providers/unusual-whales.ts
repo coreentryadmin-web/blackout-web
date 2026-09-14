@@ -347,6 +347,12 @@ async function uwGetSafe<T>(
     return null;
   }
 
+  // Wall-clock time budget for the entire retry loop to prevent orphaned retries
+  // from starving the shared 2-slot global UW concurrency pool. Per-attempt budget
+  // checks ensure the loop exits before a scheduled backoff would overshoot the wall.
+  const maxRetryBudgetMs = uwEnvSec("UW_GET_SAFE_MAX_RETRY_BUDGET_MS", 20) * 1000;
+  const attemptStartMs = Date.now();
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const data = await uwGet<T>(path, params);
@@ -362,6 +368,13 @@ async function uwGetSafe<T>(
         noteUw429(path);
         if (attempt < retries) {
           const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+          const elapsedMs = Date.now() - attemptStartMs;
+          if (elapsedMs + delay > maxRetryBudgetMs) {
+            const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
+            if (stale !== undefined) return stale;
+            console.warn(`[uw] RATE_LIMITED ${path} — budget exhausted (${elapsedMs}ms/${maxRetryBudgetMs}ms)`);
+            return null;
+          }
           if (process.env.UW_DEBUG_RETRIES === "1") {
             console.debug(`[uw] RATE_LIMITED ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
           }
@@ -379,6 +392,13 @@ async function uwGetSafe<T>(
       if (isUwUpstream5xx(msg)) {
         if (attempt < retries) {
           const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+          const elapsedMs = Date.now() - attemptStartMs;
+          if (elapsedMs + delay > maxRetryBudgetMs) {
+            const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
+            if (stale !== undefined) return stale;
+            console.warn(`[uw] UPSTREAM_5XX ${path} — budget exhausted (${elapsedMs}ms/${maxRetryBudgetMs}ms)`);
+            return null;
+          }
           if (process.env.UW_DEBUG_RETRIES === "1") {
             console.debug(`[uw] UPSTREAM_5XX ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
           }
@@ -399,6 +419,13 @@ async function uwGetSafe<T>(
       if (isUwTransientNetwork(msg)) {
         if (attempt < retries) {
           const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+          const elapsedMs = Date.now() - attemptStartMs;
+          if (elapsedMs + delay > maxRetryBudgetMs) {
+            const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
+            if (stale !== undefined) return stale;
+            console.warn(`[uw] NETWORK_BLIP ${path} — budget exhausted (${elapsedMs}ms/${maxRetryBudgetMs}ms)`);
+            return null;
+          }
           if (process.env.UW_DEBUG_RETRIES === "1") {
             console.debug(`[uw] NETWORK_BLIP ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
           }
