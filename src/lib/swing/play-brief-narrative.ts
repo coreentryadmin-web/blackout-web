@@ -409,6 +409,16 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
   // always null pre-close — that field only exists after grading). Computed before the rec-branch
   // below so the TRIM line itself can check for a round-trip too (see its own comment).
   const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
+  // Whether ANY tranche has already been banked — the round-trip bullet below reads `pnlPct`/`peak`
+  // off the RUNNER leg only (same basis as `blendedPnlPct` in play-brief.ts, which this deliberately
+  // does not import — play-brief.ts already imports FROM this file, so importing back would be
+  // circular; the fraction-summed check is duplicated here on purpose, not by oversight). Live repro
+  // (CRWD SWING:CRWD:19, 2026-09-14): 50% banked at +100%, runner round-tripped from +130% to -10% —
+  // the unqualified bullet below read as "the position round-tripped", when the BLENDED P&L (what a
+  // member actually made/lost) was still +45.3%, a solid win. That is a materially different message
+  // from the NRG repro this bullet was originally built for (round-tripped with ZERO ever banked —
+  // see the "Product-honesty gap" comment a few lines down), so the two must not read identically.
+  const anyTrimBanked = (play.exitPolicy?.trim_levels ?? []).some((t) => t.fired);
 
   if (rec === "TRIM") {
     const trimLevels = play.exitPolicy?.trim_levels ?? [];
@@ -465,7 +475,9 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
 
   if (giveback?.kind === "round_trip") {
     lines.push(
-      `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left.`,
+      anyTrimBanked
+        ? `**Runner round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%**; part of this position is already banked at a profit — consider protecting what's left of the runner.`
+        : `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left.`,
     );
   } else if (giveback?.kind === "capture" && giveback.capturePct < 75) {
     lines.push(

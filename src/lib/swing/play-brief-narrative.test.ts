@@ -642,6 +642,71 @@ test("tradeManagerNarrativeSection: round-tripped-past-breakeven bullet fires wh
   );
 });
 
+// Live repro (CRWD SWING:CRWD:19, 2026-09-14): 50% already banked at +100%, runner round-tripped
+// from +129.7% to -9.5% — Blended P&L (realized trim + open runner) was still +45.3%, a solid win.
+// The unqualified "Round-tripped past breakeven ... consider protecting what's left" bullet reads
+// as if the WHOLE position round-tripped into a loss with nothing protected — the exact ambiguity
+// the sibling "Desk says TRIM" bullet already disambiguates via its own trimsFired===0 check (see
+// the "Product-honesty gap" comment above) but this bullet never got the same treatment.
+test("tradeManagerNarrativeSection: round-trip bullet distinguishes a banked-trim runner round-trip from a fully-exposed round-trip (live CRWD repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "TRIM",
+        recommendation: "TRIM",
+        pnlPct: -9.5,
+        peak: 129.7,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 200,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Runner round-tripped past breakeven.*was up \*\*130%\*\* at peak, now \*\*-10%\*\*.*already banked at a profit/,
+    `expected a banked-aware runner round-trip bullet, got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /\*\*Round-tripped past breakeven\*\* — was up/,
+    "the unqualified (nothing-banked) wording must not fire once a trim has been banked",
+  );
+});
+
+test("tradeManagerNarrativeSection: round-trip bullet keeps the unqualified wording when nothing has been banked (NRG-shape repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        pnlPct: -10,
+        peak: 132.7,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 3.9, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /\*\*Round-tripped past breakeven\*\* — was up \*\*133%\*\* at peak, now \*\*-10%\*\* — consider protecting what's left\./,
+  );
+  assert.doesNotMatch(section!.body, /already banked at a profit/);
+});
+
 // BUG FIX (2026-09-12): `degradedReadLine` (the "Live read" fallback bullet, fires whenever Vector
 // spot isn't wired — the SAME condition as the test above, which never overrides `vector`/
 // `ecosystem`) independently restated the identical round-trip fact `actionNarrative` already
