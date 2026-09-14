@@ -1,5 +1,5 @@
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
-import { nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
+import { isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import type { VectorBoardCalendarBucket } from "@/features/nighthawk/lib/vector-board-table-utils";
 
 /**
@@ -12,6 +12,11 @@ import type { VectorBoardCalendarBucket } from "@/features/nighthawk/lib/vector-
  * edition (whose rows carry `sessionDate: editionFor`, one day ahead) never matched any date this
  * function returned — silently dropping it from the whole calendar strip, though the pick table
  * above it rendered those rows correctly, until the real calendar rolled over past midnight ET.
+ *
+ * Filters on `isTradingDayEt` (weekends AND NYSE market holidays), not a bare weekend check — a
+ * market holiday never has a real edition, so including it as a tile understated the "14 trading
+ * days back" this strip promises by one slot per holiday in the window (found 2026-09-14: the
+ * existing test fixture asserted 2026-09-07, Labor Day, as a valid session tile).
  */
 export function legacyEditionSessionDates(count = 14, nowMs = Date.now()): string[] {
   const out: string[] = [];
@@ -20,11 +25,8 @@ export function legacyEditionSessionDates(count = 14, nowMs = Date.now()): strin
   while (out.length < count && guard < count * 4) {
     guard += 1;
     const session = etSessionDate(cursor);
-    if (session) {
-      const dow = new Date(`${session}T12:00:00Z`).getUTCDay();
-      if (dow !== 0 && dow !== 6 && !out.includes(session)) {
-        out.push(session);
-      }
+    if (session && isTradingDayEt(session) && !out.includes(session)) {
+      out.push(session);
     }
     cursor -= 24 * 60 * 60 * 1000;
   }
