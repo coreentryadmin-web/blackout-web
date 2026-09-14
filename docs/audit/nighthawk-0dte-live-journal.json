@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-14T16:37:00Z",
+  "updated_at": "2026-09-14T17:07:00Z",
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
@@ -202,6 +202,9 @@
     },
     "2026-09-14T16:37Z": {
       "note": "4th board-upstream degradation instance RESOLVED, upstream_ok true by 16:35:52 UTC (degraded confirmed 16:15:46 UTC) -- ~20min duration, notably longer than prior 3 instances (5-7min each). Not escalating further this cycle (already flagged shortened-gap + now duration on PR #4076 twice this hour, avoiding noise) -- will note if a 5th instance recurs or duration keeps lengthening, that would be a sharper signal. QBTS/FIGR both closed small winners (+5%, +5.71%), new position W opened flat. Session strong: CRWD HOLD +24.6%, ZS TRIM +47.62%, S TRIM +23.26%, 6 closed / 4 open total. No new correctness issue."
+    },
+    "2026-09-14T17:07Z": {
+      "note": "Excellent session continuing, board stable (no degradation this cycle). ZS TRIM +58.48%, S TRIM +32.56%, CRWD HOLD +29.41%, W now TRIM +12.45%, new B-tier BREAKOUT commit OKTA +7.03% (coherent, no issue). 5 open, 6 closed (SLS flat, SAIL -6.67%, QBTS +5%, FIGR +5.71%, IONQ -6.92%, MARA -13.95%). Nothing to escalate. Board-upstream degradation pattern (4 instances so far today/this week) has not recurred a 5th time since the 16:35 resolution -- watching."
     }
   },
   "sessions": {
