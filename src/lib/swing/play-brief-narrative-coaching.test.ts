@@ -255,6 +255,51 @@ test("manageLifecycleCoaching: EXIT_RUNNER keeps the 'all trims banked' framing 
   assert.match(line!, /all trims banked/i);
 });
 
+// Live repro (CG SWING:CG:25, 2026-09-14): pnlPct +169.2%, unfired trim_levels[0].trigger_pct
+// 100 -- "next trim at +100%" reads as forward-looking when the rail is 69 points BEHIND
+// current price, already cleared and simply not yet banked. Same root cause as actionNarrative's
+// sibling bullet in play-brief-narrative.ts, fixed there the same way.
+test("manageLifecycleCoaching: 'next trim' becomes 'already cleared, not yet banked' once price has passed the unfired trigger", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "TAKE_PARTIAL",
+      pnlPct: 169.2,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /\*\*\+100%\*\* rail already cleared, not yet banked/);
+  assert.doesNotMatch(line!, /next trim at/);
+});
+
+// Sibling: a plain HOLD genuinely still building toward its first rail (pnlPct below the
+// trigger) must keep the honest, forward-looking "next trim at" framing -- the fix must not
+// assume every unfired trigger has already been crossed, only check the live data.
+test("manageLifecycleCoaching: keeps 'next trim at' when price genuinely has NOT reached the trigger yet", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 42,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  assert.doesNotMatch(line!, /already cleared/);
+});
+
 test("manageLifecycleCoaching: DTE > 7 still carries runway context, not just the <=7 urgency line", () => {
   const line = manageLifecycleCoaching(play({ contract: "110C · 9DTE" }), "open");
   assert.match(line!, /9 DTE.*remaining/i);
