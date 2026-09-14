@@ -4,6 +4,26 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-14 (16:34 UTC) — [RTH — SEO] Third market-hours check: gamma-snapshot healthy, transient calc_id "backward" blip traced to replica cache skew
+
+**Severity.** — (no defect found)
+
+Third RTH wake today (12:33 ET, near the window's end). Polled 4 times over this check: ages
+4s → 36s → 31s(→41s by direct computation) → 23s, `degraded` correctly `false` throughout (all
+well under the 90s stale bound). One genuinely odd observation investigated: the second poll's
+`calculation_id` embedded an EARLIER epoch than the first poll's, despite being fetched later in
+wall-clock time — i.e. a later request returned an apparently older snapshot. Traced this to
+ordinary multi-replica cache skew: `fetchGexHeatmap`'s per-process `cachedHeatmaps` map
+(`polygon-options-gex.ts`) is local to each ECS replica, and its documented stale-while-revalidate
+design deliberately allows any cached entry within `GEX_HEATMAP_MAX_STALE_SEC` (90s) to be served
+— two requests landing on different replicas can observe this exact "went backward by a few
+seconds" pattern without it being a defect. Confirmed forward progress resumed on the 4th poll
+(newest `calculation_id` of the whole sequence). Not a repeat of the real #4796 incident (which
+was a SINGLE calc_id frozen for 4+ minutes, past the stale bound) — this was normal jitter.
+
+No defects found. Returning to normal search/authority work at 13:00 ET.
+
+---
 ## 2026-09-14 (15:34 UTC) — [RTH — SEO] Second market-hours check: gamma-snapshot healthy, brief 20s poll gap not a stall
 
 **Severity.** — (no defect found)
