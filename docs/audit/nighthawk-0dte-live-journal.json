@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-14T18:15:00Z",
+  "updated_at": "2026-09-14T18:38:00Z",
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
@@ -214,6 +214,9 @@
     },
     "2026-09-14T18:15Z": {
       "note": "Board showed upstream_ok:false on one single pull (18:15:19-ish) but was already back to true on the immediate next fetch seconds later (18:15:50). Unlike the 4 prior confirmed instances (each verified false on 2 consecutive pulls ~1min apart before counting), this one did not reproduce on retry -- NOT counting this as a 5th confirmed instance, just noting a possible sub-minute blip so the count stays honest. record.json stayed healthy throughout (15 plays). Board otherwise unchanged from last check: 4 open (CRWD, ZS, S, W all still strongly green), 7 closed. No PR comment this cycle -- insufficient evidence to escalate a single-pull blip."
+    },
+    "2026-09-14T18:38Z": {
+      "note": "5th confirmed board-upstream degradation instance, 18:38 UTC (confirmed on 2 consecutive pulls). Gap since 4th instance resolved (16:35 UTC) is ~2h -- back to a longer gap, so retracted the earlier accelerating-cadence framing on PR #4076 (that was likely normal variance, not a real trend). Pattern remains: recurs multiple times/session day, self-resolves within minutes, real positions/record path unaffected each time. Board otherwise unchanged before degradation: 4 open still strongly green, 7 closed."
     }
   },
   "sessions": {
