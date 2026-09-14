@@ -129,6 +129,32 @@ test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legac
   assert.equal(play.thesisBreak!.level, "intact");
 });
 
+test("horizon adapter: tierLabel is honestly null, never the documented-backwards convictionFromScore mapping — SWING and LEAPS, any score", () => {
+  // SWING/LEAPS (HorizonDeckSource) carries no pinned tier/conviction field, unlike 0DTE/Legacy.
+  // This used to fall back to convictionFromScore — the exact score->letter mapping
+  // nighthawk-tiers.ts's own header documents as empirically INVERTED for the product it was
+  // calibrated on (A+ >=70 scored worst, B 40-54 scored best) — never validated for swing's own,
+  // differently-shaped score distribution. Regression: no score, however high or low, should ever
+  // produce a computed tierLabel here; it must stay null.
+  const highScoreSwing = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 92, status: "WATCH",
+    contract: { strike: 200, right: "C", expiry: "2026-10-16", dte: 14, mid: 5 },
+  });
+  assert.equal(highScoreSwing.tierLabel, null);
+
+  const lowScoreSwing = terminalPlayFromHorizon({
+    ticker: "xyz", direction: "SHORT", horizon: "SWING", score: 3, status: "COMMIT",
+    contract: { strike: 10, right: "P", expiry: "2026-10-16", dte: 14, mid: 1 },
+  });
+  assert.equal(lowScoreSwing.tierLabel, null);
+
+  const leapsPlay = terminalPlayFromHorizon({
+    ticker: "aapl", direction: "LONG", horizon: "LEAPS", score: 70,
+    contract: { strike: 200, right: "C", expiry: "2026-10-16", dte: 84, mid: 12.5 },
+  });
+  assert.equal(leapsPlay.tierLabel, null);
+});
+
 test("edition adapter: dossier factors, PLAN model, WATCH status (no morning confirm)", () => {
   const play = terminalPlayFromEdition({
     ticker: "AAPL", direction: "long", rank: 1, score: 82,
