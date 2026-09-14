@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-14T19:07:00Z",
+  "updated_at": "2026-09-14T19:37:00Z",
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
@@ -223,6 +223,9 @@
     },
     "2026-09-14T19:07Z": {
       "note": "5th board-upstream degradation instance resolved, upstream_ok true by 19:05:06 UTC (first confirmed 18:38:01) -- roughly 27min duration, similar to the 4th instance (~20min), both longer than the first 3 (5-7min). W closed +31.87%, a strong win. CRWD pulled back from its earlier +30% peak to +8.56% (still positive, normal drawdown, not concerning without more evidence). 8 closed today (SLS flat, SAIL -6.67%, QBTS +5%, FIGR +5.71%, OKTA +1.56%, W +31.87%, IONQ -6.92%, MARA -13.95%), 3 open (CRWD, ZS TRIM +47.24%, S TRIM +27.91%). Strong session overall. Nothing new to escalate."
+    },
+    "2026-09-14T19:37Z": {
+      "note": "ZS surged to +91.81% (from +48.57% last check), now trading at its own all-time peak (last_mark==peak_premium, no giveback). Checked exit coherence: floor_pnl_pct armed at +20% (protecting the gain), trim_scale policy target_pct=100, currently +91.9% peak -- running toward its first +100% trim rung, not yet fired. Well-managed, no issue. Board otherwise unchanged, no degradation. Excellent session continuing."
     }
   },
   "sessions": {
