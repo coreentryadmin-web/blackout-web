@@ -530,7 +530,34 @@ test("composeSwingPlayBrief: dossier regime stays in Why this setup, not unlabel
   const why = brief.envelope.sections.find((s) => s.title === "Why this setup");
   assert.ok(verdict && why);
   assert.ok(!/Sector rotation · regime 0\.82/.test(verdict!.body), "dossier regime must not appear raw in Verdict");
-  assert.match(why!.body, /\*\*Discovery read:\*\* Sector rotation · regime 0\.82/);
+  assert.match(why!.body, /\*\*Today's regime read:\*\* Sector rotation · regime 0\.82/);
+});
+
+// Live repro 2026-09-14 (KR, real committed swing position): the pinned "Archetype" line and the
+// freshly re-derived regime line can genuinely diverge (archetype pinned at commit, regime re-read
+// every scan) without either being wrong -- but the old bare "Discovery read:" label gave no signal
+// that the two lines were reading DIFFERENT points in time, so a real brief showed "Archetype:
+// Breakout continuation" next to "Discovery read: Event-driven directional" with nothing to explain
+// why. The label now says "Today's regime read" so two different labels read as thesis evolution,
+// not an internal contradiction.
+test("composeSwingPlayBrief: regime read is labeled as TODAY's read, distinct from the pinned Archetype line", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ regime: "Event-driven directional · regime 0.67", archetype: "BREAKOUT" }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const why = brief.envelope.sections.find((s) => s.title === "Why this setup");
+  assert.ok(why);
+  assert.match(why!.body, /\*\*Archetype:\*\*/);
+  assert.match(why!.body, /\*\*Today's regime read:\*\* Event-driven directional · regime 0\.67/);
+  assert.doesNotMatch(why!.body, /\*\*Discovery read:\*\*/, "old unqualified label must not reappear");
 });
 
 test("composeSwingPlayBrief: omits envelope.confidence (Largo C6 — no uncalibrated score)", () => {
