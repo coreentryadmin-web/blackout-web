@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-14T15:45:00Z",
+  "updated_at": "2026-09-14T16:08:00Z",
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
@@ -193,6 +193,9 @@
     },
     "2026-09-14T15:45Z": {
       "note": "3rd board-upstream degradation instance RESOLVED: upstream_ok back to true by 15:44:17 UTC (first confirmed degraded 15:38:41 UTC) -- ~6min duration, consistent with prior 2 instances 5-7min window, strengthens the case this is a bounded repeatable transient not an escalating/permanent issue. Board healthy again: ZS TRIM +50.1%, S TRIM +23.26%, CRWD HOLD +21.39% -- all 3 open positions now solidly green. 4 closed today unchanged (SLS flat, MARA -15.12%, SAIL -6.67%, IONQ -6.92%). commit_ready now 4 (fresh gate-clearing setups queued). No new correctness issue this cycle."
+    },
+    "2026-09-14T16:08Z": {
+      "note": "Quiet healthy cycle. 2 new B-tier BREAKOUT commits (QBTS +2.5%, FIGR +3.57%), both coherent, no issue. 5 open total (CRWD +21.39%, ZS TRIM +48.57%, S TRIM +11.63%, QBTS, FIGR), 4 closed unchanged (SLS flat, SAIL -6.67%, IONQ -6.92%, MARA -15.12%). Board upstream_ok stable true since the 3rd-instance degradation resolved at 15:44 UTC. Strong session so far. Nothing to escalate."
     }
   },
   "sessions": {
