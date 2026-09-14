@@ -4,6 +4,25 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-14 (14:11 UTC) — [SEO] Daily growth cycle: no new striking-distance queries, real 28d position improvement
+
+**Severity.** — (no defect found)
+
+1. Opportunity scan: same window, same 2 striking-distance queries, both already well-optimized
+   per `SEO-GROWTH-STRATEGY.md` §3. No new query entered striking distance. No on-page work done.
+2. Live re-verify: already fresh ~40 min ago (13:34 UTC RTH entry, CLS + gamma-snapshot both
+   confirmed) — not repeated per rule 6.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-15→09-11): clicks=17,
+   impressions=1635, CTR=1.04%, avgpos=**33.7** — vs the last recorded pull (clicks=17,
+   impressions=1627, CTR=1.04%, avgpos=35.0): clicks/CTR flat, impressions slightly up, and a
+   real, larger-than-usual avg-position improvement (+1.3). Too diffuse across many low-volume
+   queries to attribute to any single shipped change.
+4. Housekeeping: 2 open agent PRs fleet-wide (#4969, #4970), both CI-RUNNING, neither SEO-lane —
+   nothing to resolve.
+
+No defects found.
+
+---
 ## 2026-09-14 (13:34 UTC) — [RTH — SEO] Market-open check: gamma-snapshot live refresh confirmed, degraded flag correctly false on a genuinely fresh read
 
 **Severity.** — (no defect found)
