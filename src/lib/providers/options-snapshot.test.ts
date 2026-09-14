@@ -423,3 +423,88 @@ test("getOptionSnapshot: a missing OCC → null (caller falls back to the chain)
   assert.equal(await getOptionSnapshot("O:NOPE000000C00000000"), null);
   assert.equal(await getOptionSnapshot(""), null);
 });
+
+// ---------------------------------------------------------------------------
+// reliableMarkFromSnapshot — live 2026-09-14: CRSR 260918C00015000 showed bid:0/ask:15 → mid
+// $7.50 while last_trade.price (and session.close) were BOTH $0.07, a 107x divergence — the mid
+// was a market-maker "backstop" quote nobody could actually transact at, and swing/banger's live
+// P&L displayed a fabricated +10614% instead of the true ~flat position. Same shape on 5 other
+// concurrently-committed BANGER positions same session. midOf's own bid>=0 guard is intentional
+// (a genuinely worthless deep-OTM contract legitimately has bid=0) so this is a SEPARATE,
+// additive divergence check — not a change to midOf/zeroDteMidOf.
+function baseSnap(overrides: Partial<import("./options-snapshot").OptionSnapshot>) {
+  return {
+    ticker: "O:TEST260918C00015000",
+    mark: null,
+    bid: null,
+    ask: null,
+    last: null,
+    dayClose: null,
+    delta: null,
+    gamma: null,
+    theta: null,
+    vega: null,
+    iv: null,
+    openInterest: null,
+    bidSize: null,
+    askSize: null,
+    dayVolume: null,
+    underlyingPrice: null,
+    strike: null,
+    optionType: null,
+    expiry: null,
+    sharesPerContract: null,
+    quoteUpdatedMs: null,
+    ...overrides,
+  };
+}
+
+test("reliableMarkFromSnapshot: null mark passes through unchanged", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromSnapshot(baseSnap({ mark: null })), null);
+});
+
+test("reliableMarkFromSnapshot: bid>0 (a real two-sided market) is never second-guessed", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  // Even a huge mid-vs-last divergence is left alone when there's a real bid behind it.
+  const snap = baseSnap({ mark: 7.5, bid: 5, ask: 10, last: 0.07 });
+  assert.equal(reliableMarkFromSnapshot(snap), 7.5);
+});
+
+test("reliableMarkFromSnapshot: bid=0 backstop quote (CRSR live repro) falls through to last trade", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  // bid:0, ask:15 -> mid 7.5; real last trade 0.07 -> 107x divergence, well past the 10x bar.
+  const snap = baseSnap({ mark: 7.5, bid: 0, ask: 15, last: 0.07, dayClose: 0.07 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.07);
+});
+
+test("reliableMarkFromSnapshot: bid=0, no last trade -> falls through to dayClose", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 7.5, bid: 0, ask: 15, last: null, dayClose: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.1);
+});
+
+test("reliableMarkFromSnapshot: bid=0 legitimate deep-OTM case (mid close to last) is kept", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  // bid:0, ask:0.05 -> mid 0.025; last 0.03 -> same order of magnitude, not a backstop artifact.
+  const snap = baseSnap({ mark: 0.025, bid: 0, ask: 0.05, last: 0.03 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.025);
+});
+
+test("reliableMarkFromSnapshot: bid=0, no last/dayClose reference at all -> mark passes through (nothing to compare against)", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 7.5, bid: 0, ask: 15, last: null, dayClose: null });
+  assert.equal(reliableMarkFromSnapshot(snap), 7.5);
+});
+
+test("reliableMarkFromSnapshot: exactly at the 10x boundary is kept (boundary is inclusive of mark)", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 1.0, bid: 0, ask: 2, last: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 1.0);
+});
+
+test("reliableMarkFromSnapshot: just past the 10x boundary falls through", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 1.01, bid: 0, ask: 2.02, last: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.1);
+});
