@@ -442,7 +442,18 @@ export function loadPersistedBriefSnapshot(key: string): BriefSnapshot | null {
     const raw = window.sessionStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as BriefSnapshot;
-    if (!parsed || typeof parsed !== "object" || typeof parsed.headline !== "string") return null;
+    // `sectionTitles` is read unconditionally by diffBriefSnapshots (`prev.sectionTitles.includes`)
+    // with no null guard, unlike every other field here. sessionStorage outlives a deploy — a
+    // snapshot written by an older schema, or corrupted by devtools/an extension, must be rejected
+    // as unusable rather than handed back and crashing the diff on the next read.
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.headline !== "string" ||
+      !Array.isArray(parsed.sectionTitles)
+    ) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;

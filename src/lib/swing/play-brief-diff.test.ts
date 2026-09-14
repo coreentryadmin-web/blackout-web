@@ -9,6 +9,7 @@ import {
   envelopeWithNarrativePulse,
   extrasFromBriefResponse,
   briefSnapshotStorageKey,
+  loadPersistedBriefSnapshot,
   snapshotFromBrief,
 } from "./play-brief-diff";
 
@@ -368,4 +369,64 @@ test("briefSnapshotStorageKey: requires play id and session date", () => {
   assert.equal(briefSnapshotStorageKey("SWING:INTC:1", "2026-09-06"), "swing-brief-snap:SWING:INTC:1:2026-09-06");
   assert.equal(briefSnapshotStorageKey("", "2026-09-06"), null);
   assert.equal(briefSnapshotStorageKey("SWING:INTC:1", null), null);
+});
+
+test("loadPersistedBriefSnapshot: rejects a stored snapshot missing sectionTitles instead of returning it", () => {
+  // Real failure mode: sessionStorage survives a deploy (it's per-tab/session, not per-release),
+  // so a snapshot written by an older schema version (or corrupted by an extension/devtools edit)
+  // can be missing a field the current diffBriefSnapshots unconditionally reads. The prior
+  // validation only checked `headline` was a string and returned everything else as-is, so a
+  // stored object like `{ headline: "x" }` (no sectionTitles) sailed through as a valid `prev`
+  // snapshot, and diffBriefSnapshots's `next.sectionTitles.filter((t) => !prev.sectionTitles...)`
+  // (play-brief-diff.ts) then threw `Cannot read properties of undefined (reading 'includes')`
+  // inside useSwingPlayBrief's uncaught effect — crashing the whole play-brief render.
+  const store = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+      },
+    },
+  });
+  try {
+    store.set("swing-brief-snap:SWING:TEST:1:2026-09-14", JSON.stringify({ headline: "old schema" }));
+    const stored = loadPersistedBriefSnapshot("swing-brief-snap:SWING:TEST:1:2026-09-14");
+    assert.equal(stored, null, "a malformed stored snapshot must be rejected, not handed back as a usable prev");
+
+    // Confirm the crash this guards against, so the test can't pass on a coincidence: a stored
+    // snapshot missing sectionTitles fed straight into diffBriefSnapshots as `prev` throws.
+    const nextSnap = snapshotFromBrief(env(), play());
+    assert.throws(() => diffBriefSnapshots({ headline: "old schema" } as never, nextSnap));
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});
+
+test("loadPersistedBriefSnapshot: still accepts a well-formed stored snapshot", () => {
+  const store = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+      },
+    },
+  });
+  try {
+    const snap = snapshotFromBrief(env(), play());
+    store.set("swing-brief-snap:SWING:TEST:1:2026-09-14", JSON.stringify(snap));
+    const stored = loadPersistedBriefSnapshot("swing-brief-snap:SWING:TEST:1:2026-09-14");
+    assert.deepEqual(stored, snap);
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
 });
