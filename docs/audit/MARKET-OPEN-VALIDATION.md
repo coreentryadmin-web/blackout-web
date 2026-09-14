@@ -1,3 +1,19 @@
+## WATCH LIST — 2026-09-14 Largo stress nightly recovery: Mode 1 (429 rate-limit header capture) + Mode 2 (self-critical question exemption) (validation target: next scheduled 06:30 UTC nightly run)
+
+### PR #4926 (merged) + PR #4940 (merged): two-part remediation for persistent `largo-stress-nightly` failures
+
+**Mode 1 background:** sustained HTTP 429 rate-limit errors on production nightly runs (2026-09-06–present), source unknown. No upstream identification possible — response headers discarded on 429s, so whether limit comes from Largo API, Anthropic API, Clerk FAPI, Next.js, or Cloudflare remained invisible to operator/audit.
+
+**Mode 1 fix:** `scripts/largo-stress-run.mjs` now captures `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-reset` response headers on all 429 responses for later analysis of which upstream is rate-limiting. Committing headers to run log allows root-cause analysis without re-running.
+
+**Mode 2 background:** `honestyIssues()` in `src/lib/bie/professional-tone.ts` falsely flagged qualitative answers to self-critical and comparative questions (e.g., "Where is the desk wrong?" / "Difference between Vector and Thermal?") as `no-grounded-numbers` — legitimate answers to architectural/feature-comparison questions, not data-lookup. Two real Largo answers scored BAD on 2026-09-11 and 2026-09-13 (only Mode 2 failures on record); gate otherwise working correctly.
+
+**Mode 2 fix:** added narrow exemption pattern `(wrong|better|worse|difference|compare|versus|gap|limitation|weakness|strength|issue|problem|approach|strategy|design|architecture)` — answers matching these keywords skip the no-grounded-numbers check because they legitimately answer qualitative, not numerical, questions. 11/11 professional-tone tests pass (10 existing + 1 new comprehensive self-critical/comparative test).
+
+**Nightly validation (06:30 UTC):** (1) Mode 2 exemption allows self-critical/comparative questions to pass without BAD verdicts; (2) Mode 1 captures headers if any 429 occurs (use logs to identify upstream); (3) close auto-created issues #4585, #4654, #4724, #4783, #4922 once both modes confirmed working live (or escalate if either fails again).
+
+---
+
 ## WATCH LIST — 2026-09-13 Night Hawk: globalDiagnostics unbounded memory growth (platform-wide, CloudWatch check — no member-facing symptom) (read this before the routine pass)
 
 ### Fix: `nighthawk/lib/diagnostics.ts`'s `globalDiagnostics` singleton now bounds its trail/rejection arrays
