@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-14T17:37:00Z",
+  "updated_at": "2026-09-14T18:07:00Z",
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
@@ -208,6 +208,9 @@
     },
     "2026-09-14T17:37Z": {
       "note": "OKTA closed small win +1.56%. ZS TRIM new session high +61.9%. Board stable, no degradation, 4 fresh setups queued (commit_ready=4). 7 closed today (SLS flat, SAIL -6.67%, QBTS +5%, FIGR +5.71%, OKTA +1.56%, IONQ -6.92%, MARA -13.95%), 4 open (CRWD +26.52%, ZS +61.9%, S +27.91%, W +12.45%). Excellent session overall, nothing to escalate."
+    },
+    "2026-09-14T18:07Z": {
+      "note": "Investigated apparent scanned-count drop (299->7) and governor.time_of_day_label=last directional commit window at 14:07 ET -- both RULED OUT as legitimate, not bugs. scanned=7 reflects discovery_health.BREAKOUT=empty_market (a real quiet-market state this pass, PIN also 0) -- setups pool is just naturally thin mid-afternoon, not a discovery fault. time_of_day_label traced to intraday.ts timeOfDayFactor: 13:30-15:30 ET is deliberately the full last directional commit window bucket (neutral delta=0) per the documented E2 25-session calibration -- 14:07 ET correctly falls in it, working as designed. Board unchanged otherwise: 4 open (CRWD +22.46%, ZS +61.52%, S +39.53%, W +14.29%), 7 closed. Strong session continuing, nothing to escalate."
     }
   },
   "sessions": {
