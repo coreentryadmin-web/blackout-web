@@ -127,24 +127,39 @@ function regimeScore(regime: string | null | undefined, factors: DeckFactor[] | 
   return { commit: score, current: score, label: regime ?? (top ? top.label : "unread") };
 }
 
-function thetaBudgetScore(dte: number | null | undefined, subLane: string | null | undefined): { commit: number; current: number; label: string } {
+// Unlike the other score functions in this file, theta budget's commit and current SCORES
+// genuinely diverge from a single `dte` input — time decay is the whole point of the pillar, so
+// "at commit" (full runway assumed) and "now" (however close to the cliff/migration DTE) are
+// different facts even though nothing else about the setup changed. `commitLabel` must diverge
+// from the current-state `label` to match: leaving them identical produced a live, real "drifted
+// DTE 4 migrate → DTE 4 migrate" narrative line (CLSK, 2026-09-14) that read as a no-op transition
+// despite the underlying score genuinely fading (0.75→0.55, crossing into "faded" status) — see
+// FINDINGS for the full repro.
+function thetaBudgetScore(
+  dte: number | null | undefined,
+  subLane: string | null | undefined,
+): { commit: number; current: number; label: string; commitLabel: string } {
   if (dte == null || !Number.isFinite(dte)) {
-    return { commit: 0.5, current: 0.4, label: "DTE n/a" };
+    return { commit: 0.5, current: 0.4, label: "DTE n/a", commitLabel: "DTE n/a" };
   }
   const lane = (subLane as SwingSubLane | null) ?? null;
   const spec = lane ? SWING_SUBLANE_MANAGE[lane] : null;
   const cliff = spec?.expiryRiskDte ?? 2;
-  if (dte <= cliff) return { commit: 0.7, current: 0.15, label: `DTE ${dte} cliff` };
-  if (dte <= (spec?.migrationDte ?? 4)) return { commit: 0.75, current: 0.55, label: `DTE ${dte} migrate` };
-  return { commit: 0.85, current: 0.85, label: `${dte}DTE runway` };
+  if (dte <= cliff) {
+    return { commit: 0.7, current: 0.15, label: `DTE ${dte} cliff`, commitLabel: "full runway assumed" };
+  }
+  if (dte <= (spec?.migrationDte ?? 4)) {
+    return { commit: 0.75, current: 0.55, label: `DTE ${dte} migrate`, commitLabel: "full runway assumed" };
+  }
+  return { commit: 0.85, current: 0.85, label: `${dte}DTE runway`, commitLabel: `${dte}DTE runway` };
 }
 
-function toPillarPair(row: { commit: number; current: number; label: string }): {
+function toPillarPair(row: { commit: number; current: number; label: string; commitLabel?: string }): {
   commit: { score: number; label: string };
   current: { score: number; label: string };
 } {
   return {
-    commit: { score: row.commit, label: row.label },
+    commit: { score: row.commit, label: row.commitLabel ?? row.label },
     current: { score: row.current, label: row.label },
   };
 }

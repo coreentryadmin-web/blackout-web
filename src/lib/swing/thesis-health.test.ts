@@ -129,4 +129,65 @@ describe("computeSwingThesisHealth", () => {
     const persistence = h!.pillars.find((p) => p.label === "Persistence");
     assert.equal(persistence?.status, "intact", "unknown setupState defaults must not read as faded");
   });
+
+  // Live repro 2026-09-14 (CLSK): theta_budget's commit/current SCORES genuinely diverge from a
+  // single `dte` read (time decay), but commitLabel used to be copied from the current-state
+  // label — "DTE 4 migrate" on both sides — so the pillar-fade narrative rendered "drifted DTE 4
+  // migrate -> DTE 4 migrate", a no-op-looking transition despite the score crossing into "faded".
+  test("theta_budget pillar in the migrate band: commitLabel differs from currentLabel (not a no-op drift)", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      dte: 4,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const theta = h!.pillars.find((p) => p.label === "Theta budget");
+    assert.ok(theta);
+    assert.equal(theta!.status, "faded");
+    assert.equal(theta!.currentLabel, "DTE 4 migrate");
+    assert.notEqual(
+      theta!.commitLabel,
+      theta!.currentLabel,
+      "commit and current labels must differ once the score has genuinely faded",
+    );
+  });
+
+  test("theta_budget pillar in the cliff band: commitLabel differs from currentLabel", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      dte: 1,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const theta = h!.pillars.find((p) => p.label === "Theta budget");
+    assert.ok(theta);
+    assert.equal(theta!.status, "lost");
+    assert.equal(theta!.currentLabel, "DTE 1 cliff");
+    assert.notEqual(theta!.commitLabel, theta!.currentLabel);
+  });
+
+  test("theta_budget pillar with ample runway: commit and current labels legitimately match (no fade to explain)", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      dte: 12,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const theta = h!.pillars.find((p) => p.label === "Theta budget");
+    assert.ok(theta);
+    assert.equal(theta!.status, "intact");
+    assert.equal(theta!.commitLabel, theta!.currentLabel);
+  });
 });
