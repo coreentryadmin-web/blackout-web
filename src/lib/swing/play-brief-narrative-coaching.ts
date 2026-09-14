@@ -121,10 +121,19 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
         // than assumed from manageAction, since this branch also fires for a plain HOLD where the
         // trigger genuinely hasn't been reached yet and "next" is the correct, honest framing.
         const alreadyCrossed = typeof play.pnlPct === "number" && play.pnlPct >= next.trigger_pct;
+        // A single-rung ladder (`total === 1`, the common case — most swing plays carry exactly
+        // one trim trigger) makes the parenthetical `(${ladder})` byte-for-byte redundant with the
+        // trigger_pct already stated in the clause itself — live repro (forensic batch 10,
+        // 2026-09-14, AMLX/NEO/HACK/MSTX/PZZA): "next trim at **+100%** (+100%)" states the same
+        // number twice with nothing new in the parens. The ladder recap earns its place only once
+        // there's a REAL second rail to show (total > 1) — an unfired ladder's own trigger list
+        // then differs from the single "next" figure, e.g. two-rung "+50% · +100%" beside "next
+        // trim at +50%".
+        const ladderSuffix = total > 1 ? ` (${ladder})` : "";
         parts.push(
           alreadyCrossed
-            ? `**+${next.trigger_pct}%** rail already cleared, not yet banked (${ladder})`
-            : `next trim at **+${next.trigger_pct}%** (${ladder})`,
+            ? `**+${next.trigger_pct}%** rail already cleared, not yet banked${ladderSuffix}`
+            : `next trim at **+${next.trigger_pct}%**${ladderSuffix}`,
         );
       }
     }
