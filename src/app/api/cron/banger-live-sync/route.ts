@@ -15,7 +15,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import { logCronRun } from "@/lib/cron-run";
 import { runBangerLiveSync } from "@/lib/banger/live-sync";
 import { fetchOpenBangerPositions, updateBangerLiveState } from "@/lib/banger/positions-db";
-import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
+import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,8 +59,9 @@ export async function GET(req: NextRequest) {
         const snaps = await fetchOptionsUnifiedSnapshot(occs);
         const marks = new Map<string, number>();
         for (const [occ, snap] of snaps) {
-          if (typeof snap.mark === "number" && Number.isFinite(snap.mark) && snap.mark > 0) {
-            marks.set(occ, snap.mark);
+          const resolved = reliableMarkFromSnapshot(snap);
+          if (typeof resolved === "number" && Number.isFinite(resolved) && resolved > 0) {
+            marks.set(occ, resolved);
           }
         }
         return marks;

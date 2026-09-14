@@ -294,6 +294,43 @@ export function mapUnifiedSnapshotResult(r: UnifiedSnapshotResult): OptionSnapsh
   };
 }
 
+/**
+ * Backstop-quote divergence threshold for `reliableMarkFromSnapshot`: how many multiples of
+ * `last`/`dayClose` a bid=0 mid is allowed to exceed before it is treated as an unfillable
+ * placeholder rather than a real valuation. 10x is well above normal bid/ask noise (even a wide
+ * illiquid spread is rarely >2-3x the last print) and well below what a genuine intraday move
+ * would produce on the SAME contract between the last trade and now.
+ */
+export const ZERO_BID_MID_DIVERGENCE_MULTIPLE = 10;
+
+/**
+ * `snap.mark`'s own doc-priority ladder (mid → last → dayClose) is correct AS A VALUATION
+ * heuristic, but `midOf`'s `bid>=0` guard is deliberately permissive (a genuinely worthless
+ * deep-OTM contract legitimately has bid=0 — see `midOf`'s own comment) and carries no check on
+ * whether the ASK side is a real, fillable quote. A market maker's "backstop" ask on a contract
+ * nobody is bidding on can sit at an order of magnitude above the last real trade, and averaging
+ * a dead bid against that stale ask produces a mid nothing close to the contract's actual value —
+ * confirmed live 2026-09-14: CRSR 260918C00015000 showed `bid:0, ask:15` → mid $7.50, while
+ * `last_trade.price` (and `session.close`) were BOTH $0.07 (a 107x divergence) — same contract's
+ * entry premium was also $0.07, i.e. flat, not the +10614% the naive mid implied. Multiple other
+ * concurrently-committed BANGER positions (EBS/CPRI/BW/PAGS/BAND/ACVA) showed the identical
+ * shape same session. `midOf` itself is left untouched (shared with `zeroDteMidOf` in
+ * zerodte/marks-math.ts by deliberate cross-engine parity — see midOf's own comment); this is a
+ * SEPARATE, additive helper for consumers that want a divergence-sanity-checked mark instead of
+ * the raw doc-priority one. Only engages when bid is EXACTLY 0 (the shape backstop quotes take) —
+ * a real two-sided market (bid>0) is never second-guessed here.
+ */
+export function reliableMarkFromSnapshot(snap: OptionSnapshot): number | null {
+  if (snap.mark == null) return null;
+  if (snap.bid !== 0) return snap.mark;
+  const reference = snap.last ?? snap.dayClose;
+  if (reference == null || reference <= 0) return snap.mark;
+  if (snap.mark <= reference * ZERO_BID_MID_DIVERGENCE_MULTIPLE) return snap.mark;
+  // The bid/ask mid is a suspected backstop-quote artifact — fall through to the more honest
+  // last-trade/day-close reference instead of a mid nobody could actually transact at.
+  return reference;
+}
+
 /** Split an array into chunks of at most `size`. Exported for chunking tests. */
 export function chunkOccs<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
