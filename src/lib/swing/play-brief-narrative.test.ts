@@ -954,6 +954,57 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   assert.match(section!.body, /Break watch.*lose premium stop \*\*\$1\.96\*\*/i, "stop_premium must render precise, not rounded to $2, and not signed");
 });
 
+// Live repro (SKHY WATCH brief, 2026-09-14): thesis already INVALIDATED pre-entry (never
+// traded, never will be per this setup), yet a degraded-spot read rendered "Manage rails --
+// trim ladder +100%. Honor stops on closing basis; bank trims into strength" -- open-position
+// exit-management guidance for a setup that was never entered. railsFallback's own guard only
+// checked whether "Manage plan" had already rendered, not the bucket -- and manageLifecycleCoaching
+// unconditionally returns null for bucket==="watch", so that guard was ALWAYS true there, making
+// this the de-facto WATCH-bucket path rather than the rare open-bucket edge case (a contract
+// string with no parseable DTE) it was actually designed to cover.
+test("tradeManagerNarrativeSection: WATCH bucket never shows railsFallback's open-position 'Manage rails' language", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        thesisBreak: { level: "break", note: "structure invalidated — thesis broke pre-entry" },
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 1.5,
+          target_premium: 6,
+        },
+      }),
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Manage rails/i);
+});
+
+// Sibling: the genuine OPEN-bucket edge case (no DTE token to parse -> manageLifecycleCoaching
+// returns null despite bucket==="open") must still fall back to railsFallback -- this is the
+// case the guard was actually built for, and the fix must not remove it.
+test("tradeManagerNarrativeSection: OPEN bucket still falls back to railsFallback when Manage plan has nothing to say", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        contract: "110C",
+        exitPolicy: {
+          trim_levels: [],
+          stop_premium: 1.5,
+          target_premium: 6,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Manage rails/i);
+});
+
 test("tradeManagerNarrativeSection: railsFallback stop/target rails render sign-free absolute prices (2026-09-09 blast-radius fix)", () => {
   // Empty trim_levels + no manageAction/time_stop_et/runner_fraction + a contract with no DTE
   // token mean manageLifecycleCoaching contributes no "Manage plan" bullet, so railsFallback's own

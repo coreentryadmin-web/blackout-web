@@ -807,7 +807,19 @@ export function tradeManagerNarrativeSection(
   } else {
     const degraded = degradedReadLine(play, bucket);
     if (degraded) add(degraded);
-    if (!bullets.some((b) => /Manage plan/i.test(b))) {
+    // railsFallback is written as OPEN-position exit management ("bank trims into strength",
+    // "honor stops on closing basis") -- it exists to cover the rare case where manageLifecycleCoaching
+    // (bucket==="open" only) returns null despite a real exitPolicy (e.g. a contract string that
+    // doesn't match the DTE regex). But its guard only checked "Manage plan" didn't already
+    // render, not the bucket itself -- and manageLifecycleCoaching unconditionally returns null
+    // for bucket==="watch", so that guard is ALWAYS true there, making this the WATCH-bucket path
+    // in practice, not the rare-open-edge-case it was meant for. Live repro: SKHY WATCH brief,
+    // 2026-09-14, thesis already INVALIDATED pre-entry (never traded), rendered "Manage rails --
+    // trim ladder +100%. Honor stops on closing basis; bank trims into strength" -- exit-management
+    // guidance for a position that was never entered and never will be. Restricting to
+    // bucket==="open" removes the wrong WATCH-bucket firing while preserving the genuine open-only
+    // fallback it was designed for.
+    if (bucket === "open" && !bullets.some((b) => /Manage plan/i.test(b))) {
       const rails = railsFallback(play);
       if (rails) add(rails);
     }
