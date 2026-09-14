@@ -2155,6 +2155,13 @@
       "healthcheck": "AMBER, unchanged (same expected weekend mark staleness).",
       "note": "PR #4948: CI now fully GREEN (verify + CodeQL both success), but update_pull_request(draft:false) still fails with the AGENT_RELEASE_TOKEN PAT rate limit on retry -- this one has stayed limited noticeably longer than #4945/#4946 did earlier in the session (those cleared within ~30-45 min); will keep retrying once per cycle without hammering it further. Finished the market-wide.ts review started last cycle: fetchMarketWideContext's main body (~150 lines) is a textbook 'RECAP-MUST-NOT-THROW' hardened aggregator -- every one of ~20 parallel provider fetches has its own .catch() default, and the two synchronous derivations that can't be .catch()-guarded (computeMarketBreadthFromSummary, computeSpxGapContext) are wrapped in explicit try/catch. No new bugs found. market-wide.ts now fully reviewed across two cycles, clean. One open PR to watch (#4948, green, awaiting undraft).",
       "action": "clean"
+    },
+    {
+      "ts": "2026-09-14T00:12:00Z",
+      "cycle": "00:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm), full v3 mandate",
+      "healthcheck": "AMBER, unchanged (same expected weekend/pre-open mark staleness -- editionFor still 2026-09-14, market not yet open).",
+      "note": "PR #4948 (globalDiagnostics memory-leak fix) -- shared PAT rate limit finally cleared, undraft succeeded, merged instantly (commit a07061ffd). Verified content matches exactly what was authored (system reminder showed the diff on checkout, confirmed byte-for-byte the same fix). Swept fetch-timeout.ts (dossierFetch's AbortController+race timeout wrapper -- verified no dangling timer: clearTimeout always runs via .finally() on the raced work promise regardless of which side of the race wins) and legacy-macro-types.ts (pure type definitions, nothing to check) and agent-config.ts (the shared 'Hunt Mode' day/swing/leap filter-UI config -- static config objects + two trivial lookup functions, no computation to get wrong; noted this is a shared cross-horizon tool, not Legacy-exclusive, similar treatment to diagnostics.ts). No new bugs found this cycle. No open PRs remaining -- all four PRs from this session (#4944, #4945, #4946, #4948) confirmed merged with verified content.",
+      "action": "clean"
     }
   ],
   "knownOpenItems": {
