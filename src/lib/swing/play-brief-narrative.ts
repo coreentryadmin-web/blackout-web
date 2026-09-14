@@ -14,6 +14,7 @@ import {
   resolveGammaPosture,
   nighthawkLiveForSession,
   zerodteLiveForSession,
+  optionMarkGenuinelyUnknown,
 } from "./play-brief-absence";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
@@ -766,7 +767,22 @@ function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed
       ? ` · gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
       : "";
   const healthBit = health != null ? ` · thesis **${health}%**` : "";
-  const markBit = play.mark != null ? ` · mark **${fmtOptionUsd(play.mark)}**` : "";
+  // BUG FIX (2026-09-14, Ask Largo standing mandate, live repro RKLX/PGY OPEN briefs): this used to
+  // gate purely on `play.mark != null`, which the TRUE entry-fallback case always satisfies — a
+  // fresh banger-lane row with no synced quote yet carries `play.mark === play.entry`
+  // (horizonPlayFromBangerPosition's fallback), not a real live price. RKLX rendered "mark
+  // **$0.51**" here (the entry premium) in the SAME brief whose Position section, a few lines
+  // above, correctly read "Mark: **unknown** _(sync quote, no live price yet — do not read as
+  // flat)_" and whose own Data caveat said "mark not synced to live tape" — a specific dollar
+  // figure presented as current right next to two honest disclosures that it isn't known. 3rd
+  // instance of this exact root cause in this file/lane; the other two call sites (`pnlSection` in
+  // play-brief.ts, the "Premium stop rail" cushion in play-brief-intel.ts) already gate on the
+  // shared `optionMarkGenuinelyUnknown` (play-brief-absence.ts) — this call site never picked up
+  // the same guard. Fix: omit the markBit entirely (never fabricate a "not shown" placeholder —
+  // this whole line only fires when Vector spot isn't wired, so a missing markBit alongside a
+  // present healthBit/givebackBit is expected, not a gap).
+  const markBit =
+    play.mark != null && !optionMarkGenuinelyUnknown(play) ? ` · mark **${fmtOptionUsd(play.mark)}**` : "";
   return `**Live read** — Vector spot not wired on this tick; desk still says **${rec}**${healthBit}${markBit}${givebackBit}. Levels refresh on next poll.`;
 }
 
