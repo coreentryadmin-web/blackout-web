@@ -7,6 +7,7 @@ import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
+  confluenceZoneKindsLabel,
   gexMatrixAgeMs,
   gexMatrixStale,
   GEX_MATRIX_STALE_MS,
@@ -335,8 +336,20 @@ export function chartTechnicalsSection(
   };
 }
 
-function formatConfluenceZone(z: ConfluenceZone, spot: number | null): string {
-  const kinds = z.kinds.join("+");
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro NAIL/IONX): this used to join
+// `z.kinds` bare, sharing the exact "call-wall"/"put-wall" name with the single top-ranked wall
+// shown a few lines above in "Levels on chart" even when the confluence engine picked a
+// LOWER-ranked wall at a materially different price — live repro NAIL showed "35.00
+// (call-wall+max-pain, score 5.0)" here while "Call wall (GEX): 40.00" sat three lines up in the
+// SAME section, reading as a contradiction. `play-brief.ts`'s structured `levels` array already
+// disambiguates this (fixed 2026-09-13); this prose call site never picked up the same fix — see
+// `confluenceZoneKindsLabel`'s own doc comment (play-brief-absence.ts) for the full history.
+function formatConfluenceZone(
+  z: ConfluenceZone,
+  spot: number | null,
+  primary: { callWall?: number | null; putWall?: number | null },
+): string {
+  const kinds = confluenceZoneKindsLabel(z, primary);
   const dist = spot != null ? ` · ${fmtDist(spot, z.center)}` : "";
   return `• **${z.center.toFixed(2)}** (${kinds}, score ${z.score.toFixed(1)})${dist}`;
 }
@@ -456,7 +469,9 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const zones = vec?.confluenceZones ?? [];
   if (zones.length && !vectorStaleForLevels) {
     const top = [...zones].sort((a, b) => b.score - a.score).slice(0, 4);
-    lines.push("**Confluence nodes:**\n" + top.map((z) => formatConfluenceZone(z, spot)).join("\n"));
+    lines.push(
+      "**Confluence nodes:**\n" + top.map((z) => formatConfluenceZone(z, spot, { callWall, putWall })).join("\n"),
+    );
   }
   const dp = vec?.darkPoolLevels ?? [];
   if (dp.length && !vectorStaleForLevels) {

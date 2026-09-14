@@ -5,6 +5,7 @@
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   collectOptionMarkStalenessAbsence,
+  confluenceZoneKindsLabel,
   gexMatrixAgeMs,
   gexMatrixStale,
   resolveGammaPosture,
@@ -249,7 +250,21 @@ export function confluenceCoaching(
   if (!zones.length) return null;
   const top = [...zones].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
   if (!top?.center) return null;
-  const kinds = top.kinds?.join(" + ") ?? "multi-signal";
+  // BUG FIX (2026-09-14, Ask Largo standing mandate, live repro NAIL/IONX): this used to join
+  // `top.kinds` bare, sharing the exact "call-wall"/"put-wall" name with the single top-ranked
+  // wall this same brief shows in "Levels on chart" even when the confluence engine picked a
+  // LOWER-ranked wall at a materially different price — live repro IONX showed "Confluence 22.00
+  // (call-wall + max-pain, score 5.0)" here while "Call wall (GEX): 24.00" sat elsewhere in the
+  // SAME brief. `vectorSnapshotStale` above already guarantees `vec` is fresh, so its own
+  // top-ranked wall (`gexWalls.callWalls[0]`/`putWalls[0]`) IS the same "primary" wall the rest of
+  // this fresh brief renders — no GEX-matrix fallback needed here, unlike `preferredGexWalls`
+  // (play-brief-intel.ts), which also handles a stale-Vector case this function already excludes.
+  // See `confluenceZoneKindsLabel`'s own doc comment (play-brief-absence.ts) for the full history.
+  const primaryCallWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? null;
+  const primaryPutWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? null;
+  const kinds = top.kinds?.length
+    ? confluenceZoneKindsLabel(top, { callWall: primaryCallWall, putWall: primaryPutWall }).replace(/\+/g, " + ")
+    : "multi-signal";
   const dist = ((top.center - spot) / spot) * 100;
   const side = top.center < spot ? "support below" : "resistance above";
   const action =
