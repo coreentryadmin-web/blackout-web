@@ -134,6 +134,26 @@ function pastEntryDeadline(input: SwingEntryEnterabilityInput, nowMs: number): b
 }
 
 /**
+ * Short reason a WATCH play's entry mechanics are already moot, independent of any gate state —
+ * null while the play is still genuinely enterable. `evaluateSwingEntryEnterability`'s own
+ * if-chain checks INVALIDATED/past-deadline BEFORE gate-blocked (this file, above), so a play can
+ * be both expired/invalidated AND gate-blocked at once — entry-verdict.ts deliberately keeps the
+ * gate evidence attached in that case (see its own comment) rather than dropping it, but every
+ * renderer of that gate text must know the gate is secondary: clearing it would NOT make the play
+ * enterable, because the deadline/invalidation check fires first regardless. Narrow structural
+ * type (not the full `TerminalPlay`) so this stays a dependency-free leaf export any brief-render
+ * module can import without a cycle risk back through play-brief-narrative.ts/play-brief-intel.ts.
+ */
+export function deadPlayReason(play: {
+  setupState?: string | null;
+  watchEntryExpired?: boolean | null;
+}): string | null {
+  if (play.setupState === "INVALIDATED") return "thesis already invalidated";
+  if (play.watchEntryExpired === true) return "entry-validity window expired";
+  return null;
+}
+
+/**
  * Whether a member can enter now (or soon at limit) — independent of desk serving section / liveStatus.
  */
 export function evaluateSwingEntryEnterability(

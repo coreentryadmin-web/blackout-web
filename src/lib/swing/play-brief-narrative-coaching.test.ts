@@ -363,6 +363,38 @@ test("watchGateCoaching: does not double the period when the reason already ends
   assert.match(line!, /desk will not open\.$/, "must still end with exactly one closing period");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-09-14): "Gates blocking entry" implies clearing the
+// gate opens entry — false once the play is already past its entry deadline or invalidated, since
+// entry-enterability.ts's own if-chain checks those BEFORE gate-blocked and independently blocks
+// entry either way (entry-verdict.ts keeps the gate evidence attached anyway, per its own comment,
+// rather than dropping real evidence). Live repro: ORCL WATCH brief, "Entry stance: EXPIRED" and
+// "Gates blocking entry: g_s4_regime..." sat in the same section with nothing marking the gate as
+// moot.
+test("watchGateCoaching: reframes as moot when the entry-validity window already expired", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "WATCH",
+      watchEntryExpired: true,
+      gateBlocks: [{ code: "g_s4_regime", reason: "Broad-market regime degraded." }],
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\)/);
+  assert.doesNotMatch(line!, /^\*\*Gates blocking entry\*\*/, "must not read as an active/clearable blocker");
+});
+
+test("watchGateCoaching: reframes as moot when the thesis is already invalidated", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "WATCH",
+      setupState: "INVALIDATED",
+      gateBlocks: [{ code: "g_s6_confluence", reason: "Confluence below commit threshold." }],
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /\*\*Also gate-blocked\*\* \(moot — thesis already invalidated\)/);
+});
+
 test("crossDeskCoaching: friction when NH conflicts", () => {
   const line = crossDeskCoaching(
     ctx({
