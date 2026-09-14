@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   chainQuoteForParsedPlay,
   evaluatePlayAgainstChain,
+  pivotPolygonContracts,
   playPremiumWithinChainBand,
   rowFromOptionSnapshot,
   STRIKE_MIN_OI,
@@ -164,4 +165,58 @@ test("rowFromOptionSnapshot: put side is guarded identically to call side", () =
   assert.ok(row2);
   assert.equal(row2!.put_ask, 0.1);
   assert.equal(row2!.call_ask, null, "the opposite side stays untouched");
+});
+
+// ---------------------------------------------------------------------------
+// pivotPolygonContracts: backstop-quote ask guard (2026-09-14, follow-up to the
+// rowFromOptionSnapshot fix above). This is the NARROW-ATM-WINDOW path — the one most of a
+// play's selected contracts actually go through (augmentChainsWithExactContracts, guarded
+// above, only fires for a contract NOT already in this window) — so it needed the identical
+// guard, reached through Polygon's raw chain-snapshot shape instead of the unified-snapshot one.
+// ---------------------------------------------------------------------------
+
+function chainContract(overrides: Partial<Record<string, unknown>> = {}): Parameters<typeof pivotPolygonContracts>[0][number] {
+  return {
+    details: { strike_price: 100, contract_type: "call", expiration_date: "2026-09-18" },
+    open_interest: 800,
+    last_quote: { bid: 0, ask: 15 },
+    last_trade: { price: 0.07 },
+    day: { close: 0.07 },
+    ...overrides,
+  } as Parameters<typeof pivotPolygonContracts>[0][number];
+}
+
+test("pivotPolygonContracts: a bid:0 backstop ask 107x above last/dayClose falls back to the last-trade reference, not the fabricated ask", () => {
+  const rows = pivotPolygonContracts([chainContract()], 100);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.call_ask, 0.07, "must use the honest last/dayClose reference, not the $15 backstop ask");
+  assert.equal(rows[0]!.call_bid, 0, "bid is passed through unchanged -- only ask is guarded");
+});
+
+test("pivotPolygonContracts: a real two-sided market (bid>0) is never second-guessed even if ask/last diverge", () => {
+  const rows = pivotPolygonContracts(
+    [chainContract({ last_quote: { bid: 6.8, ask: 7.2 }, last_trade: { price: 0.5 }, day: { close: 0.5 } })],
+    100
+  );
+  assert.equal(rows[0]!.call_ask, 7.2, "a genuine bid>0 quote is trusted as-is regardless of last-trade divergence");
+});
+
+test("pivotPolygonContracts: a bid:0 ask within 10x of the reference is trusted as-is (not every bid:0 quote is a backstop)", () => {
+  const rows = pivotPolygonContracts(
+    [chainContract({ last_quote: { bid: 0, ask: 0.5 }, last_trade: { price: 0.07 }, day: { close: 0.07 } })],
+    100
+  );
+  assert.equal(rows[0]!.call_ask, 0.5, "0.5 <= 0.07 * 10 -- within the honest-divergence band, not a backstop artifact");
+});
+
+test("pivotPolygonContracts: the existing ask<=0 after-hours fallback is unchanged (no last_quote at all)", () => {
+  const rows = pivotPolygonContracts(
+    [chainContract({ last_quote: { bid: 0, ask: 0 }, last_trade: { price: 4.2 }, day: { close: 4.1 } })],
+    100
+  );
+  assert.equal(rows[0]!.call_ask, 4.2, "ask<=0 still falls back to last_trade.price exactly as before this fix");
+  assert.ok(
+    Math.abs(rows[0]!.call_bid! - 3.99) < 1e-9,
+    "bid still backfills to 95% of the fallback ask exactly as before this fix"
+  );
 });
