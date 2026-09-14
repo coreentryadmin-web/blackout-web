@@ -193,6 +193,68 @@ test("manageLifecycleCoaching: trim ladder + time stop", () => {
 // "Hold plan" section whenever this narrative renders, claiming its content is folded in here —
 // but the DTE-runway fact only appeared in this function's own line for dte<=7, so a 9DTE
 // position lost the fact entirely (not just deduped, actually deleted with nothing folded in).
+// Live repro (NRG:34, 2026-09-14): manage engine EXIT (time_stop, a full flatten) rendered right
+// next to "next trim at +100% ... 50% runner after trims" -- two contradictory plans in one
+// bullet, since a full exit closes the whole position and supersedes any pending trim/runner.
+test("manageLifecycleCoaching: full-flatten EXIT drops the moot trim-ladder/runner framing", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "EXIT",
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /manage engine \*\*EXIT\*\*/);
+  assert.doesNotMatch(line!, /next trim/i);
+  assert.doesNotMatch(line!, /runner\*\* after trims/i);
+  assert.match(line!, /16:00 ET/i);
+});
+
+test("manageLifecycleCoaching: STOP_OUT (hard capital-preservation stop) also drops the moot framing", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "STOP_OUT",
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /manage engine \*\*STOP OUT\*\*/);
+  assert.doesNotMatch(line!, /next trim/i);
+  assert.doesNotMatch(line!, /runner\*\* after trims/i);
+});
+
+// EXIT_RUNNER is NOT a full flatten in the misleading sense -- it means the trims already fired
+// and only the runner remains, so "all trims banked -- runner only" is exactly the state that
+// led to this recommendation, not a contradiction of it. Must not be suppressed.
+test("manageLifecycleCoaching: EXIT_RUNNER keeps the 'all trims banked' framing (it's consistent, not contradictory)", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "EXIT_RUNNER",
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: true }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /all trims banked/i);
+});
+
 test("manageLifecycleCoaching: DTE > 7 still carries runway context, not just the <=7 urgency line", () => {
   const line = manageLifecycleCoaching(play({ contract: "110C · 9DTE" }), "open");
   assert.match(line!, /9 DTE.*remaining/i);
