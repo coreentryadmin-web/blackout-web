@@ -91,7 +91,17 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
     parts.push(`manage engine **${play.manageAction.replace(/_/g, " ")}**`);
   }
 
-  if (ep?.trim_levels?.length) {
+  // A full flatten (EXIT: time-stop/thesis-break; STOP_OUT: the hard capital-preservation stop)
+  // closes the WHOLE remaining position now, superseding any partial-scale-out mechanics. Showing
+  // "next trim at +100%" or "50% runner after trims" alongside "manage engine EXIT" reads as two
+  // contradictory plans in one bullet -- live repro: NRG:34, 2026-09-14, manage engine EXIT
+  // (time_stop) rendered right next to "next trim at +100% ... 50% runner after trims", as if a
+  // future scale-out were still the plan. EXIT_RUNNER is NOT included here: it means the trims
+  // already fired and only the runner remains, so "all trims banked -- runner only" (below) is
+  // exactly the state that led to that recommendation, not a contradiction of it.
+  const isFullFlatten = play.manageAction === "EXIT" || play.manageAction === "STOP_OUT";
+
+  if (!isFullFlatten && ep?.trim_levels?.length) {
     const fired = ep.trim_levels.filter((t) => t.fired).length;
     const total = ep.trim_levels.length;
     const ladder = ep.trim_levels.map((t) => `+${t.trigger_pct}%${t.fired ? " ✓" : ""}`).join(" · ");
@@ -109,7 +119,7 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
     parts.push(`session exit **${ep.time_stop_et} ET**`);
   }
 
-  if (ep?.runner_fraction != null && ep.runner_fraction > 0) {
+  if (!isFullFlatten && ep?.runner_fraction != null && ep.runner_fraction > 0) {
     parts.push(`**${Math.round(ep.runner_fraction * 100)}% runner** after trims`);
   }
 
