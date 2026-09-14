@@ -10,7 +10,7 @@
 
 import type { CortexInputs, EvidenceItem } from "../types";
 import { hasCatalystItem } from "./catalyst-news";
-import { absentForMissingSlice, fmtNum } from "./shared";
+import { absentForMissingSlice, fmtNum, fmtSigned } from "./shared";
 
 /** Sector-ETF day move must be at least ±0.5% before it counts as directional room:
  *  sector ETFs oscillate a few tenths on an ordinary day; below half a percent the
@@ -98,7 +98,7 @@ export function deriveSectorHeatEvidence(input: CortexInputs): EvidenceItem[] {
       weight: SECTOR_HEAT_WEIGHT,
       detail:
         `sector ${sector.sectorName} is ${fmtNum(chg)}% on the day` +
-        (sector.tickerChangePct != null ? ` (${input.ticker} ${fmtNum(sector.tickerChangePct)}%)` : "") +
+        (sector.tickerChangePct != null ? ` (${input.ticker} ${fmtSigned(sector.tickerChangePct)}%)` : "") +
         ` — the room ${aligned ? "supports" : "opposes"} a ${direction}.`,
     },
   ];
