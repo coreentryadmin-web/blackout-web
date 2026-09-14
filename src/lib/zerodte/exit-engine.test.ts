@@ -118,8 +118,8 @@ test("ratchetFloorPct: pure floor table (early 15→5, arm 20→0, lock 50→20,
   assert.equal(ratchetFloorPct(19.99, false), 5);
   assert.equal(ratchetFloorPct(20, false), 0);
   assert.equal(ratchetFloorPct(49.99, false), 0);
-  assert.equal(ratchetFloorPct(50, false), 20);
-  assert.equal(ratchetFloorPct(400, false), 20);
+  assert.equal(ratchetFloorPct(50, false), 20); // 0.4 * 50 == the old flat floor, continuous at the boundary
+  assert.equal(ratchetFloorPct(400, false), 160); // scales with peak now, not a flat 20 regardless of size
   assert.equal(ratchetFloorPct(10, true), EXIT_RULES.runner_floor_pct, "trim latch alone sets the runner floor");
 });
 
@@ -921,8 +921,11 @@ test("trimScaleFloorPct: unit coverage — dead zone only opens for TREND, ident
   // TREND, at/after the first tranche (40): dead zone closes, byte-identical again.
   assert.equal(trimScaleFloorPct(40, false, "trend"), ratchetFloorPct(40, false));
   assert.equal(trimScaleFloorPct(50, false, "trend"), ratchetFloorPct(50, false));
-  // Lock tier and the trimmed/runner-floor latch are untouched at every regime.
-  assert.equal(trimScaleFloorPct(60, false, "trend"), EXIT_RULES.ratchet_lock_floor_pct);
+  // Lock tier now SCALES with peak (peak * ratchet_lock_floor_fraction) instead of a
+  // flat value, and stays delegated/consistent with ratchetFloorPct; the runner-floor
+  // latch is untouched at every regime.
+  assert.equal(trimScaleFloorPct(60, false, "trend"), 24); // 60 * 0.4
+  assert.equal(trimScaleFloorPct(60, false, "trend"), ratchetFloorPct(60, false));
   assert.equal(trimScaleFloorPct(25, true, "trend"), EXIT_RULES.runner_floor_pct);
   assert.equal(trimScaleFloorPct(null, false, "trend"), null);
 });
@@ -1088,7 +1091,7 @@ test("peak widening: no latched peak + a live mark derives the peak from the mar
   // No peakPremium but a +60% mark → the derived peak is +60%, which arms the +20% profit floor.
   const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: null, currentMark: 6.4 })); // +60%
   assert.equal(d.action, "RAISE_FLOOR");
-  assert.equal(d.floorPnlPct, 20);
+  assert.equal(d.floorPnlPct, 24); // locked tier now scales with peak: 60 * 0.4
 });
 
 // ── buildExitContext: null entry premium → P&L fields are honest nulls ────────────────
