@@ -1,3 +1,15 @@
+## VALIDATED — 2026-09-14 Largo stress nightly recovery: Mode 2 confirmed fixed, Mode 1 not exercised (read this before re-litigating the watch-list entry below)
+
+The scheduled 06:30 UTC run never fired (known GitHub Actions `schedule:` drift for this workflow under high fleet commit velocity — not a new issue, not either Mode). Manually triggered via `workflow_dispatch` at 07:17 UTC instead (same bank-rotation/`concurrency=2` config a real scheduled run uses): **run 34817210344, conclusion `success` — first green run since the failure streak began 2026-09-06.**
+
+`live_ok: 84, live_bad: 0, live_warn: 16, live_skipped_transport: 9, live_quality_pct: 84`
+
+**Mode 2 (honesty-check exemption, PR #4940) — CONFIRMED FIXED.** `live_bad: 0` — zero BAD verdicts across 100 answered questions, the field that fails the job. Closed #4654/#4724/#4783/#4922 (the 4 auto-created failure-tracking issues) with this evidence; #4585 had already been closed in an earlier sweep.
+
+**Mode 1 (429 header capture, PR #4926) — still UNCONFIRMED against a real 429; this run didn't hit one.** The 9 skipped questions this run were a different transport failure: HTTP 401 session re-auth throttling (`[clerk-session] re-establish FAILED: sign_in_tokens mint failed (HTTP 404 resource_not_found)`, then "refresh returned no JWT; re-establish throttled") — no rate-limit lines anywhere in the log. Mode 1's fix remains untested either way; watch the next run that actually hits a 429 to see whether the captured `x-ratelimit-*` headers identify the upstream. The 401/re-auth-throttle pattern itself (8.3% coverage loss this run) is a distinct, smaller observation — not filed as a new issue on one occurrence, but worth a second look if it recurs.
+
+---
+
 ## WATCH LIST — 2026-09-14 Largo stress nightly recovery: Mode 1 (429 rate-limit header capture) + Mode 2 (self-critical question exemption) (validation target: next scheduled 06:30 UTC nightly run)
 
 ### PR #4926 (merged) + PR #4940 (merged): two-part remediation for persistent `largo-stress-nightly` failures
