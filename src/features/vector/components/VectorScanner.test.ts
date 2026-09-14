@@ -13,8 +13,14 @@ test("VectorScanner: surfaces the universe snapshot's staleness instead of rende
   // visual difference from a live one. There's no rendering harness in this repo (no
   // renderHook/@testing-library), so this asserts the fix is wired into the source, matching the
   // pattern already used elsewhere in this suite (e.g. VectorContractPicksCard.test.ts).
+  //
+  // BUG FIX (2026-09-14): raw `data.updatedAt` was itself a misleading freshness signal (bumped by
+  // a single-ticker append that refreshes just one row — see vector-age-format.ts's own comment).
+  // Freshness now comes from `effectiveUniverseAsOf(data)`, the median row `asOf` — updated this
+  // assertion to match while preserving the original intent (the staleness disclosure must still
+  // exist and be wired to the formatter/staleness helper).
   const src = readFileSync(join(root, "components/VectorScanner.tsx"), "utf8");
-  assert.match(src, /data\.updatedAt/, "must read the snapshot's updatedAt field");
+  assert.match(src, /effectiveUniverseAsOf\(data\)/, "must derive freshness via effectiveUniverseAsOf(data), not raw data.updatedAt");
   assert.match(src, /formatVectorAge\(/, "must format the age using the shared age formatter");
   assert.match(src, /is-stale/, "must render a distinct visual state once the snapshot is old");
 });
