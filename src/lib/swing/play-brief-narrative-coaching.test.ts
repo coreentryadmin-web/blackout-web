@@ -300,6 +300,66 @@ test("manageLifecycleCoaching: keeps 'next trim at' when price genuinely has NOT
   assert.doesNotMatch(line!, /already cleared/);
 });
 
+// Live repro (forensic batch 10, 2026-09-14: AMLX/NEO/HACK/MSTX/PZZA, all single-rung ladders):
+// "next trim at **+100%** (+100%)" -- the parenthetical ladder recap is byte-identical to the
+// trigger_pct already stated in the clause, pure filler for the common single-rung case.
+test("manageLifecycleCoaching: single-rung ladder omits the redundant parenthetical recap", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 42,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  assert.doesNotMatch(line!, /\(\+100%\)/, "a single-rung ladder must not restate the same number in parens");
+});
+
+// Sibling: the "already cleared" branch must ALSO drop the redundant parenthetical for a
+// single-rung ladder, not just the "next trim at" branch above.
+test("manageLifecycleCoaching: single-rung ladder omits the redundant parenthetical recap on the 'already cleared' branch too", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "TAKE_PARTIAL",
+      pnlPct: 169.2,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /rail already cleared, not yet banked/);
+  assert.doesNotMatch(line!, /\(\+100%\)/, "a single-rung ladder must not restate the same number in parens");
+});
+
+// A REAL multi-rung ladder still earns the parenthetical recap -- it carries new information
+// (the second, unfired rail) the "next trim at" clause alone doesn't state.
+test("manageLifecycleCoaching: multi-rung ladder keeps the parenthetical recap (it shows a REAL second rail)", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 20,
+      exitPolicy: {
+        trim_levels: [
+          { trigger_pct: 50, fired: false },
+          { trigger_pct: 100, fired: false },
+        ],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+50%\*\* \(\+50% · \+100%\)/);
+});
+
 test("manageLifecycleCoaching: DTE > 7 still carries runway context, not just the <=7 urgency line", () => {
   const line = manageLifecycleCoaching(play({ contract: "110C · 9DTE" }), "open");
   assert.match(line!, /9 DTE.*remaining/i);
