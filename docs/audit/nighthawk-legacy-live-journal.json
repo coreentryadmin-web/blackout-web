@@ -2770,6 +2770,13 @@
       "healthcheck": "RED (same already-diagnosed C_record false-RED as the 20:36 cycle -- expected, since PR #4992's fix hasn't merged to main yet; A_edition/B_marks AMBER unchanged, same already-explained pre-5:30pm-ET-publish-window state).",
       "note": "PR #4992 (healthcheck bucket-overlap fix) undrafted, CI still running (verify in_progress, ~15+ min so far -- unremarkable for a full-suite CI run per this repo's own documented ~10min typical, watching for completion rather than treating slowness alone as a problem). Re-ran healthcheck:legacy against main this cycle purely to confirm the pre-fix C_record RED is still reproducing consistently on unpatched main (it is, byte-identical evidence string to the 20:36 cycle) -- not a new instance, just confirming the bug is real and stable while waiting on CI. Will merge and re-verify against origin/main once verify completes.",
       "action": "waiting-on-pr-4992-ci"
+    },
+    {
+      "ts": "2026-09-14T20:58:00Z",
+      "cycle": "webhook-triggered (check_suite.completed on PR #4992)",
+      "healthcheck": "GREEN on C_record post-merge (A_edition/B_marks still AMBER, same already-explained pre-5:30pm-ET-publish-window state -- unrelated to this fix).",
+      "note": "PR #4992 went green -- verify/CodeQL/triage all success, mergeable_state:clean. Merged manually via GitHub MCP (squash, sha 1fa7b025d). Re-synced to origin/main, re-ran legacy-healthcheck-eval.test.mjs directly against merged code -- 43/43 pass. Then, per the standing 'a merge is not a verification' discipline, went one step further than a code-level re-check and re-ran the ACTUAL LIVE npm run healthcheck:legacy against production one more time to prove the real-world fix, not just the synthetic test -- C_record now reports GREEN (resolved=28, buckets sum consistently) on live production data, confirming the false-RED bug this cycle's investigation traced and fixed is genuinely resolved end-to-end. Unsubscribed from #4992, done. This closes out today's THIRD grounding/tooling investigation and fifth PR overall: #4985 (calendar-strip holidays), #4986 (backstop-ask, exact-contract path), #4988 (backstop-ask, narrow-window path), #4990 (dossierFetch abort-wiring, held finding), #4992 (healthcheck's own false-RED bug) -- all merged and independently re-verified against origin/main, three with live-production re-confirmation on top of the code-level check. Standing per-cycle mandate continues.",
+      "action": "pr-4992-merged-and-verified-live"
     }
   ],
   "knownOpenItems": {
