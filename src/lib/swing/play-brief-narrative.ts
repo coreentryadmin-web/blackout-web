@@ -431,8 +431,22 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
     // while the copy reads like protection is already in motion. Disclose plainly in that case,
     // BEFORE the round-trip happens — the round-trip bullet below only covers the aftermath.
     const trimsFired = trimLevels.filter((t) => t.fired).length;
+    // "next rail at +X%" reads as forward-looking ("coming up"), but per the comment above this
+    // rung has ALREADY been crossed whenever rec is TRIM at all -- live repro: CG SWING:CG:25,
+    // 2026-09-14, pnlPct +169.2%, next.trigger_pct 100 (unfired) -- "next rail at +100%" while
+    // already 69 points past it. Checked directly against the live pnlPct (not just trusting the
+    // "always crossed" comment) so the wording self-corrects if that invariant ever doesn't hold:
+    // only the already-past case gets the past-tense framing, a genuinely-ahead rail (or an
+    // unknown current pnl) keeps the original "next rail" wording untouched.
+    const railAlreadyCrossed =
+      next != null && typeof play.pnlPct === "number" && play.pnlPct >= next.trigger_pct;
+    const railClause = next
+      ? railAlreadyCrossed
+        ? ` — **+${next.trigger_pct}%** rail already cleared (now **${fmtPct(play.pnlPct!)}**), not yet banked`
+        : ` — next rail at **+${next.trigger_pct}%**`
+      : "";
     lines.push(
-      `**Desk says TRIM**${next ? ` — next rail at **+${next.trigger_pct}%**` : ""}.` +
+      `**Desk says TRIM**${railClause}.` +
         (giveback?.kind === "round_trip" ? "" : " Bank partial into strength; don't give back peak.") +
         (trimsFired === 0
           ? " Nothing's banked yet — this is advisory only; place the trim yourself, the desk does not execute trades."

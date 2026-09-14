@@ -111,7 +111,21 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
       parts.push(`**all trims banked** — runner only`);
     } else {
       const next = ep.trim_levels.find((t) => !t.fired);
-      if (next) parts.push(`next trim at **+${next.trigger_pct}%** (${ladder})`);
+      if (next) {
+        // "next trim at +X%" reads as forward-looking, but when pnlPct has already passed the
+        // unfired trigger (a HOLD/TAKE_PARTIAL play sitting well past its own first rail — same
+        // root cause as actionNarrative's sibling bullet in play-brief-narrative.ts, live repro
+        // CG SWING:CG:25, 2026-09-14, pnlPct +169.2% vs trigger 100) it is not "next", it is
+        // already cleared and simply not yet banked. Checked directly against live pnlPct rather
+        // than assumed from manageAction, since this branch also fires for a plain HOLD where the
+        // trigger genuinely hasn't been reached yet and "next" is the correct, honest framing.
+        const alreadyCrossed = typeof play.pnlPct === "number" && play.pnlPct >= next.trigger_pct;
+        parts.push(
+          alreadyCrossed
+            ? `**+${next.trigger_pct}%** rail already cleared, not yet banked (${ladder})`
+            : `next trim at **+${next.trigger_pct}%** (${ladder})`,
+        );
+      }
     }
   }
 

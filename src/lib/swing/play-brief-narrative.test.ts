@@ -751,6 +751,63 @@ test("tradeManagerNarrativeSection: TRIM recommendation discloses advisory-only 
   );
 });
 
+// Live repro (CG SWING:CG:25, 2026-09-14): pnlPct +169.2%, unfired trim_levels[0].trigger_pct
+// 100 — "next rail at +100%" reads as forward-looking ("coming up") when the rail is actually
+// 69 points BEHIND current price, already cleared and simply not yet banked (per the comment
+// above this branch: the trigger has already been crossed whenever rec is TRIM at all).
+test("tradeManagerNarrativeSection: TRIM's rail bullet says 'already cleared', not 'next', once price has passed the unfired trigger", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "TRIM",
+        recommendation: "TRIM",
+        pnlPct: 169.2,
+        peak: 169.2,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 5.2, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /\*\*\+100%\*\* rail already cleared \(now \*\*\+169\.2%\*\*\), not yet banked/,
+  );
+  assert.doesNotMatch(section!.body, /next rail at/);
+});
+
+// Sibling: when price genuinely has NOT reached the unfired trigger yet (or pnlPct is
+// unavailable), the original forward-looking "next rail at" framing is correct and must stay.
+test("tradeManagerNarrativeSection: TRIM's rail bullet keeps 'next rail at' when price has NOT reached the trigger yet", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "TRIM",
+        recommendation: "TRIM",
+        pnlPct: 42,
+        peak: 42,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 5.2, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /next rail at \*\*\+100%\*\*/);
+  assert.doesNotMatch(section!.body, /already cleared/);
+});
+
 // Sibling: once at least one trim rung HAS actually fired (mechanical + status===TRIM, per
 // adapters.ts's gating comment), the position is no longer 100% exposed — the costliest gap
 // (silent full exposure) no longer applies, so the disclosure should not fire.
