@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { useVectorUniverseSnapshot } from "@/features/vector/lib/vector-universe-client";
 import { buildTickerComparisonRows } from "@/features/vector/lib/vector-ticker-comparison";
-import { formatVectorAge, isVectorUniverseSnapshotStale } from "@/features/vector/lib/vector-age-format";
+import {
+  effectiveUniverseAsOf,
+  formatVectorAge,
+  isVectorUniverseSnapshotStale,
+} from "@/features/vector/lib/vector-age-format";
 
 type Props = {
   activeTicker: string;
@@ -77,8 +81,12 @@ export function VectorTickerComparisonStrip({ activeTicker, onSelect, className 
   const rows = buildTickerComparisonRows(activeTicker, data.rows);
   if (!rows.length) return null;
 
-  const age = formatVectorAge(data.updatedAt, now);
-  const isStale = isVectorUniverseSnapshotStale(data.updatedAt, now);
+  // Use the median ROW asOf, not the wrapper's `updatedAt` — see effectiveUniverseAsOf's own
+  // comment: `updatedAt` is bumped by a single-ticker append that refreshes just one row, so it
+  // reads "just updated" even when the bulk of the roster hasn't actually refreshed in a while.
+  const effectiveAsOf = effectiveUniverseAsOf(data);
+  const age = formatVectorAge(effectiveAsOf, now);
+  const isStale = isVectorUniverseSnapshotStale(effectiveAsOf, now);
 
   return (
     <div
