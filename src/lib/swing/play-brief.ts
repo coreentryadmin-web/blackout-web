@@ -27,6 +27,7 @@ import {
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
+import { deadPlayReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
@@ -307,8 +308,18 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
     );
   }
   if (play.gateBlocks?.length) {
+    // BUG FIX (Ask Largo standing mandate, 2026-09-14): this used to always header the list
+    // "Gates blocking entry:", implying clearing them would open entry — false whenever the play
+    // is already past its entry deadline or invalidated (entry-enterability.ts's own if-chain
+    // checks those BEFORE gate-blocked, so the gate is never actually what's stopping entry in
+    // that case; entry-verdict.ts keeps the gate evidence attached anyway rather than dropping
+    // it). Live repro: ORCL WATCH brief, "Entry stance: EXPIRED" and "Gates blocking entry:
+    // g_s4_regime..." sat in the same section with nothing marking the gate as moot. Same root
+    // cause `entryTriggerDeadReason` (play-brief-intel.ts) already fixed for the Entry-trigger
+    // line one section down — `deadPlayReason` is the shared check both now use.
+    const dead = deadPlayReason(play);
     lines.push(
-      "**Gates blocking entry:**\n" +
+      (dead ? `**Also gate-blocked** (moot — ${dead}):\n` : "**Gates blocking entry:**\n") +
         play.gateBlocks.map((g) => `• ${g.code}: ${g.reason}`).join("\n"),
     );
   } else if (play.recommendation === "BUY") {

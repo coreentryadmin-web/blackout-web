@@ -29,6 +29,7 @@ import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
+import { deadPlayReason } from "./entry-enterability";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
 import { graduatedArchetypeEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
@@ -620,16 +621,13 @@ export function catalystsSection(eco: EcosystemContext | null): RichSection | nu
  * checking the setup's own already-computed dead/invalidated state (`play.setupState`,
  * `play.watchEntryExpired` — both already carried on `TerminalPlay` for exactly this kind of check
  * elsewhere in this file). The number itself stays (still useful as "the level that would have
- * mattered") — only the false causal claim is corrected.
+ * mattered") — only the false causal claim is corrected. `deadPlayReason` (entry-enterability.ts)
+ * is the same check reused by the "Gates blocking entry" headers in play-brief.ts/play-brief-
+ * narrative-coaching.ts — one shared source instead of three copies of the same two branches.
  */
 function entryTriggerDeadReason(play: TerminalPlay): string | null {
-  if (play.setupState === "INVALIDATED") {
-    return "thesis already invalidated — this level no longer fires the setup";
-  }
-  if (play.watchEntryExpired === true) {
-    return "entry-validity window expired — this level no longer fires the setup";
-  }
-  return null;
+  const reason = deadPlayReason(play);
+  return reason ? `${reason} — this level no longer fires the setup` : null;
 }
 
 /** What to watch — invalidation, triggers, key levels. */

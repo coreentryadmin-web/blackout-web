@@ -232,6 +232,49 @@ test("composeSwingPlayBrief: WATCH play without detectedAt omits the age line en
   assert.doesNotMatch(entry!.body, /First flagged/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-09-14): "Gates blocking entry:" implies clearing the
+// gate opens entry — false once the play is already past its entry deadline, since entry-
+// enterability.ts's own if-chain checks the deadline BEFORE gate-blocked and independently blocks
+// entry either way. Live repro: ORCL WATCH brief — "Entry stance: EXPIRED" and "Gates blocking
+// entry: g_s4_regime..." sat in the same section with nothing marking the gate as moot.
+test("composeSwingPlayBrief: Entry section reframes gates as moot once the entry-validity window expired", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ watchEntryExpired: true }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\):/);
+  assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/, "must not read as an active/clearable blocker");
+});
+
+test("composeSwingPlayBrief: Entry section still frames gates as the live blocker when the play is genuinely still enterable", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.match(entry!.body, /\*\*Gates blocking entry:\*\*/);
+  assert.doesNotMatch(entry!.body, /Also gate-blocked/);
+});
+
 test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ discoveryOrigin: ["FLOW", "BREAKOUT"] }),

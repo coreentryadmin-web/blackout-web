@@ -19,6 +19,7 @@ import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
 import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
+import { deadPlayReason } from "./entry-enterability";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -170,7 +171,13 @@ export function watchGateCoaching(play: TerminalPlay): string | null {
   // Only add the closing period when `gates` doesn't already end in terminal punctuation, so a
   // future reason string without one still gets sentence-closed correctly.
   const punctuated = /[.!?]$/.test(gates) ? gates : `${gates}.`;
-  return `**Gates blocking entry** — ${punctuated}`;
+  // BUG FIX (Ask Largo standing mandate, 2026-09-14): "Gates blocking entry" (an "unblock path,"
+  // per this function's own header) implies clearing the gate opens entry — false once the play
+  // is already past its entry deadline or invalidated, since entry-enterability.ts's own if-chain
+  // checks those FIRST and independently blocks entry either way. Same shared check
+  // `watchEntrySection` (play-brief.ts) now uses for its own "Gates blocking entry:" header.
+  const dead = deadPlayReason(play);
+  return dead ? `**Also gate-blocked** (moot — ${dead}) — ${punctuated}` : `**Gates blocking entry** — ${punctuated}`;
 }
 
 /** Gamma magnet pin gravity. */
