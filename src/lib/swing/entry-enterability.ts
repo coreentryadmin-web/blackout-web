@@ -205,14 +205,6 @@ export function evaluateSwingEntryEnterability(
     };
   }
 
-  if (gateBlocked.length > 0) {
-    return {
-      action: "wait",
-      enterable: false,
-      reason: "At trigger, but commit gates have not cleared — wait before sizing.",
-    };
-  }
-
   if (setup === "FORMING") {
     return {
       action: "wait",
@@ -229,7 +221,23 @@ export function evaluateSwingEntryEnterability(
     };
   }
 
+  // Gate-blocked is only checked here, scoped to the branch that would otherwise return
+  // buy/still_buy — NOT as an early, unconditional return before this point. A FORMING or
+  // PRE_TRIGGER play can ALSO be gate-blocked (gates are evaluated independently of setup
+  // maturity), and the old unconditional check fired first regardless, so a play that had not
+  // yet reached its trigger still got told "At trigger, but commit gates have not cleared" —
+  // a factually wrong claim live-reproduced on PLTR 2026-09-14 (FORMING/PRE_TRIGGER, gate-
+  // blocked, entry geometry explicitly PRE_TRIGGER in the same brief). Scoping the check to
+  // this branch keeps the message accurate: it's now only ever shown when the play genuinely
+  // IS at trigger and gates are the one thing still holding it back.
   if (setup === "TRIGGERED" && entry != null && ENTERABLE_ENTRY_STATES.has(entry)) {
+    if (gateBlocked.length > 0) {
+      return {
+        action: "wait",
+        enterable: false,
+        reason: "At trigger, but commit gates have not cleared — wait before sizing.",
+      };
+    }
     const action: SwingEntryAction = input.deskCommitted ? "still_buy" : "buy";
     const reason =
       entry === "PULLBACK_TO_ENTRY"
