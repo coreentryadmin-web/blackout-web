@@ -8,7 +8,11 @@ import {
 import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { fetchUwOptionChains } from "@/lib/providers/unusual-whales";
-import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
+import {
+  fetchOptionsUnifiedSnapshot,
+  ZERO_BID_MID_DIVERGENCE_MULTIPLE,
+  type OptionSnapshot,
+} from "@/lib/providers/options-snapshot";
 import { polygonSpotTicker } from "@/lib/zerodte/board";
 import type { PlaybookPlay } from "./types";
 import { parseOptionsContract, type ParsedOptionsContract } from "./option-contract-parse";
@@ -61,7 +65,33 @@ function buildOcc(ticker: string, expiryYmd: string, side: "call" | "put", strik
   return `O:${root}${m[1].slice(2)}${m[2]}${m[3]}${side === "call" ? "C" : "P"}${String(strikeInt).padStart(8, "0")}`;
 }
 
-function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
+/**
+ * Guard against a backstop-quote ask entering the grounded chain data. `options-snapshot.ts`'s
+ * `reliableMarkFromSnapshot` already documents (and fixed, 2026-09-14, PR #4969 for the swing/
+ * banger lane) the shape: when `bid` is exactly 0, a market maker's placeholder ask can sit an
+ * order of magnitude above the contract's real last-traded/session-close price (live case: CRSR
+ * 260918C00015000, `bid:0, ask:15` vs `last`/`dayClose` BOTH $0.07 — a 107x-vs-mid, 214x-vs-ask
+ * divergence). That fix guarded `snap.mark` (a display/exit-management value); it did NOT guard
+ * the RAW `ask` this mapper stores into `ChainStrikeRow.call_ask`/`put_ask` — and that raw ask is
+ * exactly what `groundPlay`'s premium-reconciliation check (`grounding.ts`) reads to OVERWRITE a
+ * play's published `entry_premium` with "the live contract mark" (`sideAsk` → `chainAsk`). So the
+ * same backstop artifact that corrupted a displayed mark in the sibling lane would, here, corrupt
+ * the actual entry premium Legacy publishes to members for the exact contract Claude selected —
+ * `augmentChainsWithExactContracts` (below) exists specifically to fetch that per-contract
+ * snapshot for grounding, so this is not a theoretical path. Only engages when bid is EXACTLY 0
+ * (the shape backstop quotes take) and only when a last/dayClose reference actually exists — a
+ * real two-sided market, or a snapshot with no reference to check against, is never second-guessed.
+ */
+function reliableAskFromSnapshot(snap: OptionSnapshot): number | null {
+  if (snap.ask == null) return snap.ask;
+  if (snap.bid !== 0) return snap.ask;
+  const reference = snap.last ?? snap.dayClose;
+  if (reference == null || reference <= 0) return snap.ask;
+  if (snap.ask <= reference * ZERO_BID_MID_DIVERGENCE_MULTIPLE) return snap.ask;
+  return reference;
+}
+
+export function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
   if (!snap.expiry || snap.strike == null || snap.optionType == null) return null;
   const base: ChainStrikeRow = {
     expiry: snap.expiry,
@@ -77,9 +107,10 @@ function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
     put_oi: 0,
     put_iv: null,
   };
+  const guardedAsk = reliableAskFromSnapshot(snap);
   if (snap.optionType === "call") {
     base.call_bid = snap.bid;
-    base.call_ask = snap.ask;
+    base.call_ask = guardedAsk;
     base.call_delta = snap.delta;
     base.call_oi = Math.max(0, Math.round(snap.openInterest ?? 0));
     base.call_iv = snap.iv;
@@ -90,7 +121,7 @@ function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
     base.call_vega = snap.vega;
   } else {
     base.put_bid = snap.bid;
-    base.put_ask = snap.ask;
+    base.put_ask = guardedAsk;
     base.put_delta = snap.delta;
     base.put_oi = Math.max(0, Math.round(snap.openInterest ?? 0));
     base.put_iv = snap.iv;
