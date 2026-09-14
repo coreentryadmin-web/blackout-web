@@ -944,6 +944,97 @@ test("catalystCoaching: SAME-DAY expiry + UNKNOWN/unconfirmed timing defaults to
   assert.match(line!, /size down or exit before report/i, "unconfirmed timing must not be assumed safe");
 });
 
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro PLAY): a same-day AFTERHOURS print
+// already having landed (past 16:00 ET) must stop reading as a still-ahead risk event.
+test("catalystCoaching: same-day AFTERHOURS print already landed (past 16:00 ET) reads as already-printed, not still-ahead", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14T23:07:00.000Z", // 19:07 ET -- well past the 16:00 close
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /already printed/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i, "must not still frame an already-landed print as forward-looking");
+});
+
+// Sibling: the SAME afterhours print, read BEFORE the 16:00 close, must keep the forward-looking
+// warning -- the fix must not assume "today" always means "already happened".
+test("catalystCoaching: same-day AFTERHOURS print NOT yet landed (before 16:00 ET) keeps the forward-looking warning", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14T18:00:00.000Z", // 14:00 ET -- still mid-session, print hasn't landed
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /already printed/i);
+});
+
+test("catalystCoaching: same-day PREMARKET print already landed (past 09:30 ET) reads as already-printed", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14T15:00:00.000Z", // 11:00 ET -- well past the 09:30 open
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "premarket" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /already printed/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i);
+});
+
+test("catalystCoaching: same-day PREMARKET print NOT yet landed (before 09:30 ET) keeps the forward-looking warning", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14T12:00:00.000Z", // 08:00 ET -- still before the open
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "premarket" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /already printed/i);
+});
+
+// UNKNOWN timing never claims already-printed, regardless of how late the read is -- same
+// honest-absence discipline as the sibling noGapExposure branch above (never guess it landed).
+test("catalystCoaching: same-day UNKNOWN timing never claims already-printed", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14T23:07:00.000Z", // 19:07 ET -- late enough that a known bucket WOULD say already-printed
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "unknown" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /already printed/i);
+});
+
 test("closedCoaching: MFE capture lesson", () => {
   const line = closedCoaching(
     play({
