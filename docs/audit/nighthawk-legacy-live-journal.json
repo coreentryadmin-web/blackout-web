@@ -2630,6 +2630,13 @@
       "healthcheck": "AMBER (A_edition GREEN 2 plays; B_marks AMBER on HPE only, DELL GREEN -- same already-filed PR #4970 pattern; C_record GREEN resolved=26; D_pull_status GREEN both agree).",
       "note": "PR #4980 (zero-bid-backstop-mark fix) and PR #4981 (retroactive-check finding) both still CI-pending, nothing red, no review comments on either -- unremarkable, continuing to watch both. No new file-sweep this cycle; the prior cycle's cross-lane finding (legacy-live-sync.ts sharing the swing/banger mark-corruption exposure) was the significant work and both PRs are now correctly in the standard drive-to-green pipeline.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-14T17:13:00Z",
+      "cycle": "17:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm), trigger 1 of 4 -- full v3 mandate re-delivered",
+      "healthcheck": "AMBER (A_edition GREEN 2 plays; B_marks AMBER both HPE/DELL -- same already-filed PR #4970 pattern, unchanged, no new action; C_record GREEN resolved=26; D_pull_status GREEN both agree). PR #4980 (zero-bid-backstop-mark fix) and PR #4981 (retroactive-check finding) both confirmed MERGED -- unsubscribed from both, done.",
+      "note": "Post-deploy spot-check of PR #4980: pulled live GET /api/market/nighthawk/legacy-marks for HPE/DELL after the merge -- both marks sane and correctly bounded (HPE 0.81 within [0.80,0.82]; DELL 6.10 within [5.90,6.30]), no regression, deploy looks clean. This closes out this cycle's major cross-lane finding cleanly: forward-fix shipped and verified live, retroactive-correction question properly handed off since it needs DB access this sandbox doesn't have. Continuing the standing per-cycle mandate -- no new file-sweep target picked this cycle given the significant prior-cycle work; next cycle resumes the broader src/features/nighthawk/lib/ survey (candidates like legacy-primary-pnl.ts, legacy-publish-fields.ts, legacy-play-contract.ts, legacy-board-calendar.ts remain unreviewed) or does a fresh outcome-honesty pass on today's resolved picks if the trading day advances.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
