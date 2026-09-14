@@ -20,6 +20,7 @@ import { thesisHealthUncalibrated } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
 import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
 import { deadPlayReason } from "./entry-enterability";
+import { etStampFromDateOrIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -574,6 +575,27 @@ function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
  * resolved (matches nothing in laneRows, e.g. a closed/historical play) or genuinely sits after
  * the print — same behavior as before for the population this never affected.
  */
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro PLAY): a same-day print already
+// having LANDED and already having moved the stock is a fundamentally different fact than the
+// same print still being ahead — but `days_until <= 14`/`=== 0` alone can't distinguish "prints
+// tonight" from "printed 3 hours ago", and the branch below kept saying "size down or exit before
+// report" (forward-looking) regardless. Live repro: PLAY reported AMC 2026-09-14 16:31 ET (missed,
+// -12.16% after-hours within minutes); the brief rendered at 19:07 ET — 2.5+ hours later, with the
+// SAME brief's own Vector desk read already "momentum short on continuation" off the post-print
+// tape — still said "Earnings in 0d (2026-09-14 (afterhours)) — size down or exit before report".
+// A member reading only this bullet would think they still had time to react pre-print when the
+// gap had already happened. `report_time` is a bucket ("premarket"/"afterhours"/"unknown"), not a
+// clock time, so "already landed" is derived from the READ time (`ctx.asOf`) against the bucket's
+// own implied bell-relative threshold (16:00 ET for afterhours, 09:30 ET for premarket) on the
+// earnings date itself — "unknown" timing never claims already-landed, matching this file's
+// existing honest-absence discipline (the sibling `noGapExposure` comment right below makes the
+// same call for the identical reason).
+function printAlreadyLandedThresholdMs(ymd: string, reportTime: string | null): number | null {
+  if (reportTime === "afterhours") return parseEtStamp(etStampFromDateOrIso(ymd));
+  if (reportTime === "premarket") return parseEtStamp(`${ymd} 09:30 ET`);
+  return null;
+}
+
 /** Earnings + Meridian catalyst window. */
 export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
   const earnings = ctx.ecosystem?.arsenal?.earnings;
@@ -600,6 +622,18 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
         `**Earnings in ${earnings.days_until}d** (${earnings.earnings_date}${timing}) — ` +
         `this contract expires ${expiry}, on/before the print, so no earnings-gap exposure from ` +
         `this position (a concurrent sibling with a later expiry may still be exposed — check its own brief).`
+      );
+    }
+    const nowMs = Date.parse(ctx.asOf);
+    const printThresholdMs =
+      earnings.days_until === 0 && earnings.earnings_date != null
+        ? printAlreadyLandedThresholdMs(earnings.earnings_date, earnings.report_time)
+        : null;
+    const alreadyPrinted = printThresholdMs != null && Number.isFinite(nowMs) && nowMs >= printThresholdMs;
+    if (alreadyPrinted) {
+      return (
+        `**Earnings already printed today** (${earnings.earnings_date}${timing}) — ` +
+        `thesis now carries a realized print gap; reassess off the post-print structure, not the pre-print setup.`
       );
     }
     return (
