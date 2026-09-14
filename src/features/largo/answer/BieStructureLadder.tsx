@@ -147,8 +147,22 @@ export function BieStructureLadder({ ladder }: { ladder: StructureLadder | null 
                 ? "bie-ladder-agreement-aligned"
                 : "bie-ladder-agreement-disagreement",
             )}
+            // Scoped label, not the generic "Desks aligned/disagree" this used to read — this badge
+            // measures ONLY Vector's gamma-regime posture vs what the GEX matrix's flip implies
+            // (play-brief-ladder.ts's crossDeskAgreementFor). It says nothing about whether Vector's
+            // DIRECTIONAL call on the ticker agrees with this swing's own thesis — that's a separate,
+            // more consequential comparison narrated by crossDeskCoaching
+            // (play-brief-narrative-coaching.ts). The two can and do disagree in the same brief (live:
+            // PLTR 2026-09-14 — this badge read "aligned" while crossDeskCoaching called Vector's
+            // bullish PLTR read vs this swing's SHORT thesis "the most load-bearing disagreement"), and
+            // the old generic wording read as blanket cross-desk reassurance in exactly that case.
+            title={
+              ladder.crossDeskAgreement.status === "aligned"
+                ? "Vector's gamma-regime read agrees with what the GEX matrix's flip implies. This does not compare directional calls across desks — see the narrative below for that."
+                : "Vector's gamma-regime read disagrees with what the GEX matrix's flip implies. This does not compare directional calls across desks — see the narrative below for that."
+            }
           >
-            {ladder.crossDeskAgreement.status === "aligned" ? "Desks aligned" : "Desks disagree"}
+            {ladder.crossDeskAgreement.status === "aligned" ? "Dealer regime aligned" : "Dealer regime differs"}
           </span>
         ) : null}
       </div>
