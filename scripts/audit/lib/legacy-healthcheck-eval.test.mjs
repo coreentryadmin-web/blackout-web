@@ -191,6 +191,31 @@ test("verdictForRecord: buckets NOT summing to resolved is RED (a real payload d
   assert.equal(res.verdict, "RED");
 });
 
+// unfilled/pulled OVERLAP by design (analytics.ts's NighthawkRecordSegment doc comment) -- a play
+// can be both pulled AND never filled. Live-caught 2026-09-14: resolved=28 with unfilled=4,
+// unfilled_not_pulled=3, pulled=8 (1 row counted in both unfilled and pulled) -- the old flat sum
+// (wins+losses+opens+ambiguous+unfilled+pulled+stop_data_unavailable = 0+1+16+0+4+8+0 = 29)
+// overshot resolved by exactly that 1-row overlap and reported a false RED on genuinely
+// self-consistent production data.
+test("verdictForRecord: a real unfilled/pulled overlap is GREEN, not a false RED (live 2026-09-14 case)", () => {
+  const res = verdictForRecord({
+    fetchOk: true,
+    segment: {
+      resolved: 28, wins: 0, losses: 1, opens: 16, ambiguous: 0,
+      unfilled: 4, unfilled_not_pulled: 3, pulled: 8, stop_data_unavailable: 0,
+    },
+  });
+  assert.equal(res.verdict, "GREEN", res.evidence);
+});
+
+test("verdictForRecord: without unfilled_not_pulled in the payload, falls back to the flat unfilled count (older/partial payload shape)", () => {
+  const res = verdictForRecord({
+    fetchOk: true,
+    segment: { resolved: 10, wins: 2, losses: 3, opens: 4, ambiguous: 0, unfilled: 1, pulled: 0, stop_data_unavailable: 0 },
+  });
+  assert.equal(res.verdict, "GREEN");
+});
+
 test("verdictForPullConsistency: fetch failure is RED, never silently skipped", () => {
   assert.equal(verdictForPullConsistency({ fetchOk: false }).verdict, "RED");
 });

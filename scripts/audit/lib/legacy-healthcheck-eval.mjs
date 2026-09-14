@@ -130,19 +130,33 @@ export function verdictForPullConsistency({ fetchOk, available, editionPlays, st
 /**
  * Stage C: record internal consistency. The record's own reported buckets must sum to its own
  * reported total — a malformed/truncated payload would fail this even though HTTP itself was 200.
+ *
+ * `unfilled` and `pulled` OVERLAP by design (analytics.ts's `NighthawkRecordSegment` doc comment:
+ * "Rows whose outcome is 'unfilled'. OVERLAPS `pulled` — see `excluded_total`.") — a play can be
+ * both pulled AND never filled. Naively summing every bucket flat (as this function used to)
+ * double-counts that overlap and overshoots `resolved`, exactly the scenario analytics.ts's own
+ * doc comment worked through as an example ("scoreable 27 + unfilled 13 + pulled 12 = 52" against
+ * "resolved 50"). Live-caught 2026-09-14: a real payload with `unfilled=4, pulled=8` where 1 row
+ * was in both buckets reported `unfilled_not_pulled=3` (the disjoint slice), and this check's flat
+ * sum (wins+losses+opens+ambiguous+unfilled+pulled+stopUnavail = 29) overshot the honestly-correct
+ * `resolved=28` by exactly that 1-row overlap — a false RED on genuinely self-consistent production
+ * data. Use `unfilled_not_pulled` (the disjoint slice analytics.ts already computes) instead of the
+ * overlapping `unfilled` when the payload carries it; fall back to `unfilled` for an older/partial
+ * payload shape so this stays a strict widening, never a behavior change for a non-overlapping read.
  */
 export function verdictForRecord({ fetchOk, segment }) {
   if (!fetchOk) return { verdict: "RED", evidence: "record fetch failed (auth or network)" };
   if (!segment) return { verdict: "AMBER", evidence: "record reachable but no segment data (too early / no window)" };
   const {
     resolved = 0, wins = 0, losses = 0, opens = 0, ambiguous = 0,
-    unfilled = 0, pulled = 0, stop_data_unavailable: stopUnavail = 0,
+    unfilled = 0, unfilled_not_pulled: unfilledNotPulled = unfilled,
+    pulled = 0, stop_data_unavailable: stopUnavail = 0,
   } = segment;
-  const sum = wins + losses + opens + ambiguous + unfilled + pulled + stopUnavail;
+  const sum = wins + losses + opens + ambiguous + unfilledNotPulled + pulled + stopUnavail;
   if (sum !== resolved) {
     return {
       verdict: "RED",
-      evidence: `bucket sum (${sum}) != resolved (${resolved}) — wins=${wins} losses=${losses} opens=${opens} ambiguous=${ambiguous} unfilled=${unfilled} pulled=${pulled} stop_data_unavailable=${stopUnavail}`,
+      evidence: `bucket sum (${sum}) != resolved (${resolved}) — wins=${wins} losses=${losses} opens=${opens} ambiguous=${ambiguous} unfilled_not_pulled=${unfilledNotPulled} pulled=${pulled} stop_data_unavailable=${stopUnavail}`,
     };
   }
   return { verdict: "GREEN", evidence: `resolved=${resolved}, buckets sum consistently` };
