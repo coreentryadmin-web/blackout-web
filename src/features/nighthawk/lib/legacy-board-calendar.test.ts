@@ -30,5 +30,15 @@ test("legacyEditionSessionDates still returns `count` weekday sessions ending at
   const nowMs = new Date("2026-09-10T23:30:00Z").getTime();
   const dates = legacyEditionSessionDates(5, nowMs);
   assert.equal(dates.length, 5);
-  assert.deepEqual(dates, ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11"]);
+  assert.deepEqual(dates, ["2026-09-04", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11"]);
+});
+
+test("legacyEditionSessionDates skips a NYSE market holiday, not just weekends (2026-09-14 fix)", () => {
+  // 2026-09-07 is Labor Day (a real NYSE closure) -- no edition ever published that day, so it
+  // must never appear as a session tile. The window still walks back far enough to return the
+  // full `count` of REAL trading days rather than silently returning fewer than requested.
+  const nowMs = new Date("2026-09-10T23:30:00Z").getTime();
+  const dates = legacyEditionSessionDates(5, nowMs);
+  assert.ok(!dates.includes("2026-09-07"), "Labor Day must not appear as a calendar tile");
+  assert.equal(dates.length, 5, "still returns the full requested count by walking one extra day back");
 });
