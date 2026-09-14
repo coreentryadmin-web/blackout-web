@@ -23,7 +23,6 @@ import {
 } from "@/lib/swing/entry-enterability";
 import type { SwingSubLane } from "@/lib/swing/taxonomy";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
-import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 import type { SwingManageAction, SwingManageRung } from "@/lib/swing/manage";
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
@@ -1001,7 +1000,26 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     closedReason: src.closedReason ?? null,
     exitAt: src.exitAt ?? null,
     exitPnlPct: fin(src.exitPnlPct),
-    tierLabel: convictionFromScore(Math.round(src.score)),
+    // Honestly omitted, not computed: `HorizonDeckSource` (SWING/LEAPS) carries no pinned
+    // tier/conviction field, unlike the 0DTE (line ~542, `src.tier?.tier`) and Legacy (line
+    // ~1228, `src.tier?.tier ?? src.conviction`) adapters in this same file, which both source
+    // `tierLabel` from a real pinned tier. This call site used to fall back to
+    // `convictionFromScore` — the exact score->letter mapping `nighthawk-tiers.ts`'s own header
+    // comment documents as an empirically INVERTED ranking for the overnight product it was
+    // built for (A+ >=70 scored 0 wins/1 loss; B 40-54 scored +2.99% avg, the best performer).
+    // Borrowing Legacy's calibration onto swing's own, differently-shaped score distribution
+    // was never validated — and swing's own `swing-score-calibration.mjs` (PR #4716, first live
+    // run, 31-chain population) independently found swing's score is ALSO "SPREAD WITHOUT
+    // ORDER" against real outcomes (middle band 49-57 outperformed every high band 60-86).
+    // Displaying a confident A+/A/B/C letter grade computed from a score this lane's own tooling
+    // has already shown doesn't reliably rank outcomes is fabricated certainty, not signal —
+    // the same Largo product contract principle (`docs/audit/LARGO-PRODUCT-CONTRACT.md`, C6:
+    // "confidence must be omitted when a product cannot calibrate it") already governs the Ask
+    // Largo brief. `tierLabel: null` is an existing, already-tested state (see the Legacy
+    // adapter's own "missing conviction -> tierLabel null" test) — no UI change needed, this
+    // just stops asserting a real quality signal the SWING/LEAPS lane has no calibrated tier
+    // engine to back.
+    tierLabel: null,
     sectorLeadershipFacts: src.sectorLeadershipFacts ?? null,
     // Pinned Cortex evidence from entry_context.cortex — parsed structurally, honestly null
     // when absent (pre-commit candidate, pre-wire-in row, or a malformed/foreign blob).

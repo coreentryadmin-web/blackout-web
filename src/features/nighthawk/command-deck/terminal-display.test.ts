@@ -88,6 +88,13 @@ test("convictionDisplay: grade + score from tier and quality", () => {
   assert.ok(c.score != null && c.score > 0);
 });
 
+test("convictionDisplay: SWING/LEAPS with no pinned tier show no grade — score->letter fallback removed (documented-inverted mapping, see play-card-display.ts's playGradeLabel doc comment)", () => {
+  const swing = convictionDisplay(play({ horizon: "SWING", tierLabel: null, score: 88 }));
+  assert.equal(swing.grade, null);
+  const leaps = convictionDisplay(play({ horizon: "LEAPS", tierLabel: null, score: 12 }));
+  assert.equal(leaps.grade, null);
+});
+
 test("confluenceChecklist: six lenses from pillars", () => {
   const items = confluenceChecklist(play());
   assert.equal(items.length, 6);
