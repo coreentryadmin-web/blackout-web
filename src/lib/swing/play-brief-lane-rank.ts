@@ -107,7 +107,20 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
   const rank = idx >= 0 ? idx + 1 : sorted.length + 1;
 
   const scores = sorted.map((r) => r.score);
-  const medianScore = scores[Math.floor(scores.length / 2)] ?? playScore;
+  // Standard even/odd median, not just "the middle sorted element" — for an EVEN peer count,
+  // `scores[floor(n/2)]` picks the lower of the two middle values instead of averaging them, which
+  // systematically UNDERSTATES the median (and correspondingly overstates every play's
+  // deltaFromMedian) whenever a lane happens to have an even number of live rows. Live repro
+  // 2026-09-14: TSM's WATCH lane had exactly 2 peers (TSM 59.2, ORCL 51.8) — the old
+  // `scores[floor(2/2)] = scores[1]` read 51.8 (the lower score) as "Lane median: 51.8", when the
+  // real median of a 2-element set is their average, 55.5. Rounded for the same reason
+  // deltaFromMedian is rounded below — averaging two floats can produce an IEEE754 artifact.
+  const n = scores.length;
+  const rawMedian =
+    n % 2 === 1
+      ? (scores[Math.floor(n / 2)] ?? playScore)
+      : ((scores[n / 2 - 1] ?? playScore) + (scores[n / 2] ?? playScore)) / 2;
+  const medianScore = Math.round(rawMedian * 10) / 10;
   // Rank/median above stay computed against the FULL peer set — "where does this score fall" is
   // honest regardless of exit state. The NAMED leader is different: it reads as "look at this one",
   // so a peer whose own manage engine already says EXIT/EXIT_RUNNER is skipped in favor of the next
