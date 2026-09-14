@@ -35,6 +35,16 @@ test("relativeTime formats and rejects bad input", () => {
   assert.equal(relativeTime("2026-07-13T12:05:00Z", now), "just now");
 });
 
+test("relativeTime also parses a Largo C1 ET stamp (swing play-brief envelope.asOf), not only ISO", () => {
+  // Live repro 2026-09-14: swing play-briefs stamp envelope.asOf as "YYYY-MM-DD HH:mm ET"
+  // (play-brief-context.ts's Largo C1 convention), which `Date.parse` alone returns NaN for —
+  // silently dropping the "Assembled Xm ago" label on every swing brief rendered through
+  // <BieAnswer> (SwingLargoInsightsPanel.tsx). 2026-07-13 12:00 ET === 16:00 UTC (summer, EDT).
+  const now = Date.parse("2026-07-13T16:15:00Z");
+  assert.equal(relativeTime("2026-07-13 12:00 ET", now), "15m ago");
+  assert.equal(relativeTime("2026-07-13 09:00 ET", now), "3h ago");
+});
+
 test("answeredParts counts unavailable sections as unanswered", () => {
   const sections: BieSection[] = [
     { title: "SPX", body: "..." },
