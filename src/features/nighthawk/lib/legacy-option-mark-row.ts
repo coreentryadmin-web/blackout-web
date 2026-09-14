@@ -2,7 +2,7 @@
  * Shared Legacy option mark assembly — WS-first, REST snapshot fallback.
  * Used by the legacy-marks API route, server live-sync, and unit tests.
  */
-import type { OptionSnapshot } from "@/lib/providers/options-snapshot";
+import { reliableMarkFromSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
 import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
 
 export type LegacyOptionMarkRow = {
@@ -29,6 +29,16 @@ type WsMark = { mark?: number | null; bid?: number | null; ask?: number | null; 
  * this quote current," so a genuinely stale price rendered `stale: false` and `asof` read as "just
  * now" indefinitely. Now `quoteUpdatedMs` (the real quote clock) is preferred; `observedAtMs` is
  * used only as a fallback when the provider gives no `last_quote` timestamp at all.
+ *
+ * Cross-lane fix (2026-09-14): the REST branch used the raw `snap.mark`, the same field the
+ * swing/banger lane found could be a market-maker "backstop" bid:0/ask-only midpoint wildly
+ * divergent from the contract's real last-traded price (CRSR 260918C00015000 live-reproduced
+ * bid:0/ask:15 -> mid $7.50 vs a real last trade of $0.07 — see `reliableMarkFromSnapshot`'s own
+ * doc comment, options-snapshot.ts). That finding's blast-radius list explicitly named
+ * `legacy-marks` as sharing this exposure via the same `fetchOptionsUnifiedSnapshot` path, left
+ * unfixed pending a decision — this wires the same, already-tested divergence guard into Legacy's
+ * own mark read. `reliableMarkFromSnapshot` only engages when `bid === 0`; a real two-sided market
+ * is never second-guessed.
  */
 export function buildLegacyOptionMarkRow(
   occ: string,
@@ -38,8 +48,9 @@ export function buildLegacyOptionMarkRow(
 ): LegacyOptionMarkRow {
   const bid = ws?.bid ?? snap?.bid ?? null;
   const ask = ws?.ask ?? snap?.ask ?? null;
+  const snapMark = snap ? reliableMarkFromSnapshot(snap) : null;
   const mark =
-    ws?.mark ?? snap?.mark ?? (bid != null && ask != null ? (bid + ask) / 2 : bid ?? ask ?? null);
+    ws?.mark ?? snapMark ?? (bid != null && ask != null ? (bid + ask) / 2 : bid ?? ask ?? null);
 
   const wsAsofMs = ws != null && Number.isFinite(ws.ts) ? ws.ts : null;
   const snapAsofMs =
