@@ -772,20 +772,36 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // that does not survive the real bid/ask spread the member would actually have to sell into.
     // Fix: when `execMark` is known and already at/through the stop, drop the percentage and say so
     // plainly instead — the dollar stop level itself is untouched either way.
+    //
+    // BUG FIX (2026-09-14, Ask Largo standing mandate, live repro SAME NN#32 position): the fix
+    // above only closed the BINARY case (bid already at/through the stop). It never touched the
+    // percentage itself, so the "close but not yet through" case — the far more common state for a
+    // real losing position drifting toward its stop — still computed `cushionPct` from the MID
+    // unconditionally. Live repro: NN mark $1.13 / stop $0.78 / execMark (bid) ~$0.85 (execMark
+    // above stop, so `executableCushionGone` was false and this branch was never reached) rendered
+    // "31% cushion from current mark" when the REAL executable cushion — (0.85-0.78)/0.85 — is only
+    // ~8%, on a position already down -42% (mid) / -56% (exec) from entry. A member deciding
+    // whether they have room before deciding to exit was reading a number roughly 4x too generous.
+    // Fix: prefer `execMark` as the cushion basis whenever it's known (it's already fetched for the
+    // Executable P&L bullet a few lines up in "Trade manager read" — same field, same trust level),
+    // falling back to the mid only when execMark itself is unavailable — never silently prefer the
+    // more optimistic number when the safer one is sitting right there.
     const execMark = play.execMark;
     const executableCushionGone = execMark != null && execMark <= stop;
+    const cushionBasis = execMark != null && execMark > 0 ? execMark : play.mark;
+    const cushionBasisIsExec = execMark != null && execMark > 0;
     const cushionPct =
-      play.mark != null &&
-      play.mark > 0 &&
-      play.mark > stop &&
+      cushionBasis != null &&
+      cushionBasis > 0 &&
+      cushionBasis > stop &&
       !optionMarkGenuinelyUnknown(play) &&
       !executableCushionGone
-        ? ((play.mark - stop) / play.mark) * 100
+        ? ((cushionBasis - stop) / cushionBasis) * 100
         : null;
     const cushionNote = executableCushionGone
       ? ` — **no real cushion on the executable side** (bid already at/through this level)`
       : cushionPct != null
-        ? ` — ${cushionPct.toFixed(0)}% cushion from current mark`
+        ? ` — ${cushionPct.toFixed(0)}% cushion from current ${cushionBasisIsExec ? "bid" : "mark"}`
         : "";
     lines.push(
       `Premium stop rail: **${fmtUsd(stop)}**${cushionNote} — thesis breaks if mark closes below`,

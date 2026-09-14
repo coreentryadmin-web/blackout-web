@@ -2959,9 +2959,85 @@ test("watchForSection: Premium stop rail keeps the normal cushion percentage whe
     },
     "open",
   );
-  // (1.10 - 0.78) / 1.10 * 100 = 29.09% -> 29%
-  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 29% cushion from current mark/);
+  // BUG FIX (2026-09-14): the cushion basis now prefers execMark (the real bid) over the mid
+  // whenever both are known — (1.00 - 0.78) / 1.00 * 100 = 22.0% -> 22%, not the mid-based 29%.
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 22% cushion from current bid/);
+  assert.doesNotMatch(section.body, /29% cushion/);
   assert.doesNotMatch(section.body, /no real cushion/i);
+});
+
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro SAME NN#32 position as the fix
+// immediately above): the binary "gone" fix only handled the executable price already being
+// AT/THROUGH the stop. The far more common state — execMark still above the stop but the mid-based
+// cushion materially overstates the real room — was left completely unhandled: the cushion kept
+// computing purely from the mid. Live repro: NN mark $1.13 / stop $0.78 / execMark (bid) $0.85 —
+// execMark is above stop (so the "gone" branch never fires) but the REAL executable cushion is only
+// (0.85-0.78)/0.85 = 8.2%, not the 31% the mid-only formula produced — a member deciding whether
+// they have room before exiting was reading a number ~4x too generous on a real losing position.
+test("watchForSection: Premium stop rail uses the executable (bid) cushion, not the more optimistic mid cushion, when they diverge but the position hasn't breached (live NN#32 repro)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 1.13,
+        execMark: 0.85, // real bid — above the stop, but the mid-based % would be far too generous
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.78,
+        },
+      }),
+      asOf: "2026-09-14 12:17 ET",
+      sessionDate: "2026-09-14",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (0.85 - 0.78) / 0.85 * 100 = 8.24% -> 8%, NOT the mid-based (1.13-0.78)/1.13*100 = 31%.
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 8% cushion from current bid/);
+  assert.doesNotMatch(section.body, /31% cushion/);
+  assert.doesNotMatch(section.body, /no real cushion/i);
+});
+
+test("watchForSection: Premium stop rail falls back to the mid-based cushion when execMark is unknown (never fabricates a bid)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 1.1,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.78,
+        },
+      }),
+      asOf: "2026-09-14 12:17 ET",
+      sessionDate: "2026-09-14",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (1.10 - 0.78) / 1.10 * 100 = 29.09% -> 29%, correctly falling back to mark since no execMark.
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 29% cushion from current mark/);
 });
 
 // Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
