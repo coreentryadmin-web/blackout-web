@@ -212,8 +212,12 @@ test("vector-analytics anchors as_of and the screener sweep in ET", () => {
   assert.match(src, /as_of_et: etStamp\(nowMs\)/);
   assert.match(src, /session_date: etSessionDate\(nowMs\)/);
   // The universe sweep has its own age and needs its own anchor, not the read's.
-  assert.match(src, /updated_at_et: etStamp\(universe\.updatedAt\)/);
-  assert.match(src, /updated_at_session_date: etSessionDate\(universe\.updatedAt\)/);
+  // BUG FIX (2026-09-14): anchored off `screenerAsOf` (the median-row `effectiveUniverseAsOf`,
+  // not the raw `universe.updatedAt`) — see vector-age-format.ts's own doc comment for why
+  // `updatedAt` alone is a misleading freshness signal (bumped by any single-ticker append).
+  assert.match(src, /const screenerAsOf = effectiveUniverseAsOf\(universe\);/);
+  assert.match(src, /updated_at_et: screenerAsOf != null \? etStamp\(screenerAsOf\) : null/);
+  assert.match(src, /updated_at_session_date: screenerAsOf != null \? etSessionDate\(screenerAsOf\) : null/);
 });
 
 test("the analytics description tells the model to use the ET fields", () => {
