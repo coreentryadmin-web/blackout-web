@@ -101,7 +101,27 @@ test("timeoutFallbackEdition: no prior good read in this process → degraded, n
   const src = read(ROUTE);
   assert.match(
     src,
-    /function timeoutFallbackEdition\(editionFor: string\): NightHawkEdition \{\s*if \(lastGoodEdition\) return lastGoodEdition;\s*return \{ \.\.\.emptyEdition\(editionFor\), degraded: true \};/,
+    /return \{ \.\.\.emptyEdition\(editionFor\), degraded: true \};/,
     "no lastGoodEdition to fall back on must stamp degraded:true — PlaybookBoard.tsx already has a dedicated notice for it"
+  );
+});
+
+// ── 2026-09-14: a lastGoodEdition captured for an earlier trading day was replayed on a timeout
+// as if it were today's board, unflagged ─────────────────────────────────────────────────────
+//
+// lastGoodEdition is a single process-wide var, not keyed by editionFor. A read captured just
+// before the midnight-ET day rollover (or from an unrelated ?date= lookup) had no reason to set
+// its own `stale` flag when it was originally resolved — its edition_for matched the date being
+// requested AT THAT TIME. Replaying it later, on a maxBlockMs timeout for a DIFFERENT editionFor,
+// without restamping staleness at serve time would present a prior session's plays as tonight's
+// live board — exactly the failure resolveNighthawkEdition's own `edition.edition_for !== editionFor`
+// check (a few lines up in this same file) exists to prevent on its normal path.
+
+test("timeoutFallbackEdition: a lastGoodEdition for a DIFFERENT editionFor is restamped stale at serve time", () => {
+  const src = read(ROUTE);
+  assert.match(
+    src,
+    /if \(lastGoodEdition\.edition_for && lastGoodEdition\.edition_for !== editionFor\) \{\s*return \{ \.\.\.lastGoodEdition, stale: true, served_for: lastGoodEdition\.edition_for \};\s*\}/,
+    "a cached last-good read for an earlier trading day must not replay unflagged as tonight's board"
   );
 });

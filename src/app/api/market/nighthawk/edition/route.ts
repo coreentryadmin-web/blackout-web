@@ -198,14 +198,28 @@ let lastGoodEdition: NightHawkEdition | null = null;
  * mid-session (well before close, with a real published edition already confirmed live moments
  * before and after): one request in the middle returned exactly this shape.
  *
- * `lastGoodEdition` (this process's own last successful read) is served AS-IS, unflagged — real,
- * if momentarily stale, content the member is entitled to see plainly. Only the genuinely-unknown
- * case (no prior good read in this process either) gets stamped `degraded` — the UI already has a
- * dedicated notice for it ("Served from a degraded fallback…", PlaybookBoard.tsx) that nothing on
- * this path had ever triggered.
+ * `lastGoodEdition` (this process's own last successful read) is served AS-IS when it is for the
+ * SAME `editionFor` being requested — real, if momentarily stale, content the member is entitled
+ * to see plainly. Only the genuinely-unknown case (no prior good read in this process either)
+ * gets stamped `degraded` — the UI already has a dedicated notice for it ("Served from a degraded
+ * fallback…", PlaybookBoard.tsx) that nothing on this path had ever triggered.
+ *
+ * When `lastGoodEdition.edition_for` does NOT match the date now being requested (captured just
+ * before a midnight-ET day rollover, or from an unrelated `?date=` lookup earlier in this same
+ * process), it must be restamped `stale`/`served_for` at SERVE time here — trusting whatever flag
+ * was baked in at CAPTURE time is not enough, because that read had no reason to flag itself stale
+ * when it was originally resolved (its own `edition_for` matched the date requested AT THAT TIME).
+ * Without this, a prior trading day's plays would replay here looking exactly like tonight's live
+ * board — the same "prior session plays masquerading as tonight's" failure `resolveNighthawkEdition`
+ * itself already guards against two paths up (the `edition.edition_for !== editionFor` check below).
  */
 function timeoutFallbackEdition(editionFor: string): NightHawkEdition {
-  if (lastGoodEdition) return lastGoodEdition;
+  if (lastGoodEdition) {
+    if (lastGoodEdition.edition_for && lastGoodEdition.edition_for !== editionFor) {
+      return { ...lastGoodEdition, stale: true, served_for: lastGoodEdition.edition_for };
+    }
+    return lastGoodEdition;
+  }
   return { ...emptyEdition(editionFor), degraded: true };
 }
 
