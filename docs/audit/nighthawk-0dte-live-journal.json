@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-14T19:45:00Z",
+  "updated_at": "2026-09-14T20:07:00Z",
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
@@ -229,6 +229,9 @@
     },
     "2026-09-14T19:45Z": {
       "note": "ZS CLOSED at +100.57% -- todays standout winner, cleared its +100% trim target and banked cleanly. 9 closed today (SLS flat, SAIL -6.67%, QBTS +5%, FIGR +5.71%, OKTA +1.56%, W +31.87%, ZS +100.57%, IONQ -6.92%, MARA -13.95%), 2 open (CRWD +9.95%, S TRIM +23.26%). Board stable, no degradation. Excellent session, nothing to escalate."
+    },
+    "2026-09-14T20:07Z_session_closed_summary": {
+      "note": "SESSION CLOSED 2026-09-14 (session.heat.state=CLOSED at 20:05 UTC). Full-day summary: 11 plays committed, all closed. 7 winners / 3 losers / 1 breakeven (63.6% win rate): SLS 0%, IONQ -6.92%, CRWD +5.35%, ZS +100.57% (days standout, hit +100% trim target cleanly), S +16.28%, OKTA +1.56%, SAIL -6.67%, QBTS +5%, MARA -13.95%, FIGR +5.71%, W +31.87%. Sum of individual position P&Ls ~+139pp across the day. Early-window [10:00,11:00 ET) commits (SLS/MARA/IONQ) were the weakest cohort, consistent with the already-documented E2 research finding -- confirmatory, not new. No stop-miss, no grading anomaly, no exit-engine bug found in any position checked this session. Board-upstream degradation recurred 5 CONFIRMED times today (+1 uncounted single-pull blip) -- all self-resolved within 5-27min, DB/record path unaffected throughout, real positions never at risk. Reported with full evidence + timeline on PR #4076; root cause still unknown (no CloudWatch access this session), flagged for whoever has AWS access. One real fix shipped: PR #4973 (merged) -- Cortex sector-heat evidence rendered a tickers own directional % without a sign, could misread as same-signed as an oppositely-signed sector; fixed with new fmtSigned helper, RED->GREEN proven, full suite clean. Also investigated and ruled out (not bugs): session_stats.top_block_code session-aggregate-vs-live-setups discrepancy, governor.time_of_day_label last directional commit window bucket definition. Tomorrow: continue standing mandate, watch for a 6th board-upstream instance to further characterize the pattern, no other open threads."
     }
   },
   "sessions": {
