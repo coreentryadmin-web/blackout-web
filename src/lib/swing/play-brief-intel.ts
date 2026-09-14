@@ -73,7 +73,14 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   const whyArchetypeLabel = archetypeLabelFromRaw(play.archetype);
   if (whyArchetypeLabel) lines.push(`**Archetype:** ${whyArchetypeLabel}`);
   if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
-  if (play.regime) lines.push(`**Discovery read:** ${play.regime}`);
+  // "Today's regime read" (not the old bare "Discovery read") — `play.regime` is re-derived FRESH on
+  // every scan (attachThesisExplanation, serving-lane.ts) while `play.archetype` right above stays
+  // PINNED from commit day. The two are independent classifier reads of the same dossier at different
+  // times and can genuinely diverge without either being wrong (live repro 2026-09-14, KR: pinned
+  // Archetype "Breakout continuation" next to a fresh regime read of "Event-driven directional" with
+  // no framing — read as an internal contradiction in the same document). The label now states which
+  // one is current, so two different labels read as "thesis has evolved," not "this brief is broken."
+  if (play.regime) lines.push(`**Today's regime read:** ${play.regime}`);
   if (play.sectorLeadershipFacts) {
     const f = play.sectorLeadershipFacts;
     const verb = f.deltaPct >= 0 ? "leading" : "lagging";
