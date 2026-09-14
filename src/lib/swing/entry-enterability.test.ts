@@ -116,6 +116,34 @@ describe("evaluateSwingEntryEnterability", () => {
     assert.equal(r.enterable, false);
   });
 
+  // Live repro 2026-09-14 (PLTR): setup FORMING/entry PRE_TRIGGER AND gate-blocked at once —
+  // the old unconditional gate-blocked check (before the FORMING/PRE_TRIGGER checks in the
+  // if-chain) claimed "At trigger, but commit gates have not cleared" on a play that had
+  // explicitly NOT reached its trigger, contradicting the brief's own "Entry geometry:
+  // PRE_TRIGGER" / "Setup: FORMING" fields shown right next to it.
+  it("FORMING + gate-blocked → still reads 'thesis still building', never 'at trigger'", () => {
+    const r = evaluateSwingEntryEnterability({
+      setupState: "FORMING",
+      aboveFloor: true,
+      commitGateBlockedBy: ["gate:G-S6:confluence"],
+    });
+    assert.equal(r.action, "wait");
+    assert.doesNotMatch(r.reason, /at trigger/i);
+    assert.match(r.reason, /still building/i);
+  });
+
+  it("TRIGGERED + PRE_TRIGGER + gate-blocked → still reads 'waiting for price', never 'at trigger'", () => {
+    const r = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "PRE_TRIGGER",
+      aboveFloor: true,
+      commitGateBlockedBy: ["gate:G-S6:confluence"],
+    });
+    assert.equal(r.action, "wait");
+    assert.doesNotMatch(r.reason, /at trigger/i);
+    assert.match(r.reason, /trigger/i);
+  });
+
   it("roll child: entry deadline anchors from committedAt, not stale firstSeenAt", () => {
     const nowMs = Date.parse("2026-09-06T12:00:00.000Z");
     const rollCommittedAt = "2026-09-05T14:00:00.000Z";
