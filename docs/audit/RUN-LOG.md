@@ -4,6 +4,20 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-14 (13:34 UTC) — [RTH — SEO] Market-open check: gamma-snapshot live refresh confirmed, degraded flag correctly false on a genuinely fresh read
+
+**Severity.** — (no defect found)
+
+First RTH wake this week (09:33 ET, market just opened, non-holiday trading day). Confirmed
+`/tools/gamma-snapshot`'s live API via two polls 8s apart: `asof`/`calculation_id` both advanced
+(`SPX:1789392834644` → `SPX:1789392849013`), spot moved (7600.15 → 7602.04), `degraded: false`
+on both — correctly reflecting genuine freshness (age 3-4s), confirming the #4796 stale-detection
+fix from earlier this week has no false-positive side effect on a healthy read. Fresh Cloudflare
+purge + desktop CLS measure with live RTH data rendering: **0.0001 GOOD**.
+
+No defects found.
+
+---
 ## 2026-09-14 (12:19 UTC) — [SEO] Lane heartbeat: Monday pre-market, full CLS re-measure GREEN, GSC unchanged
 
 **Severity.** — (no defect found)
