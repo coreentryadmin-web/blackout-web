@@ -19,6 +19,7 @@ import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-t
 import { archetypeLabelFromRaw } from "./taxonomy";
 import {
   collectBriefUnavailableSources,
+  confluenceZoneKindsLabel,
   gexMatrixAgeMs,
   gexMatrixStale,
   optionMarkGenuinelyUnknown,
@@ -384,37 +385,18 @@ function levelProvenanceAsOf(
 }
 
 /**
- * Confluence zones can cite a DIFFERENT call/put wall than the single, top-ranked one this file
- * already shows as "call wall"/"put wall" a few lines above — `vector-full-state.ts`'s confluence
- * engine feeds it the FULL ranked `gexWalls.callWalls`/`putWalls` list, not just `[0]`, so a
- * lower-ranked wall can cluster with max-pain/flip/golden-pocket under the same `call-wall`/
- * `put-wall` kind label at a materially different price.
- *
- * BUG FIX (2026-09-13, Ask Largo standing mandate — confirmed a 3-instance pattern across NRG/
- * MU/SKHY, raised on #4076 comments 5649059880/5649697371/5649766952 before shipping): live repro
- * NRG showed "call wall: 145" (Key levels) beside "confluence (call-wall+max-pain): 125" (Trade
- * manager read) — two different strikes sharing the identical "call-wall" name with no
- * disambiguation, reading as an internal contradiction. Qualifies the kind name with its actual
- * price ONLY when it differs from the primary wall already shown — the common case (the
- * confluence zone agrees with the top-ranked wall) is byte-identical to before. Deliberately
- * swing-lane-only: this changes ONLY how this file labels a zone it already receives: it does not
- * touch `confluenceZones`'s scoring/clustering (`vector-confluence.ts`) or what feeds it
- * (`vector-full-state.ts`), so Vector's own UI and Thermal — separate render call sites over the
- * same shared engine — are unaffected. The deeper question of whether the confluence engine
- * itself should only ever consider the top-ranked wall per side remains open on #4076.
+ * `confluence (kind1+kind2)` label for the structured `levels` array below. The actual price-
+ * disambiguation logic (BUG FIX 2026-09-13, live repro NRG/MU/SKHY) now lives in the shared
+ * `confluenceZoneKindsLabel` (play-brief-absence.ts) — extracted 2026-09-14 once two sibling
+ * prose call sites (play-brief-intel.ts, play-brief-narrative-coaching.ts) turned up with the
+ * exact same unpatched bug; see that function's own doc comment for the full history. This
+ * wrapper only adds the `confluence (...)` framing this file's structured levels array expects.
  */
 function confluenceZoneLabel(
   z: ConfluenceZone,
   primary: { callWall?: number | null; putWall?: number | null },
 ): string {
-  const kindsWithStrike = z.kinds.map((kind) => {
-    const primaryPrice = kind === "call-wall" ? primary.callWall : kind === "put-wall" ? primary.putWall : null;
-    if (primaryPrice == null) return kind;
-    const level = z.levels?.find((l) => l.kind === kind);
-    if (level == null || Math.abs(level.price - primaryPrice) < 0.01) return kind;
-    return `${kind}@${level.price}`;
-  });
-  return `confluence (${kindsWithStrike.join("+")})`;
+  return `confluence (${confluenceZoneKindsLabel(z, primary)})`;
 }
 
 function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel[] {

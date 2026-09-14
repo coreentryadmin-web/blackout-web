@@ -1,6 +1,7 @@
 import type { BieUnavailableSource } from "@/lib/bie/answer-envelope";
 import { freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import type {
   EcosystemContext,
@@ -550,4 +551,50 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   }
 
   return out;
+}
+
+/**
+ * Confluence zones can cite a DIFFERENT call/put wall than the single, top-ranked one a brief
+ * shows as "call wall"/"put wall" elsewhere — `vector-full-state.ts`'s confluence engine feeds it
+ * the FULL ranked `gexWalls.callWalls`/`putWalls` list, not just `[0]`, so a lower-ranked wall can
+ * cluster with max-pain/flip/golden-pocket under the same `call-wall`/`put-wall` kind label at a
+ * materially different price.
+ *
+ * BUG FIX (2026-09-13, Ask Largo standing mandate — confirmed a 3-instance pattern across NRG/MU/
+ * SKHY, raised on #4076 comments 5649059880/5649697371/5649766952): live repro NRG showed "call
+ * wall: 145" (Key levels) beside "confluence (call-wall+max-pain): 125" (Trade manager read) — two
+ * different strikes sharing the identical "call-wall" name with no disambiguation, reading as an
+ * internal contradiction. Qualifies the kind name with its actual price ONLY when it differs from
+ * the primary wall already shown — the common case (the confluence zone agrees with the top-ranked
+ * wall) is byte-identical to before.
+ *
+ * EXTRACTED HERE (2026-09-14, forensic batch 13): originally lived as a private, unexported
+ * function in play-brief.ts, so the fix only patched THAT file's structured `levels` array. Two
+ * sibling call sites independently format a `ConfluenceZone`'s `kinds` the exact same
+ * unpatched way — `formatConfluenceZone` (play-brief-intel.ts, the "Levels on chart" → "Confluence
+ * nodes" bullet list) and `confluenceCoaching` (play-brief-narrative-coaching.ts, the "Trade
+ * manager read" → "Confluence <price>" bullet) — live repro NAIL/IONX same day: envelope.levels
+ * correctly read "confluence (call-wall@35+max-pain)" (disambiguated) while BOTH unpatched prose
+ * call sites read "35.00 (call-wall+max-pain, score 5.0)" with no "@35", silently contradicting
+ * "Call wall (GEX): 40.00" three lines above in the SAME brief. Same root cause, same fix, just
+ * never swept to the sibling files — moved to this shared module (already imported by all three
+ * call sites) so a future 4th call site inherits the disambiguation instead of re-copying the bug.
+ * Deliberately swing-lane-only: this changes ONLY how a brief LABELS a zone it already receives —
+ * it does not touch `confluenceZones`'s scoring/clustering (`vector-confluence.ts`) or what feeds
+ * it (`vector-full-state.ts`), so Vector's own UI and Thermal (separate render call sites over the
+ * same shared engine) are unaffected.
+ */
+export function confluenceZoneKindsLabel(
+  z: Pick<ConfluenceZone, "kinds" | "levels">,
+  primary: { callWall?: number | null; putWall?: number | null },
+): string {
+  return z.kinds
+    .map((kind) => {
+      const primaryPrice = kind === "call-wall" ? primary.callWall : kind === "put-wall" ? primary.putWall : null;
+      if (primaryPrice == null) return kind;
+      const level = z.levels?.find((l) => l.kind === kind);
+      if (level == null || Math.abs(level.price - primaryPrice) < 0.01) return kind;
+      return `${kind}@${level.price}`;
+    })
+    .join("+");
 }

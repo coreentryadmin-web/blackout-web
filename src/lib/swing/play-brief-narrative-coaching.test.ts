@@ -1362,6 +1362,68 @@ test("confluenceCoaching: score renders at one-decimal precision, matching Level
   assert.doesNotMatch(line!, /score 8\b/, "must not display a different rounding than Levels-on-chart");
 });
 
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro IONX): this line used to join
+// `top.kinds` bare, sharing the exact "call-wall" name with the single top-ranked wall the same
+// brief's "Levels on chart" section shows elsewhere, even when the confluence engine picked a
+// LOWER-ranked wall at a materially different price -- live repro showed "Confluence 22.00
+// (call-wall + max-pain, score 5.0)" here while "Call wall (GEX): 24.00" sat elsewhere in the SAME
+// brief. Same root cause/fix as chartLevelsSection's "Confluence nodes" bullet.
+test("confluenceCoaching: discloses the zone's own wall price when it differs from the primary wall (live IONX repro)", () => {
+  const line = confluenceCoaching(
+    {
+      spot: 22,
+      gexWalls: { callWalls: [{ strike: 24 }], putWalls: [] },
+      confluenceZones: [
+        {
+          center: 22,
+          low: 21.5,
+          high: 22.5,
+          score: 5.0,
+          kinds: ["call-wall", "max-pain"],
+          levels: [
+            { price: 22, kind: "call-wall" },
+            { price: 22, kind: "max-pain" },
+          ],
+        },
+      ],
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    play({ direction: "LONG" }),
+    22,
+  );
+  assert.match(
+    line!,
+    /\*\*Confluence 22\.00\*\* \(call-wall@22 \+ max-pain, score 5\.0\)/,
+    "must disclose the zone's own wall price (22), not silently share the primary wall's name (24)",
+  );
+});
+
+// Sibling: a zone whose wall genuinely agrees with the primary wall keeps the plain kind name.
+test("confluenceCoaching: keeps the plain kind name when the zone's wall matches the primary wall", () => {
+  const line = confluenceCoaching(
+    {
+      spot: 22,
+      gexWalls: { callWalls: [{ strike: 24 }], putWalls: [] },
+      confluenceZones: [
+        {
+          center: 24,
+          low: 23.5,
+          high: 24.5,
+          score: 5.0,
+          kinds: ["call-wall", "max-pain"],
+          levels: [
+            { price: 24, kind: "call-wall" },
+            { price: 24, kind: "max-pain" },
+          ],
+        },
+      ],
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    play({ direction: "LONG" }),
+    22,
+  );
+  assert.match(line!, /\*\*Confluence 24\.00\*\* \(call-wall \+ max-pain, score 5\.0\)/);
+  assert.doesNotMatch(line!, /call-wall@/);
+});
+
 test("dataHonestyCoaching: aged markAsOf warns not-live-synced (Largo C2/C3)", () => {
   const line = dataHonestyCoaching(
     ctx(),

@@ -1686,6 +1686,84 @@ test("chartLevelsSection: confluence score renders at one-decimal precision, not
   assert.doesNotMatch(section!.body, /score 8\b/, "must not round 7.5 up to 8");
 });
 
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro NAIL): "Confluence nodes" used to
+// join a zone's `kinds` bare, sharing the exact "call-wall" name with the single top-ranked wall
+// shown 3 lines above ("Call wall (GEX): 40.00") even when the confluence engine picked a
+// LOWER-ranked wall at a materially different price (35.00) -- the two "call wall" figures in the
+// SAME section silently disagreed with nothing to explain why. play-brief.ts's structured `levels`
+// array already disambiguated this (2026-09-13); this prose call site never picked up the fix.
+test("chartLevelsSection: 'Confluence nodes' disambiguates a zone's wall price when it differs from the primary wall shown above (live NAIL repro)", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-14 10:00 ET",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      spot: 33,
+      gexWalls: { callWalls: [{ strike: 40 }], putWalls: [] },
+      confluenceZones: [
+        {
+          center: 35,
+          low: 34.5,
+          high: 35.5,
+          score: 5.0,
+          kinds: ["call-wall", "max-pain"],
+          levels: [
+            { price: 35, kind: "call-wall" },
+            { price: 35, kind: "max-pain" },
+          ],
+        },
+      ],
+    }),
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Call wall \(GEX\):\*\* 40\.00/, "the primary wall line itself is untouched");
+  assert.match(
+    section!.body,
+    /\*\*35\.00\*\* \(call-wall@35\+max-pain, score 5\.0\)/,
+    "the confluence node must disclose its OWN wall price (35), not silently share the primary wall's name (40)",
+  );
+});
+
+// Sibling: when the confluence zone's wall genuinely agrees with the primary wall, the label
+// stays plain -- the fix must not qualify every kind unconditionally.
+test("chartLevelsSection: 'Confluence nodes' keeps the plain kind name when the zone's wall matches the primary wall", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-14 10:00 ET",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      spot: 33,
+      gexWalls: { callWalls: [{ strike: 40 }], putWalls: [] },
+      confluenceZones: [
+        {
+          center: 40,
+          low: 39.5,
+          high: 40.5,
+          score: 5.0,
+          kinds: ["call-wall", "max-pain"],
+          levels: [
+            { price: 40, kind: "call-wall" },
+            { price: 40, kind: "max-pain" },
+          ],
+        },
+      ],
+    }),
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\*\*40\.00\*\* \(call-wall\+max-pain, score 5\.0\)/);
+  assert.doesNotMatch(section!.body, /call-wall@/);
+});
+
 test("watchForSection: stale GEX-only flip and put wall omitted from watch levels (Largo C2)", () => {
   const section = watchForSection(
     {
