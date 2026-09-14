@@ -4,6 +4,19 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-14 (15:34 UTC) — [RTH — SEO] Second market-hours check: gamma-snapshot healthy, brief 20s poll gap not a stall
+
+**Severity.** — (no defect found)
+
+Second RTH wake today (11:33 ET). First poll showed `snapshot_data_age_seconds: 20` — higher than
+the usual 1-5s but well under the 90s stale bound and correctly `degraded: false`. A second poll
+8s later returned a new `calculation_id` with spot moved (7613.30 → 7618.32) and age back down to
+2s, confirming the earlier reading was ordinary poll-timing, not a stall. CLS not re-measured —
+already confirmed twice today (13:34 and implicitly via the 14:11 growth-cycle skip).
+
+No defects found.
+
+---
 ## 2026-09-14 (14:11 UTC) — [SEO] Daily growth cycle: no new striking-distance queries, real 28d position improvement
 
 **Severity.** — (no defect found)
