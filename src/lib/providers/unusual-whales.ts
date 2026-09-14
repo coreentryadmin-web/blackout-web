@@ -11,6 +11,7 @@ import {
   runUwSequential,
   throttleUwCoalesced,
 } from "@/lib/providers/uw-rate-limiter";
+import { rateLimiterEnvNumber } from "@/lib/providers/provider-rate-limiter-shared";
 import {
   getUwCacheRedis,
   uwCacheGet,
@@ -348,9 +349,17 @@ async function uwGetSafe<T>(
   }
 
   // Wall-clock time budget for the entire retry loop to prevent orphaned retries
-  // from starving the shared 2-slot global UW concurrency pool. Per-attempt budget
-  // checks ensure the loop exits before a scheduled backoff would overshoot the wall.
-  const maxRetryBudgetMs = uwEnvSec("UW_GET_SAFE_MAX_RETRY_BUDGET_MS", 20) * 1000;
+  // from starving the shared 2-slot global UW concurrency pool (throttleUw's
+  // GLOBAL_MAX_CONCURRENCY). Per-attempt budget checks ensure the loop exits before a
+  // scheduled backoff would overshoot the wall. Read directly in milliseconds via
+  // rateLimiterEnvNumber (matching the `_MS` name and the sibling `_MS`-suffixed knobs
+  // this file's own uw-rate-limiter.ts already uses the same helper for, e.g.
+  // UW_CIRCUIT_PAUSE_MS) rather than uwEnvSec, which is this file's SECONDS-based
+  // helper (used elsewhere here only for `_SEC`-suffixed cache-TTL knobs) — routing an
+  // `_MS` name through the seconds helper would silently turn a value the operator
+  // wrote in milliseconds into that many SECONDS (a `UW_GET_SAFE_MAX_RETRY_BUDGET_MS`
+  // set to 20000 expecting 20s would instead arm a ~5.5-HOUR budget).
+  const maxRetryBudgetMs = rateLimiterEnvNumber("UW_GET_SAFE_MAX_RETRY_BUDGET_MS", 20_000);
   const attemptStartMs = Date.now();
 
   for (let attempt = 0; attempt <= retries; attempt++) {
