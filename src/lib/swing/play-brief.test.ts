@@ -2141,6 +2141,58 @@ test("composeSwingPlayBrief: Position section shows a BLENDED P&L once a trim ha
   );
 });
 
+// ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
+// `play.trough` (adapters.ts's troughDisplay, computed symmetrically alongside peakDisplay on
+// every TerminalPlay row) was fully computed and threaded onto every position but had ZERO
+// consumers anywhere in src/lib/swing/ — the Position section showed "Peak: +161.3%" with no way
+// to know the same position had also been down -57.2% before it worked. Conviction-relevant
+// history a trade manager would cite that the data already supported.
+test("composeSwingPlayBrief: Position section shows Trough alongside Peak (live CRWD repro 2026-09-15)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "TRIM",
+      recommendation: "TRIM",
+      entry: 16.65,
+      mark: 39.0,
+      pnlPct: 134.2,
+      peak: 161.3,
+      trough: -57.2,
+    }),
+    asOf: "2026-09-14T21:00:00.000Z",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Peak: \*\*\+161\.3%\*\*/, `got: ${position!.body}`);
+  assert.match(
+    position!.body,
+    /Trough: \*\*-57\.2%\*\*/,
+    "the position's worst excursion must be shown alongside its best, not silently dropped",
+  );
+});
+
+test("composeSwingPlayBrief: Position section shows Trough as em-dash when the field is null (never fabricated)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD", entry: 10, mark: 11, pnlPct: 10, peak: 15, trough: null }),
+    asOf: "2026-09-14T21:00:00.000Z",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.match(position!.body, /Trough: \*\*—\*\*/, `got: ${position!.body}`);
+});
+
 test("composeSwingPlayBrief: Position section lists every fired rung when a trim-scale ladder has banked more than one tranche", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
