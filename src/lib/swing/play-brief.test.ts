@@ -1552,6 +1552,84 @@ test("composeSwingPlayBrief: short interest evidence freshness is stale when fun
   );
 });
 
+test("composeSwingPlayBrief: short interest evidence is OMITTED (not just tagged stale) when fund.as_of is ancient (found 2026-09-15, live: MSTX ~9yr, CRCG/ECO ~258d)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-15 16:00 ET",
+    sessionDate: "2026-09-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "MSTX",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: {
+          days_to_cover: 1.0,
+          short_volume_ratio: 0.36,
+          price_target: null,
+          as_of: "2017-03-31",
+        },
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const siEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Short interest:"));
+  assert.equal(
+    siEvidence,
+    undefined,
+    "a ~9-year-old short-interest figure must be omitted, not rendered under the same STALE tag as a few-days-old one",
+  );
+});
+
+test("composeSwingPlayBrief: short interest evidence still renders when fund.as_of is old-but-plausible (just under the ancient ceiling)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-15 16:00 ET",
+    sessionDate: "2026-09-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: {
+          days_to_cover: 2.1,
+          short_volume_ratio: 0.35,
+          price_target: null,
+          // 45 days old — under the 60-day ceiling, so it must still render (as "stale", honestly).
+          as_of: "2026-08-01",
+        },
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const siEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Short interest:"));
+  assert.ok(siEvidence, "a 45-day-old figure is under the ancient ceiling and must still render");
+  assert.equal(siEvidence?.provenance?.freshness, "stale");
+});
+
 test("composeSwingPlayBrief: HELIX flow evidence carries brief asOf for Largo C1 joins", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
