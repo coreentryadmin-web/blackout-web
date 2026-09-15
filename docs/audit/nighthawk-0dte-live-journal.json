@@ -262,6 +262,9 @@
     },
     "2026-09-15T17:17Z": {
       "note": "6th board-upstream degradation instance (1st confirmed today) RESOLVED. First confirmed degraded 17:08:04 UTC (2 consecutive pulls), confirmed healthy again by 17:17:54 UTC (upstream_ok:true, 325 setups, discovery_health BREAKOUT/PIN both ok) -- resolution window <=10-17min, consistent with the 5-27min range across all prior instances. /record stayed healthy throughout (12 plays). Only play today: SPXW short, tier B, closed +21.02% (win). No open positions, governor clean (halted:false, realized_losers:0, session_pnl_pct 21.02). Will post a brief closing follow-up on PR #4076."
+    },
+    "2026-09-15T17:37Z": {
+      "note": "Board healthy, board-upstream degradation stays resolved (upstream_ok:true, 339 setups, discovery_health BREAKOUT/PIN both ok, up from 325 at 17:17Z). Ledger unchanged: only play today SPXW short tier B, CLOSED +21.02%. Governor clean (halted:false, no open_plans, realized_losers 0/5). Spot-checked top score-100 live setups (HQ/ARWR/PBF/SWKS/ALHC) -- all correctly BLOCKED on plan_no_quote (no live quote/flow fill on top strike yet), not a bug, evidence-only pre-commit gate working as designed. Checked open PRs: only 4 dependabot major-version bumps open, nothing in the 0DTE lane needs action. No new finding this cycle."
     }
   },
   "sessions": {
