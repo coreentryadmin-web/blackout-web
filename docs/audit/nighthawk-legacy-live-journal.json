@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T04:21:53Z",
+  "lastUpdated": "2026-09-15T04:47:54Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -2987,6 +2987,13 @@
       "healthcheck": "GREEN across all non-skipped stages (1 fresh play, nothing open, C_record resolved=26 stable -- confirms last cycle's ET-midnight-rollover explanation was correct, no further drift).",
       "note": "Used this cycle for the secondary-priority live UI check (not yet done this session) via proxy-browser.cjs against /nighthawk (mobile-UA viewport, mintClerkPremiumSession for auth). Page loaded clean: 125 routed requests, 0 failed, no console errors surfaced, only the expected long-held marks/stream SSE connection. Could not deep-link straight to the Legacy tab specifically -- the desk defaults to the 0DTE tab on load, there is no URL query param or localStorage key for initial tab selection, and proxy-browser.cjs has no click/interaction support (screenshot-only), so a true Legacy-tab screenshot needs either a page code change (accept ?tab=legacy) or a click-capable harness -- noting as a minor tooling gap, not a Legacy defect, consistent with the standing v3 brief's own note that live UI checks are secondary/lower-frequency here. The API-level checks (healthcheck, edition, record) remain the primary correctness signal and are unaffected by this gap.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T04:47:54Z",
+      "cycle": "04:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM), trigger 3 of 4",
+      "healthcheck": "GREEN across all non-skipped stages (1 fresh play, nothing open, C_record resolved=26 stable, buckets sum consistently).",
+      "note": "Followed through on the explicit follow-up PR #5012 deferred: the cold-cache fallback path (buildSummary, fed by fetchPolygonPositioningBundle when the shared GEX matrix cache is cold/unavailable) still had the same null-flip-is-not-null-regime gap the warm path had just fixed -- computeGammaFlip (gamma-desk.ts) collapsed GammaFlipDetail's reason field to a bare null, so a net_short_everywhere book on this rarely-hit path still read 'unknown' instead of 'amplification'. Fixed by extracting computeGammaFlipDetail (delegates to cumulativeGammaFlipDetail instead of cumulativeGammaFlip) and having buildSummary apply the same reason-aware rule PR #5012 shipped. RED->GREEN proven via git-stash. Full local suite 14250/14250 pass, tsc clean, both pre-push and post-rebase onto origin/main. PR #5016 opened (draft), subscribed for CI tracking. This closes out the single remaining known gap from the gamma_regime null-flip investigation started this hour -- both the warm (#5012) and cold (#5016) positioning paths now agree on how to read a net_short_everywhere book.",
+      "action": "fix-shipped"
     }
   ],
   "knownOpenItems": {
