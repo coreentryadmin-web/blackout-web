@@ -1,0 +1,26 @@
+# Railway config for the ZeroDTE-Skip-Grade cron service.
+# Wire it up: service Settings -> Config-as-code -> set path to "railway.zerodte-skip-grade.toml"
+# Requires CRON_SECRET on this service (same value as blackout-web).
+#
+# NOTE: Railway itself was fully decommissioned 2026-07-25 (see CLAUDE.md's "Vector E2E
+# validation" section) -- this file exists only because blackout-infra's EventBridge-rule
+# generator still parses `railway.*.toml`'s `cronSchedule` as its schedule source of truth, and
+# cron-registry-schedule.test.ts cross-checks every registry `schedule_cron_utc` against it. The
+# EventBridge rule itself was created directly (manually, then terraform-recorded) -- this file is
+# never actually deployed to Railway.
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.zerodte-skip-grade.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "CRON_HTTP_TIMEOUT_MS=180000 node scripts/hit-cron.mjs /api/cron/zerodte-skip-grade"
+# Once daily, post-close: 21:00 UTC = 17:00 ET (EDT) / 16:00 ET (EST). The grader itself is
+# bounded (MAX_SKIP_GRADE_DAYS/MAX_ROWS_PER_RUN) and idempotent, so a single daily fire is enough.
+cronSchedule = "0 21 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1
