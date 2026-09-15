@@ -3261,6 +3261,12 @@
       "trigger": ":36 cycle (RTH open)",
       "healthcheck": "GREEN across all 4 stages, unchanged (VNCE still CONFIRMED/pulled=false, D stays GREEN in RTH).",
       "note": "Spot-checked GET /api/admin/nighthawk/tier-export?days=1 -- as expected it only returns yesterday's (2026-09-14) already-graded DELL(unfilled)/HPE(unfilled, pulled) rows, not today's VNCE, since tier-export sources from fetchNighthawkOutcomeAnalytics (resolved/ graded plays only) and VNCE hasn't resolved yet. Consistent, not a gap. Quiet cycle -- no new investigation forced; holding capacity for genuinely fresh signal as the session continues through RTH."
+    },
+    {
+      "at": "2026-09-15T13:52:38Z",
+      "trigger": ":51 cycle (final of this hour)",
+      "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN in RTH).",
+      "investigation": "Fresh angle after a couple of quiet cycles: VNCE's tier narrative says '3 of 9 dimensions confirming' while factor_breakdown exposes 11 keys (vex/flow/news/skew/tech/catalyst/fundamental/positioning/smart_money/short_interest/wall_proximity) -- looked like a possible denominator mismatch. Traced to deterministic-edition.ts:97-107: confirming_signals is a literal 9-element boolean array (flow>=8, tech>=6, pos>=4, news>=2, smart>=2, fund>=2, si>=2, wall>=3, vex>=2) that DELIBERATELY excludes catalyst and skew from the 11 scored factors -- the '9' in nighthawk-tiers.ts's narrative string is an exact, intentional match, not a stale/wrong count. Went further than disproving the hypothesis: manually recomputed the 9 thresholds against VNCE's live factor_breakdown (tech=30>=6 true, news=5>=2 true, smart_money=3.8>=2 true; flow=0, positioning=0, fundamental=1, short_interest=0, wall_proximity=0, vex=0 all false) -- arithmetic gives exactly 3 true, matching the displayed 'confirming_signals: 3' / '3 of 9' precisely. Full end-to-end verification, not just a disproof -- clean, no fix needed."
     }
   ],
   "knownOpenItems": {
