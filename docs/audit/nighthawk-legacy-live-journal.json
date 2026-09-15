@@ -3225,6 +3225,11 @@
       "at": "2026-09-15T12:22:30Z",
       "trigger": "PR #5026 check_suite.completed wake (not a scheduled cycle -- :36 hasn't fired yet)",
       "note": "check_suite.completed event's head_sha (4ecd765e) didn't match the PR's actual head (2af5ce30) -- a fresh fetch showed verify still in_progress on the real head, likely a GitHub-internal merge-probe ref rather than a stale/missed push. Nothing red. Ran a healthcheck opportunistically while here (GREEN, unchanged) but this is NOT a full :36-cycle entry -- keeping it brief to avoid double-logging when the real :36 trigger fires shortly."
+    },
+    {
+      "at": "2026-09-15T12:31:52Z",
+      "trigger": "PR #5026 CI-completion wake",
+      "action": "check_suite.completed event's head_sha matched this time. verify + CodeQL both green, mergeable_state clean, zero review comments. Squash-merged PR #5026 (49ff1f27d). Verified the merged session.ts/session.test.ts content on origin/main directly (exact match to what was authored, including the EARLY_CLOSE_ET_MINUTES table and all 3 new regression tests) rather than trusting merged:true alone. Unsubscribed from PR activity, synced the primary checkout, deleted the local branch. Early-close carry-until-close fix now fully live on main -- batch closed."
     }
   ],
   "knownOpenItems": {
