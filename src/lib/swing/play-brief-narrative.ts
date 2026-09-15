@@ -658,15 +658,18 @@ export function counterThesisLine(
   if (play.direction === "LONG" && ema === "down") reasons.push("bear EMA stack on chart");
   if (play.direction === "SHORT" && ema === "up") reasons.push("bull EMA stack on chart");
 
-  const gex = eco?.gex_positioning;
-  const vecPosture = !vectorStale ? vec?.regime?.posture ?? null : null;
-  const posture = vecPosture ?? gex?.gamma_posture ?? null;
-  const postureFromGex = !vecPosture && gex?.gamma_posture;
-  const skipGexPosture = postureFromGex && gexMatrixStale(gex, Date.now());
-  if (!skipGexPosture) {
-    if (play.direction === "LONG" && posture === "long") reasons.push("dealer long-gamma pins rallies");
-    if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
-  }
+  // BUG FIX (2026-09-15, Ask Largo standing mandate, sibling of the play-brief.ts evidenceFromContext
+  // fix same day): `vecPosture` used to be `vec?.regime?.posture ?? null`, treating the literal
+  // string "unknown" (Vector genuinely could not resolve a regime) as an equally-resolved answer to
+  // "long"/"short" — the exact bug `resolveGammaPosture` (play-brief-absence.ts) was fixed for on
+  // 2026-09-12, just never ported here. That silently dropped a real, resolved GEX-matrix-fallback
+  // dealer-posture counter-thesis reason whenever Vector's own read landed on "unknown", understating
+  // the "corroborated across N independent reads" count just below. `resolveGammaPosture` already
+  // encodes the same stale-GEX gating `skipGexPosture` used to apply by hand, so it fully replaces
+  // this block.
+  const posture = resolveGammaPosture(ctx, vec);
+  if (play.direction === "LONG" && posture === "long") reasons.push("dealer long-gamma pins rallies");
+  if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
 
   // Same guard as degradedReadLine/thesisPillarCoaching (thesis-health.ts's thesisHealthUncalibrated):
   // a committed row with no setup/entry/signal inputs wired gets FORCED default pillar labels
