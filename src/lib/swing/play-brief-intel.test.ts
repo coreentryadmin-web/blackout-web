@@ -83,6 +83,46 @@ test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is
   assert.equal(bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book), null);
 });
 
+test("bookContextSection: a genuine cross-engine sibling on the reviewed play's OWN ticker is labeled, not rendered as bare self-citation (Largo C4)", () => {
+  // Live defect (2026-09-15, Ask Largo standing mandate): loadOpenBook() merges swing_positions
+  // (real positionId) with banger_positions (positionId deliberately left unset -- separate DB
+  // sequences that can collide on numeric id). Once the reviewed play's own positionId excludes
+  // itself exactly, a real cross-engine sibling on the SAME ticker correctly falls through as
+  // genuine concentration -- but rendered as bare "TICKER DIRECTION" it reads as a self-citation
+  // bug. Live-confirmed on CRWD: swing position #39 (reviewed, excluded) vs a real, independently
+  // committed Banger CRWD LONG (positionId unset) both existing at once.
+  const book: PortfolioPosition[] = [
+    { ticker: "CRWD", direction: "LONG" }, // cross-engine sibling, no positionId (Banger-shaped)
+    { ticker: "ZS", direction: "LONG" },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /CRWD LONG \(separate, cross-engine position\)/,
+    `same-ticker cross-engine sibling must be labeled distinctly, got: ${section!.body}`,
+  );
+  assert.match(section!.body, /ZS LONG/, "an unrelated ticker in the same theme is unaffected");
+  assert.doesNotMatch(
+    section!.body,
+    /ZS LONG \(separate/,
+    "the label must only apply to a sibling sharing the reviewed play's OWN ticker",
+  );
+});
+
+test("bookContextSection: a genuine same-ticker swing-native sibling (known positionId) cites its own id", () => {
+  const book: PortfolioPosition[] = [{ ticker: "CRWD", direction: "LONG", positionId: 51 }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /CRWD LONG \(separate position #51\)/);
+});
+
 // FINDINGS 2026-09-12 (live repro, closed AAPL positionId 36): this section's copy is written for a
 // PENDING entry decision ("Adding {ticker} stacks the same wager...") — wrong frame for a position
 // that has already closed and has no forward decision left, even when the CURRENT book happens to
