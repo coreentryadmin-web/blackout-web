@@ -12,6 +12,7 @@ import {
   gexMatrixStale,
   GEX_MATRIX_STALE_MS,
   optionMarkGenuinelyUnknown,
+  resolveGammaPosture,
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
@@ -276,6 +277,16 @@ export function chartTechnicalsSection(
   vec: VectorFullState | null,
   sessionDate?: string | null,
   bucket: "watch" | "open" | "closed" = "open",
+  // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): this section used
+  // to read `vec.regime?.posture` directly with no GEX-matrix fallback, so whenever Vector's own
+  // regime read landed on "unknown" it silently OMITTED the "Dealer gamma regime" line entirely —
+  // even when a fresh, resolvable GEX-matrix posture existed and was already shown two sections down
+  // in "Trade manager read" (via `resolveGammaPosture`, fixed for that section and two others earlier
+  // the same day). Not a wrong-value bug (silence, not fabrication) but a real completeness gap: a
+  // trader reading only Chart technicals saw nothing where a determinable answer existed elsewhere in
+  // the same brief. `ctx` is optional (defaults to the old vec-only behavior) so existing callers that
+  // don't have a full context on hand are unaffected; the real production call site now passes it.
+  ctx?: SwingPlayBriefContext | null,
 ): RichSection | null {
   if (!vec?.technicals && vec?.spot == null) return null;
   const readMs = Date.now();
@@ -315,9 +326,10 @@ export function chartTechnicalsSection(
   // labeling it bare "long"/"short" next to directional signals (EMA stack, MACD, structure
   // direction) in this same section risks reading as a trade direction that can contradict the
   // very next "Vector desk" section's own directional POSITION call for the same ticker.
-  if (vec.regime?.posture && vec.regime.posture !== "unknown" && vec.regime.posture !== "transition") {
-    lines.push(`Dealer gamma regime: **${vec.regime.posture} gamma**`);
-  } else if (vec.regime?.posture === "transition") {
+  const posture = ctx ? resolveGammaPosture(ctx, vec, readMs) : (vec.regime?.posture ?? null);
+  if (posture && posture !== "unknown" && posture !== "transition") {
+    lines.push(`Dealer gamma regime: **${posture} gamma**`);
+  } else if (posture === "transition") {
     lines.push(`Dealer gamma regime: **transition** (near flip)`);
   }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
@@ -1355,7 +1367,7 @@ export function buildIntelSections(
   const rank = laneRankSection(play, ctx.laneRows);
   if (rank) out.push(rank);
 
-  const technicals = chartTechnicalsSection(vec, ctx.sessionDate, bucket);
+  const technicals = chartTechnicalsSection(vec, ctx.sessionDate, bucket, ctx);
   if (technicals) out.push(technicals);
 
   const levels = chartLevelsSection(ctx);
