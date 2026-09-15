@@ -168,13 +168,35 @@ export function playExpectsLiveOptionMark(status: string | null | undefined): bo
   return status === "OPEN" || status === "HOLD" || status === "TRIM";
 }
 
+/**
+ * A swing option mark's ONLY writer is `swing-active-refresh` (cron-registry.ts), which runs
+ * every 15 minutes during market hours — unlike 0DTE/Vector, there is no faster "live-marks"
+ * writer for the persisted `last_mark_at` column (the shared ~1s live-marks lane feeds an
+ * ephemeral Redis/SSE display path, not this DB column — see live-marks-active.ts's header).
+ * So under fully healthy, on-schedule operation, `markAsOf` legitimately ranges from 0 to ~15
+ * minutes old at any read. The generic cross-product `freshnessFromObservedMs` bucket (stale at
+ * 10 minutes, answer-envelope.ts) was written for feeds that refresh on a much tighter cadence,
+ * and reusing it here mislabels a mark that is exactly on schedule (10-15 min old, waiting on
+ * the next scheduled refresh) as "stale" — a false positive roughly a third of every refresh
+ * cycle, confirmed live 2026-09-15 (CRWD/AAPL both showing `markAsOf` exactly on the :00/:15/:30/
+ * :45 cadence yet flagged stale at the ~13-minute mark). 18 minutes gives one full cycle plus a
+ * margin for a delayed/skipped tick before calling it genuinely stale, mirroring the cadence-aware
+ * `stale_after_min` pattern cron-registry.ts already uses for its own health alerting (swing-
+ * active-refresh's own `stale_after_min: 25` is more generous still, since that alert also has to
+ * tolerate an outright missed run — this constant only needs to cover normal jitter within one
+ * on-schedule cycle).
+ */
+const SWING_OPTION_MARK_STALE_MS = 18 * 60_000;
+
 /** True when an OPEN/HOLD/TRIM row carries an aged markAsOf (not the markIsSync no-timestamp case). */
 export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now()): boolean {
   if (!playExpectsLiveOptionMark(play.status)) return false;
   if (play.markIsSync === true || !play.markAsOf) return false;
   const markMs = Date.parse(play.markAsOf);
   if (!Number.isFinite(markMs)) return false;
-  return freshnessFromObservedMs(markMs, readMs) === "stale";
+  const ageMs = readMs - markMs;
+  if (ageMs < 0) return freshnessFromObservedMs(markMs, readMs) === "stale"; // fail-closed on future skew (Largo C2)
+  return ageMs >= SWING_OPTION_MARK_STALE_MS;
 }
 
 /**

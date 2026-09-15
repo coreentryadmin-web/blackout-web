@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   collectBriefUnavailableSources,
   gexMatrixStale,
+  optionMarkIsStale,
   resolveGammaPosture,
   trustedHelixFlow,
   vectorAgeStale,
@@ -570,6 +571,42 @@ test("collectBriefUnavailableSources: aged markAsOf surfaces in envelope (live p
       (s) => s.source === "option mark" && s.reason.includes("stale — last synced"),
     ),
     "expected stale option mark chip for aged markAsOf",
+  );
+});
+
+// Live repro 2026-09-15 (Ask Largo standing mandate): CRWD and AAPL both carry `swing-active-
+// refresh`'s exact 15-minute on-schedule `markAsOf` (":00"/":15" wall-clock stamps), yet the
+// generic cross-product 10-minute freshness bucket flagged them "stale" at the ~13-minute mark —
+// a false positive during normal, healthy operation, roughly a third of every refresh cycle,
+// because a swing option mark's ONLY writer runs every 15 minutes (no faster live-marks writer
+// exists for this DB column — see optionMarkIsStale's own doc comment).
+test("optionMarkIsStale: a mark on-schedule for the 15-minute swing-active-refresh cadence is NOT stale", () => {
+  const readMs = Date.parse("2026-09-15T19:13:00.000Z"); // 15:13 ET
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z", // synced at the prior :00 tick, 13 minutes old
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+
+  assert.equal(
+    optionMarkIsStale(play, readMs),
+    false,
+    "a 13-minute-old mark is still within one healthy swing-active-refresh cycle and must not read as stale",
+  );
+});
+
+test("optionMarkIsStale: a mark that has missed its next scheduled refresh IS stale", () => {
+  const readMs = Date.parse("2026-09-15T19:19:00.000Z"); // 15:19 ET — past the 15:15 tick that should have landed
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z",
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+
+  assert.equal(
+    optionMarkIsStale(play, readMs),
+    true,
+    "a mark past 18 minutes old has missed a scheduled refresh and should read stale",
   );
 });
 
