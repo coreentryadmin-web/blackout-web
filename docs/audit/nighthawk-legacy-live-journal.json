@@ -3323,6 +3323,12 @@
       "trigger": "new-hour :06 cycle (v3 mandate re-fire, trigger 1 of 4)",
       "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN).",
       "investigation": "Traced the 'AVG GIVEBACK: --' stat to vectorBoardScorecard (vector-board-row-utils.ts) as a fresh angle -- found it (and 4 sibling stats: netPremiumPct/hitRate/winnersFloorPct/runnerPipelinePct) already correctly use a null-when-no-data pattern with counted denominators, never fabricating a zero. Added this as reinforcing evidence to knownOpenItems.legacyCalendarTileNullPremiumAsZero_2026-09-15 -- strengthens (doesn't change) the case for that flagged, unshipped fix direction: adopting the exact pattern already used 4x in the same shared file, not a novel design call."
+    },
+    {
+      "at": "2026-09-15T16:22:53Z",
+      "trigger": ":21 cycle",
+      "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN). VNCE $8.17, holding steady well above entry band since crossing target ~an hour ago.",
+      "note": "Quiet cycle -- nothing new to report. Market close (~3h40m out) is the next natural checkpoint for VNCE's real resolution/grading."
     }
   ],
   "knownOpenItems": {
