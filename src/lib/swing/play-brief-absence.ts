@@ -13,6 +13,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
@@ -63,6 +64,36 @@ export function gexMatrixStale(
   // Fail-closed on clock-skewed future stamps — same guard as gexStaleFromAge / FreshnessChip.
   if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
   return ageMs > GEX_MATRIX_STALE_MS;
+}
+
+/**
+ * Meridian catalyst timeline staleness (Largo C2). `slice.as_of` is stamped once, at the moment
+ * `loadMeridianTimelineResponse` actually ran inside `withServerCache` — under that cache's
+ * stale-while-revalidate path a degraded Benzinga upstream can legitimately keep serving the same
+ * stored payload (and its original `as_of`) for up to `MAX_STALE_AGE_MS` (10 minutes,
+ * server-cache.ts), well past this 120s bound. Same threshold as GEX/Vector so "quiet calendar"
+ * narrative doesn't read as current when the read behind it is actually minutes old.
+ */
+const MERIDIAN_CATALYST_STALE_MS = GEX_MATRIX_STALE_MS;
+
+export function meridianCatalystAgeMs(
+  slice: SwingMeridianCatalystSlice | null | undefined,
+  readMs: number = Date.now(),
+): number | null {
+  if (!slice?.as_of) return null;
+  const observedMs = Date.parse(slice.as_of);
+  if (!Number.isFinite(observedMs)) return null;
+  return readMs - observedMs;
+}
+
+export function meridianCatalystStale(
+  slice: SwingMeridianCatalystSlice | null | undefined,
+  readMs: number = Date.now(),
+): boolean {
+  const ageMs = meridianCatalystAgeMs(slice, readMs);
+  if (ageMs == null) return false;
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
+  return ageMs > MERIDIAN_CATALYST_STALE_MS;
 }
 
 /** ET session the Vector snapshot was measured in — freshness block wins over persisted sessionDate. */
@@ -431,6 +462,13 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       source: "Meridian catalysts",
       reason: "timeline read failed",
       what_is_missing: "the Meridian catalyst timeline for this ticker",
+      retryable: true,
+    });
+  } else if (!isClosed && meridianCatalystStale(ctx.meridian, Date.now())) {
+    out.push({
+      source: "Meridian catalysts",
+      reason: "stale — calendar read may lag",
+      what_is_missing: "a fresh Meridian catalyst timeline read for this ticker",
       retryable: true,
     });
   }

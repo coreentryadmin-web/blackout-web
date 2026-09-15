@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   collectBriefUnavailableSources,
   gexMatrixStale,
+  meridianCatalystAgeMs,
+  meridianCatalystStale,
   optionMarkIsStale,
   resolveGammaPosture,
   trustedHelixFlow,
@@ -27,6 +29,65 @@ test("gexMatrixStale: within future tolerance is not treated as skew-stale", () 
   const nearFutureAsof = new Date(readMs + WS_TIMESTAMP_FUTURE_TOLERANCE_MS - 1_000).toISOString();
   const gex = { spot: 100, asof: nearFutureAsof, gamma_posture: "long" };
   assert.equal(gexMatrixStale(gex, readMs), false);
+});
+
+test("meridianCatalystStale: fresh as_of (Largo C2)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const slice = { as_of: new Date(readMs - 30_000).toISOString(), items: [], total_matched: 0 };
+  assert.equal(meridianCatalystAgeMs(slice, readMs), 30_000);
+  assert.equal(meridianCatalystStale(slice, readMs), false);
+});
+
+test("meridianCatalystStale: as_of past the 120s bound is stale — a degraded Benzinga upstream under withServerCache's stale-while-revalidate path can serve the same as_of for up to 10 minutes (Largo C2)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const slice = { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 };
+  assert.equal(meridianCatalystStale(slice, readMs), true);
+});
+
+test("meridianCatalystStale: unparseable as_of (e.g. an ET wall-clock test fixture, not the real ISO shape) reads as unknown age, not stale", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const slice = { as_of: "2026-09-15 09:00 ET", items: [], total_matched: 0 };
+  assert.equal(meridianCatalystAgeMs(slice, readMs), null);
+  assert.equal(meridianCatalystStale(slice, readMs), false);
+});
+
+test("meridianCatalystStale: null slice is not stale (absence is a separate signal)", () => {
+  assert.equal(meridianCatalystStale(null), false);
+});
+
+test("collectBriefUnavailableSources: stale Meridian catalyst read surfaces in unavailableSources (Largo C2/C3)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(
+      sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")),
+    );
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: CLOSED play does not flag a stale Meridian read (historical record, not a live decision)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    play: { status: "CLOSED" },
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(!sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")));
+  } finally {
+    Date.now = origNow;
+  }
 });
 
 test("vectorAgeStale: POSITIVE_INFINITY dataAgeMs from clock skew is stale", () => {

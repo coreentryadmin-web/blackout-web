@@ -11,6 +11,8 @@ import {
   gexMatrixAgeMs,
   gexMatrixStale,
   GEX_MATRIX_STALE_MS,
+  meridianCatalystAgeMs,
+  meridianCatalystStale,
   optionMarkGenuinelyUnknown,
   resolveGammaPosture,
   vectorSnapshotStale,
@@ -995,7 +997,17 @@ function formatMeridianItem(i: LargoTimelineItem): string {
   return `• **${i.title}** (${i.kind}, ${i.impact}) — ${i.date}${timing} ${when}${em}${printed}`;
 }
 
-/** Meridian desk catalyst calendar — richer than UW earnings stub alone. */
+/**
+ * Meridian desk catalyst calendar — richer than UW earnings stub alone.
+ *
+ * Largo C2 (2026-09-15, Ask Largo standing mandate): `slice.as_of` was captured on the type but
+ * never read here — under `withServerCache`'s stale-while-revalidate path a degraded Benzinga
+ * upstream can keep serving the same stored payload (and its true, un-bumped `as_of`) for up to
+ * 10 minutes (server-cache.ts's `MAX_STALE_AGE_MS`), so "calendar is quiet" could read as a fresh
+ * claim while actually minutes stale — the one section in this file with zero freshness
+ * disclosure while every sibling (GEX/Vector) explicitly caveats staleness. Prefixed the same
+ * "Last snapshot" pattern those use rather than inventing a new one.
+ */
 export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection | null {
   const slice = ctx.meridian;
   if (slice?.unavailable) {
@@ -1004,10 +1016,17 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
       body: "Catalyst calendar unavailable on this read — not evidence of a quiet calendar.",
     };
   }
+  const readMs = Date.now();
+  const stale = meridianCatalystStale(slice, readMs);
+  const ageMs = stale ? meridianCatalystAgeMs(slice, readMs) : null;
+  const staleLead = stale
+    ? `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — catalyst calendar may lag.\n\n`
+    : "";
   if (!slice?.items.length) {
     return {
       title: "Meridian catalysts",
       body:
+        staleLead +
         "No catalysts in the **14-day** Meridian window on this read — calendar is quiet, not missing.",
     };
   }
@@ -1032,6 +1051,7 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
     return {
       title: "Meridian catalysts",
       body:
+        staleLead +
         "This ticker's only catalyst in the **14-day** Meridian window is the earnings print already covered above.",
     };
   }
@@ -1041,7 +1061,7 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
   if (droppedForWindow > 0) {
     lines.push(`_${droppedForWindow} more in window — open Meridian desk for full lane._`);
   }
-  return { title: "Meridian catalysts", body: lines.join("\n") };
+  return { title: "Meridian catalysts", body: staleLead + lines.join("\n") };
 }
 
 /**
