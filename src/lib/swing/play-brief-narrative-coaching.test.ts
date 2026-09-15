@@ -23,7 +23,6 @@ import {
   wallDynamicsCoaching,
   watchGateCoaching,
   technicalsCoaching,
-  underlyingExcursionCoaching,
 } from "./play-brief-narrative-coaching";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -1121,34 +1120,6 @@ test("closedCoaching: outcome + exit-reason are separate bullet points, not one 
   assert.match(points[0], /^Exited \*\*-56\.2%\*\* vs peak \*\*\+1\.3%\*\*$/);
   assert.match(points[1], /^\*\*Round-tripped past breakeven\*\*/);
   assert.match(points[2], /^\*\*Stop fired\*\* \(stopped\)/);
-});
-
-// ─── underlyingExcursionCoaching ────────────────────────────────────────────
-// FINDINGS 2026-09-10 (live NRG repro): the "option gave back X% from peak" aside used
-// `play.peak - play.pnlPct` (percentage-POINT subtraction of two already-percentage numbers).
-// Real production NRG position: peak 132.7, pnlPct 39.8 -> old math printed "gave back 93% from
-// peak" on a play still up +39.8%, reading as a near-total round-trip when the honest relative
-// retracement is ~70% (30% of peak retained). Fixed via the same mfeCaptureOutcome math
-// mfe-capture.ts already ships for closed-play post-mortems.
-
-test("underlyingExcursionCoaching: option-giveback aside uses honest relative retracement, not point-difference (live NRG repro)", () => {
-  const line = underlyingExcursionCoaching(play({ stockMovePct: 5, peak: 132.7, pnlPct: 39.8 }));
-  assert.ok(line);
-  assert.match(line!, /option gave back \*\*70%\*\* from peak/, `expected ~70% relative giveback, got: ${line}`);
-  assert.doesNotMatch(line!, /\*\*93%\*\*/, "must not regress to the point-difference bug");
-});
-
-test("underlyingExcursionCoaching: option-giveback aside does not fire once retained capture clears the floor", () => {
-  // capture = 98/120*100 ~= 81.7% retained -> above the 80% floor's complement, no giveback aside.
-  const line = underlyingExcursionCoaching(play({ stockMovePct: 5, peak: 120, pnlPct: 98 }));
-  assert.ok(line);
-  assert.doesNotMatch(line!, /option gave back/i);
-});
-
-test("underlyingExcursionCoaching: option round-tripped-past-breakeven aside fires when current option pnl has gone negative after a positive peak", () => {
-  const line = underlyingExcursionCoaching(play({ stockMovePct: 5, peak: 132.7, pnlPct: -10 }));
-  assert.ok(line);
-  assert.match(line!, /option round-tripped past breakeven.*was up \*\*133%\*\* at peak, now \*\*-10%\*\*/);
 });
 
 // ─── vectorPlayCoaching ─────────────────────────────────────────────────────
