@@ -3412,6 +3412,14 @@
       "sync": "origin/main had moved one commit (43ed621de, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
       "healthcheck": "GREEN across all 4 stages, unchanged.",
       "liveUiCheck": "Live MOBILE (430x932) screenshot of /nighthawk?view=LEGACY -- fresh Clerk cookie, proxy-browser.cjs (this session's first mobile-viewport check; prior live-UI passes this week were desktop-only). Clean render: header/tabs/session-picker readable, both honest disclosure banners wrap correctly within the narrow width, macro/scorecard cards stack sensibly with no horizontal overflow or clipped text. Correctly shows the same already-known scorecard gap (0 winners/0 runners/Hit rate 0% despite VNCE's real move) -- consistent with the desktop finding, not a mobile-specific defect. No new issues found."
+    },
+    {
+      "at": "2026-09-15T19:37:38Z",
+      "trigger": ":36 cycle",
+      "sync": "origin/main had moved one commit (13a6a4ec0, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "GREEN across all 4 stages, unchanged.",
+      "marketUpdate": "VNCE now $8.43 (+10.2%), pulled back slightly from $8.58 last cycle but still above the $8.41 target. ~23min to 4pm ET close at trigger time.",
+      "investigation": "Code-review pass on the INVALIDATED/pull path since VNCE has stayed CONFIRMED all day this session -- D_pull_status's underlying logic has never been live-exercised against a real pulled/invalidated play. Read pull-overlay.ts's applyNighthawkPullOverlay (pure, non-destructive, case-insensitive ticker match, honest generic fallback reason, ignores orphaned pulled rows) and verdictForPullConsistency (cross-checks status.status==='INVALIDATED' against play.pulled boolean, split-brain RED on mismatch). Checked pull-overlay.test.ts -- 6 dedicated unit tests covering exactly these paths including the DEGRADED-vs-pulled distinction. Both pieces are correct and well-tested. No gap found -- logged so this isn't mistaken for an untested blind spot in a future cycle."
     }
   ],
   "knownOpenItems": {
