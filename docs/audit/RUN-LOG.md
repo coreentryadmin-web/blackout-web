@@ -4,6 +4,28 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-15 (06:24 UTC) — [SEO] Lane heartbeat: post-restart recovery, PR queue empty, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Fired into a freshly restarted container (02:17 ET). Post-restart check found
+`git branch --show-current` on a stale branch (`fix/seo-public-gex-snapshot-stale-degraded-flag`,
+already-merged PR #4796) instead of `main` — the exact container-restart stale-branch trap this
+log documents. Recovered per protocol: `git checkout main -q && git reset --hard origin/main -q`,
+verified HEAD at `a864f4ac4` (matches `origin/main`), deleted the stale local branch.
+
+PR sweep: **0 open agent PRs fleet-wide.** `/api/og`: HTTP 200 in 0.85s, still crawlable.
+Public gamma-snapshot API (`/api/public/gex-snapshot?ticker=SPX`) spot-checked directly (market
+closed, 02:20 ET): `available: true`, `degraded: false`, `snapshot_data_age_seconds: 42`,
+`market_session: "CLOSED"` — correctly non-degraded well under the 90s bound, confirming PR
+#4796's fix is live and behaving correctly in production. CLS/RTH-specific checks deferred to the
+separate MARKET-HOURS WAKE trigger (09:30 ET). GSC opportunity scan: same 3 striking-distance
+queries as last cycle (`dealer gamma`, `gamma three trading`, `is 0dte gambling`), CTR-gap 0,
+deep-demand list unchanged (authority-limited, not on-page actionable) — no new opportunities.
+
+No defects found.
+
+---
 ## 2026-09-15 (00:20 UTC) — [SEO] Lane heartbeat: new striking-distance query "dealer gamma" registered, no on-page action needed
 
 **Severity.** — (no defect found)
