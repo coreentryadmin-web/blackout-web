@@ -3448,6 +3448,13 @@
       "prStatus": "PR #5040 (regrade-stuck.ts doc-drift fix) merged externally (merged_by: coreentryadmin-web) before I called any merge tool -- the documented 'MIRROR FAILURE, CLAUDE SIDE' pattern. All CI green (verify/CodeQL success, enable-automerge/auto-merge correctly skipped per the known PAT gap) before the merge. Verified content directly via git show origin/main:src/features/nighthawk/lib/regrade-stuck.ts -- the corrected comment landed exactly as authored. Unsubscribed from PR activity, deleted the local branch, synced primary checkout to main.",
       "healthcheck": "AMBER, unchanged (same expected post-close stale-edition state). B/D GREEN. C_record resolved count moved 26->27.",
       "investigation": "Initially suspected the resolved 26->27 bump meant VNCE had just been formally graded by tonight's outcomes cron -- corrected this before logging by comparing bucket-by-bucket against the prior read: wins 0->1, decided 1->2, but opens stayed EXACTLY 15 (unchanged). If VNCE (previously counted in opens) had just graded, opens would have dropped to 14. Correct explanation: the 14-day lookback window's far edge rolled forward over the ~1h gap since the last read, bringing a previously-just-outside-window already-resolved play into view (a win) -- not a new grading event. Confirmed via D_pull_status: VNCE still shows CONFIRMED/pulled=false, i.e. still ungraded. VNCE's actual formal grading is still pending (nighthawk-outcomes cron window 20:30/21:30 UTC hasn't fully passed). Logged the correction rather than the hasty initial read to avoid a false 'VNCE graded' claim in the durable record."
+    },
+    {
+      "at": "2026-09-15T20:52:50Z",
+      "trigger": ":51 cycle (final of this hour)",
+      "sync": "origin/main had moved one commit (6ec6cedb1, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "AMBER, unchanged from last cycle -- same expected post-close stale-edition state. B/D GREEN.",
+      "note": "VNCE still ungraded: record segment unchanged from the :36 read (opens=15, decided=2, wins=1 -- the same window-roll win from last cycle, not VNCE). Checked play-status too, but that only reflects the MORNING-confirm verdict (checked_at 13:15, unchanged by design) not evening outcome grading, so it can't answer this question either way -- correctly did not treat its unchanged CONFIRMED as evidence of anything. Tonight's nighthawk-outcomes cron (20:30 UTC fire under current EDT offset, 90min catchup window) is 21min past its nominal fire time but still within its catchup window -- normal timing, not a stall. Light cycle; next hour's cycles should catch the graded state."
     }
   ],
   "knownOpenItems": {
