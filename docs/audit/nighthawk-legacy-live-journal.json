@@ -3420,6 +3420,13 @@
       "healthcheck": "GREEN across all 4 stages, unchanged.",
       "marketUpdate": "VNCE now $8.43 (+10.2%), pulled back slightly from $8.58 last cycle but still above the $8.41 target. ~23min to 4pm ET close at trigger time.",
       "investigation": "Code-review pass on the INVALIDATED/pull path since VNCE has stayed CONFIRMED all day this session -- D_pull_status's underlying logic has never been live-exercised against a real pulled/invalidated play. Read pull-overlay.ts's applyNighthawkPullOverlay (pure, non-destructive, case-insensitive ticker match, honest generic fallback reason, ignores orphaned pulled rows) and verdictForPullConsistency (cross-checks status.status==='INVALIDATED' against play.pulled boolean, split-brain RED on mismatch). Checked pull-overlay.test.ts -- 6 dedicated unit tests covering exactly these paths including the DEGRADED-vs-pulled distinction. Both pieces are correct and well-tested. No gap found -- logged so this isn't mistaken for an untested blind spot in a future cycle."
+    },
+    {
+      "at": "2026-09-15T19:53:02Z",
+      "trigger": ":51 cycle (final of this hour, ~8min before 4pm ET close)",
+      "sync": "origin/main had moved one commit (8548f12f0, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "GREEN across all 4 stages, unchanged.",
+      "marketUpdate": "VNCE now $8.37 (+9.41%) -- receded back BELOW its $8.41 target after today's full arc: crossed entry ~7.65, crossed target ~8.41, peaked $8.58, now $8.37. This is a live, real instance of the exact recommendation-hysteresis scenario reasoned through at the :21 cycle two hours ago (whether overlayLegacyQuotes's memoryless atTarget check would flip the recommendation back from TRIM to the static rec once price receded below target). Per that logic, the live recommendation right now should have reverted from TRIM back to the static morning recommendation -- confirms (does not contradict) that earlier reasoning with real same-day data rather than a hypothetical. ~8min to the 4pm ET close; tonight's nighthawk-outcomes cron (20:30/21:30 UTC) will formally grade this play using the underlying's session OHLC bar, independent of premium data, per the :51-cycle verification an hour ago."
     }
   ],
   "knownOpenItems": {
