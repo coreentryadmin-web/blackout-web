@@ -827,22 +827,6 @@ export function shortInterestCoaching(ctx: SwingPlayBriefContext, play: Terminal
   return null;
 }
 
-/** Calibration scorecard — tier WR when wired. */
-export function scorecardCoaching(play: TerminalPlay): string | null {
-  const sc = play.scorecard;
-  if (!sc || sc.n < 10) return null;
-  const wr = Math.round(sc.winRate * 100);
-  const ci =
-    sc.ciLow != null && sc.ciHigh != null
-      ? ` (CI **${Math.round(sc.ciLow * 100)}–${Math.round(sc.ciHigh * 100)}%**)`
-      : "";
-  const tier = play.tierLabel ? ` **${play.tierLabel}**` : "";
-  return (
-    `**Playbook stats**${tier} — **${wr}%** WR over **${sc.n}** trades${ci}. ` +
-    `Size per calibration; this row is one sample, not the population.`
-  );
-}
-
 /** IV rank — vol expansion / contraction context. */
 export function ivRankCoaching(play: TerminalPlay): string | null {
   const iv = fin(play.ivRank);
@@ -1146,7 +1130,17 @@ export function collectCoachingBullets(
   const vectorConflictAlreadyNoted = crossDesk != null && /Vector (bearish|bullish)/.test(crossDesk);
   push(laneRankCoaching(play, ctx.laneRows));
   push(macroTapeCoaching(ctx));
-  push(scorecardCoaching(play));
+  // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `scorecardCoaching` (formerly here)
+  // read `play.scorecard`, which is genuinely populated for 0DTE (zerodte-sources.ts) and Legacy
+  // (legacy-board-detail-copy.ts) but NEVER for swing/LEAPS — `terminalPlayFromHorizon` (adapters.ts,
+  // the SWING/LEAPS adapter) never sets it, and no swing-side resolve step patches it in either
+  // (confirmed: zero `scorecard` references in that function or in play-brief-resolve.ts). That made
+  // this call structurally guaranteed to return null for 100% of swing traffic, forever, by the same
+  // architectural decision adapters.ts already documents for `tierLabel: null` on swing ("no
+  // calibrated tier engine to back" a letter grade) — not a missing signal to wire up, since swing
+  // already ships the honest, superior replacement for this exact intent
+  // (`archetypeTrackRecordSection`/`graduatedArchetypeEntry`, #4685, Wilson-LB gated, sub-lane-
+  // specific). Removed rather than left as always-dead code a future reader could mistake for live.
   push(progressRatchetCoaching(play));
   push(execSlippageCoaching(play));
   push(underlyingExcursionCoaching(play));
