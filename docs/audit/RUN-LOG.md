@@ -4,7 +4,26 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-15 (14:12 UTC) — [SEO] Daily growth cycle: small real avgpos uptick, robots.txt + entity JSON-LD (#2517) confirmed live, no new opportunities
+## 2026-09-15 (15:38 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, lighter re-check (full pass done earlier this session)
+
+**Severity.** — (no defect found)
+
+Second RTH fire this session (11:38 ET, market confirmed open/trading day per the first RTH wake
+~2h earlier). Since that earlier wake already ran the full deep-dive (live-data cross-check against
+Massive/Polygon ground truth, extensive CLS forensics on `/tools/gamma-snapshot`), this pass was a
+lighter confirmation rather than a repeat investigation: 3x `/api/public/gex-snapshot?ticker=SPX`
+poll over ~10s — `calculation_id` advancing, spot moving (7581.72→7582.47), age 0-2s, `degraded`
+false throughout; cross-checked against Massive `I:SPX` ground truth (7583.03) — matches within
+normal drift. Purged Cloudflare edge (HTML only) and re-measured homepage CLS live: desktop
+**0.0142 GOOD**, mobile **0.041 GOOD** — #2453 continues to hold under live RTH rendering.
+`/tools/gamma-snapshot`'s own intermittent desktop CLS anomaly (logged 13:55 UTC this session,
+inconclusive root cause) not re-investigated this pass — no new information to add beyond the
+earlier deep dive; a future cycle re-runs it if a scriptable reproduction becomes possible.
+
+PR sweep: 1 open agent PR fleet-wide, `#5033` (swing/nighthawk lane, CONFLICTED) — not SEO-lane,
+not authored by this lane, left for its owner per standing ownership boundaries.
+
+No defects found. No code changed.
 
 **Severity.** — (no defect found; real, small positive movement noted)
 
