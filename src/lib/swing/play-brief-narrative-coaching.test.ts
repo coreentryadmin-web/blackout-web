@@ -1303,6 +1303,41 @@ test("vectorPlayCoaching: omits BOTH the cross-check clause AND the already-quot
   assert.match(line!, /102\.00/);
 });
 
+// BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TDOC/ASAN): `vp.bias` is a
+// four-value enum ("long"/"short"/"range"/"neutral"), not just the two directional values the old
+// `aligned` check recognized — a non-directional bias (Vector explicitly declining to take a
+// position, e.g. "stand aside — no clean edge") used to fall into the same `!aligned` branch as a
+// genuine directional conflict, appending "cross-check Vector thesis vs swing direction" right
+// after a headline that already said Vector has no opinion.
+test("vectorPlayCoaching: a non-directional Vector bias ('range'/'neutral') gets neither 'aligned' nor 'cross-check' framing (live TDOC/ASAN repro)", () => {
+  const vec = {
+    play: {
+      bias: "neutral",
+      headline: "POSITION · stand aside — no clean edge",
+      thesis: "No clean directional setup on this read",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  assert.match(line!, /stand aside/);
+  assert.doesNotMatch(line!, /cross-check/i, "a 'no opinion' bias must not read as a directional conflict");
+  assert.doesNotMatch(line!, /aligned with swing lane/i, "a 'no opinion' bias must not claim alignment either");
+});
+
+test("vectorPlayCoaching: a 'range' bias behaves the same as 'neutral' — neither framing fires", () => {
+  const vec = {
+    play: {
+      bias: "range",
+      headline: "POSITION · range-bound, no directional edge",
+      thesis: "Chop between walls",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "SHORT" }));
+  assert.ok(line);
+  assert.doesNotMatch(line!, /cross-check/i);
+  assert.doesNotMatch(line!, /aligned with swing lane/i);
+});
+
 test("vectorPlayCoaching: returns null when the ONLY content is the headline and it was already noted elsewhere", () => {
   const vec = {
     play: {
