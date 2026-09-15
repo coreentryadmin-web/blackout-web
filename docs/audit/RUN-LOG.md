@@ -4,7 +4,19 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-15 (15:38 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, lighter re-check (full pass done earlier this session)
+## 2026-09-15 (16:34 UTC) — [SEO] RTH wake: third consecutive clean check, quiet
+
+**Severity.** — (no defect found)
+
+Third RTH fire today (12:33 ET, near the window's 13:00 close). Live gamma-snapshot API: spot
+advancing (7588.75→7588.46 over ~10s), age 3-4s, `degraded` false; cross-checked against Massive
+`I:SPX` ground truth (7588.83) — matches. PR sweep: 0 open agent PRs (the `#5033` conflict noted
+last cycle is gone — resolved by its own lane). CLS not re-purged/re-measured a third time this
+session — already confirmed GOOD live twice today (13:55 and 15:38 UTC entries). Byte-identical
+"all clean" result to the prior two RTH checks today.
+
+No defects found. Returning to normal search/authority work per the trigger's own 13:00 ET
+boundary once this window closes.
 
 **Severity.** — (no defect found)
 
