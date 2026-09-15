@@ -3524,6 +3524,13 @@
       "sync": "origin/main had moved one commit (92a2fdc8d, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
       "healthcheck": "AMBER, unchanged -- A_edition GREEN (3 plays), B_marks same already-explained after-hours staleness, C_record GREEN, D_pull_status correctly SKIPPED. Genuinely stable/quiet overnight period.",
       "note": "Light cycle -- nothing new to report. This evening already produced substantial findings (PR #5040 shipped, VNCE win confirmed and root-caused, tonight's new edition validated end-to-end via API+live UI, the Discord BTO transient-503 investigation), so a quiet cycle now reflects genuine stability, not under-effort. Next real state change expected at tomorrow's ~9:15am ET morning-confirm cron (D_pull_status) or RTH open (B_marks should clear once real quote flow resumes)."
+    },
+    {
+      "at": "2026-09-15T23:38:05Z",
+      "trigger": ":36 cycle",
+      "sync": "origin/main had moved one commit (65a031810, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "AMBER, unchanged -- same stable overnight state as prior cycles.",
+      "investigation": "Fresh angle: RIG's option is very cheap ($0.10 entry premium, live Polygon quote earlier this session showed bid=0.09/ask=0.12, a ~28% spread relative to the $0.105 mid). Checked whether pickChainContract (deterministic-edition.ts) has any bid-ask spread liquidity guard beyond its open-interest floor -- found contractPremium()'s spread check at line ~154: rejects only when (ask-bid)/mid > 1.0 (100% of mid), extremely lenient, so RIG's 28% spread passes cleanly with no caveat. Considered flagging this as a liquidity gap, but concluded it's not a real issue on reflection: a wide RELATIVE spread is an inherent, unavoidable characteristic of very cheap sub-$0.20 options (a single $0.01 tick is a large % of the price), not evidence of a broken or illiquid market -- tightening this guard would mostly just exclude legitimate cheap-option 'small stakes, large % upside' picks, which may be an intentional part of the strategy mix (RIG's own thesis cites 7.5-day short-interest squeeze tailwind, a real catalyst). Considered-and-dismissed, not escalated -- a debatable strategy question, not a correctness bug."
     }
   ],
   "knownOpenItems": {
