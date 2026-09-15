@@ -283,6 +283,9 @@
     },
     "2026-09-15T19:07Z": {
       "note": "Quiet cycle. Board healthy, unchanged since 18:45Z resolution (upstream_ok:true, 384 setups). Ledger/record unchanged: SPXW +21.02% still the only 09-15 play. Checked open PRs -- only dependabot bumps, nothing in the 0DTE lane needs action. No new finding."
+    },
+    "2026-09-15T19:16Z": {
+      "note": "Board-upstream degradation recurred AGAIN (8th instance today's session): upstream_ok:false confirmed on 2 consecutive pulls at 19:16 UTC, discovery_health BREAKOUT/PIN both disabled, setups/ledger empty. /record stayed healthy (12 plays). Only ~38min after the 7th instance resolved (18:46Z) -- noticeably shorter gap than earlier today (17:08, then 18:38, now 19:16 -- gaps of ~90min then ~38min). Not escalating framing yet (still fully consistent with self-resolving, DB-unaffected pattern; one shorter gap is not yet a trend), but flagging the gap-shortening observation on PR #4076 for whoever traces root cause, since a tightening recurrence interval could matter even though duration/severity look unchanged."
     }
   },
   "sessions": {
