@@ -209,6 +209,21 @@ export const CRON_JOBS: CronJobDefinition[] = [
       "Standalone zerodte_setup_log grading (gradeZeroDteLedger force=true) — decoupled from zerodte-warm so post-close rows grade promptly without the warm cron's 10-minute throttle",
   },
   {
+    key: "zerodte-skip-grade",
+    name: "0DTE Skip Grade",
+    kind: "http",
+    path: "/api/cron/zerodte-skip-grade",
+    schedule_label: "Once daily post-close (17:00 ET)",
+    // One fire per session day is enough — the grader itself is bounded (MAX_SKIP_GRADE_DAYS/
+    // MAX_ROWS_PER_RUN in skip-grading.ts) and idempotent (only fills NULL counterfactual_json
+    // cells), so there is no overlap risk and no value in firing more often.
+    schedule_cron_utc: "0 21 * * 1-5",
+    stale_after_min: 26 * 60,
+    weekdays_only: true,
+    description:
+      "Runs the counterfactual skip-grader (runSkipGrading) so every hard-gate rejection gets graded against real forward bars — the ONLY instrument that answers whether a gate blocked a winner. Previously only reachable via a manual admin POST that nobody was invoking, so the 2026-09-12 grading-logic fix never actually ran against the live backlog until this cron was added 2026-09-15.",
+  },
+  {
     key: "swing-discovery",
     name: "Night Hawk Swing Discovery",
     kind: "http",
