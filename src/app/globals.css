@@ -23189,6 +23189,18 @@ html.product-shell .nav-mega {
 @media (max-width:820px) and (prefers-reduced-motion:reduce){.nh-deck-right{transition:none}}
 @media (prefers-reduced-motion:reduce){.nh-deck-dot,.nh-deck-cursor{animation:none}.nh-deck-clock .decay i,.nh-deck-right.nh-deck-dim,.nh-deck-ck .ckbar i,.nh-deck-excbar .mk .lbl,.nh-deck-occcopy{transition:none}.nh-deck-lc-fresh.is-pulse{animation:none}}
 
+/* Swing Command's mobile list was never actually full-width (live-verified via screenshot,
+   forensic batch 41, 2026-09-15) — the 2026-08-29 base fix above sets `.nh-deck-left{width:100%}`
+   in the @820px block, but `.nh-deck--swing-largo .nh-deck-left{width:30%;min-width:220px}`
+   (unconditional, below) has higher specificity (2 classes vs 1) and no !important, so it wins the
+   cascade regardless of the media query — the EXACT same trap this file's own comments already
+   document for `--nh-play-cols` and the largo-mobile fallback, just missed here. Symptom matched
+   the math exactly: min-width:220px on a 430px viewport pins the list to ~51% width with a blank
+   flex gap beside it (the column-flex parent's `.nh-deck-left` box literally doesn't stretch to
+   fill its row), truncating STATUS/PLAY text into illegibility. Fix mirrors the guarded pattern
+   already used for the sibling `--nh-play-cols` override two rules up. */
+@media (max-width:820px){.nh-deck--swing-largo .nh-deck-left{width:100%!important;min-width:0!important}}
+
 /* ── 0DTE lifecycle play cards (left queue) — table grid ── */
 .nh-deck-play-table{--nh-play-cols:22px 80px minmax(0,1.5fr) 120px 96px 72px}
 /* Swing Command — tighter grid: no dead air between Play and Grade; grade is letter-only. */
