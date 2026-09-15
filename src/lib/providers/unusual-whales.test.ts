@@ -280,6 +280,98 @@ test("readUwCache: in-process UW L1 cache freshness uses isWsUpdatedAtFresh (sou
   );
 });
 
+/* ── uwGetSafe retry-budget guard ──────────────────────────────────────────────────────
+ * WHY: uwGetSafe's retry loop had no total-elapsed-time budget — a call hitting repeated
+ * transient failures could legitimately stack (retries + 1) attempts, each up to
+ * trackedFetch's own 15s default timeout, plus exponential backoff between them, into a
+ * ~48.5s worst case at the default retries=2. Nothing upstream actually cancels that loop:
+ * dossierFetch's 8s Promise.race and fetchTickerDossierWithWall's 45s per-ticker wall both
+ * give up on the CALLER's side while the loop keeps running orphaned, continuing to hold one
+ * of throttleUw's GLOBAL_MAX_CONCURRENCY (default 2) slots — a ceiling shared by every UW
+ * call across the whole app — and starving every other concurrent UW caller. Traced live on
+ * production 2026-09-14: 6 of 14 raw Night Hawk Legacy candidates were dropped by the 45s
+ * dossier wall the same night this pattern was live (see
+ * docs/audit/findings-staging/2026-09-14-uw-retry-budget.md).
+ *
+ * Proves the loop stops SCHEDULING new attempts once `UW_GET_SAFE_MAX_RETRY_BUDGET_MS` (read
+ * directly in milliseconds) would be exceeded by the UPCOMING backoff sleep, even though
+ * `retries` (2) would otherwise still allow more.
+ *
+ * Deliberately does NOT mock the global `Date`/timers: this file's real `uwGetSafe` runs
+ * through the REAL production admission path (`throttleUwCoalesced` → `acquireSlot` →
+ * `QueueBudget`/token-bucket refill in uw-rate-limiter.ts), and those all measure real
+ * elapsed time via `Date.now()` too. A frozen/fake clock that only jumps forward at one
+ * controlled instant desyncs from those real `setTimeout`-driven loops — confirmed live
+ * while writing this test: it hung for 3+ minutes (token-bucket "elapsed since last
+ * refill" reads permanently ~0 against a clock that only moves when told to, so the local
+ * admission spin never sees a refill and never sees its own queue-budget expire either,
+ * since that budget is ALSO measured off the same frozen clock). Real timers avoid the
+ * whole class of hazard: the mocked fetch itself sleeps a real, short, fixed duration
+ * (80ms) LONGER than the configured budget (40ms) before failing, so the budget is
+ * genuinely, deterministically spent by the time uwGetSafe's catch handler checks it —
+ * no race on incidental scheduling overhead.
+ */
+test("uwGetSafe: stops retrying once its own retry-budget elapses, even with retries left", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevBudget = process.env.UW_GET_SAFE_MAX_RETRY_BUDGET_MS;
+  process.env.UW_API_KEY = "test-uw-key";
+  process.env.UW_GET_SAFE_MAX_RETRY_BUDGET_MS = "40";
+
+  let fetchCount = 0;
+  mock.method(globalThis, "fetch", async () => {
+    fetchCount += 1;
+    // Outlasts the 40ms budget on its own — attempt 0 alone spends the whole budget, so
+    // attempt 1 must never be scheduled regardless of how fast/slow the rest of the
+    // process happens to run.
+    await new Promise((r) => setTimeout(r, 80));
+    throw new Error("fetch failed"); // isUwTransientNetwork branch — retryable, no 429 breaker feed
+  });
+
+  try {
+    const rows = await fetchUwInsiderTransactions("UWBUDGETTEST", 5);
+    assert.deepEqual(rows, [], "no stale cache exists for this fresh ticker — must fall through to empty");
+    assert.equal(
+      fetchCount,
+      1,
+      "must NOT attempt a 2nd or 3rd call once the retry budget is spent, despite retries=2 allowing it"
+    );
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevBudget === undefined) delete process.env.UW_GET_SAFE_MAX_RETRY_BUDGET_MS;
+    else process.env.UW_GET_SAFE_MAX_RETRY_BUDGET_MS = prevBudget;
+  }
+});
+
+/* Control: within budget, the existing retry+backoff behavior is unchanged — a transient
+ * failure still gets `retries` attempts before falling through. Uses real backoff sleeps
+ * (no mocked timers/Date at all — see the hang this caused above), so this is
+ * intentionally slow (~3-4s) rather than instant; that's the cost of proving the guard
+ * doesn't regress the normal case, not a flake. */
+test("uwGetSafe: still exhausts all retries when comfortably within budget", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevBudget = process.env.UW_GET_SAFE_MAX_RETRY_BUDGET_MS;
+  process.env.UW_API_KEY = "test-uw-key";
+  process.env.UW_GET_SAFE_MAX_RETRY_BUDGET_MS = "60000"; // comfortably above the real backoff total
+
+  let fetchCount = 0;
+  mock.method(globalThis, "fetch", async () => {
+    fetchCount += 1;
+    throw new Error("fetch failed");
+  });
+
+  try {
+    const rows = await fetchUwInsiderTransactions("UWBUDGETTEST2", 5);
+    assert.deepEqual(rows, []);
+    assert.equal(fetchCount, 3, "default retries=2 means 3 total attempts when never budget-limited");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevBudget === undefined) delete process.env.UW_GET_SAFE_MAX_RETRY_BUDGET_MS;
+    else process.env.UW_GET_SAFE_MAX_RETRY_BUDGET_MS = prevBudget;
+  }
+});
+
 test("the Meridian shaper makes no claim when handed an unknown", () => {
   // The other half of the contract: the provider now returns null for "did not answer", and the
   // consumer must render that as silence rather than as a fact. It already did — the provider was
