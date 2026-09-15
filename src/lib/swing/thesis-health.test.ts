@@ -190,4 +190,63 @@ describe("computeSwingThesisHealth", () => {
     assert.equal(theta!.status, "intact");
     assert.equal(theta!.commitLabel, theta!.currentLabel);
   });
+
+  describe("Banger-origin ledger rows must not render a fabricated-precision pillar breakdown (found 2026-09-15)", () => {
+    // Mirrors exactly what horizonPlayFromBangerPosition (banger-lane-merge.ts) stamps on EVERY
+    // banger_positions row: setupState/entryStatus/regime are fixed constants, signalKinds is
+    // always exactly ["BANGER"] (single mechanical price trigger, no real multi-pillar dossier).
+    const bangerLedgerInput = {
+      direction: "LONG" as const,
+      status: "OPEN" as const,
+      setupState: "TRIGGERED" as const,
+      entryStatus: "AT_TRIGGER" as const,
+      signalKinds: ["BANGER"],
+      regime: "BREAKOUT · BANGER",
+      dte: 3,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    };
+
+    test("thesisHealthUncalibrated: true for the stamped Banger-ledger fingerprint", () => {
+      const h = computeSwingThesisHealth(bangerLedgerInput);
+      assert.ok(h);
+      assert.equal(thesisHealthUncalibrated(h), true);
+    });
+
+    test("two different tickers at the same DTE produce byte-identical pillar output — proves the % is not per-position (the bug), independent of the uncalibrated flag fixing its display", () => {
+      // computeSwingThesisHealth itself is a pure function of these inputs — it has no ticker/price
+      // fields to differ on. This is what makes the payload "fabricated precision" rather than a
+      // real per-position read: ALLT/CGEM/DRIP (different tickers, different prices, all DTE=3)
+      // rendered exactly the same 70% health and pillar text live. The fix is NOT to make this
+      // function ticker-aware — it's to correctly flag the output as uncalibrated so callers omit
+      // it, which the test above proves.
+      const a = computeSwingThesisHealth(bangerLedgerInput);
+      const b = computeSwingThesisHealth({ ...bangerLedgerInput });
+      assert.ok(a && b);
+      assert.equal(a!.health, b!.health);
+      assert.deepEqual(a!.pillars, b!.pillars);
+    });
+
+    test("does NOT false-positive on a NATIVE swing position whose sole discovery signal happens to be BANGER", () => {
+      // discovery.ts's SwingDiscoveryPath includes "BANGER" as one of several real Tier-0 origins a
+      // NATIVE swing_positions row can be discovered through (discovery.test.ts: JOBY -> ["BANGER"])
+      // while still running the real scoring/setupState/entryStatus/regime engine — this is NOT the
+      // stamped banger_positions ledger merge path. signalKinds=["BANGER"] alone must not be the
+      // detection signal (that would wrongly suppress real thesis health for this case) — only the
+      // regime string "BREAKOUT · BANGER", written exclusively by banger-lane-merge.ts, may.
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["BANGER"],
+        regime: "momentum long", // a real regime read, NOT the stamped "BREAKOUT · BANGER" constant
+        dte: 12,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(thesisHealthUncalibrated(h), false);
+    });
+  });
 });

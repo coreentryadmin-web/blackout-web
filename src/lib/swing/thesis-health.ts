@@ -48,6 +48,17 @@ const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string>> =
   flow_corroboration: "no signals",
 };
 
+/**
+ * Regime label written ONLY by horizonPlayFromBangerPosition/horizonPlayFromBangerWatch
+ * (src/lib/swing/banger-lane-merge.ts) — a fixed constant stamped on every banger_positions ledger
+ * row regardless of ticker, contract, or price action, never produced by the real regime-fit calc a
+ * native swing position uses. Unlike signalKinds=["BANGER"] alone (which a NATIVE swing position can
+ * also legitimately carry, as just one of several real Tier-0 discovery paths — see
+ * SwingDiscoveryPath in discovery.ts — while still running the real scoring/setupState/entryStatus
+ * engine), this exact string is a safe, unambiguous fingerprint of the stamped-constant merge path.
+ */
+const BANGER_LEDGER_REGIME_LABEL = "BREAKOUT · BANGER";
+
 /** True when the aggregate health % is built from generic defaults — not a calibrated read. */
 export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefined): boolean {
   if (!h?.pillars?.length) return false;
@@ -58,6 +69,17 @@ export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefin
     const pillar = h.pillars.find((p) => p.id === mappedId);
     if (pillar?.currentLabel === defaultLabel) return true;
   }
+  // Banger-origin ledger rows stamp setupState/entryStatus/signalKinds/regime as fixed constants on
+  // EVERY row — there is no real per-position 7-pillar dossier for this lane, just one mechanical
+  // price trigger (see horizonPlayFromBangerPosition's header comment). None of the sentinel labels
+  // above match (the stamped values are concrete, not "unknown"/"n/a"/"no signals"), so every
+  // Banger-origin row previously rendered a fabricated-precision pillar breakdown identical across
+  // every ticker at the same DTE (live repro 2026-09-15: ALLT/CGEM/DRIP all scored exactly 70% with
+  // byte-identical pillar text and deltas, despite different tickers/prices/contracts) — the exact
+  // C6 violation LARGO-PRODUCT-CONTRACT.md names: "If a product cannot produce a calibrated score,
+  // OMIT the field... An invented score is worse than nothing."
+  const regimePillar = h.pillars.find((p) => p.id === PILLAR_ID_MAP.regime);
+  if (regimePillar?.currentLabel === BANGER_LEDGER_REGIME_LABEL) return true;
   return false;
 }
 
