@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T05:08:11Z",
+  "lastUpdated": "2026-09-15T05:21:42Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3008,6 +3008,13 @@
       "healthcheck": "GREEN across all non-skipped stages (1 fresh play, nothing open, resolved=26 stable).",
       "note": "PR #5016 (gamma_regime cold-cache fallback fix) found already merged (merged_by: coreentryadmin-web, merged_at 2026-09-15T05:07:16Z) before this session took any merge action -- same external-merge pattern as every other PR this session. verify+CodeQL both confirmed success before the merge. Verified actual content on origin/main: gamma-desk.ts carries computeGammaFlipDetail delegating correctly, positioning.ts's buildSummary uses flipDetail.reason === 'net_short_everywhere' exactly as written. Local checkout synced to main, feature branch deleted, unsubscribed from PR activity. Both Legacy positioning paths (warm cache-hit via #5012, cold fallback via #5016) now consistently resolve a net_short_everywhere book to 'amplification' instead of 'unknown' -- this specific investigation thread (opened this session at the 04:06 cycle) is now fully closed, both fixes merged and content-verified. Per the same deploy-timing nuance noted for #5012, index_dossiers won't visibly reflect this on the live edition until the next evening build.",
       "action": "fix-merged-verified"
+    },
+    {
+      "ts": "2026-09-15T05:21:42Z",
+      "cycle": "05:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS), trigger 2 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "D_pull_status has read SKIPPED every single cycle this session with evidence 'morning confirmation not yet run for this date' -- investigated rather than continuing to silently accept it. Confirmed in cron-registry.ts: nighthawk-morning-confirm is scheduled '15 13,14 * * 1-5' (9:15 AM ET weekdays, both UTC offsets registered for EDT/EST). Current time 05:21 UTC = 01:21 EDT, many hours before that cron's window. SKIPPED here is exactly correct behavior, not a gap -- closes out a question this session had silently carried every cycle without verifying. Concrete follow-up: this stage should flip to GREEN (or a real verdict) on a cycle after ~13:15-14:15 UTC on a weekday; if it is still SKIPPED well past that window on a future trading day, that WOULD be worth escalating.",
+      "action": "investigated-confirmed-benign"
     }
   ],
   "knownOpenItems": {
