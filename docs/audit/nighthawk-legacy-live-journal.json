@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T07:09:53Z",
+  "lastUpdated": "2026-09-15T07:21:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3064,6 +3064,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Shipped step 2 of the tier-narrative-calibration idea: legacy-score-calibration.mjs, reusing the Swing lane's own pure eval module (bucketByScoreQuantile/scoreCalibrationVerdict) unchanged rather than duplicating ~110 lines of already-tested logic -- both functions are generic over {score, pnlPct}, nothing swing-specific in the pure logic. Legacy's binary outcome fed in as a sign-only +1/-1 proxy, clearly labeled never a real return. Live-ran it before opening the PR and got INSUFFICIENT DATA -- traced why rather than assuming a bug: GET /api/admin/nighthawk/tier-export 404s, but a pre-existing admin route on the identical auth path returned 200 in the same run, confirming this is ECS deploy lag (PR #5018 merged ~20 min prior) not a route defect. PR #5020 opened (draft), subscribed for CI. Full local suite 14260/14260 pass, tsc + node --check clean, both pre-push and post-rebase.",
       "action": "feature-shipped"
+    },
+    {
+      "ts": "2026-09-15T07:21:30Z",
+      "cycle": "07:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS), trigger 2 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "PR #5020 (calibration script): verify still in_progress (~5 min in), nothing red. Re-checked GET /api/admin/nighthawk/tier-export -- still 404 via both cron and clerk auth paths (a sibling known-good admin route returned 200 in the same run, ruling out auth), ~29 min after PR #5018 merged. Still within the expected deploy-lag window logged last cycle -- not escalating yet. Not spending more time chasing the exact ECR/ECS deploy workflow run (list_workflow_runs' branch/workflow_id filters have been unreliable all session, returning unfiltered recent runs regardless of the filter passed).",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
