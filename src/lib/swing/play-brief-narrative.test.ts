@@ -1064,6 +1064,91 @@ test("tradeManagerNarrativeSection: degraded read when spot missing", () => {
   assert.match(section!.body, /Break watch.*lose premium stop \*\*\$1\.96\*\*/i, "stop_premium must render precise, not rounded to $2, and not signed");
 });
 
+// BUG FIX (2026-09-15, Ask Largo standing mandate, forensic batch 33, live repro NN#32): the
+// fallback "Break watch" line always framed the premium stop as a FUTURE risk ("lose premium
+// stop $X -> cut size or exit"), even when play.execMark (the bid, always the honest exit fill
+// for a swing play -- see executableFill's own doc comment) was already AT or THROUGH the stop
+// right now. That fact already existed elsewhere in the brief (watchForSection's "no real
+// cushion on the executable side" footnote) but never reached this reserved, always-surfaced
+// bullet -- the one a member reading "HOLD" at the top would actually see as the risk headline.
+test("tradeManagerNarrativeSection: Break watch says the stop is ALREADY breached when the executable bid is at/through it (live NN#32 shape)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 1.13,
+        execMark: 0.7,
+        pnlPct: -42,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.78,
+          target_premium: 3.9,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.70\*\*.*through your premium stop \*\*\$0\.78\*\*/i,
+  );
+  assert.doesNotMatch(section!.body, /Break watch.*lose premium stop/i, "must not use the forward-looking framing once the stop is already breached");
+});
+
+test("tradeManagerNarrativeSection: Break watch keeps the forward-looking framing when the executable bid is still above the stop", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 1.13,
+        execMark: 0.85, // above the 0.78 stop -- not yet breached
+        pnlPct: -12,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.78,
+          target_premium: 3.9,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*lose premium stop \*\*\$0\.78\*\*/i);
+  assert.doesNotMatch(section!.body, /already breached/i);
+});
+
+test("tradeManagerNarrativeSection: SHORT Break watch also flags an already-breached executable stop", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "SHORT",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 1.13,
+        execMark: 0.7,
+        pnlPct: -42,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.78,
+          target_premium: 3.9,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.70\*\*.*through your premium stop \*\*\$0\.78\*\*/i,
+  );
+  assert.doesNotMatch(section!.body, /Break watch.*reclaim/i);
+});
+
 // BUG FIX (2026-09-14, Ask Largo standing mandate, live repro RKLX/PGY OPEN briefs, forensic
 // batch 8): degradedReadLine's markBit rendered `play.mark` unconditionally whenever it was
 // non-null, including the TRUE entry-fallback case (a fresh banger-lane row with no synced quote
