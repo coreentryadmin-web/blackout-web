@@ -254,6 +254,16 @@ function pnlSection(play: TerminalPlay): RichSection {
         : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
     `P&L: **${fmtPct(play.pnlPct)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     `Peak: **${fmtPct(play.peak)}**`,
+    // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
+    // `play.trough` (the position's own worst excursion — `troughDisplay`, adapters.ts:475-480,
+    // computed symmetrically alongside `peakDisplay` on every TerminalPlay row, condor-aware) was
+    // fully computed and threaded but had ZERO consumers anywhere in src/lib/swing/ — this brief
+    // showed "Peak: +161.3%" with no way to know the same position was down -57.2% before it
+    // worked. Conviction-relevant history a trade manager would cite ("this one tested you early,
+    // don't flinch on the next drawdown scare") that the data already supports; mirrors Peak's own
+    // unconditional render (fmtPct handles null as "—" — same convention, both null together when
+    // entry/premium data is missing).
+    `Trough: **${fmtPct(play.trough)}**`,
   ];
   if (blended != null) {
     lines.push(`Blended P&L (realized trim + open runner): **${fmtPct(blended)}**`);
