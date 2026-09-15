@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T07:36:58Z",
+  "lastUpdated": "2026-09-15T07:51:37Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3078,6 +3078,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "PR #5020 (calibration script) confirmed all-green (verify+CodeQL success), marked ready, merged directly via GitHub MCP, content verified on origin/main, checkout synced, unsubscribed. Deploy for #5018's tier-export route caught up (~44 min after that merge) -- re-ran legacy-score-calibration.mjs and got a REAL first result this time, not INSUFFICIENT DATA: 90d window, 157 total plays, only 17 DECIDED (target/stop) -- thin, same anecdote-level caution every sibling calibration tool in this repo applies at n<30. 5 quantile buckets (n=3-4 each): score 45-57=50% WR, 59-62=66.7%, 62-66=0%, 67-77=66.7%, 78-97=66.7%. Verdict SPREAD WITHOUT ORDER (spread 66.7pp, rho=0.447, below the 0.6 RANKS threshold) -- score does NOT cleanly rank outcome in this sample. This is the first real evidence on the original question (does the hardcoded 'B-tier ran +2.99% avg' narrative still hold) but n=17 decided is far too thin to conclude the constant is wrong -- read as a first look, not a verdict, matching every other calibration tool's own discipline in this repo. No gate/narrative constant changed on this evidence.",
       "action": "feature-merged-first-real-result"
+    },
+    {
+      "ts": "2026-09-15T07:51:37Z",
+      "cycle": "07:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe), trigger 4 of 4 -- completes this hour's cadence",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "Quick capacity/PR sweep before closing the hour: still just the 4 pre-existing Dependabot major-version PRs (#4967/#4480/#4479/#4477), no new Cursor PRs, no jam. Nothing actionable. Completes this hour's full 4-trigger cadence -- the standout result was completing the entire tier-narrative-calibration investigation arc end-to-end within a single hour: found the stale '+2.99% avg' constant, shipped the export route (#5018), shipped the calibration script (#5020), and got a real first result (17 decided plays, SPREAD WITHOUT ORDER, correctly read as too thin to act on) -- from discovery to a running, evidence-producing tool in one session, following the exact same discipline every other calibration tool in this repo uses.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
