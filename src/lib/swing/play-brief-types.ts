@@ -7,6 +7,7 @@ import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import type { SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
 import type { PortfolioPosition } from "./portfolio";
 import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
+import type { SwingChainComposite } from "./record";
 
 /** Inputs gathered server-side for deterministic swing play brief composition. */
 export type SwingPlayBriefContext = {
@@ -76,6 +77,20 @@ export type SwingRollHistory = {
   rollCount: number;
   /** Full chain oldest→newest by roll_seq, mirroring fetchSwingPositionChain's own order. */
   legs: SwingRollHistoryLeg[];
+  /**
+   * The chain's real composite outcome (record.ts's `buildSwingRecord(chain).composite` — the SAME
+   * function/call the Closed-tab list view and /api/market/swing/record use, never recomputed here).
+   * Present only once the chain has actually closed (`chainResolved`); a still-rolling chain has this
+   * `null` rather than a premature composite. Found 2026-09-15 (Ask Largo mandate, live repro
+   * INTC:35): the play-brief's own headline P&L is deliberately the TERMINAL LEG's own exit P&L, not
+   * this composite (play-brief-resolve.ts's `loadClosedPlay` — protects against the exact
+   * peak/composite-mismatch bug closed-plays.ts's own header documents), so a rolled chain's REAL
+   * result (which can be materially worse — INTC: terminal leg -33.2% vs composite -60.47%
+   * compounded) was otherwise never visible anywhere in the brief. This field feeds ONE additional
+   * reference line (`rollHistoryLine`) — deliberately never blended with the terminal leg's own
+   * price/peak/trough fields, which is exactly what caused the original bug.
+   */
+  chainComposite: SwingChainComposite | null;
 };
 
 export type SwingPlayBriefResult = {
