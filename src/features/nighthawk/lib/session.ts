@@ -47,6 +47,27 @@ const US_MARKET_HOLIDAYS = new Set([
   "2029-12-25",
 ]);
 
+/**
+ * NYSE early-close half-days (1:00 PM ET close instead of 4:00 PM) — Black Friday and Christmas
+ * Eve, extend annually. Deliberately duplicated from spx-play-session-guards.ts's own
+ * `EARLY_CLOSE_DATES` (same dates) rather than imported: that module already imports
+ * `isTradingDayEt`/`formatEtDate` FROM this file, so importing its early-close table back here
+ * would create a circular module dependency. Keep the two tables in sync when either is updated —
+ * `et-market-hours.ts`'s `isEtCashRth` is the canonical early-close-aware RTH gate for anything
+ * that CAN safely import both sides; this file's own `isBeforeOrAtMarketCloseEt` cannot without
+ * the cycle, so it carries its own copy instead.
+ */
+const EARLY_CLOSE_ET_MINUTES: Record<string, number> = {
+  // Black Friday
+  "2025-11-28": 13 * 60,
+  "2026-11-27": 13 * 60,
+  "2027-11-26": 13 * 60,
+  // Christmas Eve
+  "2025-12-24": 13 * 60,
+  "2026-12-24": 13 * 60,
+  "2027-12-24": 13 * 60,
+};
+
 export function todayEt(now: Date = new Date()): string {
   return formatEtDate(now);
 }
@@ -157,5 +178,6 @@ export function isBeforeOrAtMarketCloseEt(
   const rawHour = Number(get("hour"));
   const hour = rawHour === 24 ? 0 : rawHour;
   const mins = hour * 60 + Number(get("minute"));
-  return mins <= 16 * 60;
+  const close = EARLY_CLOSE_ET_MINUTES[sessionYmd] ?? 16 * 60;
+  return mins <= close;
 }

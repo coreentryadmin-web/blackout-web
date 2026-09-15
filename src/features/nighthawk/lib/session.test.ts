@@ -70,6 +70,61 @@ test("isBeforeOrAtMarketCloseEt keeps an edition active through its session clos
   );
 });
 
+// NYSE early-close half-days (Black Friday, Christmas Eve) close at 1:00 PM ET, not 4:00 PM.
+// Before this fix, isBeforeOrAtMarketCloseEt hardcoded the 4:00 PM close for every session date,
+// so on these two half-days a carried Legacy play (and every other caller: publish-gates.ts's
+// trading-day window, day-trade-agent.ts's day-open detection, mobile/signals's own carry check)
+// would misjudge the market as still open for three extra hours after the real 1:00 PM close.
+test("isBeforeOrAtMarketCloseEt closes at 1 PM ET on Black Friday, not 4 PM", () => {
+  // 2026-11-27T17:59:00Z = 2026-11-27T12:59:00 ET (EST, UTC-5) -- before the 1 PM early close.
+  assert.equal(
+    isBeforeOrAtMarketCloseEt("2026-11-27", new Date("2026-11-27T17:59:00Z")),
+    true
+  );
+  // 2026-11-27T18:00:00Z = 2026-11-27T13:00:00 ET -- exactly at the early close.
+  assert.equal(
+    isBeforeOrAtMarketCloseEt("2026-11-27", new Date("2026-11-27T18:00:00Z")),
+    true
+  );
+  // 2026-11-27T18:01:00Z = 2026-11-27T13:01:00 ET -- one minute past the early close. The
+  // pre-fix hardcoded 4 PM boundary would have wrongly returned true here.
+  assert.equal(
+    isBeforeOrAtMarketCloseEt("2026-11-27", new Date("2026-11-27T18:01:00Z")),
+    false
+  );
+  // 2026-11-27T20:00:00Z = 2026-11-27T15:00:00 ET -- clearly past the early close, still well
+  // before the normal 4 PM close, so this is the clearest possible regression trap.
+  assert.equal(
+    isBeforeOrAtMarketCloseEt("2026-11-27", new Date("2026-11-27T20:00:00Z")),
+    false
+  );
+});
+
+test("isBeforeOrAtMarketCloseEt closes at 1 PM ET on Christmas Eve, not 4 PM", () => {
+  // 2026-12-24T18:00:00Z = 2026-12-24T13:00:00 ET (EST) -- exactly at the early close.
+  assert.equal(
+    isBeforeOrAtMarketCloseEt("2026-12-24", new Date("2026-12-24T18:00:00Z")),
+    true
+  );
+  // 2026-12-24T19:00:00Z = 2026-12-24T14:00:00 ET -- one hour past the early close.
+  assert.equal(
+    isBeforeOrAtMarketCloseEt("2026-12-24", new Date("2026-12-24T19:00:00Z")),
+    false
+  );
+});
+
+test("isBeforeOrAtMarketCloseEt still uses the normal 4 PM close on an ordinary session date " +
+  "(regression guard: the early-close table must never affect a non-early-close date)", () => {
+  assert.equal(
+    isBeforeOrAtMarketCloseEt("2026-11-25", new Date("2026-11-25T20:00:00Z")),
+    true
+  );
+  assert.equal(
+    isBeforeOrAtMarketCloseEt("2026-11-25", new Date("2026-11-25T21:01:00Z")),
+    false
+  );
+});
+
 test("2028 holidays: MLK, Good Friday, Juneteenth all non-trading", () => {
   assert.equal(isTradingDayEt("2028-01-17"), false);
   assert.equal(isTradingDayEt("2028-04-14"), false);
