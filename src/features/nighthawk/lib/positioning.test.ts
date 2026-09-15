@@ -46,11 +46,33 @@ const FIXTURE_GEX_POSITIONING: GexPositioning = {
 // segment under this test file's own directory) rather than just missing the mock —
 // confirmed by reproducing it directly. The relative form resolves to the identical
 // file and is what every other mock.module() call in this repo's test suite already uses.
-let currentFixture: GexPositioning = FIXTURE_GEX_POSITIONING;
+let currentFixture: GexPositioning | null = FIXTURE_GEX_POSITIONING;
 
 mock.module("../../../lib/providers/gex-positioning", {
   namedExports: {
     getGexPositioning: async () => currentFixture,
+  },
+});
+
+// Fallback-path mocks (only reached when getGexPositioning returns null, i.e. currentFixture=null).
+let currentBundleRows: Record<string, unknown>[] = [];
+const FALLBACK_SPOT = 100;
+
+mock.module("../../../lib/providers/config", {
+  namedExports: {
+    polygonConfigured: () => true,
+  },
+});
+
+mock.module("../../../lib/providers/polygon-options-gex", {
+  namedExports: {
+    fetchPolygonPositioningBundle: async () => ({
+      rows: currentBundleRows,
+      maxPain: null,
+      spot: FALLBACK_SPOT,
+      source: "polygon",
+      expiry: "2026-09-19",
+    }),
   },
 });
 
@@ -94,4 +116,31 @@ test("fetchPositioningSummary: flip present still uses the exact spot>flip bound
   currentFixture = { ...FIXTURE_GEX_POSITIONING, spot: 148, flip: 148, gamma_posture: "long" };
   const summary = await fetchPositioningSummary("NVDA");
   assert.equal(summary.gamma_regime, "amplification");
+});
+
+// 2026-09-15: same null-flip-is-not-null-regime fix, applied to the COLD-CACHE fallback path
+// (buildSummary, fed by fetchPolygonPositioningBundle) — deliberately left unfixed in the PR that
+// fixed the warm cache-hit path above, noted there as a separate, single-issue follow-up.
+test("fetchPositioningSummary: cold-cache fallback, all-strikes-net-short book resolves to amplification, not unknown", async () => {
+  currentFixture = null;
+  currentBundleRows = [
+    { strike: 90, call_gamma_oi: 0, put_gamma_oi: -10 },
+    { strike: 100, call_gamma_oi: 0, put_gamma_oi: -20 },
+    { strike: 110, call_gamma_oi: 0, put_gamma_oi: -5 },
+  ];
+  const summary = await fetchPositioningSummary("SPY");
+  assert.equal(summary?.gamma_flip, null);
+  assert.equal(summary?.gamma_regime, "amplification");
+});
+
+test("fetchPositioningSummary: cold-cache fallback, a real flip crossing still uses gammaRegime unchanged", async () => {
+  currentFixture = null;
+  currentBundleRows = [
+    { strike: 90, call_gamma_oi: 0, put_gamma_oi: -10 },
+    { strike: 100, call_gamma_oi: 20, put_gamma_oi: 0 },
+    { strike: 110, call_gamma_oi: 15, put_gamma_oi: 0 },
+  ];
+  const summary = await fetchPositioningSummary("SPY");
+  assert.notEqual(summary?.gamma_flip, null);
+  assert.equal(summary?.gamma_regime, "mean_revert");
 });

@@ -1,6 +1,6 @@
 import {
   analyzeStrikeGexRows,
-  computeGammaFlip,
+  computeGammaFlipDetail,
   gammaRegime,
   topGexWalls,
 } from "@/lib/providers/gamma-desk";
@@ -38,8 +38,20 @@ function buildSummary(
   source: "polygon" | "unusual_whales"
 ): PositioningSummary {
   const gex = analyzeStrikeGexRows(rows);
-  const flip = spot > 0 ? computeGammaFlip(gex.ranked_levels, spot) : null;
-  const regime = gammaRegime(spot, flip);
+  const flipDetail =
+    spot > 0
+      ? computeGammaFlipDetail(gex.ranked_levels, spot)
+      : { flip: null, reason: "insufficient_strikes" as const, crossings: 0, nearestCrossing: null };
+  const flip = flipDetail.flip;
+  // Same null-flip-is-not-null-regime fix as the cache-hit branch above, applied to this
+  // cold-cache fallback path too: net_short_everywhere is a real, unambiguous short-gamma read,
+  // not a data outage.
+  const regime =
+    flip != null
+      ? gammaRegime(spot, flip)
+      : flipDetail.reason === "net_short_everywhere"
+        ? "amplification"
+        : "unknown";
   const walls = spot > 0 ? topGexWalls(gex.ranked_levels, spot, 4) : [];
   const wallSummary = walls.length
     ? walls
