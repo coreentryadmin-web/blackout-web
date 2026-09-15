@@ -286,6 +286,9 @@
     },
     "2026-09-15T19:16Z": {
       "note": "Board-upstream degradation recurred AGAIN (8th instance today's session): upstream_ok:false confirmed on 2 consecutive pulls at 19:16 UTC, discovery_health BREAKOUT/PIN both disabled, setups/ledger empty. /record stayed healthy (12 plays). Only ~38min after the 7th instance resolved (18:46Z) -- noticeably shorter gap than earlier today (17:08, then 18:38, now 19:16 -- gaps of ~90min then ~38min). Not escalating framing yet (still fully consistent with self-resolving, DB-unaffected pattern; one shorter gap is not yet a trend), but flagging the gap-shortening observation on PR #4076 for whoever traces root cause, since a tightening recurrence interval could matter even though duration/severity look unchanged."
+    },
+    "2026-09-15T19:37Z": {
+      "note": "8th board-upstream degradation instance RESOLVED. Confirmed degraded 19:16 UTC, confirmed healthy again by 19:37 UTC -- ~21min, within the established 5-27min range. Session has now crossed into POST_COMMIT (\"Managing\", 15:30 ET new-commit cutoff passed, note: \"No new 0DTE commits after 3:30 PM ET -- managing open risk to the 3:50 PM hard exit\"). discovery_health BREAKOUT/PIN correctly read off_hours now (not a bug -- intentional, no point screening for new candidates post-cutoff) and setups count dropped to 13 (stale leftover candidates, expected). Ledger unchanged: SPXW still the only 09-15 play, +21.02%. From here forward today, expect no new commits -- next few cycles should focus on managing/closing any OPEN rows (none currently) and the 3:50 PM ET hard-exit window, not discovery."
     }
   },
   "sessions": {
