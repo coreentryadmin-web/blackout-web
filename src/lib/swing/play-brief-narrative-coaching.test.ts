@@ -18,6 +18,7 @@ import {
   manageLifecycleCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
+  troughResilienceCoaching,
   vectorPlayCoaching,
   vexCoaching,
   wallDynamicsCoaching,
@@ -163,6 +164,34 @@ test("thesisBreakCoaching: silent when thesis health is uncalibrated (extends #4
 
 test("thesisPillarCoaching: silent when thesis health is uncalibrated (extends #4318)", () => {
   assert.equal(thesisPillarCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
+});
+
+// ENHANCEMENT (2026-09-15, Ask Largo standing mandate, forensic batch 33): play.trough was
+// rendered once in the Position section but never interpreted anywhere in the narrative. Live
+// repro shape: CRWD swung from -57.2% at its worst to +161.3% at its best while OPEN.
+test("troughResilienceCoaching: names a real trough-to-peak swing on an OPEN position (live CRWD shape)", () => {
+  const line = troughResilienceCoaching(play({ trough: -57.2, peak: 161.3 }), "open");
+  assert.match(line!, /Volatility note/i);
+  assert.match(line!, /-57\.2%/);
+  assert.match(line!, /\+161\.3%/);
+});
+
+test("troughResilienceCoaching: silent on a shallow swing (< 40 pts)", () => {
+  assert.equal(troughResilienceCoaching(play({ trough: -10, peak: 20 }), "open"), null);
+});
+
+test("troughResilienceCoaching: silent when the trough never went negative (large swing but never a real drawdown)", () => {
+  assert.equal(troughResilienceCoaching(play({ trough: 5, peak: 60 }), "open"), null);
+});
+
+test("troughResilienceCoaching: silent when trough/peak are missing", () => {
+  assert.equal(troughResilienceCoaching(play({ trough: null, peak: 161.3 }), "open"), null);
+  assert.equal(troughResilienceCoaching(play({ trough: -57.2, peak: null }), "open"), null);
+});
+
+test("troughResilienceCoaching: WATCH/CLOSED-only — never fires outside the open bucket", () => {
+  assert.equal(troughResilienceCoaching(play({ trough: -57.2, peak: 161.3 }), "watch"), null);
+  assert.equal(troughResilienceCoaching(play({ trough: -57.2, peak: 161.3 }), "closed"), null);
 });
 
 test("manageLifecycleCoaching: trim ladder + time stop", () => {
