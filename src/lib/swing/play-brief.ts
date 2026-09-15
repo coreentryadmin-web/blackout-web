@@ -358,6 +358,9 @@ function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): B
   return freshnessFromAgeMs(ageMs);
 }
 
+/** See the ancient-data-ceiling comment at the short-interest evidence call site. */
+const FUNDAMENTALS_ANCIENT_CEILING_MS = 60 * 24 * 60 * 60 * 1000;
+
 function fundamentalsObservedMs(asOf: string): number | null {
   const trimmed = asOf.trim();
   // Date-only anchors at session close ET (Largo C1) — age uses that clock, not UTC midnight.
@@ -639,20 +642,35 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   }
   const fund = eco?.arsenal?.fundamentals;
   if (fund && (fund.days_to_cover != null || fund.short_volume_ratio != null)) {
-    const parts: string[] = [];
-    if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
-    if (fund.short_volume_ratio != null) {
-      parts.push(`short vol ratio ${(fund.short_volume_ratio * 100).toFixed(0)}%`);
+    // FINRA short-interest settlement reports publish twice monthly. `BieFreshness` only has
+    // "live"/"recent"/"stale"/"unknown" buckets (a shared cross-product primitive — widening it
+    // is a design call, not a contained fix here), so a figure a few days old and one 8+ months
+    // old both render the identical "STALE" tag with no way for a trader to tell them apart —
+    // live-repro'd 3x this cycle: MSTX/2017 (~9yr — almost certainly a recycled-ticker entity
+    // mismatch), CRCG/2025-12-31 (~258d), ECO/2025-12-31 (~258d). Past
+    // FUNDAMENTALS_ANCIENT_CEILING_MS (60d — several missed FINRA publication cycles), the figure
+    // is not merely stale, it's very likely describing a different reality than "current short
+    // interest" — omit rather than present it under the same tag as a genuinely few-days-old read
+    // (the Largo contract's own absence principle: omission is honest, a misleading label is not).
+    const observedMs = fund.as_of ? fundamentalsObservedMs(fund.as_of) : null;
+    const ancient =
+      observedMs != null && readMs - observedMs > FUNDAMENTALS_ANCIENT_CEILING_MS;
+    if (!ancient) {
+      const parts: string[] = [];
+      if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
+      if (fund.short_volume_ratio != null) {
+        parts.push(`short vol ratio ${(fund.short_volume_ratio * 100).toFixed(0)}%`);
+      }
+      out.push({
+        kind: "fact",
+        text: `Short interest: ${parts.join(" · ")}`,
+        provenance: {
+          source: "Polygon / Benzinga",
+          asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
+          freshness: fundamentalsFreshness(fund.as_of, readMs),
+        },
+      });
     }
-    out.push({
-      kind: "fact",
-      text: `Short interest: ${parts.join(" · ")}`,
-      provenance: {
-        source: "Polygon / Benzinga",
-        asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
-        freshness: fundamentalsFreshness(fund.as_of, readMs),
-      },
-    });
   }
   return out;
 }
