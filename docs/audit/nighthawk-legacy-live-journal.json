@@ -3335,6 +3335,12 @@
       "trigger": ":36 cycle",
       "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN).",
       "investigation": "Fresh live screenshot with VNCE at 93% TARGET PATH (+8% stock move, well past its entry band and near target) confirmed a broader manifestation of the same premium-only-gating root pattern already flagged: 0 winners/0 runners/Hit rate 0% across the whole scorecard despite a genuinely strong stock-only play. Root-caused to legacyVectorStatus's winner/ runner upgrade checking only pnlPct (always null for stock-only plays). This is a real product question (should stock-only plays count as scorecard winners, on what basis), not a mechanical bug -- added as a second addendum to knownOpenItems.legacyCalendarTileNullPremiumAsZero_2026-09-15 with concrete live evidence rather than shipped."
+    },
+    {
+      "at": "2026-09-15T16:52:39Z",
+      "trigger": ":51 cycle (final of this hour)",
+      "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN). VNCE $8.33, holding steady near target.",
+      "note": "Light cycle after last cycle's substantial scorecard finding. Nothing new to report."
     }
   ],
   "knownOpenItems": {
