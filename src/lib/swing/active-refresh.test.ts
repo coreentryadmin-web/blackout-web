@@ -284,6 +284,41 @@ test("planManageSync: UN-GRADUATED (advisory) TAKE_PARTIAL must NOT latch TRIM, 
   assert.equal(nextTick.verdict.enforced, true, "premium_stop is a GATING rung — always enforced");
 });
 
+// Live-found 2026-09-15 (escalated on #4076, comment 5677726561): latchSwingLiveStatus latched TRIM
+// off `verdict.enforced && (action === TAKE_PARTIAL || EXIT_RUNNER)` alone, without checking WHICH
+// rung fired. An ENFORCED edge rung unrelated to premium (e.g. regime_shift) also returns
+// TAKE_PARTIAL, so it latched TRIM exactly like a real profit_ladder partial — permanently
+// disabling the −60% premium_stop hard stop via scaledAlready even though nothing was ever sold.
+test("planManageSync: an ENFORCED non-premium edge rung (regime_shift) TAKE_PARTIAL must NOT latch TRIM, and the hard stop must stay live next tick", () => {
+  const regimeShiftPartial = planManageSync(
+    positionRow({ status: "OPEN" }),
+    { underlyingPrice: 152, dte: 21, regimeShift: true, graduatedRungs: ["regime_shift"] },
+    { snapshotKind: "eod" },
+  );
+  assert.equal(regimeShiftPartial.verdict.action, "TAKE_PARTIAL");
+  assert.equal(regimeShiftPartial.verdict.rung, "regime_shift");
+  assert.equal(regimeShiftPartial.verdict.enforced, true, "regime_shift is graduated → enforced");
+  assert.equal(
+    regimeShiftPartial.liveState.status,
+    "OPEN",
+    "an enforced but non-premium edge rung must not latch TRIM — nothing was actually scaled",
+  );
+
+  // Next tick: status is still not TRIM, so scaledAlready must derive false and a hard-stop-level
+  // mark must still STOP_OUT.
+  const nextTick = planManageSync(
+    positionRow({ status: regimeShiftPartial.liveState.status, entry_premium: 4, peak_premium: 4 }),
+    { underlyingPrice: 152, dte: 21, mark: 1.6 }, // 0.4× entry = −60%, the hard-stop trigger
+    { snapshotKind: "eod" },
+  );
+  assert.equal(
+    nextTick.verdict.action,
+    "STOP_OUT",
+    "the −60% premium_stop capital backstop must still fire — regime_shift's TRIM must not have latched",
+  );
+  assert.equal(nextTick.verdict.rung, "premium_stop");
+});
+
 test("planManageSync: thesisProgress01 + sessionsHeld can fire time_stop when stagnant", () => {
   const plan = planManageSync(
     positionRow({ status: "OPEN", entry_premium: 4, sub_lane: "STANDARD" }),
