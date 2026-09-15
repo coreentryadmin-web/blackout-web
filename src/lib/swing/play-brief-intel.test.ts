@@ -1709,6 +1709,59 @@ test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (
   assert.equal(section, null, "stale Vector-only levels must not render a section");
 });
 
+// FINDING (Ask Largo standing mandate, 2026-09-15): fmtDist passed a SIGNED delta straight into
+// fmtOptionUsd, whose own doc comment says it is "never signed" — negatives already carry a minus
+// from `.toFixed(2)`, so prepending "$" produced "$-19.48" instead of "-$19.48" for every level
+// below spot (fmt-money.ts's sibling `fmtPremium` already documents this exact trap: "Sign OUTSIDE
+// the currency glyph so negatives read '-$1.2M', never '$-1.2M'" — fmtDist never got that fix).
+// Live-confirmed on essentially every real brief with a below-spot level (TSM/ORCL/GOOG/AAPL/CRWD/
+// NN/CG/RBLU/GMEU/DNA/SOFX/STLN, 2026-09-15).
+test("chartLevelsSection: put wall distance below spot renders sign OUTSIDE the glyph (\"-$X\"), never \"$-X\"", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      spot: 419.48,
+      gexWalls: { putWalls: [{ strike: 400 }], callWalls: [] },
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /-\$19\.48 from spot/);
+  assert.doesNotMatch(section!.body, /\$-/);
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-15): the dark-pool line formatted a summed
+// institutional block-print notional (routinely hundreds of thousands to tens of millions of
+// dollars) through `fmtOptionUsd` — a 2-decimal per-contract PRICE formatter — instead of the
+// compact-magnitude `fmtPremium` the sibling `narrateDarkPool` (play-brief-narrative.ts) already
+// uses for the identical `premium` field. Not live-confirmed (no ticker checked 2026-09-15 carried
+// a populated darkPoolLevels array) but the defect is unconditional.
+test("chartLevelsSection: dark pool level premium renders as a compact magnitude (\"$X.XM\"), not a raw per-contract price", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      spot: 100,
+      darkPoolLevels: [{ strike: 99, pct: 40, premium: 5_230_000 }],
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\$5\.2M/);
+  assert.doesNotMatch(section!.body, /\$5230000/);
+});
+
 // FINDING 2026-09-08 (Ask Largo monitor cycle): a confluence node's score is a weighted sum of
 // half-point weights (call-wall 3, gamma-flip 2.5, max-pain 2, ...), so it can legitimately land
 // on a half-point like 7.5 — but this section rounded it to a whole number (`.toFixed(0)`) while
