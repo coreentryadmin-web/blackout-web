@@ -280,6 +280,9 @@
     },
     "2026-09-15T18:45Z": {
       "note": "7th board-upstream degradation instance RESOLVED. Confirmed degraded 18:38 UTC (2 consecutive pulls), confirmed healthy again by 18:46 UTC (upstream_ok:true, 382 setups, discovery_health BREAKOUT/PIN both ok) -- resolution window ~8min, within the established 5-27min range. Ledger unchanged: SPXW still the only play, +21.02%. Confirmed PR #5037 is live on main (exit-engine.ts has the tranche-note fix) but this SPXW row's exit_detail is still the OLD string (no tranche mention) -- expected, not a bug: the row exited and persisted BEFORE the fix merged, so it is historical and correctly does not retroactively change. The fix only affects exits computed fresh going forward. No new finding this cycle."
+    },
+    "2026-09-15T19:07Z": {
+      "note": "Quiet cycle. Board healthy, unchanged since 18:45Z resolution (upstream_ok:true, 384 setups). Ledger/record unchanged: SPXW +21.02% still the only 09-15 play. Checked open PRs -- only dependabot bumps, nothing in the 0DTE lane needs action. No new finding."
     }
   },
   "sessions": {
