@@ -112,12 +112,25 @@ export async function GET(req: NextRequest) {
     // 7499.360000000001) could leak into the horizon board once swings ship. Rounding the whole
     // payload at the response edge is the same backstop every sibling market route applies and
     // touches no computed value (roundFloats only trims IEEE float noise on numbers).
+    //
+    // keyDp override for option-premium fields: the plain 2dp default destroys precision for
+    // sub-$1 contracts (Banger-origin penny positions routinely price at $0.10-$0.30), and
+    // `livePnlPct` is computed upstream (banger-lane-merge.ts) from the RAW unrounded
+    // entry/mark BEFORE this rounding runs — so a 2dp-rounded mid can visibly disagree with the
+    // already-computed percentage sitting right next to it (live repro: RBLU 2026-09-15, raw
+    // mark 0.125 → displayed 0.13, but livePnlPct -16.7% only matches the raw 0.125). Same
+    // per-key-precision pattern round-floats.ts's own docs establish for gamma (0.0008-0.05
+    // needs 4dp or it quantizes to 0.00) — option premiums need the same treatment.
     return NextResponse.json(
-      roundFloats({
-        board,
-        upstream_ok: payload?.upstream_ok ?? true,
-        session: payload?.session ?? null,
-      }),
+      roundFloats(
+        {
+          board,
+          upstream_ok: payload?.upstream_ok ?? true,
+          session: payload?.session ?? null,
+        },
+        2,
+        { mid: 4, entryPremium: 4, peakPremium: 4 }
+      ),
       {
         headers: NO_STORE_HEADERS,
       }

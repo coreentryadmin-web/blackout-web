@@ -114,6 +114,13 @@ mock.module("../../../../../lib/horizon-board", {
     },
   },
 });
+// Penny-priced Banger-origin contract (banger-lane-merge.ts's shape): entry/mark sub-$1, and
+// livePnlPct already computed upstream from the RAW (unrounded) entry/mark — see the SEV note
+// below on why 2dp default rounding of mid/entryPremium/peakPremium breaks the displayed pair.
+const PENNY_ENTRY = 0.15;
+const PENNY_MARK = 0.125; // rounds to 0.13 at 2dp — a live-repro value (RBLU 2026-09-15)
+const PENNY_LIVE_PNL_PCT = -16.7; // Math.round(((0.125/0.15 - 1) * 100) * 10) / 10, computed pre-rounding
+
 mock.module("../../../../../lib/swing/serving-lane", {
   namedExports: {
     getSwingServingLane: async () => ({
@@ -123,6 +130,15 @@ mock.module("../../../../../lib/swing/serving-lane", {
       watchCount: 3,
       scanAsOf: "2026-09-04T17:00:00.000Z",
       scanSessionDay: "2026-09-04",
+      committed: [
+        {
+          ticker: "PENNY",
+          entryPremium: PENNY_ENTRY,
+          peakPremium: PENNY_MARK,
+          livePnlPct: PENNY_LIVE_PNL_PCT,
+          contract: { mid: PENNY_MARK },
+        },
+      ],
     }),
     // Route also reads the persisted snapshot / discover seam — stub so the mock module shape matches
     // the live import list (missing named exports → TypeError → degraded {available:false} body).
@@ -174,5 +190,29 @@ describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
   test("still ships no-store (behavior unchanged — rounding-only fix)", async () => {
     const res = await GET(new NextRequest("http://localhost/api/market/nighthawk/horizons"));
     assert.match(res.headers.get("Cache-Control") ?? "", /no-store/);
+  });
+
+  // SEV: penny-priced Banger-origin premiums (entryPremium/contract.mid/peakPremium) were rounded
+  // to the default 2dp at this response boundary, but livePnlPct is computed upstream in
+  // banger-lane-merge.ts from the RAW unrounded entry/mark BEFORE this rounding runs. For a
+  // sub-$1 contract that gap is large enough to be visible: raw mark 0.125 rounds to displayed
+  // 0.13, so a member reading "entry $0.15, mark $0.13" and computing (0.13-0.15)/0.15 gets
+  // -13.3%, while the API's own livePnlPct field says -16.7% (computed from the real 0.125) —
+  // live repro RBLU 2026-09-15. Fix: keyDp overrides mid/entryPremium/peakPremium to 4dp (same
+  // precedent as round-floats.ts's own gamma override) so displayed premiums stay close enough
+  // to the raw value that recomputing the percentage from them agrees with livePnlPct.
+  test("penny-priced premiums keep enough precision that (mark-entry)/entry agrees with livePnlPct", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/market/nighthawk/horizons?view=swings")
+    );
+    const body = await res.json();
+    const play = body.board.lanes.SWING.committed[0];
+    assert.equal(play.livePnlPct, PENNY_LIVE_PNL_PCT);
+    const recomputed = ((play.contract.mid / play.entryPremium - 1) * 100);
+    assert.ok(
+      Math.abs(recomputed - play.livePnlPct) < 0.5,
+      `displayed mid ${play.contract.mid} / entry ${play.entryPremium} implies ${recomputed.toFixed(1)}%, ` +
+        `too far from the API's own livePnlPct ${play.livePnlPct}% — precision lost at the rounding boundary`
+    );
   });
 });
