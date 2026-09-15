@@ -3292,6 +3292,13 @@
       "trigger": ":51 cycle (final of this hour)",
       "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN).",
       "action": "CARVE-OUT fix shipped: PR #5030 (fix/legacy-calendar-tile-premium-dilution), opened draft then undrafted, staged finding pushed. Reconsidered last cycle's flagged knownOpenItems.legacyCalendarTileNullPremiumAsZero_2026-09-15 finding -- the dilution half (a stock-only play's null premiumPct silently pulling down a MIXED day's real average via `?? 0`) is narrower than the full N/A-vs-zero cosmetic question and fixable entirely within Legacy's own legacyBoardCalendarBuckets function, no shared-type change needed. Confirmed first that the shared vectorBoardScorecard doesn't have the same averaging pattern (it counts winner/runner booleans, not an average) -- so this is genuinely isolated to the Legacy-only file, not a cross-lane concern. Shipped: only rows with a real (non-null) premiumPct now participate in the day tile's blended average; an all-null day still reports 0 unchanged (matches the function's own never-fabricate discipline for the pulled-play case right above it). Added 2 new tests (mixed day no longer diluted, all-null day still honest-zero) -- both pass, plus all 11 pre-existing tests unchanged. RED->GREEN proven via git stash (1/13 fails reverted). tsc clean. Full npm test on Node 20: 14300 pass / 0 fail / 3 skipped. The remaining N/A-vs-zero cosmetic question (needs a VectorBoardCalendarBucket type change shared with 0DTE/Swings) stays flagged, unshipped, in the original knownOpenItems entry -- correctly scoped out of this fix."
+    },
+    {
+      "at": "2026-09-15T15:08:22Z",
+      "trigger": "new-hour :06 cycle (v3 mandate re-fire, trigger 1 of 4)",
+      "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN).",
+      "pr_5030_status": "Own PR, drive-to-green. CodeQL/Analyze green, verify still in_progress, nothing red. No action needed yet.",
+      "note": "VNCE has now crossed its $8.41 target, live last-trade $8.45. Light cycle given a PR is mid-flight and this session already has 3 real fixes shipped this hour-block -- holding deeper investigation, will check PR CI and VNCE's terminal state (whether the recommendation correctly shows TRIM now that target is cleared) next cycle."
     }
   ],
   "knownOpenItems": {
