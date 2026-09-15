@@ -3434,6 +3434,13 @@
       "sync": "origin/main had moved one commit (addd4fe25, the Swings lane's own CRWD journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
       "healthcheck": "AMBER -- A_edition flipped to 'edition is stale (served an older date than requested)' right at the expected post-close boundary (16:06 ET, 6min after the 4pm close). Verified the raw payload: available:true, stale:true, served_for:'2026-09-15', edition_for:'2026-09-15', still 1 play (VNCE) -- exactly the well-documented 'carrying yesterday's edition until tonight's 5:30pm-ET-ish publish window' pattern seen many times in journal history on prior evenings. B_marks/C_record/D_pull_status all GREEN, unchanged. Not a new issue -- expected transition, no action.",
       "note": "VNCE's session is now closed. Tonight's nighthawk-outcomes cron (20:30/21:30 UTC) will formally grade it within the next ~1h24min; the next cycle(s) should check for the graded outcome once that window passes."
+    },
+    {
+      "at": "2026-09-15T20:24:50Z",
+      "trigger": ":21 cycle",
+      "sync": "origin/main had moved one commit (c4490ceea, the 0DTE lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "AMBER, unchanged from last cycle -- same expected post-close 'stale edition' state. B/C/D GREEN.",
+      "fixShipped": "CARVE-OUT: found and fixed a genuine doc-drift bug while reviewing the outcome-grading safety net ahead of tonight's formal VNCE grading. regrade-stuck.ts's header comment claimed the stuck-outcome repair is 'admin-invoked... instead of a silent every-boot sweep', but a later PR-N1 follow-up wired regradeStuckNighthawkOutcomes directly into nighthawk-outcomes's nightly cron (route.ts line ~109, fail-soft, limit 50) IN ADDITION to the pre-existing admin route -- the comment never caught up and now asserts the opposite of what the code does. Small, unambiguous, comment-only fix (no behavior change): corrected the header to describe both invocation paths. Verified: tsc clean, all 11 existing regrade-stuck.test.ts tests still pass. Shipped as PR #5040 (fix/regrade-stuck-doc-drift), findings-staging doc written, subscribed to PR activity, undrafted. Timely given tonight's outcomes cron (20:30/21:30 UTC) will exercise this exact code path shortly."
     }
   ],
   "knownOpenItems": {
