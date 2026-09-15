@@ -2410,6 +2410,61 @@ test("meridianCatalystSection: empty successful read states quiet calendar, not 
   assert.match(section!.body, /quiet, not missing/);
 });
 
+test("meridianCatalystSection: stale as_of (>120s, Largo C2) prefixes a Last snapshot caveat instead of reading as current", () => {
+  // Real production shape: withServerCache's stale-while-revalidate path can keep serving the
+  // same stored payload — and its true, un-bumped as_of — for up to 10 minutes under a degraded
+  // Benzinga upstream (server-cache.ts MAX_STALE_AGE_MS). Prior to this fix `slice.as_of` was
+  // captured on the type but never read here, so "calendar is quiet" could read as a fresh claim
+  // while actually minutes stale.
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const section = meridianCatalystSection({
+      play: fixturePlay(),
+      asOf: "2026-09-15 16:00 ET",
+      sessionDate: "2026-09-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+      ecosystem: null,
+      vector: null,
+    });
+    assert.ok(section);
+    assert.match(section!.body, /Last snapshot/i);
+    assert.match(section!.body, /~300s old/);
+    assert.match(section!.body, /catalyst calendar may lag/);
+    assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("meridianCatalystSection: fresh as_of renders with no Last snapshot caveat", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const section = meridianCatalystSection({
+      play: fixturePlay(),
+      asOf: "2026-09-15 16:00 ET",
+      sessionDate: "2026-09-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: { as_of: new Date(readMs - 30_000).toISOString(), items: [], total_matched: 0 },
+      ecosystem: null,
+      vector: null,
+    });
+    assert.ok(section);
+    assert.doesNotMatch(section!.body, /Last snapshot/i);
+    assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
+  } finally {
+    Date.now = origNow;
+  }
+});
+
 test("meridianCatalystSection: does not restate the same earnings date catalystsSection already surfaced (audit #16)", () => {
   // Both sections read the SAME ticker's own upcoming earnings from two independently-sourced
   // reads: catalystsSection from arsenal.earnings (UW), meridianCatalystSection from the Meridian
