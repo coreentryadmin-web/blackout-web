@@ -4,6 +4,29 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-15 (00:20 UTC) — [SEO] Lane heartbeat: new striking-distance query "dealer gamma" registered, no on-page action needed
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET). GSC opportunity scan found a genuine change: window advanced
+(2026-06-14→09-11 to 2026-06-15→09-12) and **"dealer gamma" (pos 19.6, 18imp) entered striking
+distance** — a third query alongside the two already known (`gamma three trading`,
+`is 0dte gambling`). Investigated the natural landing page
+(`/learn/dealer-gamma-options-flow-guide`, `src/lib/learn/articles.ts`): it already carries a
+dedicated, bolded `## The core concept: dealer gamma exposure` section directly defining the
+term, same treatment that already covers the other two striking-distance queries per
+`SEO-GROWTH-STRATEGY.md` §3. Per the standing "monitor, don't churn" discipline and the direct
+2026-08-29 precedent for the same situation (`gamma three trading`'s own entry), registered the
+new query in §3's lever-map row rather than making a speculative on-page edit to an already-
+strong page — pushed directly (docs-only register update, no PR, matching the established
+precedent commit for this exact pattern).
+
+PR sweep: **0 open agent PRs fleet-wide.** `/api/og` re-fetched with Googlebot UA: HTTP 200
+`image/png`, still crawlable. CLS not re-checked — already fresh ~12h ago.
+
+No defects found.
+
+---
 ## 2026-09-14 (18:17 UTC) — [SEO] Lane heartbeat: PR queue empty, GSC unchanged
 
 **Severity.** — (no defect found)
