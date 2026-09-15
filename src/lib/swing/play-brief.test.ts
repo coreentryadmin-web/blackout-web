@@ -1050,6 +1050,85 @@ test("composeSwingPlayBrief: Dealer posture nearest-wall evidence prefers the li
   );
 });
 
+test("composeSwingPlayBrief: wall/flip/king level provenance (asOf/freshness) matches the live Vector price actually shown, not GEX's (Largo C8)", () => {
+  // Live defect (2026-09-15, Ask Largo standing mandate): `price` already prefers the live Vector
+  // wall (vecCallWall ?? gex?.call_wall), but the provenance asOf/freshness ternary tested
+  // `gex?.call_wall != null` — whether GEX has a value at all, not whether GEX was actually the
+  // side `??` fell through to. Since both feeds carry a wall here, that always picked GEX's own
+  // (staler) age bucket even though Vector's live price is the one displayed — a genuinely live
+  // number reads as merely "recent". GEX matrix_age_sec=100 (the "recent" bucket, 60s-600s) vs
+  // Vector's near-zero age (the "live" bucket, <60s) makes the two buckets provably different so
+  // this test cannot pass by accident.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 15.18,
+        change_pct: 1.2,
+        asof: "2026-09-05T20:00:00Z",
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        flip: 14.72,
+        call_wall: 18,
+        put_wall: 13,
+        max_pain: null,
+        gex_king_strike: 18,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        gamma_regime_read: "long gamma",
+        net_vex: 0,
+        vanna_posture: null,
+        vanna_regime_read: "",
+        net_dex: null,
+        dex_posture: null,
+        dex_regime_read: null,
+        net_charm: null,
+        charm_posture: null,
+        charm_regime_read: null,
+        nearest_wall: { strike: 13, kind: "support", distance_pts: -2.18 },
+        freshness: "cached",
+        matrix_age_sec: 100, // "recent" bucket (60s-600s) — must NOT win provenance over live Vector
+      },
+      arsenal: null,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: new Date().toISOString(), // "live" bucket (<60s) — the price actually shown
+      asOfEt: "2026-09-05 16:00 ET",
+      spot: 15.18,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      gexWalls: { callWalls: [{ strike: 18, pct: 5 }], putWalls: [{ strike: 14, pct: 6 }] },
+    } as unknown as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const levels = brief.envelope.levels ?? [];
+  const callWallLevel = levels.find((l) => l.label === "call wall");
+  const putWallLevel = levels.find((l) => l.label === "put wall");
+  assert.equal(callWallLevel?.price, 18, "sanity: call wall price");
+  assert.equal(putWallLevel?.price, 14, "sanity: live Vector put wall must win over GEX's 13");
+  assert.equal(
+    callWallLevel?.provenance?.freshness,
+    "live",
+    `call wall provenance must report the live Vector age, not GEX's "recent" one — got: ${callWallLevel?.provenance?.freshness}`,
+  );
+  assert.equal(
+    putWallLevel?.provenance?.freshness,
+    "live",
+    `put wall provenance must report the live Vector age, not GEX's "recent" one — got: ${putWallLevel?.provenance?.freshness}`,
+  );
+});
+
 test("composeSwingPlayBrief: stale GEX-only envelope levels must not cite walls/flip/king (Largo C2)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),

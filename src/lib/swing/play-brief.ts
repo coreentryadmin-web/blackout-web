@@ -442,14 +442,22 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
+  // Largo C8 (2026-09-15, Ask Largo standing mandate): `price` above already prefers the live
+  // Vector wall (`vecCallWall ?? gex?.call_wall`), but this asOf/freshness ternary tested
+  // `gex?.call_wall != null` — whether GEX *has* a value at all, not whether GEX was the one
+  // `??` actually fell through to for `price`. Since both feeds usually carry a wall, this always
+  // picked GEX's (often staler) timestamp/freshness bucket even when the displayed price was
+  // Vector's live one — the exact "asOf describes a different read than the one shown" defect,
+  // mislabeling a live number as merely "recent". Fixed to test the same vec-side variable that
+  // drives `price`'s own precedence, mirroring the `spot` entry below (`vecSpot != null ? ...`).
   if (callWall != null && !callWallFromStaleGex) {
     levels.push({
       label: "call wall",
       price: callWall,
       provenance: {
         source: "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, gex?.call_wall != null ? "gex" : "vector"),
-        freshness: gex?.call_wall != null ? gexFresh : vecFresh,
+        asOf: levelProvenanceAsOf(gex, vec, vecCallWall != null ? "vector" : "gex"),
+        freshness: vecCallWall != null ? vecFresh : gexFresh,
       },
     });
   }
@@ -459,8 +467,8 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       price: putWall,
       provenance: {
         source: "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, gex?.put_wall != null ? "gex" : "vector"),
-        freshness: gex?.put_wall != null ? gexFresh : vecFresh,
+        asOf: levelProvenanceAsOf(gex, vec, vecPutWall != null ? "vector" : "gex"),
+        freshness: vecPutWall != null ? vecFresh : gexFresh,
       },
     });
   }
@@ -470,8 +478,8 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       price: flip,
       provenance: {
         source: "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, gex?.flip != null ? "gex" : "vector"),
-        freshness: gex?.flip != null ? gexFresh : vecFresh,
+        asOf: levelProvenanceAsOf(gex, vec, vecFlip != null ? "vector" : "gex"),
+        freshness: vecFlip != null ? vecFresh : gexFresh,
       },
     });
   }
@@ -524,8 +532,9 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       price: king,
       provenance: {
         source: "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, gex?.gex_king_strike != null ? "gex" : "vector"),
-        freshness: gex?.gex_king_strike != null ? gexFresh : vecFresh,
+        // Largo C8 fix (2026-09-15) — same vec-side test as call/put wall and gamma flip above.
+        asOf: levelProvenanceAsOf(gex, vec, vecKing != null ? "vector" : "gex"),
+        freshness: vecKing != null ? vecFresh : gexFresh,
       },
     });
   }
