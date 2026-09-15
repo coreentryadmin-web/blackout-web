@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-15T17:48:49.686Z",
+  "updated_at": "2026-09-15T19:14:43.788Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,32 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "716b626ae2a6a075084073c50ffd0c8443f7f8b2",
+    "last_main_sha": "e28e48e84f2f534b6efe09b59cfc627600b815dd",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-06T16:36:24.481Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "0ea154c4-0a2a-4c18-8a61-7908b0d12e4b",
-      "summary": "Extended cycle: merged #4314 (SPX King node), #4311 (HELIX flow evidence), #4319 (WATCH mark absence false positive). #4318 (cursor thesis-health uncalibrated) verify GREEN — awaiting Claude peer review (Cursor cannot self-approve). ops:collect 0; validate:deploy GREEN. ECR deploy in flight for latest main."
-    },
-    {
-      "at": "2026-09-06T16:36:42.266Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-06T18:22:19.897Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
     {
       "at": "2026-09-06T18:22:20.709Z",
       "type": "context_sync",
@@ -1273,6 +1254,24 @@
     },
     {
       "at": "2026-09-15T17:48:49.686Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-15T19:14:42.728Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-15T19:14:43.511Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-15T19:14:43.788Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
