@@ -853,24 +853,6 @@ export function wallDynamicsCoaching(
   return `**Wall dynamics** — ${lines}. Structure shifting — re-check break levels.`;
 }
 
-/** Morning-confirm / legacy pre-market gate coaching on WATCH rows. */
-export function morningConfirmCoaching(play: TerminalPlay): string | null {
-  if (play.pulled || play.morningStatus === "INVALIDATED") {
-    const reason = play.morningReason ? ` — ${play.morningReason}` : "";
-    return `**Morning confirm FAILED**${reason}. Do not enter; setup invalidated.`;
-  }
-  if (play.morningStatus === "DEGRADED") {
-    return `**Pre-market DEGRADED** — validate gates before entry; size down vs full signal.`;
-  }
-  if (play.morningStatus === "UNVERIFIED") {
-    return `**Morning unverified** — wait for CONFIRMED status before sizing.`;
-  }
-  if (play.morningStatus === "CONFIRMED" && play.status === "WATCH") {
-    return `**Pre-market CONFIRMED** — mechanical gates cleared; wait for trigger geometry.`;
-  }
-  return null;
-}
-
 export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefContext["laneRows"]): string | null {
   const snap = computeLaneRank(play, laneRows);
   if (!snap || snap.total < 2) return null;
@@ -1106,7 +1088,14 @@ export function collectCoachingBullets(
   push(thesisPillarCoaching(play));
 
   if (bucket === "watch") {
-    push(morningConfirmCoaching(play));
+    // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `morningConfirmCoaching` (formerly
+    // here) read `play.pulled`/`play.morningStatus`/`play.morningReason` — fields genuinely populated
+    // for Legacy (`terminalPlayFromEdition`, adapters.ts) but NEVER for swing/LEAPS. The swing/LEAPS
+    // adapter (`terminalPlayFromHorizon`) never sets any of the three, and its own input type
+    // (`HorizonDeckSource`) doesn't even carry a `morning_status`/`pulled` field to source them from
+    // — confirmed via grep across both. Same dead-code shape as `scorecardCoaching`, removed the same
+    // day for the identical reason (a field genuinely live for a sibling lane, structurally never
+    // populated for swing, read by a function called unconditionally in the swing assembly anyway).
     push(watchGateCoaching(play));
     // flagUnderlyingPx/entryStatus are NOT re-rendered here — watchForSection (play-brief-intel.ts,
     // "Watch levels") already renders the same two facts ("Flag anchor: X — track move from here"
