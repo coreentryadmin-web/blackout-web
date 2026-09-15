@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-15T16:08:00Z",
+  "updated_at": "2026-09-15T16:37:00Z",
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
@@ -253,6 +253,9 @@
     },
     "2026-09-15T16:08Z": {
       "note": "Board still unchanged (SPXW closed +21.02% remains the only play today, 228 scanned all gate-blocked score_floor). Checked PR #4076 -- no response yet to yesterdays board-upstream-degradation escalation; recent comments are Swing-lane research (late-promotion win-rate correlation finding), not directed at my lane. Quiet cycle, nothing to escalate."
+    },
+    "2026-09-15T16:37Z": {
+      "note": "Verified discovery is actively running, not stalled (scanned climbing 228->264, discovery_health.BREAKOUT ok with 253 setups) -- just none clearing score_floor this pass, genuinely quiet market for qualifying setups today, not a bug. Board otherwise unchanged (SPXW +21.02% the only play). Nothing to escalate."
     }
   },
   "sessions": {
