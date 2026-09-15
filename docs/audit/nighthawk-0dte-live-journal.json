@@ -259,6 +259,9 @@
     },
     "2026-09-15T17:07Z": {
       "note": "Board-upstream degradation recurred, 1st confirmed instance today (6th total across both days). upstream_ok:false confirmed on 2 consecutive pulls at 17:08 UTC. /record DB path healthy throughout (12 plays). Posted on PR #4076. Watching for resolution timing."
+    },
+    "2026-09-15T17:17Z": {
+      "note": "6th board-upstream degradation instance (1st confirmed today) RESOLVED. First confirmed degraded 17:08:04 UTC (2 consecutive pulls), confirmed healthy again by 17:17:54 UTC (upstream_ok:true, 325 setups, discovery_health BREAKOUT/PIN both ok) -- resolution window <=10-17min, consistent with the 5-27min range across all prior instances. /record stayed healthy throughout (12 plays). Only play today: SPXW short, tier B, closed +21.02% (win). No open positions, governor clean (halted:false, realized_losers:0, session_pnl_pct 21.02). Will post a brief closing follow-up on PR #4076."
     }
   },
   "sessions": {
