@@ -277,6 +277,9 @@
     },
     "2026-09-15T18:38Z": {
       "note": "PR #5037 (trim-tranche narrative fix) was already MERGED by a parallel coordinator session by the time I checked (a1b0ed775, all CI green, verified+re-checked tsc on the merged SHA per its own merge comment) -- unsubscribed from PR #4076-style tracking for it, nothing left to do there. Board-upstream degradation recurred AGAIN (7th instance today's-session-total): upstream_ok:false confirmed on 2 consecutive pulls at 18:38 UTC, discovery_health BREAKOUT/PIN both disabled, setups/ledger empty. /record stayed healthy (12 plays). Consistent with the established self-resolving pattern (5-27min historical range) -- posting a brief note on PR #4076, will check resolution next cycle."
+    },
+    "2026-09-15T18:45Z": {
+      "note": "7th board-upstream degradation instance RESOLVED. Confirmed degraded 18:38 UTC (2 consecutive pulls), confirmed healthy again by 18:46 UTC (upstream_ok:true, 382 setups, discovery_health BREAKOUT/PIN both ok) -- resolution window ~8min, within the established 5-27min range. Ledger unchanged: SPXW still the only play, +21.02%. Confirmed PR #5037 is live on main (exit-engine.ts has the tranche-note fix) but this SPXW row's exit_detail is still the OLD string (no tranche mention) -- expected, not a bug: the row exited and persisted BEFORE the fix merged, so it is historical and correctly does not retroactively change. The fix only affects exits computed fresh going forward. No new finding this cycle."
     }
   },
   "sessions": {
