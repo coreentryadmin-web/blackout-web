@@ -4,6 +4,82 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-09-15 — [FINDING, P1 performance/correctness] vector-dark-pool-warm still fails 50-100% of tickers per run, 12h after two prior fixes shipped — OPEN, needs Vector-lane capacity decision
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | A DISCOVERY-lane sweep re-measurement, not a new investigation from scratch. Two prior fixes already shipped for this exact cron: PR #3345 (2026-09-02, bounded the per-ticker fan-out via `runUwPool`, `MAX_CONCURRENCY=3`) and PR #3479 (2026-09-03, added `runWithBackgroundUwSweep()` to reserve one UW concurrency slot for live traffic during this and 3 sibling background crons). Both are live in `src/app/api/cron/vector-dark-pool-warm/route.ts` today (confirmed by reading the current file). Neither fix was re-verified against production outcomes after deploy — both PRs' evidence is about the *mechanism* (concurrency bounded correctly, live traffic isolated correctly), not about whether the cron's actual per-ticker success rate improved. It has not. |
+| **Evidence** | Pulled all 36 `[cron/vector-dark-pool-warm] background done` log lines from `/ecs/blackout-production` over the trailing 12h (2026-09-15 13:37-20:03 UTC, live RTH session, today's date). Failure rate (`failed` / (`warmed`+`failed`), universe = 55 tickers) ranged from 10% to **100%**, with the large majority of runs at 70-98%: `warmed=1 failed=54` (98%), `warmed=0 failed=55` (100%, twice), `warmed=2 failed=53` (96%, three times), `warmed=4 failed=51` (93%, three times), down to a handful of better runs (`warmed=50 failed=5` at 18:02 UTC, `warmed=49 failed=6` at 15:52 and 18:22 UTC). Elapsed time is 130-390 seconds per run (median ~340s) against a cron interval that fires roughly every 8-11 minutes — i.e. most of the cron's own scheduling gap is consumed by a run that still fails most of its tickers. This is measurably **worse than the 83-95% failure rate the original 2026-09-02 finding measured** (this file, `## 2026-09-02 — vector-dark-pool-warm's unbounded ~55-ticker fan-out...`), despite two intervening fixes. |
+| **Root-cause hypothesis** | `GLOBAL_MAX_RPS` for the UW rate limiter is `2` (cluster-wide, `src/lib/providers/uw-rate-limiter.ts:36`), `DEFAULT_QUEUE_MAX_WAIT_MS` is `20_000` (`queue-budget.ts:62`). The 2026-09-02 fix bounded THIS cron's own internal concurrency to 3, and the 2026-09-03 fix made this cron (and 3 siblings — `vector-full-state-snapshot`, `bie-full-state-snapshot`, `vector-pick-sweep`) yield one slot back to live traffic while running. Neither fix changes the fact that ~55-110 dark-pool fetches (1-2 per ticker × 55-ticker universe) must all clear a 2-RPS global admission gate within a 20s queue-wait budget each — at 2 RPS, 110 fetches need ≥55s of admission time alone even with zero contention, well past the 20s timeout for anything queued behind ~40 already-admitted requests. Checking the SAME 3-hour log window for the sibling background crons' own `elapsed=` lines found `vector-full-state-snapshot`, `vector-pick-sweep`, and `bie-full-state-snapshot` ALSO posting elevated elapsed times (up to 231s) concurrently — i.e. the same ~2 RPS global budget is being contended by multiple background sweeps at once, not just this one cron in isolation. Bounding one caller's own concurrency to 3, or reserving 1 slot for live traffic, does not change the size of the shared pipe all of them (and live member traffic) share. This is a hypothesis, not proven root cause — a live capacity trace (Redis `blackout:uw:rps` slot-admission counters during one run, timestamped against which tickers fail) would confirm it, and is out of scope for this write-up. |
+| **Product impact** | `vector-dark-pool-cache.ts` has a 25-minute TTL per the existing FINDINGS.md entry on dark-pool staleness ("tolerating one missed run") and a failed refetch skips the write entirely, silently continuing to serve the last successful snapshot's `fetchedAt`. Given this cron is failing most tickers on most runs (not one occasional miss), the practical effect for a large fraction of the 55-ticker Vector universe is dark-pool overlay data that is stale well past the "one missed run" the cache design tolerates — likely stale by multiple hours for the ~15-20 tickers that only warm successfully in the occasional good run (e.g. the ~49-50/55 good runs at 15:52/18:02/18:22 UTC bookend long stretches of 90%+ failure). |
+| **Why not fixed directly in this cycle** | This is DISCOVERY-lane territory (`shared UW rate limiter`, `vector-dark-pool-warm` cron) — a live, heavily-worked, shared-infrastructure file (`uw-rate-limiter.ts` backs Nighthawk, SPX, Vector, Largo tool calls) where a capacity change (raising `GLOBAL_MAX_RPS`, restructuring the cron's own batching/scheduling, or reducing the per-run ticker count via tiering/rotation) needs a real design decision — is UW's actual account-level rate limit higher than 2 RPS today (it may have been conservative when set, before several more background sweeps were added to share it)? Should `vector-dark-pool-warm`'s universe be split across more, smaller, more-frequent batches instead of one 55-ticker sweep? Per the standing DISCOVERY brief ("write up bigger findings/enhancements rather than unilaterally building them"), this is written up for the owning lane (Vector) rather than patched blind. |
+| **Suggested next steps (not implemented here)** | (1) Confirm UW's actual current account rate limit against the `GLOBAL_MAX_RPS=2` default — if the real ceiling is higher, this may be a simple env-tunable capacity increase. (2) If 2 RPS is a hard ceiling, consider splitting `vector-dark-pool-warm`'s 55-ticker universe into rotating sub-batches (e.g. ~15-20 tickers per run, full coverage every 3rd run) rather than attempting all 55 every single invocation — trades per-ticker freshness for a success rate that could plausibly clear 90%+. (3) Add a lightweight live alert/metric on this cron's own `failed`/`warmed` ratio (it already logs both) so a sustained high-failure stretch like this 12h window is visible without a manual CloudWatch Logs pull. |
+| **Status** | OPEN — write-up only, no code change in this PR. Flagging for Vector lane / next capacity-focused sweep. |
+
+## Swing play-brief wall/flip/king level provenance mislabeled a live Vector price as GEX's staler read (Largo C8) — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED — `fix/swing-wall-level-provenance-mismatch`
+
+### Root cause
+
+`levelsFromContext` (`src/lib/swing/play-brief.ts`) already prefers the live Vector wall for
+`price` (`callWall = vecCallWall ?? gex?.call_wall`), but the `provenance.asOf`/`provenance.freshness`
+for the same entry tested the WRONG variable: `gex?.call_wall != null ? "gex" : "vector"` — whether
+GEX *has* a value at all, not whether GEX is the side `??` actually fell through to for `price`.
+Since both feeds almost always carry a wall value, this ternary picked GEX's own (often staler)
+timestamp/freshness bucket every time, even when the displayed price was Vector's live one. Same
+bug in all four wall-family entries: call wall, put wall, gamma flip, and GEX king strike.
+
+The correct pattern already exists two blocks below in the same function, for `spot`:
+`source: vecSpot != null ? "Vector" : "GEX"` — testing the price-driving vec-side variable, not
+whether GEX independently has a value. The four wall-family entries never got this treatment.
+
+### Evidence
+
+- Direct source read confirmed all four provenance blocks used `gex?.X != null ? "gex" : "vector"`
+  while `price` used `vecX ?? gex?.X` — mismatched conditions.
+- Isolated fixture repro: Vector put wall = 14 (age ~0, "live" bucket), GEX matrix put wall = 13
+  (`matrix_age_sec: 100`, "recent" bucket, 60s-600s). Displayed price correctly `14` (Vector wins),
+  but pre-fix provenance reported GEX's "recent" freshness/timestamp for a number that was actually
+  live — a genuinely fresh value read as stale-by-comparison to a member or to Largo.
+- Live cross-check (per the auditing subagent, `playId=SWING:NN`): `spot`'s provenance correctly
+  reported `freshness: "live"` while `call wall`/`put wall`/`gamma flip`/`GEX king` all reported
+  `"recent"` at the identical ET-minute `asOf` stamp — consistent with the same GEX-age-bleeding-into-
+  Vector-price defect.
+
+### Blast radius
+
+Four provenance blocks in one function (`levelsFromContext`, `play-brief.ts`), no other call site.
+The `source` LABEL itself ("GEX") is intentional and correct — it's a deliberate domain label for
+the wall/flip/king-strike family regardless of which underlying feed supplied today's number
+(matches the sibling narrative `chartLevelsSection`'s identical "(GEX)" labeling) — only
+`asOf`/`freshness` were wrong, and only those two fields were touched.
+
+### Fix
+
+Replaced `gex?.X != null ? "gex" : "vector"` (asOf) and `gex?.X != null ? gexFresh : vecFresh`
+(freshness) with `vecX != null ? "vector" : "gex"` / `vecX != null ? vecFresh : gexFresh` in all
+four blocks — the exact same precedence test `price` and `spot`'s provenance already use.
+
+### Fix rationale
+
+Mirrored the already-correct `spot` pattern rather than inventing a new precedence rule. Left
+`source: "GEX"` untouched (a deliberate, separately-justified domain label, not part of this bug).
+
+### Tests
+
+- `src/lib/swing/play-brief.test.ts`: new test using two clearly distinct freshness buckets
+  (Vector ~0s age = "live", GEX `matrix_age_sec: 100` = "recent") so the assertion cannot pass by
+  coincidental bucket overlap — asserts `callWallLevel.provenance.freshness === "live"` and
+  `putWallLevel.provenance.freshness === "live"`, not GEX's "recent".
+- RED→GREEN proof: `git stash` on `play-brief.ts` reproduced 1 failing test against the pre-fix
+  tree; restoring the fix returned the suite to green (68/68).
+- `npx tsc --noEmit`: clean.
+
 ## Night Hawk 0DTE — trim_scale thesis-break exit narrative also omitted banked tranches — FIXED
 
 > **kind:** `FINDING`
