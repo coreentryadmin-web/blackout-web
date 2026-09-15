@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T05:36:54Z",
+  "lastUpdated": "2026-09-15T05:51:17Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3022,6 +3022,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Narrative-quality deep dive this cycle (aggressive-mode digging, not a healthcheck signal): every play's tier factor text cites a hardcoded historical stat verbatim to members -- 'Score 42 sits in 40-55 -- the overnight sweet spot (B-tier ran +2.99% avg)' (nighthawk-tiers.ts NH_SCORE_PRIME_MIN/MAX + the literal '+2.99% avg' string in the factor detail). Traced this to the file's own header comment: a ONE-TIME measured overnight track record baked in as constants, first committed 2026-07-17 (~2 months old as of today) and never recalibrated since. This is the exact same risk class the swing lane's own swing-score-calibration.mjs (built 2026-09-10) exists to catch -- 'does a play scored X actually win at the rate the narrative claims' -- but Legacy/Night Hawk has NO equivalent recalibration audit tool at all. Not building the full audit script this cycle (real scope: needs a fresh GET /api/admin/nighthawk/analytics-style pull, band-bucketed win-rate/avg-return re-measurement against the current live closed population, same n>=30 reliability discipline every sibling calibration tool uses) -- logging as a concrete, well-scoped next step for a future cycle to actually build, per ESCALATION 'ambiguous -> report, hold' rather than fixing unilaterally on a single pass.",
       "action": "idea-logged-not-built"
+    },
+    {
+      "ts": "2026-09-15T05:51:17Z",
+      "cycle": "05:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe), trigger 4 of 4 -- completes this hour's cadence",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "Capacity check this cycle per the standing TEAM CAPACITY RULE -- not yet done this session. Swept open PRs: still just the 4 pre-existing Dependabot major-version bumps (#4967/#4480/#4479/#4477), no new Cursor PRs, no green-draft jam. Checked #4076 (the Ask Largo x Swings collaboration channel) -- actively updated ~20 min ago (comment count 142, updated_at 05:31:46Z), clearly being worked by the swings lane already; explicitly out of THIS lane's scope per the v3 brief ('Not yours: 0DTE or Swings'), so not engaging with its content. Nothing actionable found -- clean state, no cross-lane help needed right now. Completes this hour's full 4-trigger cadence: 2 real fixes shipped+merged+verified (#5012 warm-path, #5016 cold-cache fallback -- the full gamma_regime null-flip investigation), plus 2 genuine non-code findings logged (D_pull_status timing verification, tier-narrative calibration staleness idea).",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
