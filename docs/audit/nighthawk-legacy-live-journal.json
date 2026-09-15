@@ -3341,6 +3341,13 @@
       "trigger": ":51 cycle (final of this hour)",
       "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN). VNCE $8.33, holding steady near target.",
       "note": "Light cycle after last cycle's substantial scorecard finding. Nothing new to report."
+    },
+    {
+      "at": "2026-09-15T17:10:41Z",
+      "trigger": "new-hour :06 cycle (v3 mandate re-fire, trigger 1 of 4)",
+      "sync": "origin/main had moved one commit (2c1d9e01b, PR #5035, fix(swing): don't latch premium_stop-disabling TRIM off unrelated edge rungs) -- confirmed via git show --stat this belongs to the Swing lane (latchSwingLiveStatus, swing-live-sync.ts), not Legacy. Primary checkout reset clean to origin/main.",
+      "healthcheck": "GREEN across all 4 stages (A/B/C/D). VNCE CONFIRMED/pulled=false agree, C_record resolved=26 buckets consistent, B_marks correctly reports no open plays with a resolvable OCC (VNCE is stock-only).",
+      "investigation": "Followed up on the prior session's suggested next angle: does legacyRowKind (sibling to legacyVectorStatus, same file) share the premium-only-gating blind spot already flagged in knownOpenItems.legacyCalendarTileNullPremiumAsZero_2026-09-15? Read legacy-board-table-utils.ts in full -- confirmed legacyRowKind (lines 66-73) DOES use the identical `play.pnlPct >= 50/15` pattern to return 'winner'/'runner'/'live'. BUT traced every consumer of VectorBoardRowKind across the codebase (grep for `.kind ===`) and found only `kind === \"closed\"` is EVER branched on anywhere -- vector-board-table-utils.ts lines 287/303/335 and legacy-board-table-utils.ts's own tab filter (buildLegacyBoardRows) and calendar closed-count. Nothing anywhere distinguishes kind:\"winner\"/\"runner\" from kind:\"live\" in any rendering or filtering logic. So unlike legacyVectorStatus's status:\"winner\" (which vectorBoardScorecard's real winners/runners/winnersFloorPct/runnerPipelinePct DO consume -- the genuine, already-flagged bug), legacyRowKind's winner/runner branches are DEAD: they compute a value nothing downstream reads differently. Negative result, logged to close out the suggested investigation and prevent re-checking this same angle later -- no PR warranted, no observable behavior is affected by this dead branch."
     }
   ],
   "knownOpenItems": {
