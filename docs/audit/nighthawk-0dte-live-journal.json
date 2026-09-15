@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-14T20:45:00Z",
+  "updated_at": "2026-09-15T14:15:00Z",
   "watch_stage_tracking": {
     "2026-09-10T13:46Z": {
       "note": "8 min after the 13:38 baseline. Still OPENING_DRIVE (heat 70%), still 0 committed -- roster churn is normal opening-drive noise (scores swinging +/-20pts as flow/breakout signals update minute to minute), NOT a promotion story yet since nothing has actually graduated to the ledger. 41 setups now (was 28): 4 dropped (NUAI/JOBY/BMNR/QBTS), 17 newly appeared. Biggest single mover: SPCH 66->86 (now well clear of score_floor, still WATCH, not committed -- worth checking next cycle whether it graduates or the score is itself noisy/transient).",
@@ -241,6 +241,9 @@
     },
     "2026-09-14T20:45Z": {
       "note": "Ran full zerodte-e2e-healthcheck.mjs baseline post-close. Overall AMBER but every individual stage is the EXPECTED post-close state, not a real issue: A SKIPPED (no aws CLI, expected), B AMBER (0 live setups, heat=CLOSED, expected), C GREEN (ledger coherent), D AMBER (marks stale post-close, expected -- no fresh quotes needed once closed), E GREEN (lifecycle coherence, all 11 correctly CLOSED), F AMBER (condor engine proven wired, no PIN candidate routed today, expected/documented normal absence), G AMBER (0/11 closed rows graded yet, pending the post-close grade pass -- track-record arithmetic itself GREEN, 170/170 wins+losses+be==graded, WR 31.8% over 20 sessions). No RED anywhere, no real defect found. End-of-day system health confirmed clean."
+    },
+    "2026-09-15T14:15Z": {
+      "note": "First live commit today: SPXW long FLOW, tier B (prime score 77, VIX elevated 17.57 penalty, clean Cortex support +0.5 but 6/8 sources absent -- honest thin-evidence flag, early-window penalty). +6.36% live. Tier reasoning coherent, no issue. Board healthy."
     }
   },
   "sessions": {
