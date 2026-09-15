@@ -14,15 +14,20 @@
 // window belong to the cron and are deliberately excluded), and re-run the SAME
 // resolution path the cron uses (one Polygon daily bar → resolveOutcome → persist).
 // It deliberately does NOT widen the cron's 7-day lookback — that stays as-is (the
-// unwindowed-pending vs windowed-resolver mismatch is the separate N2 concern); this
-// repair is admin-invoked, so historical fixes stay an explicit, audited action
-// instead of a silent every-boot sweep.
+// unwindowed-pending vs windowed-resolver mismatch is the separate N2 concern).
+//
+// CORRECTED (2026-09-15): originally admin-only (via the route below). A later
+// PR-N1 follow-up also wired this into `nighthawk-outcomes`'s nightly cron run
+// (`limit: 50`, fail-soft — never fails the grading run), so it now runs BOTH
+// automatically every night AND on-demand via the admin route. Safe either way —
+// same bounded/idempotent guarantees below — but callers should not assume stuck
+// rows only get repaired when an admin explicitly asks.
 //
 // Idempotency comes from the same two facts the cron relies on: the stuck-row query
 // only returns `outcome = 'pending'` rows, and updateNighthawkPlayOutcome's UPDATE is
 // guarded `WHERE outcome = 'pending'` — a row this repair grades can never match
 // again. A row whose session bar is genuinely unavailable stays pending and re-matches
-// a future run, which is honest (it IS still stuck) and harmless (bounded + admin-only).
+// a future run, which is honest (it IS still stuck) and harmless (bounded either way).
 //
 // Same split as the 0DTE P-6 backfill (zerodte/regrade.ts + admin/zerodte/
 // regrade-index-roots): pure selector here as the executable spec, DB/Polygon I/O
