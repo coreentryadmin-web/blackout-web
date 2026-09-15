@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T08:21:25Z",
+  "lastUpdated": "2026-09-15T08:36:48Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3099,6 +3099,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Quiet cycle -- no drift since last check. Still pre-market (04:21 EDT), ~5h before the 9:15 ET morning-confirm window and market open, so no new state to exercise yet (VNCE still pending entry). No new PRs, no CI to check. Not manufacturing a new investigation this cycle after several consecutive rounds of real digging this session (4 fixes + 2 tooling additions shipped/merged/verified already).",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T08:36:48Z",
+      "cycle": "08:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM), trigger 3 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "Noticed docs/audit/findings-staging/ carries 260+ unfolded .md files dating back to 2026-09-04 across many lanes (Vector, SPX, Swing, Thermal, Largo, etc.), despite a recent fold PR (#5013, 'fold 83-file findings-staging backlog') referenced in another lane's journal -- either that fold didn't cover everything or a large volume has accumulated since. NOT acting on this from this session: findings-fold-staging.mjs is explicitly a coordinator-level, cross-lane operation ('the coordinator folds staged files... typically after a merge wave', CLAUDE.md), not a per-cycle Legacy task, and this lane's own scope is explicit ('Not yours: 0DTE or Swings') -- unilaterally running a mass fold touching hundreds of other lanes' findings risks stepping on in-progress work from concurrent sessions. Noting for visibility only; this is not a Legacy finding to escalate or fix.",
+      "action": "observed-out-of-scope-not-acted"
     }
   ],
   "knownOpenItems": {
