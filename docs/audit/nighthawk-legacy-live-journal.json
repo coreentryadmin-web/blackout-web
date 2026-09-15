@@ -3220,6 +3220,11 @@
       "healthcheck": "GREEN, unchanged (1 fresh play, nothing open, resolved=26 consistent, D SKIPPED -- ~56min from 9:15am ET).",
       "pr_5026_status": "Own PR, drive-to-green. verify + CodeQL still in_progress, nothing red, enable-automerge/auto-merge correctly skipped. No action needed yet.",
       "note": "Light cycle -- extra self-diligence on the fix just shipped rather than a new investigation, given a PR is mid-flight and this hour already produced a real fix. Sanity-checked EARLY_CLOSE_ET_MINUTES's 3 Black-Friday dates actually fall on a real Friday (2025-11-28/2026-11-27/2027-11-26 all confirmed Friday via direct date computation) -- table is correct as authored, no issue."
+    },
+    {
+      "at": "2026-09-15T12:22:30Z",
+      "trigger": "PR #5026 check_suite.completed wake (not a scheduled cycle -- :36 hasn't fired yet)",
+      "note": "check_suite.completed event's head_sha (4ecd765e) didn't match the PR's actual head (2af5ce30) -- a fresh fetch showed verify still in_progress on the real head, likely a GitHub-internal merge-probe ref rather than a stale/missed push. Nothing red. Ran a healthcheck opportunistically while here (GREEN, unchanged) but this is NOT a full :36-cycle entry -- keeping it brief to avoid double-logging when the real :36 trigger fires shortly."
     }
   ],
   "knownOpenItems": {
