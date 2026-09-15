@@ -1052,6 +1052,56 @@ test("chartTechnicalsSection: Vector regime is labeled as dealer GAMMA posture, 
   assert.doesNotMatch(section!.body, /Vector regime:/);
 });
 
+// BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): chartTechnicalsSection
+// used to read vec.regime?.posture directly with no GEX-matrix fallback, so it silently OMITTED the
+// "Dealer gamma regime" line whenever Vector's own read was "unknown" — even when a fresh GEX-matrix
+// posture existed and the SAME brief's "Trade manager read" section (via resolveGammaPosture) showed
+// a resolved answer for the identical fact. Not a wrong-value bug, a completeness gap.
+test("chartTechnicalsSection: falls through to fresh GEX posture when Vector regime is 'unknown' and ctx is supplied", () => {
+  const vec = fixtureVec({
+    spot: 419.48,
+    technicals: {
+      vwap: 420,
+      emaStack: "down",
+      rsi: 45,
+      macd: "bear",
+      goldenPocket: null,
+      structure: null,
+    },
+    regime: { posture: "unknown" },
+  });
+  const ctx = {
+    play: fixturePlay(),
+    asOf: "2026-09-14 21:07 ET",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "TSM",
+      gex_positioning: {
+        spot: 419.48,
+        gamma_posture: "short",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: vec,
+  } as SwingPlayBriefContext;
+
+  // Without ctx (old call shape): must keep the old silent-omission behavior — no regression for
+  // any caller that hasn't been updated to pass ctx.
+  const withoutCtx = chartTechnicalsSection(vec, "2026-09-14");
+  assert.doesNotMatch(withoutCtx!.body, /Dealer gamma regime/);
+
+  // With ctx (the real production call shape): must fall through to the fresh GEX-matrix posture.
+  const withCtx = chartTechnicalsSection(vec, "2026-09-14", "watch", ctx);
+  assert.match(
+    withCtx!.body,
+    /Dealer gamma regime: \*\*short gamma\*\*/,
+    "must resolve from the GEX-matrix fallback instead of silently omitting the line",
+  );
+});
+
 // FINDING (Ask Largo standing mandate, 2026-09-12): chartTechnicalsSection rendered TODAY's spot/
 // EMA/VWAP/RSI/structure for a CLOSED play with no disclosure and a directional bias badge — unlike
 // vectorDeskSection's already-fixed closed-bucket branch (forced neutral, "since this play closed"
