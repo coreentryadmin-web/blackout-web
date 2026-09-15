@@ -301,6 +301,9 @@
     },
     "2026-09-15T20:37Z": {
       "note": "Aggressive-mode upside hunt (deliberate, after 2 quiet post-close cycles): re-audited decideTrimScale for other exit paths sharing the earlier banked-tranche narrative gap (PR #5037). Found one more: the thesis_break branch also only closes the remaining position and also never mentioned banked tranches. Checked trim_scale_runner_target and trim_scale_running -- both already mention banked tranches, no change needed. Shipped PR #5043 (draft, fix/trim-scale-thesis-break-tranche-note) -- hoisted the shared tranche-note clause so both branches use it without duplicating logic; floor-exit branch byte-identical to before. RED->GREEN, full suite 14317/0/3 on Node 20, tsc clean. Staged finding + subscribed to PR."
+    },
+    "2026-09-15T20:45Z": {
+      "note": "PR #5043 CI still in progress (verify/CodeQL in_progress ~1min in), nothing actionable yet. Sanity-checked main: PR #5037 is correctly merged and unaffected (PR #5043 refactor hasnt landed yet, no regression). Board unchanged, still CLOSED. Will check PR #5043 CI again next cycle."
     }
   },
   "sessions": {
