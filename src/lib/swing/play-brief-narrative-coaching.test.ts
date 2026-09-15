@@ -946,11 +946,22 @@ test("catalystCoaching: SAME-DAY expiry + UNKNOWN/unconfirmed timing defaults to
 
 // BUG FIX (2026-09-14, Ask Largo standing mandate, live repro PLAY): a same-day AFTERHOURS print
 // already having landed (past 16:00 ET) must stop reading as a still-ahead risk event.
+//
+// BUG FIX #2 (2026-09-15, live re-verification of the fix above): `ctx.asOf` here MUST use the
+// real production shape -- `"YYYY-MM-DD HH:mm ET"` (what `etStamp()` actually emits,
+// play-brief-context.ts:181), never an ISO-8601 literal. The first version of these 5 tests used
+// ISO asOf values (`"2026-09-14T23:07:00.000Z"`), which `Date.parse` parses fine -- so they stayed
+// green while the real code (`Date.parse(ctx.asOf)` on the real ET-stamp format) silently returned
+// NaN and made `alreadyPrinted` permanently false in production. Live repro confirmed the bug
+// shipped: PLAY's real brief, read ~4h05m after its print landed, still showed the OLD "size down
+// or exit before report" text. Fixed by parsing with `parseEtStamp` (falls back to `Date.parse`
+// for the rare ISO-fallback case) -- these fixtures now use the real ET-stamp shape specifically
+// so a future regression in the parse call, not just the branching logic, fails a test again.
 test("catalystCoaching: same-day AFTERHOURS print already landed (past 16:00 ET) reads as already-printed, not still-ahead", () => {
   const line = catalystCoaching(
     ctx({
       play: play({ entry: 2.1 }),
-      asOf: "2026-09-14T23:07:00.000Z", // 19:07 ET -- well past the 16:00 close
+      asOf: "2026-09-14 19:07 ET", // real production asOf shape (etStamp), well past the 16:00 close
       ecosystem: {
         ticker: "PLAY",
         arsenal: {
@@ -969,7 +980,7 @@ test("catalystCoaching: same-day AFTERHOURS print NOT yet landed (before 16:00 E
   const line = catalystCoaching(
     ctx({
       play: play({ entry: 2.1 }),
-      asOf: "2026-09-14T18:00:00.000Z", // 14:00 ET -- still mid-session, print hasn't landed
+      asOf: "2026-09-14 14:00 ET", // real production asOf shape, still mid-session, print hasn't landed
       ecosystem: {
         ticker: "PLAY",
         arsenal: {
@@ -986,7 +997,7 @@ test("catalystCoaching: same-day PREMARKET print already landed (past 09:30 ET) 
   const line = catalystCoaching(
     ctx({
       play: play({ entry: 2.1 }),
-      asOf: "2026-09-14T15:00:00.000Z", // 11:00 ET -- well past the 09:30 open
+      asOf: "2026-09-14 11:00 ET", // real production asOf shape, well past the 09:30 open
       ecosystem: {
         ticker: "PLAY",
         arsenal: {
@@ -1003,7 +1014,7 @@ test("catalystCoaching: same-day PREMARKET print NOT yet landed (before 09:30 ET
   const line = catalystCoaching(
     ctx({
       play: play({ entry: 2.1 }),
-      asOf: "2026-09-14T12:00:00.000Z", // 08:00 ET -- still before the open
+      asOf: "2026-09-14 08:00 ET", // real production asOf shape, still before the open
       ecosystem: {
         ticker: "PLAY",
         arsenal: {
@@ -1022,7 +1033,7 @@ test("catalystCoaching: same-day UNKNOWN timing never claims already-printed", (
   const line = catalystCoaching(
     ctx({
       play: play({ entry: 2.1 }),
-      asOf: "2026-09-14T23:07:00.000Z", // 19:07 ET -- late enough that a known bucket WOULD say already-printed
+      asOf: "2026-09-14 19:07 ET", // real production asOf shape, late enough that a known bucket WOULD say already-printed
       ecosystem: {
         ticker: "PLAY",
         arsenal: {
