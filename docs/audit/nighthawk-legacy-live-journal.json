@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T09:22:08Z",
+  "lastUpdated": "2026-09-15T09:36:50Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3127,6 +3127,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Verified another edition field this session had never explained: top-level `funnel: null` on every fetch so far. Traced edition-builder.ts: the funnel object (candidates/ranked/dossiers/synthesized/critic_passed/published counts) is ONLY attached to RECAP-ONLY editions (plays:[]) so ops can see exactly where the pipeline collapsed. Today's edition has a real published play (VNCE) -- a genuine success case, not a recap-only fallback -- so funnel:null is expected, not a gap. Confirms correctness rather than surfacing a defect.",
       "action": "investigated-confirmed-benign"
+    },
+    {
+      "ts": "2026-09-15T09:36:50Z",
+      "cycle": "09:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM), trigger 3 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "Quiet cycle, still pre-market (~05:36 EDT). No new drift, no new PRs to check. Legacy state unchanged since last check.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
