@@ -67,6 +67,24 @@ test("laneRankSection: renders rank line for committed peers", () => {
   assert.match(sec!.body, /#1 of 2/);
 });
 
+test("laneRankSection: carries no bias for a top-ranked SHORT (Largo C5 — deltaFromMedian is a score-rank signal, not a market call)", () => {
+  // Same bug class as play-brief.ts's thesisHealthSection (2026-09-15, Ask Largo standing
+  // mandate): mapping deltaFromMedian straight to bullish/bearish meant a top-ranked SHORT
+  // badged the section green "Bullish" via BieSectionCard's BiasPill — contradicting the
+  // envelope's own biasFromDirection(play.direction) = "bearish" for this same play.
+  const sec = laneRankSection(
+    play({ ticker: "NRG", direction: "SHORT", score: 70 }),
+    [row("NRG", 70, "COMMIT"), row("X", 40, "COMMIT")],
+  );
+  assert.ok(sec);
+  assert.match(sec!.body, /#1 of 2/);
+  assert.equal(
+    sec!.bias,
+    undefined,
+    `Lane rank must carry no directional bias (rank is not a market call) — got: ${sec!.bias}`,
+  );
+});
+
 test("parseDeckContractLabel: extracts strike and right from deck label", () => {
   assert.deepEqual(parseDeckContractLabel("110C · 13DTE"), { strike: 110, right: "C" });
   assert.deepEqual(parseDeckContractLabel("192.5P · 0DTE"), { strike: 192.5, right: "P" });
