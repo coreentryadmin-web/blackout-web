@@ -566,13 +566,28 @@ function decideTrimScale(
     const reason = inTrimScaleDeadZone(peakPnlPct, regime)
       ? "trim_scale_dead_zone_floor"
       : floorReason(sharedFloor, peakClearedTarget);
+    // `taken` tranches were already banked at their own trigger price on the way up
+    // (block 1's own trimAvailable/armed accounting, computed above) — this floor
+    // exit only ever closes what's LEFT (the runner, or the whole position if no
+    // tranche armed yet). Say so: without it the detail sentence reads as if the
+    // floor % were the trade's whole result, when a real banked winner (e.g. a
+    // +52.54% peak that armed both neutral-regime tranches) can realize meaningfully
+    // more than the runner's own floor once the banked thirds are blended in. Found
+    // live 2026-09-15 (SPXW): exit_policy.trim_levels showed both tranches fired,
+    // but this sentence — the only narrative a member sees for the exit — never
+    // mentioned them.
+    const trancheNote =
+      taken > 0
+        ? ` This is the runner only — ${taken}/${thresholds.length} tranche${taken === 1 ? "" : "s"} ` +
+          `(${Math.round(TRIM_SCALE_RULES.tranche_fraction * 100)}% each) already banked on the way up.`
+        : "";
     return {
       action: "EXIT",
       floorPnlPct: sharedFloor,
       reason,
       detail:
         `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(sharedFloor)} floor armed by a ` +
-        `${fmtPct(peakPnlPct)} peak — the protective floor exits so the green trade cannot finish red.`,
+        `${fmtPct(peakPnlPct)} peak — the protective floor exits so the green trade cannot finish red.${trancheNote}`,
     };
   }
 

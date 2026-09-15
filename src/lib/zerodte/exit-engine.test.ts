@@ -513,6 +513,32 @@ test("trim_scale: the tranche arms off the LATCHED PEAK — a retraced mark stil
   assert.equal(d.reason, "trim_scale_second");
 });
 
+test("trim_scale: a floor exit on the runner names the tranches already banked, not just the runner's own %", () => {
+  // Regression: live 2026-09-15 SPXW peaked +52.54% (neutral regime — both tranches armed
+  // and banked, trimsTaken 2/2), then the runner faded back to the peak-scaled lock floor.
+  // The exit's `detail` used to describe only the runner's own floor/peak as if it were
+  // the whole trade's result, with zero mention that 2/3 of the position had already
+  // banked profit at its own, better trigger prices — the ONLY narrative a member sees
+  // for this exit read as if the floor % were the entire realized outcome.
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 6.1016, currentMark: 4.8, trimsTaken: 2 })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "ratchet_profit_floor");
+  assert.equal(d.floorPnlPct, 21.02);
+  assert.match(d.detail, /This is the runner only — 2\/2 tranches \(33% each\) already banked on the way up\.$/);
+});
+
+test("trim_scale: a floor exit before any tranche armed says nothing about banked tranches (none exist)", () => {
+  // Same floor family, but the peak never armed a tranche (trend regime, first tranche at
+  // +40%) — taken is 0, so the sentence must NOT claim a banked tranche that never happened.
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium: 4.6, currentMark: 4.1, trimsTaken: 0 })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.doesNotMatch(d.detail, /already banked/);
+});
+
 test("trim_scale: both thirds banked → the last third RUNS (RAISE_FLOOR report, no exit)", () => {
   const d = evaluateExitState(
     input({ exitMode: "trim_scale", peakPremium: 6.0, currentMark: 5.6, trimsTaken: 2 })
