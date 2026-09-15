@@ -16,7 +16,6 @@ import {
   laneRankCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
-  progressRatchetCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
   vectorPlayCoaching,
@@ -369,26 +368,6 @@ test("manageLifecycleCoaching: DTE <= 7 keeps the urgency framing, not the plain
   const line = manageLifecycleCoaching(play({ contract: "110C · 5DTE" }), "open");
   assert.match(line!, /5 DTE.*theta accelerating/i);
   assert.doesNotMatch(line!, /5 DTE\*\* remaining/i);
-});
-
-test("progressRatchetCoaching: stop/target rails render sign-free absolute prices (2026-09-09 blast-radius fix)", () => {
-  // Same root cause as play-brief.ts's fmtUsd / play-brief-narrative.ts's fmtOptionUsd: this
-  // file's own file-local fmtUsd carried the identical signed-delta "+" on an absolute premium
-  // PRICE (stop_premium/target_premium are never negative deltas — see terminal-ladder.ts).
-  const line = progressRatchetCoaching(
-    play({
-      exitModel: "RATCHET",
-      progress: 0.4,
-      exitPolicy: {
-        trim_levels: [],
-        stop_premium: 2.1,
-        target_premium: 8,
-      },
-    }),
-  );
-  assert.ok(line);
-  assert.match(line!, /rails \*\*\$2\.10\*\*.*\*\*\$8\.00\*\*/);
-  assert.doesNotMatch(line!, /\*\*\+\$/, "stop_premium/target_premium are absolute prices, never signed deltas");
 });
 
 test("watchGateCoaching: includes reasons", () => {

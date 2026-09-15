@@ -14,7 +14,7 @@ import {
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
+import { fmtPremium } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -26,14 +26,6 @@ import { etStampFromDateOrIso, parseEtStamp } from "@/lib/largo/temporal/bar-ses
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
-
-// Absolute per-contract premium PRICE formatting (stop/target rails: `progressRatchetCoaching`'s
-// `ep.stop_premium`/`ep.target_premium`) is `fmtUsd` (aliased from @/lib/fmt-money's
-// `fmtOptionUsd` above) — see that module for why this file no longer keeps its own copy: it
-// previously carried the same sign defect fixed 2026-09-09 (this was the third file with an
-// identical copy of that bug), then the same roundFloats-vs-toFixed rounding mismatch fixed
-// 2026-09-12, each time re-patched here in lockstep with play-brief.ts purely because the two
-// were kept as separate copies of the same function.
 
 function fmtPct(n: number, digits = 1): string {
   const sign = n > 0 ? "+" : "";
@@ -760,20 +752,6 @@ export function macroTapeCoaching(ctx: SwingPlayBriefContext): string | null {
   return `**Macro tape** — ${parts.join(" · ")}. ${hint}`;
 }
 
-/** Ratchet progress along stop→target track. */
-export function progressRatchetCoaching(play: TerminalPlay): string | null {
-  const p = fin(play.progress);
-  if (p == null || play.exitModel !== "RATCHET") return null;
-  const pct = Math.round(p * 100);
-  const ep = play.exitPolicy;
-  let rails = "";
-  if (ep?.stop_premium != null && ep?.target_premium != null) {
-    rails = ` · rails **${fmtUsd(ep.stop_premium)}** → **${fmtUsd(ep.target_premium)}**`;
-  }
-  const zone = pct >= 75 ? "near target — trim into strength" : pct <= 25 ? "early in track — let it work" : "mid-track — honor ladder";
-  return `**Ratchet progress** — **${pct}%** along stop→target${rails}. ${zone}.`;
-}
-
 /** Executable vs mid P&L honesty — slippage on the tape. */
 export function execSlippageCoaching(play: TerminalPlay): string | null {
   const mid = fin(play.pnlPct);
@@ -1105,7 +1083,15 @@ export function collectCoachingBullets(
   // already ships the honest, superior replacement for this exact intent
   // (`archetypeTrackRecordSection`/`graduatedArchetypeEntry`, #4685, Wilson-LB gated, sub-lane-
   // specific). Removed rather than left as always-dead code a future reader could mistake for live.
-  push(progressRatchetCoaching(play));
+  // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `progressRatchetCoaching` (formerly
+  // here) gated on `play.exitModel === "RATCHET"`. `terminalPlayFromHorizon` (the SWING/LEAPS
+  // adapter) hardcodes `exitModel: "SCALE_OUT"` unconditionally for every swing/LEAPS row (confirmed:
+  // grepped the function's real body, only the literal "SCALE_OUT" ever appears, no "RATCHET" branch
+  // exists, and no swing-side resolve step overrides it) — "RATCHET" is a real value elsewhere
+  // (0DTE/terminal-guards.ts), just never for this lane. `play.progress` itself IS live for swing
+  // (already rendered honestly via "Trim progress: X%" in play-brief.ts's Position section, which
+  // has no RATCHET dependency), so nothing computable was lost — same dead-gate shape as
+  // `scorecardCoaching`/`morningConfirmCoaching`, removed the same week for the identical reason.
   push(execSlippageCoaching(play));
   // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `underlyingExcursionCoaching`
   // (formerly here) gated on `play.stockMovePct`/`stockPeakPct`/`stockTroughPct` — fields written in
