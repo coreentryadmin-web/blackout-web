@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T09:06:59Z",
+  "lastUpdated": "2026-09-15T09:22:08Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3120,6 +3120,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable). Healthcheck output included '[clerk-session] swept 1 leaked temp user(s) older than 30m' -- this is the documented self-heal mechanism (CLAUDE.md) working as designed, not a bug.",
       "note": "Quiet cycle, still pre-market (~05:06 EDT). No new PRs, no drift. Continuing the standing cadence -- next natural checkpoint is the 9:15 ET morning-confirm window (~4h away).",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T09:22:08Z",
+      "cycle": "09:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS), trigger 2 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "Verified another edition field this session had never explained: top-level `funnel: null` on every fetch so far. Traced edition-builder.ts: the funnel object (candidates/ranked/dossiers/synthesized/critic_passed/published counts) is ONLY attached to RECAP-ONLY editions (plays:[]) so ops can see exactly where the pipeline collapsed. Today's edition has a real published play (VNCE) -- a genuine success case, not a recap-only fallback -- so funnel:null is expected, not a gap. Confirms correctness rather than surfacing a defect.",
+      "action": "investigated-confirmed-benign"
     }
   ],
   "knownOpenItems": {
