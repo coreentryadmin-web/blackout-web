@@ -51,9 +51,14 @@ function fmtPct(n: number | null | undefined, digits = 1): string {
 // local copy needed fixing for (2026-09-12).
 
 function fmtDist(spot: number, level: number): string {
-  const pct = ((level - spot) / spot) * 100;
-  const sign = pct >= 0 ? "+" : "";
-  return `${sign}${pct.toFixed(1)}% (${fmtUsd(level - spot)} from spot)`;
+  const delta = level - spot;
+  const pct = (delta / spot) * 100;
+  const pctSign = pct >= 0 ? "+" : "";
+  // fmtUsd (fmtOptionUsd) is documented "never signed" — a raw negative delta produces "$-19.48"
+  // (toFixed(2) puts the minus BEFORE the digits, so "$" lands ahead of it). Sign it ourselves,
+  // outside the glyph, the same way fmt-money.ts's fmtPremium already does for this exact trap.
+  const deltaSign = delta < 0 ? "-" : "";
+  return `${pctSign}${pct.toFixed(1)}% (${deltaSign}${fmtUsd(Math.abs(delta))} from spot)`;
 }
 
 function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
@@ -491,7 +496,7 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
       "**Dark pool levels:** " +
         dp
           .slice(0, 3)
-          .map((l) => `${l.strike.toFixed(2)} (${l.premium != null ? fmtUsd(l.premium) : "—"})`)
+          .map((l) => `${l.strike.toFixed(2)} (${l.premium != null ? fmtPremium(l.premium) : "—"})`)
           .join(" · "),
     );
   }
