@@ -4,7 +4,77 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-15 (12:24 UTC) — [SEO] Lane heartbeat: full production re-validation of #2453 (CLS) and #2448 (/api/og), PR queue clear, GSC unchanged
+## 2026-09-15 (13:55 UTC) — [SEO] RTH wake: live gamma-snapshot API verified correct, intermittent desktop CLS anomaly on /tools/gamma-snapshot investigated — INCONCLUSIVE, no fix shipped
+
+**Severity.** P3 (borderline CWV, intermittent, one page, desktop only) — investigated, root cause NOT confirmed, no code changed this cycle.
+
+Confirmed market open (Tue 2026-09-15, not an NYSE holiday, 09:30-13:00 ET window) before starting
+the narrower RTH-only job per the trigger's own instruction to check the clock, not assume from
+the cron firing. Two things checked, per the trigger's scope (public surfaces only observable
+during RTH):
+
+**1. `/tools/gamma-snapshot` live-data correctness — GOOD, no defect.** Polled
+`/api/public/gex-snapshot?ticker=SPX` 4x over ~24s: `calculation_id` advanced every poll, spot
+price genuinely moved (7602.08→7602.22), age stayed 3-7s, `degraded` stayed `false` — the 5s
+client refresh (`GammaSnapshotWidget.tsx`, `setInterval(tick, 5_000)`, `cache: "no-store"`) is a
+real live refresh, not a frozen snapshot. Cross-checked spot against Massive/Polygon ground truth
+(`I:SPX` snapshot): platform reported 7601-7604 across ~13:34 UTC, Massive reported 7607.55 at
+13:35:55 UTC with `session_previous_close: 7619.98` — matches the platform's own prior-close
+exactly, well within normal drift for the ~1min gap. `change_pct: null` observed on every poll is
+**by design**, not a bug: `clusterIndexSpotChangePct` (`socket-cluster-health.ts:37`) withholds it
+unless `entry.open_source === "rest"` (a documented guard against pairing a ws-anchored price with
+a REST-anchored percentage) — confirmed the widget never even renders `change_pct` (zero matches
+in `GammaSnapshotWidget.tsx`), so this has no user-facing effect either way.
+
+**2. Core Web Vitals on live pages, purged edge.** Purged Cloudflare edge (`CF_API_TOKEN`/`CF_ZONE_ID`,
+targeted `files` purge on `/` and `/tools/gamma-snapshot`, never `/_next/static/*`) then measured:
+homepage desktop **CLS 0.0002 GOOD**, mobile **0.0418 GOOD** — #2453 holds on a live RTH page, not
+just off-hours. `/tools/gamma-snapshot` mobile (430x932): **CLS 0 GOOD**, consistently, every run.
+`/tools/gamma-snapshot` **desktop (1440x900): CLS ranged 0 to 0.1708 across 10+ repeated
+measurements — roughly 1 in 5-6 loads crosses the 0.1 GOOD threshold into NEEDS-IMPROVEMENT.**
+
+Spent real effort isolating the source rather than guessing (9 rounds of custom `PerformanceObserver`
++ `requestAnimationFrame` instrumentation, since `cls-measure.cjs`'s own `shifts` array only reports
+a value, and Chrome's `LayoutShift.sources` caps at 5 attributed nodes — not enough to see the true
+root when 5 unrelated elements get dragged along). Directly caught the culprit once with element-level
+rect polling: the static intro `<p>` under the H1 (`"Where dealer gamma flips from long to short...
+Free, no account needed."`, hardcoded text, no live data) rendered at height 56px (2 lines) for one
+frame, then 84px (3 lines) ~250-300ms later — a 28px growth that exactly matches the widget's
+measured 28px downward push in the same shift event. **Ruled out, with direct instrumented
+evidence, every plausible cause tested:** not the widget's own live-data poll (widget's own
+height stayed 380px→380px, unchanged, across every captured shift); not `NavAuthLinks`'
+`__client_uat` cookie self-heal (zero cookies present on every anonymous probe — confirmed via
+`document.cookie` logging — and `readClientSignedIn()` returns `null` on no cookie, which the hook's
+own guard (`client !== null`) means never triggers a state flip); not H1/breadcrumb/nav-header
+reflow (all measured perfectly stable, before and after, across every round); not a custom-webfont
+swap on the intro text itself (`body { font-family: var(--font-body) }` is a bare `system-ui` stack
+— `next/font/local`'s `display:"swap"` only applies to `--font-anton`/`--font-syne`, used for
+headings, not this paragraph); not a scrollbar-width change shrinking the content column
+(`document.documentElement.clientWidth` measured constant at 1440 across every round the anomaly
+did and didn't occur). In 6 follow-up rounds specifically instrumented to re-catch the 56→84
+transition, it reproduced exactly once more — consistent with the ~15-20% rate `cls-measure.cjs`
+itself showed, but too rare to pin the exact low-level trigger (a Chromium-internal layout/text-
+measurement settling artifact on first paint is the remaining, unconfirmed candidate).
+
+**No fix shipped.** Per the standing "root cause, not just symptom" bar and "never fabricate
+findings" — a `min-height` slapped on a static paragraph to paper over an unconfirmed mechanism
+would be exactly the kind of guessed fix that looks resolved while possibly changing nothing (or
+worse, reserving dead space on every one of the ~80-85% of loads that never shift at all). This is
+also a genuinely low-blast-radius, low-severity item: one page, desktop only, borderline over
+threshold (0.17 vs the 0.1 line, nowhere near POOR/0.25), no user-facing data-correctness impact.
+Documented here rather than silently dropped or force-fixed, matching this toolkit's own standing
+pattern for thin/inconclusive evidence (e.g. `swing-score-calibration.mjs`, `swing-pre-entry-drift
+-probe.mjs`: measure honestly, disclose the uncertainty, no change on thin evidence, re-run later).
+**Follow-up for a future cycle:** re-run `node scripts/audit/cls-measure.cjs
+https://blackouttrades.com/tools/gamma-snapshot --json` repeatedly; if the transient 2-line→3-line
+intro-paragraph state reproduces reliably enough to script, capture it with Chrome's
+`--enable-blink-features=LayoutShiftAttribution` verbose tracing or DevTools Performance panel
+recording (neither available in this sandbox's tunneled-Chromium probe) rather than sampling races
+against a single-digit-millisecond window.
+
+PR sweep: 1 open agent PR fleet-wide (`#5026`, different lane, CI-RUNNING) — no SEO action needed.
+
+No code changed this cycle.
 
 **Severity.** — (no defect found)
 
