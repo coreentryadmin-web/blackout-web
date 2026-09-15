@@ -16,6 +16,7 @@ import {
   zerodteLiveForSession,
   optionMarkGenuinelyUnknown,
 } from "./play-brief-absence";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
@@ -744,9 +745,15 @@ function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
     const rightWord = l.right === "P" ? "put" : l.right === "C" ? "call" : "contract";
     return l.strike != null ? `$${l.strike} ${rightWord}` : rightWord;
   };
+  // Largo C1 (2026-09-15, Ask Largo standing mandate): `committedAt` is a bare TIMESTAMPTZ instant
+  // with no ET labeling (db.ts stamps it via `.toISOString()`) — slicing its raw UTC calendar day
+  // is exactly the anti-pattern `bar-session-date.ts`'s own header warns against, and inconsistent
+  // with `siblingPositionsNote` (play-brief.ts) already using `etStampFromIso` for the identical
+  // field. `etSessionDate` is the shared C1 helper every other ET calendar-date read in this
+  // codebase goes through — no site-local reimplementation.
   const dateStr =
     curr.committedAt && !Number.isNaN(Date.parse(curr.committedAt))
-      ? new Date(curr.committedAt).toISOString().slice(0, 10)
+      ? etSessionDate(Date.parse(curr.committedAt))
       : null;
   const times = rh.rollCount === 1 ? "once" : `${rh.rollCount} times`;
   const rollSentence = `**Rolled ${times}** — most recently from the ${fmtLeg(prev)} to the ${fmtLeg(curr)}${dateStr ? ` on ${dateStr}` : ""}.`;

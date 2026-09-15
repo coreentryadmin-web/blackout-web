@@ -2030,6 +2030,38 @@ test("tradeManagerNarrativeSection: rolled-once position discloses the roll (ope
   assert.doesNotMatch(section!.body, /Full chain result/);
 });
 
+test("tradeManagerNarrativeSection: roll date is the ET session date, not the raw UTC calendar day (Largo C1)", () => {
+  // Live defect (2026-09-15, Ask Largo standing mandate): rollHistoryLine() sliced
+  // committedAt.toISOString() for its raw UTC calendar day instead of using the shared
+  // etSessionDate() helper every other ET-date read in this codebase goes through (e.g.
+  // siblingPositionsNote's identical field, play-brief.ts). Invisible for an RTH-hours commit
+  // (same UTC/ET calendar day), but a commit near or after 8pm ET during EST straddles UTC
+  // midnight -- this fixture (2026-01-20T02:00:00.000Z = Jan 19, 9pm EST) would have shown
+  // "2026-01-20" pre-fix when the real ET session date is 2026-01-19.
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "HOLD", pnlPct: 5 }),
+      rollHistory: {
+        rollCount: 1,
+        legs: [
+          { rollSeq: 0, strike: 100, right: "C", expiry: "2026-01-16", committedAt: "2026-01-05T14:00:00.000Z" },
+          { rollSeq: 1, strike: 110, right: "C", expiry: "2026-02-20", committedAt: "2026-01-20T02:00:00.000Z" },
+        ],
+        chainComposite: null,
+      },
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /on 2026-01-19\./,
+    `roll date must be the ET session date (2026-01-19), not the raw UTC calendar day (2026-01-20) — got: ${section!.body}`,
+  );
+  assert.doesNotMatch(section!.body, /on 2026-01-20/);
+});
+
 test("tradeManagerNarrativeSection: rolled-twice position says 'Rolled 2 times' and cites only the LATEST roll (closed bucket)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
