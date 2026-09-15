@@ -3427,6 +3427,13 @@
       "sync": "origin/main had moved one commit (8548f12f0, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
       "healthcheck": "GREEN across all 4 stages, unchanged.",
       "marketUpdate": "VNCE now $8.37 (+9.41%) -- receded back BELOW its $8.41 target after today's full arc: crossed entry ~7.65, crossed target ~8.41, peaked $8.58, now $8.37. This is a live, real instance of the exact recommendation-hysteresis scenario reasoned through at the :21 cycle two hours ago (whether overlayLegacyQuotes's memoryless atTarget check would flip the recommendation back from TRIM to the static rec once price receded below target). Per that logic, the live recommendation right now should have reverted from TRIM back to the static morning recommendation -- confirms (does not contradict) that earlier reasoning with real same-day data rather than a hypothetical. ~8min to the 4pm ET close; tonight's nighthawk-outcomes cron (20:30/21:30 UTC) will formally grade this play using the underlying's session OHLC bar, independent of premium data, per the :51-cycle verification an hour ago."
+    },
+    {
+      "at": "2026-09-15T20:07:38Z",
+      "trigger": "new-hour :06 cycle (v3 mandate re-fire, trigger 1 of 4)",
+      "sync": "origin/main had moved one commit (addd4fe25, the Swings lane's own CRWD journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "AMBER -- A_edition flipped to 'edition is stale (served an older date than requested)' right at the expected post-close boundary (16:06 ET, 6min after the 4pm close). Verified the raw payload: available:true, stale:true, served_for:'2026-09-15', edition_for:'2026-09-15', still 1 play (VNCE) -- exactly the well-documented 'carrying yesterday's edition until tonight's 5:30pm-ET-ish publish window' pattern seen many times in journal history on prior evenings. B_marks/C_record/D_pull_status all GREEN, unchanged. Not a new issue -- expected transition, no action.",
+      "note": "VNCE's session is now closed. Tonight's nighthawk-outcomes cron (20:30/21:30 UTC) will formally grade it within the next ~1h24min; the next cycle(s) should check for the graded outcome once that window passes."
     }
   ],
   "knownOpenItems": {
