@@ -9,6 +9,7 @@ import { HORIZONS } from "../horizons";
 import { buildSwingRecord } from "./record";
 
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
+const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 function etYmd(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
@@ -159,9 +160,33 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
             ? "flat"
             : "stopped"
           : src.closedReason;
+    // BUG FIX (2026-09-15, Ask Largo standing mandate, forensic batch 31, live repro INTC:30/35):
+    // `exitPnlPct` above is the chain-COMPOSITE worst-leg P&L (by design — the preserved-loss
+    // invariant, record.ts's own file header), but `entryPremium`/`peakPremium`/`troughPremium`
+    // come from `src`, which is the TERMINAL leg only (`closedDeckSourceFromRow(terminal)` above).
+    // Whenever the worst leg is an EARLIER leg (a rolled chain where the parent lost more than the
+    // child), those two halves describe different legs entirely — live: INTC's served row paired
+    // leg 1's own price bounds (entry 2.26 -> peak 2.84, i.e. "+25.7% at peak") with leg 0's -40.83%
+    // realized loss, so peak-vs-entry computed a POSITIVE 25.7% next to a reported -40.83% exit, and
+    // that "peak" chronologically postdates the loss it's shown beside (leg 1 didn't exist until
+    // leg 0's roll). Downstream, `primaryReturnPct` (play-card-display.ts) prefers `peak` as the
+    // CLOSED-tab headline number, so this fabricated a green "+25.7%" card for a chain whose real
+    // worst outcome was a loss. The single-leg play-brief path (`play-brief-resolve.ts`) already
+    // avoids this by construction (it never applies the chain-composite override) — this brings the
+    // list-view/Closed-tab path in line: when the worst leg isn't the terminal leg, the terminal's
+    // own price bounds don't correspond to the P&L being reported, so omit them (honest omission,
+    // per this codebase's own absence principle) rather than pair a real number with the wrong leg's
+    // journey. `primaryReturnPct` already has a clean fallback to the actual exit P&L when peak is
+    // null (play-card-display.ts:72-73), so this is a safe no-crash path, not just a null-check.
+    const terminalPnl = fin(terminal.realized_pnl_pct);
+    const worstLegIsTerminal =
+      compositePnl != null && terminalPnl != null && round2(terminalPnl) === compositePnl;
     out.push({
       ...src,
       exitPnlPct: compositePnl ?? src.exitPnlPct,
+      entryPremium: worstLegIsTerminal ? src.entryPremium : null,
+      peakPremium: worstLegIsTerminal ? src.peakPremium : null,
+      troughPremium: worstLegIsTerminal ? src.troughPremium : null,
       closedReason: compositeReason,
       reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
     });
