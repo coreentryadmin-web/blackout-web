@@ -278,14 +278,23 @@ export async function getLiveOptionMark(
   return null;
 }
 
-/** Synchronous in-memory-only read (no Redis). Used by hot batch paths. */
+/**
+ * Synchronous in-memory-only read (no Redis). Used by hot batch paths.
+ *
+ * Carries `last` (the last-trade price) alongside `mark`/`bid`/`ask` — added 2026-09-15 so a
+ * caller can apply the same bid=0 backstop-quote divergence guard `reliableMarkFromSnapshot`
+ * already applies to the REST snapshot path (`reliableMarkFromQuote`, options-snapshot.ts) to
+ * this WS mark too: `handleQuote`'s `midOf(bp, ap)` computation has the identical exposure to a
+ * market-maker backstop ask, and until this field existed there was no way for a downstream
+ * consumer to even attempt the check.
+ */
 export function getLiveOptionMarkSync(
   occ: string,
   maxAgeMs: number = OPTION_MARK_FRESH_MS
-): { mark: number; bid: number | null; ask: number | null; ts: number } | null {
+): { mark: number; bid: number | null; ask: number | null; last: number | null; ts: number } | null {
   const local = optionMarks.get(occ);
   if (local && local.mark != null && isWsUpdatedAtFresh(local.ts, maxAgeMs)) {
-    return { mark: local.mark, bid: local.bid, ask: local.ask, ts: local.ts };
+    return { mark: local.mark, bid: local.bid, ask: local.ask, last: local.last, ts: local.ts };
   }
   return null;
 }

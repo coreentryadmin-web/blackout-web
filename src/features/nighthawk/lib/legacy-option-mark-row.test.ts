@@ -173,3 +173,38 @@ test("buildLegacyOptionMarkRow: a WS tick timestamped minutes ahead of now is st
   assert.equal(row.mark, 4.85);
   assert.equal(row.stale, true);
 });
+
+test("buildLegacyOptionMarkRow: a WS bid=0 backstop quote wildly divergent from the last trade falls through to the last trade, not the fabricated mid (2026-09-15)", () => {
+  // handleQuote (options-socket.ts) computes ws.mark via the SAME midOf(bp, ap) the REST snapshot
+  // path used before the 2026-09-14 fix -- a bid:0/ask-only backstop quote arriving over the WS
+  // feed produces the identical fabricated mid the REST fix above was written to catch, and since
+  // ws?.mark was checked FIRST in the old `??` chain, it never even reached the REST-side guard.
+  // Same CRSR-shaped repro: bid:0/ask:15 -> mid 7.5, real last trade 0.07 (107x divergence).
+  const row = buildLegacyOptionMarkRow(
+    "CRSR260918C00015000",
+    { mark: 7.5, bid: 0, ask: 15, last: 0.07, ts: NOW },
+    null,
+    NOW
+  );
+  assert.equal(row.mark, 0.07, "must fall through to the real last trade, not the backstop mid");
+});
+
+test("buildLegacyOptionMarkRow: a WS real two-sided market (bid>0) is never second-guessed even with a large mid-vs-last divergence", () => {
+  const row = buildLegacyOptionMarkRow(
+    "MRNA260904C00155000",
+    { mark: 7.5, bid: 5, ask: 10, last: 0.07, ts: NOW },
+    null,
+    NOW
+  );
+  assert.equal(row.mark, 7.5, "a real bid behind the WS quote must never be second-guessed against last-trade divergence");
+});
+
+test("buildLegacyOptionMarkRow: a WS bid=0 quote with no last trade at all passes the mid through unchanged (nothing to compare against)", () => {
+  const row = buildLegacyOptionMarkRow(
+    "MRNA260904C00155000",
+    { mark: 7.5, bid: 0, ask: 15, last: null, ts: NOW },
+    null,
+    NOW
+  );
+  assert.equal(row.mark, 7.5);
+});

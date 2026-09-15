@@ -508,3 +508,34 @@ test("reliableMarkFromSnapshot: just past the 10x boundary falls through", async
   const snap = baseSnap({ mark: 1.01, bid: 0, ask: 2.02, last: 0.1 });
   assert.equal(reliableMarkFromSnapshot(snap), 0.1);
 });
+
+// ---------------------------------------------------------------------------
+// reliableMarkFromQuote — the generic form reliableMarkFromSnapshot delegates to, extracted
+// 2026-09-15 so a non-OptionSnapshot quote shape (the WS mark stream, {mark, bid, last}, no
+// dayClose) can apply the identical bid=0 backstop-quote divergence guard. Same rule, same
+// numbers as the reliableMarkFromSnapshot tests above — these exercise the generic signature
+// directly rather than via a fabricated OptionSnapshot.
+test("reliableMarkFromQuote: null mark passes through unchanged", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(null, 0, 0.07), null);
+});
+
+test("reliableMarkFromQuote: bid>0 is never second-guessed", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(7.5, 5, 0.07), 7.5);
+});
+
+test("reliableMarkFromQuote: bid=0 backstop quote falls through to the reference", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(7.5, 0, 0.07), 0.07);
+});
+
+test("reliableMarkFromQuote: bid=0, no reference at all -> mark passes through", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(7.5, 0, null), 7.5);
+});
+
+test("reliableMarkFromQuote: bid=0, reference <= 0 -> mark passes through (nothing honest to fall back to)", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(7.5, 0, 0), 7.5);
+});

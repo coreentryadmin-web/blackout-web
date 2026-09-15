@@ -319,15 +319,37 @@ export const ZERO_BID_MID_DIVERGENCE_MULTIPLE = 10;
  * SEPARATE, additive helper for consumers that want a divergence-sanity-checked mark instead of
  * the raw doc-priority one. Only engages when bid is EXACTLY 0 (the shape backstop quotes take) —
  * a real two-sided market (bid>0) is never second-guessed here.
+ *
+ * The actual bid/mark/reference comparison lives in `reliableMarkFromQuote` below — extracted
+ * 2026-09-15 so the identical guard can also protect the WS mark stream (`legacy-option-mark-row.ts`),
+ * which carries the same backstop-quote exposure via its own `midOf(bp, ap)` computation
+ * (`handleQuote`, `options-socket.ts`) but had no divergence check at all until then.
  */
 export function reliableMarkFromSnapshot(snap: OptionSnapshot): number | null {
-  if (snap.mark == null) return null;
-  if (snap.bid !== 0) return snap.mark;
-  const reference = snap.last ?? snap.dayClose;
-  if (reference == null || reference <= 0) return snap.mark;
-  if (snap.mark <= reference * ZERO_BID_MID_DIVERGENCE_MULTIPLE) return snap.mark;
+  return reliableMarkFromQuote(snap.mark, snap.bid, snap.last ?? snap.dayClose);
+}
+
+/**
+ * Generic form of the bid=0 backstop-quote divergence guard: given a doc-priority mark, its bid,
+ * and a reference price (last trade, day close, or whatever the caller's best honest anchor is),
+ * return the mark unless it looks like an unfillable backstop quote — in which case fall through
+ * to the reference instead. See `reliableMarkFromSnapshot`'s own doc comment for the live
+ * incident this guards against; kept separate from that function (rather than only exported
+ * as a method on `OptionSnapshot`) so a caller with a different quote shape — the WS mark
+ * stream's `{mark, bid, last}`, which has no `dayClose` — can apply the identical rule without
+ * needing to construct a fake `OptionSnapshot`.
+ */
+export function reliableMarkFromQuote(
+  mark: number | null,
+  bid: number | null,
+  reference: number | null
+): number | null {
+  if (mark == null) return null;
+  if (bid !== 0) return mark;
+  if (reference == null || reference <= 0) return mark;
+  if (mark <= reference * ZERO_BID_MID_DIVERGENCE_MULTIPLE) return mark;
   // The bid/ask mid is a suspected backstop-quote artifact — fall through to the more honest
-  // last-trade/day-close reference instead of a mid nobody could actually transact at.
+  // reference price instead of a mid nobody could actually transact at.
   return reference;
 }
 
