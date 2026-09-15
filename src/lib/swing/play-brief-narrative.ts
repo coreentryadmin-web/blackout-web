@@ -920,10 +920,27 @@ export function tradeManagerNarrativeSection(
   const flip = flipFromStaleGex ? null : flipRaw;
   const focal = spot != null ? collectFocalLevels(ctx, spot) : [];
   let breakLine = spot != null ? breakTrigger(play, focal, flip) : null;
-  if (!breakLine && play.direction === "LONG" && play.exitPolicy?.stop_premium != null) {
-    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(play.exitPolicy.stop_premium)}** → cut size or exit.`;
-  } else if (!breakLine && play.direction === "SHORT" && play.exitPolicy?.stop_premium != null) {
-    breakLine = `**Break watch** — reclaim **${fmtOptionUsd(play.exitPolicy.stop_premium)}** → cover shorts.`;
+  // BUG FIX (2026-09-15, Ask Largo standing mandate, forensic batch 33, live repro NN#32): a
+  // swing play is always LONG PREMIUM (a bought call for LONG, a bought put for SHORT — see
+  // executableFill's own doc comment, terminal-ladder.ts), so it is always SOLD into the BID to
+  // exit — `play.execMark` (the bid) is the honest exit fill regardless of direction. This
+  // fallback "Break watch" line only ever framed the stop as a FUTURE risk ("lose premium stop
+  // $X -> cut size or exit"), even when the bid was already AT or THROUGH the stop right now.
+  // The fact that the executable side has already breached the stop DID already exist elsewhere
+  // in the brief (watchForSection's "no real cushion on the executable side" note, play-brief-
+  // intel.ts) but only as a footnote in a reference section, never in this reserved,
+  // always-surfaced bullet that IS the brief's actual risk headline. A member trusting "HOLD" at
+  // the top could easily miss that their real exit is already past the intended risk line.
+  const execStop = play.exitPolicy?.stop_premium;
+  const execBreached = execStop != null && play.execMark != null && play.execMark <= execStop;
+  if (!breakLine && play.direction === "LONG" && execStop != null) {
+    breakLine = execBreached
+      ? `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`
+      : `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cut size or exit.`;
+  } else if (!breakLine && play.direction === "SHORT" && execStop != null) {
+    breakLine = execBreached
+      ? `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`
+      : `**Break watch** — reclaim **${fmtOptionUsd(execStop)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
 
