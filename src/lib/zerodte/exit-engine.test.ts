@@ -621,6 +621,38 @@ test("trim_scale: a thesis break dumps the WHOLE remaining position, outranking 
   assert.equal(d.reason, "thesis_break:wall-trend");
 });
 
+test("trim_scale: a thesis break after both tranches banked notes the banked tranches too", () => {
+  // Same narrative gap as the floor-exit case, different exit path: thesis_break also
+  // only closes the REMAINING position, so it needs the same disclosure.
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      currentMark: 5.0, // +25%, above the peak-scaled floor (20) so this isn't a floor exit
+      peakPremium: 6.0, // +50% peak
+      trimsTaken: 2,
+      cortexEvidence: evidence([{ stance: "veto", source: "wall-trend", detail: "wall building against it" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:wall-trend");
+  assert.match(d.detail, /\(2\/2 tranches \(33% each\) already banked on the way up\.\)$/);
+});
+
+test("trim_scale: a thesis break with no tranche banked says nothing about banked tranches (none exist)", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      currentMark: 4.5,
+      peakPremium: 4.6, // +15%, below any tranche trigger
+      trimsTaken: 0,
+      cortexEvidence: evidence([{ stance: "veto", source: "wall-trend", detail: "wall building against it" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:wall-trend");
+  assert.doesNotMatch(d.detail, /already banked/);
+});
+
 test("trim_scale: a play that never armed a tranche still scratches on the flat timeout", () => {
   const d = evaluateExitState(
     input({ exitMode: "trim_scale", ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, trimsTaken: 0 })
