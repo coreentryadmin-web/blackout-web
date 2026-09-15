@@ -3391,6 +3391,13 @@
       "sync": "origin/main had moved one commit (df1959230, the Swings lane's own journal entry confirming PR #5031's live render) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
       "healthcheck": "GREEN across all 4 stages, unchanged.",
       "liveUiCheck": "Live desktop (1440x900) screenshot of /nighthawk?view=LEGACY via proxy-browser.cjs (fresh Clerk cookie minted immediately before) -- 94/94 requests routed OK, 0 fail, clean render, no visual defects or overflow. Two honest disclosure banners render correctly: 'CARRYING 2026-09-15 PLAYS UNTIL THEIR SESSION CLOSES AT 4 PM ET' and 'MORNING VERDICT FROM 9:15 AM ET -- MAY NO LONGER REFLECT CURRENT CONDITIONS'. VNCE row shows STOCK MOVE +12%, TARGET PATH +12% (100% stock -> target, not option P&L), correctly fail-closed PREMIUM VS ENTRY '--'. Visually corroborates (not new) the two already-logged knownOpenItems findings: scorecard header reads '0 winners, 0 runners, Hit rate 0%' despite VNCE's real +12% move (legacyVectorStatus premium-only gating), and the Sep 15 calendar tile reads '+0%' (deliberately-preserved null-premium-day fallback from PR #5030). No new defect found -- good confirmatory evidence, not re-logged as new."
+    },
+    {
+      "at": "2026-09-15T18:52:52Z",
+      "trigger": ":51 cycle (final of this hour)",
+      "sync": "origin/main had moved one commit (26c45d694, the Swings lane's own journal entry for batch 53) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "GREEN across all 4 stages, unchanged.",
+      "investigation": "Timely check ahead of today's close (~65 min out at trigger time): VNCE is a stock-only play (no resolvable option contract) -- traced whether the outcome-grading pipeline (nighthawk-outcomes cron, fires 20:30/21:30 UTC = 16:30 ET both offsets, ~30min after close) has any dependency on premium/option data that could leave a stock-only play ungraded or mis-graded. Read play-outcomes.ts's resolvePendingNighthawkOutcomes (its own comment: 'the stock-outcome pass' resolves target/stop from the underlying, distinct from and prior to any option-expiry-based pass) and cross-checked debrief.ts's sessionBarFromRow/isLongRow (used throughout classifyFailureMode) -- confirmed ALL outcome grading (hit_target/hit_stop/outcome: target|stop|open|ambiguous|unfilled) is computed purely from the underlying's own session OHLC bar against published stop/target levels, with zero dependency on entry_premium or any option field. VNCE will grade correctly and identically to an option-eligible play once tonight's cron fires -- no gap found. Good verification to have ahead of the actual close rather than discovering a problem after."
     }
   ],
   "knownOpenItems": {
