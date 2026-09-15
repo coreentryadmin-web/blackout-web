@@ -4,6 +4,91 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-09-15 — [FINDING, P1 observability] UW rate-limiter queue-timeout surge had no ops alert — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | A gap explicitly scoped and left ready-to-build in `docs/audit/MARKET-OPEN-VALIDATION.md`'s 2026-09-08 watch-list entry (13:32-14:08 UTC incident): a 37+-minute, platform-wide sustained `RateLimiterQueueTimeoutError` condition (real demand exceeding the shared UW rate limiter's `GLOBAL_MAX_RPS=2` ceiling) was invisible to Discord ops the entire time it was measured — `queue-budget.ts`'s `RateLimiterQueueTimeoutError` was thrown correctly on every over-budget admission, but only ever propagated to the caller, never alerted. Also directly complements this session's own `2026-09-15-vector-dark-pool-warm-still-failing-majority-after-two-prior-fixes.md` finding — the 50-100% per-run ticker failures measured there are one visible symptom of exactly this un-alerted condition. |
+| **Root cause** | `uw-rate-limiter.ts` already has ONE fire-once-with-rearm Discord alert (`alertRedisDegradedOnce`/`clearAlertOnRedisRecovery`), but it fires on a completely different condition — the Redis global-ceiling connection itself becoming unreachable. The limiter can be working exactly as designed, against a perfectly healthy Redis ceiling, and still be dropping most callers because `GLOBAL_MAX_RPS` is simply too small for current demand — and nothing paged ops about that condition. `queue-budget.ts` (deliberately provider-agnostic/pure, no alerting side effects) exports `isQueueTimeout()` for exactly this kind of caller-side handling, but no caller in the codebase used it. |
+| **Evidence** | `docs/audit/MARKET-OPEN-VALIDATION.md`'s existing entry (2026-09-08) already measured the live incident: ALB p99 stuck 12-47s continuously for 37+ minutes post-open, `queue budget exceeded at global_rps` recurring in growing clusters (10 simultaneous failures in one second at one point), Legacy structurally insulated (reads a pre-built DB row) while live-polling desks were "almost certainly experiencing WORSE and CONTINUING degradation" with no visibility. This session's own fresh 12h CloudWatch Logs pull (`vector-dark-pool-warm`, same finding batch) shows the same underlying condition still live and unaddressed 7 days later: 50-100% per-run ticker failures, elapsed 130-390s per run, sibling background crons (`vector-full-state-snapshot`, `vector-pick-sweep`, `bie-full-state-snapshot`) also showing elevated elapsed times in the same windows — consistent with sustained queue-timeout pressure on the shared 2-RPS ceiling that nobody was being paged about. |
+| **Fix** | Added a sustained-surge alert to `uw-rate-limiter.ts`, mirroring `alertRedisDegradedOnce`'s exact fire-once-with-rearm latch shape and dynamic-import Discord pattern: `noteQueueTimeoutForAlert()` records each `RateLimiterQueueTimeoutError` in a rolling 60s window (`pruneQueueTimeoutWindow`, a pure function) and pages ops once the window holds `QUEUE_TIMEOUT_ALERT_THRESHOLD=5` or more timeouts — a single isolated timeout is normal/expected burst behavior (per `queue-budget.ts`'s own framing) and must never page on its own. `noteQueueAdmissionRecoveryForAlert()` re-arms the latch once a later successful admission observes the rolling count has dropped back under threshold. Wired into `throttleUw`: the `acquireSlot()` call is now wrapped in a try/catch that calls `noteQueueTimeoutForAlert()` on `isQueueTimeout(err)` before re-throwing the SAME error unchanged (admission behavior itself is completely untouched — this is purely observational), and calls `noteQueueAdmissionRecoveryForAlert()` on the success path. |
+| **Blast radius** | One file (`uw-rate-limiter.ts`). No change to any admission/throttling behavior — `acquireSlot()`, `QueueBudget`, and every existing caller of `throttleUw`/`throttleUwCoalesced` are unaffected; the new code only observes and (on sustained surge) fires a Discord alert. Polygon's rate limiter (`polygon-rate-limiter.ts`) has the same `RateLimiterQueueTimeoutError` shape available via the same shared `queue-budget.ts`, but has no existing `alertRedisDegradedOnce`-style pattern to mirror and a much larger `GLOBAL_MAX_RPS=150` ceiling (not the measured-exhausted one) — left untouched per single-issue-per-PR scope; a natural, separately-evidenced follow-up if Polygon ever shows the same symptom. |
+| **Fix rationale** | Mirrored the existing `alertRedisDegradedOnce` pattern exactly (same fire-once-with-rearm latch shape, same lazy dynamic import for unit-test purity) rather than inventing a new alerting mechanism, per this file's PR write-up policy preference for the established, already-proven pattern. A rolling-window sustained-count threshold (not a single-timeout alert) was chosen specifically because the MARKET-OPEN-VALIDATION.md note itself calls out that a single queue timeout is normal/expected burst behavior and must never page — the threshold and window are conservative starting values (5 timeouts / 60s), tunable if live experience shows they need adjusting. |
+| **Regression guard** | `src/lib/providers/uw-rate-limiter.test.ts` — 5 new tests: `pruneQueueTimeoutWindow` pure-function correctness (drops stale entries, keeps in-window ones, handles empty/fully-stale input); the full threshold/latch behavior (does not page below threshold, pages exactly at threshold, stays latched on further timeouts, re-arms once the window ages out); `noteQueueAdmissionRecoveryForAlert` is a no-op on the common unlatched path; and a source-text wiring check that `throttleUw`'s catch calls `noteQueueTimeoutForAlert()` before re-throwing (never swallows the error) and calls the recovery hook on success. Git-stash proven: 5/19 new-file tests fail against pre-fix source (`noteQueueTimeoutForAlert`/`noteQueueAdmissionRecoveryForAlert`/`isQueueTimeoutAlertLatched`/`resetQueueTimeoutAlertForTest` not yet exported, wiring assertion fails against the old `throttleUw` body), 19/19 pass post-fix. `npx tsc --noEmit` clean. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · `uw-rate-limiter.test.ts` 19/19 pass, RED→GREEN proven via `git stash` · full `npm test` run in progress at commit time, result to follow in the PR. |
+| **Status** | FIXED. |
+
+## Swing play-brief roll-history date used the raw UTC calendar day instead of the ET session date (Largo C1) — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED — `fix/swing-roll-date-utc-not-et`
+
+### Root cause
+
+`rollHistoryLine()` (`src/lib/swing/play-brief-narrative.ts:747-750`) formatted a roll's date via
+`new Date(curr.committedAt).toISOString().slice(0, 10)` — the raw UTC calendar day. `committedAt`
+is a bare `TIMESTAMPTZ` instant with no ET labeling (`db.ts` stamps it via plain `.toISOString()`).
+Slicing its UTC date is exactly the anti-pattern `bar-session-date.ts`'s own header warns against,
+and inconsistent with the identical field elsewhere in the same brief:
+`siblingPositionsNote` (`play-brief.ts:196`) already uses `etStampFromIso(r.committedAt)` for the
+same `committedAt` field on a sibling position. `play-brief-narrative.ts` never imported any ET
+helper at all — the one file in this cluster that reimplemented date formatting instead of using
+the shared C1 helper.
+
+### Evidence
+
+- Direct source read confirmed the raw `.toISOString().slice(0, 10)` call and the absence of any
+  ET-helper import in the file.
+- Confirmed `etSessionDate(tMs)` (`bar-session-date.ts:51`) is the exact shared helper for this —
+  takes epoch-ms, returns the ET calendar date.
+- Confirmed the same field is correctly ET-converted at `play-brief.ts:196` via `etStampFromIso`.
+
+### Blast radius
+
+Currently bounded but real: the only production write path for a roll leg's `committed_at` is
+`manage-sync.ts` via `swing-active-refresh`, which is `market_hours_only: true` (9:30am-4pm ET),
+so no live commit crosses a UTC-midnight boundary today — no wrong date has actually been observed
+in production. But it's a genuine latent bug: any roll landing near/after 8pm ET during EST (if
+that gate is ever loosened, or an admin/backfill sets `committed_at` outside RTH) would display the
+day *after* the true roll session, misleading a member about when the roll actually happened.
+
+### Fix
+
+Imported `etSessionDate` from `@/lib/largo/temporal/bar-session-date` and replaced the raw
+`.toISOString().slice(0, 10)` with `etSessionDate(Date.parse(curr.committedAt))`.
+
+### Fix rationale
+
+Reused the existing shared C1 helper (the same one `siblingPositionsNote` already uses for the
+identical field) rather than reimplementing ET conversion locally — the entire reason the shared
+helper exists per its own module header.
+
+### Tests
+
+- `src/lib/swing/play-brief-narrative.test.ts`: new test using a `committedAt` of
+  `2026-01-20T02:00:00.000Z` (9pm EST Jan 19 — straddles UTC midnight) asserting the rendered date
+  reads `2026-01-19` (the true ET session date), not `2026-01-20` (the raw UTC calendar day).
+- RED→GREEN proof: `git stash` on `play-brief-narrative.ts` reproduced 1 failing test against the
+  pre-fix tree; restoring the fix returned the suite to green (84/84). Existing tests (which all use
+  RTH-hours `committedAt` values where UTC and ET land on the same calendar day) were unaffected.
+- `npx tsc --noEmit`: clean.
+
+## 2026-09-15 — [FINDING, P2 research] BREAKOUT `gain_over_range` ranking's originally-recommended real-option-P&L validation finally ran — exclusive picks underperform, thin sample — MEASURED, no gate changed
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | Not a new investigation — completes a task `docs/audit/0DTE-RESEARCH.md` had scoped and explicitly BLOCKED on 2026-09-10 ("BREAKOUT `gain_over_range` ranking — real committed option-P&L validation, SCOPED BUT BLOCKED"). The 2026-08-07 finding measured `gain_over_range` beating the shipped `momentum` BREAKOUT ranking on an underlying-continuation PROXY and explicitly recommended, before shipping unconditionally: *"Re-rank with `gain_over_range` behind a flag and A/B it on real committed 0DTE plays over ≥20 sessions, measuring realised option P&L rather than the underlying proxy."* What shipped (PR #2846, merged 2026-08-25) was a direct, unconditional swap — no flag, no A/B. The 2026-09-10 entry built the measurement tool (`scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs`) but found the run blocked on a missing field (`discovery_origin` was never forwarded by `GET /api/admin/zerodte/tier-export`) and shipped the forwarding fix alongside. This session confirmed that fix is live on `main` (`src/lib/zerodte/tier-export.ts` forwards `discovery_origin`) and ran the deferred measurement. |
+| **Evidence** | `node --import tsx scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --json` against live production, 21 trading days since the 2026-08-25 PR #2846 merge date, `thin_sample: false` (overall population n=74 clears the script's own `--min-n=15` bar). **Part A** (directly observed, pure-BREAKOUT-only real committed plays, official WS-10/WS-11 executable grade preferred over mid): n=74, win rate 47.3%, avg P&L **−1.3%**. **Part B** (counterfactual split via the shared, already-tested `splitBreakoutCohorts` helper, re-screening each play's real historical session with the real `screenBreakoutMovers`/dynamic cap): `MOMENTUM_ALSO` (both rankings would have kept this ticker) n=62, WR 51.6%, avg P&L **+2.0%**; `GAIN_OVER_RANGE_EXCLUSIVE` (exists on the board only because of the ranking swap) n=9, WR 33.3%, avg P&L **−10.3%**. 3 rows unreconcilable (`not_in_rescreened_pool` — session-date re-screen didn't reproduce the ticker; disclosed, not silently dropped). |
+| **Reading this carefully** | The `GAIN_OVER_RANGE_EXCLUSIVE` cohort — the specific incremental value the ranking swap provides over the old ranking — is n=9, well under the script's own 15-play bar for that specific split even though the overall population clears it. This is a genuine first look, not a settled result, and should be read with the same single-sample caution this repo applies to every other thin first-run A/B (see the swing-lane v6 measurements this same week for the established convention). That said, the direction is consistent and not small: an 18.3pp win-rate gap and a 12.3pt avg-P&L gap between the exclusive cohort and the shared one is exactly the failure shape the original 2026-08-07 finding's own proxy measurement structurally could not see — it graded underlying continuation, not option P&L, spread, or contract-build failure downstream of the ranking. |
+| **Why no gate/ranking change** | Single-issue-per-PR / no-scope-creep discipline this repo applies throughout: n=9 on the cohort that actually matters (the swap's own incremental picks) is not strong enough evidence to revert or flag a live ranking used by every BREAKOUT-origin 0DTE commit — that is a real product decision for the 0DTE-owning lane to weigh, with the rest of this file's evidence, not something DISCOVERY should act on unilaterally from one thin-sample run. |
+| **What changed in this PR** | `docs/audit/0DTE-RESEARCH.md` — appended a dated update to the existing BLOCKED entry (did not rewrite it) confirming the blocker cleared and recording this measurement, with the exact re-run command for when the population grows. No code changed; this is the deferred read-only measurement itself, run against production via the existing admin-gated audit script. |
+| **Status** | MEASURED. No gate/ranking changed — flagged for the 0DTE-owning lane; re-run as the closed BREAKOUT population grows before treating either number as settled. |
+
 ## Swing play-brief Book Context rendered a genuine cross-engine sibling on the reviewed ticker as unlabeled self-citation (Largo C4) — FIXED
 
 > **kind:** `FINDING`
