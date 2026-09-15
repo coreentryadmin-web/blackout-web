@@ -2,7 +2,11 @@
  * Shared Legacy option mark assembly — WS-first, REST snapshot fallback.
  * Used by the legacy-marks API route, server live-sync, and unit tests.
  */
-import { reliableMarkFromSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
+import {
+  reliableMarkFromQuote,
+  reliableMarkFromSnapshot,
+  type OptionSnapshot,
+} from "@/lib/providers/options-snapshot";
 import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
 
 export type LegacyOptionMarkRow = {
@@ -14,7 +18,13 @@ export type LegacyOptionMarkRow = {
   stale: boolean;
 };
 
-type WsMark = { mark?: number | null; bid?: number | null; ask?: number | null; ts: number } | null;
+type WsMark = {
+  mark?: number | null;
+  bid?: number | null;
+  ask?: number | null;
+  last?: number | null;
+  ts: number;
+} | null;
 
 /**
  * Merge WS tick + REST snapshot into one mark row.
@@ -39,6 +49,14 @@ type WsMark = { mark?: number | null; bid?: number | null; ask?: number | null; 
  * unfixed pending a decision — this wires the same, already-tested divergence guard into Legacy's
  * own mark read. `reliableMarkFromSnapshot` only engages when `bid === 0`; a real two-sided market
  * is never second-guessed.
+ *
+ * Same guard extended to the WS branch (2026-09-15): `ws.mark` was used raw, with no divergence
+ * check at all, even though `handleQuote` (options-socket.ts) computes it via the identical
+ * `midOf(bp, ap)` — a bid:0/ask-only backstop quote arriving over the WS feed produces the exact
+ * same fabricated mid the REST fix above was written to catch, and because `ws?.mark` is checked
+ * FIRST in the `??` chain below, it would never even reach the REST-side guard. `reliableMarkFromQuote`
+ * (the generic form `reliableMarkFromSnapshot` now delegates to) applies the same rule using
+ * `ws.last` as the reference price — the WS stream has no `dayClose` to fall back to, unlike REST.
  */
 export function buildLegacyOptionMarkRow(
   occ: string,
@@ -48,9 +66,10 @@ export function buildLegacyOptionMarkRow(
 ): LegacyOptionMarkRow {
   const bid = ws?.bid ?? snap?.bid ?? null;
   const ask = ws?.ask ?? snap?.ask ?? null;
+  const wsMark = ws ? reliableMarkFromQuote(ws.mark ?? null, ws.bid ?? null, ws.last ?? null) : null;
   const snapMark = snap ? reliableMarkFromSnapshot(snap) : null;
   const mark =
-    ws?.mark ?? snapMark ?? (bid != null && ask != null ? (bid + ask) / 2 : bid ?? ask ?? null);
+    wsMark ?? snapMark ?? (bid != null && ask != null ? (bid + ask) / 2 : bid ?? ask ?? null);
 
   const wsAsofMs = ws != null && Number.isFinite(ws.ts) ? ws.ts : null;
   const snapAsofMs =
