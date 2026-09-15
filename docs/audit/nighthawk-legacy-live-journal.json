@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T04:51:27Z",
+  "lastUpdated": "2026-09-15T05:08:11Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3001,6 +3001,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Checked PR #5016 (gamma_regime cold-cache fallback fix) before the routine sweep: verify still in_progress (~4 min in, consistent with the ~11min runtime PR #5012 took earlier this hour), CodeQL/triage/dispatch all green, auto-merge/enable-automerge correctly skipped (still draft). Nothing red, no action needed -- will re-check next cycle/event. This closes out a full second consecutive hour of the v3 mandate: 2 more real fixes shipped this hour (PR #5012 gamma_regime warm-path fix, merged+verified; PR #5016 its cold-cache-fallback follow-up, still in CI) on top of the prior hour's 2 (WS mark guard #5006, and the initial gamma_regime discovery). No new bugs/enhancement ideas surfaced this specific cycle beyond what is already in flight -- not treating this as a stop signal, digging continues next cycle.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T05:08:11Z",
+      "cycle": "05:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm) -- new hour, trigger 1 of 4",
+      "healthcheck": "GREEN across all non-skipped stages (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "PR #5016 (gamma_regime cold-cache fallback fix) found already merged (merged_by: coreentryadmin-web, merged_at 2026-09-15T05:07:16Z) before this session took any merge action -- same external-merge pattern as every other PR this session. verify+CodeQL both confirmed success before the merge. Verified actual content on origin/main: gamma-desk.ts carries computeGammaFlipDetail delegating correctly, positioning.ts's buildSummary uses flipDetail.reason === 'net_short_everywhere' exactly as written. Local checkout synced to main, feature branch deleted, unsubscribed from PR activity. Both Legacy positioning paths (warm cache-hit via #5012, cold fallback via #5016) now consistently resolve a net_short_everywhere book to 'amplification' instead of 'unknown' -- this specific investigation thread (opened this session at the 04:06 cycle) is now fully closed, both fixes merged and content-verified. Per the same deploy-timing nuance noted for #5012, index_dossiers won't visibly reflect this on the live edition until the next evening build.",
+      "action": "fix-merged-verified"
     }
   ],
   "knownOpenItems": {
