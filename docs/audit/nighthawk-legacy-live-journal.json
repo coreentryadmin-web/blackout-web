@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T03:52:15Z",
+  "lastUpdated": "2026-09-15T04:07:16Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -2973,6 +2973,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open to mark-check, resolved=28 consistent).",
       "note": "Spot-checked outcome-honesty forensics this cycle (mission area not yet touched this session) via GET /api/market/nighthawk/record, 30-day window: total_resolved=66, scoreable=50 (16 excluded as unfilled/pulled), decided=3 (2W/1L), win_rate 66.7% with an honestly wide CI [20.8, 93.9] and low_n correctly flagged. Notably the headline win_rate (66.7%) and profitable_rate_pct (42%)/avg_return_pct_edge (-2.38%) are reported side by side rather than only the flattering number -- no sign of a win-rate-without-P&L honesty gap. failure_modes breakdown (wrong_direction 29, target_unreachable 19, unfilled_never_traded_back 7, pulled_wrongly 5, pulled_correctly 4, clean_win 1, gap_win 1) is internally consistent with debrief.graded=66=debrief.debriefed. Nothing here clears the 3-instance bar for a real finding -- a single quick pull of self-consistent, honestly-labeled data is not evidence of a problem. No new bugs/enhancement ideas found this cycle beyond what is already shipped/in-flight this session (WS mark guard #5006, gamma_regime null-flip fix #5012, cross-lane midOf() note for the 0DTE lane). This completes the v3 mandate's first full 4-trigger hour (:06/:21/:36/:51) -- 2 real fixes shipped and verified live this hour alone.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T04:07:16Z",
+      "cycle": "04:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm) -- new hour, trigger 1 of 4",
+      "healthcheck": "GREEN across all non-skipped stages (1 fresh play, nothing open, C_record resolved=26 -- see note, buckets sum consistently).",
+      "note": "C_record resolved count dropped 28->26 vs the prior 4 cycles this hour (all read 28). Investigated rather than assuming noise: this check fired at 04:07:16 UTC == 00:07:16 EDT, 7 minutes past ET midnight. Traced the record query (fetchNighthawkOutcomeAnalytics, db.ts ~line 10059): `edition_for >= (NOW() AT TIME ZONE 'America/New_York')::date - N days` -- an ET-CALENDAR-DATE rolling window (the query's own comment explains this was deliberately fixed to avoid a bare UTC-session date ticking over early). At ET midnight the window boundary advances by exactly one full day, dropping whatever resolved plays sat on the edition_for date that just aged out of the 14-day (healthcheck default) window. This exactly explains a same-instant 2-play drop with zero data loss -- CONFIRMED BENIGN, not a bug, not escalating. Logging this explicitly so a future cycle doesn't re-investigate the same pattern from scratch: a resolved-count decrease across an ET-midnight boundary is EXPECTED and should not by itself trigger concern; only a decrease NOT coincident with ET midnight would be suspicious.",
+      "action": "investigated-confirmed-benign"
     }
   ],
   "knownOpenItems": {
