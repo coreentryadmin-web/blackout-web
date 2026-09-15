@@ -46,9 +46,11 @@ const FIXTURE_GEX_POSITIONING: GexPositioning = {
 // segment under this test file's own directory) rather than just missing the mock —
 // confirmed by reproducing it directly. The relative form resolves to the identical
 // file and is what every other mock.module() call in this repo's test suite already uses.
+let currentFixture: GexPositioning = FIXTURE_GEX_POSITIONING;
+
 mock.module("../../../lib/providers/gex-positioning", {
   namedExports: {
-    getGexPositioning: async () => FIXTURE_GEX_POSITIONING,
+    getGexPositioning: async () => currentFixture,
   },
 });
 
@@ -59,8 +61,37 @@ before(async () => {
 });
 
 test("fetchPositioningSummary: warm getGexPositioning path surfaces the real gex_king_strike, not a hardcoded null", async () => {
+  currentFixture = FIXTURE_GEX_POSITIONING;
   const summary = await fetchPositioningSummary("NVDA");
   assert.equal(summary.gex_king_strike, 152);
   assert.equal(summary.source, "polygon");
   assert.equal(summary.net_gex, -500_000_000);
+});
+
+// 2026-09-15: a null flip is not a null regime. The shared GEX regime builder
+// (gex-cross-validation-core.ts's buildGexRegime) already fixed this for `gamma_posture` on
+// 2026-08-20 — net_short_everywhere is a real, unambiguous short-gamma read, not missing data —
+// but fetchPositioningSummary's warm path re-derived `gamma_regime` from `gammaRegime(spot, flip)`
+// alone, which knows nothing about flip_reason and always says "unknown" once flip is null,
+// silently re-losing the fix one layer up.
+test("fetchPositioningSummary: flip null + gamma_posture 'short' (net_short_everywhere) resolves to amplification, not unknown", async () => {
+  currentFixture = { ...FIXTURE_GEX_POSITIONING, flip: null, gamma_posture: "short" };
+  const summary = await fetchPositioningSummary("SPY");
+  assert.equal(summary.gamma_flip, null);
+  assert.equal(summary.gamma_regime, "amplification");
+});
+
+test("fetchPositioningSummary: flip null + gamma_posture null (a genuine data outage, e.g. insufficient_strikes) stays unknown", async () => {
+  currentFixture = { ...FIXTURE_GEX_POSITIONING, flip: null, gamma_posture: null };
+  const summary = await fetchPositioningSummary("SPY");
+  assert.equal(summary.gamma_flip, null);
+  assert.equal(summary.gamma_regime, "unknown");
+});
+
+test("fetchPositioningSummary: flip present still uses the exact spot>flip boundary (unchanged from before this fix)", async () => {
+  // spot === flip: gammaRegime's own `spot > flip` semantics say amplification at the exact
+  // boundary — this must NOT shift to gamma_posture's `spot >= flip` ("long") convention.
+  currentFixture = { ...FIXTURE_GEX_POSITIONING, spot: 148, flip: 148, gamma_posture: "long" };
+  const summary = await fetchPositioningSummary("NVDA");
+  assert.equal(summary.gamma_regime, "amplification");
 });

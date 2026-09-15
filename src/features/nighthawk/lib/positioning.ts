@@ -96,7 +96,20 @@ export async function fetchPositioningSummary(ticker: string): Promise<Positioni
     if (gex && gex.spot > 0) {
       // Build PositioningSummary from the canonical positioning contract.
       const flip = gex.flip ?? null;
-      const regime = gammaRegime(gex.spot, flip);
+      // A NULL FLIP IS NOT A NULL REGIME (same fix already shipped for the shared GEX regime
+      // builder, gex-cross-validation-core.ts's buildGexRegime, 2026-08-20 — measured live: SPX/
+      // SPY/QQQ held flip_reason "net_short_everywhere" for a full RTH session, a real, unambiguous
+      // short-gamma/amplification read, not missing data). gammaRegime(spot, flip) alone treats
+      // every null flip as "unknown", throwing that resolution away. `gex.gamma_posture` already
+      // carries it correctly (computed by that same buildGexRegime, via getGexPositioning) — reuse
+      // it here rather than re-deriving from flip alone. Only the flip-null branch changes; the
+      // flip-present branch is untouched so its exact `spot > flip` boundary semantics don't shift.
+      const regime =
+        flip != null
+          ? gammaRegime(gex.spot, flip)
+          : gex.gamma_posture === "short"
+            ? "amplification"
+            : "unknown";
       // Reconstruct wall_summary from call_wall/put_wall.
       const walls: string[] = [];
       if (gex.call_wall != null) {
