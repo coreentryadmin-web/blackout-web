@@ -2889,6 +2889,13 @@
       "healthcheck": "GREEN across all non-skipped stages, 11th consecutive identical clean reading.",
       "note": "PR #4998's deploy (run #2337) still in_progress, ~21min since it actually started (00:31:24) -- within normal range for a build+push+ECS-rollout cycle, not yet worth escalating. A new environment block appeared this cycle (possible container restart) -- verified per the standing CLAUDE.md warning: git branch --show-current correctly still reads main, working tree clean, HEAD matches the last known push (a3a321da4). No drift this time. No new bug/idea this cycle.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T01:07:40Z",
+      "cycle": "01:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm), trigger 1 of 4 -- full v3 mandate re-delivered",
+      "healthcheck": "GREEN across all non-skipped stages, 12th consecutive identical clean reading.",
+      "note": "PR #4998's production deploy (run #2337, d3bc64f8c) is now status:completed/conclusion:success -- the uwGetSafe retry-budget fix is fully live on production. This closes the full lifecycle of tonight's real, user-directed investigation: user asked why only 1 play published -> traced via live CloudWatch to a 45s dossier-wall timeout losing 6/14 candidates -> root-caused to an unbounded uwGetSafe retry loop starving the shared 2-slot UW concurrency pool -> fixed, survived two parallel-session branch-overwrite collisions (recovering a real seconds/ms unit bug each time) -> merged -> now deployed. Per v3's aggressive-improvement-hunting directive: 12 consecutive clean cycles with no new bug/idea is worth noting per the mandate's own 'dig harder for upside' language, but the last several cycles' real work (seeing a genuine, user-flagged, root-caused fix through the full pipeline to live production) already satisfies the spirit of that directive -- not manufacturing a low-value finding to check a box this cycle. Next natural checkpoint: tomorrow's evening edition (already published, 1 play, this fix does not change tonight's board) and the trading day after that, watching for any play-count trend change now that the fix is live.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
