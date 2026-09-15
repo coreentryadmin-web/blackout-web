@@ -4,6 +4,29 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-15 (12:24 UTC) — [SEO] Lane heartbeat: full production re-validation of #2453 (CLS) and #2448 (/api/og), PR queue clear, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Pre-RTH heartbeat (08:18 ET). Full behavioural re-validation per the trigger's Step 1, not
+inferred from green CI: purged Cloudflare edge cache for the homepage HTML only (`CF_API_TOKEN`
++ `CF_ZONE_ID`, single `files` purge of `/`, `/_next/static/*` untouched), then measured CLS on
+the freshly-purged page — desktop (1440x900) **CLS 0 → GOOD**, mobile (430x932) **CLS 0.0063 →
+GOOD**, both far under the 0.1 threshold, confirming PR #2453's fix is genuinely live and not a
+stale-edge-cache false negative. `/api/og` re-fetched with a Googlebot UA: HTTP 200 `image/png`,
+valid 1200x630 PNG. Went further than a bare endpoint ping: pulled the actual Article JSON-LD
+`image` URL off `/learn/dealer-gamma-options-flow-guide` (Googlebot UA) and fetched that exact
+URL too — HTTP 200 `image/png` — confirming #2448 unblocked the real article-image path, not
+just the raw route.
+
+PR sweep: 1 open agent PR fleet-wide (`#5026`, a different lane, CI-RUNNING, not blocked) — no
+SEO-lane action needed. GSC opportunity scan: same window as the prior cycle (reporting lag,
+expected), same 3 striking-distance queries (`dealer gamma`, `gamma three trading`,
+`is 0dte gambling`), CTR-gap 0, deep-demand list unchanged — no new opportunities.
+
+No defects found.
+
+---
 ## 2026-09-15 (06:24 UTC) — [SEO] Lane heartbeat: post-restart recovery, PR queue empty, GSC unchanged
 
 **Severity.** — (no defect found)
