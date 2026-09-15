@@ -479,6 +479,21 @@ function decideTrimScale(
   // up front — see the dead-zone note just below, which needs it before the floor check).
   const armed = trimTranchesArmed(peakPnlPct, regime);
 
+  // `taken` tranches were already banked at their own trigger price on the way up, before
+  // EITHER of the two exit paths below (floor breach, thesis break) closes what's left.
+  // Both of those close only the REMAINING position, so a member reading only that exit's
+  // detail sentence has no way to know 2/3 of the trade may have already banked profit
+  // elsewhere. Say so once here, shared by both branches. Found live 2026-09-15 (SPXW):
+  // exit_policy.trim_levels showed both tranches fired, but the floor-exit sentence — the
+  // only narrative a member sees for that exit — never mentioned them.
+  // A bare clause (no leading space, no trailing punctuation) so each call site below
+  // can splice it into its own sentence naturally.
+  const bankedTranchesClause =
+    taken > 0
+      ? `${taken}/${thresholds.length} tranche${taken === 1 ? "" : "s"} ` +
+        `(${Math.round(TRIM_SCALE_RULES.tranche_fraction * 100)}% each) already banked on the way up`
+      : null;
+
   // 1. Protective: plan stop OR the shared early/breakeven ratchet floor (trim_scale
   //    has no whole-position dump at breakeven, but a +15%/+20% peak still arms a
   //    floor so a modest winner cannot round-trip to −50% between trim tranches).
@@ -566,28 +581,14 @@ function decideTrimScale(
     const reason = inTrimScaleDeadZone(peakPnlPct, regime)
       ? "trim_scale_dead_zone_floor"
       : floorReason(sharedFloor, peakClearedTarget);
-    // `taken` tranches were already banked at their own trigger price on the way up
-    // (block 1's own trimAvailable/armed accounting, computed above) — this floor
-    // exit only ever closes what's LEFT (the runner, or the whole position if no
-    // tranche armed yet). Say so: without it the detail sentence reads as if the
-    // floor % were the trade's whole result, when a real banked winner (e.g. a
-    // +52.54% peak that armed both neutral-regime tranches) can realize meaningfully
-    // more than the runner's own floor once the banked thirds are blended in. Found
-    // live 2026-09-15 (SPXW): exit_policy.trim_levels showed both tranches fired,
-    // but this sentence — the only narrative a member sees for the exit — never
-    // mentioned them.
-    const trancheNote =
-      taken > 0
-        ? ` This is the runner only — ${taken}/${thresholds.length} tranche${taken === 1 ? "" : "s"} ` +
-          `(${Math.round(TRIM_SCALE_RULES.tranche_fraction * 100)}% each) already banked on the way up.`
-        : "";
     return {
       action: "EXIT",
       floorPnlPct: sharedFloor,
       reason,
       detail:
         `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(sharedFloor)} floor armed by a ` +
-        `${fmtPct(peakPnlPct)} peak — the protective floor exits so the green trade cannot finish red.${trancheNote}`,
+        `${fmtPct(peakPnlPct)} peak — the protective floor exits so the green trade cannot finish red.` +
+        (bankedTranchesClause ? ` This is the runner only — ${bankedTranchesClause}.` : ""),
     };
   }
 
@@ -601,7 +602,9 @@ function decideTrimScale(
       action: "EXIT",
       floorPnlPct: null,
       reason: `thesis_break:${broken.source}`,
-      detail: `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting the remaining position at market, not hoping: ${broken.detail}`,
+      detail:
+        `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting the remaining position at market, not hoping: ${broken.detail}` +
+        (bankedTranchesClause ? ` (${bankedTranchesClause}.)` : ""),
     };
   }
 
