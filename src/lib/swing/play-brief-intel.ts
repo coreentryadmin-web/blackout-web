@@ -149,6 +149,25 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
  * (the position IS open, the book overlap IS real right now), so this stays rendered — only the
  * "Adding..." phrasing changes to reflect existing exposure rather than a forward decision.
  */
+/**
+ * Largo C4 (2026-09-15, Ask Largo standing mandate): `loadOpenBook()` merges TWO ledgers
+ * (`swing_positions`, real `positionId`; `banger_positions`, `positionId` deliberately left unset
+ * — the two tables are separate DB sequences that can collide on numeric id). Once a reviewed
+ * play's own `positionId` is known, `checkPortfolioOverlap` can only exclude an exact id match —
+ * a genuine cross-engine sibling on the SAME ticker (banger's positionId is always unset, so it
+ * can never match) correctly falls through as real concentration, not a bug. But rendered as bare
+ * "TICKER DIRECTION" it is textually indistinguishable from a self-citation/duplication defect —
+ * live-confirmed on CRWD (swing position #39 correctly excluded; a real, independently-committed
+ * Banger CRWD LONG, id 1123, 255C, still renders as unlabeled "CRWD LONG" in its own overlap list).
+ * Distinguishing detail (a positionId when known, else a "cross-engine" tag) removes the ambiguity
+ * without widening `PortfolioPosition`'s intentionally minimal shape (ticker+direction+positionId?).
+ */
+function formatOverlapPosition(p: PortfolioPosition, reviewedTicker: string): string {
+  const base = `${p.ticker} ${p.direction}`;
+  if (p.ticker.toUpperCase() !== reviewedTicker.toUpperCase()) return base;
+  return p.positionId != null ? `${base} (separate position #${p.positionId})` : `${base} (separate, cross-engine position)`;
+}
+
 export function bookContextSection(
   play: TerminalPlay,
   openBook: PortfolioPosition[] | null | undefined,
@@ -167,7 +186,9 @@ export function bookContextSection(
 
   const lines: string[] = [];
   if (overlap.sameThemeSameDirection.length) {
-    const names = overlap.sameThemeSameDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
+    const names = overlap.sameThemeSameDirection
+      .map((p) => formatOverlapPosition(p, play.ticker))
+      .join(", ");
     const closer = isPendingEntryDecision
       ? `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`
       : `${play.ticker} stacks the same wager rather than diversifying risk.`;
@@ -178,7 +199,9 @@ export function bookContextSection(
     );
   }
   if (overlap.sameThemeOpposedDirection.length) {
-    const names = overlap.sameThemeOpposedDirection.map((p) => `${p.ticker} ${p.direction}`).join(", ");
+    const names = overlap.sameThemeOpposedDirection
+      .map((p) => formatOverlapPosition(p, play.ticker))
+      .join(", ");
     lines.push(
       `**Internal conflict** — theme "${overlap.theme}" already has an OPPOSED position: ${names}. ` +
         `One leg is structurally betting against the other; this is not a hedge unless intentional.`,
