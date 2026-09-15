@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T06:29:52Z",
+  "lastUpdated": "2026-09-15T06:36:49Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3043,6 +3043,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Shipped step 1 of the tier-narrative-calibration idea: GET /api/admin/nighthawk/tier-export, admin-gated read-only, exposing {edition_for, ticker, direction, conviction, score, outcome, pulled} per resolved play -- mirrors the 0DTE lane's own tier-export precedent exactly. This is a pure feature ADDITION (no findings-staging entry per CLAUDE.md's own scoping -- that doc is for bug fixes, not new routes). Per-row shaping in a pure, unit-tested buildNighthawkTierExportRow (tier-export.ts, 4 tests). Full local suite 14260/14260 pass, tsc clean, both pre-push and post-rebase onto origin/main. PR #5018 opened (draft), subscribed for CI tracking. This unblocks (but does not itself build) the actual calibration script -- that remains logged as knownOpenItems.legacyTierNarrativeStaleness step 2, a separate future-cycle task once this export is live and has real data to pull.",
       "action": "feature-shipped"
+    },
+    {
+      "ts": "2026-09-15T06:36:49Z",
+      "cycle": "06:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM), trigger 3 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "Checked PR #5018 (tier-export admin route) before the routine sweep: CodeQL completed success, verify still in_progress (~7 min in, consistent with prior PRs' runtimes this session). Nothing red, no action needed -- will re-check next cycle/event.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
