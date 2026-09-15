@@ -274,6 +274,9 @@
     },
     "2026-09-15T18:15Z": {
       "note": "Followed up on the :00-cycle SPXW trim-tranche finding. Traced scan.ts onTrimBank: confirmed it persists only trimsTaken (count) + a Discord notification, never a real per-tranche P&L record -- timeline_tranches genuinely only ever comes from the offline WS-10/WS-11 reconstruction (plan.ts), so this IS the already-documented reconstruction-coverage gap, not a new P&L bug. Left the deeper P&L question open on PR #4076 for someone with fuller reconstruction-cadence context. Shipped the narrower, low-risk piece myself: PR #5037 (draft, fix/trim-scale-floor-exit-tranche-note) -- decideTrimScale floor-exit detail sentence now names how many tranches were already banked (using taken/thresholds.length, already in scope) instead of describing the runner-only floor as if it were the whole trade. Narrative-only, no P&L/gate change. RED->GREEN via git-stash, full suite 14313 pass/0 fail/3 skipped (pre-existing) on Node 20, tsc clean. Staged finding + subscribed to PR activity."
+    },
+    "2026-09-15T18:38Z": {
+      "note": "PR #5037 (trim-tranche narrative fix) was already MERGED by a parallel coordinator session by the time I checked (a1b0ed775, all CI green, verified+re-checked tsc on the merged SHA per its own merge comment) -- unsubscribed from PR #4076-style tracking for it, nothing left to do there. Board-upstream degradation recurred AGAIN (7th instance today's-session-total): upstream_ok:false confirmed on 2 consecutive pulls at 18:38 UTC, discovery_health BREAKOUT/PIN both disabled, setups/ledger empty. /record stayed healthy (12 plays). Consistent with the established self-resolving pattern (5-27min historical range) -- posting a brief note on PR #4076, will check resolution next cycle."
     }
   },
   "sessions": {
