@@ -3311,6 +3311,12 @@
       "trigger": ":36 cycle",
       "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN). VNCE $8.23, holding well above entry band, near target.",
       "note": "Quiet cycle -- three real fixes already shipped+merged this session (#5024, #5026, #5030), extensive verification/idea-logging done. Nothing new to report this cycle."
+    },
+    {
+      "at": "2026-09-15T15:52:17Z",
+      "trigger": ":51 cycle (final of this hour)",
+      "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN).",
+      "investigation": "Traced a previously-unexplored UI line seen in earlier screenshots: 'MACRO ... Confirm 1C \u00b7 0D \u00b7 0X'. Source: LegacyMacroStrip.tsx -- `Confirm ${confirmed}C \u00b7 ${degraded}D \u00b7 ${invalidated}X`, a simple morning-confirm outcome tally. Today's 1C/0D/0X correctly matches VNCE being the sole play and CONFIRMED (already independently verified earlier this session via morning_checked_at). Clean confirmation, no new finding -- this small check closes out a loose end from earlier screenshots rather than opening a new thread."
     }
   ],
   "knownOpenItems": {
