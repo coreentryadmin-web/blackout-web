@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T03:19:44Z",
+  "lastUpdated": "2026-09-15T03:22:08Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -2952,6 +2952,13 @@
       "healthcheck": "GREEN across all non-skipped stages (A_edition 1 fresh play, B_marks nothing open, C_record resolved=28 consistent, D_pull_status SKIPPED).",
       "note": "Aggressive improvement-hunting per v3 found a genuine live bug (not a healthcheck-visible one): fetchPositioningSummary (positioning.ts) derived gamma_regime via bare gammaRegime(spot, flip), which returns \"unknown\" for EVERY null flip -- re-losing the 2026-08-20 shared-layer fix (buildGexRegime, gex-cross-validation-core.ts) that correctly resolves flip_reason=net_short_everywhere to a real, unambiguous \"short\"/amplification read (measured live that day: SPX/SPY/QQQ held it a full RTH session). Confirmed live today: fetched the real edition and found ALL 6 index/sector dossiers (SPY/QQQ/IWM/XLF/XLE/XLK) reading positioning_summary \"GEX king  . unknown . max pain \" simultaneously -- the exact 100%-incidence smell the original fix flagged. Cross-checked thermal-flip-reason.ts, which already treats net_short_everywhere as a real informative case, confirming Legacy was the one lane that never adopted the fix. Fixed by reading the already-computed gex.gamma_posture (short -> amplification) only in the flip-null branch; flip-present branch untouched to preserve its exact spot>flip boundary vs gamma_posture spot>=flip convention (would otherwise flip sign exactly at spot===flip). RED->GREEN proven via git-stash. Full local suite 14248/14248 pass (0 fail, 3 skipped), tsc clean, both pre-push and post-rebase onto origin/main. PR #5012 opened (draft), subscribed for CI tracking. Fallback path (buildSummary, cold-cache branch) still drops flip_reason via the older computeGammaFlip -- left unfixed, noted in the PR as a separate, smaller follow-up to keep this single-issue.",
       "action": "fix-shipped"
+    },
+    {
+      "ts": "2026-09-15T03:22:08Z",
+      "cycle": "03:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS), trigger 2 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, same reading as prior cycle (1 fresh play, nothing open to mark-check, resolved=28 consistent).",
+      "note": "Checked PR #5012 (gamma_regime null-flip-not-null-regime fix) before the routine sweep, per the just-created activity subscription. get_status still reports 0 statuses (known API read-lag), cross-checked via get_check_runs instead: verify and CodeQL Analyze both in_progress (~2.5 min into the run, not stuck), auto-merge/enable-automerge correctly skipped (still draft), dispatch/triage green. No red, no action needed yet -- will re-check next cycle. No new bugs or enhancement ideas surfaced this cycle beyond what is already in flight (already produced two real fixes this session: the WS mark backstop guard PR #5006 merged, and this gamma_regime PR #5012 open) -- not treating a quiet cycle as a stop signal per the standing mandate, will keep digging next cycle.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
