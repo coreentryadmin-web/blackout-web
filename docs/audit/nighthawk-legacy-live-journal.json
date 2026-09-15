@@ -2910,6 +2910,13 @@
       "healthcheck": "GREEN across all non-skipped stages, 14th consecutive identical clean reading.",
       "note": "Substantive check this cycle: fetched the live /api/market/nighthawk/record endpoint (30-day window) and hand-verified every internal arithmetic cross-check -- resolved(66) = scoreable(50) + excluded_total(16); excluded_total(16) correctly = unfilled_not_pulled(7) + pulled(9), NOT the naive unfilled(8)+pulled(9)=17, meaning the endpoint correctly deduplicates a play that is both unfilled AND pulled rather than double-counting it; decided(3) = wins(2)+losses(1); scoreable(50) = decided(3)+ambiguous(0)+opens(47); win_rate_pct 66.7 = 2/3 exactly; by_conviction A(n=5,decided=1,opens=4) + B(n=45,decided=2,opens=43) sum to the segment totals (n=50, decided=3, opens=47) and their individual win/loss splits (A: 0W/1L, B: 2W/0L) sum to the segment's 2W/1L. Everything reconciles -- a real, non-trivial correctness check (the unfilled/pulled overlap dedup specifically is exactly the kind of subtle double-counting bug class this lane has found before), came back clean. No bug found this pass.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T01:52:25Z",
+      "cycle": "01:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe), trigger 4 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, 15th consecutive identical clean reading.",
+      "note": "Continued outcome-honesty forensics from last cycle's record-endpoint pull: the debrief.failure_modes breakdown (66 graded plays, 30-day window) sums correctly to graded=66 (wrong_direction 29 + target_unreachable 19 + unfilled_never_traded_back 7 + pulled_wrongly 5 + pulled_correctly 4 + clean_win 1 + gap_win 1 = 66). Dominant modes: wrong_direction 44% (29/66), target_unreachable 29% (19/66) -- together ~73% of graded plays. This is a real, aggregate observation, not a single anecdote, but deliberately NOT escalating it as a finding yet: I have exactly ONE pull of this distribution, no historical baseline to compare against (is 44% wrong-direction typical for this engine, or elevated?), and CLAUDE.md's own 3-instance noise-discipline threshold applies here just as much to a distribution as to a repeated bug. Logging the raw numbers here specifically so a future cycle (or a dedicated trend-tracking pass across multiple pulls over time) can compare against this baseline rather than starting from zero. Not calling this a problem -- calling it a number worth watching.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
