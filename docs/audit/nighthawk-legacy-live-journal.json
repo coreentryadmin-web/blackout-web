@@ -3148,6 +3148,14 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Verified VNCE's 'no options data available' text against real Polygon data: GET /v3/reference/options/contracts?underlying_ticker=VNCE returns 200 with zero results -- VNCE genuinely has no listed options market. The narrative is honest, not a masked gap. Another quick verification-not-a-defect cycle.",
       "action": "investigated-confirmed-benign"
+    },
+    {
+      "at": "2026-09-15T10:26:54Z",
+      "trigger": ":21 cycle",
+      "healthcheck": "GREEN (A_edition GREEN 1 play fresh, B_marks GREEN nothing open, C_record GREEN resolved=26 buckets consistent, D_pull_status SKIPPED -- pre-9:15am ET)",
+      "investigation": "Fresh hypothesis tested: today's edition (2026-09-15) published only 1 play (VNCE, score 42, A-tier), below EDITION_MIN_PUBLISH_PLAYS=3. Confirmed recap_only=false and funnel=null (NOT the zero-candidate/zero-dossier collapse path -- an organic publish). Pulled 30-day history via GET /api/admin/nighthawk/tier-export?days=30 and counted plays per edition_for: sub-3-play nights are a recurring, already-normal pattern -- 1-play nights on 2026-08-26 and 2026-09-03, several 2-play nights (2026-08-20/08-31/09-09/09-11/09-14) across the last 20 graded editions. Hypothesis DISPROVEN -- EDITION_MIN_PUBLISH_PLAYS is a soft backfill target (rescue/gate-promote fill from the real ranked pool, never fabricate plays), not a hard floor the pipeline is expected to always hit; occasional thin nights are expected market behavior, not a funnel bug. No fix shipped. Logging this so a future cycle does not re-open the same investigation from scratch.",
+      "secondary_note": "While reading edition-quality.ts noticed effectiveTargetPlays() and effectiveMinPublishPlays() both branch on legacyGlobalStrongest() but return the SAME constant on both sides of the ternary (EDITION_TARGET_PLAYS/EDITION_MIN_PUBLISH_PLAYS either way) -- unlike effectiveMinPublishScore()/diversityHedgeEnabled()/forcedContrarianHedgeEnabled() in the same file which genuinely differ by mode. Functionally inert today (no behavior difference, env-var override still works identically), so NOT shipped as a fix this cycle -- flagging as a possible dead-branch code-smell worth a second look, not a live bug causing any observed symptom (the 1-play night above is explained by genuine market thinness, not this).",
+      "pr_5023_verified": "swing 5-truth-grader doc-correction PR from last cycle confirmed merged to main (docs-only, no app code changed)."
     }
   ],
   "knownOpenItems": {
