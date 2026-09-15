@@ -639,7 +639,20 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
         `this position (a concurrent sibling with a later expiry may still be exposed — check its own brief).`
       );
     }
-    const nowMs = Date.parse(ctx.asOf);
+    // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro PLAY, same day as the fix that
+    // introduced this line): `ctx.asOf` in REAL production is `etStamp(nowMs)`'s "YYYY-MM-DD HH:mm
+    // ET" format (play-brief-context.ts:181 — the ISO fallback only fires if etStamp itself throws,
+    // which it never does for a valid Date.now()), NOT an ISO-8601 string. `Date.parse` returns NaN
+    // on that format — confirmed directly (`Date.parse("2026-09-14 20:36 ET")` === NaN) — so
+    // `Number.isFinite(nowMs)` silently failed closed and `alreadyPrinted` could never become true
+    // in production, making the fix below dead code: PLAY's real brief, read ~4h05m after its print
+    // landed (well past the threshold), still showed the old "size down or exit before report"
+    // text. The regression tests added with this branch all built `ctx.asOf` as an ISO literal
+    // (`"2026-09-14T23:07:00.000Z"`), which `Date.parse` handles fine — a fixture shape that never
+    // matched what the real context loader emits, so green tests shipped a branch that could not
+    // fire on real data. `parseEtStamp` (already imported below for `printThresholdMs`) parses the
+    // real "YYYY-MM-DD HH:mm ET" shape; falls back to `Date.parse` for the rare ISO-fallback case.
+    const nowMs = parseEtStamp(ctx.asOf) ?? Date.parse(ctx.asOf);
     const printThresholdMs =
       earnings.days_until === 0 && earnings.earnings_date != null
         ? printAlreadyLandedThresholdMs(earnings.earnings_date, earnings.report_time)
