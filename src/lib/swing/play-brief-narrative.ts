@@ -725,6 +725,15 @@ export function counterThesisLine(
  * (Largo C6 omission — a never-rolled position gets no line at all, never a fabricated "not
  * rolled" one). Cites the most recent roll only (the last two legs) — the full chain is a
  * separate concern (record.ts's own composite), not something to unpack bullet-by-bullet here.
+ *
+ * Second sentence added 2026-09-15 (live repro INTC:35): the brief's own headline P&L is
+ * deliberately the TERMINAL leg's own exit P&L (play-brief-resolve.ts's `loadClosedPlay` avoids
+ * the chain-composite override on purpose — see closed-plays.ts's header on the peak/composite
+ * mismatch bug that protects against), so a rolled chain's real result — which can be materially
+ * worse than the terminal leg alone (INTC: -33.2% terminal vs -60.47% compounded composite) — was
+ * otherwise never visible anywhere in the brief. Cites ONLY `chainComposite`'s own scalar fields
+ * as plain text; deliberately never blended with the terminal leg's price/peak/trough numbers in
+ * the same clause, which is exactly the pairing that caused the original bug.
  */
 function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
   const rh = ctx.rollHistory;
@@ -740,7 +749,12 @@ function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
       ? new Date(curr.committedAt).toISOString().slice(0, 10)
       : null;
   const times = rh.rollCount === 1 ? "once" : `${rh.rollCount} times`;
-  return `**Rolled ${times}** — most recently from the ${fmtLeg(prev)} to the ${fmtLeg(curr)}${dateStr ? ` on ${dateStr}` : ""}.`;
+  const rollSentence = `**Rolled ${times}** — most recently from the ${fmtLeg(prev)} to the ${fmtLeg(curr)}${dateStr ? ` on ${dateStr}` : ""}.`;
+  const composite = rh.chainComposite;
+  if (!composite || composite.compoundedReturnPct == null) return rollSentence;
+  const compoundedStr = `${composite.compoundedReturnPct >= 0 ? "+" : ""}${composite.compoundedReturnPct.toFixed(1)}%`;
+  const worstStr = composite.worstLegPnlPct != null ? `${composite.worstLegPnlPct.toFixed(1)}%` : "n/a";
+  return `${rollSentence} Full chain result: **${compoundedStr} compounded** (${composite.outcome}, worst leg ${worstStr}) — this leg's own exit P&L above is only part of the story.`;
 }
 
 function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {

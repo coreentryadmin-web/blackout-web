@@ -2019,6 +2019,7 @@ test("tradeManagerNarrativeSection: rolled-once position discloses the roll (ope
           { rollSeq: 0, strike: 100, right: "C", expiry: "2026-08-15", committedAt: "2026-08-01T14:00:00.000Z" },
           { rollSeq: 1, strike: 110, right: "C", expiry: "2026-09-19", committedAt: "2026-08-20T15:30:00.000Z" },
         ],
+        chainComposite: null,
       },
     }),
     "open",
@@ -2026,6 +2027,7 @@ test("tradeManagerNarrativeSection: rolled-once position discloses the roll (ope
 
   assert.ok(section);
   assert.match(section!.body, /\*\*Rolled once\*\* — most recently from the \$100 call to the \$110 call on 2026-08-20\./);
+  assert.doesNotMatch(section!.body, /Full chain result/);
 });
 
 test("tradeManagerNarrativeSection: rolled-twice position says 'Rolled 2 times' and cites only the LATEST roll (closed bucket)", () => {
@@ -2039,6 +2041,7 @@ test("tradeManagerNarrativeSection: rolled-twice position says 'Rolled 2 times' 
           { rollSeq: 1, strike: 95, right: "P", expiry: "2026-08-15", committedAt: "2026-07-20T15:00:00.000Z" },
           { rollSeq: 2, strike: 100, right: "P", expiry: "2026-09-19", committedAt: "2026-08-25T16:00:00.000Z" },
         ],
+        chainComposite: null,
       },
     }),
     "closed",
@@ -2047,4 +2050,67 @@ test("tradeManagerNarrativeSection: rolled-twice position says 'Rolled 2 times' 
   assert.ok(section);
   assert.match(section!.body, /\*\*Rolled 2 times\*\* — most recently from the \$95 put to the \$100 put on 2026-08-25\./);
   assert.doesNotMatch(section!.body, /\$90/);
+  assert.doesNotMatch(section!.body, /Full chain result/);
+});
+
+test("tradeManagerNarrativeSection: rolled-and-resolved chain also cites the REAL chain-composite result, not just the terminal leg (live repro INTC:35, 2026-09-15)", () => {
+  // Live shape: terminal leg's own exit P&L (-33.2%, rendered elsewhere in the brief) materially
+  // understated the chain's real result (-60.47% compounded, worst leg -40.83%, a loss) — this
+  // sentence is the fix: cite the composite as plain text, never blended with the terminal leg's
+  // own price/peak/trough numbers (the exact pairing that caused the prior peak/composite bug).
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "CLOSED", recommendation: "HOLD", pnlPct: -33.2 }),
+      rollHistory: {
+        rollCount: 1,
+        legs: [
+          { rollSeq: 0, strike: 91, right: "P", expiry: "2026-08-15", committedAt: "2026-08-01T14:00:00.000Z" },
+          { rollSeq: 1, strike: 90, right: "P", expiry: "2026-09-19", committedAt: "2026-08-20T15:30:00.000Z" },
+        ],
+        chainComposite: {
+          rootPositionId: 30,
+          legs: 2,
+          gradedLegs: 2,
+          wins: 0,
+          losses: 2,
+          allLegsWon: false,
+          outcome: "loss",
+          chainResolved: true,
+          worstLegPnlPct: -40.83,
+          sumPnlPct: -74.02,
+          compoundedReturnPct: -60.47,
+          low_n: true,
+        },
+      },
+    }),
+    "closed",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Rolled once\*\* — most recently from the \$91 put to the \$90 put on 2026-08-20\./);
+  assert.match(section!.body, /Full chain result: \*\*-60\.5% compounded\*\* \(loss, worst leg -40\.8%\)/);
+});
+
+test("tradeManagerNarrativeSection: rolled but still-open chain (chainComposite null) omits the composite sentence, never fabricates one", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "HOLD", pnlPct: 5 }),
+      rollHistory: {
+        rollCount: 1,
+        legs: [
+          { rollSeq: 0, strike: 100, right: "C", expiry: "2026-08-15", committedAt: "2026-08-01T14:00:00.000Z" },
+          { rollSeq: 1, strike: 110, right: "C", expiry: "2026-09-19", committedAt: "2026-08-20T15:30:00.000Z" },
+        ],
+        // chain hasn't actually resolved yet (most recent leg still open) — loadRollHistory only
+        // ever populates chainComposite once composite.chainResolved is true, so this is the real
+        // shape a still-open rolled position gets, not a contrived edge case.
+        chainComposite: null,
+      },
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Rolled once\*\*/);
+  assert.doesNotMatch(section!.body, /Full chain result/);
 });

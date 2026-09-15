@@ -5,6 +5,7 @@
 import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { fetchOpenSwingPositions, fetchSwingPositionById, fetchSwingPositionChain } from "@/lib/db";
+import { buildSwingRecord } from "./record";
 import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
@@ -121,9 +122,15 @@ async function loadRollHistory(positionId: number | null | undefined): Promise<S
     const rootId = row.root_position_id ?? row.id;
     const chain = await fetchSwingPositionChain(rootId);
     if (chain.length < 2) return null; // never rolled — nothing to disclose
+    // Same function record.ts's own route (/api/market/swing/record) and the Closed-tab list view
+    // (closedDeckSourcesFromChains) use — never recomputed here, so this can't drift from either.
+    // Only cite the composite once the chain has actually closed; a still-rolling chain's "worst
+    // leg so far" isn't the chain's real result yet.
+    const { composite } = buildSwingRecord(chain);
     return {
       rollCount: chain.length - 1,
       legs: chain.map((r) => swingRollHistoryLegFromRow(r)),
+      chainComposite: composite.chainResolved ? composite : null,
     };
   } catch {
     return null;
