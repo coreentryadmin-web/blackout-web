@@ -2854,6 +2854,13 @@
       "healthcheck": "GREEN across all non-skipped stages, 7th consecutive identical clean reading tonight: A_edition GREEN (1 play, fresh, not degraded), B_marks GREEN (nothing open), C_record GREEN resolved=28, D_pull_status SKIPPED (correct pre-market state).",
       "note": "PR #4998 branch still intact at 61f01847c, CI still zero check-runs registered. Scheduled check-in at 00:04 UTC will re-verify and act. No new bugs/ideas this cycle beyond what is already tracked.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T00:06:00Z",
+      "cycle": "scheduled check-in (Re-check PR #4998, 2nd collision)",
+      "healthcheck": "Not re-run this entry -- resolving the PR took priority; last confirmed GREEN x7 at 23:52.",
+      "note": "PR #4998 (uwGetSafe retry-budget fix) RESOLVED -- merged into main as d3bc64f8c. Confirmed via real content inspection on origin/main (not just API status): unusual-whales.ts carries the corrected rateLimiterEnvNumber-based ms read (not the buggy uwEnvSec seconds-based version), both regression tests present in unusual-whales.test.ts, findings-staging doc present. CI check-runs confirm verify:success (23:49:31-23:59:56) and CodeQL:success before the merge at 00:01:44 -- so CI DID run on this PR despite every earlier poll this session (get_status/get_check_runs/list_workflow_runs, checked at least 5 separate times over ~35 minutes) reporting zero runs; this reads as a real GitHub API read-lag/caching issue on this session's end (consistent with CLAUDE.md's own documented GitHub API budget/caching quirks), not a genuine webhook delivery failure as concluded earlier -- worth remembering next time before declaring a PR webhook-gapped. Local branch fix/dossier-uw-abort-wiring deleted (merged). PR subscription auto-cleared. This closes out tonight's real, user-directed investigation that started several cycles ago (a genuine human asking why the evening edition had only 1 play) all the way through to a merged, tested, documented production fix -- survived two full branch-overwrite collisions with a parallel session along the way, both recovered without losing the correctness fix (a real seconds/ms unit bug the other session's implementation had). Returning to routine 15-min cadence.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
