@@ -326,6 +326,18 @@ export function vectorPlayCoaching(
   // Largo C2 — stale Vector desk must not coach thesis/invalidation (same gate as technicalsCoaching #4400).
   if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
 
+  // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TDOC/ASAN): `vp.bias` is a
+  // four-value enum (`VectorPlayBias`, vector-play-engine.ts) — "long" | "short" | "range" |
+  // "neutral" — not just the two directional values this function used to check. The old `aligned`
+  // test only recognized "long"/"short" as a match; anything else (including an explicit "range"/
+  // "neutral" — Vector genuinely declining to take a position) fell into the SAME `!aligned` branch
+  // as a real directional conflict. Live: TDOC/ASAN's headline read "POSITION · stand aside — no
+  // clean edge" (bias "neutral"/"range"), yet the brief still appended "— cross-check Vector thesis
+  // vs swing direction" right after it — a trader reasonably reads that as Vector disagreeing, when
+  // Vector explicitly declined to take a position at all. Only fire the conflict-phrased suffix when
+  // Vector's own bias is genuinely directional and doesn't match; a non-directional bias earns
+  // neither the "aligned" nor the "cross-check" framing, since neither claim is true of "no opinion".
+  const biasIsDirectional = vp.bias === "long" || vp.bias === "short";
   const aligned =
     (play.direction === "LONG" && vp.bias === "long") ||
     (play.direction === "SHORT" && vp.bias === "short");
@@ -344,7 +356,7 @@ export function vectorPlayCoaching(
   if (!parts.length) return null;
 
   let line = `Vector desk: ${parts.join(" · ")}`;
-  if (!aligned && vp.thesis && !conflictAlreadyNoted) {
+  if (!aligned && biasIsDirectional && vp.thesis && !conflictAlreadyNoted) {
     line += " — **cross-check** Vector thesis vs swing direction.";
   } else if (aligned) {
     line += " — **aligned** with swing lane.";
