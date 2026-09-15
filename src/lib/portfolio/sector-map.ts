@@ -20,7 +20,9 @@ const SECTORS: Record<string, string[]> = {
   "ev-auto": ["TSLA", "RIVN", "LCID", "F", "GM"],
   financials: ["JPM", "GS", "BAC", "MS", "WFC", "C", "SCHW", "BLK", "AXP", "V", "MA"],
   energy: ["XOM", "CVX", "OXY", "SLB", "COP", "MPC", "PSX", "DVN", "HAL"],
-  "crypto-equity": ["COIN", "MARA", "RIOT", "MSTR", "CLSK", "HUT", "CIFR", "BITF", "WULF", "IREN"],
+  // MSTU/MSTX are leveraged single-stock ETFs tracking MSTR itself — same bet, different wrapper.
+  // GLXY (Galaxy Digital) is a crypto-holdings proxy in the same risk bucket as COIN/MARA/etc.
+  "crypto-equity": ["COIN", "MARA", "RIOT", "MSTR", "CLSK", "HUT", "CIFR", "BITF", "WULF", "IREN", "MSTU", "MSTX", "GLXY"],
   "china-adr": ["BABA", "PDD", "NIO", "JD", "BIDU", "LI", "XPEV", "FUTU"],
   consumer: ["NKE", "SBUX", "MCD", "DIS", "WMT", "COST", "TGT", "LULU", "CMG"],
   healthcare: ["LLY", "UNH", "PFE", "JNJ", "MRNA", "ABBV", "TMO", "AMGN"],

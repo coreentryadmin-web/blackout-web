@@ -57,3 +57,23 @@ test("themed sectors resolve via sectorFor (crypto-equity, china-adr)", () => {
   assert.equal(resolveTheme("BABA"), "china-adr");
   assert.equal(sameThesis("BABA", "COIN"), false);
 });
+
+test("leveraged MSTR ETFs + Galaxy Digital cluster with crypto-equity (#4076 live finding: MSTU+MSTX book, no flag)", () => {
+  assert.equal(resolveTheme("MSTU"), "crypto-equity");
+  assert.equal(resolveTheme("MSTX"), "crypto-equity");
+  assert.equal(resolveTheme("GLXY"), "crypto-equity");
+  assert.equal(sameThesis("MSTU", "MSTX"), true);
+  assert.equal(sameThesis("MSTU", "MSTR"), true);
+  assert.equal(sameThesis("GLXY", "COIN"), true);
+});
+
+test("XRP wrapper tickers cluster with each other, not with crypto-equity mining/holding names (#4076: XRP+XRPZ+XXRP book, no flag)", () => {
+  assert.equal(ETF_PROXY_THEMES.XRP, "crypto-xrp");
+  assert.equal(resolveTheme("XRP"), "crypto-xrp");
+  assert.equal(resolveTheme("xrpz"), "crypto-xrp"); // case-insensitive
+  assert.equal(sameThesis("XRP", "XRPZ"), true);
+  assert.equal(sameThesis("XRPZ", "XXRP"), true);
+  // Deliberately NOT the same cluster as equity crypto proxies — a token's own price is a different
+  // risk driver than mining/holding-company equity beta.
+  assert.equal(sameThesis("XRP", "COIN"), false);
+});

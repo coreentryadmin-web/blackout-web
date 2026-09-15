@@ -12,6 +12,15 @@ test("sectorFor maps the liquid universe; unknown → null", () => {
   assert.equal(sectorFor(null), null);
 });
 
+test("sectorFor: MSTR's own leveraged single-stock ETFs and Galaxy Digital cluster with crypto-equity (#4076 live finding)", () => {
+  // MSTU/MSTX are leveraged wrappers on MSTR itself; GLXY is a crypto-holdings proxy — all the same
+  // risk bucket as COIN/MARA/MSTR. Previously unmapped, so a book holding MSTR + MSTX tripped no
+  // concentration flag at all (each resolved to its own isolated cluster).
+  assert.equal(sectorFor("MSTU"), "crypto-equity");
+  assert.equal(sectorFor("MSTX"), "crypto-equity");
+  assert.equal(sectorFor("GLXY"), "crypto-equity");
+});
+
 test("board setups get ranked, and same-sector same-direction is one thesis", () => {
   const setups: BoardSetupLike[] = [
     { ticker: "NVDA", direction: "long", score: 82 },
