@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T04:07:16Z",
+  "lastUpdated": "2026-09-15T04:21:53Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -2980,6 +2980,13 @@
       "healthcheck": "GREEN across all non-skipped stages (1 fresh play, nothing open, C_record resolved=26 -- see note, buckets sum consistently).",
       "note": "C_record resolved count dropped 28->26 vs the prior 4 cycles this hour (all read 28). Investigated rather than assuming noise: this check fired at 04:07:16 UTC == 00:07:16 EDT, 7 minutes past ET midnight. Traced the record query (fetchNighthawkOutcomeAnalytics, db.ts ~line 10059): `edition_for >= (NOW() AT TIME ZONE 'America/New_York')::date - N days` -- an ET-CALENDAR-DATE rolling window (the query's own comment explains this was deliberately fixed to avoid a bare UTC-session date ticking over early). At ET midnight the window boundary advances by exactly one full day, dropping whatever resolved plays sat on the edition_for date that just aged out of the 14-day (healthcheck default) window. This exactly explains a same-instant 2-play drop with zero data loss -- CONFIRMED BENIGN, not a bug, not escalating. Logging this explicitly so a future cycle doesn't re-investigate the same pattern from scratch: a resolved-count decrease across an ET-midnight boundary is EXPECTED and should not by itself trigger concern; only a decrease NOT coincident with ET midnight would be suspicious.",
       "action": "investigated-confirmed-benign"
+    },
+    {
+      "ts": "2026-09-15T04:21:53Z",
+      "cycle": "04:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS), trigger 2 of 4",
+      "healthcheck": "GREEN across all non-skipped stages (1 fresh play, nothing open, C_record resolved=26 stable -- confirms last cycle's ET-midnight-rollover explanation was correct, no further drift).",
+      "note": "Used this cycle for the secondary-priority live UI check (not yet done this session) via proxy-browser.cjs against /nighthawk (mobile-UA viewport, mintClerkPremiumSession for auth). Page loaded clean: 125 routed requests, 0 failed, no console errors surfaced, only the expected long-held marks/stream SSE connection. Could not deep-link straight to the Legacy tab specifically -- the desk defaults to the 0DTE tab on load, there is no URL query param or localStorage key for initial tab selection, and proxy-browser.cjs has no click/interaction support (screenshot-only), so a true Legacy-tab screenshot needs either a page code change (accept ?tab=legacy) or a click-capable harness -- noting as a minor tooling gap, not a Legacy defect, consistent with the standing v3 brief's own note that live UI checks are secondary/lower-frequency here. The API-level checks (healthcheck, edition, record) remain the primary correctness signal and are unaffected by this gap.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
