@@ -765,31 +765,6 @@ export function execSlippageCoaching(play: TerminalPlay): string | null {
   );
 }
 
-/** Underlying excursion vs option giveback. */
-export function underlyingExcursionCoaching(play: TerminalPlay): string | null {
-  const stock = fin(play.stockMovePct);
-  const peak = fin(play.stockPeakPct);
-  const trough = fin(play.stockTroughPct);
-  if (stock == null && peak == null && trough == null) return null;
-  const parts: string[] = [];
-  if (stock != null) parts.push(`stock **${fmtPct(stock)}** since flag`);
-  if (peak != null) parts.push(`peak **${fmtPct(peak)}**`);
-  if (trough != null) parts.push(`trough **${fmtPct(trough)}**`);
-  // Honest relative retracement (mfe-capture.ts), not point-difference — same fix as the sibling
-  // "Trade manager read" bullet (play-brief-narrative.ts) and "Hold plan" bullet
-  // (play-brief-intel.ts), FINDINGS 2026-09-10. captureFloor=80 is the MOST sensitive of the
-  // three call sites: this is a secondary aside appended to the underlying-tape line, not a
-  // standalone recommendation, so it can afford to flag a smaller giveback.
-  const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
-  const optGive =
-    giveback?.kind === "round_trip"
-      ? ` · option round-tripped past breakeven — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%**`
-      : giveback?.kind === "capture" && giveback.capturePct < 80
-        ? ` · option gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
-        : "";
-  return `**Underlying tape** — ${parts.join(" · ")}${optGive}. Trade the stock levels, not just premium.`;
-}
-
 /** Short interest / days-to-cover — squeeze fuel context. */
 export function shortInterestCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
   const fund = ctx.ecosystem?.arsenal?.fundamentals;
@@ -1118,7 +1093,16 @@ export function collectCoachingBullets(
   // has no RATCHET dependency), so nothing computable was lost — same dead-gate shape as
   // `scorecardCoaching`/`morningConfirmCoaching`, removed the same week for the identical reason.
   push(execSlippageCoaching(play));
-  push(underlyingExcursionCoaching(play));
+  // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `underlyingExcursionCoaching`
+  // (formerly here) gated on `play.stockMovePct`/`stockPeakPct`/`stockTroughPct` — fields written in
+  // exactly one place repo-wide, `use-legacy-quotes.ts` (a client-side, Legacy-only React hook).
+  // `terminalPlayFromHorizon` never sets them and `play-brief-resolve.ts` never patches them in, so
+  // the "stock **X%** since flag" / "peak" / "trough" clause could never render for swing. The
+  // function's one live-computable remainder — an option round-trip/giveback aside via
+  // `mfeCaptureOutcome(play.pnlPct, play.peak, null)` — is byte-for-byte the SAME call, same
+  // arguments, already live in `play-brief-intel.ts` and `play-brief-narrative.ts` (both predate
+  // this function), so nothing unique was actually lost: this call site was fully redundant with
+  // already-shipped content even before accounting for the dead gate around it.
   push(shortInterestCoaching(ctx, play));
   push(ivRankCoaching(play));
 
