@@ -3255,6 +3255,12 @@
       "trigger": ":21 cycle -- FIRST D_pull_status GREEN this session (market open)",
       "healthcheck": "GREEN across all 4 stages for the first time this session -- D_pull_status is no longer SKIPPED: {ticker: VNCE, verdict: GREEN, evidence: 'CONFIRMED <-> pulled=false agree'}.",
       "verification": "Cross-checked directly against the live edition: VNCE's morning_checked_at = 2026-09-15T13:15:13.577Z -- the nighthawk-morning-confirm cron fired essentially exactly on its registered 9:15 AM ET schedule (13 seconds after the minute mark), confirming cron-registry.ts's schedule_cron_utc is actually correct/firing in production, not just documented. Also checked VNCE's live Polygon last-trade: $7.48, now sitting right at the low edge of the $7.46-$7.84 entry band, up from the pre-market $7.27-7.35 that was below it (logged at :21 last hour) -- the play may fill shortly after open, consistent with normal open-session price action, nothing anomalous. D-stage healthcheck logic itself verified working correctly on its first live real-world exercise this session."
+    },
+    {
+      "at": "2026-09-15T13:38:06Z",
+      "trigger": ":36 cycle (RTH open)",
+      "healthcheck": "GREEN across all 4 stages, unchanged (VNCE still CONFIRMED/pulled=false, D stays GREEN in RTH).",
+      "note": "Spot-checked GET /api/admin/nighthawk/tier-export?days=1 -- as expected it only returns yesterday's (2026-09-14) already-graded DELL(unfilled)/HPE(unfilled, pulled) rows, not today's VNCE, since tier-export sources from fetchNighthawkOutcomeAnalytics (resolved/ graded plays only) and VNCE hasn't resolved yet. Consistent, not a gap. Quiet cycle -- no new investigation forced; holding capacity for genuinely fresh signal as the session continues through RTH."
     }
   ],
   "knownOpenItems": {
