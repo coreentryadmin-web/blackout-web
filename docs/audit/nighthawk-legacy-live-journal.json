@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T03:37:08Z",
+  "lastUpdated": "2026-09-15T03:52:15Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -2966,6 +2966,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged from prior cycles (1 fresh play, nothing open to mark-check, resolved=28 consistent).",
       "note": "PR #5012 (gamma_regime null-flip-not-null-regime fix) found already merged (merged_by: coreentryadmin-web, merged_at 2026-09-15T03:32:15Z) before this session took any merge action -- same external-merge pattern as #4998/#5006 earlier this session. Verified check runs first: verify + CodeQL both completed success (verify ran 03:19:42-03:30:49, ~11min). Verified actual content on origin/main: positioning.ts carries the gex.gamma_posture-based flip-null branch exactly as written. Local checkout synced to main, feature branch deleted, unsubscribed from PR activity. IMPORTANT deploy-timing nuance discovered while live-verifying: re-fetched todays real edition post-merge and index_dossiers still show unknown for SPY/QQQ/IWM/XLF/XLK (only XLE reads amplification, unchanged from before the fix -- XLE already had a real non-null flip pre-fix, so it was never affected). Traced why: edition-builder.ts bakes index_dossiers into the STATIC published edition at build time (last built 2026-09-14T21:49 UTC, a once-per-evening cron), not recomputed per GET request -- so this fix, though correctly merged and deployed to ECS, cannot visibly change an ALREADY-PUBLISHED edition. This is expected, not a fix failure.",
       "action": "fix-merged-verified-deploy-timing-noted"
+    },
+    {
+      "ts": "2026-09-15T03:52:15Z",
+      "cycle": "03:51 UTC trigger (trig_014EstpdmzdmgjkwYYFj5Cwe), trigger 4 of 4 -- completes this hour's full 4-trigger cadence",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open to mark-check, resolved=28 consistent).",
+      "note": "Spot-checked outcome-honesty forensics this cycle (mission area not yet touched this session) via GET /api/market/nighthawk/record, 30-day window: total_resolved=66, scoreable=50 (16 excluded as unfilled/pulled), decided=3 (2W/1L), win_rate 66.7% with an honestly wide CI [20.8, 93.9] and low_n correctly flagged. Notably the headline win_rate (66.7%) and profitable_rate_pct (42%)/avg_return_pct_edge (-2.38%) are reported side by side rather than only the flattering number -- no sign of a win-rate-without-P&L honesty gap. failure_modes breakdown (wrong_direction 29, target_unreachable 19, unfilled_never_traded_back 7, pulled_wrongly 5, pulled_correctly 4, clean_win 1, gap_win 1) is internally consistent with debrief.graded=66=debrief.debriefed. Nothing here clears the 3-instance bar for a real finding -- a single quick pull of self-consistent, honestly-labeled data is not evidence of a problem. No new bugs/enhancement ideas found this cycle beyond what is already shipped/in-flight this session (WS mark guard #5006, gamma_regime null-flip fix #5012, cross-lane midOf() note for the 0DTE lane). This completes the v3 mandate's first full 4-trigger hour (:06/:21/:36/:51) -- 2 real fixes shipped and verified live this hour alone.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
