@@ -5166,3 +5166,9 @@ than an end-of-session patch.
 - **What was broken:** `morningConfirmCoaching(play)` (play-brief-narrative-coaching.ts) branched on `play.pulled`/`play.morningStatus`/`play.morningReason` — fields genuinely populated for Legacy (`terminalPlayFromEdition`) but never for SWING/LEAPS (`terminalPlayFromHorizon` never sets them, and its own input type doesn't even carry them). Same root-cause shape as `scorecardCoaching`, removed earlier the same day — a field genuinely live for a sibling lane, structurally never populated for swing, read unconditionally in the swing coaching assembly's WATCH-bucket branch.
 - **What changed:** removed the dead function and its call site, with a comment naming the identical `scorecardCoaching` precedent so a future reader recognizes the pattern.
 - **RTH check:** none needed — no-op removal, zero output change. `watchGateCoaching`, the sibling call directly below, already covers swing's own real WATCH-bucket gate signals.
+
+### 210. `progressRatchetCoaching` was called unconditionally in every swing coaching pass but was structurally guaranteed to always return null — chore/swing-remove-dead-ratchet-coaching — 2026-09-15
+
+- **What was broken:** `progressRatchetCoaching(play)` gated on `play.exitModel === "RATCHET"` — `terminalPlayFromHorizon` (the SWING/LEAPS adapter) hardcodes `exitModel: "SCALE_OUT"` for every swing row, never `"RATCHET"`. Third dead-gate instance found this session (after `scorecardCoaching`/`morningConfirmCoaching`), found via a systematic function-by-function sweep of the whole coaching module.
+- **What changed:** removed the dead function, its call site, its now-orphaned synthetic-fixture-only test, and the now-unused `fmtUsd` import + its stale comment block. `play.progress` itself is untouched — it's already rendered live via the Position section's "Trim progress" line.
+- **RTH check:** none needed — no-op removal, zero output change.
