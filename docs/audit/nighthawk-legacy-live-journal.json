@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T07:51:37Z",
+  "lastUpdated": "2026-09-15T08:10:57Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3085,6 +3085,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Quick capacity/PR sweep before closing the hour: still just the 4 pre-existing Dependabot major-version PRs (#4967/#4480/#4479/#4477), no new Cursor PRs, no jam. Nothing actionable. Completes this hour's full 4-trigger cadence -- the standout result was completing the entire tier-narrative-calibration investigation arc end-to-end within a single hour: found the stale '+2.99% avg' constant, shipped the export route (#5018), shipped the calibration script (#5020), and got a real first result (17 decided plays, SPREAD WITHOUT ORDER, correctly read as too thin to act on) -- from discovery to a running, evidence-producing tool in one session, following the exact same discipline every other calibration tool in this repo uses.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T08:10:57Z",
+      "cycle": "08:06 UTC trigger (trig_013hBo7PnRYHLUpx2D1Yxcfm) -- new hour, trigger 1 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "Investigated a genuinely fresh angle carried since the very start of this session: today's edition's market_recap.sector_tides showed tide:null for Technology/Financials/Energy while Healthcare/Consumer had real data. Formed a hypothesis (a sector-slug/UW_SECTOR_ALIASES mapping bug) and tested it directly against the live UW API. First probe (bypassing the app's own normalizeUwSector helper) wrongly suggested 'consumer' 400s -- caught that this was MY test script's own bug (it skipped normalization), not a product bug: re-ran through the real normalizeUwSector path and all 5 sectors (technology/financial->financial services/energy/healthcare/consumer->consumer cyclical) return 200 with real live data right now. Also confirmed uwCacheGet (uw-shared-cache.ts) never caches null/failed results (write gated on `result != null`), ruling out a stale-cache-masking explanation too. CONCLUSION: the code is correct; the null pattern in last night's published edition was very likely a one-off transient UW API hiccup during that specific sequential-fetch window (fetchSectorTidesSequential has no retry-on-failure), not a reproducible defect. No fix shipped -- correctly verified before touching code, avoided a wrong 'fix' for a non-bug. Noting as a single-instance observation, well below the 3-instance escalation bar; would only revisit if the SAME 3 sectors go null again on a future night.",
+      "action": "investigated-hypothesis-disproven"
     }
   ],
   "knownOpenItems": {
