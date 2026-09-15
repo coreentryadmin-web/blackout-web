@@ -646,6 +646,33 @@ node --import tsx scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --sin
 No gate/ranking changed by this entry — this is a measurement blocked on its own enabling plumbing,
 not evidence for or against the current ranking either way.
 
+**UNBLOCKED, MEASURED 2026-09-15 — the enabling PR is live, this is the originally-recommended
+validation, finally run.** `discovery_origin` is confirmed forwarded on `tier-export.ts` (`GET
+/api/admin/zerodte/tier-export`) in the current `main`. Ran
+`scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --json` against live production (21
+trading days since the 2026-08-25 PR #2846 merge, `thin_sample: false` — the overall population
+clears the script's own `--min-n=15` bar):
+
+- **Part A (directly observed, pure-BREAKOUT-only real committed plays):** n=74, win rate 47.3%,
+  avg P&L **−1.3%**.
+- **Part B (counterfactual split — MOMENTUM_ALSO vs GAIN_OVER_RANGE_EXCLUSIVE):**
+  `MOMENTUM_ALSO` (both rankings would have kept this ticker — the swap isn't why it's on the
+  board): n=62, WR 51.6%, avg P&L **+2.0%**. `GAIN_OVER_RANGE_EXCLUSIVE` (exists on the board only
+  *because of* the ranking swap — the swap's own doing): n=9, WR 33.3%, avg P&L **−10.3%**.
+
+Read with the same single-sample caution this repo applies to every other first-look A/B here
+(n=9 on the exclusive cohort is thin, well under the script's own 15-play bar for that SPECIFIC
+split even though the overall population clears it) — but the direction is consistent and not
+small: the names gain_over_range adds that momentum would not have picked are underperforming the
+shared cohort by a wide margin (18.3pp WR, 12.3pt avg P&L), which is exactly the failure shape the
+original 2026-08-07 finding's own proxy measurement could not see (it graded underlying
+continuation, not option P&L, spread, or contract-build failure). **No gate/ranking changed by
+this update** — this is now real evidence where before there was only a blocked premise, but n=9
+on the specific cohort that matters is not enough to act on unilaterally. Flagging for the
+0DTE-owning lane to weigh alongside the rest of this file's evidence; re-run as the population
+grows (`--since=2026-08-25 --json`, no flags needed — it re-derives the window from live data
+every run) before treating either number as settled.
+
 ## Edge cases / scenarios still to simulate
 VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regime (trade toward the
 flip / avoid pinned-to-wall); exit-engine replication vs hold-to-close; SPX/NDX index 0DTE; whole-market
