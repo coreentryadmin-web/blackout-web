@@ -3531,6 +3531,13 @@
       "sync": "origin/main had moved one commit (65a031810, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
       "healthcheck": "AMBER, unchanged -- same stable overnight state as prior cycles.",
       "investigation": "Fresh angle: RIG's option is very cheap ($0.10 entry premium, live Polygon quote earlier this session showed bid=0.09/ask=0.12, a ~28% spread relative to the $0.105 mid). Checked whether pickChainContract (deterministic-edition.ts) has any bid-ask spread liquidity guard beyond its open-interest floor -- found contractPremium()'s spread check at line ~154: rejects only when (ask-bid)/mid > 1.0 (100% of mid), extremely lenient, so RIG's 28% spread passes cleanly with no caveat. Considered flagging this as a liquidity gap, but concluded it's not a real issue on reflection: a wide RELATIVE spread is an inherent, unavoidable characteristic of very cheap sub-$0.20 options (a single $0.01 tick is a large % of the price), not evidence of a broken or illiquid market -- tightening this guard would mostly just exclude legitimate cheap-option 'small stakes, large % upside' picks, which may be an intentional part of the strategy mix (RIG's own thesis cites 7.5-day short-interest squeeze tailwind, a real catalyst). Considered-and-dismissed, not escalated -- a debatable strategy question, not a correctness bug."
+    },
+    {
+      "at": "2026-09-15T23:53:12Z",
+      "trigger": ":51 cycle (final of this hour)",
+      "sync": "origin/main had moved one commit (1da7cbce2, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "AMBER, unchanged -- same stable overnight state.",
+      "sweep": "Broad CloudWatch sweep for any nighthawk error/warn/fail-flagged log line since 20:00 UTC (covers the whole close->new-edition-publish window): 39 total nighthawk events, only 1 matched an error/warn/fail keyword, and that one was a benign funnel-stage summary line ([nighthawk/det-edition] funnel: 7 candidates -> 4 below score floor -> 3 with contract, 0 stock-only, 0 geometry-fail -> 3 built) whose 'fail' match was just a zero-valued counter, not a real failure. Confirms tonight's edition build funnel is clean and auditable end to end: 7 raw candidates, 4 dropped for a clear reason (score floor), 3 built successfully, all with real option contracts this time (0 stock-only, unlike VNCE). No real errors anywhere in the Legacy pipeline this evening."
     }
   ],
   "knownOpenItems": {
