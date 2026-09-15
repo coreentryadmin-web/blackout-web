@@ -175,6 +175,83 @@ test("formatQueueWaitLog: at/above threshold logs the wait, tagged by caller typ
   );
 });
 
+// Regression for the alerting gap MARKET-OPEN-VALIDATION.md's 2026-09-08 13:32-14:08 UTC watch-
+// list entry found and left scoped, ready to build: a 37+-minute, platform-wide sustained queue-
+// timeout condition (real demand exceeding GLOBAL_MAX_RPS) had NO Discord alert anywhere — only
+// `alertRedisDegradedOnce` existed, and that fires on a completely different condition (Redis
+// ceiling unreachable). pruneQueueTimeoutWindow is the pure windowing logic the new
+// noteQueueTimeoutForAlert/noteQueueAdmissionRecoveryForAlert pair is built on.
+test("pruneQueueTimeoutWindow drops timestamps outside the window, keeps the ones inside it", async () => {
+  const { pruneQueueTimeoutWindow } = await import("./uw-rate-limiter");
+  const now = 100_000;
+  const kept = pruneQueueTimeoutWindow([now - 70_000, now - 61_000, now - 59_999, now - 1_000, now], now, 60_000);
+  assert.deepEqual(kept, [now - 59_999, now - 1_000, now]);
+});
+
+test("pruneQueueTimeoutWindow: an empty or fully-stale window prunes to empty, never throws", async () => {
+  const { pruneQueueTimeoutWindow } = await import("./uw-rate-limiter");
+  assert.deepEqual(pruneQueueTimeoutWindow([], 100_000, 60_000), []);
+  assert.deepEqual(pruneQueueTimeoutWindow([1_000, 2_000], 100_000, 60_000), []);
+});
+
+test("queue-timeout surge alert fires only at the sustained threshold, not on a single timeout — and re-arms once the rolling count recovers", async () => {
+  const {
+    noteQueueTimeoutForAlert,
+    noteQueueAdmissionRecoveryForAlert,
+    isQueueTimeoutAlertLatched,
+    resetQueueTimeoutAlertForTest,
+  } = await import("./uw-rate-limiter");
+  resetQueueTimeoutAlertForTest();
+
+  let t = 0;
+  const now = () => t;
+
+  // A single isolated timeout — and even 4 of the 5-timeout threshold — must never page. This is
+  // the exact case queue-budget.ts's own comment calls "normal/expected burst behavior".
+  for (let i = 0; i < 4; i++) {
+    noteQueueTimeoutForAlert(now);
+    t += 1_000;
+  }
+  assert.equal(isQueueTimeoutAlertLatched(), false, "must not page below the sustained threshold");
+
+  // The 5th timeout within the 60s window crosses the threshold — pages once.
+  noteQueueTimeoutForAlert(now);
+  assert.equal(isQueueTimeoutAlertLatched(), true, "must page once the sustained threshold is crossed");
+
+  // Further timeouts while still latched must not re-page (no assertion needed beyond staying
+  // latched — alertQueueTimeoutSurgeOnce's own guard is what's under test here).
+  noteQueueTimeoutForAlert(now);
+  assert.equal(isQueueTimeoutAlertLatched(), true);
+
+  // A later successful admission, once the rolling window has aged the old timeouts out, re-arms
+  // the latch — mirrors alertRedisDegradedOnce/clearAlertOnRedisRecovery's exact shape.
+  t += 120_000; // well past the 60s window — every prior timestamp is now stale
+  noteQueueAdmissionRecoveryForAlert(now);
+  assert.equal(isQueueTimeoutAlertLatched(), false, "must re-arm once the rolling count drops back under threshold");
+});
+
+test("noteQueueAdmissionRecoveryForAlert is a no-op while not latched (the common healthy-admission path)", async () => {
+  const { noteQueueAdmissionRecoveryForAlert, isQueueTimeoutAlertLatched, resetQueueTimeoutAlertForTest } =
+    await import("./uw-rate-limiter");
+  resetQueueTimeoutAlertForTest();
+  assert.doesNotThrow(() => noteQueueAdmissionRecoveryForAlert());
+  assert.equal(isQueueTimeoutAlertLatched(), false);
+});
+
+// throttleUw's wiring itself: acquireSlot() throws RateLimiterQueueTimeoutError deep in the
+// admission stack (not worth reproducing the real timing here — see the "acquireGlobalRedisSlot
+// passes the RESERVED ceiling" test above for this file's existing precedent of checking wiring
+// correctness by source when simulating the real condition isn't practical). Confirms the catch
+// path records the timeout via isQueueTimeout before re-throwing (never swallows the error), and
+// the success path calls the recovery hook.
+test("throttleUw records a queue timeout via isQueueTimeout before re-throwing, and calls the recovery hook on success", () => {
+  const src = readFileSync(fileURLToPath(new URL("./uw-rate-limiter.ts", import.meta.url)), "utf8");
+  const fn = src.match(/export async function throttleUw[\s\S]*?\n}/)?.[0];
+  assert.ok(fn, "throttleUw() not found");
+  assert.match(fn!, /catch \(err\) \{\s*if \(isQueueTimeout\(err\)\) noteQueueTimeoutForAlert\(\);\s*throw err;/);
+  assert.match(fn!, /noteQueueAdmissionRecoveryForAlert\(\);/);
+});
+
 test("runWithBackgroundUwSweep does not leak into a concurrent call outside its context (AsyncLocalStorage isolation)", async () => {
   const { reserveForLiveTraffic, runWithBackgroundUwSweep } = await import("./uw-rate-limiter");
   const [inSweep, outsideSweep] = await Promise.all([

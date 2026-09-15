@@ -13,7 +13,7 @@ import {
   ensureProviderBreakerSubscription,
   type BreakerSubscriptionState,
 } from "./provider-rate-limiter-shared";
-import { QueueBudget, resolveQueueBudgetMs } from "./queue-budget";
+import { QueueBudget, resolveQueueBudgetMs, isQueueTimeout } from "./queue-budget";
 
 export { computeDegradedLocalRps, computeDegradedLocalConcurrency } from "./provider-rate-limiter-shared";
 
@@ -570,6 +570,95 @@ export function formatQueueWaitLog(waitedMs: number, isBackgroundSweep: boolean)
   return `[uw] queue wait ${waitedMs}ms${isBackgroundSweep ? " (background sweep)" : ""}`;
 }
 
+/**
+ * Rolling window for detecting a SUSTAINED queue-timeout surge — a real-demand-exceeds-
+ * GLOBAL_MAX_RPS condition, not the occasional expected burst timeout. MARKET-OPEN-VALIDATION.md's
+ * 2026-09-08 13:32-14:08 UTC incident found this had NO alert anywhere: `RateLimiterQueueTimeoutError`
+ * (queue-budget.ts) was thrown, correctly, but only ever propagated to the caller — a 37+-minute,
+ * platform-wide degradation was invisible to Discord ops the entire time it was measured, because
+ * the only existing UW alert (`alertRedisDegradedOnce` below) fires on a DIFFERENT condition (the
+ * Redis ceiling itself becoming unreachable) — the limiter can be working exactly as designed,
+ * against a healthy Redis ceiling, and still be dropping most callers because GLOBAL_MAX_RPS is too
+ * small for current demand, with nothing paging ops about it.
+ */
+const QUEUE_TIMEOUT_ALERT_WINDOW_MS = 60_000;
+/** Timeouts within the window before paging — a single timeout is normal, expected burst
+ *  behavior (see queue-budget.ts's own "never page on an isolated timeout" framing) and must
+ *  never alert on its own. */
+const QUEUE_TIMEOUT_ALERT_THRESHOLD = 5;
+
+let queueTimeoutTimestamps: number[] = [];
+let queueTimeoutAlerted = false;
+
+/** Pure: drop timestamps outside the window. Separated so the threshold logic is unit-testable
+ *  without a real clock or simulated rate-limiter contention — mirrors formatQueueWaitLog's own
+ *  "pure formatter, testable in isolation" split above. */
+export function pruneQueueTimeoutWindow(
+  timestamps: readonly number[],
+  nowMs: number,
+  windowMs: number = QUEUE_TIMEOUT_ALERT_WINDOW_MS
+): number[] {
+  return timestamps.filter((t) => nowMs - t < windowMs);
+}
+
+/** True once the sustained-surge alert is latched (paged, not yet re-armed). Exported for tests
+ *  only — production callers never need to branch on this themselves. */
+export function isQueueTimeoutAlertLatched(): boolean {
+  return queueTimeoutAlerted;
+}
+
+/** Test-only reset of the rolling window + latch (mirrors resetUwCircuitForTest below). */
+export function resetQueueTimeoutAlertForTest(): void {
+  queueTimeoutTimestamps = [];
+  queueTimeoutAlerted = false;
+}
+
+/** Page ops once when the rolling queue-timeout count crosses the sustained-surge threshold.
+ *  Fire-once latch, same shape as alertRedisDegradedOnce: pages once on the transition INTO
+ *  surge, then stays silent (even as more timeouts arrive) until noteQueueAdmissionRecoveryForAlert
+ *  observes the rolling count has dropped back under threshold. */
+function alertQueueTimeoutSurgeOnce(countInWindow: number): void {
+  if (queueTimeoutAlerted) return;
+  queueTimeoutAlerted = true;
+  void import("@/features/spx/lib/spx-play-notify")
+    .then(({ notifyOpsDiscord }) =>
+      notifyOpsDiscord({
+        title: "UW rate-limiter queue timeouts surging",
+        body:
+          `${countInWindow} callers exceeded the ${queueBudgetMs()}ms admission queue budget within the ` +
+          `last ${Math.round(QUEUE_TIMEOUT_ALERT_WINDOW_MS / 1000)}s (GLOBAL_MAX_RPS=${GLOBAL_MAX_RPS}). Real ` +
+          `demand is exceeding the shared UW rate-limiter ceiling — requests are being DROPPED, not just ` +
+          `slow. Re-arms once the rate drops back under ${QUEUE_TIMEOUT_ALERT_THRESHOLD} in a ` +
+          `${Math.round(QUEUE_TIMEOUT_ALERT_WINDOW_MS / 1000)}s window.`,
+        severity: "warning",
+      })
+    )
+    .catch(() => {
+      queueTimeoutAlerted = false; // alert never delivered — allow a later retry
+    });
+}
+
+/** Record one queue-timeout occurrence; pages ops once the rolling window crosses the sustained
+ *  threshold. Called from throttleUw's catch — never changes admission behavior itself. */
+export function noteQueueTimeoutForAlert(now: () => number = Date.now): void {
+  const nowMs = now();
+  queueTimeoutTimestamps = pruneQueueTimeoutWindow([...queueTimeoutTimestamps, nowMs], nowMs);
+  if (queueTimeoutTimestamps.length >= QUEUE_TIMEOUT_ALERT_THRESHOLD) {
+    alertQueueTimeoutSurgeOnce(queueTimeoutTimestamps.length);
+  }
+}
+
+/** Re-arm the surge latch once the rolling count has genuinely dropped back under threshold.
+ *  Cheap no-op on the common healthy path (queueTimeoutAlerted stays false) so this costs
+ *  nothing on every uncontended admission — only does the prune+check work while latched. */
+export function noteQueueAdmissionRecoveryForAlert(now: () => number = Date.now): void {
+  if (!queueTimeoutAlerted) return;
+  queueTimeoutTimestamps = pruneQueueTimeoutWindow(queueTimeoutTimestamps, now());
+  if (queueTimeoutTimestamps.length < QUEUE_TIMEOUT_ALERT_THRESHOLD) {
+    queueTimeoutAlerted = false;
+  }
+}
+
 /** Pace a single UW HTTP call through local + optional Redis-global buckets. */
 export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   // Hunt-budget gate (cache-reader rule): when a Night Hawk hunt is running, a GENUINE
@@ -581,7 +670,14 @@ export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   if (!tryClaimHuntUwCall()) {
     throw new UwHuntBudgetExhaustedError();
   }
-  const waitedMs = await acquireSlot();
+  let waitedMs: number;
+  try {
+    waitedMs = await acquireSlot();
+  } catch (err) {
+    if (isQueueTimeout(err)) noteQueueTimeoutForAlert();
+    throw err;
+  }
+  noteQueueAdmissionRecoveryForAlert();
   const logLine = formatQueueWaitLog(waitedMs, isBackgroundUwSweep());
   if (logLine) console.warn(logLine);
   try {
