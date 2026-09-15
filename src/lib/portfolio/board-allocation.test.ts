@@ -12,13 +12,30 @@ test("sectorFor maps the liquid universe; unknown → null", () => {
   assert.equal(sectorFor(null), null);
 });
 
-test("sectorFor: MSTR's own leveraged single-stock ETFs and Galaxy Digital cluster with crypto-equity (#4076 live finding)", () => {
-  // MSTU/MSTX are leveraged wrappers on MSTR itself; GLXY is a crypto-holdings proxy — all the same
-  // risk bucket as COIN/MARA/MSTR. Previously unmapped, so a book holding MSTR + MSTX tripped no
+test("sectorFor: MSTR's own leveraged single-stock ETFs, Galaxy Digital, and SBET cluster with crypto-equity (#4076 live finding)", () => {
+  // MSTU/MSTX are leveraged wrappers on MSTR itself; GLXY/SBET are crypto-holdings proxies — all the
+  // same risk bucket as COIN/MARA/MSTR. Previously unmapped, so a book holding MSTR + MSTX tripped no
   // concentration flag at all (each resolved to its own isolated cluster).
   assert.equal(sectorFor("MSTU"), "crypto-equity");
   assert.equal(sectorFor("MSTX"), "crypto-equity");
   assert.equal(sectorFor("GLXY"), "crypto-equity");
+  assert.equal(sectorFor("SBET"), "crypto-equity");
+});
+
+test("sectorFor: single-stock leveraged ETFs cluster with their OWN underlying, never with each other (#4076 batch 26 live finding)", () => {
+  // RBLU/GMEU/SOFX have no thematic peer of their own — each pairs ONLY with its own underlying.
+  assert.equal(sectorFor("RBLU"), "roblox");
+  assert.equal(sectorFor("RBLX"), "roblox");
+  assert.equal(sectorFor("GMEU"), "gamestop");
+  assert.equal(sectorFor("GME"), "gamestop");
+  assert.equal(sectorFor("SOFX"), "sofi");
+  assert.equal(sectorFor("SOFI"), "sofi");
+  // Different companies — never a false merge between unrelated leveraged-ETF pairs.
+  assert.notEqual(sectorFor("RBLU"), sectorFor("GMEU"));
+  assert.notEqual(sectorFor("GMEU"), sectorFor("SOFX"));
+  // PLTU (leveraged PLTR) joins PLTR's existing software cluster rather than its own pair.
+  assert.equal(sectorFor("PLTU"), "software");
+  assert.equal(sectorFor("PLTU"), sectorFor("PLTR"));
 });
 
 test("board setups get ranked, and same-sector same-direction is one thesis", () => {

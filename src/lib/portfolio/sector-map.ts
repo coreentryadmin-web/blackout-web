@@ -16,17 +16,24 @@ const SECTORS: Record<string, string[]> = {
   "index-etf": ["SPY", "QQQ", "IWM", "DIA", "SPX", "SPXW", "NDX", "RUT"],
   semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI"],
   megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META"],
-  software: ["PLTR", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP"],
+  // PLTU is a leveraged single-stock ETF tracking PLTR itself — same bet, different wrapper.
+  software: ["PLTR", "PLTU", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP"],
   "ev-auto": ["TSLA", "RIVN", "LCID", "F", "GM"],
   financials: ["JPM", "GS", "BAC", "MS", "WFC", "C", "SCHW", "BLK", "AXP", "V", "MA"],
   energy: ["XOM", "CVX", "OXY", "SLB", "COP", "MPC", "PSX", "DVN", "HAL"],
   // MSTU/MSTX are leveraged single-stock ETFs tracking MSTR itself — same bet, different wrapper.
-  // GLXY (Galaxy Digital) is a crypto-holdings proxy in the same risk bucket as COIN/MARA/etc.
-  "crypto-equity": ["COIN", "MARA", "RIOT", "MSTR", "CLSK", "HUT", "CIFR", "BITF", "WULF", "IREN", "MSTU", "MSTX", "GLXY"],
+  // GLXY (Galaxy Digital) and SBET (crypto-treasury) are crypto-holdings proxies in the same risk
+  // bucket as COIN/MARA/etc.
+  "crypto-equity": ["COIN", "MARA", "RIOT", "MSTR", "CLSK", "HUT", "CIFR", "BITF", "WULF", "IREN", "MSTU", "MSTX", "GLXY", "SBET"],
   "china-adr": ["BABA", "PDD", "NIO", "JD", "BIDU", "LI", "XPEV", "FUTU"],
   consumer: ["NKE", "SBUX", "MCD", "DIS", "WMT", "COST", "TGT", "LULU", "CMG"],
   healthcare: ["LLY", "UNH", "PFE", "JNJ", "MRNA", "ABBV", "TMO", "AMGN"],
   "ai-power": ["VST", "CEG", "NEE", "GEV", "OKLO", "SMR", "ASTS"],
+  // Single-stock leveraged ETFs whose underlying has no existing themed peer — each pair is its OWN
+  // cluster (never merged with an unrelated leveraged-ETF pair) so RBLU only overlaps with RBLX, etc.
+  roblox: ["RBLX", "RBLU"],
+  gamestop: ["GME", "GMEU"],
+  sofi: ["SOFI", "SOFX"],
 };
 
 // Inverted once at module load: TICKER → sector.
