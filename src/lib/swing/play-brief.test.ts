@@ -113,6 +113,11 @@ test("composeSwingPlayBrief: OPEN play with a same-ticker sibling live position 
   assert.ok(sib, "must disclose the concurrent sibling position instead of silently omitting it");
   assert.match(sib!.body, /13C 2026-09-18/);
   assert.match(sib!.body, /2 concurrent live position/);
+  // Largo C7 (2026-09-15): the sibling-positions section makes a concrete, checkable claim — it
+  // must have a matching envelope.evidence entry, same as every other data-sourced narrative claim.
+  const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
+  assert.ok(sibEvidence, "sibling-position claim must carry a matching evidence entry (Largo C7)");
+  assert.match(sibEvidence!.text, /2 concurrent live position/);
 });
 
 test("composeSwingPlayBrief: OPEN play with no same-ticker siblings omits the disclosure section", () => {
@@ -130,6 +135,51 @@ test("composeSwingPlayBrief: OPEN play with no same-ticker siblings omits the di
   const brief = composeSwingPlayBrief(ctx);
   const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
   assert.equal(sib, undefined, "no sibling exists — section must not appear");
+  assert.ok(
+    !brief.envelope.evidence.some((e) => e.text.includes("concurrent live position")),
+    "no sibling exists — no evidence entry either",
+  );
+});
+
+test("composeSwingPlayBrief: Book context concentration carries a matching evidence entry (Largo C7)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "OPEN", recommendation: "HOLD" }),
+    asOf: "2026-09-15T15:00:00.000Z",
+    sessionDate: "2026-09-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    openBook: [
+      { ticker: "AMD", direction: "LONG" },
+      { ticker: "SMH", direction: "LONG" },
+    ],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const book = brief.envelope.sections.find((s) => s.title === "Book context");
+  assert.ok(book, "sanity: the section itself must fire for this fixture");
+  const overlapEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Book overlap:"));
+  assert.ok(overlapEvidence, "Book context's concentration claim must carry a matching evidence entry (Largo C7)");
+  assert.match(overlapEvidence!.text, /2 same-direction position/);
+});
+
+test("composeSwingPlayBrief: CLOSED play never surfaces a Book overlap evidence entry (matches the section's own gating)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "CLOSED" }),
+    asOf: "2026-09-15T15:00:00.000Z",
+    sessionDate: "2026-09-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    openBook: [{ ticker: "AMD", direction: "LONG" }],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.ok(!brief.envelope.evidence.some((e) => e.text.startsWith("Book overlap:")));
 });
 
 test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope headline, not raw status (2026-09-10 gap fix)", () => {
