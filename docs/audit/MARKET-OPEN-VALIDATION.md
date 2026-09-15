@@ -5203,6 +5203,13 @@ than an end-of-session patch.
 - **What changed:** when execMark is known and already at/through the stop, Break watch now says "stop already breached on the executable side — bid $X.XX is at/through your premium stop $X.XX right now → exit or cut size." No gate/recommendation logic changed — purely a narrative-prominence fix.
 - **RTH check:** pull a live swing play-brief for an OPEN position where the bid has fallen to or through the premium stop rail, and confirm Break watch reads "stop already breached," not the forward-looking "lose premium stop" framing.
 
+### 219. `play.trough` was rendered once as a bare number but never interpreted anywhere in the narrative — feat/swing-trough-resilience-coaching — 2026-09-15
+
+- **What was missing:** `play.trough` (the position's own worst intra-trade excursion) is computed alongside `play.peak` and rendered once in the Position section, but nothing in the trade-manager narrative interpreted it. Live: CG round-tripped from -34.6% to +221.2%; CRWD (the board's #1-ranked, largest open winner) from -57.2% to +161.3% — neither brief said anything about the drawdown that preceded the win.
+- **What changed:** a new coaching function, `troughResilienceCoaching`, fires on a real, meaningful swing (peak-minus-trough ≥ 40 points AND the position actually traded negative at some point), OPEN bucket only.
+- **RTH check:** pull a live swing play-brief for an OPEN position with a real drawdown-then-recovery history and confirm the "Volatility note" bullet cites both the trough and peak.
+
+
 ### 216. `breakTrigger`'s "Break watch" bullet never considered the GEX king strike — fix/swing-break-watch-king-strike — 2026-09-15
 
 - **What was broken:** `breakTrigger` (play-brief-narrative.ts) and `riskTheOtherSide` (play-brief-ladder.ts) both read the same nearest-sorted `focal` array, but `breakTrigger`'s support/resist predicates only recognized put_wall/dark_pool (support) and call_wall (resist) — never `kind === "king"` (the GEX king strike), even though it's in the same array. Live on CRWD (LONG, +149.8% P&L): the ladder widget correctly named the king at -2.41% as the real nearest risk while the SAME payload's "Break watch" bullet cited the put wall at -19.4% — 8x farther, disagreeing with the brief's own other risk-level widget. Also live on RBLU/ABTC/APPX/CGEM/CRWL/DRIP (support side) and GOOG (resist side).

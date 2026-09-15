@@ -76,6 +76,33 @@ export function thesisPillarCoaching(play: TerminalPlay): string | null {
   return null;
 }
 
+/**
+ * ENHANCEMENT (2026-09-15, Ask Largo standing mandate, forensic batch 33 — dedicated narrative-
+ * quality pass): `play.trough` (the position's own worst intra-trade excursion) is rendered once,
+ * as a bare number, in the Position section (play-brief.ts) — but nothing in the narrative ever
+ * INTERPRETS it. Live repro: CG round-tripped from -34.6% to +221.2%; CRWD (the board's #1-ranked,
+ * largest open winner) from -57.2% to +161.3% peak. That is real, conviction-relevant volatility a
+ * trade manager would cite ("this one tested you early, don't flinch on the next drawdown scare" /
+ * "this name doesn't sit still, bank into strength") — the exact kind of engineering investment the
+ * sibling "Round-tripped past breakeven" giveback coaching already got (mfeCaptureOutcome, peak-vs-
+ * current), but trough-vs-peak never received the same treatment. Only fires for a real, meaningful
+ * swing (peak-minus-trough >= 40 pts AND the position actually traded negative at some point) — a
+ * shallow trough is not conviction-relevant, and firing on every position would just be noise.
+ * OPEN-only: a CLOSED play's own "Lessons" section already covers post-mortem framing for that
+ * bucket, and this isn't meant to duplicate it.
+ */
+export function troughResilienceCoaching(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
+  if (bucket !== "open") return null;
+  const trough = play.trough;
+  const peak = play.peak;
+  if (typeof trough !== "number" || !Number.isFinite(trough)) return null;
+  if (typeof peak !== "number" || !Number.isFinite(peak)) return null;
+  if (trough >= 0) return null;
+  const swing = peak - trough;
+  if (swing < 40) return null;
+  return `**Volatility note** — this position swung from **${fmtPct(trough)}** at its worst to **${fmtPct(peak)}** at its best — real swing size; expect drawdowns and bank into strength rather than assuming a smooth ride.`;
+}
+
 /** Trim ladder state, time stop, runner, manage engine. */
 export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket !== "open") return null;
@@ -1051,6 +1078,7 @@ export function collectCoachingBullets(
 
   push(thesisBreakCoaching(play));
   push(thesisPillarCoaching(play));
+  push(troughResilienceCoaching(play, bucket));
 
   if (bucket === "watch") {
     // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `morningConfirmCoaching` (formerly
