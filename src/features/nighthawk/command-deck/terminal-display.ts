@@ -33,7 +33,7 @@ export type ManagementActionDisplay = {
 // check (a genuinely partial 0DTE pillar is a single-pillar `na`, not the whole-payload
 // swing-default pattern `thesisHealthUncalibrated` looks for) — scope the guard to SWING
 // so a real 0DTE score/label is never withheld by mistake.
-function healthIsCalibrated(play: TerminalPlay): boolean {
+export function healthIsCalibrated(play: TerminalPlay): boolean {
   return !(play.horizon === "SWING" && thesisHealthUncalibrated(play.thesisHealth));
 }
 
