@@ -2924,6 +2924,13 @@
       "healthcheck": "GREEN across all non-skipped stages, 16th consecutive identical clean reading.",
       "note": "Lighter cycle after four consecutive substantive checks (VNCE options-data ground-truth, record arithmetic reconciliation, debrief failure-mode baseline, PR #4998 full lifecycle) -- the live state genuinely hasn't changed (same 1-play pre-market edition, market still closed, no new marks to check since nothing is open yet). Deferring further outcome-honesty/enhancement digging to once RTH data starts flowing (D_pull_status will flip from SKIPPED once the 9:15am ET morning-confirm runs) rather than re-deriving the same static checks against unchanged data. No new bug/idea this cycle.",
       "action": "clean-no-action"
+    },
+    {
+      "ts": "2026-09-15T02:36:40Z",
+      "cycle": "02:36 UTC trigger (trig_01KJF6Dh2k4fQa3FUJRCSzJM), trigger 3 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, 18th consecutive identical clean reading.",
+      "note": "Found and fixed a genuine bug this window via code review (not a routine healthcheck signal): buildLegacyOptionMarkRow's WS mark branch had no bid=0 backstop-quote divergence guard, unlike the REST branch (which got one 2026-09-14 after the swing/banger lane's CRSR live repro). handleQuote (options-socket.ts) computes ws.mark via the identical midOf(bp, ap) logic, so a bid:0/ask-only backstop quote arriving over WS produces the same fabricated mid the REST fix was written to catch -- and since ws?.mark is checked FIRST in the priority chain, a bad WS mark would win outright and never reach the REST-side guard sitting one line below it. Fixed by extracting the divergence-check core into a new generic reliableMarkFromQuote(mark, bid, reference) export, extending getLiveOptionMarkSync to carry `last`, and running ws.mark through the same guard. RED->GREEN proven (git-stash): pre-fix returns the fabricated mark:7.5 instead of the real last-trade 0.07. Full local suite 14243/14243 pass, tsc clean. PR #5006 opened (draft), subscribed for CI tracking, CI in_progress as of this cycle -- check-in scheduled for 02:54 UTC to verify and merge once green.",
+      "action": "clean-no-action"
     }
   ],
   "knownOpenItems": {
