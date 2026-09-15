@@ -295,6 +295,9 @@
     },
     "2026-09-15T20:07Z_session_closed_summary": {
       "note": "2026-09-15 session CLOSED (session.heat.state=CLOSED, \"Night Hawk builds tomorrow's playbook after the close\"). Final tally: 1 play (SPXW short, tier B, FLOW origin), closed +21.02%, a clean win. Session highlights: (1) shipped PR #5037 (merged, a1b0ed775) -- decideTrimScale's floor-exit narrative now names already-banked trim tranches, found via forensic trace of the SPXW exit (both tranches fired:true but exit_detail never mentioned them); RED->GREEN proof, full suite 14313/0/3, tsc clean; logged to MARKET-OPEN-VALIDATION.md #228 for next-session live verification (needs a FRESH trim_scale floor exit, today's SPXW closed pre-fix). (2) Traced and ruled out as intentional: scan.ts onTrimBank only persists a trims-taken count + Discord notify, never a live per-tranche P&L record -- confirms the deeper managed_pnl_pct/timeline_tranches blending question is the already-documented WS-10/WS-11 offline-reconstruction coverage gap, left open on PR #4076 for someone with fuller context, not fixed. (3) Board-upstream degradation recurred 3 more times today (6th, 7th, 8th instances total across the 09-14/09-15 window) -- all self-resolved within 8-21min, /record never affected, consistent with the established pattern; root cause still untraced (no CloudWatch/AWS access this session). Session now POST_COMMIT->CLOSED, no open positions. Next session should: verify PR #5037 live per MARKET-OPEN-VALIDATION.md #228, continue tracking degradation recurrence-gap (noted possibly shortening -- 90min then 38min -- watch if that continues), and resume the standing forensic/enhancement-hunt cadence at next market open."
+    },
+    "2026-09-15T20:15Z": {
+      "note": "Quiet cycle. Session still CLOSED, unchanged since 20:07Z close-out. No new finding."
     }
   },
   "sessions": {
