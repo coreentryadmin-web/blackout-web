@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T02:55:01Z",
+  "lastUpdated": "2026-09-15T02:57:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -2938,6 +2938,13 @@
       "healthcheck": "not re-run this check-in -- purely a PR content-verification pass",
       "note": "PR #5006 (WS mark backstop-quote divergence guard, opened this session) was found already merged (merged_by: coreentryadmin-web, merged_at 2026-09-15T02:42:18Z) by an external/automated process before this session called any merge tool itself -- same pattern as PR #4998 earlier this session. Verified actual content on origin/main rather than trusting the merged flag: options-snapshot.ts carries reliableMarkFromQuote + the refactored reliableMarkFromSnapshot delegating to it; options-socket.ts getLiveOptionMarkSync returns last alongside mark/bid/ask/ts; legacy-option-mark-row.ts computes wsMark via reliableMarkFromQuote(ws.mark, ws.bid, ws.last) and uses it (not the raw ws.mark) ahead of snapMark in the priority chain. All three confirmed present and correct on origin/main HEAD (1d5bcdff6). Local checkout synced back to main (git reset --hard origin/main), local branch fix/legacy-ws-mark-backstop-divergence-guard deleted, unsubscribed from PR #5006 activity.",
       "action": "verified-and-synced"
+    },
+    {
+      "ts": "2026-09-15T02:57:00Z",
+      "cycle": "PR #5006 check-in follow-through -- no new Legacy trigger fired since prior turn",
+      "healthcheck": "GREEN (re-run this cycle: A_edition GREEN 1 fresh play, B_marks GREEN nothing open to check, C_record GREEN resolved=28 buckets consistent, D_pull_status SKIPPED morning confirm not yet run today)",
+      "note": "Check-in trig_01PPejyUHiZ7jzWbLECkPRTp fired but its task (verify+merge #5006) was already completed the prior turn -- confirmed no duplicate action taken. Used the idle window to keep digging per the aggressive-improvement mandate: grepped repo-wide for midOf()-without-reliableMarkFromQuote-guard, the exact bug class just fixed in legacy-option-mark-row.ts. Found the SAME unguarded pattern in three 0DTE-lane files outside this session's scope -- zerodte/condor.ts (4-leg iron-condor entry mids), zerodte/horizon-adapter.ts:73 (mid: setup.plan?.mark ?? midOf(bid, ask)), horizon-fanout.ts:98/162 (its own local midOf, no guard). NOT fixing from this session: this is 0DTE-lane surface (a separate active lane already did the original reliableMarkFromSnapshot sweep on 2026-09-14 per PR #4969 -- \"swing/banger lane\", not Legacy), and CLAUDE.md's ownership/collaboration discipline says raise cross-lane gaps rather than fork into another lane's files and risk duplicate/conflicting edits. Logging here as a single-instance cross-lane note (below the 3-instance noise-discipline escalation threshold) for whichever lane next touches 0DTE marks/condor code to pick up -- not yet raised on a PR thread since no live incident or open PR touches these files right now.",
+      "action": "cross-lane-note-logged"
     }
   ],
   "knownOpenItems": {
