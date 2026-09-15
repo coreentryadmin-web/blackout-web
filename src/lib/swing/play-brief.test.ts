@@ -2551,3 +2551,68 @@ test("composeSwingPlayBrief: Position section does not call a mark 'unknown' whe
   assert.match(position!.body, /P&L: \*\*-35\.9%\*\*/, `got: ${position!.body}`);
 });
 
+test("composeSwingPlayBrief: Thesis health section carries no bias for a healthy SHORT (Largo C5 — a non-directional quality score must never badge bullish on a bearish trade)", () => {
+  // Live defect (2026-09-15, Ask Largo standing mandate): thesisHealthSection mapped h.health
+  // (a direction-agnostic "is the setup intact" score) straight to bullish/bearish. A SHORT play
+  // with health>=65 (thesis performing exactly as intended, price falling) badged the section
+  // green "Bullish" via BieSectionCard's BiasPill — the literal opposite of what the trade is
+  // betting, contradicting the envelope's own top-level biasFromDirection(play.direction).
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      ticker: "XYZ",
+      direction: "SHORT",
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 3.1,
+      pnlPct: -36.7,
+      thesisHealth: {
+        health: 80,
+        entryIndex: 78,
+        currentIndex: 80,
+        delta: 2,
+        rung: "INTACT",
+        rungLabel: "Thesis intact",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.85,
+            currentScore: 0.9,
+            commitLabel: "triggered",
+            currentLabel: "confirmed",
+            status: "intact",
+            contributionPts: 25,
+            deltaPts: 1,
+          },
+        ],
+        moves: ["Persistence strengthened"],
+        committedAtEt: "Sep 3, 10:00 AM",
+        computedAtEt: "Sep 5, 4:00 PM",
+        advisory: null,
+        thesisBreakLevel: "intact",
+        thesisBreakNote: null,
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.bias, "bearish", "sanity: the SHORT play's own top-level bias must be bearish");
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a calibrated Thesis health section for this fixture");
+  assert.match(thesis!.body, /80%/);
+  assert.equal(
+    thesis!.bias,
+    undefined,
+    `Thesis health must carry no directional bias (it is a quality score, not a market call) — got: ${thesis!.bias}`,
+  );
+});
+

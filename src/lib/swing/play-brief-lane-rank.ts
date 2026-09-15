@@ -187,9 +187,13 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
     lines.push("Below median — confirm thesis before adding size; leader may be absorbing flow.");
   }
 
+  // Largo C5 (2026-09-15, Ask Largo standing mandate): same bug class as thesisHealthSection
+  // (play-brief.ts) — `deltaFromMedian` is a direction-agnostic entry-score rank, not a market
+  // call, so mapping it to bullish/bearish meant a top-ranked SHORT badged the section green
+  // "Bullish," contradicting the envelope's own biasFromDirection(play.direction). No
+  // section-level bias for a non-directional quality signal.
   return {
     title: "Lane rank",
     body: lines.join("\n\n"),
-    bias: snap.deltaFromMedian >= 10 ? "bullish" : snap.deltaFromMedian <= -10 ? "bearish" : "neutral",
   };
 }

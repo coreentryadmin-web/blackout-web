@@ -77,10 +77,17 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
       return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
     })
     .join("\n");
+  // Largo C5 (2026-09-15, Ask Largo standing mandate): `h.health` is a direction-agnostic "is the
+  // setup intact" score (persistence/entry-geometry/flow/regime/theta pillars) — it says nothing
+  // about market direction. Mapping it straight to bullish/bearish meant a SHORT play with a
+  // healthy thesis (health>=65, price correctly falling) badged the section green "Bullish" —
+  // the literal opposite of what the trade is betting, and a direct contradiction of the envelope's
+  // own top-level `biasFromDirection(play.direction)` (BieSectionCard renders `section.bias` as a
+  // color-coded BiasPill, so this reached real UI, not just inert JSON). No section-level bias for
+  // a non-directional quality signal — `bias` is already optional on RichSection.
   return {
     title: "Thesis health",
     body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
-    bias: h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
   };
 }
 
