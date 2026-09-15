@@ -50,6 +50,9 @@ export const CORRELATION_THEMES: Readonly<Record<string, ReadonlySet<string>>> =
  *  - QQQ / QQQM / NDX: the Nasdaq-100 is ~50% mega-cap tech + semis; it lives and dies with NVDA/AAPL/MSFT.
  *  - SMH / SOXX / SOXL / SOXS: pure semiconductor ETFs — literally the NVDA/AMD/AVGO basket.
  *  - XLK: tech-select sector SPDR, mega-cap-tech-dominated.
+ *  - XRP / XRPZ / XXRP: three separate wrapper tickers on the SAME underlying token — not equities, so they
+ *    get their own cluster ("crypto-xrp") rather than folding into sectorFor's "crypto-equity" (mining/holding
+ *    equities like COIN/MSTR track a different, broader risk driver than one token's own price).
  * This is the override that makes `sameThesis("QQQ","NVDA") === true` (SEV-9 invariant).
  */
 export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze({
@@ -61,6 +64,9 @@ export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze(
   SOXL: "semis",
   SOXS: "semis",
   XLK: "semis",
+  XRP: "crypto-xrp",
+  XRPZ: "crypto-xrp",
+  XXRP: "crypto-xrp",
 });
 
 function normalize(ticker: string | null | undefined): string {
