@@ -4,7 +4,32 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-15 (13:55 UTC) — [SEO] RTH wake: live gamma-snapshot API verified correct, intermittent desktop CLS anomaly on /tools/gamma-snapshot investigated — INCONCLUSIVE, no fix shipped
+## 2026-09-15 (14:12 UTC) — [SEO] Daily growth cycle: small real avgpos uptick, robots.txt + entity JSON-LD (#2517) confirmed live, no new opportunities
+
+**Severity.** — (no defect found; real, small positive movement noted)
+
+1. Opportunity scan: same window as the last two cycles (GSC reporting lag), same 3
+   striking-distance queries (`dealer gamma`, `gamma three trading`, `is 0dte gambling`), CTR-gap 0
+   — nothing new. Per the standing rule, not churning on-page edits to the already-well-optimized
+   pages hosting these queries.
+2. Live re-verify: `robots.txt` confirmed serving `Allow: /api/og` across every UA block (default,
+   GPTBot, ChatGPT-User, ClaudeBot, anthropic-ai, PerplexityBot, Google-Extended, CCBot, Bytespider,
+   cohere-ai, Applebot) plus the `Sitemap:` directive. Entity JSON-LD (#2517, `a98f0e976`) confirmed
+   live on the homepage: `@id` graph present (`#organization`, `#website` nodes) and `knowsAbout`
+   present. CLS/`/api/og` already freshly re-verified this morning's RTH cycle (purged edge,
+   measured live) — within the 3-day window, not repeated.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-16→09-12): clicks=17,
+   impressions=1613, CTR=1.05%, avgpos=**32.0** — vs the last recorded pull (window 2026-08-15→09-11:
+   clicks=17, impressions=1635, CTR=1.04%, avgpos=33.7): clicks/CTR flat, impressions slightly down
+   (-22), **avgpos improved 1.7 positions** — small but real, consistent with the steady small
+   upticks logged across recent cycles (36.5→35.9→35.7→33.7→32.0 over the last ~5 pulls). No single
+   shipped change obviously drives one week's average-position move at this traffic volume; reads as
+   continued incremental settling, not attributable to one PR.
+4. Housekeeping: PR sweep clean, 0 open agent PRs fleet-wide. No SEO-lane PRs conflicted on
+   `FINDINGS.md` to leave alone.
+
+No code changed this cycle. Backlink/authority work remains out-of-lane, escalated in
+`SEO-GROWTH-STRATEGY.md` §5.
 
 **Severity.** P3 (borderline CWV, intermittent, one page, desktop only) — investigated, root cause NOT confirmed, no code changed this cycle.
 
