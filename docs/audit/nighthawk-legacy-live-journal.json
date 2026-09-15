@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-15T06:07:53Z",
+  "lastUpdated": "2026-09-15T06:29:52Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3036,6 +3036,13 @@
       "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
       "note": "Followed up on last hour's tier-narrative-calibration idea: checked whether it's actually buildable in a single cycle before committing to the multi-cycle scope. Traced the data path -- fetchNighthawkOutcomeAnalytics (db.ts) DOES select o.score per row, and buildNighthawkDebriefReport (debrief-aggregate.ts) consumes those raw rows -- but analyzeNighthawkDebriefs's own output only tracks scoreable/wins/losses/decided COUNTS, never preserves the per-row score value, so no existing route (member record, admin analytics) exposes per-play score+outcome pairs. Confirms the earlier scoping was right: this needs a new admin export route first (mirroring the 0DTE lane's own tier-export precedent, PR #3112) before any calibration script could even fetch its input data -- correctly NOT a single-cycle CARVE-OUT fix. Not forcing a rushed partial build; recording this research so a future cycle with the time budget doesn't have to re-derive the data path from scratch.",
       "action": "research-only-idea-refined"
+    },
+    {
+      "ts": "2026-09-15T06:29:52Z",
+      "cycle": "06:21 UTC trigger (trig_018sriVFNHL5Yf1YshwPktRS), trigger 2 of 4",
+      "healthcheck": "GREEN across all non-skipped stages, unchanged (1 fresh play, nothing open, resolved=26 stable).",
+      "note": "Shipped step 1 of the tier-narrative-calibration idea: GET /api/admin/nighthawk/tier-export, admin-gated read-only, exposing {edition_for, ticker, direction, conviction, score, outcome, pulled} per resolved play -- mirrors the 0DTE lane's own tier-export precedent exactly. This is a pure feature ADDITION (no findings-staging entry per CLAUDE.md's own scoping -- that doc is for bug fixes, not new routes). Per-row shaping in a pure, unit-tested buildNighthawkTierExportRow (tier-export.ts, 4 tests). Full local suite 14260/14260 pass, tsc clean, both pre-push and post-rebase onto origin/main. PR #5018 opened (draft), subscribed for CI tracking. This unblocks (but does not itself build) the actual calibration script -- that remains logged as knownOpenItems.legacyTierNarrativeStaleness step 2, a separate future-cycle task once this export is live and has real data to pull.",
+      "action": "feature-shipped"
     }
   ],
   "knownOpenItems": {
