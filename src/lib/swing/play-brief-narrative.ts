@@ -500,10 +500,20 @@ function breakTrigger(play: TerminalPlay, focal: FocalLevel[], flip: number | nu
   // a close below spot either. Filtering each candidate to the side that actually makes the
   // English true (support strictly below spot, resistance strictly above) is the fix; distancePct
   // is signed ((price-spot)/spot*100) so this needs no extra spot plumbing.
+  //
+  // BUG FIX (2026-09-15, forensic batch 30): "king" (the GEX king strike) was never a candidate
+  // here, even though it's in the same nearest-sorted `focal` array buildStructureLadder's own
+  // riskTheOtherSide (play-brief-ladder.ts) already treats as real structure. Live on CRWD: the
+  // king sat 8x nearer than the put wall, so the ladder widget correctly named the king as the
+  // real nearest risk while this "Break watch" bullet — in the same response — cited the far more
+  // distant put wall. Added to both predicates so `.find()` (nearest-first) picks whichever real
+  // wall, including king, is actually closest.
   const support = focal.find(
-    (l) => (l.kind === "put_wall" || l.kind === "dark_pool") && l.distancePct < 0,
+    (l) => (l.kind === "put_wall" || l.kind === "dark_pool" || l.kind === "king") && l.distancePct < 0,
   )?.price;
-  const resist = focal.find((l) => l.kind === "call_wall" && l.distancePct > 0)?.price;
+  const resist = focal.find(
+    (l) => (l.kind === "call_wall" || l.kind === "king") && l.distancePct > 0,
+  )?.price;
 
   if (play.direction === "LONG") {
     const flipBelowSpot = flip != null && focal.some((l) => l.kind === "gamma_flip" && l.distancePct < 0);
