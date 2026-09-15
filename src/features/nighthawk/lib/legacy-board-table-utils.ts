@@ -191,7 +191,18 @@ export function legacyBoardCalendarBuckets(
     // live, 2026-09-10: with real SIG -82% and FICO +29%, this tile read +109.7% before the fix,
     // driven entirely by blending in a pulled ASO's +300%-range counterfactual.
     const resolved = day.filter((r) => !isNeverEnteredPull(r));
-    const net = resolved.reduce((s, r) => s + (r.premiumPct ?? 0), 0);
+    // A stock-only Legacy play (no resolvable option contract) carries premiumPct: null by design
+    // — overlayLegacyQuotes fail-closes rather than reporting the underlying's move as an option
+    // return (see that file's own MU-$880C comment). Averaging a null premium in as 0 silently
+    // dilutes a real winner/loser toward zero on a mixed day, and on an ALL-stock-only day (the
+    // tile's only real-world case measured so far) reads as a flat "+0%" even while the underlying
+    // is up double digits. Measured live 2026-09-15: VNCE (stock-only) +10-12% on the underlying,
+    // the day's only play — the tile read "+0%" pre-fix. Only rows with a REAL premium result
+    // participate in the blended average; a day with zero such rows still reports 0 (same as
+    // today, unchanged) rather than fabricating a number, matching this function's existing
+    // never-fabricate-a-result discipline for the pulled-play case above.
+    const withPremium = resolved.filter((r) => r.premiumPct != null);
+    const net = withPremium.reduce((s, r) => s + (r.premiumPct ?? 0), 0);
     const winners = resolved.filter((r) => (r.premiumPct ?? 0) >= 50).length;
     const closed = day.filter((r) => r.kind === "closed").length;
     const tone = net > 2 ? "up" : net < -2 ? "down" : "flat";
@@ -201,7 +212,7 @@ export function legacyBoardCalendarBuckets(
       // Matches vector-board-table-utils.ts's own Math.round(avg) — the tile's render layer
       // (VectorBoardCalendar.tsx's fmtSigned) interpolates the number as-is with no rounding, so
       // an un-rounded average here prints raw floating-point noise (e.g. "-28.2700000000...4").
-      net_premium_pct: resolved.length ? Math.round(net / resolved.length) : 0,
+      net_premium_pct: withPremium.length ? Math.round(net / withPremium.length) : 0,
       n: day.length,
       winners,
       closed,

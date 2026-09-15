@@ -157,3 +157,35 @@ test("legacyBoardCalendarBuckets: closed count still includes the pull (tab-coun
   assert.equal(buckets[0]?.closed, 1);
   assert.equal(buckets[0]?.net_premium_pct, 0, "no real resolution that day — never a fabricated positive tile");
 });
+
+// ── A stock-only play's premiumPct is null (fail-closed — see overlayLegacyQuotes's own MU-$880C
+// comment). Blending that null in as 0 silently dilutes a real winner/loser toward zero on a mixed
+// day, and reads a genuinely-thin day as a flat "+0%" even while the underlying is up double
+// digits. Measured live 2026-09-15: VNCE (stock-only, no options data), the day's only play, up
+// +10-12% on the underlying — the tile read "+0%" pre-fix. ─────────────────────────────────────
+
+test("legacyBoardCalendarBuckets: a stock-only play's null premiumPct does not dilute a mixed day's average", () => {
+  const plays = [
+    basePlay({ id: "fico", ticker: "FICO", status: "OPEN", pnlPct: 60 }),
+    basePlay({ id: "vnce", ticker: "VNCE", status: "OPEN", pnlPct: undefined }),
+  ];
+  const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-15"));
+  assert.equal(rows[1]?.premiumPct, null, "fixture sanity: the stock-only row must carry a null premium");
+
+  const buckets = legacyBoardCalendarBuckets(rows, ["2026-09-15"]);
+  const today = buckets[0]!;
+  assert.equal(today.n, 2, "the raw play count still includes the stock-only play");
+  assert.equal(
+    today.net_premium_pct,
+    60,
+    "the lone real premium result (+60%) must not be averaged down by a phantom 0 from the stock-only play"
+  );
+});
+
+test("legacyBoardCalendarBuckets: an all-stock-only day (zero real premium data) still reports 0, not a fabricated number", () => {
+  const plays = [basePlay({ id: "vnce", ticker: "VNCE", status: "OPEN", pnlPct: undefined })];
+  const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-15"));
+  const buckets = legacyBoardCalendarBuckets(rows, ["2026-09-15"]);
+  assert.equal(buckets[0]?.n, 1);
+  assert.equal(buckets[0]?.net_premium_pct, 0, "no real premium data that day — same honest-zero fallback as the no-resolution case");
+});
