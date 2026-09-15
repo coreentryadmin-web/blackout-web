@@ -128,12 +128,15 @@ function sizeLabel(grade: SpxConfluenceGrade): string {
 
 function gammaTag(desk: SpxDeskPayload): string {
   const regime = desk.gamma_regime ?? desk.regime ?? "unknown";
-  if (regime === "amplification" || desk.above_gamma_flip === false) {
-    return "neg-γ (trend fuel)";
-  }
-  if (regime === "mean_revert" || desk.above_gamma_flip === true) {
-    return "pos-γ (dips bought)";
-  }
+  if (regime === "amplification") return "neg-γ (trend fuel)";
+  if (regime === "mean_revert") return "pos-γ (dips bought)";
+  // `above_gamma_flip` defaults to `false` (never null) whenever `gamma_flip` itself is
+  // unknown (see spx-desk.ts's several `flip != null ? spot > flip : false` sites) — so
+  // `regime === "unknown"` alone cannot be trusted to fall through to the boolean below
+  // without this guard, or a genuinely unresolved gamma flip reads as a confident "neg-γ"
+  // call (Largo product-contract C3 absence violation — a plausible wrong claim is worse
+  // than an honest "unknown" one).
+  if (desk.gamma_flip == null) return "γ regime unresolved";
   return desk.above_gamma_flip ? "pos-γ (dips bought)" : "neg-γ (trend fuel)";
 }
 
@@ -416,7 +419,7 @@ function buildWhy(
       `${gammaWord} γflip ${n(desk.gamma_flip, 0)} — ${mechanic}`
     );
   }
-  if (!desk.above_gamma_flip && support && desk.price! > support.strike) {
+  if (desk.gamma_flip != null && !desk.above_gamma_flip && support && desk.price! > support.strike) {
     parts.push(`drops feed toward ${n(support.strike, 0)} air if ${n(support.strike, 0)} cracks`);
   } else if (desk.above_gamma_flip && magnet != null) {
     parts.push(
@@ -573,14 +576,20 @@ export function composeSpxDeskBrief(
   const riskTail = phaseRisk ? ` ${phaseRisk}.` : "";
   const risk = `RISK  Size {{${size}}} — {{${grade}}}; IV rank ${ivRank != null ? n(ivRank, 0) : "{{—}}"} → ${structure}; max loss = premium paid; phase {{${sessionPhase}}}.${riskTail}${staleNote}`;
 
+  // `!desk.above_gamma_flip` alone can't distinguish "confirmed below flip" from "flip
+  // unknown" (see gammaTag's own comment) — every neg-γ branch below must also check
+  // `desk.gamma_flip != null`, or an unresolved flip reads as a confident short-gamma call.
+  const flipKnown = desk.gamma_flip != null;
   const next =
-    sessionPhase === "power-hour" && !desk.above_gamma_flip && resistance
+    sessionPhase === "power-hour" && flipKnown && !desk.above_gamma_flip && resistance
       ? `NEXT 5M  power-hour neg-γ squeeze risk into ${n(resistance.strike, 0)} if ${n(support?.strike ?? desk.lod, 0)} fails`
       : desk.above_gamma_flip && support
         ? `NEXT 5M  pos-γ ${magnet ? `${deskMagnetProse(magnet.source)} toward ${n(magnet.strike, 0)}` : `support toward ${n(support.strike, 0)}`} — fade extensions`
-        : !desk.above_gamma_flip && resistance
+        : flipKnown && !desk.above_gamma_flip && resistance
           ? `NEXT 5M  neg-γ expansion into ${n(resistance.strike, 0)} air if ${n(support?.strike ?? desk.lod, 0)} fails`
-          : `NEXT 5M  ${gammaTag(desk)} — watch ${n(desk.gamma_flip ?? price, 0)} and TICK`;
+          : flipKnown
+            ? `NEXT 5M  ${gammaTag(desk)} — watch ${n(desk.gamma_flip, 0)} and TICK`
+            : `NEXT 5M  γ regime unresolved — watch ${n(price, 0)} and TICK`;
 
   const flipLevel = stop ?? desk.gamma_flip ?? desk.vwap;
   const flips = `FLIPS IT  ${confluence.direction === "long" ? "Lose" : confluence.direction === "short" ? "Reclaim" : "Break"} ${n(flipLevel, 0)} = thesis dead — go flat.`;
