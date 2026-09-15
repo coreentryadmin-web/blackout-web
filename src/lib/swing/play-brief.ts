@@ -29,6 +29,8 @@ import {
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
+import { checkPortfolioOverlap } from "./portfolio";
+import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { deadPlayReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
@@ -669,6 +671,58 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
           asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
           freshness: fundamentalsFreshness(fund.as_of, readMs),
         },
+      });
+    }
+  }
+  // Largo C7 (2026-09-15, Ask Largo standing mandate): `bookContextSection`/`siblingPositionsNote`
+  // assert concrete, checkable member-book facts ("already holding N same-direction positions in
+  // theme X", "AAPL carries 2 concurrent live positions... entry $6.73, P&L -28.3%") off
+  // ctx.openBook/ctx.laneRows, but this function — the sole feeder of envelope.evidence — never
+  // touched either, an inconsistency with every other data-sourced narrative claim here, which all
+  // get a matching evidence entry. Same gating as the sections themselves (CLOSED excluded,
+  // checkPortfolioOverlap's own excludePositionId) so this can never disagree with what the member
+  // reads in the section body.
+  if (statusBucket(ctx.play) !== "closed" && ctx.openBook != null && ctx.openBook.length) {
+    const { positionId } = parseSwingPlayId(ctx.play.id);
+    const overlap = checkPortfolioOverlap(
+      { ticker: ctx.play.ticker, direction: ctx.play.direction },
+      ctx.openBook,
+      positionId != null ? { excludePositionId: positionId } : undefined,
+    );
+    if (overlap.hasOverlap) {
+      const parts: string[] = [];
+      if (overlap.sameThemeSameDirection.length) {
+        parts.push(
+          `${overlap.sameThemeSameDirection.length} same-direction position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in theme "${overlap.theme}"`,
+        );
+      }
+      if (overlap.sameThemeOpposedDirection.length) {
+        parts.push(`${overlap.sameThemeOpposedDirection.length} opposed position(s) in the same theme`);
+      }
+      out.push({
+        kind: "fact",
+        text: `Book overlap: ${parts.join(" · ")}.`,
+        provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+      });
+    }
+  }
+  if (
+    statusBucket(ctx.play) === "open" &&
+    ctx.play.entry != null &&
+    Number.isFinite(ctx.play.entry)
+  ) {
+    const ticker = ctx.play.ticker.toUpperCase();
+    const siblingCount = ctx.laneRows.filter((r) => {
+      if (r.ticker.toUpperCase() !== ticker) return false;
+      if (!r.liveStatus) return false;
+      if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+      return Math.abs(r.entryPremium - ctx.play.entry!) > 0.005;
+    }).length;
+    if (siblingCount > 0) {
+      out.push({
+        kind: "fact",
+        text: `${ticker} carries ${siblingCount + 1} concurrent live position(s) — this brief covers one.`,
+        provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
       });
     }
   }
