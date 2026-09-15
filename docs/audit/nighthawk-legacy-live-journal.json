@@ -3299,6 +3299,12 @@
       "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN).",
       "pr_5030_status": "Own PR, drive-to-green. CodeQL/Analyze green, verify still in_progress, nothing red. No action needed yet.",
       "note": "VNCE has now crossed its $8.41 target, live last-trade $8.45. Light cycle given a PR is mid-flight and this session already has 3 real fixes shipped this hour-block -- holding deeper investigation, will check PR CI and VNCE's terminal state (whether the recommendation correctly shows TRIM now that target is cleared) next cycle."
+    },
+    {
+      "at": "2026-09-15T15:22:16Z",
+      "trigger": ":21 cycle",
+      "healthcheck": "GREEN across all 4 stages, unchanged (VNCE CONFIRMED/pulled=false, D still GREEN).",
+      "action": "PR #5030 was merged externally (merged_by: coreentryadmin-web, 15:10:38Z) before this session called any merge tool -- consistent with this session's documented recurring parallel-merge pattern. Verified the merged content on origin/main directly (git show origin/main:...legacy-board-table-utils.ts | grep withPremium -- exact match to what was authored) rather than trusting merged:true alone. Unsubscribed from PR activity, synced the primary checkout. Calendar-tile dilution fix now fully live on main -- batch closed. Three real fixes shipped and merged this session: #5024 (test coverage), #5026 (early-close correctness), #5030 (calendar-tile dilution)."
     }
   ],
   "knownOpenItems": {
