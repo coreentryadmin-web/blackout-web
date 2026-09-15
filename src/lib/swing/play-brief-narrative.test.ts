@@ -106,6 +106,51 @@ test("tradeManagerNarrativeSection: LONG Break watch never cites a level ABOVE s
   assert.doesNotMatch(section!.body, /Break watch.*105\.00/i);
 });
 
+// FINDING (Ask Largo standing mandate, forensic batch 30, 2026-09-15): breakTrigger's support/
+// resist predicates only recognized put_wall/dark_pool (support) and call_wall (resist) -- never
+// "king" (the GEX king strike), even though collectFocalLevels already includes it in the same
+// nearest-sorted `focal` array buildStructureLadder's riskTheOtherSide reads for the identical
+// purpose. Live on CRWD (LONG, +149.8% P&L): riskTheOtherSide correctly named the GEX king at
+// -2.41% as the real nearest structural risk, while the SAME payload's "Break watch" bullet (this
+// function) cited the put wall at -19.4% -- 8x farther, and the brief's own two risk-level widgets
+// disagreed with each other in the same response. Also live on RBLU, ABTC, APPX, CGEM, CRWL, DRIP
+// (support side) and GOOG (resist side).
+test("tradeManagerNarrativeSection: LONG Break watch considers the GEX king strike, not just put wall/dark pool (2026-09-15, live CRWD shape)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 97, isKing: true }] }, // -3% -- nearer than the put wall below
+        gexWalls: { callWalls: [], putWalls: [{ strike: 80, gex: 1 }] }, // -20% -- farther, real risk is the king
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*97\.00/i, "must cite the nearer GEX king strike, not the farther put wall");
+  assert.doesNotMatch(section!.body, /Break watch.*80\.00/i);
+});
+
+test("tradeManagerNarrativeSection: SHORT Break watch considers the GEX king strike, not just call wall", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT" }),
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] }, // +3% -- nearer than the call wall above
+        gexWalls: { callWalls: [{ strike: 120, gex: 1 }], putWalls: [] }, // +20% -- farther
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*103\.00/i, "must cite the nearer GEX king strike, not the farther call wall");
+  assert.doesNotMatch(section!.body, /Break watch.*120\.00/i);
+});
+
 test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
