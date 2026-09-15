@@ -1360,6 +1360,37 @@ test("counterThesisLine: stale GEX-only posture must not steelman dealer gamma",
   assert.equal(line, null, "stale GEX posture must not appear in counter-thesis");
 });
 
+// BUG FIX (2026-09-15, Ask Largo standing mandate, sibling of the play-brief.ts evidenceFromContext
+// fix same day): counterThesisLine used to treat Vector's literal "unknown" regime posture as an
+// equally-resolved answer to "long"/"short" (`vecPosture = vec?.regime?.posture ?? null`), which
+// silently dropped a real, resolved, fresh GEX-matrix-fallback dealer-posture counter-thesis reason
+// whenever Vector's own read landed on "unknown" — the exact resolveGammaPosture bug fixed on
+// 2026-09-12 for other call sites, never ported here.
+test("counterThesisLine: 'unknown' Vector regime posture falls through to fresh GEX posture, not silently dropped", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        regime: { posture: "unknown", label: "UNKNOWN" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "TSM",
+        gex_positioning: {
+          spot: 419.48,
+          gamma_posture: "short",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "SHORT" }),
+    419.48,
+  );
+  assert.ok(line, "expected a counter-thesis line from the fresh GEX-matrix posture fallback");
+  assert.match(
+    line!,
+    /dealer short-gamma can squeeze shorts/,
+    "must resolve posture from the fresh GEX matrix when Vector's own regime read is 'unknown'",
+  );
+});
+
 test("counterThesisLine: stale GEX-only call wall must not steelman overhead resistance (Largo C2)", () => {
   const line = counterThesisLine(
     ctx({

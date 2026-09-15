@@ -24,6 +24,7 @@ import {
   gexMatrixStale,
   optionMarkGenuinelyUnknown,
   playExpectsLiveOptionMark,
+  resolveGammaPosture,
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
@@ -546,10 +547,20 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   const vec = ctx.vector ?? eco?.vector_full_state ?? null;
   const gexStale = gexMatrixStale(gex, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): this used to
+  // compute `postureFromVec` as `vec?.regime?.posture != null ? ... : null`, treating the literal
+  // string "unknown" (Vector genuinely could not resolve a regime) as an equally-resolved answer
+  // to "long"/"short" — the exact same bug `resolveGammaPosture` (play-brief-absence.ts) was fixed
+  // for on 2026-09-12, just never ported to this call site. Live: TSM's own evidence line read
+  // "Dealer posture: γ unknown ..." while the SAME brief's "Trade manager read" narrative (which
+  // already calls resolveGammaPosture) correctly said "dealers short gamma" from the GEX-matrix
+  // fallback in the same moment. Delegating to the shared helper here too so this line can never
+  // contradict the rest of the same envelope again.
+  const gammaPosture = resolveGammaPosture(ctx, vec, readMs);
   const postureFromVec =
-    vec?.regime?.posture != null && !vectorStale ? vec.regime.posture : null;
-  const postureFromGex = gex?.gamma_posture && !gexStale ? gex.gamma_posture : null;
-  const gammaPosture = postureFromVec ?? postureFromGex;
+    vec?.regime?.posture != null && vec.regime.posture !== "unknown" && !vectorStale
+      ? gammaPosture
+      : null;
   if (gammaPosture) {
     const parts: string[] = [`γ ${gammaPosture}`];
     if (gex && !gexStale && Number.isFinite(gex.net_gex)) {

@@ -774,6 +774,62 @@ test("composeSwingPlayBrief: GEX evidence freshness honors matrix_age_sec over r
   );
 });
 
+// BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): evidenceFromContext
+// used to treat Vector's literal "unknown" regime posture as an equally-resolved answer to
+// "long"/"short", never falling through to a fresh, non-stale GEX-matrix gamma_posture — the same
+// bug resolveGammaPosture (play-brief-absence.ts) was fixed for on 2026-09-12, just never ported to
+// this call site. Live: TSM's evidence line said "Dealer posture: γ unknown ..." while the SAME
+// brief's narrative (which already used resolveGammaPosture) correctly said "dealers short gamma".
+test("composeSwingPlayBrief: Dealer posture evidence falls through to fresh GEX posture when Vector regime is 'unknown', not literal string (Largo)", () => {
+  const nowIso = new Date().toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-14 21:07 ET",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "TSM",
+      gex_positioning: {
+        ticker: "TSM",
+        spot: 419.48,
+        flip: 420,
+        call_wall: 430,
+        put_wall: 400,
+        gamma_posture: "short",
+        net_gex: -58_500_000,
+        asof: nowIso,
+        as_of_et: "2026-09-14 21:07 ET",
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: nowIso,
+      asOfEt: "2026-09-14 21:07 ET",
+      spot: 419.48,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      regime: { posture: "unknown", label: "UNKNOWN" },
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence to fall through to the GEX matrix");
+  assert.match(
+    postureEvidence!.text,
+    /γ short/,
+    "must resolve to the fresh GEX-matrix posture, not render literal 'γ unknown'",
+  );
+  assert.equal(
+    postureEvidence!.provenance?.source,
+    "GEX",
+    "posture resolved from the GEX fallback must be attributed to GEX, not Vector",
+  );
+});
+
 test("composeSwingPlayBrief: future-skewed fundamentals as_of freshness is stale, not unknown (Largo C2)", () => {
   const futureAsOf = new Date(Date.now() + 30_000).toISOString(); // 30s ahead — beyond tolerance
   const ctx: SwingPlayBriefContext = {
