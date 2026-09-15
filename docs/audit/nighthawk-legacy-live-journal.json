@@ -3405,6 +3405,13 @@
       "sync": "origin/main had moved one commit (4ffa5616e, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
       "healthcheck": "GREEN across all 4 stages, unchanged.",
       "enhancementIdea": "AGGRESSIVE MODE: concrete, distinct enhancement idea building on (not repeating) the earlier :21-cycle hysteresis investigation. Live check: VNCE now $8.58 (+12.16%), well past its $8.41 target, while its published stop remains fixed at $6.64 -- a 22.6% gap between current price and stop with zero trailing mechanism. That earlier investigation concluded the memoryless TRIM/SELL recommendation flip is a defensible 'current state' design choice for Legacy's simple digest lane (not a bug). This is a different, positive framing of the same real gap: once a play enters TRIM state (price at/through target), the deck could surface a SUGGESTED trail-stop level (e.g. breakeven, or a fixed % below the new high) alongside the existing static stop -- concrete, actionable trade-management guidance for a trader deciding whether to hold the runner, distinct from just relabeling the static stop. Sibling Night Hawk products already have this kind of ratchet concept (SWING_SCALE_OUT_POLICY's trim-then-run-with-ratchet, 0DTE's tier-specific ratchet exit) -- Legacy has no equivalent at all today, purely static stop/target for the whole hold. NOT shipped: this is a genuine product/UX enhancement, not a correctness fix, and touches play-management semantics that deserve operator/Cursor input rather than a unilateral CARVE-OUT change -- flagging as a report-and-hold idea per the mandate's explicit 'bring ideas' framing."
+    },
+    {
+      "at": "2026-09-15T19:24:28Z",
+      "trigger": ":21 cycle",
+      "sync": "origin/main had moved one commit (43ed621de, the Swings lane's own journal entry) -- unrelated to Legacy, confirmed via git show --stat. Synced clean.",
+      "healthcheck": "GREEN across all 4 stages, unchanged.",
+      "liveUiCheck": "Live MOBILE (430x932) screenshot of /nighthawk?view=LEGACY -- fresh Clerk cookie, proxy-browser.cjs (this session's first mobile-viewport check; prior live-UI passes this week were desktop-only). Clean render: header/tabs/session-picker readable, both honest disclosure banners wrap correctly within the narrow width, macro/scorecard cards stack sensibly with no horizontal overflow or clipped text. Correctly shows the same already-known scorecard gap (0 winners/0 runners/Hit rate 0% despite VNCE's real move) -- consistent with the desktop finding, not a mobile-specific defect. No new issues found."
     }
   ],
   "knownOpenItems": {
