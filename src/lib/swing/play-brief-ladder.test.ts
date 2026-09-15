@@ -401,3 +401,43 @@ test("buildStructureLadder: riskTheOtherSide flips sides correctly for a SHORT t
   assert.equal(ladder!.riskTheOtherSide!.kind, "call_wall");
   assert.equal(ladder!.riskTheOtherSide!.price, 103);
 });
+
+// BUG FIX (2026-09-15, Ask Largo standing mandate, live repro AAPL/CG/ENPH/PEGA): a nearer neutral
+// pivot (gamma_flip/max_pain/magnet) used to win over a farther but genuine support/resistance wall
+// on the unfavorable side, directly contradicting roleForKind's own documented stance that these
+// pivots are "NOT hard support/resistance... never as a wall a price bounces off." Live PEGA repro
+// shape: a gamma-magnet pivot sat much nearer than the real put wall, and the old code named the
+// pivot "the nearest real structure" while hiding a put wall 13 points farther out.
+test("buildStructureLadder: riskTheOtherSide prefers a farther REAL wall over a nearer NEUTRAL pivot (live PEGA repro)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    magnet: { strike: 95 }, // neutral, NEARER (5% away)
+    gexWalls: { putWalls: [{ strike: 80 }] }, // support, FARTHER (20% away) but a real wall
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(
+    ladder!.riskTheOtherSide!.kind,
+    "put_wall",
+    "must prefer the farther real wall over the nearer neutral pivot",
+  );
+  assert.equal(ladder!.riskTheOtherSide!.price, 80);
+  assert.equal(ladder!.riskTheOtherSide!.role, "support");
+});
+
+test("buildStructureLadder: riskTheOtherSide falls back to a neutral pivot when NO real wall exists unfavorably (unchanged GLXY-shape case)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    magnet: { strike: 95 }, // neutral, the ONLY unfavorable-side rung — no real wall to prefer
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide, "must still fall back to the neutral pivot when nothing else exists");
+  assert.equal(ladder!.riskTheOtherSide!.kind, "magnet");
+  assert.equal(ladder!.riskTheOtherSide!.role, "neutral");
+});

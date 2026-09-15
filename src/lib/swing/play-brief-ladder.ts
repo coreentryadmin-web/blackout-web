@@ -340,13 +340,24 @@ export function buildStructureLadder(
   // to move through for this thesis to break, not toward. A direct reference into `rungs` above
   // (never a second, independently-derived level), so it can never disagree with the ladder it
   // summarizes. Omitted when every rung on this ladder happens to sit on the favorable side.
-  const riskTheOtherSide = rungs
-    .filter((r) => !r.target)
-    .reduce<StructureLadderRung | null>(
-      (nearest, r) =>
-        nearest == null || Math.abs(r.distancePct) < Math.abs(nearest.distancePct) ? r : nearest,
-      null,
-    );
+  //
+  // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro AAPL/CG/ENPH/PEGA): the reduce
+  // below used to run over EVERY unfavorable-side rung with no regard to `role`, so a `"neutral"`
+  // pivot (gamma_flip/max_pain/magnet) could win over a genuine support/resistance wall whenever
+  // the pivot happened to sit nearer — directly contradicting `roleForKind`'s own documented
+  // stance two paragraphs up: gamma flip/max pain/the gamma magnet "are NOT hard support/
+  // resistance ... never as a wall a price bounces off." The member-facing widget
+  // (`BieStructureLadder.tsx`) renders whatever wins here as "the **nearest real structure** on
+  // the wrong side of this thesis" — calling a neutral pivot "real structure" contradicts this
+  // file's own design, and on PEGA it hid the real put wall by 13 points (magnet -8.3% shown vs.
+  // put wall -21.4% actual). Prefer a genuine support/resistance rung; only fall back to the
+  // nearest neutral pivot when no real wall exists on the unfavorable side at all (unchanged for
+  // that case — GLXY's real "no wall, just the magnet" read still resolves the same way today).
+  const unfavorableRungs = rungs.filter((r) => !r.target);
+  const unfavorableRealWalls = unfavorableRungs.filter((r) => r.role !== "neutral");
+  const riskTheOtherSide = (unfavorableRealWalls.length > 0 ? unfavorableRealWalls : unfavorableRungs).reduce<
+    StructureLadderRung | null
+  >((nearest, r) => (nearest == null || Math.abs(r.distancePct) < Math.abs(nearest.distancePct) ? r : nearest), null);
 
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gexStale = gexMatrixStale(gex, readMs);
