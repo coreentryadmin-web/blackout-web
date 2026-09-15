@@ -3175,6 +3175,14 @@
       "trigger": "new-hour :06 cycle (v3 mandate re-fire, trigger 1 of 4)",
       "healthcheck": "GREEN, unchanged from prior hour (1 fresh play, nothing open, resolved=26 consistent, D SKIPPED pre-9:15am ET).",
       "investigation": "Aggressive-mode enhancement hunt this cycle looked at VNCE's own thesis text for two candidate defects, both disproven against source: (1) Catalyst quote ends mid-sentence with '...' -- traced to pickCatalystHeadline (deterministic-edition.ts:406), a deliberate 110-char truncation with its own test coverage (deterministic-edition.test.ts), not a bug. (2) VNCE's displayed rr_ratio=0.48 looked like it violated play-levels.ts's own MIN_RR_RATIO=0.75 constant -- traced to computeRiskReward's extensive header comment (play-levels.ts:93-120): this is a KNOWN, deliberate, evidence-based 2026-08-06 fix (measured 20/48 live plays had fill-edge R:R below 1.0 under the old mid-basis display). MIN_RR_RATIO=0.75 is enforced only at MID-basis geometry construction (buildDirectionalStockLevels); the member-visible rr_ratio/thesis sentence deliberately uses the stricter FILL-EDGE basis and is allowed to read lower -- switching the hard publish gate to edge-basis was explicitly evaluated and rejected (would reintroduce the 2026-07-27 zero-play failure mode). Both are already fully documented, already correct -- no new work shipped. Two more disproven hypotheses this cycle; the codebase in this area reads as unusually well-audited already from prior sessions' work."
+    },
+    {
+      "at": "2026-09-15T11:24:24Z",
+      "trigger": ":21 cycle",
+      "healthcheck": "GREEN, unchanged (1 fresh play, nothing open, resolved=26 consistent, D SKIPPED pre-9:15am ET).",
+      "note": "Confirmed origin/main's latest commit (:16 cycle) belongs to the parallel Swings-lane session's own journal, not Legacy -- no action needed here.",
+      "live_price_spotcheck": "Quick Polygon last-trade check on VNCE (the sole published play, LONG, entry band $7.46-$7.84): live pre-market last trade $7.274, already ~2.6% below the entry band low. Not a defect -- this is exactly the pre-market-drift scenario the v2_fillability grading methodology exists to handle honestly (would grade 'unfilled' rather than a false loss if the gap persists to the open). Purely observational, logged for today's cohort context, not escalated.",
+      "live_ui_check": "First live-UI pixel check attempted this session (secondary priority per the v3 mandate, not yet exercised) -- minted a Clerk premium session cookie and launched proxy-browser.cjs against https://blackouttrades.com/nighthawk at 1440x900. The browser navigation exceeded the 90s foreground window and was moved to a background task; result not yet available when this cycle's journal entry was written. Will report the outcome (rendered correctly / defect found / harness failure) in the next cycle once the background task resolves."
     }
   ],
   "knownOpenItems": {
