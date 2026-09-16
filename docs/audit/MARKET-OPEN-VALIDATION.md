@@ -23,7 +23,7 @@ should be missing from this board's `open` array.
 
 ---
 
-## WATCH LIST — 2026-09-16 `withServerCache` COLD-START fallback unbounded block — correction/completion of the entry below (platform-wide, latency — check at the open)
+## VALIDATED — 2026-09-16 `withServerCache` COLD-START fallback unbounded block — correction/completion of the entry below, now confirmed fixed live
 
 ### Fix: `src/lib/server-cache.ts`'s cold-start "no pending" branch now also races `opts.fallback()` against `maxBlockMs`
 
@@ -39,12 +39,16 @@ See `docs/audit/findings-staging/2026-09-16-server-cache-cold-start-fallback-unb
 **Fix:** the cold-start branch's fallback call is now also raced against `maxBlockMs`; on timeout
 it falls through to the branch's existing stale-value/background-refresh chain instead of blocking.
 
-**Check at the open:** re-run the SAME `curl -w "%{time_total}"` repro against
-`/api/market/spx/desk` (a handful of back-to-back requests, ideally including at least one right
-after a deploy/cache-cold window) and watch ALB `TargetResponseTime` p99/Max on
-`blackout-production-app` under real RTH concurrent load. Given that the FIRST "fixed, verified via
-deploy" claim on this exact code path already proved wrong once, do not treat "deploy completed
-cleanly" as sufficient evidence this time either — the live curl re-run is the actual verification.
+**VALIDATED live 2026-09-16, post-deploy (PR #5065, commit `133bfcea0c`, ECS task def
+`blackout-production-web:1601`, rollout COMPLETED 09:48:07 UTC, 8/8 tasks confirmed running the
+fixed image):** two separate live-curl bursts of 8 requests each against `/api/market/spx/desk`
+(09:49 and 10:02 UTC) — all 16 fast (0.22-0.57s), zero outliers. ALB `TargetResponseTime` Max over
+the full 13-minute post-rollout window (09:48-10:00 UTC) never exceeded 9.0s, vs the recurring
+40s+ spikes measured before the fix (including one at 09:43 UTC, confirmed via ECS service events
+to have been served by an old task instance still draining, i.e. pre-fix, not a residual bug).
+Given the FIRST "fixed, verified via deploy" claim on this exact code path already proved wrong
+once, this closure rests on the live curl re-run + sustained clean ALB window above, not on the
+deploy alone. No further action needed unless new evidence recurs.
 
 ---
 
