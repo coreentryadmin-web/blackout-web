@@ -7,7 +7,11 @@ import { NextResponse } from "next/server";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
-import { fetchBangerBoardRows, type BangerPositionRow } from "@/lib/banger/positions-db";
+import {
+  fetchBangerOpenBookRows,
+  fetchBangerClosedBoardRows,
+  type BangerPositionRow,
+} from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
 import { roundFloats } from "@/lib/round-floats";
@@ -65,9 +69,22 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rows = await fetchBangerBoardRows(60);
-    const open = rows.filter((r) => r.status === "OPEN" || r.status === "PARTIAL");
-    const closed = rows.filter((r) => r.status === "CLOSED_RUNNER" || r.status === "STOPPED");
+    // BUG (found live 2026-09-16, Ask Largo standing mandate): this used to be one combined
+    // `fetchBangerBoardRows(60)` query (top 60 rows of ALL statuses, filtered into open/closed in
+    // JS afterward) — the exact page-limited-tally shape `fetchBangerOpenCount`'s own doc comment
+    // already names as a measured bug for the COUNT ("Largo reported 40 open positions... then 20
+    // ...60s later"), just never fixed for this LISTING. Once total (open+closed) rows exceed 60,
+    // older-but-still-OPEN positions age out of the shared window and silently vanish from the
+    // member-facing board while still being live, real holdings — confirmed live: this route
+    // reported exactly open:33/closed:27/total:60 (the limit fully saturated) while the swing
+    // play-brief's portfolio-overlap check (fetchBangerOpenBookRows, filtered at the SQL level
+    // BEFORE any limit) correctly saw a second, older OPEN CRWD position this route's `open` array
+    // was dropping. Fetching open and closed as two separately-limited queries means the closed
+    // backlog can never crowd a real open position out of the board.
+    const [open, closed] = await Promise.all([
+      fetchBangerOpenBookRows(80),
+      fetchBangerClosedBoardRows(60),
+    ]);
     return NextResponse.json(
       roundFloats({
         available: true,

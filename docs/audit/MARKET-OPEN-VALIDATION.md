@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-09-16 Banger board silently dropped OPEN positions past a 60-row shared cap (Night Hawk Swings/Ask Largo, correctness — check at the open)
+
+### Fix: `/api/market/banger/board` now pages open and closed positions independently
+
+**What was broken:** found via the standing Ask Largo deep-dive mandate — a swing play-brief's
+"Book context" section for CRWD cited a Banger-origin CRWD position the member board didn't show.
+`GET /api/market/banger/board` reported `open: 33, closed: 27` (total exactly 60 — the shared
+`fetchBangerBoardRows(60)` LIMIT fully saturated). Root cause: that query took the most recent 60
+rows across ALL statuses combined, then filtered into open/closed in JS — so once total rows exceed
+60, an older-but-still-OPEN position ages out of the window and silently vanishes from the board
+while still being a real, live holding. See
+`docs/audit/findings-staging/2026-09-16-banger-board-open-position-truncation.md`.
+
+**Fix:** `open` now comes from `fetchBangerOpenBookRows(80)` (filters `status IN ('OPEN','PARTIAL')`
+at the SQL level, no shared limit with closed rows) and `closed` from a new
+`fetchBangerClosedBoardRows(60)`, fetched as two independent queries.
+
+**Check at the open:** re-run `GET /api/market/banger/board` during RTH once the open-position count
+naturally grows past what a single 60-row combined page would have held (or cross-check against a
+play-brief's "Book context"/"Other concurrent position(s)" citations for a Banger-origin ticker) and
+confirm every real open position is present — no ticker cited elsewhere as an open Banger holding
+should be missing from this board's `open` array.
+
+---
+
 ## WATCH LIST — 2026-09-16 `withServerCache` COLD-START fallback unbounded block — correction/completion of the entry below (platform-wide, latency — check at the open)
 
 ### Fix: `src/lib/server-cache.ts`'s cold-start "no pending" branch now also races `opts.fallback()` against `maxBlockMs`
