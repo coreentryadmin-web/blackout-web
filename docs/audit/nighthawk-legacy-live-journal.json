@@ -3337,6 +3337,12 @@
       "at": "2026-09-16T21:10:16Z",
       "trigger": "PR #5091 CI green, merged and re-verified",
       "prMerged": "All checks green. Undrafted, merged via GitHub MCP (squash, 1b560c38f). Re-verified against origin/main directly (grep confirms capGatePromotedConviction import + call site live). Local branch deleted; remote delete 403'd as usual. Unsubscribed from PR activity. Three real bugs found and shipped this segment: PR #5084 (WS-freshness gate threshold), PR #5087 (dead-code cleanup), PR #5091 (gate-promote conviction cap defeated on read)."
+    },
+    {
+      "at": "2026-09-16T21:11:24Z",
+      "trigger": ":21 cycle -- technicals.ts read",
+      "healthcheck": "AMBER, same expected post-close state (still pre-17:30 ET edition window). Not re-investigated.",
+      "codeReview": "Full read of technicals.ts (201 lines -- TechnicalCard builder: swing support/resistance detection, classifySetup's tag taxonomy, trend stack). Confirmed TechnicalCard.trend defaults to 'mixed' (never null) via `mtf.trend_stack ?? 'mixed'` -- cross-checked against publish-gates.ts's G-N4 book-vs-tape gate read earlier this segment (`tapeTrend = dossier?.tech?.trend`, only 'bearish'/'bullish' block) and confirmed this stays consistent: 'mixed' never matches either literal, so an ambiguous tape read still correctly never blocks. Considered whether swingLevels' resistance/support selection (dedup'd swing highs/lows, top-5-by-VALUE rather than nearest-to-current-price) is a bug -- concluded it's a defensible 'structurally most significant levels in the lookback window' design choice, not an obvious defect, and didn't have strong enough evidence (no live repro, no test asserting the opposite intent) to escalate it as one. No bug found."
     }
   ],
   "knownOpenItems": {
