@@ -95,6 +95,8 @@ export function horizonRowToDeckSource(
     liveStatus: p.liveStatus ?? null,
     flagUnderlyingPx: p.flagUnderlyingPx ?? null,
     entryTriggerUnderlyingPx: p.entryTriggerUnderlyingPx ?? null,
+    invalidationUnderlyingPx: p.invalidationUnderlyingPx ?? null,
+    liveSpot: p.liveSpot ?? null,
     entryPremium: p.entryPremium ?? null,
     livePnlPct: p.livePnlPct ?? null,
     peakPremium: p.peakPremium ?? null,

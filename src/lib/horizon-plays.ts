@@ -109,6 +109,20 @@ export interface HorizonPlay {
    * (found live 2026-09-12: a member read "Flag anchor" as the entry level, which it is not).
    */
   entryTriggerUnderlyingPx?: number | null;
+  /**
+   * Structural invalidation level in underlying terms (setup-state.ts's `invalidationPx`) — the
+   * counterpart to `entryTriggerUnderlyingPx` above, needed to live-derive `setupState` for a
+   * COMMITTED position the same way the WATCH lane already does (a committed row's dossier state
+   * doesn't survive the WATCH→COMMIT transition, so this + `entryTriggerUnderlyingPx` + `liveSpot`
+   * let `deriveSetupState` be called fresh on every read instead of leaving `setupState` permanently
+   * null for live capital — Ask Largo standing mandate, #4076).
+   */
+  invalidationUnderlyingPx?: number | null;
+  /**
+   * Live underlying spot (the third leg `deriveSetupState` needs alongside the two levels above).
+   * Also read by the WATCH track overlay (`HorizonDeckSource.liveSpot`, adapters.ts).
+   */
+  liveSpot?: number | null;
   /** Live swing book — option entry/mark/P&L when this row is an OPEN ledger position. */
   entryPremium?: number | null;
   livePnlPct?: number | null;
