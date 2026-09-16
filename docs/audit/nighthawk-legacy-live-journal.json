@@ -3068,6 +3068,12 @@
       "trigger": ":06 new-hour cycle -- still 7min before morning-confirm (13:15 UTC), D_pull_status correctly still SKIPPED",
       "healthcheck": "AMBER, stable, unchanged. D_pull_status verdict/evidence exactly as expected pre-window.",
       "note": "Noted two more Swings-lane PRs merged this hour (#5070, #5071 -- both src/lib/swing/* only, confirmed unrelated to Legacy). Next :21 firing should land ~6 minutes after the 13:15 UTC morning-confirm window -- that's the cycle to give full attention to D_pull_status's first real data of this segment."
+    },
+    {
+      "at": "2026-09-16T13:23:00Z",
+      "trigger": ":21 cycle -- morning-confirm ran (13:15 UTC window passed), D_pull_status GREEN for the first time this segment",
+      "healthcheck": "overall AMBER -- B_marks still bid=0/ask=0 for all 3 OCCs (8 min pre-open, expected to firm up at/after the 9:30 ET open), but D_pull_status flipped from SKIPPED to GREEN: all 3 plays (CRWD/RIG/SWKS) came back CONFIRMED <-> pulled=false, correctly agreeing -- no INVALIDATED plays this morning, so no pull-quality counterfactual to add to the pullQualityWatch item this cycle (still n=9 from earlier today, unchanged). A_edition still GREEN, 3 plays, fresh.",
+      "significance": "First live daytime exercise of the pipeline sections this week's deep-dive focused on (publish-gates.ts, edition-quality.ts, play-backfill.ts, edition-funnel.ts) -- though morning-confirm itself is a DIFFERENT cron (nighthawk-morning-confirm) from the evening publish-gate pipeline those files serve, so this doesn't directly exercise the target_unreachable gate-promote bug (that fires at evening publish time, not morning confirm). Still a clean, healthy result: 3/3 plays survived pre-market screening intact."
     }
   ],
   "knownOpenItems": {
