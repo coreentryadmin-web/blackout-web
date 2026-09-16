@@ -3037,6 +3037,12 @@
       "trigger": ":51 cycle -- full read of play-backfill.ts, the sibling thin-edition rescue mechanism",
       "healthcheck": "AMBER, unchanged -- same explained overnight pattern. ~1h23m to morning-confirm window (13:15 UTC).",
       "codeReview": "Full read of play-backfill.ts (190 lines) -- backfillThinEditionPlays, the OTHER thin-edition rescue mechanism alongside publish-gates.ts's gate-promote rescue (last 2 cycles' focus). Architecturally independent: this path backfills from the RANKED POOL with FRESH chain-grounded contracts and FRESH levels (buildDirectionalStockLevels) rather than resurrecting an already-blocked play, and validates via validatePlayGeometry (play-constraints.ts) rather than re-running the publish gates. Confirmed play-constraints.ts carries NO ATR-multiple logic at all (grepped for ATR/atr14/MAX_ATR -- zero hits), so it structurally cannot share the GATE_TARGET_MAX_ATR_MULTIPLE == GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE defect found 2 cycles ago -- that bug is isolated to the gate-promote path alone, this sibling backfill path is unaffected. No bug found here."
+    },
+    {
+      "at": "2026-09-16T12:09:37Z",
+      "trigger": ":06 new-hour cycle -- B_marks evidence text changed for the same 3 OCCs, investigated and confirmed benign",
+      "healthcheck": "AMBER, same 3 OCCs (CRWD/RIG/SWKS) but the evidence text changed from 'mark flagged stale by the API' to 'no live two-sided quote (bid=0, ask=0) -- mark sourced from last trade/close'. Investigated before treating as new: verdictForMarkRow (legacy-healthcheck-eval.mjs) checks bid==null||ask==null||ask<=0 BEFORE the stale flag, so this transition means the live quote genuinely went from a real two-sided [bid,ask] band (with the API's own staleness flag set) to a full 0/0 quote dropout between the two checks -- a real, live production data change, not a code/script issue (grepped legacy-e2e-healthcheck.mjs's own git log -- unchanged since PR #4792). The eval function's own header comment already documents and handles this exact scenario (reproduced live 2026-09-11 pre-market on AAPL/SWKS, correctly AMBER not RED) -- expected pre-market bid/ask flickering this early (12:08 UTC = 8:08am ET, ~1h22m before open), not a new bug. Verified before escalating rather than assuming a regression.",
+      "note": "~1h07m to the morning-confirm window (13:15 UTC) -- D_pull_status should populate soon, worth a closer check next few cycles."
     }
   ],
   "knownOpenItems": {
