@@ -3417,6 +3417,12 @@
         "candidateFixSketch": "At the same point ranked/dossiers are still in scope (before line 1144), compute `assignNighthawkTier(nhTierInputFromScored(dossiers[play.ticker].scored))` per finalPlay (mirrors publish-context.ts:266-272 exactly, so it can't drift from the pin), sort by tier rank descending (A > B > C, matching NH_TIER_RANK in nighthawk-tiers.ts) with score as the tiebreaker within a tier, THEN assign rank. gate_promoted plays already get capGatePromotedConviction applied at the read-time overlay, so their sort-time tier should probably also route through that cap for consistency -- worth deciding explicitly rather than assuming either way.",
         "action": "REPORT AND HOLD -- logged here for operator/Cursor review, not fixed unilaterally this cycle."
       }
+    },
+    {
+      "at": "2026-09-16T23:28:09Z",
+      "trigger": "PR #5095 CI-completion wake (between :21 and :36 cycles)",
+      "healthcheck": "Steady: A_edition GREEN, B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
+      "codeReview": "No new file review this wake -- purely closing out PR #5095 (pull-overlay.ts stale comment). CI went green (verify success at 23:26:20Z), undrafted, merged squash (d746449a), verified the corrected header comment directly against origin/main's pull-overlay.ts, local branch deleted (remote delete 403'd as usual, not retried). Both comment-fix PRs from the :06/:21 cycles (#5094, #5095) are now closed out clean. The one substantive open item remains the REPORT-AND-HOLD logged last cycle: edition-builder.ts's PR-N26 rank sort (by score) disagreeing with the PR-N7 tier engine's conviction assignment (deliberately non-monotonic in score) -- still open for operator/Cursor review, not touched."
     }
   ],
   "knownOpenItems": {
