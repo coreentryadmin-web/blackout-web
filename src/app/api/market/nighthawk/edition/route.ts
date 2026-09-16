@@ -302,11 +302,20 @@ export async function GET(req: NextRequest) {
   try {
     const instant = await peekServerCache<NightHawkEdition>(cacheKey);
     if (instant) {
+      // BUG (found 2026-09-16): lastGoodEdition is documented below as "this process's own last
+      // successful read", but this fire-and-forget refresh — the path EVERY request takes once the
+      // cache is warm — used to discard its resolved value entirely. Only the cold-cache-miss branch
+      // a few lines down ever assigned lastGoodEdition, so under normal continuous traffic (the peek
+      // hits almost every request once warm) it froze at whatever this process's very first resolve
+      // was and never picked up later overlay changes (pulled plays, outcome pins) applied on every
+      // fresh resolve. Mirror the same guard the cold-miss branch uses below.
       void withServerCache(cacheKey, nighthawkEditionCacheTtlMs(), () => resolveNighthawkEdition(editionFor, explicitDate), {
         maxBlockMs: nighthawkEditionReadMaxBlockMs(),
         staleOnInflight: true,
         fallback: async () => timeoutFallbackEdition(editionFor),
         shouldCache: (value) => (value as NightHawkEdition).available !== false,
+      }).then((edition) => {
+        if (edition.available !== false) lastGoodEdition = edition;
       }).catch(() => undefined);
       return NextResponse.json(roundFloats(instant), { headers: NO_STORE_HEADERS });
     }

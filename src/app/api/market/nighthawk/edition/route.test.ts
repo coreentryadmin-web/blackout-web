@@ -125,3 +125,28 @@ test("timeoutFallbackEdition: a lastGoodEdition for a DIFFERENT editionFor is re
     "a cached last-good read for an earlier trading day must not replay unflagged as tonight's board"
   );
 });
+
+// ── 2026-09-16: lastGoodEdition froze at this process's FIRST successful resolve, not its LATEST
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// lastGoodEdition is documented (see its own comment block above) as "this process's own last
+// successful read". But it was only ever assigned inside the `else` of `if (instant)` — the
+// cold-cache-miss branch. Once the cache is warm (normal operation, TTL 60s, SWR staleness ceiling
+// 10min), essentially every request takes the `if (instant)` fast path instead, which fired its
+// background refresh but discarded the resolved value with a bare `.catch(() => undefined)`. So in
+// a long-lived replica under continuous traffic, lastGoodEdition never advanced past whatever this
+// process's very first successful resolve was — meaning a maxBlockMs timeout hours into the
+// process's life would replay a snapshot missing every pull/outcome overlay applied since boot.
+
+test("the peekServerCache-hit fast path also refreshes lastGoodEdition, not only the cold-miss branch", () => {
+  const src = read(ROUTE);
+  const instantStart = src.indexOf("const instant = await peekServerCache");
+  const instantEnd = src.indexOf("return NextResponse.json(roundFloats(instant)");
+  assert.ok(instantStart >= 0 && instantEnd > instantStart, "could not locate the peekServerCache fast-path block");
+  const instantBlock = src.slice(instantStart, instantEnd);
+  assert.match(
+    instantBlock,
+    /\.then\(\s*\(edition\)\s*=>\s*\{\s*if\s*\(edition\.available !== false\)\s*lastGoodEdition\s*=\s*edition;\s*\}\s*\)/,
+    "the fast-path background refresh must keep lastGoodEdition current the same way the cold-miss branch does"
+  );
+});
