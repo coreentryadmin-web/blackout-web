@@ -69,9 +69,7 @@ const { extractChainFieldsFromRaw } = await import(`${SRC}lib/flow-raw-fields.ts
 const { dteFromExpiry } = await import(`${SRC}lib/flow-dte.ts`);
 const { deriveZeroDteSetups } = await import(`${SRC}lib/zerodte/board.ts`);
 const { computeConfluence } = await import(`${SRC}lib/zerodte/confluence.ts`);
-const { computeIntradayRead, marketBias, intradayScoreAdjust } = await import(
-  `${SRC}lib/zerodte/intraday.ts`
-);
+const { computeIntradayRead, marketBias } = await import(`${SRC}lib/zerodte/intraday.ts`);
 const { fetchStockMinuteBars } = await import(`${SRC}lib/providers/polygon.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
 const { attachThesisFirstLive } = await import(`${SRC}lib/zerodte/thesis/live-pipeline.ts`);
@@ -242,8 +240,6 @@ for (const day of days.slice().reverse()) {
   });
   if (!rawSetups.length) { console.log("  — 0 setups survived evidence gates"); continue; }
 
-  const vixBar = await fetchAggBars("I:VIX", 1, "day", day, day).catch(() => []);
-  const vixDayOpen = Array.isArray(vixBar) && vixBar[0]?.o != null ? Number(vixBar[0].o) : null;
   const spyBars = await fetchStockMinuteBars("SPY", day, day).catch(() => []);
   const spyRead = computeIntradayRead((spyBars ?? []).map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c, v: b.v })));
   const bias = marketBias(spyRead);
@@ -254,7 +250,6 @@ for (const day of days.slice().reverse()) {
     const bars = await fetchStockMinuteBars(s.ticker, day, day).catch(() => []);
     const read = (bars ?? []).length ? computeIntradayRead(bars.map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c, v: b.v }))) : null;
     const marketAligned = bias == null || bias === "flat" ? null : (bias === "up") === (s.direction === "long");
-    const conflict = read ? intradayScoreAdjust(s.direction, read).conflict : false;
     const setupForConfluence = { direction: s.direction, intraday: read, market_aligned: marketAligned };
     const confluence = computeConfluence(setupForConfluence, dayEtMinutes);
     s.confluence = confluence;
