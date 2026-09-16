@@ -4,6 +4,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   buildLegacyBoardRows,
   legacyBoardCalendarBuckets,
+  legacyBoardExportCsv,
   terminalPlayToLegacyRow,
 } from "@/features/nighthawk/lib/legacy-board-table-utils";
 import { vectorBoardScorecard } from "@/features/nighthawk/lib/vector-board-row-utils";
@@ -188,4 +189,31 @@ test("legacyBoardCalendarBuckets: an all-stock-only day (zero real premium data)
   const buckets = legacyBoardCalendarBuckets(rows, ["2026-09-15"]);
   assert.equal(buckets[0]?.n, 1);
   assert.equal(buckets[0]?.net_premium_pct, 0, "no real premium data that day — same honest-zero fallback as the no-resolution case");
+});
+
+// Bug fixed 2026-09-16 (live audit): legacyBoardExportCsv used JSON.stringify as a stand-in for
+// CSV field quoting. JSON's `\"` escape is not valid CSV (RFC 4180 requires doubling an embedded
+// quote as `""`), so any field containing a literal double quote corrupted the exported row — a
+// CSV reader treats the character right after `\` as the field's closing quote, spilling the rest
+// of the quoted text into the next column. risk_note/thesis text is LLM-authored prose that
+// routinely quotes a catalyst headline verbatim (e.g. `Catalyst: "The company secured..."`), so
+// this was a real, reachable corruption path on a live member-facing export, not a hypothetical.
+test("legacyBoardExportCsv: a risk_note containing an embedded quote is CSV-escaped correctly, not JSON-escaped", () => {
+  const play = basePlay({
+    riskNote: 'Catalyst: "The company secured new contracts" — elevated risk into the print.',
+    stopLevel: "6.64",
+    targetLevel: "8.41",
+    entryRange: "$7.46-$7.84",
+  });
+  const row = terminalPlayToLegacyRow(play, "2026-09-16");
+  const csv = legacyBoardExportCsv([row]);
+  const dataLine = csv.split("\n")[1]!;
+
+  // Correct RFC 4180 escaping: the embedded `"` doubles to `""`, and the whole field stays
+  // one contiguous double-quoted token — never a bare `\"`.
+  assert.ok(
+    dataLine.includes('"Catalyst: ""The company secured new contracts"" — elevated risk into the print."'),
+    `expected a properly double-quote-escaped risk_note field, got: ${dataLine}`
+  );
+  assert.ok(!dataLine.includes('\\"'), `must never emit a JSON-style backslash-quote escape in CSV output, got: ${dataLine}`);
 });
