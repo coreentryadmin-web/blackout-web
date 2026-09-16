@@ -355,6 +355,9 @@
     },
     "2026-09-16T17:07Z": {
       "note": "Board-upstream degradation recurred (2026-09-16, 1st instance): upstream_ok:false confirmed on 2 consecutive pulls at 17:07 UTC, setups/ledger empty, discovery_health disabled. /record stayed healthy (21 plays, graded=21) -- confirmed to operator that nothing was lost, just the live board view. Consistent with yesterdays established self-resolving pattern (8 instances, 5-27min range). Will check resolution next cycle."
+    },
+    "2026-09-16T17:15Z": {
+      "note": "Board-upstream degradation resolved, confirmed healthy by 17:15 UTC (~8min from 17:07 confirmation). Same 9 closed positions, nothing new. Pattern held."
     }
   },
   "sessions": {
