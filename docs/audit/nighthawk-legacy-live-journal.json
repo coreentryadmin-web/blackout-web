@@ -3332,6 +3332,11 @@
       "healthcheck": "AMBER, same expected post-close state (still pre-17:30 ET edition window). Not re-investigated.",
       "prStatus": "PR #5091 CI still in_progress (verify) at ~10min, CodeQL/dispatch/triage/analyze all green.",
       "codeReview": "Read positioning.ts (166 lines -- GEX/positioning summary builder feeding the dossiers that drive scoring/tier assignment). Already carries real documented fixes (null-flip-vs-null-regime, honest-null-vs-fabricated-zero for 'no positioning data'). Chased one lead: negative_gamma: gex.net_gex < 0 would silently read false (misleading 'positive gamma') rather than the file's own established null-for-unknown convention if net_gex were ever NaN. Verified analyzeStrikeGexRows (gamma-desk.ts) explicitly skips any row with a non-finite strike/call_gamma_oi/put_gamma_oi before accumulating net_gex, so that path's net_gex is guaranteed finite -- confirmed safe, not a bug. The OTHER path (gex.net_gex from the shared getGexPositioning cache) wasn't chased further -- that cache is a platform-wide shared contract (Heatmaps/SPX desk/etc), outside Legacy's exclusive ownership, and heavily used elsewhere, so a NaN-net_gex defect there would likely already be visible in other lanes' audits rather than something to speculatively flag from this read alone. No new Legacy-scoped bug found."
+    },
+    {
+      "at": "2026-09-16T21:10:16Z",
+      "trigger": "PR #5091 CI green, merged and re-verified",
+      "prMerged": "All checks green. Undrafted, merged via GitHub MCP (squash, 1b560c38f). Re-verified against origin/main directly (grep confirms capGatePromotedConviction import + call site live). Local branch deleted; remote delete 403'd as usual. Unsubscribed from PR activity. Three real bugs found and shipped this segment: PR #5084 (WS-freshness gate threshold), PR #5087 (dead-code cleanup), PR #5091 (gate-promote conviction cap defeated on read)."
     }
   ],
   "knownOpenItems": {
