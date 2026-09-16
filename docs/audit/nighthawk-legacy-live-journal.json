@@ -3367,6 +3367,12 @@
       "trigger": ":06 cycle -- followed up last cycle's unresolved R:R curiosity, confirmed clean",
       "healthcheck": "Steady: A_edition GREEN, B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED (pre-morning-confirm).",
       "followUp": "Ran down the R:R-ratio discrepancy flagged as unresolved last cycle. Found the real formula: computeRiskReward (play-levels.ts) uses the FILL EDGE (LONG: band top, the WORST/most conservative entry price -- deliberately matches fillEdgeOf/debrief.ts/the G-N2 gate, per that file's own documented 2026-08-06 fix moving off the naive band-midpoint basis), and deterministic-edition.ts's display FLOORS to 1 decimal (not round-to-nearest -- its own comment explains why: rounding 0.49 up to '0.5' would read as contradicting the 'acceptable' label threshold it sits just under). Recomputed all three published R:R values by hand with the real formula: SMTC 7.13/19.28=0.3698 -> floors to 0.3:1 (displayed 0.3:1, matches); LITE 84.38/114.00=0.7402 -> 0.7:1 (matches); RVTY 3.98/8.13=0.4896 -> 0.4:1 (matches). All three confirmed exactly correct -- last cycle's 'curiosity' was my own rushed mental math (used the wrong reference edge / didn't apply the floor), not a real discrepancy. Closing this out clean."
+    },
+    {
+      "at": "2026-09-16T22:23:21Z",
+      "trigger": ":21 cycle -- spx-gap.ts read",
+      "healthcheck": "Steady: A_edition GREEN (tonight's edition), B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
+      "codeReview": "Full read of spx-gap.ts (92 lines -- SPX gap-and-go/trap/fill classifier). Verified the up-gap and down-gap branches each partition the real number line exhaustively and without overlap across the 3 pattern buckets (go/trap/fill), mirroring correctly between the two directions. File already carries a documented fix for exactly this defect class (the old version compared last_price to session_open in both branches, making 'gap_fill' mathematically unreachable -- every partial fade mislabeled as a full reversal). No new bug found."
     }
   ],
   "knownOpenItems": {
