@@ -208,3 +208,51 @@ test("buildLegacyOptionMarkRow: a WS bid=0 quote with no last trade at all passe
   );
   assert.equal(row.mark, 7.5);
 });
+
+// ── 2026-09-16: the last-resort bid/ask fallback bypassed midOf's own validity checks ─────────
+//
+// mapUnifiedSnapshotResult's mark ladder is midOf(bid,ask) ?? last ?? dayClose — so snap.mark can
+// only be null when midOf ALREADY rejected bid/ask (a crossed book, ask<=0, etc — see midOf's own
+// "stale/glitched print must not synthesize a fabricated mid" comment) AND there's no last trade
+// or dayClose either. In exactly that case, buildLegacyOptionMarkRow's own final fallback used to
+// recompute a raw (bid+ask)/2 average with none of midOf's guards, reconstructing the same
+// fabricated mid midOf had just refused to produce.
+
+test("buildLegacyOptionMarkRow: a crossed book (ask < bid) with no mark/last/dayClose anywhere does not synthesize a fabricated average", () => {
+  const row = buildLegacyOptionMarkRow(
+    "MRNA260904C00155000",
+    null,
+    {
+      ticker: "O:MRNA260904C00155000",
+      // mark is null exactly as mapUnifiedSnapshotResult would compute it here: midOf(5, 3) is
+      // null (crossed — ask < bid), and there's no last trade or dayClose to fall back to.
+      mark: null,
+      bid: 5,
+      ask: 3,
+      last: null,
+      dayClose: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: null,
+      bidSize: null,
+      askSize: null,
+      dayVolume: null,
+      underlyingPrice: null,
+      strike: 155,
+      optionType: "call",
+      expiry: "2026-09-04",
+      sharesPerContract: 100,
+      quoteUpdatedMs: NOW,
+      observedAtMs: NOW,
+    },
+    NOW
+  );
+  assert.equal(
+    row.mark,
+    5,
+    "a crossed book must fall to a single real quoted value (bid), never an average of two numbers midOf itself rejected as unreliable"
+  );
+});

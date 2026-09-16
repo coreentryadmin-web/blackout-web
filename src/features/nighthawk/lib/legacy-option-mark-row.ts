@@ -3,6 +3,7 @@
  * Used by the legacy-marks API route, server live-sync, and unit tests.
  */
 import {
+  midOf,
   reliableMarkFromQuote,
   reliableMarkFromSnapshot,
   type OptionSnapshot,
@@ -68,8 +69,16 @@ export function buildLegacyOptionMarkRow(
   const ask = ws?.ask ?? snap?.ask ?? null;
   const wsMark = ws ? reliableMarkFromQuote(ws.mark ?? null, ws.bid ?? null, ws.last ?? null) : null;
   const snapMark = snap ? reliableMarkFromSnapshot(snap) : null;
-  const mark =
-    wsMark ?? snapMark ?? (bid != null && ask != null ? (bid + ask) / 2 : bid ?? ask ?? null);
+  // BUG (found 2026-09-16): this last-resort fallback used to average bid/ask directly
+  // (`(bid + ask) / 2`) with none of midOf's validity checks — reachable only when neither WS nor
+  // REST produced a doc-priority mark at all (both wsMark/snapMark null), which per
+  // mapUnifiedSnapshotResult's own ladder (midOf(bid,ask) ?? last ?? dayClose) means bid/ask
+  // themselves already failed midOf's own guard (a crossed book, ask<=0, etc — the exact "stale/
+  // glitched print must not synthesize a fabricated mid" case midOf's header comment describes).
+  // Reimplementing the arithmetic inline silently bypassed that guard. Delegate to the shared,
+  // already-tested midOf instead of reimplementing it — same pattern this file already follows for
+  // isZeroDteMarkStale below.
+  const mark = wsMark ?? snapMark ?? midOf(bid, ask) ?? bid ?? ask ?? null;
 
   const wsAsofMs = ws != null && Number.isFinite(ws.ts) ? ws.ts : null;
   const snapAsofMs =
