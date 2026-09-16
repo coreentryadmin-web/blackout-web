@@ -4,6 +4,551 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-09-16 — [FINDING, P1 performance] UW rate-limiter queue-wait spike overnight (07:18-08:00 UTC) was 97% live traffic, not background sweeps — refines the RTH-only capacity hypothesis, and shows a gap in the just-shipped surge alert
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | A live, real-time incident caught mid-flight during a DISCOVERY sweep (not a historical re-measurement). Directly refines two of this session's own earlier findings: `2026-09-15-vector-dark-pool-warm-still-failing-majority-after-two-prior-fixes.md` (PR #5045, measured during RTH, root-cause hypothesis centered on background-sweep contention against `GLOBAL_MAX_RPS=2`) and the queue-timeout surge alert this session shipped (PR #5048, `noteQueueTimeoutForAlert`/`alertQueueTimeoutSurgeOnce` in `uw-rate-limiter.ts`). |
+| **Evidence — the ALB-side symptom** | `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s target group: average jumped from a healthy ~0.1-0.4s baseline to **8-13s average** for six consecutive 5-minute buckets (07:26-07:56 UTC), while `Maximum` stayed in its normal 20-53s range the whole time — i.e. this was NOT a few outliers dragging the average, a LARGE FRACTION of requests were meaningfully slow. `RequestCount` (~650/10min) and `HTTPCode_Target_5XX_Count`/`4XX_Count` (single digits to low teens, normal) stayed flat throughout — no traffic surge, no error spike. RDS (`CPUUtilization`, `DatabaseConnections`, `ReadLatency`, `WriteLatency`) was completely flat and healthy the entire window, ruling out a DB-side cause. No ECS deployment overlapped the worst part of the window (the nearest deploy events were 06:03 UTC, over an hour before, and 08:10 UTC, after recovery had already started). |
+| **Root cause, confirmed via `[uw] queue wait` logs** | Pulled every `[uw] queue wait` log line in the same window (07:15-08:05 UTC): **1359 total**, of which **986 exceeded 5 seconds and 621 exceeded 10 seconds**, topping out at **~19.9s — right at the 20s `DEFAULT_QUEUE_MAX_WAIT_MS` ceiling** (`queue-budget.ts`). This is the exact same shared 2-RPS UW admission queue the `vector-dark-pool-warm` finding (PR #5045) and this session's own surge alert (PR #5048) already target — but the composition is different from what PR #5045 assumed: only **42 of 1359 (3%)** of these waits were tagged `(background sweep)` (i.e. went through `runWithBackgroundUwSweep`); **1317 (97%) were untagged — live/foreground member traffic**, not a background cron sweep at all. Cross-checked `[cron/*] background done` logs in the identical window: only 3 background-cron completions, none overlapping the worst part (07:26-07:56) — the nearest are at 08:00-08:02, during recovery, not causation. |
+| **Why this refines, not just repeats, the earlier finding** | PR #5045's root-cause hypothesis centered on multiple background-sweep crons (`vector-dark-pool-warm`, `vector-pick-sweep`, etc.) contending for the shared 2-RPS ceiling, measured during RTH. This incident happened well outside RTH (roughly 3:18-4:00am ET), with modest request volume, and almost entirely live traffic — no big background sweep to blame. That means `GLOBAL_MAX_RPS=2` is not merely under-provisioned relative to RTH background-sweep load; it is close enough to the edge that ordinary overnight live-traffic demand alone can push it into sustained multi-second queueing. This strengthens rather than narrows the case in PR #5045's "suggested next steps" for reconsidering whether the current `GLOBAL_MAX_RPS=2` default reflects UW's actual account-level rate limit or is now simply too conservative for the platform's real aggregate demand. |
+| **A gap in the surge alert this session just shipped (PR #5048)** | Checked whether `noteQueueTimeoutForAlert`'s new sustained-surge alert fired during this incident: it did not (`"queue timeouts surging"` — 0 matches in CloudWatch Logs for the window). That is CORRECT behavior for what the alert was built to detect — it only counts actual `RateLimiterQueueTimeoutError` throws (a caller that waited the FULL 20s budget and was rejected), and none of these 1359 waits crossed that line (the worst was ~19.9s, just under). But it means a 40-minute, platform-wide, ALB-average-visible latency incident — real member requests waiting 5-20s before their fetch even started — produced zero pages, because every single wait, however severe, stayed just inside the budget. The alert closes the exact gap MARKET-OPEN-VALIDATION.md's 2026-09-08 note described (sustained *timeouts* with no alert); this incident shows a second, adjacent gap it does not cover: sustained *near-timeout severe queueing* that degrades every live request's latency without ever producing a single `RateLimiterQueueTimeoutError`. Not proposing a fix here — flagging it as a real, evidenced limitation of the just-shipped alert for whoever next tunes it (a possible direction: also track `formatQueueWaitLog`'s own already-logged wait durations in a rolling window, not just outright timeouts, though that needs the same "don't page on a single burst" care the original alert used). |
+| **Current status at time of writing** | Recovering: ALB average was back down to ~2s by 08:08-08:16 UTC (still above the ~0.2s true baseline, trending down from the 12s peak). Not fully resolved as of this write-up. |
+| **Why not fixed directly in this cycle** | Same reasoning as PR #5045: `GLOBAL_MAX_RPS` capacity tuning and the alert's own detection scope are real design decisions on shared, hot-path infrastructure, not something to patch blind mid-incident from DISCOVERY. Read-only measurement only. |
+| **Status** | MEASURED, live incident caught in progress, recovering. No code changed. Flagged as reinforcing evidence for PR #5045's still-open capacity question, plus a new, separate observation about the surge alert's detection boundary. |
+
+## 2026-09-16 — [FINDING, P2 product enhancement] Committed swing positions' Thesis Health could never calibrate its persistence pillar — FIXED (half of a two-agent split, #4076)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Every committed swing position's `computeSwingThesisHealth` read `src.setupState`, which is permanently `null` for a live position — `SwingPositionRow` (`db.ts:7364-7404`) has no `setup_state` column, and `live-plays.ts`'s `livePlayFromSwingPosition` (the row→`HorizonPlay` mapper for committed rows) never assigned it. The WATCH-lane dossier state that would calibrate it simply never survives the WATCH→COMMIT transition — a structural absence, not a live-data staleness gap. Found via a dedicated Largo C3 (absence) audit and confirmed independently by two agents on #4076 before either wrote code. |
+| **Root cause** | Confirmed the exact gap via `git grep`: `setupState`/`entryStatus`/`signalKinds` have no DB column and are never assigned to `HorizonPlay` for a committed row. Tracing the fix: pinning a dossier `setupState` once AT COMMIT would be tautological (`structure-levels.ts`'s `deriveSwingPlanLevels` sets `entryUnderlyingPx: price` literally to the dossier-build-time price, so `price === triggerPx` always → always reads TRIGGERED, a constant, not calibrated). The real fix is to DERIVE `setupState` fresh on every read, the same way the WATCH lane already does — `live-plays.ts`'s `livePlayFromSwingPosition` already receives `spot` as a parameter (used for `structuralBreakFromSpot`) and already reads `row.entry_underlying_px`/`row.thesis_invalidation_px` off the row, but neither the row's two pinned DB columns nor the live spot were ever threaded into the returned `HorizonPlay`. |
+| **Evidence** | `entryTriggerUnderlyingPx`/`liveSpot` were already-declared fields on both `HorizonPlay` and `HorizonDeckSource` (added for the WATCH-track overlay) but zero assignments existed anywhere for a committed row — confirmed via grep across `live-marks-active.ts`/`banger-lane-merge.ts`. New regression tests (see below) prove the persistence pillar's `currentLabel` flips from the "unknown" sentinel to a real derived state ("triggered") once the three fields are supplied, and stays "unknown" (no regression) when they're absent. |
+| **Fix** | (1) `setup-state.ts`'s `deriveSetupState` signature widened from `(dossier: SwingDossier, ...)` to `(dossier: Pick<SwingDossier, "direction">, ...)` — it only ever read `.direction`, so this is a safe, backward-compatible widening letting a committed-row caller pass a minimal `{ direction }` object instead of a full dossier it doesn't have. (2) Added `invalidationUnderlyingPx`/`liveSpot` fields to `HorizonPlay` (`horizon-plays.ts`) — `entryTriggerUnderlyingPx` already existed. (3) `live-plays.ts`'s `livePlayFromSwingPosition` now threads `row.entry_underlying_px`/`row.thesis_invalidation_px`/`spot` into the returned `HorizonPlay`. (4) `play-brief-resolve.ts`'s `horizonRowToDeckSource` threads the two new fields into `HorizonDeckSource` (mirroring the existing `entryTriggerUnderlyingPx` line). (5) `adapters.ts`'s `terminalPlayFromHorizon` now computes `liveSetupState`: when `working` (a committed row) and both `liveSpot`/`entryTriggerUnderlyingPx` are present, calls `deriveSetupState` live off the three legs instead of trusting the always-null `src.setupState`; falls back to the existing `src.setupState` read otherwise (a no-op for WATCH rows, which already carry a real dossier-derived value via a separate path). |
+| **Blast radius** | Five files: `setup-state.ts` (signature widening, only 2 other call sites, both pass a full `SwingDossier` which still satisfies `Pick<..., "direction">`), `horizon-plays.ts` (2 new optional fields), `live-plays.ts` (3 new field assignments), `play-brief-resolve.ts` (2 new field mappings), `adapters.ts` (new `liveSetupState` computation + import). **Deliberately NOT touched in this PR:** `thesisHealthUncalibrated`'s gating (`thesis-health.ts`) — `entryStatus` remains permanently null for committed rows (a separate, still-open question: is a permanently-absent entry-geometry pillar legitimately N/A forever, or should the uncalibrated threshold be redefined to require only 2-of-3 pillars once persistence + signal-corroboration are real?), so the "Inputs not wired for committed positions" disclosure will keep showing until that decision is made and the `signalKinds` half (the other agent's half of this same split, tracked on #4076) also lands. This PR only makes `setupState` itself real — a verifiable, independently testable step, not the full visible fix. |
+| **Fix rationale** | Deriving live (not pinning at commit) was the deliberate choice over the original commit-time-pinning plan, after independently verifying the tautology risk (`entryUnderlyingPx: price` at dossier-build time) that both agents' investigation surfaced before either wrote code — avoided shipping a fix that reads as calibrated but is actually a constant. Widening `deriveSetupState`'s signature via `Pick<>` rather than duplicating its logic for a committed-row-shaped input keeps one source of truth for the FORMING→TRIGGERED→EXTENDED→INVALIDATED state machine. |
+| **Regression guard** | `adapters.test.ts`: two new tests — a committed row with `liveSpot`/`entryTriggerUnderlyingPx`/`invalidationUnderlyingPx` supplied derives `currentLabel: "triggered"` on the Persistence pillar; the same row shape without those fields still reads `"unknown"` (no regression on the existing uncalibrated path). RED→GREEN proven via `git stash` on the five source files (1 failure pre-fix, 0 post-fix). `npx tsc --noEmit` clean (Node 20). `adapters.test.ts` + `src/lib/swing/*.test.ts` + `horizon-plays.test.ts`: 1350/1350 pass. `src/features/nighthawk/command-deck/*.test.ts`: 428/428 pass. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · 1350/1350 + 428/428 pass · RED→GREEN proven via `git stash`. |
+| **Status** | FIXED (this half only — see Blast radius for what's still open). |
+
+## 2026-09-16 — [FINDING, P3 correctness] Swing `signalKinds` (discovery corroboration) was computed at commit but never pinned to the ledger — FIXED (partial; see disclosure)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Found during the standing Ask Largo × Night Hawk Swings deep-dive, independently verified with Cursor on PR #4076's comment thread (comments 5691002280 / 5691286883 / 5691325666 / 5691381540). Every committed swing position's play-brief "Thesis health" section renders `"Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown"` (`play-brief.ts`'s `thesisHealthSection`) — a permanent, honest-but-avoidable absence for the entire life of the position, not a transient staleness gap. |
+| **Root cause** | `discovery.ts`'s commit-candidate assembly (`commitCandidates: SwingCommitCandidate[] = watchCandidates.map(...)`, ~line 1005) already computes `discoveryPaths` (via `discoveryPathsForConfluence`/`signalKindsForObservation` — the exact discovery-provenance kinds, FLOW/STRUCTURE/CATALYST/etc, the G-S6 confluence gate graduated the candidate on) and carries it on `SwingCommitCandidate.discoveryPaths`. But `commit.ts`'s `buildCommitInsert` — the function that persists the candidate into `swing_positions.entry_context` — never included it in the pinned JSONB object; it was used only to DECIDE whether to commit, then discarded. Downstream, `live-plays.ts`'s `livePlayFromSwingPosition` (the mapper from `swing_positions` rows → `HorizonPlay`) never read anything back from `entry_context` for this either, so every committed row's `HorizonPlay.signalKinds` was always `undefined` — which `thesis-health.ts`'s `signalScore()` renders as the literal sentinel label `"no signals"`, which `thesisHealthUncalibrated()` treats as proof the whole pillar breakdown is uncalibrated. |
+| **Evidence** | `grep -n "discoveryPaths" src/lib/swing/commit.ts` showed the field used only in gate-evaluation call sites (lines 377–439), never inside `buildCommitInsert`'s persisted `entry_context`/`gate_calibration_json`/`feature_vector` object (~line 563). `grep -n "entry_context" src/lib/swing/live-plays.ts` returned zero matches before this fix — the mapper never read the JSONB blob at all. Live-checked several real OPEN positions' play-briefs (AAPL positionId 38/37, CRWD 39) on 2026-09-16 and confirmed all three showed the "not wired" degrade. |
+| **Fix** | `commit.ts`: `buildCommitInsert`'s `entry_context` now includes `signal_kinds: cand.discoveryPaths ?? null` — reusing the SAME already-graduated value the G-S6 gate used to decide the commit, not a fresh re-derivation (so it can never disagree with what actually cleared the gate). `live-plays.ts`: `livePlayFromSwingPosition` now reads `row.entry_context?.signal_kinds` (array-shape-guarded — a malformed/non-array JSONB value degrades to `undefined`, never a crash or a fabricated `[]`) and sets it on the returned `HorizonPlay.signalKinds`, which already flows unchanged through `play-brief-resolve.ts`'s `horizonRowToDeckSource` → `adapters.ts`'s `computeSwingThesisHealth` call → `thesis-health.ts`'s `signalScore()`. |
+| **Blast radius** | Two files (`commit.ts`, `live-plays.ts`). No schema migration — `signal_kinds` lives inside the existing `entry_context` JSONB column, same pattern as the already-pinned `cortex`/`budget_verdict` sub-objects. No gate/scoring-weight change; `discoveryPaths`'s existing gate-evaluation call sites are untouched. |
+| **Disclosure — this fix alone does NOT yet flip the rendered "not wired" text.** | `thesisHealthUncalibrated()` (`thesis-health.ts`) returns `true` — and the section keeps rendering the degrade message — if ANY of the three pillar sentinels (`persistence: "unknown"`, `entry_geometry: "n/a"`, `flow_corroboration: "no signals"`) still shows its default label. This fix closes only `flow_corroboration`'s sentinel (`signalKinds` now real). `persistence`/`entry_geometry` depend on `setupState`/`entryStatus`, which (per the corrected analysis on PR #4076) need a DIFFERENT fix — live derivation via `deriveSetupState` fed real-time `entry_underlying_px`/`thesis_invalidation_px` + a live spot, not commit-time pinning (pinning would tautologically always read TRIGGERED, since `dossier.plan.entryUnderlyingPx` is literally the scan-time price, not a distinct structural trigger). That companion fix is tracked separately (Cursor, per the PR #4076 thread) — until it lands, the Thesis Health section will still show the same degrade text, but the underlying data is now correctly wired for the moment the other two pillars are too, and any offline measurement of `signalKinds`/discovery-corroboration on committed rows (e.g. a future outcome A/B) now has real data to read instead of permanent nulls. |
+| **Regression guard** | `commit.test.ts`: two new tests — `discoveryPaths` pins into `entry_context.signal_kinds` when present, and stays honestly `null` when absent. `live-plays.test.ts`: new test covering the real-data case, the honest-absence case (no `entry_context.signal_kinds` — e.g. a pre-fix row), and a malformed-shape case (a stray string instead of an array) degrading to `undefined` rather than crashing or fabricating `[]`. Git-stash proven: 3 failures pre-fix (RED), 63/63 pass post-fix (GREEN) across both test files. `npx tsc --noEmit` clean (Node 20). |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · `commit.test.ts` 44/44 + `live-plays.test.ts` 19/19, RED→GREEN proven via `git stash` · full `npm test` to follow before merge. |
+| **Status** | FIXED (one of two halves — see disclosure above; the companion setupState/entryStatus fix is tracked separately). |
+
+## 2026-09-16 — [FINDING, P2 correctness] Ask Largo "Data freshness" section never flags a stale option mark, contradicting the same envelope's evidence/unavailableSources arrays — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | `dataFreshnessSection` (`play-brief-intel.ts`) — the section literally named for honest freshness disclosure ("Honest data freshness — mark age, scan age, vector staleness") — printed the raw option-mark timestamp unconditionally whenever `play.markAsOf` was present, never checking whether that mark was actually stale. Found via a dedicated audit of the "Desk context"/"Data freshness" play-brief sections (part of the standing Ask Largo × Night Hawk Swings deep-dive), independently verified before fixing. |
+| **Root cause** | `dataFreshnessSection`'s `if (play.markAsOf) { lines.push(\`Option mark as of **${etStampFromIso(play.markAsOf)}**\`); }` never called `optionMarkIsStale(play, Date.now())` (`play-brief-absence.ts:256-264`, the shared 18-minute `SWING_OPTION_MARK_STALE_MS` bound). Meanwhile two OTHER code paths reading the exact same `play.markAsOf` field in the SAME envelope response already computed staleness correctly: `play-brief.ts`'s `evidence[]` builder and `play-brief-absence.ts`'s `collectOptionMarkStalenessAbsence` (feeding `unavailableSources[]`, which drives the UI's `UnavailableChip`). So a member could see the `unavailableSources` chip and `evidence[]` entry both say `"stale"` for the identical field, while "Data freshness" — the one section built to disclose exactly this — said nothing. |
+| **Evidence** | Live-reproduced on all 3 currently-committed real swing positions (CRWD:39, AAPL:38, AAPL:37, `GET /api/market/swing/play-brief`): all three carry the same `2026-09-15 16:00 ET` mark (the prior session's 4pm close print), read the next morning ~14+ hours later — vastly past the 18-minute staleness bound. `sections → "Data freshness"` rendered `"Option mark as of **2026-09-15 16:00 ET**"` with no qualifier, while the same envelope's `evidence[1]` carried `provenance.freshness: "stale"` and `unavailableSources[]` carried `{"source":"option mark","reason":"stale — last synced 2026-09-15 16:00 ET",...}` for the identical timestamp. |
+| **Fix** | The `if (play.markAsOf)` branch now calls `optionMarkIsStale(play, Date.now())` (already exported from `play-brief-absence.ts`, imported alongside its sibling `playExpectsLiveOptionMark` which this file already used) and renders `"Option mark **stale** — last synced **<stamp>**"` when true, the unchanged plain "as of" line otherwise — matching the wording pattern the function's other three lines (scan/Vector/GEX/HELIX) already use for staleness disclosure. |
+| **Blast radius** | One function, `dataFreshnessSection` (`play-brief-intel.ts`). Noted but NOT fixed here (out of scope, named for future work): `play-brief.ts`'s `Position` section ("Mark: $X (timestamp)") has the identical unflagged-timestamp shape on the same field — a second call site with the same root cause, left untouched pending its own dedicated fix. Two secondary asymmetries in `dataFreshnessSection`'s own Vector/GEX staleness checks (hand-rolled instead of reusing `vectorSnapshotStale`/`gexMatrixStale`, missing the future-skew/clock-skew branch those shared helpers carry) were traced by code but NOT live-reproduced — flagged for a future cycle, not fixed in this PR since they require genuine clock skew to manifest and no live evidence of that was found today. |
+| **Fix rationale** | Reusing the existing `optionMarkIsStale` helper (already the source of truth for the `evidence[]`/`unavailableSources[]` staleness verdicts) rather than reimplementing the age comparison keeps all three consumers of `play.markAsOf` provably consistent — a second independent staleness derivation risked disagreeing with the other two, which would be worse than the current silent omission. |
+| **Regression guard** | `play-brief-intel.test.ts`: two new tests — an OPEN position with a mark 20 minutes old (past the 18-min bound) renders `"Option mark **stale**"`; the same shape with a 5-minute-old mark still renders the plain "as of" line (no regression on the fresh path). RED→GREEN proven via `git stash` (1 failure pre-fix, 0 post-fix). `npx tsc --noEmit` clean (Node 20). `play-brief-intel.test.ts`: 134/134 pass. `src/lib/swing/*.test.ts`: 1195/1195 pass. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · 134/134 + 1195/1195 pass · RED→GREEN proven via `git stash`. |
+| **Status** | FIXED. |
+
+## 2026-09-16 — [FINDING, P1 performance] `withServerCache`'s "already inflight" fallback path had no `maxBlockMs` timeout — live requests blocked 14x over their documented cap — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Found live during the standing performance/latency audit mandate. ALB `TargetResponseTime` showed a sustained sitewide degradation (avg climbing 0.25s → 2.7s → 12.2s across successive 5-min windows, ~11-13s avg sustained for 7+ minutes) with flat/low ECS CPU and healthy RDS/Redis — not a capacity problem. Direct `curl` reproduction against `/api/market/spx/desk` confirmed it live: 1 of 5 consecutive requests took **42.8s**, the rest ~0.3-0.5s. |
+| **Root cause** | `src/lib/server-cache.ts`'s `withServerCache` has two distinct places that can serve a `fallback()` on a cold cache miss. The cold-start path (no build currently inflight) correctly races its own rebuild against `opts.maxBlockMs` via `Promise.race`. The **"already inflight" path** — reached when a concurrent caller finds a build for the same key already running, with no `hit`/Redis copy to serve meanwhile — called `opts.fallback()` and simply `await`ed it directly, with **no timeout at all**, even though this exact `opts` shape (`staleOnInflight`, `maxBlockMs`, `fallback`) is the caller's explicit signal that it wants a bounded worst case. `src/features/spx/lib/spx-desk-loader.ts`'s `deskCacheOpts.fallback` calls `loadSpxDeskPulse()` — itself another `withServerCache`-wrapped builder that can hit a slow upstream (Polygon) fetch — so a concurrent request landing in this branch inherited that inner call's full latency, unbounded, instead of the documented 3s `deskBootstrapMaxBlockMs()` cap. |
+| **Evidence** | Live `curl -w "%{time_total}"` against `https://blackouttrades.com/api/market/spx/desk`: 1/5 consecutive requests = 42.8s, others 0.27-0.52s (intermittent, correlated with a concurrent build already inflight — reproduces the exact "some requests slow, most fast" ALB pattern measured that same window). Code trace: `src/lib/server-cache.ts` lines ~218-237 (pre-fix) show `if (opts.fallback) return opts.fallback() as Promise<T>;` with zero race/timeout, contrasted with the properly-raced cold-start path a few lines below (`Promise.race([refresh, timeout])`). RDS connections/CPU and ElastiCache both confirmed healthy throughout, ruling out a DB/cache-infra cause. |
+| **Fix** | Wrapped the "already inflight" branch's `opts.fallback()` call in the same `Promise.race([fallback(), timeout])` pattern the cold-start path already uses. On timeout it throws `[server-cache] ${key}: cold miss (inflight, fallback) exceeded maxBlockMs` — callers already handle a thrown error from this function (e.g. `spx/desk/route.ts` catches and returns a 502 "Desk build failed") — so a slow fallback now fails fast within the configured cap instead of blocking the response indefinitely. |
+| **Fix rationale** | Racing (not just documenting) the fallback call is the only fix that actually bounds worst-case latency — the alternative of tuning `deskBootstrapMaxBlockMs()` or `loadSpxDeskPulse()`'s own timeout would only move the unbounded wait, not remove it, since ANY caller of `withServerCache` with a slow `fallback` hits the same unguarded branch. Fixing it at the shared `server-cache.ts` layer means every existing and future caller using this `maxBlockMs`+`fallback` shape (0DTE board, other desk loaders) benefits, not just SPX desk. |
+| **Blast radius** | One shared function (`withServerCache`), used by every `staleOnInflight`+`maxBlockMs`+`fallback` caller in the codebase — confirmed via grep this shape is used by SPX desk/flow/pulse cache lanes (`spx-desk-loader.ts`) and is the general pattern documented for 0DTE board (`zerodteBoardMaxBlockMs()`) and others in `src/lib/providers/config.ts`. No behavior change for callers that never land in the "already inflight, no hit, no Redis, fallback slow" race window — the overwhelming majority of requests. |
+| **Regression guard** | `src/lib/server-cache.test.ts`: new test "maxBlockMs bounds a slow fallback when a build is already inflight" — two concurrent callers on the same cold key, first occupies `inflight`, second configures `maxBlockMs:30`+a 500ms `fallback`; asserts the second caller rejects within ~30-40ms (not 500ms) with a `maxBlockMs`-named error. Git-stash proven: RED pre-fix (test resolved with the fallback's value after 509ms, no rejection), GREEN post-fix (rejects at ~37ms). Full suite: 14353/14356 pass (3 pre-existing skips, unrelated), `tsc --noEmit` clean, Node 20. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · `server-cache.test.ts` 11/11, RED→GREEN git-stash proven · full `npm test` 14353 pass / 0 fail / 3 skipped. |
+| **Status** | FIXED |
+
+## 2026-09-16 — [FINDING, P1 performance] `withServerCache`'s COLD-START fallback path was also unbounded — PR #5061's fix alone did not stop the 42s live block — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Follow-up to and correction of the 2026-09-16 "already inflight fallback unbounded" finding (PR #5061, merged, deployed and confirmed on ECS task definition `blackout-production-web:1599` matching commit `1243c707`). After that deploy completed, live re-verification (the standing "a merge is not a verification" discipline) re-ran the exact same `curl` reproduction against `/api/market/spx/desk`: 8 consecutive requests, request #7 still took **42.209220s**. The first fix was real but incomplete — it only covered ONE of two structurally identical unraced `opts.fallback()` call sites in `withServerCache`. |
+| **Root cause** | `src/lib/server-cache.ts`'s `withServerCache` has two branches that can serve `opts.fallback()` on a cold miss. PR #5061 fixed the "already inflight" branch (reached when a *concurrent* caller finds a build for the same key already running). This finding covers the **cold-start "no pending" branch** — reached when no build is currently running for the key at all, which is the far more common real-world path (no concurrent racing request required to trigger it). There, `refresh` is correctly raced against `opts.maxBlockMs` via `Promise.race`, but once that race timed out, the code fell through to `if (opts.fallback) return opts.fallback() as Promise<T>;` with **no timeout of its own** — the identical unguarded shape as the bug PR #5061 fixed, just one branch over. `src/features/spx/lib/spx-desk-loader.ts`'s `deskCacheOpts.fallback` calls `loadSpxDeskPulse()`, itself a `withServerCache`-wrapped builder that can block on a slow Polygon fetch — so a genuinely cold `/api/market/spx/desk` request (the common case post-deploy, post-cache-eviction, or on a session-date rollover) still had no bound on total latency, regardless of the documented 3s `deskBootstrapMaxBlockMs()` cap. |
+| **Evidence** | Live `curl` reproduction AFTER PR #5061's deploy was confirmed complete and running the exact merged commit: 8 consecutive requests to `https://blackouttrades.com/api/market/spx/desk`, requests 1-6 and 8 fast (0.2-0.9s), request #7 = **42.209220s**. Confirmed via `ecs.describe_task_definition` that the running image was exactly `...blackout-web:1243c707623a2bf47d76740787403db821470c48` (PR #5061's own commit), ruling out a stale-deploy explanation. Code trace: `src/lib/server-cache.ts`, cold-start branch, `if (raced !== "timeout") return raced; if (opts.fallback) return opts.fallback() as Promise<T>;` — zero race/timeout on the fallback call, mirroring the exact defect shape PR #5061 fixed in the sibling branch. |
+| **Fix** | Wrapped the cold-start branch's `opts.fallback()` call in the same `Promise.race([fallback(), timeout])` pattern already used for the primary `refresh` race in this branch, and already applied to the sibling "already inflight" branch in PR #5061. On fallback timeout, execution now falls through to the existing stale-value/background-refresh path below (serves `hit.value` if present, else kicks off `refreshCacheInBackground` and races the resulting `inflight` promise) rather than blocking indefinitely — this is a slightly softer landing than the sibling branch's hard throw, and is correct here because this branch already had that stale/background-refresh fallback chain built for exactly this "everything timed out" case; reusing it avoids duplicating logic. |
+| **Fix rationale** | Same rationale as PR #5061: fixing at the shared `withServerCache` layer means every current and future `maxBlockMs`+`fallback` caller benefits, not just SPX desk. Falling through to the existing stale/background-refresh chain (rather than throwing, as the sibling branch does) was chosen because this branch's existing code already has that chain built and it's a strictly better outcome when available (serve slightly-stale data instead of a hard error) — changing it to throw would have been a behavior regression for callers that rely on stale-serving here. |
+| **Blast radius** | Same shared function, same caller set as PR #5061 (any `maxBlockMs`+`fallback` caller — SPX desk/flow/pulse cache lanes, 0DTE board, others per `src/lib/providers/config.ts`). This finding closes the gap PR #5061 left open: the cold-start path is the one that actually reproduces in production without requiring a second concurrent request. |
+| **Regression guard** | `src/lib/server-cache.test.ts`: new test "maxBlockMs bounds a slow fallback on the COLD-START path too, when the primary refresh itself times out" — single caller, cold key, `maxBlockMs:30` + a 500ms `fallback`, no concurrent second caller needed to trigger this branch (unlike the sibling test). RED confirmed via `git stash push` on `server-cache.ts` alone (test kept): test failed, resolved with the fallback's own value after 534.9ms, no rejection — reproducing the live symptom shape exactly. GREEN confirmed post-fix: 12/12 tests pass, new test resolves in 92.7ms (bounded near `maxBlockMs`, not the fallback's 500ms). `tsc --noEmit` clean (Node 20). |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · `server-cache.test.ts` 12/12, RED→GREEN git-stash proven · full `npm test` 14355 pass / 0 fail / 3 skipped (unrelated, pre-existing), Node 20. |
+| **Status** | FIXED — **VALIDATED live 2026-09-16.** Deployed as PR #5065, commit `133bfcea0cf80671e9f48089b3339eeecd92373a`; ECS rollout confirmed COMPLETED (task def `blackout-production-web:1601`, 8/8 tasks, image tag matches the merged commit) at 09:48:07 UTC. Post-rollout: two separate live-curl bursts of 8 requests each against `/api/market/spx/desk` (09:49 UTC and 10:02 UTC) — all 16 requests fast (0.22-0.57s), zero outliers, vs the prior recurring 40s+ spikes. ALB `TargetResponseTime` Max over the full 13-minute post-rollout window (09:48-10:00 UTC) never exceeded 9.0s (vs the pre-fix pattern of recurring 40s+ spikes, including one at 09:43 UTC — confirmed via ECS service events to have occurred BEFORE the rollout reached steady state, i.e. served by an old, unfixed task instance still draining). This closes the gap PR #5061 alone did not — do not re-open without new live evidence. |
+
+## 2026-09-16 — [FINDING, FIXED] Night Hawk edition `lastGoodEdition` fallback froze at the process's first resolve, not its latest
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 |
+| **Lane** | Night Hawk Legacy |
+| **File** | `src/app/api/market/nighthawk/edition/route.ts` |
+| **PR** | (this branch) |
+
+### Root cause
+
+`GET /api/market/nighthawk/edition` keeps a module-level `lastGoodEdition` variable, documented in
+its own comment block as "this process's own last successful read" — the value served when a
+`maxBlockMs` (500ms) timeout fires mid-refresh, so a transient slow-DB hiccup reads as "temporarily
+degraded" rather than a fabricated `available:false` empty shell (the exact bug #4599/#4961 already
+fixed for the *shape* of that fallback).
+
+The handler has two branches:
+- **Fast path** (`if (instant)`, taken whenever `peekServerCache` finds an already-cached entry —
+  which is nearly every request once the 60s in-memory/Redis cache is warm): fires a background
+  `withServerCache(...)` refresh and immediately returns the cached value. The refresh's resolved
+  value was discarded with a bare `.catch(() => undefined)`.
+- **Cold-miss path** (`else`, taken only when nothing is cached anywhere — a true cold start, a
+  post-eviction gap, or a real outage past the 10-minute SWR staleness ceiling): awaits
+  `withServerCache(...)` directly and assigns the result to `lastGoodEdition`.
+
+`lastGoodEdition` was therefore assigned **only** on the cold-miss branch. Under normal continuous
+production traffic the fast path is what nearly every request takes once the cache is warm, so the
+cold-miss branch — and with it, the only line that ever updated `lastGoodEdition` — runs once, early
+in the process's life, and then effectively never again. The variable's real behavior was "this
+process's *first* successful read," not its documented "last."
+
+### Evidence
+
+Traced `withServerCache`/`peekServerCache` in `src/lib/server-cache.ts`: `peekServerCache` serves a
+stale-while-revalidate hit for up to `MAX_STALE_AGE_MS` (10 minutes) since the entry's last
+successful refresh, and the underlying `store` gets refreshed by `withServerCache`'s own internal
+`refreshCacheInBackground` roughly every TTL window (60s here, `nighthawkEditionCacheTtlMs()`) under
+active polling. So once a replica has served one request past cold start, `peekServerCache` returns
+non-null on essentially every subsequent request for the rest of that replica's life, routing 100% of
+routine traffic through the fast path that never touched `lastGoodEdition`.
+
+Confirmed via `grep`: exactly one assignment site for `lastGoodEdition` in the whole file (the
+cold-miss branch), versus two read sites inside `timeoutFallbackEdition`.
+
+### Blast radius
+
+Single call site — `GET /api/market/nighthawk/edition` is the only consumer of `lastGoodEdition`.
+No other route shares this module-level variable. `timeoutFallbackEdition`'s own cross-date
+restamping logic (the 2026-09-14 fix) is unaffected and still applies to whatever value
+`lastGoodEdition` now holds — this fix only changes *how fresh* that value is kept, not the
+restamping contract around it.
+
+### Fix rationale
+
+Mirror the exact same guard the cold-miss branch already uses (`if (edition.available !== false)
+lastGoodEdition = edition;`) onto the fast path's background refresh, via a `.then()` chained before
+the existing `.catch(() => undefined)`. This keeps `lastGoodEdition` current on every request that
+actually causes a real refresh (background SWR refresh cycles roughly every TTL window under
+traffic), so a `maxBlockMs` timeout — however rare — replays a snapshot that is at most one refresh
+cycle old instead of one that can be hours or days stale (frozen since replica boot). The same
+`available !== false` guard means a background call that itself hits `timeoutFallbackEdition`'s own
+degraded-empty-shell fallback cannot corrupt `lastGoodEdition` with an empty shell — it's naturally
+skipped by the existing guard.
+
+Considered and rejected: restructuring the cache layer itself (e.g., exposing the underlying
+`store` entry's `refreshedAt` to the route) — much larger surface change to a shared, heavily-used
+cache utility for no added benefit over this two-line, single-file fix.
+
+### Regression test
+
+`src/app/api/market/nighthawk/edition/route.test.ts` — new test asserts the `if (instant)` block's
+source contains the `.then((edition) => { if (edition.available !== false) lastGoodEdition =
+edition; })` chain. RED→GREEN proven: reverting the route change alone produced 10 pass / 1 fail;
+restoring it produced 11/11 pass.
+
+## 2026-09-16 — [FINDING, FIXED] Legacy option-mark row's last-resort fallback bypassed midOf's own crossed-book guard
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 |
+| **Lane** | Night Hawk Legacy |
+| **File** | `src/features/nighthawk/lib/legacy-option-mark-row.ts`, `src/lib/providers/options-snapshot.ts` |
+| **PR** | (this branch) |
+
+### Root cause
+
+`buildLegacyOptionMarkRow` (`legacy-option-mark-row.ts`) — the shared WS/REST mark-assembly
+function behind the Legacy marks API route and server live-sync, extensively hardened this month
+against backstop-quote divergence (2026-09-13/09-14/09-15 fixes, all documented in this file's own
+header comment) — had one remaining unguarded path:
+
+```ts
+const mark =
+  wsMark ?? snapMark ?? (bid != null && ask != null ? (bid + ask) / 2 : bid ?? ask ?? null);
+```
+
+`wsMark`/`snapMark` are both `null` only when the underlying WS/REST payload's own `mark` field is
+`null` in the first place (`reliableMarkFromQuote` returns `null` only via `if (mark == null) return
+null;` — on a detected divergence it substitutes the honest reference price, never `null`). Per
+`mapUnifiedSnapshotResult`'s own mark ladder (`midOf(bid,ask) ?? last ?? dayClose`), a `snap.mark`
+of `null` means `midOf(bid,ask)` **already rejected** the bid/ask pair — a crossed book (`ask <
+bid`), `ask <= 0`, or similar — and there is also no last trade or day-close available. In exactly
+that case, this file's own final fallback recomputed a raw `(bid + ask) / 2` average with none of
+`midOf`'s validity checks, reconstructing the same fabricated mid `midOf` had just refused to
+produce — the identical failure shape (`midOf`'s own header comment: "a stale/glitched print must
+not synthesize a fabricated mid") this file was otherwise carefully guarded against.
+
+### Evidence
+
+RED→GREEN proven in `legacy-option-mark-row.test.ts`: a snapshot with `mark: null, bid: 5, ask: 3`
+(a crossed book with no last trade or day-close — exactly what `midOf(5, 3)` rejects, since
+`ask >= bid` fails) previously produced `row.mark === 4` (the raw average of an invalid pairing).
+Reverting the fix alone reproduces that value; the fix produces `row.mark === 5` (falls to the
+single real quoted `bid` value instead of averaging two numbers `midOf` itself rejected).
+
+### Blast radius
+
+`legacy-option-mark-row.ts`'s `buildLegacyOptionMarkRow` is the only caller of the changed fallback
+line. `midOf` itself is unchanged — only exported (was previously private to
+`options-snapshot.ts`) so this file could reuse it instead of reimplementing the arithmetic inline.
+Grepped every other importer of `options-snapshot.ts` (`swing-active-refresh`, `banger-live-sync`,
+`legacy-marks` route, `vector/contract-picks/live`, `option-chain-prompt.ts`,
+`legacy-option-marks-server.ts`, `zerodte/live-marks.ts`, `zerodte/thesis/contract-attach.ts`,
+`zerodte/scan.ts`, `vector-pick-sweep.ts`) — none reference `midOf` by name, so exporting it changes
+nothing for any other caller.
+
+### Fix rationale
+
+Delegate to the shared, already-tested `midOf` instead of reimplementing its arithmetic inline —
+the same pattern this file already follows for `isZeroDteMarkStale` (its own comment: "delegates to
+the shared … predicate … instead of reimplementing the age check inline — the inline copy
+previously carried its own … gap independently of the shared one"). `midOf(bid, ask) ?? bid ?? ask
+?? null` replaces the raw average: a crossed/invalid pair now correctly falls to a single real
+quoted value rather than an average `midOf` itself would reject.
+
+### Regression test
+
+`src/features/nighthawk/lib/legacy-option-mark-row.test.ts` — new test constructs a snapshot with a
+crossed book and no mark/last/dayClose anywhere, asserting the row falls to `bid` rather than a
+fabricated average. RED→GREEN proven via git-stash: 9 pass / 1 fail with the fix reverted; 10/10
+pass restored.
+
+## 2026-09-16 — [FINDING, FIXED] Legacy live-sync `troughOut` skipped the `entry_premium` floor `peakOut` already applies
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 |
+| **Lane** | Night Hawk Legacy |
+| **File** | `src/features/nighthawk/lib/legacy-live-sync.ts` |
+| **PR** | (this branch) |
+
+### Root cause
+
+`runLegacyLiveSync` tracks a running peak and trough premium for every open Legacy position on
+each pricing cycle, so the Chief Trade Alert Bot's live-management state reflects the full excursion
+range since entry. The two computations were meant to be symmetric — the peak can never read below
+`entry_premium`, and the trough can never read above it — but only the peak side actually enforced
+that:
+
+```ts
+const peak = row.peak_premium ?? row.entry_premium;
+const peakOut = Math.max(peak, mark);
+const troughOut =
+  row.trough_premium != null ? Math.min(row.trough_premium, mark) : mark;
+```
+
+`peak` falls back to `entry_premium` when `row.peak_premium` hasn't been seeded yet, so `peakOut`
+is always `Math.max(entry_premium, mark)` at minimum — the peak can never be recorded below what
+the position actually entered at. `troughOut`'s ternary had no equivalent fallback: when
+`row.trough_premium` was `null`, it fell straight through to the raw `mark` with no floor at all,
+instead of `Math.min(entry_premium, mark)`.
+
+### Evidence
+
+A row can reach the main per-row loop with `peak_premium`/`trough_premium` still `null` whenever its
+`discord_live_state` predates a peak/trough seed — the `LegacyLiveSyncRow` type declares both as
+`number | null`, and `ensureLegacyDiscordBtos`'s own BTO-backfill path (`runLegacyLiveSync` lines
+153-164, "Post missing BTO embeds for open rows … edition published before alerts were live") writes
+a seeded `peakPremium`/`troughPremium` to the DB but never refreshes the in-memory `rows` array it
+was called with, so a play whose BTO gets backfilled in the *same* invocation still carries `null`
+peak/trough through the rest of that cycle's loop.
+
+RED→GREEN proven in `legacy-live-sync.test.ts`: a row entering the loop with
+`peak_premium: null, trough_premium: null, entry_premium: 4`, a mark of `5` (a favorable first
+tick, above entry) produced `peakPremium: 5` (correct, `max(4, 5)`) but `troughPremium: 5` (wrong —
+should floor at `entry_premium`, `min(4, 5) = 4`, the true lowest premium ever actually observed).
+Reverting the fix alone reproduces the failure (`5 !== 4`); restoring it passes.
+
+### Blast radius
+
+Single function (`runLegacyLiveSync`'s main per-row loop) — `troughOut` computed here feeds
+`deps.updateLiveState`'s `troughPremium`, persisted to `discord_live_state.trough_premium` and
+surfaced through the Legacy live-sync reporting path. Not read by `deriveLegacyPlanAction` or
+`deriveScaleOutAction` (verified — neither references trough), so this never affected an actual
+CLOSE/TRIM/HOLD trade-management decision; it is a drawdown-excursion bookkeeping/reporting value.
+
+### Fix rationale
+
+Mirror the exact fallback pattern already used for `peak` — introduce a `trough` variable with the
+same `?? row.entry_premium` fallback, then `Math.min(trough, mark)`. This is the smallest possible
+fix: it makes the two computations textually and behaviorally symmetric, with no change to any
+branch outside the null-trough-premium case.
+
+### Regression test
+
+`src/features/nighthawk/lib/legacy-live-sync.test.ts` — new test constructs a row with
+`peak_premium`/`trough_premium` both `null` and a favorable first mark, then asserts both
+`peakPremium` and `troughPremium` correctly floor at `entry_premium`. RED→GREEN proven via
+git-stash: 5 pass / 1 fail with the fix reverted; 6/6 pass restored.
+
+## 2026-09-16 — [FINDING, FIXED] Legacy dev-preview fixture: SHORT play's stockMovePct sign contradicted its own narrative and P&L
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P4 |
+| **Lane** | Night Hawk Legacy |
+| **File** | `src/features/nighthawk/lib/legacy-board-dev-fixture.ts` |
+| **PR** | (this branch) |
+
+### Root cause
+
+`LEGACY_BOARD_DEV_PLAYS` (the static fixture rendered live on `/nighthawk-boards-preview` via
+`NightHawkBoardsPreviewClient.tsx`) includes a TSLA row: `direction: "SHORT"`,
+`thesisBreak: { level: "break", note: "Opened above stop — setup broken" }`, `pnlPct: -45`,
+`morningStatus: "INVALIDATED"`, `pulled: true` — every field describing a losing play that broke
+on an adverse (upward) pre-market gap. Its `stockMovePct` field read `2.1` (positive).
+
+Per `overlayLegacyQuotes`'s own SHORT formula (`use-legacy-quotes.ts`):
+`stockMovePct = ((entryMid - price) / entryMid) * 100` for a SHORT play — a **positive** value
+means the stock **fell** (favorable for a short/put thesis), and negative means it **rose**
+(adverse). "Opened above stop" describes the stock gapping *up*, past even the stop level — an
+unambiguously adverse move for this thesis, which by the shared formula's own sign convention
+must read as a **negative** `stockMovePct`, not positive.
+
+### Evidence
+
+RED→GREEN proven in a new `legacy-board-dev-fixture.test.ts`: asserts the TSLA row's `pnlPct < 0`
+implies `stockMovePct <= 0`. Reverting the fixture value alone reproduces the failure
+(`pnlPct=-45 stockMovePct=2.1`); the fix (`stockMovePct: -2.1`) passes.
+
+### Blast radius
+
+Single fixture row, single consumer (`NightHawkBoardsPreviewClient.tsx` → the real
+`/nighthawk-boards-preview` route). No production data path — this fixture explicitly has "no
+adapters / DB imports" per its own header comment — but it IS rendered on a real app route, so a
+developer (or agent) previewing the Legacy board locally would see a green "+2.1%" stock chip next
+to a play flagged INVALIDATED with a losing P&L: the exact sign-confusion class this audit lane's
+"marks correctness — no sign errors" mission pillar exists to catch, even though this instance is
+fixture data rather than a live computation.
+
+### Fix rationale
+
+Flip the sign to `-2.1`, matching the row's own narrative/P&L, with an inline comment citing the
+exact formula (`overlayLegacyQuotes`) and sign convention so a future fixture edit doesn't
+reintroduce the same mismatch. No other fixture row in this file carries the same inconsistency
+(checked all 5 rows: NVDA/INTC/AMD are LONG with positive stockMovePct+pnlPct both favorable;
+AAPL is LONG, small positive both; TSLA was the only mismatch).
+
+### Regression test
+
+`src/features/nighthawk/lib/legacy-board-dev-fixture.test.ts` (new file) — asserts the TSLA row's
+`pnlPct`/`stockMovePct` signs agree. RED→GREEN proven via git-stash: fails pre-fix (exact
+`pnlPct=-45 stockMovePct=2.1` message), passes post-fix.
+
+## 2026-09-16 — [FINDING, P2 Night Hawk Legacy, live member-facing export corruption — FIXED] `legacyBoardExportCsv` used JSON escaping instead of CSV escaping
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED — `legacyBoardExportCsv` now escapes free-text fields via a small `csvField()` helper implementing RFC 4180 doubled-quote escaping instead of `JSON.stringify(...)`. |
+| **Severity** | P2 — real, reachable corruption of a live member-facing "Export CSV" action, not a hypothetical. |
+
+### What was broken
+
+`legacyBoardExportCsv` (`src/features/nighthawk/lib/legacy-board-table-utils.ts`), wired into the
+live "Export CSV" action on `LegacyPickLogBoard.tsx`, quoted several free-text fields
+(`contractLabel`, `stopLevel`, `targetLevel`, `entryRange`, `riskNote`, `factors`) with
+`JSON.stringify(...)` as a stand-in for CSV field escaping. `JSON.stringify` escapes an embedded
+double quote as `\"` (backslash-quote); RFC 4180 CSV instead requires **doubling** an embedded
+quote as `""`. A CSV reader has no concept of backslash escapes inside a quoted field, so when it
+hits the `"` immediately after the backslash it treats that as the field's closing quote — the
+remainder of the quoted text spills into the next column, corrupting the row.
+
+This was a real, reachable bug, not a hypothetical: `risk_note` (and the adjacent `thesis` field)
+is LLM-authored prose that routinely quotes a catalyst headline verbatim, e.g. `Catalyst: "The
+company secured new contracts..."` (a live example from that evening's own RIG pick's `thesis`
+field). Any Legacy pick whose `risk_note` quotes a headline this way would export a corrupted CSV
+row.
+
+### Evidence
+
+- Read the sibling `vectorBoardExportCsv` (`vector-board-row-utils.ts`) and noted it escapes its
+  own free-text `reason` field correctly: `` `"${(r.reason ?? "").replace(/"/g, '""')}"` `` — the
+  correct RFC 4180 pattern, already established elsewhere in the same file family.
+- Live-observed `thesis` text from that evening's edition (2026-09-16) already contained embedded
+  quotes in exactly the shape that would trigger this: `Catalyst: "The company secured substantial
+  new contracts worth $292 million..."`.
+- RED→GREEN proof: added a regression test with a `risk_note` containing an embedded quote,
+  confirmed it fails against the pre-fix code (`git stash` the fix, re-run: output shows the raw
+  `\"` — `Catalyst: \\"The company secured new contracts\\" — elevated risk...`), then passes
+  against the fix (output shows the correctly doubled `""`).
+- `npx tsc --noEmit` clean; full `npm test`: 14340 pass / 0 fail / 3 skipped (Node 20).
+
+### Fix rationale
+
+Added a small `csvField()` helper implementing RFC 4180 escaping (wrap in quotes, double any
+embedded quote) and replaced every `JSON.stringify(...)` call in `legacyBoardExportCsv` with it.
+Left `ticker`/`statusLabel`/`morningStatus` unquoted — they're fixed enum-like labels that never
+contain commas or quotes, consistent with how `vectorBoardExportCsv` treats its own equivalent
+fields. No behavior change to any other function; this file's other exports were untouched.
+
+### Blast radius
+
+Single function, single file. `legacyBoardExportCsv` has exactly one call site
+(`LegacyPickLogBoard.tsx`'s "Export CSV" button). No other exporter shares this bug — checked
+`vectorBoardExportCsv` (the 0DTE/Vector/Swing-shared sibling) and confirmed it already uses correct
+escaping, so this was a Legacy-specific regression/gap, not a cross-product issue.
+
+Shipped as PR #5052, merged and content-verified on `main`.
+
+## 2026-09-16 — [FINDING, P3 Night Hawk Legacy, live UI keyboard-nav bug — FIXED] `LegacyPickLogBoard`'s ArrowUp handler didn't re-clamp a stale selection index before stepping
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED — both ArrowUp and ArrowDown now route through a shared `stepBoardSelectionIndex()` helper that re-clamps the current index into the list's present range before stepping. |
+| **Severity** | P3 — real, reachable keyboard-navigation defect on the live board, not data-correctness. |
+
+### What was broken
+
+`LegacyPickLogBoard.tsx`'s keyboard-nav handler stepped `selectedIndex` differently per
+direction:
+
+```ts
+if (e.key === "ArrowDown") {
+  const next = Math.min(visibleRows.length - 1, selectedIndex + 1);
+  ...
+}
+if (e.key === "ArrowUp") {
+  const next = Math.max(0, selectedIndex - 1);
+  ...
+}
+```
+
+`ArrowDown` re-clamps against the list's *current* upper bound before stepping — `Math.min(visibleRows.length - 1, ...)` always lands in range no matter how stale `selectedIndex` is. `ArrowUp` only clamped the *lower* bound (0) — it decremented directly from whatever `selectedIndex` already held, with no re-sync to the list's current (possibly shrunk) upper bound.
+
+Reachable sequence: select a row deep in a long filtered list (e.g. index 7), then change a filter/tab/search term that shrinks `visibleRows` to 3 rows. The existing selection-sync effect correctly clears `selectedRow` (the old key is no longer in `visibleRows`), but `selectedIndex` stays at 7. The next `ArrowDown` self-corrects immediately (`Math.min(2, 8) = 2`). The next `ArrowUp` does not: `Math.max(0, 7-1) = 6`, `visibleRows[6]` is `undefined`, so nothing gets selected and `selectedIndex` becomes 6 — still out of range. Each further `ArrowUp` press decrements by one more (6→5→4→3) with no row selected each time, until index 2 (the actual last valid index) is finally reached. A member pressing "up" after narrowing their filter sees several keypresses do nothing before the first row responds.
+
+### Evidence
+
+- Read the logic by hand and traced the exact keypress sequence above (index 7 → 3-row list → 5 wasted `ArrowUp` presses before a row selects).
+- Checked the sibling `VectorPickLogBoard.tsx` (0DTE/Vector board) — it has the byte-for-byte identical unfixed handler. Not touched here (out of this lane's scope per CLAUDE.md's Legacy/0DTE/Swings lane boundaries) — flagging in the PR and journal for that lane's own audit to pick up the same fix.
+- RED→GREEN proof: added `stepBoardSelectionIndex` to `vector-board-filters.ts` (a file already shared/imported by both Legacy's and Vector's board components) with a regression test asserting a stale index of 7 against a 3-item list steps to `1` on `ArrowUp` direction (not `6`). Temporarily reverted the function body to the pre-fix per-direction formula (`Math.min`/`Math.max` with no shared re-clamp) — confirmed 2 of 9 tests in the file fail (the stale-index-recovery case and an empty-list edge case), then restored the fix — all 9 pass.
+- `npx tsc --noEmit` clean. Full `npm test` run (see PR).
+
+### Fix rationale
+
+Extracted the stepping logic into one pure, shared, unit-tested helper (`stepBoardSelectionIndex`) rather than patching the `ArrowUp` branch in place — the existing bug was exactly this kind of per-branch logic drifting out of sync, and a single shared function used by both directions structurally can't repeat that. Placed it in `vector-board-filters.ts` since that file is already imported by both `LegacyPickLogBoard.tsx` and (were that lane to adopt it) `VectorPickLogBoard.tsx` — no new file needed. Wired it into Legacy's own `ArrowDown`/`ArrowUp` branches only; `VectorPickLogBoard.tsx` is untouched (separate lane).
+
+### Blast radius
+
+Two files: the new pure helper (+test) in `vector-board-filters.ts`, and its two call sites in `LegacyPickLogBoard.tsx`. No data/business logic touched — pure UI keyboard-interaction robustness. `VectorPickLogBoard.tsx` (0DTE/Vector lane) carries the identical unfixed bug — flagged, not fixed here.
+
+## 2026-09-16 — [FINDING, P2 process/tooling] findings-staging backlog has grown to 334 unfolded files — the fold script's single-`## `-heading requirement rejects 94% of them, silently, for weeks
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | A DISCOVERY-lane sweep of `docs/audit/findings-staging/` (a routine hygiene check — `findings-hygiene.test.ts` was green, which only checks entries already folded INTO `FINDINGS.md`, not the staging directory's own backlog). `docs/audit/findings-staging/README.md` says the coordinator runs `node scripts/audit/findings-fold-staging.mjs` "routinely" after a merge wave, appending every staged file into `FINDINGS.md` and then deleting it — the staging directory is supposed to stay small and transient. It currently holds **334 files**, the oldest dated **2026-09-04** (12 days old at time of writing), spanning every active lane (0DTE, Swing, SPX, Legacy, Vector, Helix, Thermal, Meridian, platform/infra). Git history confirms fold runs ARE happening regularly (`docs: fold N staged findings into FINDINGS.md` commits appear multiple times a day) — so this is not a process nobody runs; it is a process that runs and still can't make a dent in the backlog. |
+| **Root cause** | `findings-fold-staging.mjs`'s `normalizeEntry()` requires each staged file to contain **exactly one** `## `-level heading (plus a `> **kind:** ...` line) — any file with more than one `## ` line is rejected and silently left in staging ("left for a human pass, not silently mishandled", per the script's own comment, referencing a 2026-08-28 measurement of "10 of 109 files" hitting this). Classified all 334 currently-staged files against the exact same regex/logic the script uses (read-only, no files modified): **2 fold cleanly**, **312 (93.4%) are rejected for having multiple `## ` headings**, **20 are rejected for missing a heading or kind line entirely**. The multi-heading rejection rate has grown roughly 9x since the script's own 2026-08-28 baseline (10/109 ≈ 9% → 312/334 ≈ 93%) — the natural, common markdown habit of writing a finding as `## Root cause` / `## Evidence` / `## Fix` / `## Blast radius` sub-sections (exactly what `docs/audit/FINDINGS.md`'s OWN existing entries use internally, just one level deeper as a `|Field|Detail|` table instead) has become the dominant staging-authoring style across lanes, and nothing in the staging convention or the fold tool caught up with that drift. A second shape also appears: files bundling several DISTINCT findings under one filename, each with its own `## <title>` heading (e.g. `2026-09-06-swing-cto-audit-critical-fixes.md` — 5 separate findings, 5 headings). |
+| **Evidence** | `ls docs/audit/findings-staging/*.md \| grep -vc README.md` → 334. Read-only classification script run against the exact `normalizeEntry()` regex/logic (`KIND_LINE_RE`, `headingIdx`, `headingCount`): 2 ok / 312 multi-heading / 20 missing. Spot-checked two representative multi-heading files: `2026-09-04-helix-desktop-expired-dte.md` (missing — zero `## ` lines, the write-up never used a heading at all) and `2026-09-06-swing-cto-audit-critical-fixes.md` (5 `## ` lines, one per bundled finding) and `2026-09-12-swing-book-context-closed-bucket.md` (`## Root cause` / `## Evidence` / `## Blast radius` / `## Fix` / `## Evidence (before/after)` / `## Market-open validation` — 6 sub-section headings, the exact shape the script's own comment anticipated). Confirmed via `grep` that at least one old staged finding (`2026-09-04-admin-cron-age-skew.md`) has genuinely never made it into `FINDINGS.md` — its title string does not appear anywhere in the 48,982-line file. |
+| **Impact** | Not a live product bug — every real fix these files document was already shipped via its own merged PR; this is a gap in the CONSOLIDATED AUDIT RECORD, not in production behavior. But it is a real integrity problem for this repo's own standing discipline: CLAUDE.md's issue-handling policy and the "re-verify old FINDINGS.md claims" mandate both assume `FINDINGS.md` is the authoritative, complete ledger — it currently is not, by a wide and growing margin. A future session (or this one, in an earlier cycle) re-verifying "old FINDINGS.md claims" cannot see roughly two weeks of real findings across every lane, because they never left the staging directory. The backlog is also actively growing, not just historically large — every lane's own PRs keep adding new staged files (2 more from tonight's swing-lane cycles are already in the list) faster than the fold script can absorb them. |
+| **Why not fixed directly in this cycle** | This is explicitly the judgment call the fold script's own author already declined to automate: "demoting those sub-headings automatically would mean guessing which line is the real entry title when a body legitimately needs its own `## ` for other reasons." At 312 files across every lane's own historical work, a bulk auto-fix risks silently mangling someone else's audit record, and a manual file-by-file pass is far outside "small self-contained" scope for one DISCOVERY cycle. Per the standing brief, writing this up for whoever owns the audit tooling (or the operator) to decide the systemic fix, rather than unilaterally processing 312 files. |
+| **Suggested next steps (not implemented here)** | (1) **Stop the bleeding first**: tighten `docs/audit/findings-staging/README.md`'s own convention to explicitly say sub-sections inside a staged finding must use `### ` (one level deeper), never `## ` — a one-line doc change that would make every NEW staged file foldable without touching the 334-file backlog. (2) **Clear the backlog either mechanically or by hand**: a mechanical pass could safely demote every `## ` line AFTER the first one to `### ` in each multi-heading file (preserves all content and structure, changes only heading depth) — likely safe for the sub-section shape (`Root cause`/`Evidence`/`Fix`/etc.) but NOT for the bundled-findings shape (`swing-cto-audit-critical-fixes.md`-style), which needs splitting into separate files/entries instead of demotion, so the two shapes need different handling and a human/reviewed pass either way. (3) Whoever picks this up should re-run the same read-only classification (or ask for the script used here) to get a live count before starting, since the backlog is still growing. |
+| **Status** | MEASURED, not fixed. Flagged for whoever owns the audit-tooling backlog; no files in `findings-staging/` touched or deleted by this entry. |
+
+## 2026-09-16 — [FINDING, P1 correctness] `/api/market/banger/board` could silently drop real OPEN positions once total rows exceeded 60 — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Found live during the standing Ask Largo × Night Hawk Swings mandate while investigating a swing play-brief's "Book context" section for CRWD, which listed CRWD itself twice among "6 same-direction positions" (`CRWD LONG (separate, cross-engine position), PLTU LONG, ZS LONG, NET LONG, PANW LONG, CRWD LONG (separate, cross-engine position)`). Tracing this led to `/api/market/banger/board`, the member-facing Banger (Engine B) board: it reported exactly `open: 33, closed: 27` (total 60 — the query's LIMIT fully saturated), meaning a real, live open position was very likely being pushed out of the response window. |
+| **Root cause** | `fetchBangerBoardRows(60)` (`src/lib/banger/positions-db.ts`) selects the most recent 60 rows of `banger_positions` **across ALL statuses combined**, ordered by `session_date DESC, id DESC`, and the route then filters that single page into `open`/`closed` in JS. This is the exact page-limited-tally shape `fetchBangerOpenCount`'s own doc comment already names as a MEASURED bug for the COUNT ("Largo reported 40 open positions... then 20...60s later, because it was reading a page-limited tally through a field named `open_count`") — but the fix that shipped for the count (`fetchBangerOpenCount`, querying `status IN ('OPEN','PARTIAL')` directly with no shared limit) was never applied to this route's LISTING. Once total (open+closed) rows exceed 60, an older-but-still-OPEN position ages out of the shared window and silently vanishes from the board, even though it is a real, live holding. Confirmed live: the swing play-brief's portfolio-overlap check (`fetchBangerOpenBookRows`, which filters to `status IN ('OPEN','PARTIAL')` at the SQL level BEFORE any limit) correctly saw a second, older OPEN CRWD position that `/api/market/banger/board`'s `open` array was dropping. |
+| **Evidence** | Live: `GET /api/market/banger/board` → `open.length === 33`, `closed.length === 27`, total exactly 60 (the LIMIT saturated — a coincidence this exact would be surprising otherwise). Separately, `GET /api/market/swing/play-brief?playId=SWING:CRWD:39` (Ask Largo brief for the swing-native CRWD position) rendered a "Book context" section citing 6 same-theme same-direction positions including CRWD itself twice, both labeled `(separate, cross-engine position)` — the label `formatOverlapPosition` (`play-brief-intel.ts`) applies only when a row's `positionId` is unset (i.e. Banger-origin), confirming both were independently-committed Banger CRWD LONG rows, only one of which (`id 1123`) is visible on the board route. |
+| **Fix** | Added `fetchBangerClosedBoardRows(limit=60)` (`src/lib/banger/positions-db.ts`) — a closed-only query, mirroring the already-correct `fetchBangerOpenBookRows` pattern (filter at the SQL level, not in JS after a shared limit). Updated `src/app/api/market/banger/board/route.ts` to fetch `open` via `fetchBangerOpenBookRows(80)` and `closed` via the new `fetchBangerClosedBoardRows(60)` as two independent, separately-limited queries instead of one combined `fetchBangerBoardRows(60)`. A growing closed-position backlog can no longer crowd a real open position out of the visible board. |
+| **Fix rationale** | Paging the CLOSED side is correct (closed history genuinely grows without bound); paging OPEN and CLOSED together is not, because open positions have no natural cap and every one of them is a live financial position a member needs visibility into. Splitting into two queries is the same shape `fetchBangerOpenBookRows`/`fetchBangerOpenCount` already use correctly elsewhere in this same file — extending an existing correct pattern rather than inventing a new one. `fetchBangerBoardRows` itself was left untouched: its only other caller (`src/lib/largo/product-reads.ts`'s `bangerBoardForLargo`) already treats its result as an honest bounded sample (caps displayed rows to 3 for the model's transport limit, and separately fetches `fetchBangerOpenCount()` for the TRUE count) — that consumer was never claiming completeness the way the member board route implicitly was. |
+| **Blast radius** | `/api/market/banger/board` only — the sole caller of the old combined query for a "this is the member's actual open book" purpose. The swing play-brief's book-overlap check (`loadOpenBook`/`fetchBangerOpenBookRows`) was already correct and is unaffected by this change; it's the reason the bug was even discoverable (its honest count diverged from the board's truncated one). |
+| **Regression guard** | New `src/app/api/market/banger/board/route.test.ts`: mocks `fetchBangerOpenBookRows`/`fetchBangerClosedBoardRows` to return 70 OPEN + 27 CLOSED rows (97 total, well past the old shared 60-row cap) and asserts all 70 OPEN rows reach the response, plus a status-partition sanity check. RED confirmed pre-fix via `git stash` (route still called the removed `fetchBangerBoardRows`, which the test's mock module doesn't provide, so the route threw and degraded). GREEN confirmed post-fix: 2/2 pass. `tsc --noEmit` clean (Node 20). Related suites re-run clean: `positions-db.test.ts`, `product-reads.test.ts` (the other `fetchBangerBoardRows` consumer, untouched), `nighthawk/horizons/route.test.ts` (already mocks this module) — 45/45 pass. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · `route.test.ts` 2/2, RED→GREEN git-stash proven · related suites (`positions-db.test.ts`, `product-reads.test.ts`, `nighthawk/horizons/route.test.ts`) 45/45 pass. |
+| **Status** | FIXED |
+
+## 2026-09-15 — [FINDING, P4 Night Hawk Legacy, doc-only — FIXED] `regrade-stuck.ts`'s header comment contradicted its own actual wiring
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED — comment corrected to state both invocation paths (admin route AND the nightly cron). No behavior change. |
+| **Severity** | P4 — doc-only, no functional impact, but a real stale-doc trap for the next reader deciding whether stuck-outcome repair needs an explicit trigger. |
+
+### What was broken
+
+`src/features/nighthawk/lib/regrade-stuck.ts`'s module header comment stated the repair is
+"admin-invoked, so historical fixes stay an explicit, audited action instead of a silent
+every-boot sweep." That was true of the original design, but a later "PR-N1 follow-up" wired
+`regradeStuckNighthawkOutcomes({ limit: 50 })` directly into
+`src/app/api/cron/nighthawk-outcomes/route.ts` (line ~109), where it now runs automatically every
+night as part of the routine grading cron (fail-soft — a `.catch` so it can never fail the
+grading run), in addition to the pre-existing admin route
+(`src/app/api/admin/nighthawk/regrade-stuck-outcomes/route.ts`). The header comment was never
+updated to reflect the cron wiring, so it asserted the opposite of what the code two files over
+actually does.
+
+### Evidence
+
+- `grep -n "regradeStuckNighthawkOutcomes" src/app/api/cron/nighthawk-outcomes/route.ts src/features/nighthawk/lib/regrade-stuck.ts` shows the cron route calling it directly, not just the admin route.
+- The inline comment immediately above the cron's call site (`// PR-N1 follow-up: rows that aged past the resolver window stay pending forever unless explicitly regraded. Fail-soft — never fail the grading run.`) already documented the *intent* of the automatic call — the module's own top-of-file comment just never caught up.
+- Both call sites confirmed to exist: `src/app/api/admin/nighthawk/regrade-stuck-outcomes/route.ts` (admin, on-demand) and `src/app/api/cron/nighthawk-outcomes/route.ts` (automatic, nightly).
+
+### Fix rationale
+
+Doc-only change: corrected the header comment to state both invocation paths (admin route AND
+automatic nightly cron), and removed the two now-false "admin-only"/"silent every-boot sweep"
+claims while keeping the accurate bounded/idempotent/fail-soft safety guarantees the rest of the
+comment (correctly) describes. No behavior touched — the underlying selector/regrade logic is
+unchanged and all 11 existing `regrade-stuck.test.ts` tests still pass. `npx tsc --noEmit` clean.
+
+### Blast radius
+
+Comment-only, single file. No other call site or consumer references this specific claim.
+
+Shipped as PR #5040, merged and content-verified on `main`.
+
 ## 2026-09-16 — [FINDING, P2 correctness] Ask Largo short-interest guard fixed at one call site, two siblings never got it — FIXED
 
 > **kind:** `FINDING`
