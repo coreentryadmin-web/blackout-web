@@ -185,10 +185,17 @@ export async function runLegacyLiveSync(deps: LegacyLiveSyncDeps): Promise<Legac
     }
     refreshed += 1;
     const stockPrice = stocks.get(row.ticker.toUpperCase()) ?? null;
+    // BUG (found 2026-09-16): peak correctly floors at entry_premium when peak_premium hasn't
+    // been seeded yet (e.g. a row whose discord_live_state predates BTO seeding), via the `??`
+    // fallback below. trough used to skip that same floor — `row.trough_premium != null ? ... :
+    // mark` fell straight to the raw mark with no entry_premium bound when trough_premium was
+    // null, so a favorable first tick (mark > entry_premium) recorded a trough HIGHER than the
+    // true floor (entry_premium itself, the lowest premium ever actually observed). Mirror the
+    // peak pattern so both bounds behave identically on a not-yet-seeded row.
     const peak = row.peak_premium ?? row.entry_premium;
     const peakOut = Math.max(peak, mark);
-    const troughOut =
-      row.trough_premium != null ? Math.min(row.trough_premium, mark) : mark;
+    const trough = row.trough_premium ?? row.entry_premium;
+    const troughOut = Math.min(trough, mark);
 
     if (row.exit_style === "scale_out") {
       const { action, reason } = deriveScaleOutAction({
