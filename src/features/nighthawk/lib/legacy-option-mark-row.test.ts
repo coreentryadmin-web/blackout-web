@@ -45,6 +45,47 @@ test("buildLegacyOptionMarkRow: no mark anywhere → stale", () => {
   assert.equal(row.stale, true);
 });
 
+test("buildLegacyOptionMarkRow: a 15s-old quote is NOT stale — Legacy uses the 30s LEGACY_QUOTE_STALE_MS bar, not 0DTE's 5s default (2026-09-16 fix)", () => {
+  // Bug: isZeroDteMarkStale defaults to ZERODTE_MARK_STALE_MS (5s) when no threshold is passed.
+  // This module is Legacy-only, so it must use the 30s LEGACY_QUOTE_STALE_MS the client
+  // (CommandDeck.tsx/PlayTerminal.tsx) already applies for horizon===LEGACY — a thinly-traded
+  // contract whose real quote tick is 15s old is perfectly current for an overnight product and
+  // must not be flagged stale (which, via fetchLegacyOptionMarksServer's stale-row filter, would
+  // silently drop it from the legacy-live-sync cron's mark map and skip that position's
+  // peak/trough tracking for the cycle).
+  const quoteMs = NOW - 15_000;
+  const row = buildLegacyOptionMarkRow(
+    "RIG260918C00006000",
+    null,
+    {
+      ticker: "O:RIG260918C00006000",
+      mark: 0.1,
+      bid: 0.08,
+      ask: 0.11,
+      last: null,
+      dayClose: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: null,
+      bidSize: null,
+      askSize: null,
+      dayVolume: null,
+      underlyingPrice: null,
+      strike: 6,
+      optionType: "call",
+      expiry: "2026-09-18",
+      sharesPerContract: 100,
+      quoteUpdatedMs: quoteMs,
+      observedAtMs: quoteMs,
+    },
+    NOW
+  );
+  assert.equal(row.stale, false, "a 15s-old quote is fresh under Legacy's own 30s bar, even though it exceeds 0DTE's 5s bar");
+});
+
 test("buildLegacyOptionMarkRow: a genuinely stale quote (real last_updated far in the past) is STALE even when our own fetch just succeeded (2026-09-13 fix)", () => {
   // The live bug: a thinly-traded contract's last_quote hasn't moved in 45 minutes, but this
   // server successfully re-fetched it moments ago (observedAtMs = just now). The OLD code

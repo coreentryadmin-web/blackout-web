@@ -8,7 +8,7 @@ import {
   reliableMarkFromSnapshot,
   type OptionSnapshot,
 } from "@/lib/providers/options-snapshot";
-import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
+import { isZeroDteMarkStale, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 
 export type LegacyOptionMarkRow = {
   occ: string;
@@ -93,9 +93,31 @@ export function buildLegacyOptionMarkRow(
   // Delegates to the shared isZeroDteMarkStale predicate ("every renderer must apply", marks-math.ts)
   // instead of reimplementing the age check inline — the inline copy previously carried its own
   // future-timestamp gap independently of the shared one.
+  //
+  // BUG (found 2026-09-16, live audit): isZeroDteMarkStale defaults its threshold to
+  // ZERODTE_MARK_STALE_MS (5s) when no third argument is passed — appropriate for 0DTE's
+  // sub-second-relevant intraday scalping, but this module is Legacy-only (next-day digest
+  // positions held overnight, not 0DTE). The client already knows this: CommandDeck.tsx and
+  // PlayTerminal.tsx both explicitly branch on `horizon === "LEGACY"` to apply the much more
+  // generous LEGACY_QUOTE_STALE_MS (30s) instead. This server-side assembly — which BOTH the
+  // /legacy-marks API route AND legacy-option-marks-server.ts's cron-facing
+  // fetchLegacyOptionMarksServer rely on — never made that same distinction, so it flagged a
+  // thinly-traded Legacy contract's genuinely-current quote (tick cadence >5s, common on a
+  // low-volume/low-premium name — observed repeatedly on RIG) as stale under a bar four times
+  // tighter than the one already established as correct for this exact product.
+  //
+  // The consequence is not just cosmetic: fetchLegacyOptionMarksServer DROPS any row its
+  // caller doesn't explicitly opt into keeping via includeStale, and the legacy-live-sync cron
+  // (~every 5min RTH, mark-and-manage for real Chief Trade Alert Bot positions) calls it
+  // without that flag — so a falsely-stale row is silently absent from the mark map that cycle,
+  // and runLegacyLiveSync's `if (mark == null) { noQuote += 1; continue; }` skips peak/trough
+  // tracking and trim/close evaluation for that position entirely, not just its display.
+  //
+  // Fix: this module is Legacy-only (both callers are Legacy-specific — no branching needed,
+  // unlike the shared multi-horizon UI components), so pass LEGACY_QUOTE_STALE_MS unconditionally.
   const stale =
     mark == null || !Number.isFinite(mark) || mark <= 0 || asofMs == null ||
-    isZeroDteMarkStale(asofMs, nowMs);
+    isZeroDteMarkStale(asofMs, nowMs, LEGACY_QUOTE_STALE_MS);
 
   return { occ, mark, bid, ask, asof, stale };
 }
