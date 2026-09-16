@@ -2688,6 +2688,13 @@
       "at": "2026-09-16T00:24:44Z",
       "trigger": ":21 cycle -- journal maintenance",
       "maintenance": "Pruned 172 checkIns entries older than 2026-09-12 per the journal's own _readme retention policy ('Prune entries older than ~5 trading days'). Removed: {\"2026-09-10\": 70, \"2026-09-11\": 102}. Retained calendar dates: 09-12 through 09-16 (the 5 most recent). No content judgment made on the pruned entries -- this is pure size hygiene per the pre-existing documented policy, not a loss of any open finding (knownOpenItems/toolingGaps/mandateLog are separate top-level fields, untouched by this prune)."
+    },
+    {
+      "at": "2026-09-16T00:50:20Z",
+      "trigger": ":21 cycle -- shipped a real bug fix found during live audit",
+      "fix": "PR #5052 opened+undrafted: legacyBoardExportCsv (legacy-board-table-utils.ts) was quoting free-text CSV fields (contractLabel/stopLevel/targetLevel/entryRange/riskNote/factors) with JSON.stringify() instead of RFC 4180 CSV escaping. JSON's \\\" escape is not valid CSV (doubling embedded quotes as \"\" is required) -- a field containing a literal quote corrupts the exported row for any CSV reader. Reachable live: tonight's RIG risk_note quotes a catalyst headline verbatim (`Catalyst: \"The company secured...\"`). Sibling vectorBoardExportCsv already escapes correctly -- brought Legacy's export in line with it via a shared csvField() helper. RED->GREEN proven (git stash), full npm test 14340/0/3 pass, tsc clean. Findings doc: docs/audit/findings-staging/2026-09-16-legacy-csv-export-quote-escaping.md",
+      "healthcheck": "not re-run this cycle -- prioritized shipping the in-flight fix from the prior cycle; will run on next :36 fire.",
+      "note": "Real member-facing export corruption bug found and fixed via live board inspection (Export CSV button, LegacyPickLogBoard.tsx), not a synthetic/hypothetical finding."
     }
   ],
   "knownOpenItems": {
