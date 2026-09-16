@@ -29,5 +29,15 @@ now the **only** thing that writes to `FINDINGS.md`; lanes never edit it directl
   replaces, and doing it again reopens the collision.
 - One entry per file. Do not reuse a filename (the date-prefixed name already makes collisions
   between two different findings on the same day distinguishable — add a longer slug if needed).
+- **Never use a bare `## ` line for a sub-section inside your write-up** (`## Root cause`,
+  `## Evidence`, `## Fix`, etc.) — `findings-fold-staging.mjs` reserves top-level `## ` for the
+  ONE entry-boundary heading each staged file must have exactly one of, and rejects (leaves
+  unfolded, silently) any file with more than one. Use `### ` for sub-sections instead — same
+  visual structure, one level deeper, folds cleanly. Measured 2026-09-16: 312 of 334 staged files
+  (93%) were stuck unfolded for this exact reason, some 12+ days old — see
+  `2026-09-16-findings-staging-fold-backlog-334-files.md` (once folded, `FINDINGS.md` itself) for
+  the full account. If a single write-up genuinely covers several DISTINCT findings, split it into
+  separate files instead — one entry per file, per the rule above, not several `## `-headed
+  findings crammed into one.
 - Routine GREEN pass logs are unchanged by this — they still go straight into
   `docs/audit/RUN-LOG.md`, never staged here.
