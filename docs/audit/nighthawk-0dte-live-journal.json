@@ -364,6 +364,9 @@
     },
     "2026-09-16T17:45Z": {
       "note": "No new commits, board healthy, same 9 closed positions. Quiet."
+    },
+    "2026-09-16T18:07Z": {
+      "note": "Aggressive-mode dig (deliberate, after 4 quiet cycles): spot-checked all 3 flat_theta_bleed exits today (CORZ/ALAB/SMTC) against their own ledger peak/trough fields. Found CORZ exit_detail is factually wrong: claims \"never left the +-10% band\" but trough was -13.64% (entry 0.22, trough 0.19) -- outside the band. Traced root cause: ExitEngineInput has no troughPremium field at all, evaluateLedgerRowExit never reads row.trough_premium -- the flat-timeout condition is structurally blind to downside excursions, only checks peak+current. This is systemic (will recur on any play that dips below -10% then recovers), not a one-off. Two possible fixes with very different stakes: narrative-only (plumb trough through, soften the sentence) vs behavior-changing (trough breach disqualifies the flat scratch, changing which plays get exited). Only 1 confirmed instance today -- reported with full evidence on PR #4076, NOT fixed (ambiguous, touches live exit decisions, n=1 vs the 3-instance threshold). Board otherwise unchanged, same 9 closed positions."
     }
   },
   "sessions": {
