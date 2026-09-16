@@ -2888,6 +2888,12 @@
       "trigger": ":51 cycle -- re-checked pullQualityWatch item for new evidence",
       "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
       "note": "Re-pulled /api/market/nighthawk/record debrief.failure_modes -- unchanged since the 01:21 UTC check (pulled_correctly=3/pulled_wrongly=3, decided_count=2), as expected: no new grading events occur until tomorrow's outcomes cron runs (~20:30/21:30 UTC). Genuinely quiet confirmation, not a new finding -- correctly NOT re-escalating the same n=6 sample as if it were fresh evidence. Deep overnight window (2:51am ET) with real work already shipped this session (PRs #5052, #5059, #5060) and full lib+component review coverage complete -- staying quiet per the mandate's own 'clean -> stay quiet' rule rather than manufacturing churn."
+    },
+    {
+      "at": "2026-09-16T07:07:57Z",
+      "trigger": "new-hour :06 cycle (v3 mandate re-fire) -- both this session's shipped fixes verified still live",
+      "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
+      "note": "Final sanity check on both fixes shipped this session (csvField in legacy-board-table-utils.ts from PR #5052, stepBoardSelectionIndex in vector-board-filters.ts from PR #5060) -- both confirmed byte-correct on origin/main. Genuinely quiet deep-overnight cycle (3:07am ET) -- full lib+component review coverage already complete, no new outcome data yet, both open enhancement ideas (scorecard wiring, TARGET PATH gauge) already well-documented with nothing new to add. Staying quiet per the mandate's own rule rather than manufacturing a finding."
     }
   ],
   "knownOpenItems": {
