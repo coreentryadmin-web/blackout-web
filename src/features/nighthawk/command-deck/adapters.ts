@@ -23,6 +23,7 @@ import {
 } from "@/lib/swing/entry-enterability";
 import type { SwingSubLane } from "@/lib/swing/taxonomy";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
+import { deriveSetupState } from "@/lib/swing/setup-state";
 import type { SwingManageAction, SwingManageRung } from "@/lib/swing/manage";
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
@@ -701,7 +702,9 @@ export interface HorizonDeckSource {
   flagUnderlyingPx?: number | null;
   /** The live entry-trigger level — distinct from flagUnderlyingPx above, see horizon-plays.ts. */
   entryTriggerUnderlyingPx?: number | null;
-  /** Optional live underlying for WATCH track (stock quote overlay). */
+  /** Structural invalidation level — the other leg deriveSetupState needs, see horizon-plays.ts. */
+  invalidationUnderlyingPx?: number | null;
+  /** Optional live underlying for WATCH track (stock quote overlay) — also the third deriveSetupState leg. */
   liveSpot?: number | null;
   /** Live swing book — option entry/mark/P&L when this row is an OPEN ledger position. */
   entryPremium?: number | null;
@@ -886,11 +889,30 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
       ? rawExitPolicy
       : { ...rawExitPolicy, trim_levels: rawExitPolicy.trim_levels.map((t) => ({ ...t, fired: false })) };
   const thesisBreakResolved = src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon);
+  // Ask Largo standing mandate (#4076): a committed row's WATCH-lane dossier state (setupState)
+  // never survives the WATCH→COMMIT transition — src.setupState is structurally null for every
+  // live SWING position, permanently withholding computeSwingThesisHealth's persistence pillar.
+  // Once committed, entryTriggerUnderlyingPx/invalidationUnderlyingPx/liveSpot (live-plays.ts) give
+  // the same three legs deriveSetupState needs, so derive it fresh here instead of trusting a value
+  // that can never be populated for this row shape. WATCH rows are untouched (src.setupState already
+  // carries a real dossier read there; liveSpot/entryTriggerUnderlyingPx are only wired for committed
+  // rows today, so this branch is a no-op fallback to the existing behavior for them).
+  const liveSetupState =
+    working && src.liveSpot != null && src.entryTriggerUnderlyingPx != null
+      ? deriveSetupState(
+          { direction: src.direction },
+          {
+            price: src.liveSpot,
+            triggerPx: src.entryTriggerUnderlyingPx,
+            invalidationPx: src.invalidationUnderlyingPx ?? null,
+          },
+        )
+      : src.setupState;
   const thesisHealth = working
     ? computeSwingThesisHealth({
         direction: src.direction,
         status,
-        setupState: src.setupState,
+        setupState: liveSetupState,
         entryStatus: src.entryStatus,
         factors: src.factors,
         regime: src.regime,

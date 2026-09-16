@@ -349,6 +349,15 @@ export function livePlayFromSwingPosition(
     thesisLevel,
     firstSeenAt: row.first_seen_at ?? undefined,
     committedAt: row.committed_at ?? undefined,
+    // Ask Largo standing mandate (#4076): these three let computeSwingThesisHealth's persistence
+    // pillar call deriveSetupState LIVE for committed positions instead of leaving setupState
+    // permanently null (the WATCH-lane dossier state that would calibrate it never survives the
+    // WATCH→COMMIT transition — a structural absence, not a staleness gap). All three are already-
+    // pinned DB columns / an already-available parameter on this row, just not threaded through
+    // before now.
+    entryTriggerUnderlyingPx: row.entry_underlying_px,
+    invalidationUnderlyingPx: row.thesis_invalidation_px,
+    liveSpot: spot ?? null,
     entryPremium: entry,
     livePnlPct: livePnlPct(entry, mark),
     peakPremium: row.peak_premium,
