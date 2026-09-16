@@ -3201,6 +3201,13 @@
       "healthcheck": "AMBER steady state before this dive (RIG+SWKS genuinely stale, CRWD fresh). All else GREEN.",
       "liveUiCheck": "First live UI screenshot check of the Legacy board this segment, via proxy-browser.cjs (desktop 1440x900, ?view=legacy). SELF-CAUGHT FALSE POSITIVE first: an initial mint+screenshot script called session.cleanup() (deletes the temp Clerk user) only 200ms after minting, well before proxy-browser.cjs's own navigation/fetches completed -- the resulting screenshot showed 'Legacy playbook unavailable / Edition data could not load right now', which read exactly like a real product defect. Recognized this matches CLAUDE.md's own extensively-documented failure class ('the 401 storm mis-read as a PRODUCT fault three times') before escalating -- fixed the harness (cleanup AFTER the screenshot completes, not before) and re-ran. CONFIRMED: this was purely a harness timing bug in my own script, not a real Legacy defect -- the properly-sequenced run rendered the board correctly.",
       "liveUiConfirmed": "With correct sequencing: Legacy tab renders 3 open plays (CRWD/SWKS/RIG) with CONFIRMED status, correct entry->mark values, and both honesty banners firing exactly as the code reviewed earlier this segment describes -- 'CARRYING 2026-09-16 PLAYS UNTIL THEIR SESSION CLOSES AT 4 PM ET' (activeLegacyEditionDates/carry-forward mechanism) and 'MORNING VERDICT FROM 9:15 AM ET -- MAY NO LONGER REFLECT CURRENT CONDITIONS' (isMorningConfirmStale, MORNING_CONFIRM_STALE_MS=4h, the exact live-repro'd TSLA staleness fix this file's own comments describe). Manually cross-checked all 3 premium-vs-entry percentages against the displayed entry/mark pairs: CRWD (4.38-5.90)/5.90=-25.76%->displayed -26% match; SWKS (1.38-2.85)/2.85=-51.6%->displayed -52% match; RIG (0.03-0.10)/0.10=-70%->displayed -70% match. All arithmetically correct, no sign/rounding defects. No bug found in the live rendered UI."
+    },
+    {
+      "at": "2026-09-16T17:52:38Z",
+      "trigger": ":51 cycle -- clean steady-state, journal housekeeping check",
+      "healthcheck": "AMBER (RIG genuinely stale, CRWD/SWKS fresh). All else GREEN. Steady state.",
+      "housekeeping": "Checked journal size/age per the standing 'prune >~5 trading days' mandate: 476 checkIns entries, oldest at 2026-09-12 (Sat), newest today -- only 3 real trading days (14/15/16) in range, well under the 5-trading-day prune threshold. No pruning needed yet; will revisit once the range grows past ~5 trading days.",
+      "note": "Clean cycle, nothing new to escalate."
     }
   ],
   "knownOpenItems": {
