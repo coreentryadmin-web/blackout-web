@@ -328,6 +328,9 @@
     },
     "2026-09-16T14:45Z": {
       "note": "2 new commits since last cycle: CIFR long (17.5C exp 9/18, entry 0.68, tier B, breakout momentum) and SPCH long (10C exp 9/18, entry 0.48, tier B, breakout momentum), both flagged ~10:39 ET. Discussed live with operator (who is actively watching this lane), both currently OPEN and green (CIFR +4.41%, SPCH +4.17%). Noted a brief propagation lag: /record showed both before board.ledger caught up (few-min lag), not investigated as a bug yet -- worth a second look if it recurs. SPCX (first commit today) already closed -3.43% via thesis_break, discussed earlier. No new finding this cycle beyond normal drift."
+    },
+    "2026-09-16T15:07Z": {
+      "note": "Busy cycle, reported live to operator. 6 ledger rows total today: CLOSED -- SPCX -3.43% (thesis, gex-walls wall-in-path veto), CIFR -4.41% (thesis, same gex-walls wall-in-path pattern -- now 2 instances of this exact veto shape today, watching for a 3rd), QQQ -0.18% (thesis, oppose_cluster: momentum short in a long-gamma/mean-reversion tape, 4 opposing signals). OPEN -- SPCH +18.75% (running well, no tranche fired yet, first trigger +40%), CRDO +2.91% (new), ALAB -1.79% (new). 3 losses today all legitimate fresh-evidence thesis-break overrides, not bugs -- same mechanism, correctly firing. Watching for whether the gex-walls wall-in-path veto pattern (SPCX+CIFR, both long calls broken by a dominant wall appearing in the target path) recurs a 3rd time today, which would cross the noise-discipline threshold worth a closer look at gate/veto timing (is the wall genuinely appearing late, or was it knowable at entry and the veto is just slow to update)."
     }
   },
   "sessions": {
