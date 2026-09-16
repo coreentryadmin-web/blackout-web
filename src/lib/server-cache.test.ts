@@ -238,3 +238,43 @@ test("maxBlockMs serves fallback instead of blocking on a slow cold loader", asy
 
   assert.deepEqual(value, { ok: false });
 });
+
+test("maxBlockMs bounds a slow fallback when a build is already inflight (live 2026-09-16: /api/market/spx/desk 42.8s vs a 3s cap)", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:max-block-inflight-fallback:${Math.random()}`;
+  const ttl = 60_000;
+
+  // First caller: no maxBlockMs/fallback of its own, so it takes the plain cold-start path
+  // (`refreshCache`) and registers the key as inflight for the duration of its slow loader.
+  // Never awaited directly — its only job is to occupy `inflight.get(key)` for caller two.
+  const firstCallerLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 2_000));
+  const firstCaller = withServerCache(key, ttl, firstCallerLoader, {});
+  firstCaller.catch(() => {}); // swallow unhandled-rejection noise if the test exits first
+
+  // Give the first caller's refreshCache a tick to register the inflight promise.
+  await new Promise((r) => setTimeout(r, 5));
+
+  // Second caller lands in the "pending" branch (server-cache.ts ~line 218): no hit, no Redis
+  // copy, a build already inflight, and its own maxBlockMs+fallback configured — exactly the
+  // shape spx-desk-loader.ts's deskCacheOpts uses. Before the fix, opts.fallback() here was
+  // awaited with no timeout at all; a slow fallback (here: 500ms) blocked the caller for its
+  // full duration regardless of the 30ms cap. After the fix, it must be bounded near maxBlockMs.
+  const slowFallback = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: false }), 500));
+
+  const start = Date.now();
+  await assert.rejects(
+    withServerCache(key, ttl, firstCallerLoader, {
+      staleOnInflight: true,
+      maxBlockMs: 30,
+      fallback: slowFallback,
+    }),
+    /exceeded maxBlockMs/
+  );
+  const elapsed = Date.now() - start;
+  assert.ok(
+    elapsed < 200,
+    `second caller must be bounded near maxBlockMs (30ms), not the fallback's own 500ms duration — took ${elapsed}ms`
+  );
+});
