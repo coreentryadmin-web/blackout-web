@@ -2863,6 +2863,12 @@
       "trigger": ":51 cycle -- PR #5060 CI-wait, full read of LegacyPlayManageRail.tsx",
       "healthcheck": "AMBER, unchanged -- same explained overnight pattern. PR #5060 CI still in_progress (~5-6min), nothing actionable yet, next check-in imminent (10-min wakeup scheduled).",
       "codeReview": "LegacyPlayManageRail.tsx (235 lines) -- the trade-management detail rail (Position/Trade plan/Levels to manage/Session status). Consistent with every honesty pattern already verified this session: stock move vs premium kept visually/semantically separate, pnlTone/stockTone correctly derived, execPnlPct labeled 'Honest sell-side exit vs entry', premium cap tone correctly keyed off premiumCapOk===false, R:R tone gaps [1,2) intentionally neutral (not miscategorized). markFlash uses legacyPrimaryPnlPct (the NaN-guard-inconsistency function reviewed and dismissed earlier this session -- confirmed still unreachable here too, same producers). No bug found."
+    },
+    {
+      "at": "2026-09-16T06:08:06Z",
+      "trigger": "new-hour :06 cycle -- PR #5060 merge confirmation",
+      "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
+      "note": "PR #5060 merged at 2026-09-16T05:58:31Z (merged_by: coreentryadmin-web, squash commit eba82fe16) -- timing lines up with this session's own 05:57 UTC scheduled wakeup, not an external mirror-failure merge. Content-verified via git show origin/main:src/features/nighthawk/lib/vector-board-filters.ts -- stepBoardSelectionIndex present and byte-correct. Unsubscribed, deleted local branch, synced main."
     }
   ],
   "knownOpenItems": {
