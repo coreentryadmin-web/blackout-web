@@ -3277,6 +3277,12 @@
       "at": "2026-09-16T19:25:49Z",
       "trigger": "PR #5087 CI green, merged and re-verified",
       "prMerged": "All checks green. Undrafted, merged via GitHub MCP (squash, af2e0296e). Re-verified against origin/main directly (grep -c legacyEditionCalendarBuckets == 0). Local branch deleted; remote delete 403'd as usual. Unsubscribed from PR activity. Two real PRs shipped this segment so far: #5084 (WS-freshness gate threshold) and #5087 (dead-code cleanup)."
+    },
+    {
+      "at": "2026-09-16T19:26:52Z",
+      "trigger": ":36 cycle -- grade-methodology.ts + debrief-persist.ts full read",
+      "healthcheck": "AMBER steady state (RIG+CRWD stale, SWKS fresh). All else GREEN. Consistent with the rate-limiter-surge context noted this segment.",
+      "codeReview": "grade-methodology.ts (53 lines, small): the v1_level_touch/v2_fillability grading-version tag system. Fail-closed by design -- an unstamped/NULL methodology tag is NEVER presumed current, it degrades toward the quarantined legacy segment. Clean. debrief-persist.ts (358 lines, PR-N10 -- the two bounded post-grading passes: pin a PlayDebrief onto every graded row, and counterfactually grade publish-gate-blocked plays on the same real grader). Both passes are fail-soft (per-row try/catch, first-write-wins idempotent pins) and share the EXACT production resolveOutcome so a blocked play and a published play can never be scored under different physics -- the file's own comments document a real, already-fixed 2026-08-06 measurement bug in exactly this spirit (would_have_won used to count a blocked play that merely closed green without touching target as a 'win', inflating blocked-value 31.3% next to a published win rate that only counts real target touches -- the fix aligned both cohorts to the SAME win predicate, which inverted the apparent conclusion: the gate was separating correctly the whole time, not discarding winners). Checked gradeRejectedPlay's partial-geometry handling (target present but stop null, or vice versa) against resolveOutcome's null-guarded hit_target/hit_stop branches -- correctly falls through to a non-win outcome rather than mis-grading. No new bug found in either file -- both already reflect real, documented self-correction."
     }
   ],
   "knownOpenItems": {
