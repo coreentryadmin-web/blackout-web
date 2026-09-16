@@ -220,6 +220,19 @@ export function legacyBoardCalendarBuckets(
   });
 }
 
+/** Quote a CSV field per RFC 4180: wrap in double quotes, doubling any embedded quote.
+ *  `JSON.stringify` was used here before (bug fixed 2026-09-16) — its `\"` escape is not
+ *  valid CSV, so a field containing a literal quote (risk_note and thesis-adjacent text are
+ *  LLM-authored prose that routinely quotes a catalyst headline verbatim, e.g. `Catalyst:
+ *  "The company secured..."`) corrupted the row: a CSV reader treats the character right
+ *  after `\` as the field's closing quote, splitting the quoted phrase's remainder into the
+ *  next column. `vectorBoardExportCsv` (vector-board-row-utils.ts) already escapes its own
+ *  `reason` field correctly this way — this brings the Legacy export in line with it. */
+function csvField(value: string | number | null | undefined): string {
+  const s = String(value ?? "");
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
 export function legacyBoardExportCsv(rows: LegacyBoardTableRow[]): string {
   const header = [
     "ticker", "contract", "status", "premium_pct", "exec_pnl_pct", "stock_move_pct", "peak_pct",
@@ -231,7 +244,7 @@ export function legacyBoardExportCsv(rows: LegacyBoardTableRow[]): string {
     const factors = p.factors.map((f) => `${f.label}:${f.points}`).join("|");
     return [
       r.ticker,
-      JSON.stringify(r.contractLabel),
+      csvField(r.contractLabel),
       r.statusLabel,
       r.premiumPct ?? "",
       p.execPnlPct ?? "",
@@ -240,13 +253,13 @@ export function legacyBoardExportCsv(rows: LegacyBoardTableRow[]): string {
       p.tierLabel ?? "",
       p.rank ?? "",
       p.direction ?? "",
-      JSON.stringify(p.stopLevel ?? ""),
-      JSON.stringify(p.targetLevel ?? ""),
-      JSON.stringify(p.entryRange ?? ""),
+      csvField(p.stopLevel ?? ""),
+      csvField(p.targetLevel ?? ""),
+      csvField(p.entryRange ?? ""),
       p.morningStatus ?? "",
       p.gatePromoted ? "yes" : "",
-      JSON.stringify(p.riskNote ?? ""),
-      JSON.stringify(factors),
+      csvField(p.riskNote ?? ""),
+      csvField(factors),
       r.timestamp,
     ].join(",");
   });
