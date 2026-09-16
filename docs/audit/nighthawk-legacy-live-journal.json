@@ -2781,6 +2781,13 @@
       "healthcheck": "AMBER, unchanged -- 11th consecutive identical cycle, same explained overnight pattern.",
       "codeReview": "legacy-option-marks-server.ts (54 lines) -- the server-side source behind GET /api/market/nighthawk/legacy-marks, directly marks-correctness-relevant. Verified: input OCCs deduped+normalized (trim/uppercase/Set) and capped at 24; snapshot fetch is fail-soft (empty map on throw, never propagates); WS lookup tries bare OCC first then O:-prefixed (matches the documented convention 'Legacy play rows store bare OCC, Polygon unified snapshot uses O:'); builds each row through the already-hardened buildLegacyOptionMarkRow (3 documented fixes this week: staleness clock, REST/WS divergence guards); final filter requires mark to be non-null, finite, AND >0 before ever entering the output map -- no path to a NaN/negative/zero mark leaking to the API response. No bug found.",
       "note": "5th consecutive clean code-review cycle in this systematic sweep (regrade-legacy.ts, legacy-primary-pnl.ts, legacy-play-contract.ts, legacy-option-marks-server.ts all fully vetted this session, alongside the earlier real findings -- CSV fix shipped+merged, TARGET PATH gauge confirmed structural, cron health verified, Discord near-miss caught). Continuing the sweep on remaining unreviewed files next cycle."
+    },
+    {
+      "at": "2026-09-16T03:37:28Z",
+      "trigger": ":36 cycle -- code review of legacy-publish-fields.ts",
+      "healthcheck": "AMBER, unchanged -- 12th consecutive identical cycle, same explained overnight pattern.",
+      "codeReview": "legacy-publish-fields.ts (51 lines): extracts Discord trade fields (options_play/entry_premium/exit_style) from a pinned publish_context, with a documented PR-N4 shape quirk (geometry/regime pinned at top level, NOT under final_output, while audit-trail rows use final_output.options_play) -- handled via an explicit 3-tier fallback (final_output -> top-level publish_context -> edition play). Every read goes through a typed validator (readString rejects non-string/blank, readPremium rejects non-finite/non-positive numbers) before being trusted -- no path for a garbage publish_context value to reach the Discord notify payload. exit_style is checked against a literal 'scale_out' allowlist rather than passed through as an arbitrary string. Test file exists (legacy-publish-fields.test.ts). No bug found.",
+      "note": "6th consecutive clean code-review cycle in the systematic sweep -- remaining unreviewed Legacy files: legacy-board-calendar.ts, legacy-board-columns.tsx, legacy-board-detail-copy.ts, legacy-edition-dates.ts."
     }
   ],
   "knownOpenItems": {
