@@ -2894,6 +2894,13 @@
       "trigger": "new-hour :06 cycle (v3 mandate re-fire) -- both this session's shipped fixes verified still live",
       "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
       "note": "Final sanity check on both fixes shipped this session (csvField in legacy-board-table-utils.ts from PR #5052, stepBoardSelectionIndex in vector-board-filters.ts from PR #5060) -- both confirmed byte-correct on origin/main. Genuinely quiet deep-overnight cycle (3:07am ET) -- full lib+component review coverage already complete, no new outcome data yet, both open enhancement ideas (scorecard wiring, TARGET PATH gauge) already well-documented with nothing new to add. Staying quiet per the mandate's own rule rather than manufacturing a finding."
+    },
+    {
+      "at": "2026-09-16T07:22:47Z",
+      "trigger": ":21 cycle -- fresh angle: full read of the morning-confirm cron route (D_pull_status's real source)",
+      "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
+      "codeReview": "Journal maintenance check first: 431 checkIns, 653KB, spans exactly 09-12..09-16 (5 calendar days) -- within the file's own ~5-trading-day retention policy, no prune needed yet. Then read src/app/api/cron/nighthawk-morning-confirm/route.ts in full (677 lines) -- the D stage's actual source, SKIPPED every cycle this whole overnight session since it only fires 13:15/14:15 UTC. Well-engineered with real prior-incident fixes baked into comments (holiday guard added after a real Fri-2026-07-03 false-INVALIDATE; session-match guard preventing a future edition's pre-market read from polluting today's key; a GLOBAL ABSTAIN when every data source is unreachable, withholding verdicts rather than fabricating green badges; the prior-close off-by-one bar fix). Traced Phase 3.75's direction-aware entry re-anchor (gappedThrough) carefully for the mission's sign-error concern: LONG re-anchors only when price gapped ABOVE entry_range_high (genuinely unreachable upward), SHORT only when price gapped BELOW entry_range_low -- an ADVERSE gap (price moving against the thesis) is correctly left un-reanchored since the original band is still fillable, just at a better price. No bug found.",
+      "note": "Genuinely fresh coverage -- first full read of a Legacy cron route (vs. mostly lib/component review so far this session). Next candidate for the same treatment: edition/route.ts or legacy-marks/route.ts."
     }
   ],
   "knownOpenItems": {
