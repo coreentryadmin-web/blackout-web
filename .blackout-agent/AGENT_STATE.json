@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-16T16:10:54.690Z",
+  "updated_at": "2026-09-16T18:45:47.495Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,32 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "dad6c7e90a74e7dceb16d7489ff2bc004ebd49a1",
+    "last_main_sha": "3b8defeb1fe0e37dbf56a8ba44897d6098a3fd84",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-07T20:00:43.449Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-09-07T20:00:43.450Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "4f682668-61cb-4609-b979-5920b46266ef",
-      "summary": "Cycle complete: #4563 merged, #4566 verify pending (11/11 local tests), handoff #4568 opened, closed stale #4564/#4565. validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Awaiting Claude on #4566."
-    },
-    {
-      "at": "2026-09-07T21:50:34.329Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-07T21:50:35.044Z",
       "type": "context_sync",
@@ -1272,9 +1253,68 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-16T18:45:46.343Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-16T18:45:46.989Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-16T18:45:47.495Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4967,
+      "title": "chore(deps): Bump @whop/sdk from 0.0.42 to 1.1.3",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.3",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-14T10:22:44Z"
+    },
+    {
+      "number": 4480,
+      "title": "chore(deps): Bump next from 15.5.25 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-14T10:22:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4477,
+      "title": "Bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T00:30:20Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
