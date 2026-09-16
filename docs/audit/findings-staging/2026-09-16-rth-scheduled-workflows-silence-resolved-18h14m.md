@@ -1,0 +1,12 @@
+## 2026-09-16 — [FINDING, P1 CI/infra, RESOLUTION of an escalating REPORTED finding] RTH-hour scheduled workflow silence ended after 18h14m — first fire back at 17:43-17:44 UTC, still failing on the separate, already-known Cursor Cloud Agent cause
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | Closes the loop on the escalation chain tracked this session: the original ~3h silence (PR #5034, 2026-09-15) grew to ~15h (this session's own follow-up) and then continued growing past that measurement. This entry records the actual resolution point so a future session doesn't have to re-derive it. |
+| **Evidence** | `Grid RTH all-day agent` and `SPX RTH all-day agent` last fired (and failed) at 23:30:05Z / 23:27:25Z on 2026-09-15. Checked again at 18:15 UTC today (2026-09-16) and both had fired at **17:44:05Z / 17:43:31Z** — the scheduler resumed dispatching them. Total silence duration: **18h14m**, measured start-to-start between the last pre-silence fire and the first post-silence fire. |
+| **Still failing, but for the already-documented reason** | Both fresh runs still show `conclusion: failure` — this is NOT a new problem. It is the separate, already-tracked #4987 Cursor Cloud Agent outage (`curl -sf -X POST https://api.cursor.com/v1/agents` failing) that has been the steady-state failure mode for these two workflows all session, independent of whether the scheduler dispatches them on time. The scheduling gap and the Cursor outage are two different, already-distinguished problems — this entry only closes out the scheduling-silence half. |
+| **What this confirms about the pattern** | GitHub Actions `schedule:` dispatch drift for this repo's RTH-hour cluster is, once again, self-resolving rather than permanent — consistent with every prior instance of this phenomenon documented in CLAUDE.md and this file. 18h14m is the longest measured instance so far (prior instances: the original ~3h, and an earlier ~"few hours late" pattern referenced in the original finding). Worth keeping as a data point on the upper end of observed severity, not as evidence the mechanism has changed. |
+| **No code changed** | Same disposition as the findings this closes out — GitHub Actions' own scheduler behavior, not application code. |
+| **Status** | RESOLVED (the scheduling-silence portion only). The Cursor Cloud Agent failure these workflows hit once they DO fire remains open under #4987 and is unrelated to this entry. |
