@@ -836,23 +836,44 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // the SPECIFIC replay-measured worst-timed slice of the session (E2's own evidence is about
   // TIMING, not about whether Vector happens to agree), and Vector alignment was never itself
   // measured as curing that early-window effect — it was borrowed verbatim from G-17's own
-  // exemption predicate. G-17's OWN Vector exemption (a SEPARATE code path, `single_rail_
-  // corroboration`, further below) is explicitly UNTOUCHED by this change — be precise about
-  // which gate is being read: both G-17 and G-19 still reference `vectorExemptsG17PrimeBand`/
-  // their own exemption predicates; only G-18's block condition drops it.
+  // (now-removed) SINGLE-SIGNAL exemption predicate. G-17's OWN Vector exemption (a SEPARATE
+  // code path, `single_rail_corroboration`, further below) is explicitly UNTOUCHED by this
+  // change — be precise about which gate is being read: both G-17 and G-19 still reference
+  // `vectorExemptsG17PrimeBand`/their own exemption predicates; only G-18's block condition
+  // drops it.
+  //
+  // RESTRUCTURED 2026-09-16 (operator directive: "make the system better... best plays"; live
+  // measurement `docs/audit/findings-staging/2026-09-16-zerodte-g18-early-window-false-block-
+  // rate.md`, `npm run counterfactual:0dte-g18-g19`): a 30-45 real-day skip-grading backtest
+  // against production (`gradePlanFromBars`, the same grader every commit uses, via `GET
+  // /api/market/zerodte/calibration?grade_skips=1`) found a 71.4% false-block rate (n=14, clears
+  // LOW_N_THRESHOLD=5) for setups G-18 rejected in this window — i.e. most of what this gate was
+  // blocking would have won. Unlike the 2026-09-09 decision above, this does NOT reintroduce the
+  // discredited single-signal Vector exemption. Narrowing this block to ONLY fire below 70 means
+  // a 70-74 early-window score falls through to G-17's OWN pre-existing, already-evidenced
+  // conditional-band check (further below: confluence>=2 AND clean tape AND clean VIX regime AND
+  // clean execution/safety, ALL at once) — that check's condition (`score >= 70 && score < 75`)
+  // is not itself time-gated, so it was already silently re-evaluating this exact score band at
+  // every OTHER time of day; it simply never got a chance to run in the early window because
+  // G-18's unconditional 75+ requirement blocked first. No new gate/check was added — the early
+  // window's 70-74 sub-band is now held to the identical, already-proven multi-factor bar the
+  // rest of the session already uses for that score band, not a new or looser one. The <70
+  // sub-band keeps the UNCONDITIONAL reject below — no evidence in the backtest supports
+  // admitting a setup that low this early, and G-17's own <70 sub-band is unconditional for the
+  // identical reason.
   if (
     !isCondor &&
     input.nowEtMinutes >= OPENING_WINDOW_UNLOCK_ET_MINUTES &&
     input.nowEtMinutes < EARLY_ENTRY_WINDOW_END_ET_MINUTES &&
-    input.score < 75
+    input.score < 70
   ) {
     blocks.push({
       code: "early_window_prime_score",
       reason:
         `Score ${Math.round(input.score)} in the ${OPENING_WINDOW_UNLOCK_LABEL}–10:45 early window ` +
-        "needs the 75+ prime band (E2 negative EV below prime — unconditional in this window, " +
-        "no Vector-alignment exemption).",
-      threshold: 75,
+        "is below the 70 conditional-band floor (E2 negative EV below prime — unconditional " +
+        "reject under 70, no exemption).",
+      threshold: 70,
       unlock_et: "10:45 ET",
     });
   }

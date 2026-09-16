@@ -813,12 +813,49 @@ test("G-17 matrix: score 72, confluence>=2, tape-aligned, VIX-clean, execution c
   assert.ok(!v.blocks.some((b) => b.code === "conditional_band_unmet"));
 });
 
-test("G-17 matrix: score 72 during 10:00-10:45 early window → REJECT (G-18 still requires 75, unaffected by the conditional band)", () => {
+// RESTRUCTURED 2026-09-16: a 71.4% false-block-rate backtest (n=14, real 30-45 day skip-grading
+// window, see docs/audit/findings-staging/2026-09-16-zerodte-g18-early-window-false-block-rate.md)
+// showed G-18's blanket 75+ requirement in the early window was rejecting mostly-winning setups.
+// G-18 now only unconditionally rejects below 70 in this window; 70-74 falls through to G-17's
+// OWN pre-existing, already-evidenced conditional-band check (confluence>=2 AND clean tape AND
+// clean VIX AND clean execution/safety) — the SAME bar that score band already has to clear at
+// every OTHER time of day, not a new or looser one.
+test("G-18 restructure: score 72 during 10:00-10:45 early window, full conditional-band criteria clean → COMMIT-eligible (was unconditionally REJECTed pre-2026-09-16)", () => {
   const v = evaluateZeroDteGates(
     input({ score: 72, nowEtMinutes: EARLY_ET, vixDayOpen: 15, confluence: confluence(2) })
   );
+  assert.equal(v.verdict, "COMMIT");
+  assert.ok(!v.blocks.some((b) => b.code === "early_window_prime_score"));
+  assert.ok(!v.blocks.some((b) => b.code === "conditional_band_unmet"));
+});
+
+test("G-18 restructure: score 72 during the early window with confluence<2 → BLOCKED conditional_band_unmet, not early_window_prime_score", () => {
+  const v = evaluateZeroDteGates(
+    input({ score: 72, nowEtMinutes: EARLY_ET, vixDayOpen: 15, confluence: confluence(1) })
+  );
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "conditional_band_unmet"));
+  assert.ok(!v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
+test("G-18 restructure: score 69 during the early window is still UNCONDITIONALLY rejected — the <70 sub-band is untouched by this change", () => {
+  const v = evaluateZeroDteGates(
+    input({ score: 69, nowEtMinutes: EARLY_ET, vixDayOpen: 15, confluence: confluence(2) })
+  );
   assert.equal(v.verdict, "BLOCKED");
   assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
+test("G-18 restructure: score 76 during the early window is unaffected — still clears the 75+ prime band unconditionally", () => {
+  // confluence(2) — not 0 — to isolate this test to G-17/G-18: the early window also carries
+  // its OWN separate G-12 floor (ZERODTE_CONFLUENCE_MIN_EARLY=2, unrelated to this restructure),
+  // which a confluence(0) read would trip regardless of score.
+  const v = evaluateZeroDteGates(
+    input({ score: 76, nowEtMinutes: EARLY_ET, vixDayOpen: 15, confluence: confluence(2) })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.ok(!v.blocks.some((b) => b.code === "early_window_prime_score"));
+  assert.ok(!v.blocks.some((b) => b.code === "conditional_band_unmet"));
 });
 
 test("G-17 matrix: score 72 under elevated VIX (>=17) → REJECT (canonicalized G-4 still applies — conditional band does NOT exempt from G-4)", () => {
@@ -2585,17 +2622,21 @@ test("stack fix: single name with null SPY tape does not fail G-12 when VWAP-sid
   assert.ok(!v.blocks.some((b) => b.code === "no_market_bias"));
 });
 
-test("G-18: early window sub-prime score (70) is BLOCKED", () => {
-  const v = evaluateZeroDteGates(input({ score: 70, nowEtMinutes: EARLY_ET }));
+// score is 69 here, not 70 — since the 2026-09-16 restructure (see the "G-18 restructure" block
+// above) narrowed this unconditional block to below 70; a score of exactly 70 now falls through
+// to G-17's own conditional-band check instead (covered separately above).
+test("G-18: early window sub-prime score (69) is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ score: 69, nowEtMinutes: EARLY_ET }));
   assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
 });
 
-test("G-18 CANONICALIZED (2026-09-09): a Vector exemption no longer clears the early-window block — unconditional 75+ in this window", () => {
+test("G-18 CANONICALIZED (2026-09-09): a Vector exemption no longer clears the early-window block — unconditional reject below 70 in this window", () => {
   // vector_g17_exempt used to bypass G-18's own block condition (borrowed from G-17's
   // predicate) — that borrowed exemption is now REMOVED from G-18 specifically. G-17's OWN
-  // exemption (a separate code path) is untouched — see the next test block.
+  // exemption (a separate code path) is untouched — see the next test block. Score 69 (not 70)
+  // for the same reason as the test above — this is testing the still-unconditional <70 sub-band.
   const v = evaluateZeroDteGates(
-    input({ score: 70, nowEtMinutes: EARLY_ET, vector_g17_exempt: true })
+    input({ score: 69, nowEtMinutes: EARLY_ET, vector_g17_exempt: true })
   );
   assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
 });
