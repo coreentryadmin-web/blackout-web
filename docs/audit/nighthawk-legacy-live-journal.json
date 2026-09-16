@@ -3062,6 +3062,12 @@
       "trigger": ":51 cycle -- stable watch, holding for the 13:15 UTC morning-confirm window (~24min out)",
       "healthcheck": "AMBER, stable, unchanged (B_marks same 3 OCCs no-live-quote, D_pull_status still correctly SKIPPED pre-window).",
       "note": "Deliberately kept this cycle light rather than starting a new large file read (option-chain-prompt.ts, 737 lines, the next natural candidate) with only ~24 minutes until morning-confirm fires at 13:15 UTC -- the first live daytime exercise this segment of the gate/backfill/gate-promote pipeline this week's deep-dive has focused on, and the point D_pull_status finally gets real data to check instead of SKIPPED. Next cycle (:06) should land right around or just after the window."
+    },
+    {
+      "at": "2026-09-16T13:08:13Z",
+      "trigger": ":06 new-hour cycle -- still 7min before morning-confirm (13:15 UTC), D_pull_status correctly still SKIPPED",
+      "healthcheck": "AMBER, stable, unchanged. D_pull_status verdict/evidence exactly as expected pre-window.",
+      "note": "Noted two more Swings-lane PRs merged this hour (#5070, #5071 -- both src/lib/swing/* only, confirmed unrelated to Legacy). Next :21 firing should land ~6 minutes after the 13:15 UTC morning-confirm window -- that's the cycle to give full attention to D_pull_status's first real data of this segment."
     }
   ],
   "knownOpenItems": {
