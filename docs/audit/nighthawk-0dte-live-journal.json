@@ -352,6 +352,9 @@
     },
     "2026-09-16T16:45Z": {
       "note": "SMTC CLOSED +4.13% (flat_theta_bleed). All 9 rows today now closed, nothing currently open. Day tally: 9 plays, 5 winners (SPCH +9.38%, ALAB +6.85%, CRDO +5.05%, SMTC +4.13%, HOOD +1.42%) vs 4 losses/scratches (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, CORZ 0%). Reported live to operator throughout the session. Solid day. Watching for the next commit."
+    },
+    "2026-09-16T17:07Z": {
+      "note": "Board-upstream degradation recurred (2026-09-16, 1st instance): upstream_ok:false confirmed on 2 consecutive pulls at 17:07 UTC, setups/ledger empty, discovery_health disabled. /record stayed healthy (21 plays, graded=21) -- confirmed to operator that nothing was lost, just the live board view. Consistent with yesterdays established self-resolving pattern (8 instances, 5-27min range). Will check resolution next cycle."
     }
   },
   "sessions": {
