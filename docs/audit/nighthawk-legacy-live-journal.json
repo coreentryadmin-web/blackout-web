@@ -2976,6 +2976,13 @@
       "action": "Fixed via PR #5068: flipped to -2.1 with an inline comment citing the exact formula/sign convention. New test file legacy-board-dev-fixture.test.ts asserts the row's pnlPct/stockMovePct signs agree. RED->GREEN proven (fails pre-fix with the exact pnlPct=-45 stockMovePct=2.1 values, passes post-fix). tsc clean. Full npm test (Node 20): exit 0, 0 'not ok' lines. PR opened as draft, subscribed, undrafted.",
       "codeReviewClean": "LegacyBoardChrome.tsx (board toolbar/calendar shell, 97 lines) also read in full this cycle -- Latest/Browse scope toggle, date-picker max-date guard, calendar toggle-off logic all correct. No bug. This completes the read-sweep of every Legacy-lane .ts/.tsx file identified at segment start.",
       "sessionTally": "4 real bugs found+fixed this session: PR #5062 (merged), PR #5064 (merged), PR #5066 (merged), PR #5068 (open, this cycle)."
+    },
+    {
+      "at": "2026-09-16T09:52:35Z",
+      "trigger": ":51 cycle -- PR #5068 went green+mergeable, merged directly via GitHub MCP",
+      "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
+      "prMerged": "PR #5068: mergeable_state flipped to 'clean' with all checks (CI, CodeQL, webhook/dispatch) green by this cycle -- merged directly via mcp__github__merge_pull_request (squash), per standing merge authorization (green CI + clean mergeable state, no Cursor sign-off required since the 2026-09-10 carve-out rescission). Content-verified against origin/main immediately after (the fixed stockMovePct: -2.1 line + its inline comment are present exactly as shipped) per the 'a merge is not a verification' discipline -- never just trusted merged:true. Unsubscribed. Local branch deleted; remote branch delete hit the same known 403 token-scope limitation documented from the #5062 cleanup earlier this session -- non-blocking, not retried.",
+      "sessionTally": "4 real bugs found+fixed+merged this session, all content-verified on main: PR #5062 (edition lastGoodEdition hot-path freeze), PR #5064 (live-sync troughOut floor), PR #5066 (crossed-book mark fallback), PR #5068 (dev-fixture sign flip). Full read-sweep of every Legacy-lane source file completed this segment."
     }
   ],
   "knownOpenItems": {
