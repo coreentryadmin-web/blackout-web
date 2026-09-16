@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { legacyEditionSessionDates } from "@/features/nighthawk/lib/legacy-board-calendar";
+
+// Dead-code cleanup (found 2026-09-16, live audit): legacyEditionCalendarBuckets was an
+// always-zero PnL placeholder ("PnL fields are placeholders until record overlay lands") with
+// ZERO real callers anywhere in the app and no test ever exercising it — the record overlay it
+// was waiting for landed as a differently-named, fully real, actively-maintained sibling instead
+// (legacyBoardCalendarBuckets in legacy-board-table-utils.ts, wired into LegacyPickLogBoard.tsx),
+// leaving the old placeholder orphaned. The near-identical name (Edition vs Board) made it a real
+// footgun for a future reader/grep to wire up the wrong one. Deleted; this asserts it stays gone.
+test("legacy-board-calendar.ts no longer exports the dead legacyEditionCalendarBuckets placeholder", () => {
+  const src = readFileSync(
+    join(process.cwd(), "src/features/nighthawk/lib/legacy-board-calendar.ts"),
+    "utf8"
+  );
+  assert.doesNotMatch(src, /legacyEditionCalendarBuckets/);
+  assert.doesNotMatch(src, /VectorBoardCalendarBucket/);
+});
 
 // ── legacyEditionSessionDates anchored on literal wall-clock "now", but Legacy's fresh evening
 // edition is tagged editionFor = nextTradingDayEt(todayEt()) — one calendar day ahead for the
