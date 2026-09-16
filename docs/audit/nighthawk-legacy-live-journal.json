@@ -2851,6 +2851,12 @@
       "trigger": ":21 cycle -- shipped a real live-UI bug found during LegacyPickLogBoard.tsx review",
       "fix": "PR #5060 opened+undrafted: LegacyPickLogBoard.tsx's ArrowUp keyboard-nav handler only clamped the LOWER bound (Math.max(0, selectedIndex-1)) with no re-sync to the list's CURRENT upper bound, unlike ArrowDown which already re-clamped correctly (Math.min(visibleRows.length-1, selectedIndex+1)). Reachable: select a row deep in a filtered list (index 7), narrow a filter so the list shrinks to 3 rows -- selectedRow correctly clears via the existing sync effect, but selectedIndex stays stale at 7. Next ArrowDown self-corrects immediately; next ArrowUp decrements to 6 (out of range, no row selects) and needs several more presses before reaching a real row. Fixed by extracting a shared, unit-tested stepBoardSelectionIndex() helper into vector-board-filters.ts (already imported by both Legacy's and Vector's boards) that re-clamps in BOTH directions before stepping. RED->GREEN proven (reverted to the naive per-direction formula, confirmed 2/9 tests fail, restored fix, all 9 pass). Full npm test: 14352 pass / 0 fail / 3 skipped. tsc clean. Cross-lane note: VectorPickLogBoard.tsx (0DTE/Vector) has the byte-for-byte identical unfixed bug -- flagged in the PR/finding doc for that lane's own pickup, not fixed here (out of scope per CLAUDE.md's lane boundaries).",
       "healthcheck": "AMBER, unchanged -- same explained overnight pattern (not re-run this cycle, prioritized shipping the in-flight fix)."
+    },
+    {
+      "at": "2026-09-16T05:47:33Z",
+      "trigger": ":36 cycle -- PR #5060 CI-wait, closed out the last unreviewed lib file",
+      "healthcheck": "AMBER, unchanged -- same explained overnight pattern. PR #5060 CI in_progress (~2min), nothing actionable yet, next check-in in ~8 more minutes.",
+      "note": "legacy-macro-types.ts confirmed pure type-only (10 lines, LegacyMacroContext type def, no logic) -- nothing to review. This closes out EVERY file in src/features/nighthawk/lib/legacy-*.ts (the dev-fixture file remains genuinely low-value as static test fixture data, not live logic). Full lib-file sweep for this session is now complete: every substantive Legacy-lane file has been read in full at least once."
     }
   ],
   "knownOpenItems": {
