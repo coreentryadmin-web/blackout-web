@@ -2706,6 +2706,13 @@
       "at": "2026-09-16T00:59:47Z",
       "trigger": "PR #5052 merge confirmation",
       "note": "PR #5052 merged at 2026-09-16T00:59:14Z (merged_by: coreentryadmin-web, squash commit 27dd1e73b) -- BEFORE this session called any merge tool itself. Same 'MIRROR FAILURE, CLAUDE SIDE' pattern CLAUDE.md documents (a parallel session on the same account merging a self-authored PR the instant CI/mergeable conditions clear). Per that section's standing instruction, did NOT trust merged:true alone -- independently verified via `git show origin/main:src/features/nighthawk/lib/legacy-board-table-utils.ts` that the real csvField() fix (RFC 4180 doubled-quote escaping) landed byte-for-byte on main, not a partial or corrupted merge. Confirmed clean. Unsubscribed from PR activity, deleted the local feature branch, synced main to 27dd1e73b."
+    },
+    {
+      "at": "2026-09-16T01:08:40Z",
+      "trigger": ":06 cycle -- aggressive improvement-hunting pass on tonight's 3 raw picks",
+      "healthcheck": "AMBER, unchanged -- A_edition GREEN (3 plays), B_marks same explained after-hours staleness, C_record GREEN (resolved=27), D_pull_status correctly SKIPPED.",
+      "narrativeCheck": "Pulled the RAW /api/market/nighthawk/edition play objects (not the TerminalPlay-mapped shape) for tonight's 3 picks (CRWD/RIG/SWKS) and checked: (1) stop/entry_range/target ordering for all 3 LONGs is monotonic and correct (stop < entry_range < target, no sign errors); (2) risk_note is concrete and actionable on all 3 (banger scale-out: 50% at 2x, trail runner at 50% of peak, hard stop -60%); (3) thesis text is rich -- catalysts, watch items, R:R, squeeze/short-interest tailwinds, technicals, not a thin bullet dump. (4) CRWD scores HIGHER numerically (69) than RIG/SWKS (49/45) but gets a WORSE tier (B vs A) -- verified this is the already-documented intentional non-monotonic tier design (the tier.factors payload itself cites 'Score 49 sits in 40-55 -- the overnight sweet spot (B-tier ran +2.99% avg)' vs CRWD's 'above the prime band, modest measured returns' for 55-69), not a new bug -- matches legacyTierNarrativeStaleness_2026_09_15 context already in knownOpenItems.",
+      "note": "Clean cycle -- no new bug or enhancement idea surfaced after a genuine dig, not a skipped check. Staying quiet per noise discipline."
     }
   ],
   "knownOpenItems": {
