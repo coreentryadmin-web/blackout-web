@@ -1256,6 +1256,18 @@ test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (
   assert.doesNotMatch(section!.body, /Entry zone/i);
 });
 
+test("vectorDeskSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const vec = fixtureVec({
+    dataAgeMs: Number.POSITIVE_INFINITY,
+    play: { bias: "long", headline: "Ride momentum", grade: "A" },
+  } as Partial<VectorFullState>);
+  const section = vectorDeskSection(vec);
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+  assert.doesNotMatch(section!.body, /Infinitys/i);
+});
+
 test("vectorDeskSection: live Vector play.bias badges bullish/bearish", () => {
   const live = vectorDeskSection(
     fixtureVec({
@@ -1731,6 +1743,32 @@ test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma p
   assert.doesNotMatch(section!.body, /Net GEX/i, "stale matrix numeric fields must not render as live");
 });
 
+test("gexPostureSection: future-skewed GEX matrix age renders 'clock-skewed', not a negative number (Largo C2, 2026-09-16)", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        matrix_age_sec: -500,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+  assert.doesNotMatch(section!.body, /-500s/);
+});
+
 // FINDING 2026-09-11 (Ask Largo monitor cycle, live MSTR:33): gexPostureSection's "Nearest wall"
 // line read ONLY `gex.nearest_wall` (derived purely from the raw GEX-matrix call_wall/put_wall),
 // while "Levels on chart" (chartLevelsSection) already prefers a live Vector-ladder wall over the
@@ -1852,6 +1890,19 @@ test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and omits l
   assert.doesNotMatch(section!.body, /EMA 9\/21\/50/i, "stale EMA stack must not render as live");
   assert.doesNotMatch(section!.body, /VWAP/i, "stale VWAP must not render as live");
   assert.doesNotMatch(section!.body, /RSI:/i, "stale RSI must not render as live");
+});
+
+test("chartTechnicalsSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    dataAgeMs: Number.POSITIVE_INFINITY,
+    play: { grade: "A" },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+  assert.doesNotMatch(section!.body, /Infinitys/i);
 });
 
 test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (Largo C2)", () => {
@@ -2602,6 +2653,31 @@ test("meridianCatalystSection: stale as_of (>120s, Largo C2) prefixes a Last sna
     assert.match(section!.body, /~300s old/);
     assert.match(section!.body, /catalyst calendar may lag/);
     assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("meridianCatalystSection: future-skewed as_of renders 'clock-skewed', not a negative number (Largo C2, 2026-09-16)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const section = meridianCatalystSection({
+      play: fixturePlay(),
+      asOf: "2026-09-15 16:00 ET",
+      sessionDate: "2026-09-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: { as_of: new Date(readMs + 300_000).toISOString(), items: [], total_matched: 0 },
+      ecosystem: null,
+      vector: null,
+    });
+    assert.ok(section);
+    assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+    assert.doesNotMatch(section!.body, /-300s/);
   } finally {
     Date.now = origNow;
   }

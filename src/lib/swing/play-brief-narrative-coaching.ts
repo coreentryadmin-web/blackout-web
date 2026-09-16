@@ -5,11 +5,13 @@
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   collectOptionMarkStalenessAbsence,
+  ageSecondsLabel,
   confluenceZoneKindsLabel,
   fundamentalsAncient,
   gexMatrixAgeMs,
   gexMatrixStale,
   resolveGammaPosture,
+  vectorAgeStale,
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
@@ -984,15 +986,19 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
       warnings.push(`option mark from **${stamp}** — not live-synced`);
     }
   }
-  if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
-    warnings.push(`Vector **${Math.round(vec.dataAgeMs / 1000)}s** stale`);
+  // Largo C2 (2026-09-16): this Vector check used to be a raw `dataAgeMs > 120_000` comparison —
+  // same bug shape as play-brief-intel.ts's dataFreshnessSection before #5070/#5069 fixed it —
+  // which missed a future-skewed Infinity dataAgeMs rendering the literal "Infinitys" and a null
+  // dataAgeMs (with vec.freshness === "stale") silently never warning at all. Now gated on the
+  // shared vectorAgeStale helper, matching every other staleness check in the play-brief lane.
+  if (vectorAgeStale(vec, Date.now())) {
+    const label = ageSecondsLabel(vec?.dataAgeMs) ?? "clock-skewed";
+    warnings.push(`Vector **${label}** stale`);
   }
   const gex = ctx.ecosystem?.gex_positioning;
-  const gexAgeMs = gexMatrixAgeMs(gex);
-  if (gexMatrixStale(gex) && gexAgeMs != null) {
-    warnings.push(
-      `GEX matrix **${Math.round(gexAgeMs / 1000)}s** stale — dealer posture may lag spot`,
-    );
+  if (gexMatrixStale(gex)) {
+    const label = ageSecondsLabel(gexMatrixAgeMs(gex)) ?? "clock-skewed";
+    warnings.push(`GEX matrix **${label}** stale — dealer posture may lag spot`);
   }
   if (ctx.ecosystem?.flow_feed_fresh === false) {
     warnings.push(

@@ -100,6 +100,25 @@ export function gexMatrixStale(
 }
 
 /**
+ * Formats a millisecond age as a plain seconds label ("42s") for the "Last snapshot (~Ns old)"
+ * narrative pattern several sections share (chart technicals, Vector desk, GEX posture, Meridian
+ * catalysts, dark-pool/spot narration) — never a bare `Math.round(ageMs / 1000)`, which renders
+ * garbage for the two failure modes the staleness gates guarding these lines (vectorAgeStale/
+ * gexMatrixStale/meridianCatalystStale) already treat as "stale" but the raw display never
+ * checked: `Number.POSITIVE_INFINITY` (Vector's future-skew sentinel, `withReadContext()`) rounds
+ * to the literal string "Infinity" (live repro shape: "Vector data **Infinitys** old", fixed at
+ * one call site in #5070 before this helper existed to share the fix), and a future-skewed
+ * (negative) raw age rounds to a negative number ("-500s old"). Returns `null` when `ageMs`
+ * itself is `null`/`undefined` so optional-suffix callers can omit the parenthetical entirely
+ * rather than claim "clock-skewed" for a value that was simply never available.
+ */
+export function ageSecondsLabel(ageMs: number | null | undefined): string | null {
+  if (ageMs == null) return null;
+  if (!Number.isFinite(ageMs) || ageMs < 0) return "clock-skewed";
+  return `${Math.round(ageMs / 1000)}s`;
+}
+
+/**
  * Meridian catalyst timeline staleness (Largo C2). `slice.as_of` is stamped once, at the moment
  * `loadMeridianTimelineResponse` actually ran inside `withServerCache` — under that cache's
  * stale-while-revalidate path a degraded Benzinga upstream can legitimately keep serving the same

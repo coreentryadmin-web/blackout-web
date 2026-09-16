@@ -224,6 +224,36 @@ test("tradeManagerNarrativeSection: stale Vector with live GEX fallback uses Las
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
+test("tradeManagerNarrativeSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        dataAgeMs: Number.POSITIVE_INFINITY,
+        freshness: "stale",
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "short",
+          matrix_age_sec: 30,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+  assert.doesNotMatch(section!.body, /Infinitys/i);
+});
+
 test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
