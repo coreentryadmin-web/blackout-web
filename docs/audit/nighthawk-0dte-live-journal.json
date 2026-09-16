@@ -370,6 +370,9 @@
     },
     "2026-09-16T18:15Z": {
       "note": "No new commits, board healthy, same 9 closed positions. Quiet."
+    },
+    "2026-09-16T18:37Z": {
+      "note": "Board-upstream degradation recurred (2026-09-16, 2nd instance): confirmed on 2 consecutive pulls at 18:38 UTC, upstream_ok:false, ledger empty. /record stayed healthy (21 plays). Consistent with the established self-resolving pattern. Will check resolution next cycle."
     }
   },
   "sessions": {
