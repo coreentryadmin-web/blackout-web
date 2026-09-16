@@ -119,6 +119,34 @@ export function ageSecondsLabel(ageMs: number | null | undefined): string | null
 }
 
 /**
+ * Human relative-age label ("14m ago" / "3h ago") for spans up to a day (recent_anomalies is a
+ * last-24h feed — see `ecosystem-context.ts`'s own doc comment), as opposed to `ageSecondsLabel`'s
+ * raw-seconds form meant for sub-minute staleness bars. Built for `flowNarrative`'s anomaly line
+ * (live CRWD repro, 2026-09-16, Ask Largo standing mandate): the HELIX tape read is a 6h window
+ * while `recent_anomalies` draws from the last 24h, so an anomaly can legitimately point the
+ * OPPOSITE direction from the tape's own bias without either read being wrong — concatenating them
+ * with no time label reads as a flat self-contradiction ("call-heavy... supports the long swing"
+ * immediately followed by "one-sided put flow"). Labeling the anomaly's own age lets the reader
+ * see it as an earlier, separate read rather than a clash within the same window. Returns `null`
+ * for an unparseable/missing timestamp so callers can omit the parenthetical rather than fabricate
+ * an age, and "clock-skewed" for a negative age for the same reason `ageSecondsLabel` does.
+ */
+export function relativeAgeLabel(
+  isoTimestamp: string | null | undefined,
+  nowMs: number = Date.now(),
+): string | null {
+  if (!isoTimestamp) return null;
+  const observedMs = Date.parse(isoTimestamp);
+  if (!Number.isFinite(observedMs)) return null;
+  const ageMs = nowMs - observedMs;
+  if (!Number.isFinite(ageMs) || ageMs < 0) return "clock-skewed";
+  const ageMin = Math.round(ageMs / 60_000);
+  if (ageMin < 60) return `${Math.max(ageMin, 0)}m ago`;
+  const ageHr = Math.round(ageMin / 60);
+  return `${ageHr}h ago`;
+}
+
+/**
  * Meridian catalyst timeline staleness (Largo C2). `slice.as_of` is stamped once, at the moment
  * `loadMeridianTimelineResponse` actually ran inside `withServerCache` — under that cache's
  * stale-while-revalidate path a degraded Benzinga upstream can legitimately keep serving the same

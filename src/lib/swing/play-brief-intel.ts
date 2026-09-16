@@ -31,7 +31,7 @@ import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
-import { trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
+import { trustedHelixFlow, zerodteLiveForSession, relativeAgeLabel } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
@@ -578,7 +578,15 @@ export function flowIntelSection(
     });
     const anomalies = deduped
       .slice(0, 4)
-      .map((a) => `• **${a.anomaly_type}** — ${a.detail}${a.direction ? ` (${a.direction})` : ""}`)
+      .map((a) => {
+        // recent_anomalies is a last-24h feed while the HELIX tape line above it is a 6h read
+        // (see relativeAgeLabel's own doc comment) — label each anomaly's own age so it reads
+        // as a separate-in-time signal rather than a same-window contradiction of the tape.
+        const ageLabel = relativeAgeLabel(a.detected_at);
+        const dirPart = a.direction ? ` (${a.direction})` : "";
+        const agePart = ageLabel ? ` [${ageLabel}]` : "";
+        return `• **${a.anomaly_type}** — ${a.detail}${dirPart}${agePart}`;
+      })
       .join("\n");
     lines.push("**Flow anomalies:**\n" + anomalies);
   }

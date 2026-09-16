@@ -10,6 +10,7 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   trustedHelixFlow,
   ageSecondsLabel,
+  relativeAgeLabel,
   gexMatrixStale,
   vectorSnapshotStale,
   resolveGammaPosture,
@@ -325,7 +326,13 @@ function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string |
 
   const anomaly = ctx.ecosystem?.recent_anomalies?.[0];
   if (anomaly) {
-    tape += ` Latest anomaly: **${anomaly.anomaly_type}** — ${anomaly.detail}.`;
+    // Time-label this — recent_anomalies is a last-24h feed while the tape above is a 6h read,
+    // so an anomaly can point the opposite direction from the tape's own bias without either
+    // read being wrong. Undated, the two sentences read as a flat contradiction (see
+    // relativeAgeLabel's own doc comment, live CRWD repro 2026-09-16).
+    const ageLabel = relativeAgeLabel(anomaly.detected_at);
+    const agePart = ageLabel ? ` (${ageLabel})` : "";
+    tape += ` Earlier anomaly${agePart}: **${anomaly.anomaly_type}** — ${anomaly.detail}.`;
   }
 
   return tape;
