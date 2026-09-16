@@ -373,6 +373,9 @@
     },
     "2026-09-16T18:37Z": {
       "note": "Board-upstream degradation recurred (2026-09-16, 2nd instance): confirmed on 2 consecutive pulls at 18:38 UTC, upstream_ok:false, ledger empty. /record stayed healthy (21 plays). Consistent with the established self-resolving pattern. Will check resolution next cycle."
+    },
+    "2026-09-16T18:45Z": {
+      "note": "Board-upstream degradation still ongoing (confirmed 18:38, still down at 18:45 -- ~7min so far, within normal range). Not re-flagging on PR #4076 yet per the established discipline of avoiding repeated posts for the same still-ongoing instance. Will check next cycle."
     }
   },
   "sessions": {
