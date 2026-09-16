@@ -3373,6 +3373,12 @@
       "trigger": ":21 cycle -- spx-gap.ts read",
       "healthcheck": "Steady: A_edition GREEN (tonight's edition), B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
       "codeReview": "Full read of spx-gap.ts (92 lines -- SPX gap-and-go/trap/fill classifier). Verified the up-gap and down-gap branches each partition the real number line exhaustively and without overlap across the 3 pattern buckets (go/trap/fill), mirroring correctly between the two directions. File already carries a documented fix for exactly this defect class (the old version compared last_price to session_open in both branches, making 'gap_fill' mathematically unreachable -- every partial fade mislabeled as a full reversal). No new bug found."
+    },
+    {
+      "at": "2026-09-16T22:38:08Z",
+      "trigger": ":36 cycle -- bearish-posture.ts + flow-polarity.ts read",
+      "healthcheck": "Steady: A_edition GREEN (tonight's edition, same 3 plays), B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
+      "codeReview": "bearish-posture.ts (100 lines, PR-N9 -- re-ranks candidates SHORT-preferred when >=2 of 3 independent bearish signals fire on the evening tape). Confirmed the score-adjustment math floors at 0 (Math.max(0, score-penalty)) and correctly never flips a long candidate to short in-place (documented reasoning: sub-scores were computed for the long direction and would be internally contradictory if flipped) -- only penalizes and lets downstream gates decide survival. BookPosture's 'LONG' type value is never actually produced by detectBookPosture, which is correct given the module's narrow scope (fixing the SHORT-blind-spot only; long is already the unmodified default). flow-polarity.ts (155 lines, explicitly MEASUREMENT ONLY -- doesn't affect live Legacy scoring): traced the signed-aggression premium-share math and the bid_put_share_of_puts calc, which already carries a documented 2026 fix for a share-vs-cutoff bug (a 45%-ask/55%-bid put used to fall between two discrete branches and silently contribute 0 instead of its real 0.55 share). No new bug found in either file."
     }
   ],
   "knownOpenItems": {
