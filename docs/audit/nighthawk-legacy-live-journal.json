@@ -3379,6 +3379,12 @@
       "trigger": ":36 cycle -- bearish-posture.ts + flow-polarity.ts read",
       "healthcheck": "Steady: A_edition GREEN (tonight's edition, same 3 plays), B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
       "codeReview": "bearish-posture.ts (100 lines, PR-N9 -- re-ranks candidates SHORT-preferred when >=2 of 3 independent bearish signals fire on the evening tape). Confirmed the score-adjustment math floors at 0 (Math.max(0, score-penalty)) and correctly never flips a long candidate to short in-place (documented reasoning: sub-scores were computed for the long direction and would be internally contradictory if flipped) -- only penalizes and lets downstream gates decide survival. BookPosture's 'LONG' type value is never actually produced by detectBookPosture, which is correct given the module's narrow scope (fixing the SHORT-blind-spot only; long is already the unmodified default). flow-polarity.ts (155 lines, explicitly MEASUREMENT ONLY -- doesn't affect live Legacy scoring): traced the signed-aggression premium-share math and the bid_put_share_of_puts calc, which already carries a documented 2026 fix for a share-vs-cutoff bug (a 45%-ask/55%-bid put used to fall between two discrete branches and silently contribute 0 instead of its real 0.55 share). No new bug found in either file."
+    },
+    {
+      "at": "2026-09-16T22:55:54Z",
+      "trigger": ":51 cycle -- flow-streak.ts read (prompted by tonight's SMTC play citing a 4-day bullish flow streak)",
+      "healthcheck": "Steady: A_edition GREEN (tonight's edition, same 3 plays -- SMTC/LITE/RVTY), B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
+      "codeReview": "flow-streak.ts (75 lines -- computeFlowStreakFromBuckets/fetchTickerFlowStreak/fetchTickersFlowStreaks). Confirmed the module already carries a documented fix for a prior audit MEDIUM (previously counted non-consecutive same-direction days as a streak; now correctly walks priorTradingDayYmd() and breaks the streak the moment a bucket's day isn't exactly the immediately-prior TRADING day). The streak walk assumes `buckets` arrives ordered descending by day (most recent first) -- verified this against the real SQL rather than trusting the assumption: fetchTickerFlowDailyNet and fetchTickersFlowDailyNets (src/lib/db.ts lines ~9036/~9101) both use `ORDER BY day DESC` (the multi-ticker variant: `ORDER BY ticker ASC, day DESC`). Assumption holds -- not a bug. No new issue found."
     }
   ],
   "knownOpenItems": {
