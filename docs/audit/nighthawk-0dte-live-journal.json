@@ -346,6 +346,9 @@
     },
     "2026-09-16T16:15Z": {
       "note": "CRDO CLOSED +5.05% (ratchet). Via /record (board.ledger propagation lag again, same pattern as CIFR/SPCH earlier -- not investigated as a bug yet, keeps recurring, worth checking if it crosses 3 instances): HOOD short CLOSED +1.42% (thesis_break but exited above breakeven). New open: SMTC long, score 95 tier B, flagged 12:10 ET, too fresh for a read. Day tally: 9 plays, 8 closed/1 open. 4 winners (SPCH +9.38%, ALAB +6.85%, CRDO +5.05%, HOOD +1.42%), 4 losses/scratches (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, CORZ 0%). Reported live to operator throughout."
+    },
+    "2026-09-16T16:37Z": {
+      "note": "HOOD/SMTC now fully propagated to board.ledger (9 rows total). No new commits/exits this cycle. SMTC (only open) +1.65%, still early. Quiet."
     }
   },
   "sessions": {
