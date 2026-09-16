@@ -8,6 +8,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
   confluenceZoneKindsLabel,
+  fundamentalsAncient,
   gexMatrixAgeMs,
   gexMatrixStale,
   GEX_MATRIX_STALE_MS,
@@ -639,7 +640,7 @@ export function catalystsSection(eco: EcosystemContext | null): RichSection | nu
     );
   }
 
-  if (arsenal.fundamentals) {
+  if (arsenal.fundamentals && !fundamentalsAncient(arsenal.fundamentals.as_of, Date.now())) {
     const f = arsenal.fundamentals;
     const parts: string[] = [];
     if (f.days_to_cover != null) parts.push(`short DTC **${f.days_to_cover.toFixed(1)}d**`);

@@ -16,6 +16,7 @@ import {
   laneRankCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
+  shortInterestCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
   troughResilienceCoaching,
@@ -515,6 +516,39 @@ test("crossDeskCoaching: stale Vector play.bias must not invent cross-desk frict
     play({ direction: "LONG" }),
   );
   assert.equal(line, null, "stale Vector must not coach cross-desk Vector friction");
+});
+
+test("shortInterestCoaching: renders for a fresh DTC read", () => {
+  const line = shortInterestCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          fundamentals: { days_to_cover: 6.1, short_volume_ratio: 0.4, price_target: null, as_of: "2026-09-15" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.match(line!, /Short interest/i);
+});
+
+test("shortInterestCoaching: ancient DTC read is withheld, not presented as current (Largo C3)", () => {
+  // Same guard as catalystsSection (play-brief-intel.ts) and play-brief.ts's evidenceFromContext
+  // short-interest evidence entry (Largo C7 fix, PR #5042) — this call site read the identical
+  // arsenal.fundamentals field with no freshness check at all before this fix.
+  const line = shortInterestCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          fundamentals: { days_to_cover: 6.1, short_volume_ratio: 0.4, price_target: null, as_of: "2025-12-31" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null);
 });
 
 test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {

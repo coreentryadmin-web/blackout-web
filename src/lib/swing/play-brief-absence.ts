@@ -2,7 +2,7 @@ import type { BieUnavailableSource } from "@/lib/bie/answer-envelope";
 import { freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
-import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { etStampFromIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 import type {
   EcosystemContext,
   EcosystemNightHawkTake,
@@ -38,6 +38,39 @@ const VECTOR_SECTION_LABELS: Record<VectorSection, string> = {
 const VECTOR_STALE_MS = 120_000;
 /** Shared with Vector — dealer posture must not read "Right now" past this age. */
 export const GEX_MATRIX_STALE_MS = VECTOR_STALE_MS;
+
+// FINRA short-interest settlement reports publish twice monthly. `BieFreshness` only has
+// "live"/"recent"/"stale"/"unknown" buckets (a shared cross-product primitive — widening it is a
+// design call, not a contained fix here), so a figure a few days old and one 8+ months old both
+// render the identical "STALE" tag with no way for a trader to tell them apart — live-repro'd 3x:
+// MSTX/2017 (~9yr — almost certainly a recycled-ticker entity mismatch), CRCG/2025-12-31 (~258d),
+// ECO/2025-12-31 (~258d). Past this ceiling (60d — several missed FINRA publication cycles), the
+// figure is not merely stale, it's very likely describing a different reality than "current short
+// interest" — every call site must omit rather than present it under the same tag as a genuinely
+// few-days-old read (the Largo contract's own absence principle: omission is honest, a misleading
+// label is not). Shared here (not left local to one call site) because `catalystsSection`
+// (play-brief-intel.ts) and `shortInterestCoaching` (play-brief-narrative-coaching.ts) read the
+// exact same `arsenal.fundamentals` field and need the identical guard.
+export const FUNDAMENTALS_ANCIENT_CEILING_MS = 60 * 24 * 60 * 60 * 1000;
+
+export function fundamentalsObservedMs(asOf: string): number | null {
+  const trimmed = asOf.trim();
+  // Date-only anchors at session close ET (Largo C1) — age uses that clock, not UTC midnight.
+  const dateOnly = /^(\d{4}-\d{2}-\d{2})$/.exec(trimmed);
+  if (dateOnly) return parseEtStamp(`${dateOnly[1]} 16:00 ET`);
+  // Full ISO / clocked stamps: preserve sub-minute precision for skew guards (ET round-trip truncates).
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function fundamentalsAncient(
+  asOf: string | null | undefined,
+  readMs: number,
+): boolean {
+  if (!asOf) return false;
+  const observedMs = fundamentalsObservedMs(asOf);
+  return observedMs != null && readMs - observedMs > FUNDAMENTALS_ANCIENT_CEILING_MS;
+}
 
 /** Age of the shared GEX matrix in ms — prefers matrix_age_sec, else asof vs read time. */
 export function gexMatrixAgeMs(

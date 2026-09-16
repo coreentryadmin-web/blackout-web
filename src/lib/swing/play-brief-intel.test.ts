@@ -1035,6 +1035,37 @@ test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 f
   assert.doesNotMatch(section!.body, /6913%/);
 });
 
+test("catalystsSection: ancient short-interest as_of is omitted, not presented as current (Largo C3)", () => {
+  // Same guard as play-brief.ts's evidenceFromContext short-interest entry (Largo C7 fix,
+  // PR #5042) — catalystsSection reads the identical arsenal.fundamentals field and must not
+  // present an 8+ month old FINRA read with the same unqualified confidence as a fresh one.
+  const section = catalystsSection({
+    ticker: "CRCG",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 12.4, short_volume_ratio: 0.41, price_target: null, as_of: "2025-12-31" },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.equal(section, null);
+});
+
 test("chartTechnicalsSection: bias reads bearish from the technicals on a SHORT play whose tape is entirely bullish (FINDINGS 2026-09-06 #13, INTC shape)", () => {
   // Reproduces the live INTC envelope: SHORT position, but EMA-up/above-VWAP/RSI-bull/CHOCH-up —
   // an entirely bullish technical picture. The badge must say bullish (the tape), not bearish
