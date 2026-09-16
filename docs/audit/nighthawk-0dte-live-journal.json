@@ -337,6 +337,9 @@
     },
     "2026-09-16T15:37Z": {
       "note": "SPCH CLOSED +9.38% (peak +25%, ratchet floor caught the pullback, never reached its first trim tranche at +40% so no tranche mention needed -- confirms PR #5037/#5043 tranche-note fix behaving correctly live: no false claim of banked tranches when taken=0). New commit: CORZ long, just flagged 0.22, too fresh to read. Current open: CRDO +11.65%, ALAB +6.9%, CORZ new. Day tally so far: 3 closed losses (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, all legitimate thesis-break overrides) + 1 closed win (SPCH +9.38%). Reported live to operator throughout."
+    },
+    "2026-09-16T15:45Z": {
+      "note": "ALAB CLOSED +6.85% via flat_theta_bleed (25min in band, peak +7.74%, clean scratch not a bug). CRDO pulled back to +3.88% (was +11.65%), CORZ dipped to -4.55% (from 0% at entry) -- both still open, no exit trigger yet. Day tally: 4 closed (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, ALAB +6.85%) + SPCH +9.38% = 5 closed (2W/3L so far), 2 still open (CRDO, CORZ). Reported live to operator throughout."
     }
   },
   "sessions": {
