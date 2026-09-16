@@ -1646,6 +1646,63 @@ test("dataFreshnessSection: stale GEX matrix warns when ctx.vector is null (Larg
   assert.match(section!.body, /dealer posture may lag spot/);
 });
 
+test("dataFreshnessSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({ dataAgeMs: Number.POSITIVE_INFINITY }),
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Vector data \*\*clock-skewed\*\* old/);
+  assert.doesNotMatch(section!.body, /Infinitys/);
+});
+
+test("dataFreshnessSection: null Vector dataAgeMs still flags staleness via vec.freshness (Largo C2, 2026-09-16)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({ dataAgeMs: undefined, freshness: "stale" }),
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Vector data \*\*clock-skewed\*\* old/);
+});
+
+test("dataFreshnessSection: future-skewed GEX matrix age fails closed instead of silently reading as fresh (Largo C2, 2026-09-16)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        matrix_age_sec: -500,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(section, "a future-skewed GEX matrix must fail closed, not render as silently fresh");
+  assert.match(section!.body, /GEX matrix \*\*clock-skewed\*\* old/);
+});
+
 test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma posture (Largo C2)", () => {
   const section = gexPostureSection({
     play: fixturePlay(),
