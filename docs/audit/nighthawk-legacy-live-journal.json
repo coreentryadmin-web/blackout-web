@@ -3241,6 +3241,11 @@
       "healthcheck": "AMBER (RIG genuinely stale, CRWD/SWKS fresh this tick). All else GREEN. Steady state -- production still on pre-fix code, PR #5084 not yet merged.",
       "codeReview": "Full re-read of publish-gates.ts (459 lines, the G-N1..G-N4 publish-time sanity gates + gate-promote rescue logic). Re-confirmed the standing REPORT-AND-HOLD finding is still open and untouched: GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE (line 71) == GATE_TARGET_MAX_ATR_MULTIPLE (line 67), both 2.0 -- correctly left for operator/Cursor since fixing it means choosing a new calibration value (a product/risk decision), not something to unilaterally pick. Read the rest of the file fresh: band-vs-spot (G-N1), achievable-target (G-N2), stale-quote-basis (G-N3, correctly skips the check when quote_session is unknown rather than treating an undated-but-current build as stale), book-vs-tape (G-N4, correctly treats 'mixed' tape reads as non-blocking -- ambiguous evidence never vetoes), the fail-closed geometry_unknown precondition, and the promotionBadness tie-break (failCount*1000 - score, so fewer gate failures always beats a higher score, matching its own doc comment). No new bug found -- clean.",
       "prStatus": "PR #5084 CI still in_progress (verify + CodeQL Analyze) at ~12min since dispatch -- slower than my local 354s run but not yet concerning. Will check again next cycle."
+    },
+    {
+      "at": "2026-09-16T19:02:03Z",
+      "trigger": "PR #5084 CI green, merged and re-verified",
+      "prMerged": "All checks green (verify, CodeQL, dispatch, triage), no review comments. Undrafted, merged via GitHub MCP (squash, a62283f99) since automerge.yml's enable-automerge showed conclusion:skipped both before and after undraft (same documented gap as PR #5078 earlier today). Re-verified per 'a merge is not a verification' -- pulled both fixed files directly off origin/main and confirmed LEGACY_QUOTE_STALE_MS is live in both getLiveOptionMarkSync call sites, no ZERODTE_MARK_STALE_MS import remaining. Local branch deleted; remote delete 403'd as usual (known token-scope limit, not retried). Unsubscribed from PR activity."
     }
   ],
   "knownOpenItems": {
