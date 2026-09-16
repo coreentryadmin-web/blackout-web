@@ -3234,6 +3234,13 @@
       "trigger": "post-:36 -- PR #5084 CI running, not idle while waiting",
       "healthcheck": "AMBER (RIG+SWKS stale, CRWD fresh this tick) -- production still on pre-fix code, PR #5084 not yet merged, so this reading is unaffected by today's fix and expected.",
       "prStatus": "PR #5084 (ws-freshness gate fix) draft, CI in progress (verify + CodeQL Analyze in_progress at last check, dispatch/triage green, auto-merge/enable-automerge correctly skipped pre-undraft). No CI failure, no review comment to act on yet -- the two queued notifications were both subscription-confirmation events, not actual CI/review content. Per NEVER SIT IDLE, used the wait to read legacy-play-contract.ts (the OCC-resolution + snapshot-lookup helper feeding both the marks route and today's fix) -- clean, well-tested, no bug found. Will undraft and merge once verify is green per the standing pipeline; will not idle-poll CI in tight loops."
+    },
+    {
+      "at": "2026-09-16T18:51:53Z",
+      "trigger": ":51 cycle -- re-verified standing REPORT-AND-HOLD finding, full publish-gates.ts re-read",
+      "healthcheck": "AMBER (RIG genuinely stale, CRWD/SWKS fresh this tick). All else GREEN. Steady state -- production still on pre-fix code, PR #5084 not yet merged.",
+      "codeReview": "Full re-read of publish-gates.ts (459 lines, the G-N1..G-N4 publish-time sanity gates + gate-promote rescue logic). Re-confirmed the standing REPORT-AND-HOLD finding is still open and untouched: GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE (line 71) == GATE_TARGET_MAX_ATR_MULTIPLE (line 67), both 2.0 -- correctly left for operator/Cursor since fixing it means choosing a new calibration value (a product/risk decision), not something to unilaterally pick. Read the rest of the file fresh: band-vs-spot (G-N1), achievable-target (G-N2), stale-quote-basis (G-N3, correctly skips the check when quote_session is unknown rather than treating an undated-but-current build as stale), book-vs-tape (G-N4, correctly treats 'mixed' tape reads as non-blocking -- ambiguous evidence never vetoes), the fail-closed geometry_unknown precondition, and the promotionBadness tie-break (failCount*1000 - score, so fewer gate failures always beats a higher score, matching its own doc comment). No new bug found -- clean.",
+      "prStatus": "PR #5084 CI still in_progress (verify + CodeQL Analyze) at ~12min since dispatch -- slower than my local 354s run but not yet concerning. Will check again next cycle."
     }
   ],
   "knownOpenItems": {
