@@ -388,6 +388,9 @@
     },
     "2026-09-16T19:45Z": {
       "note": "No new commits, board healthy, same 9 closed positions. Quiet."
+    },
+    "2026-09-16T20:07Z": {
+      "note": "Aggressive-mode dig (after 4 quiet cycles): tallied Cortex source absence across all 9 plays today -- wall-trend/catalyst-news/darkpool-confluence all showed 100% absence (9/9), looked suspicious at first. Checked actual per-ticker reasons: legitimate diversity, not a systemic bug -- mostly genuine insufficient-data/no-signal conditions (wall-trend needs 8+ rail samples in 45min, catalyst-news correctly reports no same-day catalyst for these names, darkpool-confluence correctly reports no supporting wall), plus 3 real CortexSourceTimeout instances (CIFR x2, SMTC x1) already covered by cortex-source-timeout-outcome-ab.mjs with no measured outcome degradation. Ruled out, not a bug. No new finding this cycle. Board unchanged, same 9 closed positions."
     }
   },
   "sessions": {
