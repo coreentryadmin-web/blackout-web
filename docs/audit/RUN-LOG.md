@@ -4,7 +4,26 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-16 (13:36 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good
+## 2026-09-16 (14:08 UTC) — [SEO] Daily growth cycle: continued small avgpos uptick, no new opportunities
+
+**Severity.** — (no defect found; real, small positive movement noted)
+
+1. Opportunity scan: same window as the last few cycles (GSC reporting lag), same 3
+   striking-distance queries, CTR-gap 0 — nothing new. Not churning on-page edits to the
+   already-well-optimized pages hosting them.
+2. Live re-verify: skipped — robots.txt/entity JSON-LD confirmed live yesterday (14:12 UTC),
+   CLS confirmed live twice already today (RTH wake, 13:36 UTC) — all within the 3-day window.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-17→09-13): clicks=18,
+   impressions=1596, CTR=1.13%, avgpos=**30.4** — vs the last recorded pull (window 2026-08-16→09-12:
+   clicks=17, impressions=1635→1613, CTR=1.05%, avgpos=32.0): clicks up, CTR up, **avgpos improved
+   another 1.6 positions**. Continues the steady multi-cycle uptick (36.5→35.9→35.7→33.7→32.0→30.4
+   over the last ~6 pulls). Still no single shipped change obviously attributable at this traffic
+   volume — reads as continued incremental settling (possibly compounding SEO/entity/CWV work
+   landing over recent weeks), not one PR's effect.
+4. Housekeeping: PR sweep clean, 0 open agent PRs fleet-wide.
+
+No code changed this cycle. Backlink/authority work remains out-of-lane, escalated in
+`SEO-GROWTH-STRATEGY.md` §5.
 
 **Severity.** — (no defect found)
 
