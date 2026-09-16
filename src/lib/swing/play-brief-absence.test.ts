@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   ageSecondsLabel,
+  relativeAgeLabel,
   collectBriefUnavailableSources,
   gexMatrixStale,
   meridianCatalystAgeMs,
@@ -891,4 +892,29 @@ test("ageSecondsLabel: Number.POSITIVE_INFINITY (Vector's future-skew sentinel) 
 
 test("ageSecondsLabel: a negative (future-skewed) age renders 'clock-skewed', never a negative number", () => {
   assert.equal(ageSecondsLabel(-500_000), "clock-skewed");
+});
+
+test("relativeAgeLabel: null/undefined/unparseable timestamp returns null", () => {
+  const now = Date.parse("2026-09-16T15:00:00Z");
+  assert.equal(relativeAgeLabel(null, now), null);
+  assert.equal(relativeAgeLabel(undefined, now), null);
+  assert.equal(relativeAgeLabel("not-a-date", now), null);
+});
+
+test("relativeAgeLabel: sub-hour age renders 'Nm ago'", () => {
+  const now = Date.parse("2026-09-16T15:00:00Z");
+  const fourteenMinAgo = new Date(now - 14 * 60_000).toISOString();
+  assert.equal(relativeAgeLabel(fourteenMinAgo, now), "14m ago");
+});
+
+test("relativeAgeLabel: hour-plus age renders 'Nh ago'", () => {
+  const now = Date.parse("2026-09-16T15:00:00Z");
+  const threeHoursAgo = new Date(now - 3 * 60 * 60_000).toISOString();
+  assert.equal(relativeAgeLabel(threeHoursAgo, now), "3h ago");
+});
+
+test("relativeAgeLabel: a future (clock-skewed) timestamp renders 'clock-skewed', never a negative age", () => {
+  const now = Date.parse("2026-09-16T15:00:00Z");
+  const future = new Date(now + 500_000).toISOString();
+  assert.equal(relativeAgeLabel(future, now), "clock-skewed");
 });
