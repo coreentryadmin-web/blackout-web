@@ -235,6 +235,42 @@ export type SwingRecordSummary = {
   low_n: boolean;
 };
 
+/** Statuses that mark a swing_positions row as a currently live, committed position — grading
+ *  only happens once a leg CLOSES or ROLLS, so a genuinely open row never has `graded_at` set. */
+const OPEN_SWING_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
+
+/** The subset of a swing_positions row {@link selectSwingRecordRootIds} needs. */
+export type SwingRecordRootSourceRow = {
+  id: number;
+  root_position_id: number | null;
+  graded_at: string | null;
+  status: string;
+};
+
+/**
+ * Root position ids to seed `/record`'s chain population from a page of swing_positions rows.
+ *
+ * A row seeds a root when it is GRADED (a closed/rolled leg, contributing a resolved chain) OR
+ * currently OPEN/HOLD/TRIM (a live, committed position — necessarily ungraded, since grading only
+ * happens once a leg closes or rolls; see this file's header). Before this function existed, the
+ * caller (the `/record` route) only seeded roots from graded rows, so a fresh position with no
+ * prior roll history — committed, live, but never yet graded — could never enter the chain
+ * population at all. `buildSwingRecordSummary`'s `opens` field (`records.length -
+ * resolved.length`) was then structurally guaranteed to read 0 regardless of how many positions
+ * were genuinely open — a dead counter presented to members/Largo as a measured fact (live repro
+ * 2026-09-16: 3 real OPEN/HOLD positions — CRWD#39, AAPL#38, AAPL#37 — with `summary.opens: 0`
+ * every single call, because none of the three has ever been graded or rolled).
+ */
+export function selectSwingRecordRootIds(rows: readonly SwingRecordRootSourceRow[]): number[] {
+  const roots = new Set<number>();
+  for (const row of rows) {
+    if (row.graded_at || OPEN_SWING_STATUSES.has(row.status)) {
+      roots.add(row.root_position_id ?? row.id);
+    }
+  }
+  return [...roots];
+}
+
 /** Aggregate member-facing summary over built chain records. */
 export function buildSwingRecordSummary(
   records: readonly SwingRecord[],
