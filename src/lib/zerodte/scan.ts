@@ -789,8 +789,31 @@ export async function scanZeroDteBoard(flags?: {
   };
 }
 
-/** Cached (3-min) intraday read from a name's own minute bars. */
-async function intradayReadFor(ticker: string, today: string): Promise<IntradayRead | null> {
+/** Per-ticker intraday read timeout — a miss here only softens ONE setup's score
+ *  adjustment (best-effort), so a tight budget is fine. */
+const TICKER_INTRADAY_FETCH_TIMEOUT_MS = 2_500;
+/** SPY's own read timeout — deliberately more generous than the per-ticker one above.
+ *  Unlike a per-ticker miss, a SPY miss nulls `bias`/`biasAsOfMs` for the WHOLE scan
+ *  cycle, which G-1 (no_market_bias, gates.ts) reads as "tape unreadable" and hard-
+ *  blocks EVERY index-ETF/SPX-family setup (QQQ/SPY/SPXW/SPX/DIA) at once — a single
+ *  slow Polygon response (SPY's minute-bar payload is larger than a single name's) was
+ *  measured live 2026-09-16 concentrating 94% of all `no_market_bias` rejections onto
+ *  exactly these 5 tickers, including simultaneous same-cycle blocks on QQQ(84)/SPY(78)/
+ *  SPXW(68)/SPX(66) — the four highest-scoring setups in the whole pool. Giving SPY's
+ *  read room to finish (still well under MARKET_BIAS_MAX_AGE_MS's 15-min staleness
+ *  ceiling, gates.ts) trades a slightly slower scan cycle for not needlessly vetoing
+ *  the market's most-watched, highest-scoring names on a transient response-time blip
+ *  that has nothing to do with whether the tape is actually readable. */
+export const SPY_BIAS_FETCH_TIMEOUT_MS = 6_000;
+
+/** Cached (3-min) intraday read from a name's own minute bars. `timeoutMs` lets the
+ *  SPY-bias caller (attachIntradayEdge) opt into a longer budget than the default
+ *  per-ticker one — see SPY_BIAS_FETCH_TIMEOUT_MS's doc for why the two must differ. */
+export async function intradayReadFor(
+  ticker: string,
+  today: string,
+  timeoutMs: number = TICKER_INTRADAY_FETCH_TIMEOUT_MS
+): Promise<IntradayRead | null> {
   return within(
     withServerCache<IntradayRead>(`zerodte:intraday:${ticker}:${today}`, 3 * 60 * 1000, async () => {
       // Index roots (SPXW/SPX/NDX…) only price under Polygon's I: namespace —
@@ -802,7 +825,7 @@ async function intradayReadFor(ticker: string, today: string): Promise<IntradayR
           .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c, v: b.v }))
       );
     }),
-    2_500
+    timeoutMs
   );
 }
 
@@ -834,7 +857,7 @@ export function applyIntradayEdgeToBreakdown(
  *  conflicts flagged for the A-tier gate. Best-effort: missing bars = no adjust.
  *  Returns the SPY bias (+ its freshness) so the hard-gate layer judges the SAME
  *  tape read the scores were adjusted with. */
-async function attachIntradayEdge(
+export async function attachIntradayEdge(
   setups: EnrichedZeroDteSetup[]
 ): Promise<{ bias: MarketBias | null; biasAsOfMs: number | null }> {
   if (setups.length === 0) return { bias: null, biasAsOfMs: null };
@@ -850,7 +873,7 @@ async function attachIntradayEdge(
   // the light per-ticker read; the heavy DOSSIER enrichment (Redis single-flight) still stays at top-N.
   const edged = setups;
   const [spyRead, ...reads] = await Promise.all([
-    intradayReadFor("SPY", today),
+    intradayReadFor("SPY", today, SPY_BIAS_FETCH_TIMEOUT_MS),
     ...edged.map((s) => intradayReadFor(s.ticker, today)),
   ]);
   const bias = marketBias(spyRead ?? null);
