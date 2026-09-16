@@ -6,6 +6,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   collectOptionMarkStalenessAbsence,
   confluenceZoneKindsLabel,
+  fundamentalsAncient,
   gexMatrixAgeMs,
   gexMatrixStale,
   resolveGammaPosture,
@@ -808,6 +809,7 @@ export function execSlippageCoaching(play: TerminalPlay): string | null {
 export function shortInterestCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
   const fund = ctx.ecosystem?.arsenal?.fundamentals;
   if (!fund?.days_to_cover) return null;
+  if (fundamentalsAncient(fund.as_of, Date.now())) return null;
   const dtc = fund.days_to_cover;
   if (dtc < 3) return null;
   if (play.direction === "LONG" && dtc >= 5) {

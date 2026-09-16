@@ -20,6 +20,8 @@ import { archetypeLabelFromRaw } from "./taxonomy";
 import {
   collectBriefUnavailableSources,
   confluenceZoneKindsLabel,
+  fundamentalsAncient,
+  fundamentalsObservedMs,
   gexMatrixAgeMs,
   gexMatrixStale,
   optionMarkGenuinelyUnknown,
@@ -36,11 +38,7 @@ import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
-import {
-  etStampFromDateOrIso,
-  etStampFromIso,
-  parseEtStamp,
-} from "@/lib/largo/temporal/bar-session-date";
+import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { thesisHealthUncalibrated } from "./thesis-health";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
@@ -367,19 +365,6 @@ function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): B
   return freshnessFromAgeMs(ageMs);
 }
 
-/** See the ancient-data-ceiling comment at the short-interest evidence call site. */
-const FUNDAMENTALS_ANCIENT_CEILING_MS = 60 * 24 * 60 * 60 * 1000;
-
-function fundamentalsObservedMs(asOf: string): number | null {
-  const trimmed = asOf.trim();
-  // Date-only anchors at session close ET (Largo C1) — age uses that clock, not UTC midnight.
-  const dateOnly = /^(\d{4}-\d{2}-\d{2})$/.exec(trimmed);
-  if (dateOnly) return parseEtStamp(`${dateOnly[1]} 16:00 ET`);
-  // Full ISO / clocked stamps: preserve sub-minute precision for skew guards (ET round-trip truncates).
-  const parsed = Date.parse(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function fundamentalsFreshness(
   asOf: string | null | undefined,
   readMs: number,
@@ -660,20 +645,10 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   }
   const fund = eco?.arsenal?.fundamentals;
   if (fund && (fund.days_to_cover != null || fund.short_volume_ratio != null)) {
-    // FINRA short-interest settlement reports publish twice monthly. `BieFreshness` only has
-    // "live"/"recent"/"stale"/"unknown" buckets (a shared cross-product primitive — widening it
-    // is a design call, not a contained fix here), so a figure a few days old and one 8+ months
-    // old both render the identical "STALE" tag with no way for a trader to tell them apart —
-    // live-repro'd 3x this cycle: MSTX/2017 (~9yr — almost certainly a recycled-ticker entity
-    // mismatch), CRCG/2025-12-31 (~258d), ECO/2025-12-31 (~258d). Past
-    // FUNDAMENTALS_ANCIENT_CEILING_MS (60d — several missed FINRA publication cycles), the figure
-    // is not merely stale, it's very likely describing a different reality than "current short
-    // interest" — omit rather than present it under the same tag as a genuinely few-days-old read
-    // (the Largo contract's own absence principle: omission is honest, a misleading label is not).
-    const observedMs = fund.as_of ? fundamentalsObservedMs(fund.as_of) : null;
-    const ancient =
-      observedMs != null && readMs - observedMs > FUNDAMENTALS_ANCIENT_CEILING_MS;
-    if (!ancient) {
+    // See FUNDAMENTALS_ANCIENT_CEILING_MS's comment (play-brief-absence.ts) — an ancient
+    // short-interest read must be omitted rather than presented under the same "STALE" tag as a
+    // genuinely few-days-old one. Shared with catalystsSection/shortInterestCoaching.
+    if (!fundamentalsAncient(fund.as_of, readMs)) {
       const parts: string[] = [];
       if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
       if (fund.short_volume_ratio != null) {
