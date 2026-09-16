@@ -3043,6 +3043,13 @@
       "trigger": ":06 new-hour cycle -- B_marks evidence text changed for the same 3 OCCs, investigated and confirmed benign",
       "healthcheck": "AMBER, same 3 OCCs (CRWD/RIG/SWKS) but the evidence text changed from 'mark flagged stale by the API' to 'no live two-sided quote (bid=0, ask=0) -- mark sourced from last trade/close'. Investigated before treating as new: verdictForMarkRow (legacy-healthcheck-eval.mjs) checks bid==null||ask==null||ask<=0 BEFORE the stale flag, so this transition means the live quote genuinely went from a real two-sided [bid,ask] band (with the API's own staleness flag set) to a full 0/0 quote dropout between the two checks -- a real, live production data change, not a code/script issue (grepped legacy-e2e-healthcheck.mjs's own git log -- unchanged since PR #4792). The eval function's own header comment already documents and handles this exact scenario (reproduced live 2026-09-11 pre-market on AAPL/SWKS, correctly AMBER not RED) -- expected pre-market bid/ask flickering this early (12:08 UTC = 8:08am ET, ~1h22m before open), not a new bug. Verified before escalating rather than assuming a regression.",
       "note": "~1h07m to the morning-confirm window (13:15 UTC) -- D_pull_status should populate soon, worth a closer check next few cycles."
+    },
+    {
+      "at": "2026-09-16T12:22:42Z",
+      "trigger": ":21 cycle -- full read of edition-funnel.ts (recap-reason precedence)",
+      "healthcheck": "AMBER, unchanged and stable -- B_marks evidence text stayed consistent this cycle (the pre-market quote-dropout state from last cycle held, not flickering back).",
+      "codeReview": "Full read of edition-funnel.ts (131 lines) -- recapReasonAtPublishExit's precedence (heartbeat-stale > gate-blocked > synthesis-empty) correctly distinguishes 'upstream feed stalled' from 'gates blocked everything' from 'synthesis produced nothing', each an honest, distinct failure mode per its own NH-R10 design comment. funnelFromMeta's null-guard (lines 107-114) has a minor theoretical edge case -- if only SOME of the 6 required funnel fields are present in a meta blob, the others default to 0 rather than staying undefined, which could misrepresent 'field not stamped' as 'genuinely zero' -- but these 6 fields are always written together by the same synthesis pipeline in practice, so this is not a live/reproducing bug, just a theoretical gap not worth a fix. No real bug found.",
+      "note": "~53min to the morning-confirm window (13:15 UTC) -- watching closely for D_pull_status to populate."
     }
   ],
   "knownOpenItems": {
