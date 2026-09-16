@@ -50,7 +50,10 @@ const DEFAULT_EXTENDED_ATR_MULT = 1.0;
  * Missing direction or missing both trigger AND invalidation ⇒ FORMING (honest "not actionable yet"), never
  * a fabricated TRIGGERED.
  */
-export function deriveSetupState(dossier: SwingDossier, reads: SetupStateReads): SwingSetupState {
+export function deriveSetupState(
+  dossier: Pick<SwingDossier, "direction">,
+  reads: SetupStateReads,
+): SwingSetupState {
   const dir = dossier.direction;
   const { price, triggerPx, invalidationPx } = reads;
   const atr = isNum(reads.atr) ? reads.atr : null;

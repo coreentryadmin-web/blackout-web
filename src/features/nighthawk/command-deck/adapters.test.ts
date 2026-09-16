@@ -1324,6 +1324,51 @@ test("refreshSwingManagement: uncalibrated thesis health (committed-position inp
   );
 });
 
+test("horizon adapter: committed row with liveSpot/entryTriggerUnderlyingPx/invalidationUnderlyingPx derives a real (non-'unknown') persistence pillar (Ask Largo #4076)", () => {
+  // Same fixture shape as the "uncalibrated" test above, but with the three fields live-plays.ts
+  // now threads through for a real committed swing position — price above the trigger and well
+  // clear of invalidation should derive TRIGGERED, not fall back to the "unknown" sentinel that
+  // previously fired unconditionally for every committed row (setupState was structurally null).
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+    entryTriggerUnderlyingPx: 170,
+    invalidationUnderlyingPx: 160,
+    liveSpot: 182,
+  });
+  assert.ok(play.thesisHealth);
+  const persistence = play.thesisHealth!.pillars.find((p) => p.label === "Persistence");
+  assert.ok(persistence, "persistence pillar must be present");
+  assert.equal(persistence!.currentLabel, "triggered");
+});
+
+test("horizon adapter: committed row missing liveSpot/entryTriggerUnderlyingPx falls back to the existing uncalibrated persistence read (no regression)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+  });
+  const persistence = play.thesisHealth!.pillars.find((p) => p.label === "Persistence");
+  assert.equal(persistence!.currentLabel, "unknown");
+});
+
 test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {
   const p = terminalPlayFromEdition({
     ticker: "NVDA",
