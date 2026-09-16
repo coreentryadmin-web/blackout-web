@@ -155,6 +155,27 @@ test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledge
   assert.equal(play.peakPremium, 5.5);
 });
 
+test("livePlayFromSwingPosition: reads signal_kinds pinned at commit (entry_context) so thesis-health can calibrate on it", () => {
+  const withKinds = livePlayFromSwingPosition(
+    row({ entry_context: { signal_kinds: ["FLOW", "CATALYST"] } }),
+    178,
+  )!;
+  assert.deepEqual(withKinds.signalKinds, ["FLOW", "CATALYST"]);
+
+  // Honest absence: no entry_context.signal_kinds (older rows committed before this fix, or a row
+  // whose commit-time discovery paths genuinely resolved to none) -> undefined, never a fabricated [].
+  const withoutKinds = livePlayFromSwingPosition(row(), 178)!;
+  assert.equal(withoutKinds.signalKinds, undefined);
+
+  // Malformed/unexpected JSONB shape (e.g. a stray string instead of an array) must never crash the
+  // mapper or leak non-string entries through.
+  const malformed = livePlayFromSwingPosition(
+    row({ entry_context: { signal_kinds: "FLOW" } }),
+    178,
+  )!;
+  assert.equal(malformed.signalKinds, undefined);
+});
+
 // CORRECTED 2026-09-07: an earlier version of this fix (see #4481 finding doc) fell back to
 // `row.archetype ?? "regime read"` when the dossier's REGIME pillar was scored — that shipped the
 // literal placeholder string "regime read" into the live Ask Largo narrative (play-brief.ts pushes
