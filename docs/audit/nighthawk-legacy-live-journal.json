@@ -3169,6 +3169,13 @@
       "trigger": ":21 cycle -- PR #5078 verify running, healthcheck confirms the earlier blip was transient",
       "prStatus": "PR #5078 undrafted last cycle. Check runs: CodeQL/triage/dispatch/enable-automerge/auto-merge all clean; required 'verify' still in_progress. Local full suite already confirmed clean (14390/0 fail) before undrafting.",
       "healthcheck": "editionFor correctly back to 2026-09-16 with the carried-forward edition (3 plays, GREEN) -- confirms the earlier :06 cycle's 'no edition published yet' reading really was the transient timeout-fallback blip diagnosed and now fixed in #5078, not a persistent issue. B_marks back to the normal RIG/SWKS-stale pattern."
+    },
+    {
+      "at": "2026-09-16T16:37:47Z",
+      "trigger": ":36 cycle -- PR #5078 MERGED (manually, automerge.yml didn't arm)",
+      "prStatus": "verify went green 16:23:16 UTC, but both enable-automerge runs (pre- and post-undraft) read conclusion:skipped -- the workflow never armed, matching CLAUDE.md's documented 'MIRROR FAILURE, CLAUDE SIDE' / automerge-gap pattern. Merged manually via GitHub MCP merge_pull_request (squash) per standing merge-authorization policy (verify green + no other blockers = merge, don't wait for automerge.yml specifically). Re-verified fix content directly against origin/main (not just the merge flag) -- degraded now correctly checked before available===false. Local branch deleted; remote delete 403'd (known limitation). Unsubscribed from PR activity.",
+      "healthcheck": "Ran the LIVE healthcheck using its own just-merged fixed eval logic for the first time -- GREEN/AMBER as expected (RIG stale, CRWD/SWKS fresh), no regression in normal-case behavior. Confirms the fix works correctly in its actual runtime context, not just under unit tests.",
+      "significance": "Third item shipped and fully closed out this segment: #5073 (production correctness bug), #5077 (genuine enhancement), #5078 (this lane's own audit-tooling bug) -- all found -> fixed -> tested -> merged -> verified live within roughly 2.5 hours total. Strong demonstration of both halves of the standing mandate (bugs AND enhancements) plus the 'investigate surprising readings rather than assume benign' discipline that found #5078 in the first place."
     }
   ],
   "knownOpenItems": {
