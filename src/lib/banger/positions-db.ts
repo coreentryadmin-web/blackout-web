@@ -270,3 +270,21 @@ export async function fetchBangerOpenBookRows(limit = 80): Promise<BangerPositio
   );
   return res.rows.map(mapBangerPositionRow);
 }
+
+/**
+ * Closed rows only, newest first — the member board's "recently closed" section. Unlike open
+ * positions (unbounded lifetime, must never be paged out from under a live holding), the closed
+ * history genuinely grows without bound and paging it is correct — this is the SAME truncation
+ * `fetchBangerBoardRows` used to apply to BOTH statuses at once, kept here for the side where it's
+ * actually the right call.
+ */
+export async function fetchBangerClosedBoardRows(limit = 60): Promise<BangerPositionRow[]> {
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM banger_positions
+     WHERE status IN ('CLOSED_RUNNER','STOPPED')
+     ORDER BY session_date DESC, id DESC
+     LIMIT $1`,
+    [limit],
+  );
+  return res.rows.map(mapBangerPositionRow);
+}
