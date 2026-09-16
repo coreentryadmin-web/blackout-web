@@ -5,7 +5,9 @@ import {
   buildSwingRecordSummary,
   isSwingWin,
   LOW_N_THRESHOLD,
+  selectSwingRecordRootIds,
   type SwingLegRowLike,
+  type SwingRecordRootSourceRow,
 } from "./record.ts";
 import { roundFloats } from "../round-floats.ts";
 
@@ -214,4 +216,33 @@ test("served (post-roundFloats) worstLegPnlPct never shows 0 for a chain summary
 test("buildSwingRecordSummary: methodology text documents that a 0% leg counts as a loss in this view", () => {
   const summary = buildSwingRecordSummary([], { since: "2026-08-10", through: "2026-09-09", days: 30 });
   assert.match(summary.methodology, /0% .*(counts as a LOSS|breakeven)/i);
+});
+
+// Live defect (2026-09-16, Ask Largo standing mandate): the /record route only seeded chain roots
+// from GRADED rows, so a fresh, never-graded OPEN/HOLD/TRIM position (no prior roll history) never
+// entered the chain population — summary.opens (records.length - resolved.length) then structurally
+// read 0 regardless of how many positions were genuinely open. Live repro: CRWD#39/AAPL#38/AAPL#37,
+// all HOLD, none ever graded or rolled, summary.opens: 0 on every real call.
+function rootRow(overrides: Partial<SwingRecordRootSourceRow> = {}): SwingRecordRootSourceRow {
+  return { id: 1, root_position_id: null, graded_at: null, status: "CLOSED", ...overrides };
+}
+
+test("selectSwingRecordRootIds includes a live OPEN/HOLD/TRIM row even though it has never been graded", () => {
+  const rows = [
+    rootRow({ id: 39, status: "HOLD", graded_at: null }), // live CRWD position, never graded
+    rootRow({ id: 10, status: "CLOSED", graded_at: "2026-09-01T00:00:00Z" }), // a real graded row
+  ];
+  const ids = selectSwingRecordRootIds(rows);
+  assert.ok(ids.includes(39), "an open, ungraded, committed position must still seed a root");
+  assert.ok(ids.includes(10), "a graded row must still seed a root (existing behavior unchanged)");
+});
+
+test("selectSwingRecordRootIds does not seed a root for a PENDING (not-yet-committed) or already-graded-via-other-row root", () => {
+  const rows = [
+    rootRow({ id: 5, status: "PENDING", graded_at: null }), // not yet committed — never a root
+    rootRow({ id: 6, root_position_id: 1, status: "TRIM", graded_at: null }), // open leg of chain rooted at 1
+  ];
+  const ids = selectSwingRecordRootIds(rows);
+  assert.ok(!ids.includes(5), "a PENDING row is not yet a committed position and must not seed a root");
+  assert.deepEqual(ids, [1], "an open leg's root_position_id, not its own id, seeds the root");
 });

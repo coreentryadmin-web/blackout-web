@@ -8,7 +8,7 @@ import {
 } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
-import { buildSwingRecord, buildSwingRecordSummary } from "@/lib/swing/record";
+import { buildSwingRecord, buildSwingRecordSummary, selectSwingRecordRootIds } from "@/lib/swing/record";
 import { closedDeckSourcesFromChains } from "@/lib/swing/closed-plays";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { roundFloats } from "@/lib/round-floats";
@@ -43,12 +43,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const rows = await fetchSwingPositionsRange(since, Math.min(MAX_ROWS, days * 40));
-    const roots = new Set<number>();
-    for (const row of rows) {
-      if (!row.graded_at) continue;
-      roots.add(row.root_position_id ?? row.id);
-    }
-    const rootIds = [...roots].slice(0, MAX_CHAINS);
+    const rootIds = selectSwingRecordRootIds(rows).slice(0, MAX_CHAINS);
     const chains = await Promise.all(rootIds.map((id) => fetchSwingPositionChain(id)));
     const records = chains.map((chain) => buildSwingRecord(chain));
     const summary = buildSwingRecordSummary(records, { since, through, days });

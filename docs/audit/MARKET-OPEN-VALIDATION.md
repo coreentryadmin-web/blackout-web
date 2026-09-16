@@ -1,3 +1,29 @@
+## WATCH LIST — 2026-09-16 Swing record's `summary.opens` was structurally dead (always 0) — check at the open
+
+### Fix: `/api/market/swing/record` now seeds chain roots from live OPEN/HOLD/TRIM rows too, not just graded ones
+
+**What was broken:** found via the standing Ask Largo deep-dive mandate — a fresh look at
+`GET /api/market/swing/record`'s summary showed `opens: 0` while the horizons board simultaneously
+listed real, currently HOLD swing positions (CRWD #39, AAPL #38, AAPL #37, none ever graded or
+rolled). Root cause: the route's root-selection loop only seeded a chain root from rows carrying
+`graded_at` — but grading only happens once a leg closes or rolls, so a fresh, never-rolled OPEN
+position can never have `graded_at` set, and so could never enter the summarized population at
+all. `opens = records.length - resolved.length` was therefore mathematically guaranteed to read 0
+regardless of the real open-position count. See
+`docs/audit/findings-staging/2026-09-16-swing-record-opens-structurally-dead.md`.
+
+**Fix:** extracted the root-selection logic into a new pure, tested helper
+(`selectSwingRecordRootIds` in `src/lib/swing/record.ts`) that also seeds a root from any row
+currently OPEN/HOLD/TRIM, in addition to the existing graded-row branch.
+
+**Check at the open:** re-run `GET /api/market/swing/record?days=90` during RTH with at least one
+real open swing position live and confirm `summary.opens` reports a real nonzero count matching
+the horizons board's committed OPEN/HOLD/TRIM native-swing rows (not the Banger-merged ones, which
+carry no `positionId` and are a separate ledger) — it should never silently read 0 again while a
+genuine open position exists.
+
+---
+
 ## WATCH LIST — 2026-09-16 Banger board silently dropped OPEN positions past a 60-row shared cap (Night Hawk Swings/Ask Largo, correctness — check at the open)
 
 ### Fix: `/api/market/banger/board` now pages open and closed positions independently
