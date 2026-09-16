@@ -792,7 +792,11 @@ export type NighthawkDebriefReport = {
   window: { since: string; through: string; days: number };
   summary: NighthawkDebriefRecordSummary;
   by_conviction: DebriefGroupRecord[];
-  /** Empty until a tier is ever pinned in publish_context (no NH tier engine yet). */
+  /** Grouped by publish_context.tier's pinned letter (PR-N7's assignNighthawkTier,
+   *  wired into publish-context.ts's tier field since 2026-07-17) — non-empty for any
+   *  window containing plays published after that date. Empty only for older windows
+   *  whose rows all predate tier pinning, or when the analyzer's `current`-methodology
+   *  filter (#333 anti-blend) drops every row that carries one. */
   by_tier: DebriefGroupRecord[];
   gate_validation: {
     blocked_value: GateBlockedValueLine[];
