@@ -2869,6 +2869,12 @@
       "trigger": "new-hour :06 cycle -- PR #5060 merge confirmation",
       "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
       "note": "PR #5060 merged at 2026-09-16T05:58:31Z (merged_by: coreentryadmin-web, squash commit eba82fe16) -- timing lines up with this session's own 05:57 UTC scheduled wakeup, not an external mirror-failure merge. Content-verified via git show origin/main:src/features/nighthawk/lib/vector-board-filters.ts -- stepBoardSelectionIndex present and byte-correct. Unsubscribed, deleted local branch, synced main."
+    },
+    {
+      "at": "2026-09-16T06:22:36Z",
+      "trigger": ":21 cycle -- code review of legacy-play-geometry.tsx, focused sign-error check (mission's explicit marks-correctness concern)",
+      "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
+      "codeReview": "LegacyManageGeometry (legacy-play-geometry.tsx, 116 lines) -- the stop/target/entry-zone visual track in the manage rail. Deliberately traced the SHORT-direction formulas (the less-exercised path -- all 3 of tonight's real plays are LONG) for sign errors, the mission's own explicit concern: entryFrac's SHORT branch `(stop-entryMid)/(stop-target)` verified against real numbers (stop=110/target=90/entry=100 -> 0.5, correct midpoint) and confirmed STRUCTURALLY IDENTICAL to use-legacy-quotes.ts's already-reviewed SHORT progress formula `(stop-price)/(stop-target)` -- both use the same 0=stop/1=target convention regardless of direction, self-consistent across the two files. distTarget/distStop dollar-sign display (nh-deck-pos/nh-deck-neg CSS classes) confirmed to be a static stop=red/target=green convention, not tied to the live favorable/unfavorable sign -- intentional, not a bug. One minor copy nit found: zoneLabel's stop-hit message says 'below stop -- cut the position' regardless of direction -- for a SHORT position hitting its stop, price actually ROSE, so 'below stop' reads LONG-centric; the trigger condition itself (progress<=0) is correctly direction-aware, only the wording isn't. Not escalating alone -- P4 copy clarity, not a functional defect, and no live SHORT play currently on the board to reproduce against."
     }
   ],
   "knownOpenItems": {
