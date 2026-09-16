@@ -22,14 +22,40 @@ export function playRiskLines(play: PlaybookPlay): string[] {
   return lines;
 }
 
+/**
+ * Non-zero factor_breakdown entries, largest-magnitude first — the same real per-component
+ * composite-score contributions (flow/tech/positioning/etc.) PlaybookBriefingPanel.tsx already
+ * shows members as "Score components" chips, computed by scorer.ts. Same filter/sort as that
+ * panel's own scoreComponents() so the narrative cites the same ranked-by-impact ordering a
+ * member sees in the UI, not a second independent derivation.
+ *
+ * Found 2026-09-16 (live audit): "Why ranked #N" is a REQUIRED section in play-explainer.ts's
+ * own system prompt, and factor_breakdown exists specifically "so the terminal can show real
+ * factor bars" (types.ts's own doc comment) — but it was never included in either the LLM's
+ * data block or this fallback, so "why ranked #N" could only be answered from qualitative
+ * dossier prose, never the actual quantified score drivers already computed for this exact play.
+ * Same defect class as the 2026-09-13 earnings_risk/gate_promoted fix above: a real,
+ * already-computed signal silently absent from a section that explicitly promises to cover it.
+ */
+export function factorBreakdownLines(play: Pick<PlaybookPlay, "factor_breakdown">): string[] {
+  const breakdown = play.factor_breakdown;
+  if (!breakdown) return [];
+  return Object.entries(breakdown)
+    .filter(([, v]) => typeof v === "number" && Number.isFinite(v) && v !== 0)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([key, v]) => `${key}: ${v > 0 ? "+" : ""}${v}`);
+}
+
 export function buildGroundedPlayExplanationFallback(params: {
   play: PlaybookPlay;
   reason?: string;
 }): string {
   const riskLines = playRiskLines(params.play);
+  const factorLines = factorBreakdownLines(params.play);
   return [
     `**Why ranked #${params.play.rank}**`,
     params.play.thesis || params.play.key_signal || "No thesis on file.",
+    factorLines.length ? `Score drivers (largest impact first): ${factorLines.join(", ")}` : null,
     "",
     "**The contract & premium**",
     params.play.options_play,

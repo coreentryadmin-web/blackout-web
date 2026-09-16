@@ -2,7 +2,11 @@ import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
 import { fetchTickerDossier } from "./dossier";
 import { formatTickerDossierText } from "./format";
 import type { PlaybookPlay } from "./types";
-import { buildGroundedPlayExplanationFallback, playRiskLines } from "./play-explainer-fallback";
+import {
+  buildGroundedPlayExplanationFallback,
+  factorBreakdownLines,
+  playRiskLines,
+} from "./play-explainer-fallback";
 import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
 
 const SYSTEM = `You are Night Hawk — the evening playbook analyst for BlackOut Trading. A member clicked a ranked play and wants a thorough institutional-grade briefing on WHY it made tonight's top 5.
@@ -63,6 +67,14 @@ function formatPlayBlock(play: PlaybookPlay): string {
   // genuinely computed facts (not invented), so adding them to the data block only strengthens
   // the grounding-guard check downstream, it never weakens it.
   const riskLines = playRiskLines(play);
+  // Real per-component composite-score contributions (flow/tech/positioning/etc.) — the same
+  // numbers PlaybookBriefingPanel.tsx already shows members as "Score components" chips.
+  // factor_breakdown exists specifically "so the terminal can show real factor bars" (types.ts's
+  // own comment) but was never given to the LLM, so the required "Why ranked #N" section could
+  // only be answered from qualitative dossier prose, never the actual quantified score drivers
+  // already computed for this play. Found 2026-09-16, same defect class as the 2026-09-13
+  // earnings_risk/gate_promoted fix (a real, already-computed signal silently unsurfaced).
+  const factorLines = factorBreakdownLines(play);
   return [
     `Rank: #${play.rank}`,
     `Ticker: ${play.ticker}`,
@@ -70,6 +82,7 @@ function formatPlayBlock(play: PlaybookPlay): string {
     `Conviction: ${play.conviction}`,
     `Play type: ${play.play_type}`,
     `Score: ${play.score}`,
+    factorLines.length ? `Score components (largest impact first):\n${factorLines.join("\n")}` : null,
     play.sector ? `Sector: ${play.sector}` : null,
     play.flow_streak_days != null ? `Flow streak: ${play.flow_streak_days}d` : null,
     play.iv_rank != null ? `IV rank: ${play.iv_rank}` : null,

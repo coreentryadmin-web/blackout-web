@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildGroundedPlayExplanationFallback, playRiskLines } from "./play-explainer-fallback";
+import {
+  buildGroundedPlayExplanationFallback,
+  factorBreakdownLines,
+  playRiskLines,
+} from "./play-explainer-fallback";
 import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
 import type { PlaybookPlay } from "./types";
 
@@ -96,4 +100,37 @@ test("fallback briefing omits risk_note fallback text once a real risk signal ex
   assert.match(text, /Watch the \$310 gap fill/);
   assert.match(text, /Earnings risk:/);
   assert.doesNotMatch(text, /no additional risk note was generated/);
+});
+
+// 2026-09-16 finding: factor_breakdown is a real, already-computed per-component composite-score
+// breakdown (flow/tech/positioning/etc.) that PlaybookBriefingPanel.tsx already shows members as
+// "Score components" chips — but it was never surfaced into either the LLM data block or the
+// no-LLM fallback's "Why ranked #N" section, even though that section explicitly exists to answer
+// exactly this question. Same defect class as the 2026-09-13 fix above.
+test("factorBreakdownLines: no factor_breakdown reports nothing", () => {
+  assert.deepEqual(factorBreakdownLines({ factor_breakdown: undefined }), []);
+});
+
+test("factorBreakdownLines: zero-contribution entries are dropped, non-zero sorted by magnitude descending", () => {
+  const lines = factorBreakdownLines({
+    factor_breakdown: { flow: 14, tech: -3, positioning: 0, news: 9 },
+  });
+  assert.deepEqual(lines, ["flow: +14", "news: +9", "tech: -3"]);
+});
+
+test("factorBreakdownLines: negative contributions keep their sign, positive get an explicit +", () => {
+  const lines = factorBreakdownLines({ factor_breakdown: { smart_money: -5 } });
+  assert.deepEqual(lines, ["smart_money: -5"]);
+});
+
+test("fallback briefing's Why ranked section includes score drivers when factor_breakdown is present", () => {
+  const text = buildGroundedPlayExplanationFallback({
+    play: { ...play, factor_breakdown: { flow: 14, positioning: 9, tech: 6 } },
+  });
+  assert.match(text, /Score drivers \(largest impact first\): flow: \+14, positioning: \+9, tech: \+6/);
+});
+
+test("fallback briefing omits the score-drivers line entirely when factor_breakdown is absent", () => {
+  const text = buildGroundedPlayExplanationFallback({ play });
+  assert.doesNotMatch(text, /Score drivers/);
 });
