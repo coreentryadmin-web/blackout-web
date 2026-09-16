@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-09-16 `withServerCache` COLD-START fallback unbounded block — correction/completion of the entry below (platform-wide, latency — check at the open)
+
+### Fix: `src/lib/server-cache.ts`'s cold-start "no pending" branch now also races `opts.fallback()` against `maxBlockMs`
+
+**What was broken:** the entry immediately below (PR #5061) fixed the "already inflight" fallback
+path, was deployed, and its ECS task definition was confirmed to run the exact fixed commit
+(`blackout-web:1243c707623a2bf47d76740787403db821470c48`). Live re-verification AFTER that deploy
+re-ran the same `curl` repro against `/api/market/spx/desk` — 8 consecutive requests, request #7
+still took **42.209220s**. PR #5061 was real but incomplete: `withServerCache` has a SECOND,
+structurally identical unraced `opts.fallback()` call in the cold-start branch (no build already
+inflight — the more common real-world case, doesn't need a second concurrent request to trigger).
+See `docs/audit/findings-staging/2026-09-16-server-cache-cold-start-fallback-unbounded.md`.
+
+**Fix:** the cold-start branch's fallback call is now also raced against `maxBlockMs`; on timeout
+it falls through to the branch's existing stale-value/background-refresh chain instead of blocking.
+
+**Check at the open:** re-run the SAME `curl -w "%{time_total}"` repro against
+`/api/market/spx/desk` (a handful of back-to-back requests, ideally including at least one right
+after a deploy/cache-cold window) and watch ALB `TargetResponseTime` p99/Max on
+`blackout-production-app` under real RTH concurrent load. Given that the FIRST "fixed, verified via
+deploy" claim on this exact code path already proved wrong once, do not treat "deploy completed
+cleanly" as sufficient evidence this time either — the live curl re-run is the actual verification.
+
+---
+
 ## WATCH LIST — 2026-09-16 `withServerCache` inflight-fallback unbounded block (platform-wide, latency — check at the open)
 
 ### Fix: `src/lib/server-cache.ts`'s "already inflight" branch now races `opts.fallback()` against `maxBlockMs`
