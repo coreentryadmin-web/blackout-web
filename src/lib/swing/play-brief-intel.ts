@@ -15,6 +15,7 @@ import {
   meridianCatalystAgeMs,
   meridianCatalystStale,
   optionMarkGenuinelyUnknown,
+  optionMarkIsStale,
   resolveGammaPosture,
   vectorSnapshotStale,
 } from "./play-brief-absence";
@@ -1335,7 +1336,19 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   const vec = vectorOf(ctx);
   const lines: string[] = [];
   if (play.markAsOf) {
-    lines.push(`Option mark as of **${etStampFromIso(play.markAsOf)}**`);
+    // Largo C2 (2026-09-16): this line printed the raw mark stamp unconditionally, the one
+    // section named specifically for freshness disclosure never actually checking it — while
+    // the SAME envelope's evidence[] and unavailableSources[] both correctly computed staleness
+    // off this identical field via optionMarkIsStale (collectOptionMarkStalenessAbsence,
+    // play-brief-absence.ts), producing an internal contradiction: a member could see "stale"
+    // in the unavailable-source chip and evidence array, "as of <time>" with no qualifier here.
+    // Live repro: CRWD:39/AAPL:38/AAPL:37 all carried a 2026-09-15 16:00 ET mark (prior session's
+    // close print) read the next morning, ~14h past the 18-minute SWING_OPTION_MARK_STALE_MS bound.
+    lines.push(
+      optionMarkIsStale(play, Date.now())
+        ? `Option mark **stale** — last synced **${etStampFromIso(play.markAsOf)}**`
+        : `Option mark as of **${etStampFromIso(play.markAsOf)}**`,
+    );
   } else if (play.markIsSync && playExpectsLiveOptionMark(play.status)) {
     lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
   }

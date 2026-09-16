@@ -1400,6 +1400,44 @@ test("dataFreshnessSection: option mark timestamp renders as a Largo C1 ET stamp
   assert.doesNotMatch(section!.body, /\.663Z/, "must not print a raw ISO mark timestamp");
 });
 
+test("dataFreshnessSection: stale option mark on an OPEN position is labeled stale, not a bare 'as of' (Largo C2, 2026-09-16)", () => {
+  // Same three-way-disagreement bug the evidence[]/unavailableSources[] arrays already guard
+  // against (optionMarkIsStale/collectOptionMarkStalenessAbsence) — this section, the one named
+  // for freshness disclosure, must not be the one place that stays silent on a stale mark.
+  const staleMarkAsOf = new Date(Date.now() - 20 * 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", markAsOf: staleMarkAsOf, markIsSync: false }),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Option mark \*\*stale\*\*/);
+});
+
+test("dataFreshnessSection: fresh option mark on an OPEN position still renders the plain 'as of' line (no regression)", () => {
+  const freshMarkAsOf = new Date(Date.now() - 5 * 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", markAsOf: freshMarkAsOf, markIsSync: false }),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Option mark as of \*\*/);
+  assert.doesNotMatch(section!.body, /stale/i);
+});
+
 test("dataFreshnessSection: stale ecosystem.vector_full_state warns when ctx.vector is null", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
