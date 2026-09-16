@@ -2882,6 +2882,12 @@
       "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
       "codeReview": "legacy-board-detail-primitives.tsx (52 lines): pure presentational primitives (LegacyDetailSection/Bullets/Bullet/Prose), no computation, nothing to break. LegacyMacroStrip.tsx (37 lines): the edition macro-context banner (SPX gap/regime/GEX/wall levels/confirm-tally). One theoretical gap noted, not escalated: `pct = (overnightGapPts / priorClose) * 100` has no priorClose>0 guard (only priorClose!=null), so a zero priorClose would render 'Infinity%'/'NaN%' -- but SPX's prior close is never legitimately 0 in practice, same class of dismissal as other 'zero reachable impact' findings this session. No functional bug in either file.",
       "note": "This closes out essentially all of the Legacy-lane UI component tree reviewed this session (LegacyPickLogBoard, LegacyPlayTechnicalsRail, LegacyPlayManageRail, legacy-play-geometry, legacy-board-detail-primitives, LegacyMacroStrip, target-reachability), on top of the earlier full lib-file sweep. Diminishing returns on further pure code-review without new data/signal -- next cycles should lean more on live outcome-honesty checks as the closed-position population grows, and re-checking the report-and-hold enhancement ideas (scorecard wiring, TARGET PATH gauge, Discord retry gap) for new evidence."
+    },
+    {
+      "at": "2026-09-16T06:52:43Z",
+      "trigger": ":51 cycle -- re-checked pullQualityWatch item for new evidence",
+      "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
+      "note": "Re-pulled /api/market/nighthawk/record debrief.failure_modes -- unchanged since the 01:21 UTC check (pulled_correctly=3/pulled_wrongly=3, decided_count=2), as expected: no new grading events occur until tomorrow's outcomes cron runs (~20:30/21:30 UTC). Genuinely quiet confirmation, not a new finding -- correctly NOT re-escalating the same n=6 sample as if it were fresh evidence. Deep overnight window (2:51am ET) with real work already shipped this session (PRs #5052, #5059, #5060) and full lib+component review coverage complete -- staying quiet per the mandate's own 'clean -> stay quiet' rule rather than manufacturing churn."
     }
   ],
   "knownOpenItems": {
