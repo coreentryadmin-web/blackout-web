@@ -376,6 +376,9 @@
     },
     "2026-09-16T18:45Z": {
       "note": "Board-upstream degradation still ongoing (confirmed 18:38, still down at 18:45 -- ~7min so far, within normal range). Not re-flagging on PR #4076 yet per the established discipline of avoiding repeated posts for the same still-ongoing instance. Will check next cycle."
+    },
+    "2026-09-16T19:07Z": {
+      "note": "Board-upstream degradation (first confirmed 18:38 UTC) still ongoing at 19:08 UTC -- ~30min, exceeds the previous max duration (27min across 10 prior instances). /record still healthy (21 plays). Posted a duration-flag follow-up on PR #4076 since this specific data point (longer than ever observed) is new even though the failure mode itself is unchanged. Will keep watching for resolution."
     }
   },
   "sessions": {
