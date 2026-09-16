@@ -343,6 +343,9 @@
     },
     "2026-09-16T16:07Z": {
       "note": "CORZ CLOSED 0% (flat_theta_bleed, 28min never left the band, clean scratch). CRDO status TRIM -- a trim tranche fired (peak .00/+16.5%, now .45/+5.83% live, part already banked). Both reported live to operator. Day tally: 6 closed (SPCH +9.38%, ALAB +6.85% wins; SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, CORZ 0% losses/scratches) + 1 open (CRDO, trim-managed). No change this specific cycle vs the conversational check just before it -- confirmed stable."
+    },
+    "2026-09-16T16:15Z": {
+      "note": "CRDO CLOSED +5.05% (ratchet). Via /record (board.ledger propagation lag again, same pattern as CIFR/SPCH earlier -- not investigated as a bug yet, keeps recurring, worth checking if it crosses 3 instances): HOOD short CLOSED +1.42% (thesis_break but exited above breakeven). New open: SMTC long, score 95 tier B, flagged 12:10 ET, too fresh for a read. Day tally: 9 plays, 8 closed/1 open. 4 winners (SPCH +9.38%, ALAB +6.85%, CRDO +5.05%, HOOD +1.42%), 4 losses/scratches (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, CORZ 0%). Reported live to operator throughout."
     }
   },
   "sessions": {
