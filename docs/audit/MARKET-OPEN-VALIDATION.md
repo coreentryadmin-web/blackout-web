@@ -1,3 +1,45 @@
+## WATCH LIST — 2026-09-16 SPX `/play` session_phase flapping across the market-open boundary — NEEDS ISOLATED RE-TEST, no fix shipped (root cause ambiguous)
+
+**What was observed:** live at 2026-09-16 market open (~9:30-9:45 ET), 8 consecutive
+`GET /api/market/spx/play` requests through the same Clerk session returned WILDLY inconsistent
+`session_phase` (`"premarket"`/`"cash"`/`"closed"` mixed within the same batch) and `score`
+swinging from -20 to +28 — the SPX play panel would have shown a member a random mix of "Session
+closed"/SCANNING-placeholder and a real live grade depending purely on which request landed. By
+9:47 ET, 8/8 consecutive requests were fully consistent (`session_phase: cash, score: 4`) — it
+self-resolved, it did not need intervention, but it was real and reproduced for at least 15
+minutes.
+
+**Two live hypotheses, NOT disambiguated — this is the open question for tomorrow's open:**
+1. **A market-open-boundary gap in `isSpxPlaySnapshotFreshEnough`** (`spx-play-freshness.ts`) —
+   `peekSpxPlayState()`'s fast path (`spx-service.ts`) trusts any cached snapshot up to
+   `playMemberPeekMaxAgeSec()` (20s) old purely by AGE, with no awareness that the RTH
+   open/close boundary itself can fall inside that 20s window — a snapshot cached at 9:29:59
+   (correctly `market_open: false` at the time) reads as "fresh enough" until 9:30:19 even though
+   the market state changed at 9:30:00. This alone only predicts ~20s of flapping, not the 15+
+   minutes observed.
+2. **A cross-replica cache-write race amplified by the concurrent PR #5071/#5072 deploy** —
+   the observation window overlapped with an ECS rolling deploy (8-9 tasks split across
+   `:1604`/`:1605` for ~25 minutes), each independently recomputing and writing
+   `spx-play-read:${date}` to the shared Redis key (`getSpxPlayState()`/
+   `evaluateSpxPlayStateCrossReplica`) on its own timer via `SPX_PLAY_EVAL_LOCK_TTL_SEC` advisory
+   locking — if a slower-to-compute stale eval's write lands AFTER a fresher one's, last-write-wins
+   would explain flapping that lasts as long as task churn does, not just 20s. Consistent with the
+   flapping actually STOPPING once the deploy fully settled (single task-def version, one fewer
+   concurrent writer set).
+
+**Deliberately NOT fixed this cycle** — shipping a change to `isSpxPlaySnapshotFreshEnough` or the
+cross-replica write path without knowing which hypothesis (or both, or neither) is real risks a
+wrong/unnecessary change to sensitive live-play-serving cache logic. **Check at tomorrow's open**
+(a day with NO concurrent deploy in the 9:25-9:45 ET window): run the same 8-consecutive-request
+probe (`GET /api/market/spx/play` through one Clerk session) starting at 9:29 ET through 9:35 ET.
+If it flaps cleanly in an ISOLATED (no-deploy) open, hypothesis 1 (boundary-unaware freshness
+check) is confirmed and worth a scoped fix (reject a peeked snapshot whose `as_of` and `Date.now()`
+fall on opposite sides of the RTH open/close boundary, not just age-based). If it stays clean with
+no deploy, hypothesis 2 (deploy-churn write race) is the more likely explanation and the fix
+belongs in the cross-replica write coordination instead.
+
+---
+
 ## WATCH LIST — 2026-09-16 Swing record's `summary.opens` was structurally dead (always 0) — check at the open
 
 ### Fix: `/api/market/swing/record` now seeds chain roots from live OPEN/HOLD/TRIM rows too, not just graded ones
