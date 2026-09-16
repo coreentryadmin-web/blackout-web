@@ -260,6 +260,14 @@ for (const day of days.slice().reverse()) {
     s.confluence = confluence;
     s.market_aligned = marketAligned;
     s.gamma_regime = s.gamma_regime ?? null;
+    // MUST attach intraday to the setup itself, not just the throwaway setupForConfluence object
+    // above — legacyBridgeExtrasFromSetup (rails/legacy-bridge.ts) reads setup.intraday directly
+    // to feed the MOMENTUM rail. Omitting this (as an earlier version of this script did) silently
+    // starves MOMENTUM of its only evidence, so attachThesisFirstLive's rails_fired count becomes a
+    // FLOW-only lower bound rather than a real corroboration count — caught by comparing this
+    // backtest's rails_fired distribution (never >1 across 20 candidates) against a live capture
+    // (TSLA, 2026-09-16, 3 rails fired) that used the real live pipeline with real MOMENTUM evidence.
+    s.intraday = read;
     enriched.push(s);
   }
 
@@ -305,7 +313,11 @@ console.log(`\n  Ungraded (no underlying price / no tradeable 0DTE contract that
 const aggregate = summarizeBucket(allRows);
 console.log(`\n  AGGREGATE (all 65-69-band setups): n=${aggregate.n}${aggregate.n < MIN_N ? " [THIN, below --min-n]" : ""}  WR=${aggregate.wr?.toFixed(1) ?? "—"}%  avgP&L=${aggregate.avgPnl?.toFixed(1) ?? "—"}%`);
 
-console.log(`\n  BY CORROBORATION STRENGTH (rails fired):`);
+console.log(`\n  BY CORROBORATION STRENGTH (rails fired) — NOTE: CATALYST rail needs Meridian`);
+console.log(`  earnings/catalyst-calendar data this harness never fetches, so it can structurally`);
+console.log(`  never fire here — rails_fired below is a FLOW+MOMENTUM-only lower bound, not a full`);
+console.log(`  count. Treat CONFLUENCE TIER (independently, fully computed from real intraday reads)`);
+console.log(`  as the more trustworthy corroboration axis in this harness.`);
 const singleRail = allRows.filter((r) => r.railsFired != null && r.railsFired <= 1);
 const multiRail = allRows.filter((r) => r.railsFired != null && r.railsFired >= 2);
 for (const [label, rows] of [["single-rail (≤1 rail fired)", singleRail], ["multi-rail (≥2 rails fired)", multiRail]]) {
