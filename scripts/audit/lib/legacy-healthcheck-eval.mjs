@@ -23,11 +23,26 @@ export function rollupVerdict(stageVerdicts) {
 /**
  * Stage A: edition correctness. `fetchOk` false means the request itself failed (auth/network) —
  * that is RED regardless of payload, an auth failure must never read as "nothing to show."
+ *
+ * BUG (found 2026-09-16, live audit): `degraded` must be checked BEFORE `available === false`.
+ * The route's own `timeoutFallbackEdition` (edition/route.ts) — served when the real computation
+ * blew past its time budget, a transient read failure, NOT a confirmed "nothing published"
+ * result — returns `{ ...emptyEdition(editionFor), degraded: true }`, which carries BOTH
+ * `available: false` AND `degraded: true` at once (`emptyEdition()` always sets `available:
+ * false`). With `available === false` checked first, that exact payload always matched the FIRST
+ * branch and reported "no edition published yet (honest empty state)" — silently swallowing the
+ * `degraded` flag every single time, so a transient read failure was permanently indistinguishable
+ * from a genuinely quiet day. This is precisely the confusion the route's own header comment says
+ * `degraded` exists to prevent (citing a real 2026-09-08 production incident where a mid-session
+ * timeout read exactly like nothing-published). Live-reproduced 2026-09-16: a healthcheck run
+ * reported "no edition published yet" for a day whose edition was independently confirmed
+ * `available: true` with 3 real plays moments before and after via a direct re-fetch — the
+ * classic transient-timeout signature this eval was supposed to catch and label correctly.
  */
 export function verdictForEdition({ fetchOk, available, stale, degraded, playsCount, noPlays }) {
   if (!fetchOk) return { verdict: "RED", evidence: "edition fetch failed (auth or network)" };
-  if (available === false) return { verdict: "AMBER", evidence: "no edition published yet (honest empty state)" };
   if (degraded) return { verdict: "AMBER", evidence: "edition served from degraded fallback source" };
+  if (available === false) return { verdict: "AMBER", evidence: "no edition published yet (honest empty state)" };
   if (stale) return { verdict: "AMBER", evidence: "edition is stale (served an older date than requested)" };
   if (noPlays) return { verdict: "GREEN", evidence: "published edition, honestly zero plays this session" };
   if (!playsCount || playsCount <= 0) return { verdict: "RED", evidence: "available edition carries zero plays and no_plays flag not set" };

@@ -38,6 +38,24 @@ test("verdictForEdition: degraded and stale are both AMBER", () => {
   assert.equal(verdictForEdition({ fetchOk: true, available: true, stale: true, playsCount: 3 }).verdict, "AMBER");
 });
 
+// 2026-09-16 finding: timeoutFallbackEdition (edition/route.ts) returns
+// { ...emptyEdition(editionFor), degraded: true } on a transient read timeout — available:false
+// AND degraded:true together, not one or the other. That shape must report as "degraded fallback",
+// not be swallowed by the available:false check into the genuinely-different "honest empty state"
+// message, or a transient read failure becomes permanently indistinguishable from a real quiet day.
+test("verdictForEdition: a timeout-fallback payload (available:false AND degraded:true together) reports degraded, not honest-empty", () => {
+  const result = verdictForEdition({ fetchOk: true, available: false, degraded: true, playsCount: 0 });
+  assert.equal(result.verdict, "AMBER");
+  assert.match(result.evidence, /degraded fallback/);
+  assert.doesNotMatch(result.evidence, /honest empty state/);
+});
+
+test("verdictForEdition: available:false WITHOUT degraded still reports the genuine honest-empty-state message", () => {
+  const result = verdictForEdition({ fetchOk: true, available: false, playsCount: 0 });
+  assert.equal(result.verdict, "AMBER");
+  assert.match(result.evidence, /honest empty state/);
+});
+
 test("verdictForEdition: honest no_plays is GREEN, not a defect", () => {
   assert.equal(
     verdictForEdition({ fetchOk: true, available: true, playsCount: 0, noPlays: true }).verdict,
