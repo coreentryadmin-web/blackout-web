@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-09-16 `withServerCache` inflight-fallback unbounded block (platform-wide, latency — check at the open)
+
+### Fix: `src/lib/server-cache.ts`'s "already inflight" branch now races `opts.fallback()` against `maxBlockMs`
+
+**What was broken:** found live via the standing performance mandate — ALB `TargetResponseTime`
+showed sitewide avg climbing to ~11-13s for 7+ minutes with flat/low ECS CPU and healthy RDS/Redis.
+Direct `curl` reproduction against `/api/market/spx/desk` confirmed 1/5 consecutive requests took
+42.8s (vs a documented 3s `deskBootstrapMaxBlockMs()` cap) while the rest were fast. Root cause: a
+concurrent request landing while another build for the same key was already inflight (no local
+hit, no Redis copy) called `opts.fallback()` with zero timeout — `deskCacheOpts.fallback` chains
+into `loadSpxDeskPulse()`, itself a cache-wrapped builder that can block on a slow Polygon fetch.
+See `docs/audit/findings-staging/2026-09-16-server-cache-inflight-fallback-unbounded.md`.
+
+**Fix:** the fallback call in that branch is now raced against `maxBlockMs` the same way the
+cold-start path already does; a slow fallback now throws (caller returns 502) within the cap
+instead of blocking indefinitely.
+
+**Check at the open:** during RTH, re-run the same repro (`curl -w "%{time_total}"` against
+`/api/market/spx/desk` a handful of times back-to-back, or watch ALB `TargetResponseTime` p99/Max
+on `blackout-production-app`) — a lingering multi-second outlier under real RTH concurrent load
+(much higher request volume than overnight) would mean the fix didn't fully close the gap, or a
+different unguarded fallback path exists elsewhere using the same shared cache opts shape.
+
+---
+
 ## VALIDATED — 2026-09-14 Largo stress nightly recovery: Mode 2 confirmed fixed, Mode 1 not exercised (read this before re-litigating the watch-list entry below)
 
 The scheduled 06:30 UTC run never fired (known GitHub Actions `schedule:` drift for this workflow under high fleet commit velocity — not a new issue, not either Mode). Manually triggered via `workflow_dispatch` at 07:17 UTC instead (same bank-rotation/`concurrency=2` config a real scheduled run uses): **run 34817210344, conclusion `success` — first green run since the failure streak began 2026-09-06.**
