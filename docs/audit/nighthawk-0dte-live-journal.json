@@ -340,6 +340,9 @@
     },
     "2026-09-16T15:45Z": {
       "note": "ALAB CLOSED +6.85% via flat_theta_bleed (25min in band, peak +7.74%, clean scratch not a bug). CRDO pulled back to +3.88% (was +11.65%), CORZ dipped to -4.55% (from 0% at entry) -- both still open, no exit trigger yet. Day tally: 4 closed (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, ALAB +6.85%) + SPCH +9.38% = 5 closed (2W/3L so far), 2 still open (CRDO, CORZ). Reported live to operator throughout."
+    },
+    "2026-09-16T16:07Z": {
+      "note": "CORZ CLOSED 0% (flat_theta_bleed, 28min never left the band, clean scratch). CRDO status TRIM -- a trim tranche fired (peak .00/+16.5%, now .45/+5.83% live, part already banked). Both reported live to operator. Day tally: 6 closed (SPCH +9.38%, ALAB +6.85% wins; SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, CORZ 0% losses/scratches) + 1 open (CRDO, trim-managed). No change this specific cycle vs the conversational check just before it -- confirmed stable."
     }
   },
   "sessions": {
