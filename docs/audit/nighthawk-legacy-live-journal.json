@@ -3050,6 +3050,12 @@
       "healthcheck": "AMBER, unchanged and stable -- B_marks evidence text stayed consistent this cycle (the pre-market quote-dropout state from last cycle held, not flickering back).",
       "codeReview": "Full read of edition-funnel.ts (131 lines) -- recapReasonAtPublishExit's precedence (heartbeat-stale > gate-blocked > synthesis-empty) correctly distinguishes 'upstream feed stalled' from 'gates blocked everything' from 'synthesis produced nothing', each an honest, distinct failure mode per its own NH-R10 design comment. funnelFromMeta's null-guard (lines 107-114) has a minor theoretical edge case -- if only SOME of the 6 required funnel fields are present in a meta blob, the others default to 0 rather than staying undefined, which could misrepresent 'field not stamped' as 'genuinely zero' -- but these 6 fields are always written together by the same synthesis pipeline in practice, so this is not a live/reproducing bug, just a theoretical gap not worth a fix. No real bug found.",
       "note": "~53min to the morning-confirm window (13:15 UTC) -- watching closely for D_pull_status to populate."
+    },
+    {
+      "at": "2026-09-16T12:37:23Z",
+      "trigger": ":36 cycle -- light cycle, preserving capacity for the imminent morning-confirm window (~39min out)",
+      "healthcheck": "AMBER, stable, unchanged from last cycle.",
+      "verification": "Confirmed all 3 open report-and-hold items (Track record dead slot, TARGET PATH gauge ambiguity, GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE inertness) remain untouched by any other lane -- no diff on publish-gates.ts/legacy-play-geometry.tsx/legacy-board-columns.tsx in the last 50 commits, and the two ATR-multiple constants are still both 2.0 exactly as found. Nothing new to escalate; keeping this cycle deliberately light to hold capacity for the 13:15 UTC morning-confirm window, where D_pull_status will populate for the first time this segment and the whole gate/backfill/gate-promote pipeline this week's work has focused on gets its first live daytime exercise."
     }
   ],
   "knownOpenItems": {
