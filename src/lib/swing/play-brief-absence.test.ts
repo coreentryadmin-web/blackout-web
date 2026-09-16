@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  ageSecondsLabel,
   collectBriefUnavailableSources,
   gexMatrixStale,
   meridianCatalystAgeMs,
@@ -872,4 +873,22 @@ test("collectBriefUnavailableSources: uncalibrated thesis health surfaces in env
         s.reason === "setup/entry/signal inputs unavailable for committed positions",
     ),
   );
+});
+
+test("ageSecondsLabel: null/undefined returns null (optional-suffix callers omit the parenthetical entirely)", () => {
+  assert.equal(ageSecondsLabel(null), null);
+  assert.equal(ageSecondsLabel(undefined), null);
+});
+
+test("ageSecondsLabel: a finite non-negative age renders 'Ns'", () => {
+  assert.equal(ageSecondsLabel(42_000), "42s");
+  assert.equal(ageSecondsLabel(0), "0s");
+});
+
+test("ageSecondsLabel: Number.POSITIVE_INFINITY (Vector's future-skew sentinel) renders 'clock-skewed', never 'Infinitys'", () => {
+  assert.equal(ageSecondsLabel(Number.POSITIVE_INFINITY), "clock-skewed");
+});
+
+test("ageSecondsLabel: a negative (future-skewed) age renders 'clock-skewed', never a negative number", () => {
+  assert.equal(ageSecondsLabel(-500_000), "clock-skewed");
 });

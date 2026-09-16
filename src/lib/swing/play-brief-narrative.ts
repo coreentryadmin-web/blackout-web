@@ -9,6 +9,7 @@ import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   trustedHelixFlow,
+  ageSecondsLabel,
   gexMatrixStale,
   vectorSnapshotStale,
   resolveGammaPosture,
@@ -195,11 +196,10 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
       ? ` · γ-flip **${flip.toFixed(2)}**${aboveFlip != null ? (aboveFlip ? " (spot above)" : " (spot below)") : ""}`
       : "";
 
-  const vecAgeMs = vec?.dataAgeMs;
   const snapshotStale = vectorStale;
-  const snapshotAgeMs = vectorStale ? vecAgeMs : null;
+  const snapshotAgeLabel = snapshotStale ? ageSecondsLabel(vec?.dataAgeMs) : null;
   const lead = snapshotStale
-    ? `**Last snapshot**${snapshotAgeMs != null ? ` (~${Math.round(snapshotAgeMs / 1000)}s old)` : ""}`
+    ? `**Last snapshot**${snapshotAgeLabel != null ? ` (~${snapshotAgeLabel} old)` : ""}`
     : "**Right now**";
 
   return `${lead} — spot **${spot.toFixed(2)}** · ${mechanic}${flipBit}`;

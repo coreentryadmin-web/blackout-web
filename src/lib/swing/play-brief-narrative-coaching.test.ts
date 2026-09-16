@@ -1620,6 +1620,27 @@ test("dataHonestyCoaching: closed play with markIsSync does not warn mark stalen
   assert.equal(line, null);
 });
 
+test("dataHonestyCoaching: future-skewed Vector dataAgeMs (Infinity) warns 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const line = dataHonestyCoaching(
+    ctx({
+      vector: { dataAgeMs: Number.POSITIVE_INFINITY } as SwingPlayBriefContext["vector"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /Vector \*\*clock-skewed\*\* stale/i);
+  assert.doesNotMatch(line!, /Infinitys/i);
+});
+
+test("dataHonestyCoaching: null Vector dataAgeMs with freshness stale still warns (Largo C2, 2026-09-16)", () => {
+  const line = dataHonestyCoaching(
+    ctx({
+      vector: { dataAgeMs: undefined, freshness: "stale" } as SwingPlayBriefContext["vector"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /Vector \*\*clock-skewed\*\* stale/i);
+});
+
 test("dataHonestyCoaching: WATCH play with markIsSync does not warn mark staleness", () => {
   const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "WATCH" }));
   assert.equal(line, null);

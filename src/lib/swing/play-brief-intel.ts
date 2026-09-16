@@ -7,6 +7,7 @@ import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
+  ageSecondsLabel,
   confluenceZoneKindsLabel,
   fundamentalsAncient,
   gexMatrixAgeMs,
@@ -329,9 +330,9 @@ export function chartTechnicalsSection(
   const closedDisclosure = "_Current chart read — not the technicals this trade closed under._";
   const lines: string[] = [];
   if (vectorStale) {
-    const ageMs = vec?.dataAgeMs;
+    const ageLabel = ageSecondsLabel(vec?.dataAgeMs);
     lines.push(
-      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — chart read may lag spot.`,
+      `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — chart read may lag spot.`,
     );
     if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}** (from prior snapshot)`);
     if (!lines.length) return null;
@@ -1043,9 +1044,9 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
   }
   const readMs = Date.now();
   const stale = meridianCatalystStale(slice, readMs);
-  const ageMs = stale ? meridianCatalystAgeMs(slice, readMs) : null;
+  const ageLabel = stale ? ageSecondsLabel(meridianCatalystAgeMs(slice, readMs)) : null;
   const staleLead = stale
-    ? `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — catalyst calendar may lag.\n\n`
+    ? `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — catalyst calendar may lag.\n\n`
     : "";
   if (!slice?.items.length) {
     return {
@@ -1211,11 +1212,11 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
   if (!gex) return null;
   const readMs = Date.now();
   const stale = gexMatrixStale(gex, readMs);
-  const ageMs = stale ? gexMatrixAgeMs(gex, readMs) : null;
+  const ageLabel = stale ? ageSecondsLabel(gexMatrixAgeMs(gex, readMs)) : null;
   const lines: string[] = [];
   if (stale) {
     lines.push(
-      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — dealer posture may lag spot.`,
+      `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — dealer posture may lag spot.`,
     );
   }
   // Suppress GEX-only posture when matrix is stale — same Largo C2 class as chartLevels/watchFor/king (#4372/#4375).
@@ -1291,9 +1292,9 @@ export function vectorDeskSection(
   const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const lines: string[] = [];
   if (vectorStale) {
-    const ageMs = vec?.dataAgeMs;
+    const ageLabel = ageSecondsLabel(vec?.dataAgeMs);
     lines.push(
-      `**Last snapshot**${ageMs != null ? ` (~${Math.round(ageMs / 1000)}s old)` : ""} — Vector desk read may lag spot.`,
+      `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — Vector desk read may lag spot.`,
     );
     if (p.grade) lines.push(`Vector desk grade: **${p.grade}** (from prior snapshot)`);
     if (!lines.length) return null;
