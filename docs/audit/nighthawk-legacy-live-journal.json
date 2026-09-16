@@ -2735,6 +2735,12 @@
       "healthcheck": "AMBER, unchanged -- same explained overnight pattern.",
       "cronHealthCheck": "AWS/Events metrics, last 8h, for the three Legacy-relevant rules: blackout-production-nighthawk-morning-confirm (0 invocations -- correct, its 13:15/14:15 UTC window hasn't recurred in this 8h lookback), blackout-production-nighthawk-outcomes (2 invocations matching its 20:30/21:30 UTC double-fire schedule, 0 failures), blackout-production-nighthawk-playbook (6 invocations across its 21:30-23:45 UTC every-15-min window, 0 failures). All FailedInvocations=0. Also confirmed (previously undocumented in this journal) that nighthawk-playbook's Lambda target routes to /api/cron/nighthawk-edition -- the known edition-builder route, matching the observed ~21:52 UTC publish time exactly. No gaps, no surprises.",
       "note": "Genuinely clean cycle -- healthcheck, cron metrics, and pipeline-routing sanity all confirmed nothing new. Staying quiet."
+    },
+    {
+      "at": "2026-09-16T02:10:35Z",
+      "trigger": "new-hour :06 cycle (v3 mandate re-fire, trigger 1 of 4)",
+      "healthcheck": "AMBER, unchanged -- same explained overnight pattern, 6th consecutive cycle.",
+      "action": "Kicked off a fresh live-UI pixel check via proxy-browser.cjs (/nighthawk?view=LEGACY, desktop 1440x900) -- it's been several hours since the last one (18:41 UTC). Also revisited the open legacyTargetPathGaugeAmbiguity_2026-09-15 item (single live instance so far, report-and-hold) to see if tonight's 3 plays reproduce the same TARGET PATH gauge confusion VNCE showed. GET /api/market/nighthawk/legacy-marks currently returns available:false (after-hours, consistent with the healthcheck's B_marks staleness), so no live premium/progress data to check that angle from the API side tonight -- the screenshot (still running as a background task, bko5dc0ub) is the only way to see the actual rendered gauge state for CRWD/RIG/SWKS. Will inspect once it completes and log either a 2nd instance or a clean result next cycle."
     }
   ],
   "knownOpenItems": {
