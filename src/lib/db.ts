@@ -4568,6 +4568,9 @@ export async function insertSwingScanRejection(row: {
 export async function fetchZeroDteScanRejections(opts?: {
   ticker?: string;
   session_date?: string;
+  /** Filter to one gate code (e.g. "early_window_prime_score") — additive, optional;
+   *  omitted means every gate, same as before this filter existed. */
+  gate_failed?: string;
   limit?: number;
 }): Promise<
   Array<{
@@ -4589,37 +4592,38 @@ export async function fetchZeroDteScanRejections(opts?: {
     /** Every gate code that failed this evaluation — null on rows written before
      *  blocks_json existed (2026-09-09) or on the four evidence-gate rejections. */
     blocks: string[] | null;
+    /** The skip-grading counterfactual (skip-grading.ts's SkipCounterfactual) — null on rows
+     *  never graded (either the async grader hasn't reached them yet, or they're ungradeable:
+     *  no direction, block after the 15:50 time-stop, or no bars in the plan window). Added
+     *  so a caller can see WHICH specific ticker/session a gate's would_have_won/lost verdict
+     *  belongs to, not just the aggregate rate `blockedValueLines` (calibration.ts) reports. */
+    counterfactual: {
+      verdict: "would_have_won" | "would_have_lost" | "ungradeable";
+      outcome: "doubled" | "stopped" | "time_stop" | null;
+      pnl_pct: number | null;
+      basis: "premium" | "underlying" | null;
+    } | null;
   }>
 > {
   await ensureSchema();
   const limit = opts?.limit ?? 50;
   const ticker = opts?.ticker?.toUpperCase();
   const sessionDate = opts?.session_date;
+  const gateFailed = opts?.gate_failed;
   const cols = `id, observed_at, session_date, ticker, gate_failed, threshold,
            gross_premium, aggression, side_dominance, otm_pct, direction, prints,
-           first_seen, last_seen, reason, blocks_json`;
-  let res;
-  if (ticker && sessionDate) {
-    res = await dbQuery(
-      `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 AND session_date = $2 ORDER BY observed_at DESC LIMIT $3`,
-      [ticker, sessionDate, limit]
-    );
-  } else if (ticker) {
-    res = await dbQuery(
-      `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
-      [ticker, limit]
-    );
-  } else if (sessionDate) {
-    res = await dbQuery(
-      `SELECT ${cols} FROM zerodte_scan_rejections WHERE session_date = $1 ORDER BY observed_at DESC LIMIT $2`,
-      [sessionDate, limit]
-    );
-  } else {
-    res = await dbQuery(
-      `SELECT ${cols} FROM zerodte_scan_rejections ORDER BY observed_at DESC LIMIT $1`,
-      [limit]
-    );
-  }
+           first_seen, last_seen, reason, blocks_json, counterfactual_json`;
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (ticker) { params.push(ticker); conditions.push(`ticker = $${params.length}`); }
+  if (sessionDate) { params.push(sessionDate); conditions.push(`session_date = $${params.length}`); }
+  if (gateFailed) { params.push(gateFailed); conditions.push(`gate_failed = $${params.length}`); }
+  params.push(limit);
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const res = await dbQuery(
+    `SELECT ${cols} FROM zerodte_scan_rejections ${where} ORDER BY observed_at DESC LIMIT $${params.length}`,
+    params
+  );
   return res.rows.map((r) => ({
     id: Number(r.id),
     observed_at: isoTimestampString(r.observed_at) ?? "",
@@ -4648,7 +4652,26 @@ export async function fetchZeroDteScanRejections(opts?: {
     // isoDateString's funnel above) — but validate the shape rather than trust it blindly,
     // since a hand-edited row or a future schema change could leave something else there.
     blocks: Array.isArray(r.blocks_json) ? r.blocks_json.map((b: unknown) => String(b)) : null,
+    counterfactual: parseZeroDteRejectionCounterfactual(r.counterfactual_json),
   })  );
+}
+
+/** Defensive parse of counterfactual_json — never trust a JSONB blob blindly (same discipline as
+ *  blocks_json above); a malformed/legacy row reads as null, never as a fabricated verdict. */
+export function parseZeroDteRejectionCounterfactual(v: unknown): {
+  verdict: "would_have_won" | "would_have_lost" | "ungradeable";
+  outcome: "doubled" | "stopped" | "time_stop" | null;
+  pnl_pct: number | null;
+  basis: "premium" | "underlying" | null;
+} | null {
+  if (v == null || typeof v !== "object") return null;
+  const rec = v as Record<string, unknown>;
+  const verdict = rec.verdict;
+  if (verdict !== "would_have_won" && verdict !== "would_have_lost" && verdict !== "ungradeable") return null;
+  const outcome = rec.outcome === "doubled" || rec.outcome === "stopped" || rec.outcome === "time_stop" ? rec.outcome : null;
+  const basis = rec.basis === "premium" || rec.basis === "underlying" ? rec.basis : null;
+  const pnl_pct = typeof rec.pnl_pct === "number" && Number.isFinite(rec.pnl_pct) ? rec.pnl_pct : null;
+  return { verdict, outcome, pnl_pct, basis };
 }
 
 /**

@@ -4,7 +4,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
 import type { PoolClient } from "pg";
-import { mapAlertAuditTrailRow, computeSafePgPoolMaxDefault, guardCheckedOutClient } from "./db";
+import {
+  mapAlertAuditTrailRow,
+  computeSafePgPoolMaxDefault,
+  guardCheckedOutClient,
+  parseZeroDteRejectionCounterfactual,
+} from "./db";
 
 test("mapAlertAuditTrailRow: converts NUMERIC confidence_score (a string from node-pg) to a real number", () => {
   const row = mapAlertAuditTrailRow({
@@ -734,4 +739,54 @@ test("fetchNighthawkFunnelStats windows edition_for against the ET calendar date
     "fetchNighthawkFunnelStats has TWO edition_for window clauses (published-side and rejected-side) " +
       "-- both must anchor to the ET calendar date so the funnel's two sides stay comparable"
   );
+});
+
+test("parseZeroDteRejectionCounterfactual: null/non-object/malformed input returns null, never fabricates a verdict", () => {
+  assert.equal(parseZeroDteRejectionCounterfactual(null), null);
+  assert.equal(parseZeroDteRejectionCounterfactual(undefined), null);
+  assert.equal(parseZeroDteRejectionCounterfactual("not an object"), null);
+  assert.equal(parseZeroDteRejectionCounterfactual({}), null);
+  assert.equal(parseZeroDteRejectionCounterfactual({ verdict: "not_a_real_verdict" }), null);
+});
+
+test("parseZeroDteRejectionCounterfactual: a real premium-basis SkipCounterfactual round-trips cleanly", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    version: 1,
+    basis: "premium",
+    verdict: "would_have_won",
+    outcome: "doubled",
+    pnl_pct: 87.5,
+    entry: 2.4,
+    exit: 4.5,
+    move_pct: null,
+    reason: null,
+    graded_at: "2026-09-16T15:00:00.000Z",
+  });
+  assert.deepEqual(parsed, { verdict: "would_have_won", outcome: "doubled", pnl_pct: 87.5, basis: "premium" });
+});
+
+test("parseZeroDteRejectionCounterfactual: an ungradeable row keeps outcome/pnl_pct/basis null rather than guessing", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    version: 1,
+    basis: null,
+    verdict: "ungradeable",
+    outcome: null,
+    pnl_pct: null,
+    entry: null,
+    exit: null,
+    move_pct: null,
+    reason: "no long/short direction on the rejection row",
+    graded_at: "2026-09-16T15:00:00.000Z",
+  });
+  assert.deepEqual(parsed, { verdict: "ungradeable", outcome: null, pnl_pct: null, basis: null });
+});
+
+test("parseZeroDteRejectionCounterfactual: an invalid pnl_pct (NaN/non-number) is dropped, not passed through", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    verdict: "would_have_lost",
+    outcome: "stopped",
+    pnl_pct: "not-a-number",
+    basis: "premium",
+  });
+  assert.deepEqual(parsed, { verdict: "would_have_lost", outcome: "stopped", pnl_pct: null, basis: "premium" });
 });
