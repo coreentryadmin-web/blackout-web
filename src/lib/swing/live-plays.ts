@@ -329,6 +329,17 @@ export function livePlayFromSwingPosition(
   const mark = row.last_mark;
   const markAsOf = row.last_mark_at ?? quote?.asOf ?? null;
 
+  // Pinned at commit (commit.ts's buildCommitInsert) as `entry_context.signal_kinds` — the same
+  // discovery-provenance kinds the G-S6 confluence gate graduated on. Read back here so
+  // computeSwingThesisHealth's `flow_corroboration` pillar has a real value instead of the
+  // "not wired for committed positions" degrade every committed row showed before this (see
+  // thesis-health.ts's thesisHealthUncalibrated). Array-shape guarded — never trust an unknown
+  // JSONB blob's shape blindly.
+  const signalKindsRaw = (row.entry_context as { signal_kinds?: unknown } | null)?.signal_kinds;
+  const signalKinds = Array.isArray(signalKindsRaw)
+    ? signalKindsRaw.filter((k): k is string => typeof k === "string")
+    : undefined;
+
   return {
     ticker: row.ticker.toUpperCase(),
     positionId: row.id,
@@ -354,6 +365,7 @@ export function livePlayFromSwingPosition(
     peakPremium: row.peak_premium,
     troughPremium: row.trough_premium,
     markAsOf,
+    signalKinds,
   };
 }
 
