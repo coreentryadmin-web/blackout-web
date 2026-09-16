@@ -325,6 +325,9 @@
     },
     "2026-09-16T14:38Z": {
       "note": "First commit of the day: SPCX long tier A, committed ~14:19 UTC, entry 1.75, peaked +9.71%, exited -3.43% at 14:28 UTC via thesis_break veto -- gex-walls flipped from supporting (no dominant wall at entry) to a veto (155 call wall, 27.5% ladder gamma, 3.63pts above spot, inside 0.5x EM) as spot approached it. Legitimate fresh-evidence override, not a bug -- discussed live with operator, who is now actively watching this lane and asked to be pinged on the NEXT commit. Still just 1 ledger entry (SPCX) this cycle, no new commit yet."
+    },
+    "2026-09-16T14:45Z": {
+      "note": "2 new commits since last cycle: CIFR long (17.5C exp 9/18, entry 0.68, tier B, breakout momentum) and SPCH long (10C exp 9/18, entry 0.48, tier B, breakout momentum), both flagged ~10:39 ET. Discussed live with operator (who is actively watching this lane), both currently OPEN and green (CIFR +4.41%, SPCH +4.17%). Noted a brief propagation lag: /record showed both before board.ledger caught up (few-min lag), not investigated as a bug yet -- worth a second look if it recurs. SPCX (first commit today) already closed -3.43% via thesis_break, discussed earlier. No new finding this cycle beyond normal drift."
     }
   },
   "sessions": {
