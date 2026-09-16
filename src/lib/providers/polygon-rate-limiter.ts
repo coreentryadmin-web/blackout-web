@@ -36,7 +36,7 @@ import {
 // Hooked in alongside notePolygon429/notePolygonOk below since those are already the ONE place every
 // Polygon REST call's success/failure is observed; this does not change any control flow or throw path.
 import { polygonUpstreamHealth, type PolygonUpstreamHealthSnapshot } from "./polygon-rest-health";
-import { QueueBudget, resolveQueueBudgetMs } from "./queue-budget";
+import { QueueBudget, resolveQueueBudgetMs, isQueueTimeout } from "./queue-budget";
 
 export { computeDegradedLocalRps } from "./provider-rate-limiter-shared";
 
@@ -374,6 +374,88 @@ export function resetPolygonCircuitForTest(): void {
  *
  * FAIL-OPEN: acquirePolygonSlot never throws; if Redis is down it degrades to local pacing.
  */
+/**
+ * Rolling window for detecting a SUSTAINED queue-timeout surge — mirrors
+ * uw-rate-limiter.ts's own alert (added 2026-09-15/16 after that limiter's own sustained-surge
+ * incident) exactly, ported here after live evidence this limiter needs it too: a 2026-09-16 RTH
+ * P0 (`zerodte-warm` reported stale by the cron watchdog) traced to `[polygon-gex]` chain fetches
+ * failing at the `global_rps` admission stage across 450+ distinct tickers within a single hour —
+ * a real, sustained surge on a "generous, not provider-limited" 150 RPS self-cap, with no alert
+ * anywhere to page ops about it. A single isolated timeout is normal/expected burst behavior (per
+ * queue-budget.ts's own framing) and must never page on its own.
+ */
+const QUEUE_TIMEOUT_ALERT_WINDOW_MS = 60_000;
+/** Timeouts within the window before paging. */
+const QUEUE_TIMEOUT_ALERT_THRESHOLD = 5;
+
+let queueTimeoutTimestamps: number[] = [];
+let queueTimeoutAlerted = false;
+
+/** Pure: drop timestamps outside the window. Unit-testable without a real clock. */
+export function pruneQueueTimeoutWindow(
+  timestamps: readonly number[],
+  nowMs: number,
+  windowMs: number = QUEUE_TIMEOUT_ALERT_WINDOW_MS
+): number[] {
+  return timestamps.filter((t) => nowMs - t < windowMs);
+}
+
+/** True once the sustained-surge alert is latched. Exported for tests only. */
+export function isQueueTimeoutAlertLatched(): boolean {
+  return queueTimeoutAlerted;
+}
+
+/** Test-only reset of the rolling window + latch. */
+export function resetQueueTimeoutAlertForTest(): void {
+  queueTimeoutTimestamps = [];
+  queueTimeoutAlerted = false;
+}
+
+/** Page ops once when the rolling queue-timeout count crosses the sustained-surge threshold.
+ *  Fire-once latch: pages once on the transition INTO surge, then stays silent until
+ *  noteQueueAdmissionRecoveryForAlert observes the rolling count has dropped back under
+ *  threshold. */
+function alertQueueTimeoutSurgeOnce(countInWindow: number): void {
+  if (queueTimeoutAlerted) return;
+  queueTimeoutAlerted = true;
+  void import("@/features/spx/lib/spx-play-notify")
+    .then(({ notifyOpsDiscord }) =>
+      notifyOpsDiscord({
+        title: "Polygon rate-limiter queue timeouts surging",
+        body:
+          `${countInWindow} callers exceeded the ${queueBudgetMs()}ms admission queue budget within the ` +
+          `last ${Math.round(QUEUE_TIMEOUT_ALERT_WINDOW_MS / 1000)}s (GLOBAL_MAX_RPS=${GLOBAL_MAX_RPS}). Real ` +
+          `demand is exceeding the shared Polygon rate-limiter ceiling — requests are being DROPPED, not just ` +
+          `slow. Re-arms once the rate drops back under ${QUEUE_TIMEOUT_ALERT_THRESHOLD} in a ` +
+          `${Math.round(QUEUE_TIMEOUT_ALERT_WINDOW_MS / 1000)}s window.`,
+        severity: "warning",
+      })
+    )
+    .catch(() => {
+      queueTimeoutAlerted = false; // alert never delivered — allow a later retry
+    });
+}
+
+/** Record one queue-timeout occurrence; pages ops once the rolling window crosses the sustained
+ *  threshold. Called from polygonTrackedFetch's catch — never changes admission behavior itself. */
+export function noteQueueTimeoutForAlert(now: () => number = Date.now): void {
+  const nowMs = now();
+  queueTimeoutTimestamps = pruneQueueTimeoutWindow([...queueTimeoutTimestamps, nowMs], nowMs);
+  if (queueTimeoutTimestamps.length >= QUEUE_TIMEOUT_ALERT_THRESHOLD) {
+    alertQueueTimeoutSurgeOnce(queueTimeoutTimestamps.length);
+  }
+}
+
+/** Re-arm the surge latch once the rolling count has genuinely dropped back under threshold.
+ *  Cheap no-op on the common healthy path. */
+export function noteQueueAdmissionRecoveryForAlert(now: () => number = Date.now): void {
+  if (!queueTimeoutAlerted) return;
+  queueTimeoutTimestamps = pruneQueueTimeoutWindow(queueTimeoutTimestamps, now());
+  if (queueTimeoutTimestamps.length < QUEUE_TIMEOUT_ALERT_THRESHOLD) {
+    queueTimeoutAlerted = false;
+  }
+}
+
 export async function polygonTrackedFetch(
   endpointKey: string,
   url: string,
@@ -384,7 +466,13 @@ export async function polygonTrackedFetch(
     throw new Error(`[polygon] Circuit open — rate limited, pausing ${waitSec}s`);
   }
 
-  await acquirePolygonSlot();
+  try {
+    await acquirePolygonSlot();
+  } catch (err) {
+    if (isQueueTimeout(err)) noteQueueTimeoutForAlert();
+    throw err;
+  }
+  noteQueueAdmissionRecoveryForAlert();
   try {
     // RT-2 resilience: retry TRANSIENT failures (connect errors like UND_ERR_CONNECT_TIMEOUT /
     // EHOSTUNREACH, plus 5xx and 429) once with a short backoff, so a momentary api.massive.com
