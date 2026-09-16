@@ -11,12 +11,12 @@ import {
   fundamentalsAncient,
   gexMatrixAgeMs,
   gexMatrixStale,
-  GEX_MATRIX_STALE_MS,
   meridianCatalystAgeMs,
   meridianCatalystStale,
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
   resolveGammaPosture,
+  vectorAgeStale,
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
@@ -1376,14 +1376,34 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
           : `Swing scan: **${stamp}**`,
       );
     }
-    if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000) {
-      lines.push(`Vector data **${Math.round(vec.dataAgeMs / 1000)}s** old — levels may lag live spot`);
+    // Largo C2 (2026-09-16): these two lines each reimplemented a partial staleness check
+    // instead of calling the shared, already-tested helpers this same file uses correctly for
+    // the identical fields elsewhere (gexMatrixStale at lines 429/458/706/765/802/1213;
+    // vectorAgeStale's sibling vectorSnapshotStale below). Two concrete gaps the raw comparisons
+    // missed: (1) `vec.dataAgeMs` is stamped `Number.POSITIVE_INFINITY` on future clock skew
+    // (withReadContext()) — `Infinity > 120_000` still trips the old branch, but
+    // `Math.round(Infinity / 1000)` renders the literal string "Vector data **Infinitys** old";
+    // (2) a `null` dataAgeMs (unparseable `asOf`) skipped the line entirely even when
+    // `vec.freshness === "stale"` or a parseable `vec.asOf` would correctly flag it via
+    // `vectorAgeStale`'s fallback paths — same for a negative (future-skewed) `gexAgeMs`, which
+    // `gexAgeMs > GEX_MATRIX_STALE_MS` silently reads as fresh instead of failing closed the way
+    // `gexMatrixStale` already does. Using the shared boolean gates the rendering; the raw ages
+    // still drive the seconds label when they're finite and non-negative.
+    if (vectorAgeStale(vec, Date.now())) {
+      const ageMs = vec?.dataAgeMs;
+      const ageLabel =
+        typeof ageMs === "number" && Number.isFinite(ageMs) && ageMs >= 0
+          ? `${Math.round(ageMs / 1000)}s`
+          : "clock-skewed";
+      lines.push(`Vector data **${ageLabel}** old — levels may lag live spot`);
     }
     const gexAgeMs = gexMatrixAgeMs(ctx.ecosystem?.gex_positioning);
-    if (gexAgeMs != null && gexAgeMs > GEX_MATRIX_STALE_MS) {
-      lines.push(
-        `GEX matrix **${Math.round(gexAgeMs / 1000)}s** old — dealer posture may lag spot`,
-      );
+    if (gexMatrixStale(ctx.ecosystem?.gex_positioning, Date.now())) {
+      const gexLabel =
+        typeof gexAgeMs === "number" && Number.isFinite(gexAgeMs) && gexAgeMs >= 0
+          ? `${Math.round(gexAgeMs / 1000)}s`
+          : "clock-skewed";
+      lines.push(`GEX matrix **${gexLabel}** old — dealer posture may lag spot`);
     }
     if (ctx.ecosystem?.flow_feed_fresh === false) {
       lines.push(
