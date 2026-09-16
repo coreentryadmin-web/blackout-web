@@ -38,6 +38,10 @@ const state = {
   gradeCalls: [] as Array<{ sessionDate: string; ticker: string; grade: Record<string, unknown> }>,
   aggBarCalls: [] as Array<{ symbol: string; timespan: string }>,
   dailyBars: new Map<string, Array<{ t: number; o: number; h: number; l: number; c: number }>>(),
+  /** SPY-bias-timeout regression (2026-09-16): when set, fetchAggBars for THIS symbol delays
+   *  by this many ms before resolving, simulating a slow Polygon response — every other
+   *  symbol/call is unaffected (instant, as every other test in this file expects). */
+  aggBarDelayMsFor: null as { symbol: string; ms: number } | null,
   // persistZeroDteScan wiring (PR-F commit-time tier stamp test below)
   upsertRows: [] as Array<Record<string, unknown>>,
   // WS-01 atomic-commit wiring. `atomicLedger`, when set, is the IN-TRANSACTION ledger the
@@ -217,6 +221,9 @@ mock.module("../providers/polygon-largo", {
     // EMPTY result set. Only symbols seeded into state.dailyBars return bars.
     fetchAggBars: async (symbol: string, _mult: number, timespan: string) => {
       state.aggBarCalls.push({ symbol, timespan });
+      if (state.aggBarDelayMsFor && state.aggBarDelayMsFor.symbol === symbol) {
+        await new Promise((resolve) => setTimeout(resolve, state.aggBarDelayMsFor!.ms));
+      }
       return state.dailyBars.get(symbol) ?? [];
     },
   },
@@ -1810,4 +1817,65 @@ test("applyIntradayEdgeToBreakdown uses the post-clamp applied delta, not the ra
   const updated = applyIntradayEdgeToBreakdown(breakdown, 2); // caller passes the CLAMPED delta
   const sum = Object.values(updated!).reduce((a, b) => a + b, 0);
   assert.equal(sum, 100, "must reconcile to the clamped score (100), not an over-counted 105");
+});
+
+// SPY-bias timeout regression (2026-09-16 live monitor finding): intradayReadFor("SPY", ...)
+// used to share the SAME 2.5s within() budget as every per-ticker read fired alongside it in
+// attachIntradayEdge's Promise.all — but a SPY-read miss nulls `bias`/`biasAsOfMs` for the
+// WHOLE scan cycle, which G-1 (no_market_bias, gates.ts) reads as "tape unreadable" and hard-
+// blocks EVERY index-ETF/SPX-family setup (QQQ/SPY/SPXW/SPX/DIA) at once. Live rejection-export
+// data that day showed 94% of all no_market_bias blocks concentrated on exactly those 5
+// tickers, including a same-cycle simultaneous block on QQQ(84)/SPY(78)/SPXW(68)/SPX(66) — the
+// four highest-scoring setups in the whole pool that pass — off a single slow Polygon response
+// (SPY's minute-bar payload is larger than a single name's).
+//
+// Fix: intradayReadFor now accepts a `timeoutMs` override, and attachIntradayEdge calls SPY's
+// read with the wider SPY_BIAS_FETCH_TIMEOUT_MS (6s) instead of the default per-ticker budget
+// (2.5s) — still well under MARKET_BIAS_MAX_AGE_MS's 15-min staleness ceiling, so a genuinely
+// stale tape still fails closed exactly as before; only a transient response-time blip gets
+// more patience.
+test("intradayReadFor: a per-ticker read still times out fast on a slow response (unchanged default budget)", async () => {
+  const { intradayReadFor } = await mod();
+  state.aggBarDelayMsFor = { symbol: "AAPL", ms: 4_000 };
+  try {
+    const read = await intradayReadFor("AAPL", "2026-09-16");
+    assert.equal(read, null, "a 4s-slow response must still miss the default 2.5s per-ticker budget");
+  } finally {
+    state.aggBarDelayMsFor = null;
+  }
+});
+
+test("intradayReadFor: SPY's read survives the SAME slow response when given the longer SPY-bias budget", async () => {
+  const { intradayReadFor, SPY_BIAS_FETCH_TIMEOUT_MS } = await mod();
+  state.aggBarDelayMsFor = { symbol: "SPY", ms: 4_000 };
+  // Fixed RTH timestamps (11:00-11:01 ET on the test's own session day) — computeIntradayRead
+  // drops any bar outside 9:30-16:00 ET, so a Date.now()-based fixture would silently read as
+  // "no RTH bars" whenever this suite happens to run after the close (exactly the after-hours
+  // trap CLAUDE.md's own environment notes warn about elsewhere in this repo).
+  state.dailyBars.set("SPY", [
+    { t: Date.parse("2026-09-16T15:00:00Z"), o: 100, h: 101, l: 99, c: 100.5 },
+    { t: Date.parse("2026-09-16T15:01:00Z"), o: 100.5, h: 101.5, l: 100, c: 101 },
+  ]);
+  try {
+    const read = await intradayReadFor("SPY", "2026-09-16", SPY_BIAS_FETCH_TIMEOUT_MS);
+    assert.ok(read, "SPY's read must complete within its own 6s budget despite the 4s delay");
+    assert.ok(read!.last_bar_ms != null, "a completed read must carry a real freshness anchor");
+  } finally {
+    state.aggBarDelayMsFor = null;
+    state.dailyBars.delete("SPY");
+  }
+});
+
+test("intradayReadFor: SPY given the DEFAULT (unwidened) budget reproduces the original bug", async () => {
+  // Proves the fix is the timeout override, not some incidental change to
+  // fetchAggBars/caching — SPY with the OLD default budget still times out on the
+  // identical slow response.
+  const { intradayReadFor } = await mod();
+  state.aggBarDelayMsFor = { symbol: "SPY", ms: 4_000 };
+  try {
+    const read = await intradayReadFor("SPY", "2026-09-16");
+    assert.equal(read, null, "without the widened budget, SPY's read times out exactly like a per-ticker one");
+  } finally {
+    state.aggBarDelayMsFor = null;
+  }
 });
