@@ -201,7 +201,7 @@ export function normalizeImpliedVol(iv: number | null | undefined): number | nul
  * (ask < bid) — a stale/glitched print must not synthesize a fabricated mid (found 2026-08-26
  * alongside the identical gap in the two sibling copies above).
  */
-function midOf(bid: number | null, ask: number | null): number | null {
+export function midOf(bid: number | null, ask: number | null): number | null {
   if (bid != null && ask != null && ask > 0 && bid >= 0 && ask >= bid) {
     return Number(((bid + ask) / 2).toFixed(4));
   }
