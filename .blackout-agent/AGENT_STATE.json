@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-17T15:10:24.779Z",
+  "updated_at": "2026-09-17T18:23:57.434Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "aa8df09f3508d591eeff1f19c51c20e9650fa30c",
+    "last_main_sha": "a8df22cc23d19bcd73853d9fa8effb6bc674969b",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-08T16:10:33.420Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-08T16:10:33.711Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-08T17:38:30.384Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-08T17:38:30.964Z",
       "type": "context_sync",
@@ -1271,9 +1253,178 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-17T18:23:56.082Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-17T18:23:56.799Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-17T18:23:57.426Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 15
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 5151,
+      "title": "docs(0dte): score-floor INVERTED verdict partially resolves at correct entry time",
+      "branch": "docs/zerodte-score-floor-entry-time-followup-2026-09-17",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T18:18:21Z"
+    },
+    {
+      "number": 5133,
+      "title": "chore(state): sync agent heartbeat + x-intel rotation state",
+      "branch": "chore/state-sync-heartbeat-rotation-20260917094046",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T09:41:10Z"
+    },
+    {
+      "number": 5132,
+      "title": "feat(nighthawk): multi-horizon forward-return grading for candidate snapshots (Phase 1.8)",
+      "branch": "feat/nighthawk-candidate-forward-grade",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T09:38:51Z"
+    },
+    {
+      "number": 5131,
+      "title": "feat(nighthawk): wire discord_live_state.peak_premium/trough_premium into resolved outcomes (Phase 1.7)",
+      "branch": "feat/nighthawk-premium-excursion-outcomes",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T09:22:16Z"
+    },
+    {
+      "number": 5128,
+      "title": "feat(nighthawk): wire governor-cut rejection capture into candidate_snapshot (Phase 1.5, part 1)",
+      "branch": "feat/nighthawk-governor-rejection-capture",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T13:57:29Z"
+    },
+    {
+      "number": 5126,
+      "title": "feat(nighthawk): wire STAGE-4/5 scoring+ranking candidate-snapshot capture (Phase 1.4)",
+      "branch": "feat/nighthawk-scoring-ranking-capture",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T08:43:44Z"
+    },
+    {
+      "number": 5125,
+      "title": "feat(nighthawk): wire STAGE-2 discovery candidate-snapshot capture (Phase 1.3)",
+      "branch": "feat/nighthawk-discovery-stage-capture",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T08:31:05Z"
+    },
+    {
+      "number": 5124,
+      "title": "feat(nighthawk): pure correction functions for the two confirmed ranking bugs (Phase 1.2)",
+      "branch": "feat/nighthawk-signal-intelligence-corrections",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T08:13:41Z"
+    },
+    {
+      "number": 5123,
+      "title": "feat(nighthawk): add nighthawk_candidate_snapshot schema (Phase 1.1 foundation)",
+      "branch": "feat/nighthawk-candidate-snapshot-schema",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T08:04:44Z"
+    },
+    {
+      "number": 5122,
+      "title": "chore(state): sync agent heartbeat + x-intel rotation state",
+      "branch": "chore/state-sync-heartbeat-rotation",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T07:44:13Z"
+    },
+    {
+      "number": 5111,
+      "title": "fix(nighthawk): UW telemetry (Phase 1) + AbortSignal cancellation wiring (Phase 2) — DO NOT MERGE",
+      "branch": "feat/uw-instrumentation-phase1",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-17T06:19:13Z"
+    },
+    {
+      "number": 4967,
+      "title": "chore(deps): Bump @whop/sdk from 0.0.42 to 1.1.3",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.3",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-14T10:22:44Z"
+    },
+    {
+      "number": 4480,
+      "title": "chore(deps): Bump next from 15.5.25 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-14T10:22:57Z"
+    },
+    {
+      "number": 4479,
+      "title": "chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.4",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-07T10:25:03Z"
+    },
+    {
+      "number": 4477,
+      "title": "Bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T00:30:20Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
