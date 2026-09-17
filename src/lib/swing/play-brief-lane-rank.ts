@@ -83,10 +83,31 @@ function bucketFor(play: TerminalPlay): "open" | "watch" | "closed" {
 
 function rowInBucket(row: HorizonPlay, bucket: "open" | "watch" | "closed"): boolean {
   if (bucket === "closed") return false;
-  // HorizonPlay.status is PlayStatus ("COMMIT" | "WATCH") — DeckStatus OPEN/HOLD/TRIM
-  // only exist on the adapted TerminalPlay. Live committed rows are always "COMMIT".
-  if (bucket === "open") return row.status === "COMMIT";
-  return row.status === "WATCH";
+  // BUG FIX (2026-09-17, Ask Largo standing mandate): `row.status` ("COMMIT" | "WATCH") is NOT a
+  // lifecycle/section field — serving.ts's own `observablesFromHorizonPlay` documents it as
+  // `aboveFloor: play.status === "COMMIT"`, the MECHANICAL FLOOR-GATE result (has this candidate's
+  // score cleared `scoreFloor`?), orthogonal to whether it is an actually-open position. A
+  // pre-entry WATCH candidate whose score clears the floor (e.g. a name briefly AT_TRIGGER, then
+  // un-triggering back to WATCH) legitimately keeps `status: "COMMIT"` while its serving SECTION
+  // correctly reads "WATCH" — this is by design (`sectionForSwingPlay`'s own doc comment: "a real
+  // contract that hasn't cleared the commit floor" vs one that HAS, both still pre-entry). The old
+  // check here assumed `status === "COMMIT"` uniquely meant "a genuinely open/live position" (its
+  // own comment: "Live committed rows are always 'COMMIT'" — true, but not an iff), so it silently
+  // dropped every floor-cleared WATCH candidate from BOTH peer buckets at once: excluded from
+  // "watch" (status isn't literally "WATCH"), and never actually IN "open" either since it has no
+  // `liveStatus`. Live repro 2026-09-17: LITE (score 71, the WATCH lane's real leader) was invisible
+  // to XOM/TSM/AAPL's own "#1 of 3"/"#3/3" rank lines (all computed a 3-peer pool with no LITE),
+  // and LITE's OWN brief then read "Top-tier setup — #3/3" — its own row excluded from `sorted`
+  // (idx=-1) fell back to `rank = sorted.length + 1` (4), silently clamped to `total` (3) by this
+  // function's own `Math.min(rank, sorted.length)`, so a play whose row couldn't even be FOUND in
+  // its peer set rendered as confidently ranked dead-last, satisfying the "Top-tier" template's
+  // `rank <= 3` condition despite the pool never having actually included it. Fixed to use
+  // `liveStatus` (`HorizonPlay.liveStatus?: "OPEN" | "HOLD" | "TRIM"`, `serving.ts`'s own
+  // authoritative live-vs-pre-entry signal, first-checked by `sectionForSwingPlay` itself) instead
+  // of the floor-gate field: a row is "open" only when it actually IS a live position, "watch"
+  // whenever it is a pre-entry candidate regardless of floor state.
+  if (bucket === "open") return row.liveStatus != null;
+  return row.liveStatus == null;
 }
 
 /** Pure rank math — testable without DB. */
