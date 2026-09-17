@@ -12,6 +12,7 @@ import {
   upsertNighthawkJob,
   failStaleNighthawkJobs,
   fetchRecentNighthawkOutcomesForGovernor,
+  insertNighthawkCandidateSnapshots,
 } from "@/lib/db";
 import { marketPlatform } from "@/lib/platform";
 import { uwConfigured } from "@/lib/providers/config";
@@ -29,7 +30,7 @@ import { buildMarketRecap, formatTickerDossierText } from "./format";
 import { fetchIndexDossiers } from "./index-dossier";
 import { fetchMarketWideContext, type MarketWideContext } from "./market-wide";
 import { critiquePlays } from "./play-critic";
-import { rankCandidates, regimeContextFromMarket, type ScoredCandidate } from "./scorer";
+import { rankCandidates, regimeContextFromMarket, scoredCandidateSnapshotPayload, type ScoredCandidate } from "./scorer";
 import { rescoreDossier } from "./hunt-builder";
 import { DOSSIER_BATCH_SIZE, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
 import {
@@ -214,6 +215,87 @@ export async function archiveAndClearNighthawkStaging(editionFor: string): Promi
     console.warn(`[nighthawk/edition] scoring-history archive failed for ${editionFor} — staging will still clear:`, err);
   }
   await clearNighthawkStaging(editionFor);
+}
+
+/**
+ * Fire-and-forget capture of a batch of scored/ranked candidates into
+ * nighthawk_candidate_snapshot (Night Hawk Legacy Signal Intelligence, Phase 1) at one of
+ * STAGE 4/5's sort passes. Never awaited by the caller and never throws — a write failure is
+ * logged and swallowed, same contract as recordDiscoveryStageSnapshots (candidates.ts) and
+ * recordNighthawkStageRejectedAuditTrail (play-outcomes.ts). `rank` is 1-based position in the
+ * ARRAY AS PASSED — callers must pass candidates already in the order that stage actually
+ * produced (e.g. `ranked` after applyCrossEditionGovernor's own internal effective-score sort),
+ * never re-sorted here, so a captured rank always matches what that stage's real output order was.
+ */
+export type ScoringStageSnapshotRow = {
+  edition_for: string;
+  ticker: string;
+  stage: string;
+  rank: number | null;
+  score: number | null;
+  gov_penalty: number | null;
+  rejection_reason: string | null;
+  selected_for_publish: boolean | null;
+  snapshot_json: Record<string, unknown>;
+};
+
+/**
+ * Pure row-builder for a STAGE-4/5 scoring/ranking capture — separated from the DB write below
+ * (and exported) for the same reason candidates.ts's buildDiscoveryStageSnapshotRows is: testing
+ * this through the full edition-build integration with a mocked "@/lib/db" is not viable in this
+ * repo's test environment (tsx stops resolving the "@/" alias across the WHOLE loaded graph once
+ * any mock.module() is active, and edition-builder.ts's dependency graph is far larger than
+ * candidates.ts's — see FINDINGS.md's thermalCompareForLargo entry). `rank` is 1-based position
+ * in `candidates` AS PASSED — this function never re-sorts, so a caller must pass candidates
+ * already in the order that stage actually produced.
+ */
+export function buildScoringStageSnapshotRows(
+  editionFor: string,
+  stage: string,
+  candidates: ScoredCandidate[]
+): ScoringStageSnapshotRow[] {
+  return candidates.map((c, i) => ({
+    edition_for: editionFor,
+    ticker: c.ticker,
+    stage,
+    rank: i + 1,
+    score: c.score,
+    gov_penalty: c.govPenalty ?? null,
+    rejection_reason: null,
+    selected_for_publish: null,
+    snapshot_json: scoredCandidateSnapshotPayload(c),
+  }));
+}
+
+function recordScoringStageSnapshots(editionFor: string, stage: string, candidates: ScoredCandidate[]): void {
+  if (!candidates.length) return;
+  const rows = buildScoringStageSnapshotRows(editionFor, stage, candidates);
+  void insertNighthawkCandidateSnapshots(rows).catch((err) => {
+    console.warn(`[nighthawk/edition] failed to write ${stage}-stage candidate snapshots:`, err);
+  });
+}
+
+/**
+ * Pure row-builder for the rank_final capture (the PR-N26-sorted order members actually see).
+ * Same "extract for testability without mocking @/lib/db" rationale as buildScoringStageSnapshotRows
+ * above. `plays` must already carry the rank the caller's own sort stamped — never re-derived here.
+ */
+export function buildRankFinalSnapshotRows(
+  editionFor: string,
+  plays: PlaybookPlay[],
+  govPenaltyByTicker: Map<string, number>
+): ScoringStageSnapshotRow[] {
+  return plays.map((p) => ({
+    edition_for: editionFor,
+    ticker: p.ticker,
+    stage: "rank_final",
+    rank: p.rank,
+    score: p.score ?? null,
+    gov_penalty: govPenaltyByTicker.get(p.ticker) ?? null,
+    rejection_reason: null,
+    selected_for_publish: true,
+    snapshot_json: { schema_version: 1, direction: p.direction, conviction: p.conviction },
+  }));
 }
 
 /**
@@ -614,6 +696,7 @@ export async function buildEveningEdition(opts?: {
     const scoredList = Object.values(dossiers)
       .filter((d) => d.scored != null)
       .map((d) => d.scored!);
+    recordScoringStageSnapshots(editionFor, "scored", scoredList);
 
     if (!scoredList.length) {
       // Funnel collapsed at stage_dossiers — candidates existed but none produced a scored dossier
@@ -717,6 +800,15 @@ export async function buildEveningEdition(opts?: {
       console.warn("[nighthawk/edition] cross-edition governor skipped (DB read failed):", err);
     }
     funnel.governor_passed = ranked.length;
+    // Captured here (not earlier) because `ranked` at this point IS applyCrossEditionGovernor's
+    // own effective-score-sorted survivor list — the govPenalty every surviving candidate carries
+    // going forward. Kept alongside the ranking array itself (not re-derived later) specifically
+    // because deterministic-edition.ts's own grounding-merge sort and edition-builder's later
+    // PR-N26 final sort both mutate/rebuild the candidate list further downstream, and this is
+    // the exact govPenalty a signal-intelligence-corrections.ts shadow_bugfix pass needs to
+    // recompute what the FINAL sort should have used.
+    const govPenaltyByTicker = new Map(ranked.map((c) => [c.ticker, c.govPenalty ?? 0]));
+    recordScoringStageSnapshots(editionFor, "rank_governor", ranked);
 
     // STAGE 4c — Bearish-tape posture (PR-N9): when ≥2 of tide/breadth/regime signal
     // bearish, re-rank to prefer SHORT candidates via a score bonus/penalty. Candidates
@@ -1146,6 +1238,20 @@ export async function buildEveningEdition(opts?: {
     if (finalPlays.length > 1) {
       finalPlays.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
       finalPlays.forEach((p, i) => { p.rank = i + 1; });
+    }
+
+    // rank_final capture (Night Hawk Legacy Signal Intelligence, Phase 1): the order members
+    // ACTUALLY see, published or not — every finalPlays entry that survived to here is getting
+    // published (a finalPlays candidate that gets gated out never reaches this line). gov_penalty
+    // is looked up from the STAGE-4b snapshot (govPenaltyByTicker) since PlaybookPlay itself never
+    // carries it — this is deliberately the same real gap the governor-blind-sort bug lives in:
+    // the play object members see has no govPenalty field to consult, which is *why* PR-N26 can
+    // silently ignore it.
+    const rankFinalRows = buildRankFinalSnapshotRows(editionFor, finalPlays, govPenaltyByTicker);
+    if (rankFinalRows.length) {
+      void insertNighthawkCandidateSnapshots(rankFinalRows).catch((err) => {
+        console.warn("[nighthawk/edition] failed to write rank_final candidate snapshots:", err);
+      });
     }
 
     // Stamp G-N2's ALREADY-COMPUTED target distance onto each published play so members and

@@ -68,6 +68,51 @@ export type ScoredCandidate = {
   regime_adjustment?: number;
 };
 
+/**
+ * Frozen, point-in-time capture of a ScoredCandidate's full breakdown for
+ * nighthawk_candidate_snapshot (Night Hawk Legacy Signal Intelligence, Phase 1). Pure and
+ * additive -- reads every field ScoredCandidate carries, fabricates nothing, and is reused
+ * identically at every STAGE-4/5 capture point (scored / rank_governor / rank_final) so the
+ * same candidate's payload shape stays comparable across stages. Optional fields are omitted
+ * (undefined) rather than coerced to null/0 when ScoredCandidate itself never set them --
+ * JSON.stringify drops undefined keys, which is the correct "this dimension didn't fire"
+ * signal, distinct from a component that fired and scored exactly 0.
+ */
+export function scoredCandidateSnapshotPayload(c: ScoredCandidate): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    score: c.score,
+    direction: c.direction,
+    components: {
+      flow_score: c.flow_score,
+      tech_score: c.tech_score,
+      pos_score: c.pos_score,
+      news_score: c.news_score,
+      smart_money_score: c.smart_money_score,
+      fundamental_score: c.fundamental_score,
+      catalyst_score: c.catalyst_score,
+      catalyst_flags: c.catalyst_flags,
+      short_interest_score: c.short_interest_score,
+      wall_proximity_score: c.wall_proximity_score,
+      vex_alignment_score: c.vex_alignment_score,
+      skew_score: c.skew_score,
+      iv_adjustment: c.iv_adjustment,
+      anomaly_penalty: c.anomaly_penalty,
+      flow_conviction_bonus: c.flow_conviction_bonus,
+      regime_adjustment: c.regime_adjustment,
+    },
+    earnings_risk: c.earnings_risk,
+    confirming_signals: c.confirming_signals,
+    conviction: c.conviction,
+    regime_multiplier: c.regime_multiplier,
+    fundamental_block: c.fundamental_block,
+    fundamental_flags: c.fundamental_flags,
+    trading_halt: c.trading_halt,
+    sector: c.sector,
+    gov_penalty: c.govPenalty,
+  };
+}
+
 export function regimeContextFromMarket(ctx: MarketWideContext): NightHawkRegimeContext {
   return {
     vix_iv_rank: ctx.vix_iv_rank,
