@@ -377,6 +377,42 @@ function sellReasonClause(
   }
 }
 
+// BUG FIX (2026-09-17, Ask Largo standing mandate): the TRIM branch of actionNarrative (below)
+// always rendered as if the profit ladder's own rail were the reason for the recommendation —
+// "Desk says TRIM — next rail at +X%" — regardless of which manage.ts rung actually fired.
+// manage.ts's own rung precedence (see its file header) has FIVE distinct advisory rungs that all
+// map to the same TAKE_PARTIAL action: catalyst_shift, regime_shift, profit_ladder, flow_decay,
+// rel_strength_loss, vol_collapse — only one of those (profit_ladder) is actually ABOUT the rail.
+// Live repro, 2026-09-17, three real open positions simultaneously: CRWD SWING:CRWD:39
+// (manageReason "catalyst_shift", peak +39.2%/now -16.3%) and AAPL SWING:AAPL:38/:37
+// (manageReason "rel_strength_loss", neither ever above +18.6% peak) all rendered "Desk says TRIM
+// — next rail at +100%" — a rail none of the three had ever come close to, while the brief never
+// disclosed the REAL reason (a broken catalyst / lost relative strength) anywhere in the bullet
+// that is supposed to explain the recommendation. This is the exact same defect class as the
+// SELL-side "thesis or ladder fired" bug fixed above (FINDINGS 2026-09-10, sellReasonClause) —
+// TRIM never got the equivalent fix. Mirrors sellReasonClause's shape and, for the three shared
+// rungs (catalyst_shift/regime_shift), its exact wording for consistency; flow_decay/
+// rel_strength_loss/vol_collapse reuse the same reason text manage.ts itself already generates
+// (manage.ts:345/348/351) so the brief never invents a second description of the same event.
+function trimReasonClause(reason: TerminalPlay["manageReason"] | undefined): string {
+  switch (reason) {
+    case "catalyst_shift":
+      return " — catalyst shifted against the thesis";
+    case "regime_shift":
+      return " — regime shifted against the thesis";
+    case "flow_decay":
+      return " — the flow that seeded this thesis has faded";
+    case "rel_strength_loss":
+      return " — lost relative strength vs its benchmark";
+    case "vol_collapse":
+      return " — IV crush eating premium faster than the underlying pays";
+    default:
+      // profit_ladder (the rail text right after this clause already explains it), undefined
+      // (no manage-sync rung yet), or any other rung — say nothing rather than guess.
+      return "";
+  }
+}
+
 function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
 
@@ -464,8 +500,9 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
         ? ` — **+${next.trigger_pct}%** rail already cleared (now **${fmtPct(play.pnlPct!)}**), not yet banked`
         : ` — next rail at **+${next.trigger_pct}%**`
       : "";
+    const reasonClause = trimReasonClause(play.manageReason);
     lines.push(
-      `**Desk says TRIM**${railClause}.` +
+      `**Desk says TRIM**${reasonClause}${railClause}.` +
         (giveback?.kind === "round_trip" ? "" : " Bank partial into strength; don't give back peak.") +
         (trimsFired === 0
           ? " Nothing's banked yet — this is advisory only; place the trim yourself, the desk does not execute trades."
