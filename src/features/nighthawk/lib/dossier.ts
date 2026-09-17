@@ -290,11 +290,40 @@ async function resolveTickerNews(
   ].filter(Boolean);
 }
 
+/**
+ * Session-date context for earnings-proximity scoring — the same shape hunt-builder.ts's
+ * rescoreDossier already takes. Optional and additive: when omitted, scoreCandidate's
+ * earnings_date/today_ymd/tomorrow_ymd stay unset here exactly as they always have (this
+ * function's own pre-existing behavior), same as before this type/param existed.
+ */
+export type DossierSessionContext = {
+  today: string;
+  tomorrow: string;
+  tomorrow_earnings: Record<string, unknown>[];
+};
+
+/** Returns tomorrow's date (YYYY-MM-DD) if the ticker appears in tomorrow_earnings, else null.
+ *  Deliberately duplicated from hunt-builder.ts's own private helper of the same name/logic
+ *  (not imported) — hunt-builder.ts imports fetchAllDossiers FROM this file, so importing back
+ *  from hunt-builder.ts here would create a circular import. */
+export function earningsDateForTicker(
+  ticker: string,
+  tomorrowEarnings: Record<string, unknown>[],
+  tomorrow: string
+): string | null {
+  const sym = ticker.toUpperCase();
+  const hit = tomorrowEarnings.some(
+    (r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym
+  );
+  return hit ? tomorrow : null;
+}
+
 export async function fetchTickerDossier(
   ticker: string,
   regime?: NightHawkRegimeContext | null,
   buildCache?: DossierBuildCache,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  sessionCtx?: DossierSessionContext
 ): Promise<TickerDossier> {
   // Fall back to the module-level default cache for legacy callers that do not
   // supply an explicit build cache. Concurrent edition builds must pass their
@@ -493,6 +522,18 @@ export async function fetchTickerDossier(
     greek_flow: greekFlow,
   };
 
+  // Earnings-proximity scoring (audit gap fix, Night Hawk Legacy Signal Intelligence Phase 1):
+  // this was the FIRST scoring pass's own missing earnings_date/today_ymd/tomorrow_ymd -- the
+  // edition pipeline already patches it via a downstream rescoreDossier() re-score
+  // (edition-builder.ts), which still runs unconditionally and produces an IDENTICAL final
+  // dossier.scored, so this fix does not change the edition path's published output. It DOES fix
+  // the two real callers that read dossier.scored straight from this function with no subsequent
+  // rescore: zerodte/scan.ts's own dossier borrow, and (when sessionCtx is threaded through by a
+  // future caller) play-explainer.ts's fallback narrative path.
+  const earningsDate = sessionCtx
+    ? earningsDateForTicker(sym, sessionCtx.tomorrow_earnings, sessionCtx.tomorrow)
+    : null;
+
   dossier.scored = scoreCandidate(
     sym,
     flows,
@@ -518,6 +559,9 @@ export async function fetchTickerDossier(
       greek_flow: greekFlow,
       iv_rank: ivRank,
       fda_events: fdaEvents,
+      earnings_date: earningsDate,
+      today_ymd: sessionCtx?.today ?? null,
+      tomorrow_ymd: sessionCtx?.tomorrow ?? null,
     },
     flowStreak,
     regime
@@ -529,7 +573,8 @@ export async function fetchTickerDossier(
 async function fetchTickerDossierWithWall(
   ticker: string,
   regime?: NightHawkRegimeContext | null,
-  buildCache?: DossierBuildCache
+  buildCache?: DossierBuildCache,
+  sessionCtx?: DossierSessionContext
 ): Promise<TickerDossier | null> {
   // PHASE 2 CANCELLATION (2026-09-17): same 45s wall, same timing, same resolve-to-null
   // behavior on timeout as before — the ONLY change is that the wall timer now ALSO
@@ -542,7 +587,7 @@ async function fetchTickerDossierWithWall(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      fetchTickerDossier(ticker, regime, buildCache, wallController.signal),
+      fetchTickerDossier(ticker, regime, buildCache, wallController.signal, sessionCtx),
       new Promise<null>((resolve) => {
         timer = setTimeout(() => {
           console.warn(
@@ -565,7 +610,8 @@ export async function fetchAllDossiers(
   tickers: string[],
   batchSize = DOSSIER_BATCH_SIZE,
   regime?: NightHawkRegimeContext | null,
-  onComplete?: (d: TickerDossier) => Promise<void>
+  onComplete?: (d: TickerDossier) => Promise<void>,
+  sessionCtx?: DossierSessionContext
 ): Promise<Record<string, TickerDossier>> {
   // Create a single build cache scoped to this fetchAllDossiers invocation so
   // concurrent calls (e.g. two edition builds running simultaneously) each get
@@ -576,7 +622,7 @@ export async function fetchAllDossiers(
   for (let i = 0; i < tickers.length; i += batchSize) {
     const batch = tickers.slice(i, i + batchSize);
     const results = await Promise.all(
-      batch.map((ticker) => fetchTickerDossierWithWall(ticker, regime, buildCache))
+      batch.map((ticker) => fetchTickerDossierWithWall(ticker, regime, buildCache, sessionCtx))
     );
 
     for (const d of results) {

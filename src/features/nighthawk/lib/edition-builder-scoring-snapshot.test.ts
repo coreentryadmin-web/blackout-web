@@ -124,3 +124,30 @@ test("buildRankFinalSnapshotRows: an empty play list produces an empty result", 
   const { buildRankFinalSnapshotRows } = await import("./edition-builder");
   assert.deepEqual(buildRankFinalSnapshotRows("2026-09-17", [], new Map()), []);
 });
+
+test("buildGovernorCutSnapshotRows: a governor-cut candidate gets a 'rejected' row with the real reasons and its full scored breakdown", async () => {
+  const { buildGovernorCutSnapshotRows } = await import("./edition-builder");
+  const rows = buildGovernorCutSnapshotRows("2026-09-17", [
+    { ticker: "TSLA", scored: scored({ ticker: "TSLA", score: 65, flow_score: 20 }), reasons: ["loss_streak_halt"] },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.stage, "rejected");
+  assert.equal(rows[0]!.rejection_reason, "cross_edition_governor: loss_streak_halt");
+  assert.equal(rows[0]!.selected_for_publish, false);
+  assert.equal(rows[0]!.score, 65);
+  assert.equal(rows[0]!.rank, null, "the governor doesn't rank a cut candidate -- it's gone before ranking matters");
+  assert.equal((rows[0]!.snapshot_json as any).components.flow_score, 20);
+});
+
+test("buildGovernorCutSnapshotRows: multiple reasons are joined into one readable rejection_reason string", async () => {
+  const { buildGovernorCutSnapshotRows } = await import("./edition-builder");
+  const rows = buildGovernorCutSnapshotRows("2026-09-17", [
+    { ticker: "TSLA", scored: scored({ ticker: "TSLA" }), reasons: ["loss_streak_halt", "sector_concentration_cap"] },
+  ]);
+  assert.equal(rows[0]!.rejection_reason, "cross_edition_governor: loss_streak_halt; sector_concentration_cap");
+});
+
+test("buildGovernorCutSnapshotRows: an empty cut list produces an empty result", async () => {
+  const { buildGovernorCutSnapshotRows } = await import("./edition-builder");
+  assert.deepEqual(buildGovernorCutSnapshotRows("2026-09-17", []), []);
+});
