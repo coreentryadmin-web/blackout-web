@@ -4624,6 +4624,47 @@ docs (PRs #4729 through #4755, roughly two dozen merges).
 
 No regression from today's fix volume. GREEN pass, no follow-up needed.
 
+## 2026-09-17 (16:2x UTC) — [DISCOVERY] Real UW+Polygon rate-limiter surge + 0DTE cron-stale alert investigated — genuine, self-healed, NOT a code regression from today's merges
+
+The operator flagged two escalating Discord `#🌩️website-logs` alerts within ~35 min of each
+other: "UW rate-limiter queue timeouts surging" (8:40 AM ET), then both "UW" AND "Polygon
+rate-limiter queue timeouts surging" plus a 🔴🚨 "MARKET-HOURS CRON STALE (RTH)" (`zerodte-warm`,
+scanner 35m stale) at 9:15 AM ET, right after this session had merged 5 PRs in rapid succession
+(#5140/#5141/#5142/#5143/#5145). Investigated end-to-end via CloudWatch Logs + `ecs
+describe_services`/`describe_tasks` + ALB `UnHealthyHostCount` metrics (real AWS creds this
+session) rather than dismissing or guessing:
+
+- **Both alerts were real**, not false alarms. Confirmed genuine `RateLimiterQueueTimeoutError`
+  drops (`waited 20001ms of 20000ms`, `budget exceeded at global_rps`) on BOTH the UW and Polygon
+  (`api.massive.com`) shared rate limiters, and a genuine ~20-minute gap in `[zerodte-scan]` ticks
+  (15:43→16:03 UTC).
+- **Root cause was NOT a code bug in any of today's merged PRs.** The two ECS tasks that failed
+  ALB health checks during this window (`56f355f4e5964...`, `d573253012374...`) both exited with
+  `exitCode: 0`, Docker-level `healthStatus: HEALTHY`, and were serving normal business-logic
+  traffic (polygon-gex escalations, uw reads) with zero exceptions right up to their `SIGTERM` —
+  no crash, no error, nothing pointing at a regression.
+- **Root cause was NOT deployment overlap/instability from rapid merging either.** The
+  `ecr-push-production.yml` workflow serializes deploys (no two ran concurrently); the "Roll ECS
+  production web" step for the PR #5140 deploy took 26 min — actually FASTER than the 4 preceding
+  deploys that same day (28-31 min baseline each) — and ALB `UnHealthyHostCount` never exceeded
+  `1` (out of 8 tasks) at any single point.
+- **Actual driver: real contention on the shared, tightly-budgeted UW (`GLOBAL_MAX_RPS=2`) and
+  Polygon (`GLOBAL_MAX_RPS=150`) rate limiters**, compounded by this session's own earlier heavy
+  historical backtest runs (score-floor/confluence-floor outcome backtests) against those same
+  shared limiters — already caught and killed mid-session, with a pacing discipline already
+  shipped in PR #5145. `/api/ready`'s ALB health check (10s timeout, 30s interval, 3-strike
+  unhealthy threshold) transiently missed on 2 tasks while queue waits against the same shared
+  limiter were spiking toward 20s; ECS replaced both automatically, exactly as designed.
+- **Confirmed fully recovered by 16:27 UTC**: ECS deployment `COMPLETED`/steady-state (8/8
+  running), `[zerodte-scan]` ticking normally again, `UnHealthyHostCount` back to 0, zero
+  rate-limiter "budget exceeded" drops in the trailing 4-minute window.
+
+No code change made — the one concrete corrective action (this session's own backtest pacing
+against the shared UW/Polygon limiter) was already shipped in PR #5145 before this incident was
+fully resolved. Logged here, not as a staged finding, because there is no bug to fix: the
+alerting, the ECS self-heal, and the rate limiters themselves all did exactly what they were
+built to do.
+
 ## 2026-09-17 (RTH) — [DISCOVERY] PR #5140's gate-calibration `days=N` truncation fix confirmed live, post-deploy
 
 Re-ran `scripts/audit/gate-calibration-live-report.mjs --days={14,30,60,90} --no-grade --json`
