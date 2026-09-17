@@ -159,6 +159,10 @@ export function recordApiCall(input: {
   headers_sent?: string[];
   /** Mark non-network events (e.g. admin route catch-blocks) so they are kept out of latency aggregation. */
   synthetic?: boolean;
+  /** See ApiCallEvent.queue_wait_ms — ms spent waiting for shared-limiter admission before this call's own `latency_ms` started. Omit when the caller has no queueing concept. */
+  queue_wait_ms?: number | null;
+  /** See ApiCallEvent.cancel_reason — why this call was aborted, if it was. */
+  cancel_reason?: string | null;
 }): ApiCallEvent {
   const correlation_id = input.correlation_id ?? `${Date.now()}-${++eventSeq}`;
   const attempt = input.attempt ?? 1;
@@ -206,6 +210,8 @@ export function recordApiCall(input: {
     severity,
     sla_breach,
     synthetic: input.synthetic ?? false,
+    queue_wait_ms: input.queue_wait_ms ?? null,
+    cancel_reason: input.cancel_reason ?? null,
   };
 
   if (!input.ok && retry_status === "scheduled") {

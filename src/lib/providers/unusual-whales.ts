@@ -137,6 +137,8 @@ function writeUwCache(key: string, path: string, data: unknown): void {
   uwResponseCache.set(key, { data, fetchedAt: Date.now(), ttlMs });
 }
 
+let uwCorrelationSeq = 0;
+
 async function uwGet<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
   if (!uwConfigured()) throw new Error("UW_API_KEY not set");
   if (isUwCircuitOpen()) throw new Error(`Unusual Whales ${path} → 429 circuit`);
@@ -146,33 +148,46 @@ async function uwGet<T>(path: string, params: Record<string, string | number> = 
 
   const url = `${BASE}${path}${qs.size ? `?${qs}` : ""}`;
   const requestKey = buildUwRequestKey(path, params);
+  // Generated here (not left to trackedFetch's own default) so the SAME id covers this
+  // call's queue-admission wait and its eventual HTTP attempt(s) — joinable in the
+  // [api-queue-timing] log / ApiCallEvent ring buffer by one correlation_id end to end.
+  const corrId = `uw-${Date.now()}-${++uwCorrelationSeq}`;
+  let queueWaitMs: number | null = null;
 
   // Coalesce on the PARSED JSON, not the Response. A Response body is a one-shot stream,
   // so handing the same in-flight Response to concurrent callers made the 2nd .json()
   // throw 'body already read' — silently dropping greek-exposure / net-prem desk data
   // under load (uwGetSafe swallowed it as null). Parsing inside the coalesced fn lets
   // every concurrent caller share one already-parsed payload.
-  return throttleUwCoalesced(requestKey, async () => {
-    const res = await trackedFetch("unusual_whales", path, url, {
-      headers: {
-        Authorization: `Bearer ${KEY}`,
-        Accept: "application/json",
-        "UW-CLIENT-API-ID": CLIENT_ID,
-      },
-      cache: "no-store",
-    });
-    if (res.status === 429) {
-      // Do NOT count the 429 here. uwGetSafe's catch is the single counting site
-      // (noteUw429) for the breaker; counting in both this fetch path AND the catch
-      // double-incremented recent429Timestamps, tripping the breaker at half
-      // CIRCUIT_429_THRESHOLD (and faster under request coalescing: 1 here + N waiters
-      // in the catch). Direct-uwGet callers (fetchMarketFlowAlertRows) record the 429
-      // in their own catch instead.
-      throw new Error(`Unusual Whales ${path} → 429`);
+  return throttleUwCoalesced(
+    requestKey,
+    async () => {
+      const res = await trackedFetch("unusual_whales", path, url, {
+        headers: {
+          Authorization: `Bearer ${KEY}`,
+          Accept: "application/json",
+          "UW-CLIENT-API-ID": CLIENT_ID,
+        },
+        cache: "no-store",
+        correlationId: corrId,
+        queueWaitMs,
+      });
+      if (res.status === 429) {
+        // Do NOT count the 429 here. uwGetSafe's catch is the single counting site
+        // (noteUw429) for the breaker; counting in both this fetch path AND the catch
+        // double-incremented recent429Timestamps, tripping the breaker at half
+        // CIRCUIT_429_THRESHOLD (and faster under request coalescing: 1 here + N waiters
+        // in the catch). Direct-uwGet callers (fetchMarketFlowAlertRows) record the 429
+        // in their own catch instead.
+        throw new Error(`Unusual Whales ${path} → 429`);
+      }
+      if (!res.ok) throw new Error(`Unusual Whales ${path} → ${res.status}`);
+      return res.json() as Promise<T>;
+    },
+    (waitedMs) => {
+      queueWaitMs = waitedMs;
     }
-    if (!res.ok) throw new Error(`Unusual Whales ${path} → ${res.status}`);
-    return res.json() as Promise<T>;
-  });
+  );
 }
 
 /**

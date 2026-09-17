@@ -659,8 +659,19 @@ export function noteQueueAdmissionRecoveryForAlert(now: () => number = Date.now)
   }
 }
 
-/** Pace a single UW HTTP call through local + optional Redis-global buckets. */
-export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
+/**
+ * Pace a single UW HTTP call through local + optional Redis-global buckets.
+ *
+ * `onAdmitted`, when supplied, receives the real ms this call waited for a slot
+ * (`acquireSlot()`'s own return value — the same number `formatQueueWaitLog` already
+ * logs) BEFORE `fn` runs, so a caller can thread queue-wait time into its own
+ * telemetry (e.g. unusual-whales.ts's `uwGet` -> trackedFetch's `queueWaitMs`).
+ * Purely additive: every existing call site omits it and behaves identically.
+ */
+export async function throttleUw<T>(
+  fn: () => Promise<T>,
+  onAdmitted?: (waitedMs: number) => void
+): Promise<T> {
   // Hunt-budget gate (cache-reader rule): when a Night Hawk hunt is running, a GENUINE
   // live UW call must first claim a token from the per-hunt budget. Once spent, throw
   // BEFORE touching acquireSlot() so an exhausted hunt never queues on — let alone
@@ -680,6 +691,7 @@ export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   noteQueueAdmissionRecoveryForAlert();
   const logLine = formatQueueWaitLog(waitedMs, isBackgroundUwSweep());
   if (logLine) console.warn(logLine);
+  onAdmitted?.(waitedMs);
   try {
     return await fn();
   } finally {
@@ -687,12 +699,25 @@ export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Dedup identical in-flight GETs and pace through throttleUw. */
-export async function throttleUwCoalesced<T>(key: string, fn: () => Promise<T>): Promise<T> {
+/**
+ * Dedup identical in-flight GETs and pace through throttleUw.
+ *
+ * `onAdmitted` is forwarded to throttleUw ONLY for the caller that actually triggers
+ * the underlying fetch (a cache miss on `coalescedInflight`). A caller that instead
+ * joins an already-in-flight request never calls acquireSlot() itself — there is no
+ * meaningful "this caller's own queue wait" to report for it, so `onAdmitted` is
+ * simply not invoked in that case rather than reporting someone else's wait time as
+ * this caller's own.
+ */
+export async function throttleUwCoalesced<T>(
+  key: string,
+  fn: () => Promise<T>,
+  onAdmitted?: (waitedMs: number) => void
+): Promise<T> {
   const existing = coalescedInflight.get(key);
   if (existing) return existing as Promise<T>;
 
-  const promise = throttleUw(fn).finally(() => {
+  const promise = throttleUw(fn, onAdmitted).finally(() => {
     coalescedInflight.delete(key);
   });
   coalescedInflight.set(key, promise);

@@ -8,6 +8,11 @@ import { fileURLToPath } from "node:url";
 // which this project's CJS transform does not support. uw-rate-limiter.ts has no
 // @/lib/* imports, so it loads cleanly under `npx tsx --test`.
 process.env.UW_CIRCUIT_429_THRESHOLD = "5";
+// High enough that the new onAdmitted tests below never wait on local pacing/concurrency —
+// they're testing the callback wiring, not the limiter's own throughput (already covered
+// elsewhere in this file).
+process.env.UW_MAX_RPS = "1000";
+process.env.UW_GLOBAL_MAX_RPS = "1000";
 
 // acquireGlobalRedisSlot() is not exported (it depends on getSharedRedis()'s dynamic
 // ../make-redis import + REDIS_URL env, not worth mocking here), so the composition itself is
@@ -270,4 +275,76 @@ test("runWithBackgroundUwSweep does not leak into a concurrent call outside its 
     2,
     "a concurrent UNTAGGED call must see the FULL ceiling — live traffic is unaffected by a sweep running alongside it"
   );
+});
+
+// Phase 1 instrumentation: throttleUw/throttleUwCoalesced gained an optional `onAdmitted`
+// callback so a caller (unusual-whales.ts's uwGet) can thread the real queue-wait time into
+// its own telemetry. Purely additive — every pre-existing 1-arg/2-arg call site above this
+// point in the file (and every real production call site) is unaffected.
+
+test("throttleUw: the legacy 1-arg call site behaves exactly as before (no onAdmitted)", async () => {
+  const { throttleUw } = await import("./uw-rate-limiter");
+  const result = await throttleUw(async () => "legacy-ok");
+  assert.equal(result, "legacy-ok");
+});
+
+test("throttleUw: onAdmitted receives the real admission wait (a number >= 0) BEFORE fn runs", async () => {
+  const { throttleUw } = await import("./uw-rate-limiter");
+  const order: string[] = [];
+  let waitedMsSeen: number | null = null;
+  const result = await throttleUw(
+    async () => {
+      order.push("fn");
+      return "ok";
+    },
+    (waitedMs) => {
+      waitedMsSeen = waitedMs;
+      order.push("onAdmitted");
+    }
+  );
+  assert.equal(result, "ok");
+  assert.equal(typeof waitedMsSeen, "number");
+  assert.ok(waitedMsSeen! >= 0);
+  assert.deepEqual(order, ["onAdmitted", "fn"], "onAdmitted must fire before fn, not after");
+});
+
+test("throttleUw: fn's own rejection is not swallowed by adding onAdmitted", async () => {
+  const { throttleUw } = await import("./uw-rate-limiter");
+  await assert.rejects(
+    () => throttleUw(async () => { throw new Error("boom"); }, () => {}),
+    /boom/
+  );
+});
+
+test("throttleUwCoalesced: onAdmitted fires for the caller that triggers the fetch, not for a caller that joins the same in-flight request", async () => {
+  const { throttleUwCoalesced } = await import("./uw-rate-limiter");
+  let resolveFirst!: (v: string) => void;
+  const inFlight = new Promise<string>((r) => { resolveFirst = r; });
+  const admittedCallers: number[] = [];
+
+  // Both calls fire synchronously (no await between them) so the second observes the
+  // first's promise already registered in coalescedInflight — the real coalescing path.
+  const p1 = throttleUwCoalesced("phase1-test-key", () => inFlight, () => admittedCallers.push(1));
+  const p2 = throttleUwCoalesced("phase1-test-key", () => inFlight, () => admittedCallers.push(2));
+
+  resolveFirst("shared-result");
+  const [r1, r2] = await Promise.all([p1, p2]);
+
+  assert.equal(r1, "shared-result");
+  assert.equal(r2, "shared-result", "the joining caller gets the SAME result, never a second fetch");
+  assert.deepEqual(
+    admittedCallers,
+    [1],
+    "only the triggering caller's onAdmitted fires — the joining caller never itself calls acquireSlot()"
+  );
+});
+
+test("throttleUwCoalesced: a distinct key after the first resolves triggers a fresh admission (no stale coalescing)", async () => {
+  const { throttleUwCoalesced } = await import("./uw-rate-limiter");
+  const admittedCallers: number[] = [];
+  const r1 = await throttleUwCoalesced("phase1-test-key-2a", async () => "one", () => admittedCallers.push(1));
+  const r2 = await throttleUwCoalesced("phase1-test-key-2b", async () => "two", () => admittedCallers.push(2));
+  assert.equal(r1, "one");
+  assert.equal(r2, "two");
+  assert.deepEqual(admittedCallers, [1, 2], "distinct keys each get their own admission");
 });
