@@ -102,6 +102,18 @@ test("countGlued does not flag a heading quoted verbatim in backticks as glued",
   assert.equal(repairGlued(quoting), quoting, "repairGlued must leave a backtick-quoted heading untouched");
 });
 
+// A narrower first attempt at the fix above (checking only whether the character immediately
+// before "##" is a backtick) missed this case: the heading text is not the FIRST thing inside the
+// code span -- e.g. quoting this test suite's own illustrative "glued" example, prefixed by other
+// text, inside one open span. Found 2026-09-17 writing up the first fix's own staged finding.
+test("countGlued does not flag a heading quoted mid-span, not at the span's own start", () => {
+  const quoting = file(
+    entry("A", 'the shape is `"FIXED. |## 2026-08-21 — [FINDING, P1 test] Old..."` verbatim')
+  );
+  assert.equal(countGlued(quoting), 0);
+  assert.equal(repairGlued(quoting), quoting, "repairGlued must leave a mid-span quoted heading untouched");
+});
+
 test("damaged input is repaired before it is split, and the repair is reported", () => {
   const base = file(entry("A"));
   const clean = file(entry("A"), entry("B"));

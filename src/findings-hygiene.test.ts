@@ -249,14 +249,21 @@ test("entry headings are never glued onto the end of another line", () => {
   // entry | `## 2026-09-02 — [FINDING, ...] ... — OPEN`." — is a real, full date-shaped
   // heading, backtick-quoted, mid-line, and is likewise not a glued heading. A genuinely glued
   // heading (this test's own example above: "FIXED. |## 2026-08-21 — [FINDING, ...") is never
-  // immediately preceded by a backtick — a dropped newline produces raw adjacent markdown, not
-  // a code span — so excluding only the backtick-preceded case keeps the real-bug detection
-  // intact while allowing verbatim quotation of a prior entry's heading as evidence.
+  // inside a code span — a dropped newline produces raw adjacent markdown, not a code span.
+  //
+  // "Inside a code span" is checked with backtick PARITY on the line up to the match, not merely
+  // "is the immediately preceding character a backtick" (a narrower first attempt at this same
+  // fix, same day, missed a THIRD case: a finding's own prose quoting this test's illustrative
+  // fixture text inside a span whose first character is not the heading itself -- e.g. `` `"FIXED.
+  // |## 2026-08-21 — [FINDING, ..."` `` -- where the character immediately before "##" is "|", not
+  // a backtick, even though the whole thing sits inside one open span). An odd backtick count
+  // before the match means we are inside an unclosed span on this line; even means we are not.
   const src = readFileSync(FINDINGS, "utf8");
   const glued: string[] = [];
   src.split("\n").forEach((line, i) => {
     const idx = line.indexOf("## 2");
-    if (idx > 0 && line[idx - 1] !== "`" && /^## \d{4}-\d{2}-\d{2} — \[/.test(line.slice(idx))) {
+    const insideCodeSpan = idx > 0 && (line.slice(0, idx).match(/`/g) || []).length % 2 === 1;
+    if (idx > 0 && !insideCodeSpan && /^## \d{4}-\d{2}-\d{2} — \[/.test(line.slice(idx))) {
       glued.push(`line ${i + 1}: …${line.slice(Math.max(0, idx - 30), idx + 80)}`);
     }
   });
