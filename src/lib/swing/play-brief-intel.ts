@@ -735,7 +735,15 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       const n = play.gateBlocks.length;
       lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Entry section above.`);
     }
-    if (play.entryStatus) lines.push(`Entry geometry: **${play.entryStatus.replace(/_/g, " ")}**`);
+    // BUG FIX (Ask Largo standing mandate, 2026-09-17): this used to re-render `play.entryStatus`
+    // as its own "Entry geometry" bullet — but `watchEntrySection` (play-brief.ts, "Entry" section,
+    // which composeSwingPlayBrief always places BEFORE this section for a WATCH play) already
+    // renders the IDENTICAL fact under the same "Entry geometry" label. Live repro: TSM WATCH brief
+    // 2026-09-17, "## Entry" printed "Entry geometry: **AT_TRIGGER**" and "## Watch levels" printed
+    // it again as "Entry geometry: **AT TRIGGER**" — same fact, inconsistent formatting (raw enum
+    // vs humanized). Same duplication shape as the gateBlocks fix directly above; unlike gateBlocks
+    // this is a single scalar with no count worth preserving, so the second copy is dropped rather
+    // than replaced with a pointer.
     if (play.flagUnderlyingPx != null) {
       lines.push(`Flag anchor: **${play.flagUnderlyingPx.toFixed(2)}** — track move from here`);
     }
