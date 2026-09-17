@@ -333,6 +333,11 @@
       "session_state": "post-close, market closed",
       "activity": "Aggressive-mode research-archaeology cycle: caught and corrected a stale open_findings entry (2026-09-10-qqq-stale-entry-premium) before it perpetuated -- CLAUDE.md's own staleness-trap warning ('a fresh session must verify against main... never trust a shipped-so-far list at face value') applied directly to my own journal, not just this file's operator-mandate section. Cross-checked plan.ts's resolveLedgerEntryPremium current code + its board.test.ts regression tests against the finding's own root-cause files and PR #4786's (2026-09-11) commit message, plus the earlier 2026-08-27 PR #2986 finding in FINDINGS.md, and confirmed all 7 backtested near-instant catastrophic-stop instances are pre-fix historical DB artifacts, not an ongoing gap -- the STOP_TRIGGER_PCT=50% ceiling now mathematically closes the entire dead zone (verified via the exact numeric boundary test: mark 50.00% below caps, 49.99% below doesn't). Closed the finding out as MERGED/FIXED. No new code change needed -- this was a bookkeeping correction, not a bug fix.",
       "findings_this_cycle": "0 new -- 1 stale finding reconciled and closed"
+    },
+    "2026-09-17T21:00:19Z": {
+      "session_state": "post-close, market closed",
+      "activity": "Picked up the 2026-09-11 cross-lane handoff from Legacy (0dte-rr-preentry-display-rounding-boundary): PlayTerminal.tsx's ZeroDtePreEntryContext shared deterministic-edition.ts's already-fixed rr.toFixed(1)-vs-raw-threshold display bug. Root-causing further (not just applying the named fix blindly) found the handoff's named line is currently unreachable for 0DTE horizon (commandSinglePanel routes ZERO_DTE straight to ZeroDteCommandPanel) -- grepped every rrRatio call site and found the REAL live 0DTE instance plus 2 more of the same shape, 5 total. Fixed all 5 with the proven floor-based pattern from PR #4813, added 3 regression tests (RED->GREEN via git stash), full command-deck suite 431/431, tsc clean. Opened PR #5157 (draft), subscribed to activity.",
+      "findings_this_cycle": "1 fixed (5 call sites, 1 root cause) -- PR #5157 open"
     }
   },
   "sessions": {
@@ -493,7 +498,7 @@
     },
     {
       "id": "2026-09-11-0dte-rr-preentry-display-rounding-boundary",
-      "status": "NEW -- cross-lane handoff from Night Hawk Legacy lane, fix already proven, not yet applied here",
+      "status": "MERGED -- fix/0dte-rr-display-rounding-boundary PR pending, staged finding written",
       "summary": "src/features/nighthawk/command-deck/PlayTerminal.tsx:876 (ZeroDtePreEntryContext, the 0DTE pre-entry Risk:Reward line) has the IDENTICAL root-cause bug the Legacy lane just fixed and shipped in deterministic-edition.ts (PR #4813, merged sha ab3781aae): `{rr.toFixed(1)}:1{rr >= 2 ? \" (strong)\" : rr >= 1 ? \" (favorable)\" : rr >= 0.5 ? \" (acceptable)\" : \" (tight)\"}` rounds the DISPLAYED number to-nearest with toFixed(1) while the quality label buckets on the TRUE unrounded `rr` (play.rrRatio) against the exact same threshold ladder (2 / 1 / 0.5) the rounded display can cross. Any rr just under a threshold (e.g. 0.49, 0.95, 1.95) displays as exactly the threshold value (\"0.5\", \"1.0\", \"2.0\") while the label still reads the lower bucket -- e.g. \"0.5:1 (tight)\" where \"tight\" is defined as < 0.5, self-contradicting the printed number the same way the Legacy thesis text did before the fix.",
       "root_cause_files": [
         "src/features/nighthawk/command-deck/PlayTerminal.tsx:876 (ZeroDtePreEntryContext -- 0DTE-only, confirmed via function name/comment 'Pre-entry context for 0DTE plays'; not reachable from Legacy)"
@@ -505,7 +510,8 @@
         "tests_added": "src/features/nighthawk/lib/deterministic-edition.test.ts -- 2 new cases: rr=0.49 must NOT display '0.5' while labeled tight, rr=0.95/1.95 boundary cases."
       },
       "why_logged_not_fixed_here": "Out of this session's scope (Legacy-only mandate; 0DTE is a separate parallel lane) and this file is 0DTE command-deck surface -- logging for the 0DTE lane to pick up and apply the same proven fix, rather than risk an unowned edit on shared command-deck code another lane may be actively working.",
-      "found_by": "Night Hawk Legacy lane, 23:51 UTC 2026-09-11 cycle, during blast-radius grep for other toFixed(1)+threshold-ladder pairs after shipping the Legacy-side fix."
+      "found_by": "Night Hawk Legacy lane, 23:51 UTC 2026-09-11 cycle, during blast-radius grep for other toFixed(1)+threshold-ladder pairs after shipping the Legacy-side fix.",
+      "resolution": "Picked up the cross-lane handoff. Root-causing it further found the handoff's named line (PlayTerminal.tsx:876 ZeroDtePreEntryContext) is currently UNREACHABLE for 0DTE -- commandSinglePanel routes every horizon==='ZERO_DTE' play straight to ZeroDteCommandPanel, bypassing the tabbed ThesisPanel/PnlPanel tree ZeroDtePreEntryContext lives in (only LEAPS horizon reaches it today). Grepping every rrRatio call site found the REAL live 0DTE instance at ZeroDteCommandPanel.tsx:368, plus two more of the same shape (PlayTerminal.tsx's other two R:R rows, LegacyPlayDetailPanel.tsx) -- fixed all 5 with the same floor-based display pattern already shipped in deterministic-edition.ts (PR #4813). See docs/audit/findings-staging/2026-09-17-rr-display-rounding-crosses-threshold-label.md for the full write-up. 3 new regression tests, RED->GREEN confirmed via git stash, full command-deck suite 431/431, tsc clean."
     },
     {
       "id": "2026-09-17-flat-theta-bleed-trough-narrative",
