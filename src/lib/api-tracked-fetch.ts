@@ -205,6 +205,17 @@ export async function trackedFetch(
         headers_sent: headersSent,
       });
 
+      // A caller-initiated cancellation must never be retried. The caller explicitly asked to
+      // stop, and retrying fires a SECOND real fetch() whose composed signal (AbortSignal.any
+      // above) is already aborted before the call even starts — that doesn't retry anything
+      // meaningful, it just opens another connection the caller no longer wants. Observed live:
+      // that second connection doesn't fail fast either, so an aborted request took ~2x
+      // DEFAULT_FETCH_TIMEOUT_MS to finally settle instead of resolving promptly, defeating the
+      // entire point of passing a signal. Only the CALLER's own signal disqualifies a retry here
+      // — this attempt's own internal per-attempt AbortSignal.timeout() firing is a genuine
+      // transient failure and must still retry exactly as before.
+      if (fetchInit.signal?.aborted) throw err;
+
       if (attempt >= maxAttempts) throw err;
       await sleep(delayMs * attempt);
     }
