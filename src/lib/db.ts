@@ -1534,6 +1534,62 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_nighthawk_scoring_history_edition
       ON nighthawk_scoring_history(edition_for);
 
+    -- nighthawk_candidate_snapshot (Night Hawk Legacy Signal Intelligence, Phase 1 foundation):
+    -- append-only per-STAGE capture of every candidate the discovery/scoring/ranking/publish
+    -- pipeline touches, published or not — the measurement gap nighthawk_scoring_history above
+    -- does not close, because that table is upserted ONE ROW PER (edition_for, ticker), so a
+    -- later archive overwrites an earlier one and there is no way to see how a candidate's score/
+    -- rank changed as it moved through the pipeline's 5 distinct sort/filter passes
+    -- (candidates.ts's confluence gate, scorer.ts's scoreCandidate, cross-edition-governor.ts,
+    -- bearish-posture.ts, deterministic-edition.ts's grounding merge, edition-builder.ts's final
+    -- PR-N26 sort). This table is append-only and structured like zerodte_discovery_events
+    -- (typed filter columns + one frozen JSONB payload) rather than upserted like
+    -- nighthawk_scoring_history, specifically so EVERY stage transition for a ticker within one
+    -- edition gets its own durable row instead of being overwritten by the next stage.
+    --
+    -- stage is a free-text pipeline-stage tag (not CHECK-constrained, same convention as
+    -- zerodte_discovery_events.kind), expected values as of this writing: 'discovery' (STAGE 2,
+    -- pre-confluence-gate candidate pool), 'scored' (STAGE 4, scoreCandidate output),
+    -- 'rank_initial'/'rank_governor'/'rank_bearish_posture'/'rank_grounding_merge'/'rank_final'
+    -- (STAGE 5's 5 sort passes — see edition-builder.ts/cross-edition-governor.ts/
+    -- bearish-posture.ts/deterministic-edition.ts), 'rejected' (STAGE 2 confluence gate or
+    -- STAGE 6 geometry/premium-cap/illiquid/ungrounded/sector/publish-gate/governor rejection),
+    -- 'published' (STAGE 7 final decision). rank/score/gov_penalty are nullable because not
+    -- every stage produces all three (e.g. a 'discovery' row has no rank yet; a 'rejected' row at
+    -- the confluence gate never reached scoring). rejection_reason/selected_for_publish are
+    -- only meaningful at terminal stages ('rejected'/'published' respectively) and null elsewhere.
+    --
+    -- snapshot_json is the frozen point-in-time payload — raw pipeline inputs and outputs at
+    -- THIS stage only, written once and never rewritten later (same "freeze what the system saw
+    -- that night, never re-derive" discipline publish_context/zerodte's entry_context/
+    -- feature_vector already use) — never re-fetched or backfilled with "current" data. Shape is
+    -- versioned via a schema_version key inside snapshot_json (mirrors PUBLISH_CONTEXT_VERSION's
+    -- own in-payload versioning, publish-context.ts) rather than a DB column, so it can evolve
+    -- additively without a migration. This is the mechanism that lets Phase 3's shadow-ranking
+    -- variants (e.g. shadow_bugfix, correcting the unusualness-multiplier unit-mismatch bug and
+    -- the governor-blind final-sort bug — both confirmed live, neither fixed here) be computed
+    -- retroactively from real historical rows without look-ahead contamination: the raw inputs a
+    -- correction needs (e.g. discovery-stage raw flow premium vs the normalized lane-point value
+    -- production's own bug conflates) are captured once, here, even though production's own
+    -- ranking logic is left completely unchanged by this table's existence.
+    CREATE TABLE IF NOT EXISTS nighthawk_candidate_snapshot (
+      id                   BIGSERIAL PRIMARY KEY,
+      edition_for          DATE NOT NULL,
+      ticker               TEXT NOT NULL,
+      stage                TEXT NOT NULL,
+      observed_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      rank                 INTEGER,
+      score                NUMERIC,
+      gov_penalty          NUMERIC,
+      rejection_reason     TEXT,
+      selected_for_publish BOOLEAN,
+      snapshot_json        JSONB NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_nighthawk_candidate_snapshot_edition
+      ON nighthawk_candidate_snapshot (edition_for, ticker, observed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_nighthawk_candidate_snapshot_stage
+      ON nighthawk_candidate_snapshot (stage, edition_for);
+
     -- zerodte_scan_rejections (task #147): durable near-miss/rejection log for 0DTE
     -- Command's scanner (src/lib/zerodte/board.ts's deriveZeroDteSetups, src/lib/
     -- zerodte/scan.ts's warmZeroDteBoard) — the 0DTE-Command analogue of
@@ -10405,6 +10461,163 @@ export async function fetchNighthawkScoringHistory(
     staged_at: String(r.staged_at),
     archived_at: String(r.archived_at),
   }));
+}
+
+/**
+ * Write ONE candidate-snapshot row (nighthawk_candidate_snapshot, see that table's own doc
+ * comment above for the full rationale). Always insert, never upsert — every call from every
+ * pipeline stage produces its own durable row, by design, so a later stage's write never
+ * overwrites an earlier stage's. Callers decide WHEN to call this (per-stage, per-candidate);
+ * this function only persists what it's given.
+ */
+export async function insertNighthawkCandidateSnapshot(row: {
+  edition_for: string;
+  ticker: string;
+  stage: string;
+  rank?: number | null;
+  score?: number | null;
+  gov_penalty?: number | null;
+  rejection_reason?: string | null;
+  selected_for_publish?: boolean | null;
+  snapshot_json: Record<string, unknown>;
+}): Promise<void> {
+  await ensureSchema();
+  await dbQuery(
+    `INSERT INTO nighthawk_candidate_snapshot (
+      edition_for, ticker, stage, rank, score, gov_penalty,
+      rejection_reason, selected_for_publish, snapshot_json
+    ) VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [
+      row.edition_for,
+      row.ticker.toUpperCase(),
+      row.stage,
+      row.rank ?? null,
+      row.score ?? null,
+      row.gov_penalty ?? null,
+      row.rejection_reason ?? null,
+      row.selected_for_publish ?? null,
+      JSON.stringify(row.snapshot_json),
+    ]
+  );
+}
+
+/**
+ * Bulk write path for insertNighthawkCandidateSnapshot — a single stage transition typically
+ * produces one row per candidate in the pool (e.g. every scored candidate at once), and a
+ * per-row round trip for a 15-90 ticker pool would be needlessly slow. Same "insert, caller
+ * already decided what to write" contract; still append-only, still no upsert.
+ */
+export async function insertNighthawkCandidateSnapshots(
+  rows: Array<{
+    edition_for: string;
+    ticker: string;
+    stage: string;
+    rank?: number | null;
+    score?: number | null;
+    gov_penalty?: number | null;
+    rejection_reason?: string | null;
+    selected_for_publish?: boolean | null;
+    snapshot_json: Record<string, unknown>;
+  }>
+): Promise<void> {
+  if (!rows.length) return;
+  await ensureSchema();
+  const values: unknown[] = [];
+  const tuples: string[] = [];
+  rows.forEach((row, i) => {
+    const base = i * 9;
+    tuples.push(
+      `($${base + 1}::date,$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9})`
+    );
+    values.push(
+      row.edition_for,
+      row.ticker.toUpperCase(),
+      row.stage,
+      row.rank ?? null,
+      row.score ?? null,
+      row.gov_penalty ?? null,
+      row.rejection_reason ?? null,
+      row.selected_for_publish ?? null,
+      JSON.stringify(row.snapshot_json)
+    );
+  });
+  await dbQuery(
+    `INSERT INTO nighthawk_candidate_snapshot (
+      edition_for, ticker, stage, rank, score, gov_penalty,
+      rejection_reason, selected_for_publish, snapshot_json
+    ) VALUES ${tuples.join(",")}`,
+    values
+  );
+}
+
+export type NighthawkCandidateSnapshotRow = {
+  id: number;
+  edition_for: string;
+  ticker: string;
+  stage: string;
+  observed_at: string;
+  rank: number | null;
+  score: number | null;
+  gov_penalty: number | null;
+  rejection_reason: string | null;
+  selected_for_publish: boolean | null;
+  snapshot_json: Record<string, unknown>;
+};
+
+/**
+ * Pure row mapper for nighthawk_candidate_snapshot — separated from the query so it's directly
+ * unit-testable without Postgres (raw PG is blocked in CI/this sandbox; source-inspection +
+ * pure-mapper tests are this file's established substitute, see db-swing-ledger.test.ts). Handles
+ * node-pg's usual surprises: NUMERIC columns arrive as strings, not numbers; JSONB columns already
+ * arrive parsed as objects, never as strings needing a second JSON.parse.
+ */
+export function mapNighthawkCandidateSnapshotRow(r: Record<string, unknown>): NighthawkCandidateSnapshotRow {
+  return {
+    id: Number(r.id),
+    edition_for: isoDateString(r.edition_for),
+    ticker: String(r.ticker).toUpperCase(),
+    stage: String(r.stage),
+    observed_at: isoTimestampString(r.observed_at) ?? "",
+    rank: r.rank != null ? Number(r.rank) : null,
+    score: r.score != null ? Number(r.score) : null,
+    gov_penalty: r.gov_penalty != null ? Number(r.gov_penalty) : null,
+    rejection_reason: r.rejection_reason != null ? String(r.rejection_reason) : null,
+    selected_for_publish: r.selected_for_publish != null ? Boolean(r.selected_for_publish) : null,
+    snapshot_json: (r.snapshot_json as Record<string, unknown>) ?? {},
+  };
+}
+
+/**
+ * Read path for nighthawk_candidate_snapshot. Pass `stage` to scope to one pipeline stage
+ * (e.g. every 'rejected' row for the night); omit it to see a ticker's/edition's full
+ * stage-by-stage history. Always ordered oldest-first so a caller reconstructing "how did this
+ * candidate's rank change across the pipeline" gets rows in the order the pipeline actually
+ * produced them.
+ */
+export async function fetchNighthawkCandidateSnapshots(
+  editionFor: string,
+  opts?: { ticker?: string; stage?: string }
+): Promise<NighthawkCandidateSnapshotRow[]> {
+  await ensureSchema();
+  const conditions = ["edition_for = $1::date"];
+  const params: unknown[] = [editionFor];
+  if (opts?.ticker) {
+    params.push(opts.ticker.toUpperCase());
+    conditions.push(`ticker = $${params.length}`);
+  }
+  if (opts?.stage) {
+    params.push(opts.stage);
+    conditions.push(`stage = $${params.length}`);
+  }
+  const res = await dbQuery(
+    `SELECT id, edition_for, ticker, stage, observed_at, rank, score, gov_penalty,
+            rejection_reason, selected_for_publish, snapshot_json
+     FROM nighthawk_candidate_snapshot
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY observed_at ASC, id ASC`,
+    params
+  );
+  return res.rows.map(mapNighthawkCandidateSnapshotRow);
 }
 
 /** Fail jobs stuck in `running` (or intermediate stage) long enough to block resume/idempotency. */
