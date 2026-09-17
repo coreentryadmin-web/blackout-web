@@ -4,7 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-17 (12:19 UTC) — [SEO] Lane heartbeat: flagged a 6-PR green-draft jam (not SEO-lane), CLS/og validated, GSC unchanged
+## 2026-09-17 (13:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good
+
+**Severity.** — (no defect found)
+
+Confirmed market open (Thu 2026-09-17, trading day, 09:34 ET) before starting the RTH-scoped job.
+Live gamma-snapshot API: `calculation_id` advancing across 3 polls over ~15s, spot moving
+(7630.64→7629.02), age 13-22s, `degraded` false throughout; cross-checked against Massive `I:SPX`
+ground truth (7626.35) — matches within normal drift for a moving market (SPX +0.99% intraday).
+Purged Cloudflare edge (HTML only) and re-measured homepage CLS live: desktop **0.0002 GOOD**,
+mobile **0.0111 GOOD**.
+
+The 6-PR green-draft jam flagged at 12:19 UTC (comment on #5114) is still unresolved — not
+re-flagging, would be duplicate noise; the coordinator has the context already.
+
+No defects found.
 
 **Severity.** — (no defect found; unblocked another lane's stuck work)
 
