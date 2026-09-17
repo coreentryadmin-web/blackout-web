@@ -1605,6 +1605,20 @@ async function runMigrations(): Promise<void> {
       ON nighthawk_candidate_snapshot (edition_for, ticker, observed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_nighthawk_candidate_snapshot_stage
       ON nighthawk_candidate_snapshot (stage, edition_for);
+    -- Night Hawk Legacy Signal Intelligence Phase 1.8: the multi-horizon (5m/15m/30m/1h/EOD)
+    -- forward-return series for this (edition_for, ticker) session, computed offline by
+    -- candidate-forward-grade.ts's computeCandidateForwardReturns from real Polygon minute bars,
+    -- ANCHORED AT SESSION OPEN (same convention nighthawk_play_outcomes' next_day_open/
+    -- next_day_close already use, not this row's own observed_at -- a candidate is typically
+    -- captured overnight during edition build, well before market open). DIRECTION-AGNOSTIC: raw
+    -- underlying % move, never sign-aligned against this row's own direction (see that module's
+    -- header doc) -- every stage row for the same (edition_for, ticker) shares one identical
+    -- blob. Frozen once computed (COALESCE first-write-wins in
+    -- pinNighthawkCandidateSnapshotForwardReturns below), same "never re-derive" discipline as
+    -- snapshot_json itself.
+    ALTER TABLE nighthawk_candidate_snapshot ADD COLUMN IF NOT EXISTS forward_returns JSONB;
+    CREATE INDEX IF NOT EXISTS idx_nighthawk_candidate_snapshot_forward_grade_pending
+      ON nighthawk_candidate_snapshot (edition_for) WHERE forward_returns IS NULL;
 
     -- zerodte_scan_rejections (task #147): durable near-miss/rejection log for 0DTE
     -- Command's scanner (src/lib/zerodte/board.ts's deriveZeroDteSetups, src/lib/
@@ -10595,6 +10609,8 @@ export type NighthawkCandidateSnapshotRow = {
   rejection_reason: string | null;
   selected_for_publish: boolean | null;
   snapshot_json: Record<string, unknown>;
+  /** Phase 1.8 additive field — see the column's own migration comment. NULL until graded. */
+  forward_returns?: Record<string, unknown> | null;
 };
 
 /**
@@ -10617,6 +10633,7 @@ export function mapNighthawkCandidateSnapshotRow(r: Record<string, unknown>): Ni
     rejection_reason: r.rejection_reason != null ? String(r.rejection_reason) : null,
     selected_for_publish: r.selected_for_publish != null ? Boolean(r.selected_for_publish) : null,
     snapshot_json: (r.snapshot_json as Record<string, unknown>) ?? {},
+    forward_returns: (r.forward_returns as Record<string, unknown>) ?? null,
   };
 }
 
@@ -10644,13 +10661,62 @@ export async function fetchNighthawkCandidateSnapshots(
   }
   const res = await dbQuery(
     `SELECT id, edition_for, ticker, stage, observed_at, rank, score, gov_penalty,
-            rejection_reason, selected_for_publish, snapshot_json
+            rejection_reason, selected_for_publish, snapshot_json, forward_returns
      FROM nighthawk_candidate_snapshot
      WHERE ${conditions.join(" AND ")}
      ORDER BY observed_at ASC, id ASC`,
     params
   );
   return res.rows.map(mapNighthawkCandidateSnapshotRow);
+}
+
+/**
+ * Phase 1.8: candidate_snapshot rows still missing their forward-return grade, within lookback.
+ * Minimal projection (id/edition_for/ticker) -- the grading pass groups by (edition_for, ticker)
+ * so it fetches each session's minute bars ONCE and shares the result across every stage row for
+ * that ticker that night, same efficiency shape as fetchNighthawkRowsMissingScaleOutGrade's
+ * sibling query for nighthawk_play_outcomes.
+ */
+export async function fetchNighthawkCandidateSnapshotsMissingForwardGrade(
+  lookbackDays = 21
+): Promise<Array<{ id: number; edition_for: string; ticker: string }>> {
+  await ensureSchema();
+  const safe = Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 21;
+  const res = await dbQuery(
+    `
+    SELECT id, edition_for, ticker
+    FROM nighthawk_candidate_snapshot
+    WHERE forward_returns IS NULL
+      AND edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
+    ORDER BY edition_for ASC, ticker ASC
+    `,
+    [safe]
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    edition_for: isoDateString(r.edition_for),
+    ticker: String(r.ticker),
+  }));
+}
+
+/**
+ * Phase 1.8: pin one candidate_snapshot row's forward-return grade, FIRST-WRITE-WINS (same
+ * COALESCE + WHERE-IS-NULL discipline as pinNighthawkScaleOutGrade) -- the grade is frozen once
+ * computed and must never be silently recomputed/overwritten by a later pass.
+ */
+export async function pinNighthawkCandidateSnapshotForwardReturns(
+  id: number,
+  forwardReturns: Record<string, unknown>
+): Promise<void> {
+  await ensureSchema();
+  await dbQuery(
+    `
+    UPDATE nighthawk_candidate_snapshot
+    SET forward_returns = COALESCE(forward_returns, $2::jsonb)
+    WHERE id = $1 AND forward_returns IS NULL
+    `,
+    [id, JSON.stringify(forwardReturns)]
+  );
 }
 
 /** Fail jobs stuck in `running` (or intermediate stage) long enough to block resume/idempotency. */
