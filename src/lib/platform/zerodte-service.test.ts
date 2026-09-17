@@ -216,7 +216,7 @@ test("livePnlPct: board ledger and Largo plays use identical rounding", async ()
   // never a client-side copy). The mocked ledger has one HOLD row → one open plan.
   assert.equal(board.ledger[0]!.expiry, null);
   assert.ok(board.governor, "payload carries the governor summary");
-  assert.deepEqual(board.governor!.open_plans, [{ ticker: "NVDA", direction: "long" }]);
+  assert.deepEqual(board.governor!.open_plans, [{ ticker: "NVDA", direction: "long", is_condor: false }]);
   assert.equal(board.governor!.halted, false);
   const { GOVERNOR_MAX_CONCURRENT_PLANS } = await import("../zerodte/governor");
   assert.equal(board.governor!.max_concurrent, GOVERNOR_MAX_CONCURRENT_PLANS);

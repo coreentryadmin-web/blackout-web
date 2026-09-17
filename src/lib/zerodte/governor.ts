@@ -110,7 +110,20 @@ export type GovernorStopEvent = {
   at_ms: number | null;
 };
 
-export type GovernorOpenPlan = { ticker: string; direction: "long" | "short" };
+export type GovernorOpenPlan = {
+  ticker: string;
+  direction: "long" | "short";
+  /** True for a committed CONDOR row. A condor's `direction` is the pin's nominal fade side —
+   *  condor.ts's own doc: "carries the pin's nominal fade side for provenance but is UNUSED by
+   *  the neutral structure's gates/grader" — never a real directional stance. Optional/undefined
+   *  is treated as false (back-compat for pre-existing literals/tests that predate this field);
+   *  every real construction site below stamps it explicitly. Used ONLY to exclude condor rows
+   *  from the DIRECTIONAL checks below (correlated-conflict, same-direction concentration) — a
+   *  condor still counts toward the plain concurrency cap (governor_max_concurrent) and every
+   *  other non-directional governor check, because it is still real open risk/bandwidth, just
+   *  not directional exposure. */
+  is_condor?: boolean;
+};
 
 export type GovernorSnapshot = {
   /** Plans currently not CLOSED (null status = just committed, presumptively live).
@@ -370,11 +383,14 @@ export function freezeConcentrationState(
 ): ZeroDteConcentrationState {
   const candTicker = candidate.ticker.toUpperCase();
   // Existing open book with THIS candidate excluded by ticker (a refresh of the same name isn't
-  // "another correlated exposure"). Distinct by (ticker, direction) so a ledger quirk can't inflate.
+  // "another correlated exposure") AND every CONDOR row excluded (a condor's `direction` is the
+  // pin's nominal fade side — provenance only, per condor.ts's own doc — not a real directional
+  // stance, so it must not inflate this "directional concentration" evidence any more than it
+  // should gate on it below). Distinct by (ticker, direction) so a ledger quirk can't inflate.
   const existing = Array.from(
     new Map(
       openPlans
-        .filter((p) => p.ticker.toUpperCase() !== candTicker)
+        .filter((p) => p.ticker.toUpperCase() !== candTicker && !p.is_condor)
         .map((p) => [`${p.ticker.toUpperCase()}:${p.direction}`, { ticker: p.ticker.toUpperCase(), direction: p.direction }])
     ).values()
   );
@@ -416,6 +432,12 @@ export function concentrationReasonForCandidate(
     liveExposure
       .filter(
         (p) =>
+          // A committed CONDOR's `direction` is the pin's nominal fade side, not a real
+          // directional stance (condor.ts: "UNUSED by the neutral structure's gates/grader") —
+          // excluded here so a delta-neutral SPX/NDX condor can never inflate a directional
+          // same-direction-correlated-exposure count. Defensive filter at this boundary (not
+          // just at the caller) since this function is exported and may be called directly.
+          !p.is_condor &&
           p.direction === candidate.direction &&
           p.ticker.toUpperCase() !== candidateTicker &&
           group.has(p.ticker.toUpperCase())
@@ -455,6 +477,16 @@ export type GovernorLedgerRow = Pick<
   | "entry_context"
 >;
 
+/** Is this ledger row a committed CONDOR? Shared structural check (matches
+ *  `zerodte-service.ts`'s own `entry_context.play_type === "CONDOR"` test, plus the looser
+ *  `condor` blob presence check some callers here already used before this was extracted) — the
+ *  one place this repo decides "is this row a delta-neutral structure" so every governor.ts
+ *  consumer (stop detection, realized P&L sign, open-plan directional exclusion) agrees. */
+function isCondorLedgerRow(r: Pick<GovernorLedgerRow, "entry_context">): boolean {
+  const ec = r.entry_context as Record<string, unknown> | null;
+  return ec?.play_type === "CONDOR" || Boolean(ec?.condor);
+}
+
 /** Did this ledger row stop out? Two independent signals, either suffices:
  *  the graded plan_outcome, or the latched trough at/below the plan's stop level
  *  (derivePlayStatus's own CLOSED/stopped condition) — so the count is right even
@@ -462,8 +494,7 @@ export type GovernorLedgerRow = Pick<
  *  excluded: their trough is the winning direction (falling debit-to-close) and
  *  directional stop math inverts — settlement is gradeCondorFromBars. */
 function ledgerRowStopped(r: GovernorLedgerRow): boolean {
-  const ec = r.entry_context as Record<string, unknown> | null;
-  if (ec?.play_type === "CONDOR" || ec?.condor) return false;
+  if (isCondorLedgerRow(r)) return false;
   if (r.plan_outcome === "stopped") return true;
   if (r.status !== "CLOSED") return false;
   return (
@@ -512,9 +543,7 @@ function ledgerRowRealizedPnlPct(r: GovernorLedgerRow): number | null {
   if (mark == null || !Number.isFinite(mark)) return null;
   const observed = r.last_mark_at != null || mark !== entry;
   if (!observed) return null;
-  const ec = r.entry_context as Record<string, unknown> | null;
-  const isCondor = ec?.play_type === "CONDOR" || Boolean(ec?.condor);
-  if (isCondor) return ((entry - mark) / entry) * 100;
+  if (isCondorLedgerRow(r)) return ((entry - mark) / entry) * 100;
   return ((mark - entry) / entry) * 100;
 }
 
@@ -525,7 +554,13 @@ export function deriveGovernorFromLedger(rows: GovernorLedgerRow[]): GovernorSna
   let realizedLosers = 0;
   let sessionPnlPct = 0;
   for (const r of rows) {
-    if (r.status !== "CLOSED") openPlans.push({ ticker: r.ticker.toUpperCase(), direction: r.direction });
+    if (r.status !== "CLOSED") {
+      openPlans.push({
+        ticker: r.ticker.toUpperCase(),
+        direction: r.direction,
+        is_condor: isCondorLedgerRow(r),
+      });
+    }
     if (ledgerRowStopped(r)) stops.push({ ticker: r.ticker.toUpperCase(), direction: r.direction, at_ms: null });
     // AUDIT SEV-3 — realized-loss tallies, independent of the stop channel above so a
     // losing time-stop (never in `stops`) still counts toward the day-halt.
@@ -596,7 +631,19 @@ export function mergeGovernorStops(
  * (and it is what the morning-gate checklist simulates).
  */
 export function evaluateZeroDteGovernor(
-  candidate: { ticker: string; direction: "long" | "short"; entry_premium?: number | null; gamma_regime?: string | null },
+  candidate: {
+    ticker: string;
+    direction: "long" | "short";
+    entry_premium?: number | null;
+    gamma_regime?: string | null;
+    /** True when the candidate itself is a CONDOR. Its `direction` is the pin's nominal fade
+     *  side, not a real directional stance, so it must never be checked for (or itself trigger)
+     *  the DIRECTIONAL correlated-conflict / same-direction-concentration blocks below — those
+     *  two blocks are skipped entirely for a condor candidate. Every other governor check
+     *  (session halts, concurrency cap, premium/gamma budgets) still applies unchanged: a condor
+     *  is still real open risk, just not directional risk. */
+    is_condor?: boolean;
+  },
   snap: GovernorSnapshot,
   nowMs: number,
   committedThisCycle: GovernorOpenPlan[] = [],
@@ -688,10 +735,25 @@ export function evaluateZeroDteGovernor(
   // B-3 — correlated conflict: a new plan must not fight an OPEN plan on a
   // correlated instrument (7/13 ran SPY long + QQQ short at once — one guaranteed
   // loser). Direction AGREEMENT is fine; only opposition blocks.
+  //
+  // NEUTRAL-STRUCTURE FIX: both this check and the concentration check just below are
+  // DIRECTIONAL by definition — they exist to catch a real opposing or piled-up directional
+  // bet. A committed CONDOR's `direction` is only the pin's nominal fade side, stated as
+  // provenance-only by condor.ts's own doc ("UNUSED by the neutral structure's gates/grader").
+  // Before this fix, an open SPX/NDX condor (both share CORRELATION_GROUPS's broad index/ETF
+  // group with SPY/QQQ/IWM/DIA) could: (a) get counted as "opposing" a genuine directional
+  // SPY/QQQ/etc. candidate and wrongly block a real, uncorrelated trade with no actual
+  // conflicting exposure, and (b) inflate the same-direction concentration count with a
+  // structure that carries no real directional risk to concentrate. Both directions of the same
+  // root cause are closed here: existing condor rows are excluded from `directionalExposure`
+  // (so they can never falsely oppose or falsely concentrate), and a CONDOR *candidate* skips
+  // both checks entirely (it has no real directional stance to conflict or concentrate with).
+  // The plain concurrency cap above is untouched — a condor is still real open risk/bandwidth.
+  const directionalExposure = liveExposure.filter((p) => !p.is_condor);
   const candidateTicker = candidate.ticker.toUpperCase();
   const group = correlationGroupOf(candidateTicker);
-  if (group) {
-    const opposed = liveExposure.find(
+  if (group && !candidate.is_condor) {
+    const opposed = directionalExposure.find(
       (p) =>
         p.ticker.toUpperCase() !== candidateTicker &&
         group.has(p.ticker.toUpperCase()) &&
@@ -711,8 +773,8 @@ export function evaluateZeroDteGovernor(
   }
 
   const ticker = candidate.ticker.toUpperCase();
-  if (GOVERNOR_ENFORCE_CONCENTRATION) {
-    const conc = concentrationReasonForCandidate(candidate, liveExposure);
+  if (GOVERNOR_ENFORCE_CONCENTRATION && !candidate.is_condor) {
+    const conc = concentrationReasonForCandidate(candidate, directionalExposure);
     if (conc) {
       blocks.push({
         code: "governor_concentration",
