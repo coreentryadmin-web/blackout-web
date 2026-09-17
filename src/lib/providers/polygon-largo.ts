@@ -124,12 +124,15 @@ export async function fetchAggBars(
   timespan: "minute" | "hour" | "day" | "week",
   from: string,
   to: string,
-  limit = "500"
+  limit = "500",
+  signal?: AbortSignal
 ): Promise<AggBar[]> {
   const sym = symbol.toUpperCase();
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     `/v2/aggs/ticker/${sym}/range/${multiplier}/${timespan}/${from}/${to}`,
-    { limit, sort: "asc" }
+    { limit, sort: "asc" },
+    undefined,
+    { signal }
   );
   return mapBars(data?.results);
 }
@@ -190,35 +193,50 @@ export async function fetchPreviousDayBar(
 
 type IndicatorBlock = { values?: Array<{ value?: number; timestamp?: number }> };
 
-async function latestIndicator(path: string, params: Record<string, string>): Promise<number | null> {
-  const data = await polygonGet<{ results?: IndicatorBlock }>(path, {
-    ...params,
-    order: "desc",
-    limit: "1",
-    series_type: "close",
-  });
+async function latestIndicator(
+  path: string,
+  params: Record<string, string>,
+  signal?: AbortSignal
+): Promise<number | null> {
+  const data = await polygonGet<{ results?: IndicatorBlock }>(
+    path,
+    {
+      ...params,
+      order: "desc",
+      limit: "1",
+      series_type: "close",
+    },
+    undefined,
+    { signal }
+  );
   const v = data?.results?.values?.[0]?.value;
   return v != null ? Number(v) : null;
 }
 
 export async function fetchPolygonMacd(
   symbol: string,
-  timespan: "minute" | "hour" | "day" = "day"
+  timespan: "minute" | "hour" | "day" = "day",
+  signal?: AbortSignal
 ) {
   const sym = symbol.toUpperCase();
   const data = await polygonGet<{
     results?: {
       values?: Array<{ value?: number; signal?: number; histogram?: number }>;
     };
-  }>(`/v1/indicators/macd/${sym}`, {
-    timespan,
-    short_window: "12",
-    long_window: "26",
-    signal_window: "9",
-    order: "desc",
-    limit: "1",
-    series_type: "close",
-  });
+  }>(
+    `/v1/indicators/macd/${sym}`,
+    {
+      timespan,
+      short_window: "12",
+      long_window: "26",
+      signal_window: "9",
+      order: "desc",
+      limit: "1",
+      series_type: "close",
+    },
+    undefined,
+    { signal }
+  );
   const row = data?.results?.values?.[0];
   if (!row) return null;
   return {
@@ -231,23 +249,33 @@ export async function fetchPolygonMacd(
 export async function fetchPolygonRsi(
   symbol: string,
   window = 14,
-  timespan: "minute" | "hour" | "day" = "day"
+  timespan: "minute" | "hour" | "day" = "day",
+  signal?: AbortSignal
 ) {
-  return latestIndicator(`/v1/indicators/rsi/${symToPath(symbol)}`, {
-    window: String(window),
-    timespan,
-  });
+  return latestIndicator(
+    `/v1/indicators/rsi/${symToPath(symbol)}`,
+    {
+      window: String(window),
+      timespan,
+    },
+    signal
+  );
 }
 
 export async function fetchPolygonEma(
   symbol: string,
   window: number,
-  timespan: "minute" | "hour" | "day" = "day"
+  timespan: "minute" | "hour" | "day" = "day",
+  signal?: AbortSignal
 ) {
-  return latestIndicator(`/v1/indicators/ema/${symToPath(symbol)}`, {
-    window: String(window),
-    timespan,
-  });
+  return latestIndicator(
+    `/v1/indicators/ema/${symToPath(symbol)}`,
+    {
+      window: String(window),
+      timespan,
+    },
+    signal
+  );
 }
 
 export async function fetchPolygonSma(
@@ -341,7 +369,7 @@ export function computeLevelsFromBars(bars: AggBar[], price: number, opts?: Comp
 }
 
 /** Full multi-timeframe technical snapshot — Polygon primary. */
-export async function fetchPolygonMtfTechnicals(ticker: string) {
+export async function fetchPolygonMtfTechnicals(ticker: string, signal?: AbortSignal) {
   const sym = ticker.toUpperCase();
   const isIndex = sym === "SPX" || sym === "VIX" || sym.startsWith("I:");
   const polygonSym = sym === "SPX" ? "I:SPX" : sym === "VIX" ? "I:VIX" : sym;
@@ -352,12 +380,12 @@ export async function fetchPolygonMtfTechnicals(ticker: string) {
   const fromMin = today;
 
   const [daily, hourly, minute15, prevDay, lastTrade, lastNbbo] = await Promise.all([
-    fetchAggBars(polygonSym, 1, "day", fromDaily, today, "120"),
-    fetchAggBars(polygonSym, 1, "hour", fromHour, today, "500"),
-    fetchAggBars(polygonSym, 15, "minute", fromMin, today, "500"),
-    fetchPreviousDayBar(polygonSym),
-    fetchStockLastTrade(polygonSym),
-    fetchStockLastNbbo(polygonSym),
+    fetchAggBars(polygonSym, 1, "day", fromDaily, today, "120", signal),
+    fetchAggBars(polygonSym, 1, "hour", fromHour, today, "500", signal),
+    fetchAggBars(polygonSym, 15, "minute", fromMin, today, "500", signal),
+    fetchPreviousDayBar(polygonSym, { signal }),
+    fetchStockLastTrade(polygonSym, signal),
+    fetchStockLastNbbo(polygonSym, signal),
   ]);
 
   // Off-hours price fallback chain: daily → hourly → last trade → last NBBO → prior close
@@ -391,15 +419,15 @@ export async function fetchPolygonMtfTechnicals(ticker: string) {
   recordDataSourceing(sym, "price_resolution", priceAttempts, price, !priceSource && price === 0 ? "FALLBACK: Using 0 as ultimate default" : undefined);
 
   const [ema20d, ema50d, ema200d, rsi14d, macdD, ema20h, rsi14h, ema20m, rsi14m] = await Promise.all([
-    fetchPolygonEma(polygonSym, 20, "day"),
-    fetchPolygonEma(polygonSym, 50, "day"),
-    fetchPolygonEma(polygonSym, 200, "day"),
-    fetchPolygonRsi(polygonSym, 14, "day"),
-    fetchPolygonMacd(polygonSym, "day"),
-    fetchPolygonEma(polygonSym, 20, "hour"),
-    fetchPolygonRsi(polygonSym, 14, "hour"),
-    fetchPolygonEma(polygonSym, 20, "minute"),
-    fetchPolygonRsi(polygonSym, 14, "minute"),
+    fetchPolygonEma(polygonSym, 20, "day", signal),
+    fetchPolygonEma(polygonSym, 50, "day", signal),
+    fetchPolygonEma(polygonSym, 200, "day", signal),
+    fetchPolygonRsi(polygonSym, 14, "day", signal),
+    fetchPolygonMacd(polygonSym, "day", signal),
+    fetchPolygonEma(polygonSym, 20, "hour", signal),
+    fetchPolygonRsi(polygonSym, 14, "hour", signal),
+    fetchPolygonEma(polygonSym, 20, "minute", signal),
+    fetchPolygonRsi(polygonSym, 14, "minute", signal),
   ]);
 
   // Record technical indicator sourcing
@@ -518,15 +546,25 @@ export async function fetchPolygonMtfTechnicals(ticker: string) {
   };
 }
 
-export async function fetchStockLastNbbo(ticker: string) {
+export async function fetchStockLastNbbo(ticker: string, signal?: AbortSignal) {
   const sym = ticker.toUpperCase().replace(/^I:/, "");
-  const data = await polygonGet<{ results?: Record<string, unknown> }>(`/v2/last/nbbo/${sym}`, {});
+  const data = await polygonGet<{ results?: Record<string, unknown> }>(
+    `/v2/last/nbbo/${sym}`,
+    {},
+    undefined,
+    { signal }
+  );
   return data?.results ?? null;
 }
 
-export async function fetchStockLastTrade(ticker: string) {
+export async function fetchStockLastTrade(ticker: string, signal?: AbortSignal) {
   const sym = ticker.toUpperCase().replace(/^I:/, "");
-  const data = await polygonGet<{ results?: Record<string, unknown> }>(`/v2/last/trade/${sym}`, {});
+  const data = await polygonGet<{ results?: Record<string, unknown> }>(
+    `/v2/last/trade/${sym}`,
+    {},
+    undefined,
+    { signal }
+  );
   return data?.results ?? null;
 }
 
