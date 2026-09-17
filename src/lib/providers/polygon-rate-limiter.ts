@@ -182,6 +182,37 @@ function waitMsForToken(): number {
   return Math.max(25, Math.ceil((deficit / rate) * 1000));
 }
 
+/** DOMException a caller sees when its own signal aborts while queued for admission --
+ *  distinct from RateLimiterQueueTimeoutError (the budget itself expiring). Mirrors
+ *  uw-rate-limiter.ts's identically-named helper. */
+function abortedWhileQueuedError(signal: AbortSignal): DOMException {
+  return signal.reason instanceof DOMException
+    ? signal.reason
+    : new DOMException("Aborted while waiting for Polygon admission", "AbortError");
+}
+
+/**
+ * Sleep that resolves early -- REJECTING, not silently resolving -- the instant `signal`
+ * aborts, instead of only being checked at the top of the NEXT loop iteration. Mirrors
+ * uw-rate-limiter.ts's identically-named helper exactly (see that file's doc comment and
+ * uw-rate-limiter-abort-latency.test.ts for the deterministic bound this gives; the same
+ * bound is proven here in polygon-rate-limiter-abort-latency.test.ts).
+ */
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortedWhileQueuedError(signal));
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(abortedWhileQueuedError(signal!));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function acquireGlobalRedisSlot(): Promise<boolean> {
   const client = await getSharedRedis();
   if (!client) return true; // FAIL-OPEN: no Redis → no global ceiling.
@@ -209,29 +240,29 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   }
 }
 
-async function waitForCircuit(budget: QueueBudget): Promise<void> {
+async function waitForCircuit(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   for (;;) {
+    if (signal?.aborted) throw abortedWhileQueuedError(signal);
     const now = Date.now();
     if (now >= circuitOpenUntil) return;
     // Bounded: the breaker pause is 60s, so an unbudgeted wait here alone could
     // consume half the ALB's 120s before the 15s fetch timeout even starts.
     budget.assertWithinBudget("circuit");
-    await new Promise((r) =>
-      setTimeout(r, budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)))
-    );
+    await sleepAbortable(budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)), signal);
   }
 }
 
-async function waitMinSpacing(): Promise<void> {
+async function waitMinSpacing(signal?: AbortSignal): Promise<void> {
   if (MIN_SPACING_MS <= 0) return;
   const now = Date.now();
   const wait = MIN_SPACING_MS - (now - lastStartMs);
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  if (wait > 0) await sleepAbortable(wait, signal);
   lastStartMs = Date.now();
 }
 
-async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
+async function acquireLocalSlot(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   for (;;) {
+    if (signal?.aborted) throw abortedWhileQueuedError(signal);
     // Checked BEFORE the admission test, never after reserving, so a caller that
     // would have been admitted this iteration still is -- the budget only ever
     // truncates waiting, never a successful acquisition.
@@ -243,7 +274,7 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
       tokens -= 1;
       inFlight += 1;
       try {
-        await waitMinSpacing();
+        await waitMinSpacing(signal);
       } catch (err) {
         // Release concurrency on failure; do NOT refund the token (rate budget is
         // consumed per admitted call, mirroring releaseSlot which never refunds tokens).
@@ -253,7 +284,7 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
       return;
     }
     const delay = inFlight >= MAX_CONCURRENCY ? 50 : waitMsForToken();
-    await new Promise((r) => setTimeout(r, budget.clampSleepMs(delay)));
+    await sleepAbortable(budget.clampSleepMs(delay), signal);
   }
 }
 
@@ -274,22 +305,30 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
  * On the uncontended path this adds one Date.now() and changes nothing.
  *
  * @throws {RateLimiterQueueTimeoutError} when the queue budget is exhausted.
+ * @throws {DOMException} named "AbortError" when `signal` fires while still queued --
+ *   checked at the top of every loop iteration AND races every sleep inside them
+ *   (`sleepAbortable`), mirroring uw-rate-limiter.ts's acquireSlot exactly.
  */
-export async function acquirePolygonSlot(_lane?: "default" | "nights-watch"): Promise<void> {
+export async function acquirePolygonSlot(
+  _lane?: "default" | "nights-watch",
+  signal?: AbortSignal
+): Promise<void> {
   ensureBreakerSubscription();
+  if (signal?.aborted) throw abortedWhileQueuedError(signal);
   const budget = new QueueBudget("polygon", queueBudgetMs());
-  await waitForCircuit(budget);
+  await waitForCircuit(budget, signal);
   if (process.env.REDIS_URL?.trim()) {
     for (;;) {
+      if (signal?.aborted) throw abortedWhileQueuedError(signal);
       if (await acquireGlobalRedisSlot()) {
-        await acquireLocalSlot(budget);
+        await acquireLocalSlot(budget, signal);
         return;
       }
       budget.assertWithinBudget("global_rps");
-      await new Promise((r) => setTimeout(r, budget.clampSleepMs(40)));
+      await sleepAbortable(budget.clampSleepMs(40), signal);
     }
   }
-  await acquireLocalSlot(budget);
+  await acquireLocalSlot(budget, signal);
 }
 
 function releaseSlot(): void {
@@ -466,8 +505,14 @@ export async function polygonTrackedFetch(
     throw new Error(`[polygon] Circuit open — rate limited, pausing ${waitSec}s`);
   }
 
+  // A caller's own signal (if any) also governs admission-queue waiting, not just the
+  // eventual fetch() call — mirrors polygonTrackedFetch's UW sibling (uw-rate-limiter.ts's
+  // throttleUw), fixed there in PR #5111 for the identical reason: without this, aborting
+  // during a contended admission wait only stopped the CALLER from waiting, never actually
+  // freed the slot machinery or avoided the (still-forthcoming) real HTTP request.
+  const signal = init?.signal ?? undefined;
   try {
-    await acquirePolygonSlot();
+    await acquirePolygonSlot(undefined, signal);
   } catch (err) {
     if (isQueueTimeout(err)) noteQueueTimeoutForAlert();
     throw err;
