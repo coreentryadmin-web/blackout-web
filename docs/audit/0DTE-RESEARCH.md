@@ -336,7 +336,7 @@ stays advisory and accrues evidence.
   ENFORCE_MIN_DELTA) before it sizes or gates real risk. The measurement loop — not any single parameter —
   is the moat.
 
-### Gate-overlap ablation, PRIMARY-CODE ONLY (G-1/G-4/G-10/G-12/G-13) — built 2026-09-09/10, still INSUFFICIENT DATA
+### Gate-overlap ablation, PRIMARY-CODE ONLY (G-1/G-4/G-10/G-12/G-13) — built 2026-09-09/10, re-run 2026-09-17 (G-13 now MEASURABLE)
 
 **Why this was built.** The operator's CTO review (2026-09-09) asked whether G-1 (tape alignment), G-4
 (VIX regime), G-10 (intraday structure), G-12 (confluence floor) and G-13 (flow-accumulation conflict)
@@ -432,6 +432,47 @@ above, now fixed; re-run `node --import tsx scripts/audit/zerodte-gate-primary-a
 --days=90` once that gap is investigated/fixed** (a distinct piece of work, flagged as a follow-up
 suggestion rather than attempted inline here). Until it is, neither the primary-gate-only nor a future
 full `blocks_json`-based ablation can produce a real Blocked WR/EV number for any gate.
+
+**RE-RUN 2026-09-17 (0DTE nonstop-focus session) — the skip-grading fix unblocked real numbers for
+the first time, and G-13's is a genuine flag worth reading carefully.** `node --import tsx
+scripts/audit/zerodte-gate-primary-ablation.mjs --days=90` (90-day window, committed-ledger baseline
+n=400, WR=30.8%, EV=−11.7%, all real premium P&L):
+```
+G-1   (no_market_bias/tape_alignment):   BLOCKED n=7   WR=42.9%  — verdict LOW_N (below the 10-floor, hint only)
+G-4   (vix_extreme/.../unavailable):     BLOCKED n=0                — NO_REJECTIONS_IN_WINDOW
+G-10  (score-only since 2026-07-27):     structurally 0 codes       — NOT_MEASURABLE (unchanged, expected)
+G-12  (confluence_floor):                BLOCKED n=0                — NO_REJECTIONS_IN_WINDOW
+G-13  (flow_accumulation_conflict):      BLOCKED n=12  WR=75.0% (95% CI [46.8%, 91.1%]) — verdict MEASURABLE
+```
+**G-13 clears the min-n floor for the first time and the number is striking:** the population G-13
+BLOCKED (flow accumulation opposing the setup's direction) would have won **75.0%** of the time
+(modeled EV +62.5% through the fixed −50/+100 payoff) — more than DOUBLE the 30.8% WR of what the desk
+actually committed over the same 90 days. That is a −44.2pt gap in the WRONG direction for a gate that
+exists specifically to filter out weak setups: on this sample, G-13 is disproportionately blocking
+setups that would have WON, not setups that would have lost.
+
+**Read this with the same caution the script's own header insists on, not as grounds to touch the
+gate:**
+- n=12 is thin — above the 10-floor so it clears `MEASURABLE` rather than `LOW_N`, but still a small
+  sample; a 95% CI of [46.8%, 91.1%] is wide enough that "75%" could easily regress toward the mean on
+  a larger pull.
+- This is a MODELED win/lose call off the underlying's direction only (rejection rows carry no OCC, so
+  there is no real option-premium P&L for the blocked side) against the REAL mechanical-plan premium
+  P&L on the passed side — not an apples-to-apples EV comparison, exactly as the script's own "never
+  blend the two" note says.
+- Primary-gate-only attribution: G-13 evaluates AFTER G-1/G-4/G-10/G-12 in `evaluateZeroDteGates`, so
+  its n=12 is already the UNDERCOUNTED tail (any candidate that also failed an earlier gate is
+  attributed there instead) — the true G-13-blocked population is at least 12, likely larger.
+- G-1's n moved 5→7 and G-13's moved 9(all-ungradeable)→12(all-gradeable) since the 2026-09-12
+  `session_date`/`etYmd()` fix, confirming the fix is doing its job — grading was the blocker, not gate
+  behavior — but the underlying rejection VOLUME for these gates is still small over 90 days, so this
+  remains a first real look, not a settled verdict.
+
+**No gate changed by this run.** The G-13 number is exactly the kind of signal this tool was built to
+surface (INTENTIONAL-DESIGN.md discipline: evidence first, gate calibration only after a real sample
+says so) — worth a dedicated re-run as the window's rejection volume grows and/or a widened window,
+before any decision on G-13's flow-accumulation-conflict threshold. Flagging here rather than opening a
+gate-change PR on n=12.
 ### E6 — does `score_floor` (65) actually rank forward outcome? An independent re-check (2026-09-10)
 
 **The open question.** `zerodte-gate-compound-funnel.mjs` measured twice (2026-09-08 off-hours n=15,
