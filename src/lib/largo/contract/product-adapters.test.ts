@@ -164,6 +164,58 @@ test("night hawk IDENTITY (regression): a whole-board vote must never be borrowe
   assert.equal(nvda.signal?.native && (nvda.signal.native as { play_count?: number }).play_count, 1);
 });
 
+test("night hawk NEUTRAL-STRUCTURE (regression): a committed condor must never cast a directional vote", () => {
+  // condor.ts's own buildCondorSetup comment: a condor row's `direction` field "carries the pin's
+  // nominal fade side for provenance but is UNUSED by the neutral structure's gates/grader". Before
+  // this fix, nighthawkContribution fell through to that same field (option_type ?? side ??
+  // direction) for every play, so a condor with no option_type/side counted its nominal fade side
+  // as a real call/put vote -- a delta-neutral SOLD structure with no directional thesis reporting
+  // a confident bullish/bearish signal.
+  const onlyCondor = nighthawkContribution(
+    { plays: [{ ticker: "SPX", is_condor: true, play_type: "CONDOR", direction: "short" }] },
+    "SPX"
+  );
+  assert.equal(onlyCondor.signal, null, "a lone condor must be an honest non-directional absence, never a vote");
+  assert.match(String(onlyCondor.missingReason), /delta-neutral sold structure with no directional thesis/);
+  assert.match(String(onlyCondor.missingReason), /1 committed 0DTE iron condor on SPX/);
+
+  // A raw payload shape carrying only `play_type: "CONDOR"` (no `is_condor` flag) must be caught
+  // the same way -- the two are alternate identifications of the same structural fact.
+  const rawPlayType = nighthawkContribution(
+    { plays: [{ ticker: "SPX", play_type: "CONDOR", direction: "long" }] },
+    "SPX"
+  );
+  assert.equal(rawPlayType.signal, null);
+  assert.match(String(rawPlayType.missingReason), /delta-neutral sold structure/);
+
+  // A REAL directional play on the same ticker must still vote, and the condor must be excluded
+  // from the tally (not flip a 1-call/1-nominal-condor tie into a false split) while still being
+  // named in the evidence as context.
+  const mixed = nighthawkContribution(
+    {
+      plays: [
+        { ticker: "SPX", option_type: "CALL" },
+        { ticker: "SPX", is_condor: true, play_type: "CONDOR", direction: "short" },
+      ],
+    },
+    "SPX"
+  );
+  assert.equal(mixed.signal?.direction, "bullish", "the one real directional call must win the vote unopposed by the condor's nominal fade");
+  assert.equal(
+    (mixed.signal?.native as { play_count?: number; condor_count?: number } | undefined)?.play_count,
+    1,
+    "play_count must reflect only the directional plays actually voted on"
+  );
+  assert.equal(
+    (mixed.signal?.native as { condor_count?: number } | undefined)?.condor_count,
+    1
+  );
+  assert.ok(
+    mixed.signal?.evidence.some((e) => /condor/i.test(e)),
+    "the excluded condor should still surface as evidence/context, not vanish silently"
+  );
+});
+
 test("spx votes from the play-engine direction on SPX/SPXW only", () => {
   const bullish = spxContribution({ available: true, direction: "long", grade: "A", phase: "OPEN", action: "HOLD" });
   assert.equal(bullish.signal?.direction, "bullish");

@@ -233,6 +233,23 @@ export function meridianContribution(payload: unknown): ProductContribution {
  * uses), filter the board's `plays` down to that ticker's own committed rows, and vote ONLY off
  * those. No committed play on that ticker is an honest, explained absence — never a borrowed
  * board-wide vote.
+ *
+ * NEUTRAL-STRUCTURE FIX (condor rows must never cast a directional vote). A committed 0DTE iron
+ * condor (`condor.ts`) is a delta-neutral 4-leg structure SOLD for a credit — its own seed-bridge
+ * comment (`buildCondorSetup`) says the row's `direction` field "carries the pin's nominal fade
+ * side for provenance but is UNUSED by the neutral structure's gates/grader". This adapter used to
+ * ignore that distinction: it read `play.option_type ?? play.side ?? play.direction` for EVERY
+ * committed play, so a condor row (which carries no `option_type`/`side`, only that nominal
+ * `direction`) fell through to the same calls/puts tally a real directional play uses, and cast a
+ * bullish/bearish vote off a field its own engine documents as provenance-only. That is the exact
+ * same "neutral evidence miscounted as directional" shape thermal's dealer-gamma fix (above) exists
+ * to prevent — thermal already refuses to vote on gamma posture for this reason; a condor's nominal
+ * fade side deserves the identical treatment. Condor rows are identified structurally
+ * (`is_condor === true`, mirroring `zerodte-service.ts`'s own `entry_context.play_type === "CONDOR"`
+ * check — plus the raw `play_type` field itself for a payload shape that hasn't gone through that
+ * mapper) and excluded from the vote entirely; if every committed play on the queried ticker is a
+ * condor, this reports an honest non-directional absence (mirroring `meridianContribution`'s
+ * "sizes risk, does not point a direction" shape) rather than fabricating a directional signal.
  */
 export function nighthawkContribution(payload: unknown, queriedTicker = ""): ProductContribution {
   const p = obj(payload);
@@ -254,10 +271,28 @@ export function nighthawkContribution(payload: unknown, queriedTicker = ""): Pro
         : "no committed plays on the board this session",
     };
   }
+  const isCondorPlay = (play: Record<string, unknown>) =>
+    play.is_condor === true || String(play.play_type ?? "").toUpperCase() === "CONDOR";
+  const directionalPlays = plays.filter((raw) => {
+    const play = obj(raw);
+    return play != null && !isCondorPlay(play);
+  });
+  const condorCount = plays.length - directionalPlays.length;
+  if (directionalPlays.length === 0) {
+    // Every committed play on this ticker is a neutral condor. Honest absence of DIRECTIONAL
+    // evidence — never a vote borrowed off the condor's own provenance-only fade side.
+    return {
+      product: "nighthawk",
+      signal: null,
+      missingReason:
+        `${condorCount} committed 0DTE iron condor${condorCount === 1 ? "" : "s"} on ${ticker} this ` +
+        "session — a delta-neutral sold structure with no directional thesis, so night hawk casts no directional vote",
+    };
+  }
   let calls = 0;
   let puts = 0;
   const evidence: string[] = [];
-  for (const raw of plays.slice(0, 10)) {
+  for (const raw of directionalPlays.slice(0, 10)) {
     const play = obj(raw);
     const side = String(play?.option_type ?? play?.side ?? play?.direction ?? "").toLowerCase();
     if (side.includes("call") || side === "long" || side === "bullish") calls += 1;
@@ -268,6 +303,9 @@ export function nighthawkContribution(payload: unknown, queriedTicker = ""): Pro
   if (calls === 0 && puts === 0) {
     return { product: "nighthawk", signal: null, missingReason: "committed plays carry no readable side" };
   }
+  if (condorCount > 0) {
+    evidence.push(`${condorCount} committed iron condor${condorCount === 1 ? "" : "s"} on ${ticker} (neutral, excluded from this vote)`);
+  }
   const direction: Direction = calls === puts ? "neutral" : calls > puts ? "bullish" : "bearish";
   return {
     product: "nighthawk",
@@ -276,7 +314,7 @@ export function nighthawkContribution(payload: unknown, queriedTicker = ""): Pro
       ticker_class: tickerClassFor(ticker),
       direction,
       evidence: evidence.length ? evidence : [`${calls} call-side / ${puts} put-side plays`],
-      native: { play_count: plays.length },
+      native: { play_count: directionalPlays.length, condor_count: condorCount },
     },
   };
 }
