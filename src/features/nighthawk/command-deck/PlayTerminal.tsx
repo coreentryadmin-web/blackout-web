@@ -572,7 +572,12 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           <div>
             <span className="k">Risk : Reward</span>
             <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
-              {play.rrRatio.toFixed(1)}:1
+              {/* Floor to 1 decimal, same fix/rationale as ZeroDtePreEntryContext below and
+                  deterministic-edition.ts's R:R line (PR #4813) — toFixed(1) rounds e.g. 1.95 up
+                  to "2.0" while the color class still reads the raw (uncolored) rr < 2, so a
+                  member would see "2.0" printed in the neutral color instead of the green the
+                  number implies. Flooring keeps the printed number and its color consistent. */}
+              {(Math.floor(play.rrRatio * 10 + 1e-9) / 10).toFixed(1)}:1
             </span>
           </div>
         )}
@@ -887,7 +892,14 @@ function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
         <div>
           <span className="k">Risk : Reward</span>
           <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
-            {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+            {/* Round DOWN to 1 decimal for display, never to-nearest: rr.toFixed(1) rounds 0.49
+                up to "0.5", printing "0.5:1 (tight)" — a member reads 0.5 against the very
+                threshold ladder the label uses (0.5 is the "acceptable" cutoff) and sees an
+                apparent contradiction. Flooring means the shown number can never read at-or-above
+                a threshold the true rr hasn't reached. Same fix as deterministic-edition.ts's
+                R:R line (PR #4813); the epsilon guards a clean multiple of 0.1 from landing on
+                the wrong side of Math.floor due to binary floating-point representation. */}
+            {(Math.floor(rr * 10 + 1e-9) / 10).toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
           </span>
         </div>
       )}
@@ -956,7 +968,10 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
           <div>
             <span className="k">R:R</span>
             <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
-              {play.rrRatio.toFixed(1)}:1
+              {/* Floor to 1 decimal, same fix/rationale as this file's other R:R rows above and
+                  deterministic-edition.ts's (PR #4813) — toFixed(1) rounds up past a color
+                  threshold the raw value hasn't reached. */}
+              {(Math.floor(play.rrRatio * 10 + 1e-9) / 10).toFixed(1)}:1
             </span>
           </div>
         )}
