@@ -8,8 +8,19 @@
  * reproduced without that test surface.
  */
 
-/** A `## ` heading that is NOT at line start -- the damage signature described on `repairGlued`. */
-const GLUED_HEADING = /(?<!^)(?<!\n)(## \d{4}-\d{2}-\d{2} — \[)/g;
+/**
+ * A `## ` heading that is NOT at line start -- the damage signature described on `repairGlued`.
+ *
+ * Excludes a heading immediately preceded by a backtick: that shape is a LEGITIMATE mid-line
+ * quote of a prior entry's exact heading text as evidence (e.g. "The stale entry | `## 2026-09-02
+ * — [FINDING, ...] ... — OPEN`."), not gluing. A genuinely glued heading is raw adjacent markdown
+ * left by a dropped newline -- it is never wrapped in a code span. Without this exclusion,
+ * `repairGlued` would splice a blank line + new heading into the middle of the quoting entry's own
+ * markdown table cell, silently fragmenting it into a headless orphan -- the exact failure mode
+ * this function exists to fix, self-inflicted on healthy input (found 2026-09-17 folding a real
+ * staged-findings backlog containing four such quotes).
+ */
+const GLUED_HEADING = /(?<!^)(?<!\n)(?<!`)(## \d{4}-\d{2}-\d{2} — \[)/g;
 
 /**
  * Put a glued heading back at line start.

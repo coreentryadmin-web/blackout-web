@@ -4,6 +4,2991 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## `tier-exit-mode-ab.mjs`'s C-tier/untiered ratchet-vs-trim_scale ordering REVERSED on a fresh re-run — re-opening a question this repo had treated as settled
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | 0DTE — exit management (`resolveExitModeForTier`, `exit-sync.ts`) |
+| **Severity** | P2 (evidence-only reversal; no live gate/threshold is wrong today, but the recommendation this repo shipped on is no longer supported by fresh data) |
+| **Status** | OPEN — reported per the standing escalation policy (a calibration/live-picks question needing more data, not a mechanical one-line fix); no code changed in this PR. |
+
+### What changed
+
+`scripts/audit/tier-exit-mode-ab.mjs` (Task #59, `docs/audit/0DTE-RESEARCH.md`) re-grades the
+C-tier/untiered 0DTE population under both the shipped `ratchet` exit and the default-off
+`trim_scale` exit, using the same shipped `evaluateExitState`/`TRIM_SCALE_RULES` the board actually
+runs. Its **first live run (2026-08-29, 90-day window, n=99 graded, population=111)** found ratchet
+clearly ahead on both metrics — 45.5% WR / +5.5% avg P&L vs. trim_scale's 38.4% WR / −7.3% avg
+P&L — and recommended **leaving the shipped ratchet default as-is**. That recommendation has sat
+unrevisited in `docs/audit/0DTE-RESEARCH.md` since.
+
+A fresh re-run today (2026-09-17, same 90-day window mechanics, n=100 graded, population=115 — 4
+rows failed bar-repricing) shows the **opposite ordering on win rate**:
+
+| | ratchet | trim_scale |
+|---|---|---|
+| 2026-08-29 (n=99) | 45.5% WR / **+5.5%** avg P&L | 38.4% WR / −7.3% avg P&L |
+| 2026-09-17 (n=100) | **31.0%** WR / **−7.0%** avg P&L | 38.0% WR / −7.7% avg P&L |
+
+- Win-rate gap flipped sign: ratchet was +7.1pp ahead, trim_scale is now **+7.0pp ahead**.
+- The avg-P&L gap that was the main justification for keeping ratchet (+12.8pp in its favor)
+  collapsed to a statistically negligible **+0.7pp**.
+- Visible driver in `by_outcome`: ratchet reached a true `doubled` close on only 12/100 rows this
+  run (vs. 29/100 for trim_scale banking a partial via `runner_close`), with 35/100 rows exiting
+  via the trailing-stop `ratchet` close instead of doubling — ratchet gave back more peak gain in
+  the newer population than it did in the August sample.
+
+### Why this is being reported, not fixed
+
+Per this repo's own single-sample-caution discipline (used everywhere in this toolkit —
+`cortex-oppose-magnitude-ab.mjs`, `swing-score-calibration.mjs`, etc.): n=100 per arm with an
+avg-P&L gap that's now within noise is not conclusively separable from the reverse ordering
+either. **Do not flip `resolveExitModeForTier`'s shipped default on this evidence alone.** The
+actual defect this finding reports is procedural, not a wrong gate: the 2026-08-29 "leave ratchet
+as-is" recommendation was written up as if settled and has been cited (implicitly, by omission of
+any follow-up) as current for three weeks, while a single additional data point already reverses
+its headline conclusion — exactly the kind of drift `docs/audit/0DTE-RESEARCH.md`'s own "Task #59"
+entry should have flagged for periodic re-check and didn't.
+
+### What was checked
+
+- The 90-day trailing window rolled ~19 days of June/July trades off and ~19 days of Aug/Sep
+  trades on between the two runs — a plausible, undiagnosed driver (regime shift vs. genuine
+  noise), not yet isolated.
+- `tier-exit-mode-ab.mjs` itself has no confidence interval / bootstrap on its win-rate or avg-P&L
+  deltas, so today's run cannot itself state whether n=100 separates either ordering from chance.
+
+### Recommended next steps (not done here — reporting only)
+
+1. Re-run again in a few more weeks; if the reversal holds or deepens, that's a real trend, not
+   noise from population turnover.
+2. Add a confidence interval / bootstrap to `tier-exit-mode-ab.mjs` so a future run can state
+   separability directly instead of eyeballing point estimates.
+3. If a third run confirms trim_scale ahead, that becomes the actionable trigger to flip
+   `resolveExitModeForTier`'s C-tier/untiered default — not this one.
+
+### Evidence
+
+Full run comparison and every other tool's live re-check from the same sweep:
+`docs/audit/0DTE-RESEARCH.md` (Task #59 section, append the 2026-09-17 numbers above under the
+existing entry rather than replacing it, per that doc's own "keep updated as measurements run"
+convention).
+
+## `score_floor` (G-3/G-17) outcome re-check ESCALATED from `SPREAD WITHOUT ORDER` to `INVERTED` (ρ = −1) after fixing the backtest's stale bucket split
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | 0DTE — score-floor calibration evidence (`ZERODTE_SCORE_FLOOR`/`ZERODTE_SINGLE_RAIL_PRIME_MIN`, gates.ts G-3/G-17) |
+| **Severity** | P2 (evidence-only; the single most concerning outcome-ranking result in this toolkit to date, but n is still thin at the two bands nearest the live admission boundary) |
+| **Status** | OPEN — reported per the standing escalation policy (a calibration/threshold question needing a larger-N re-run and a real-premium re-derivation, not a mechanical one-line fix); no gate/threshold changed in this PR. |
+
+### What changed
+
+While executing today's 0DTE gate-floor deep-dive audit's TOP-3 item #2 (re-run
+`zerodte-score-floor-outcome-backtest.mjs` with buckets split to match G-17's real 2026-09-09
+restructure — see the sibling `fix(zerodte): split score-floor buckets...` PR that ships the
+tooling fix this finding's numbers came from), the re-run's verdict escalated:
+
+| Run | Sessions | n (graded) | Spread | ρ | Verdict |
+|---|---|---|---|---|---|
+| 2026-09-10 (merged 65-74 bucket) | 18 | 392 | 11.1pp | −0.20 | `SPREAD WITHOUT ORDER` |
+| 2026-09-17 (split 65-69/70-74) | 28 | 436 | 10.7pp | **−1** | **`INVERTED`** |
+
+Among the four bands with n≥30 (0-39 n=60, 40-54 n=223, 55-64 n=88, 65-69 n=49), win rate falls
+**monotonically** as score rises: 25.0% → 23.3% → 20.5% → 14.3%. Perfect negative rank correlation
+across a real, well-powered sample (every included band n≥49) — the cleanest, strongest signal any
+score-outcome check in this toolkit has produced (contrast: `helix-score-signal.mjs`'s own analogous
+check on HELIX's conviction score found `SPREAD WITHOUT ORDER`, never `INVERTED`).
+
+Two further checks, both thin (n<30, excluded from the ρ calculation, reported as directional
+signal only):
+- **Headline comparison** (55-64 blocked vs. 70-74, the band G-17 actually admits today):
+  70-74 graded 7.7% (n=13) vs. 55-64's 20.5% (n=88) — a −12.8pp delta against the floor's implied
+  ordering.
+- **G-17's own band-split rationale** (2026-09-09 restructure comment: "a genuinely well-confirmed
+  70-74 setup should NOT be equally weak EV as an unconfirmed 65-69 one"): 70-74 graded 7.7% vs.
+  65-69's 14.3% — the OPPOSITE of that rationale, a further −6.6pp in the wrong direction.
+
+### Why this is being reported, not fixed
+
+Per this repo's own single-sample-caution and n≥30 discipline (used throughout this toolkit): the
+two bands nearest the actual live admission boundary (70-74, 75-84) are both n<30 and were
+correctly excluded from the ρ/spread calculation — so this does **not** by itself prove the 70-74
+conditional-admission path is broken. What it DOES show, on a well-powered sample the discipline
+doesn't need to caveat, is that the broader trend across four real bands (n=49 to n=223) now runs
+backwards from what the floor assumes — more cleanly than the 2026-09-10 run found, not less. Same
+scope limits as that prior run apply unchanged: this measures a favorable-first
+underlying-continuation proxy (not real option premium P&L) and `score` alone (not jointly gated
+with VIX/confluence/governor/Cortex).
+
+### Recommended next steps (not done here — reporting only)
+
+1. Grow the 70-74/75-84 samples past n=30 (re-run again as more sessions accumulate post-2026-09-09)
+   before treating the headline/band-split comparisons as more than directional.
+2. The standing open item from the 2026-09-10 entry is now more urgent, not less: a real-premium
+   re-run of F-2's original methodology (`NIGHTHAWK-0DTE-DECISION.md`, 2026-07-13) at today's larger
+   achievable sample size — this backtest's own proxy-vs-premium scope limit means an INVERTED
+   underlying-continuation ranking is necessary evidence of a problem, not sufficient evidence that
+   real option P&L is also inverted.
+3. Do not touch `ZERODTE_SCORE_FLOOR`/`ZERODTE_SINGLE_RAIL_PRIME_MIN` on this evidence alone — but
+   this is now the strongest single data point in the toolkit arguing the score formula (not just
+   the floor's specific cutoff) may be underscoring or mis-ranking tradeable setups, and deserves a
+   fast follow-up rather than sitting for another 8 weeks the way the 2026-09-10 run did.
+
+### Evidence
+
+Full run detail, both the 2026-09-10 and 2026-09-17 numbers side by side:
+`docs/audit/0DTE-RESEARCH.md`, E6 section ("does `score_floor` (65) actually rank forward outcome?").
+
+## `confluence_floor` (G-12) outcome re-check: verdict is entry-time sensitive (INVERTED@10:00 → SPREAD WITHOUT ORDER@11:00), but the 2-conf "edge bucket" claim fails to reproduce at either time
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | 0DTE — confluence-floor calibration evidence (`ZERODTE_CONFLUENCE_MIN`/`ZERODTE_CONFLUENCE_MIN_EARLY`, gates.ts G-12) and backtest methodology generally |
+| **Severity** | P2 (evidence-only; surfaces both a real methodology sensitivity affecting multiple tools in this toolkit and a real, entry-time-independent result about the E3 edge bucket) |
+| **Status** | OPEN — reported per the standing escalation policy (a calibration question needing a larger-N/real-premium follow-up, and a methodology question worth applying to sibling backtests); no gate/threshold changed in this PR. |
+
+### What was built and found
+
+Built `scripts/audit/zerodte-confluence-floor-outcome-backtest.mjs` (PR #5143) — the confluence-floor
+sibling of `zerodte-score-floor-outcome-backtest.mjs`, re-deriving real scored setups per historical
+session day, attaching a REAL confluence read (`computeIntradayRead`/`marketBias`/`computeConfluence`
+— the exact functions `scan.ts`'s own `attachConfluence` calls) computed AS-OF a fixed entry time, and
+grading forward outcome on real Polygon minute bars with the same favorable-first
+underlying-continuation proxy the score-floor backtest uses.
+
+First run defaulted to 10:00 ET (matching the score-floor script's own default, itself chosen for
+G-2's unlock time, not E3's actual methodology) and came back **INVERTED**:
+
+```
+                              0-conf   1-conf (standard)   2-conf (early-window/E3 edge)
+@10:00 ET (18 sessions, n=415):  32.7%      17.9%                 13.4%    -> INVERTED, rho=-1.00
+```
+
+Before reporting this at face value, checked E3's own original methodology
+(`docs/audit/0DTE-RESEARCH.md`'s Experiments table: "Confluence: 0/1/2 confirmations... **@ 11:00**")
+— E3 used an **11:00 ET** entry, not 10:00. E2 (same doc) already found 10:00 ET is itself a
+documented negative-EV entry time (−7.8% EV), independent of any gate. Re-ran at 11:00 ET:
+
+```
+@11:00 ET (18 sessions, n=415):  24.3%      24.8%                  9.6%    -> SPREAD WITHOUT ORDER, rho=-0.50
+```
+
+### Two distinct findings
+
+1. **Methodology sensitivity, real and measured.** Moving the fixed synthetic entry from 10:00 to
+   11:00 ET changed every bucket's win rate materially (0-conf 32.7%→24.3%, 1-conf 17.9%→24.8%,
+   2-conf 13.4%→9.6%) and changed the overall verdict from `INVERTED` to `SPREAD WITHOUT ORDER`.
+   Concretely, the specific comparison the 2026-09-08 confluence-floor loosening depends on (is
+   1-conf ~flat vs 0-conf, not negative) flips from a concerning −14.7pp at 10:00 ET to a reassuring
+   +0.6pp at 11:00 ET — consistent with E3's own original claim. **This raises the same question for
+   `zerodte-score-floor-outcome-backtest.mjs`'s own INVERTED result** (`docs/audit/findings-staging/
+   2026-09-17-zerodte-score-floor-inverted.md`), which was also graded from a 10:00 ET entry — a
+   re-run at 11:00 ET is in progress; see that finding for the follow-up once it lands.
+2. **The 2-conf bucket (E3's own claimed +15.9% EV edge, also today's `ZERODTE_CONFLUENCE_MIN_EARLY`
+   requirement) grades WORST at BOTH entry times** (13.4% @10:00, 9.6% @11:00) — entry-time
+   INDEPENDENT, and does not reproduce E3's original edge claim under this proxy at either time.
+
+### Why this is being reported, not fixed
+
+Same scope caveats as the score_floor re-check: this measures a favorable-first
+underlying-continuation proxy, NOT E3's own real-option-premium methodology, and `confirmations`
+alone, not jointly gated with the rest of the stack. The 2-conf finding (item 2 above) is the more
+robust of the two since it survives the entry-time correction, but it is still a single-sample
+proxy-basis result against a gate whose original evidence was real premium P&L — not sufficient on
+its own to touch `ZERODTE_CONFLUENCE_MIN_EARLY`.
+
+### Recommended next steps (not done here — reporting only)
+
+1. Re-run `zerodte-score-floor-outcome-backtest.mjs --entry=11:00` (in progress) to check whether
+   score_floor's own INVERTED verdict is similarly entry-time-sensitive.
+2. If the pattern holds broadly, consider whether `--entry` defaults across this toolkit's
+   proxy-based backtests should move to 11:00 ET (E2/E3's own validated entry point) rather than
+   10:00 ET (chosen for a different gate's unlock time) — a tooling/methodology decision, not a
+   product gate change, and out of scope for this PR.
+3. The 2-conf "edge bucket doesn't reproduce" finding deserves the same real-premium re-derivation
+   already recommended for score_floor's E6 re-check — a proxy-basis, entry-time-independent miss on
+   E3's own headline claim is worth confirming (or refuting) against real option P&L before treating
+   `ZERODTE_CONFLUENCE_MIN_EARLY=2` as settled.
+
+### Evidence
+
+Full run detail: `docs/audit/0DTE-RESEARCH.md`, E3 section ("confluence (the edge)").
+
+## 0DTE gate-calibration `days=N` window was silently ignored past ~14 days — `fetchGradedSkips` capped at a flat 2000 rows regardless of the requested window — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | 0DTE — gate-calibration evidence loop (`GET /api/market/zerodte/calibration`, `skip-grading.ts`) |
+| **Severity** | P1 (the primary evidence source for whether a hard gate is well-calibrated silently returned stale/wrong data for every window wider than ~2 weeks, undermining several gate-floor re-checks flagged the same day) |
+| **Status** | FIXED |
+| **Files** | `src/lib/zerodte/skip-grading.ts`, `src/lib/zerodte/calibration.ts`, `src/lib/zerodte/skip-grading.test.ts`, `src/lib/zerodte/calibration.test.ts` |
+
+### Root cause
+
+Found while executing the TOP-3 action items from today's 0DTE gate-floor deep-dive (a 12-agent
+parallel audit of every hard-gate floor in `evaluateZeroDteGates`). Item #1 was to re-run
+`scripts/audit/zerodte-gate-primary-ablation.mjs --days=90` and watch G-13
+(`flow_accumulation_conflict`) as more rejections accrued — its only real outcome measurement had
+flagged a concerning wrong-direction signal (BLOCKED n=12, WR=75.0% vs. a 30.8% passed baseline).
+
+Three consecutive re-runs of that exact same command, ~10-20 minutes apart, produced wildly
+different results for the same gate over the same nominal 90-day window:
+
+| Run | G-13 blocked n | G-13 blocked WR |
+|---|---|---|
+| Workflow's earlier run (same session) | 12 | 75.0% |
+| Re-run #1 | 10 | 70.0% |
+| Re-run #2 | 5 | 40.0% |
+
+A direct, isolated check (two back-to-back `GET /api/market/zerodte/calibration?days=90` calls,
+no backfill in between) confirmed the *current* number (n=5) is itself stable and reproducible —
+so the instability came from the read, not from randomness inside a single request. Sweeping
+`days=7/14/30/60/90` against the live endpoint made the mechanism obvious:
+
+```
+days=7:  sum(n)=718  sum(ungradeable)=185  total=903
+days=14: sum(n)=1777 sum(ungradeable)=223  total=2000
+days=30: sum(n)=1777 sum(ungradeable)=223  total=2000
+days=60: sum(n)=1777 sum(ungradeable)=223  total=2000
+days=90: sum(n)=1777 sum(ungradeable)=223  total=2000
+```
+
+`days=14/30/60/90` all returned the **byte-identical** total (2000, split 1777/223) — proof the
+90-day window was reading exactly the same rows a 14-day window already saw, nothing more.
+
+`buildZeroDteCalibrationReport` (`calibration.ts`) calls `skipMod.fetchGradedSkips({ sinceYmd,
+throughYmd })` with **no `limit`**, so it fell through to `fetchGradedSkips`'s own hardcoded
+clamp:
+
+```ts
+// old:
+LIMIT $3`,
+  [opts.sinceYmd, opts.throughYmd, Math.min(2000, Math.max(1, opts.limit ?? 2000))]
+```
+
+`fetchGradedSkips` orders `ORDER BY observed_at DESC LIMIT 2000` — the most recent 2000
+graded/ungradeable rejection rows, full stop, regardless of what `since`/`through` (derived from
+`days`) actually asked for. Live volume is already ~2000 rows inside 14 days alone
+(~140+/day), so every window request wider than ~14 days was silently truncated back down to that
+same most-recent slice — the `since`/`through` date filter in the SQL was real, but functionally
+moot once the row volume in range exceeded the LIMIT. As the ongoing skip-grading backfill (this
+session's own re-runs, plus the daily `zerodte-skip-grade` cron) graded MORE of the backlog over
+time, the "most recent 2000" window's leading edge kept moving forward, silently pushing
+*older* graded rows for low-volume gates like G-13 out of view — which is exactly why G-13's
+reported n dropped run over run (12 → 10 → 5) even though nothing was ever deleted from the DB.
+
+### Why it wasn't caught earlier
+
+`fetchGradedSkips`'s SQL is deterministic and correct in isolation (confirmed: two calls 3 seconds
+apart with no backfill between them returned byte-identical results). The bug only surfaces as a
+*window* defect — comparing `days=N` against `days=M` — which nothing in the existing toolkit did
+before today; every prior script that reads `blocked_value` (`zerodte-gate-primary-ablation.mjs`,
+`gate-calibration-live-report.mjs`) ran with a single fixed `--days` value per invocation and
+reported whatever came back as if it were the full requested window. `platform_wide_skip_grading_health`
+even reports `total_graded`/`total_ungradeable` that sum to exactly the LIMIT (1777+223=2000) with
+no `truncated` flag or `total_available` count to signal the read was capped.
+
+### Blast radius
+
+Every consumer of `GET /api/market/zerodte/calibration`'s `blocked_value` field for any window
+request wider than the live "most recent ~14 days" boundary: `scripts/audit/zerodte-gate-primary-ablation.mjs`,
+`scripts/audit/gate-calibration-live-report.mjs`, and any `docs/audit/*.md` write-up citing a
+`--days=90`/`--days=60`/`--days=30` blocked-value figure as if it covered that full window. This
+does **not** affect the separate, direct-derivation backtests that don't go through this route
+(e.g. `zerodte-score-floor-outcome-backtest.mjs`, which re-derives scores from `deriveZeroDteSetups`
+directly rather than reading `blocked_value`). `fetchGradedSkips` has exactly one production caller
+(`buildZeroDteCalibrationReport`), confirmed by a repo-wide grep — so the fix's blast radius is
+fully scoped to that one call path.
+
+### Fix
+
+Raised `fetchGradedSkips`'s internal safety ceiling from a flat `2000` to a named
+`MAX_GRADED_SKIPS_LIMIT = 30_000` (still bounded, now with real headroom above observed volume),
+and changed `buildZeroDteCalibrationReport` to pass an explicit `limit` **scaled to the requested
+window** (`days * GRADED_SKIPS_PER_DAY_BUDGET`, budget=300/day — comfortably above the ~140+/day
+currently observed) instead of relying on `fetchGradedSkips`'s bare default. This mirrors the exact
+pattern already used one line above in the same function for the committed-ledger fetch
+(`Math.min(MAX_LEDGER_ROWS, days * 20)`) — that pattern just wasn't applied to the graded-skips
+fetch, which turned out to need a much larger per-day budget given its far higher row density.
+Callers that don't pass a `limit` (none exist in production today) keep the historical default of
+2000, so this is purely additive for the one call site that needed it.
+
+### What was deliberately left alone
+
+Did not add a `truncated`/`total_available` disclosure field to the API response — that would be a
+useful follow-up but is a separate, additive change or transparency, not required to fix the actual
+defect (the window now genuinely covers what it claims to, at current observed volume). Did not
+touch any gate threshold or the score-floor/confluence-floor re-check plan from today's gate-floor
+audit — this is a data-pipeline correctness fix, not a calibration decision.
+
+### Regression test
+
+`skip-grading.test.ts`: `fetchGradedSkips` now asserts a wide caller-supplied `limit` (27,000)
+reaches the SQL `LIMIT` parameter unclamped, that an even larger request (999,999) is still capped
+at `MAX_GRADED_SKIPS_LIMIT`, and that an unspecified `limit` keeps the historical default (2000).
+`calibration.test.ts`: a source-text assertion (same idiom `skip-grading.test.ts` already uses for
+an order-of-operations invariant `buildZeroDteCalibrationReport` has no DB-mock harness to test
+behaviorally) pins that the `fetchGradedSkips` call site passes `limit: days *
+GRADED_SKIPS_PER_DAY_BUDGET`, never a bare call — the exact shape of this bug. RED→GREEN proven via
+`git stash` on the two source files only (2 tests fail pre-fix: the behavioral limit-clamp test and
+the source-text call-site test; 0 fail post-fix, 65/65 in both files combined). Full `tsc --noEmit`
+clean. Full `npm test` on Node 20: 14464 pass / 0 fail / 3 skipped (unchanged skip count from
+before this change).
+
+### Live re-verification
+
+Re-ran the direct `days=7/14/30/60/90` sweep is not repeatable against production until this fix
+deploys (the fix is code, not yet live) — flagged in `docs/audit/MARKET-OPEN-VALIDATION.md` for
+next-session confirmation that a post-deploy `days=90` calibration read genuinely differs from
+`days=14` at current volume, and that `zerodte-gate-primary-ablation.mjs --days=90` re-run against
+the fixed endpoint gives a STABLE G-13 (and every other gate's) blocked-n across repeated calls
+within the same session.
+
+## Vector commit boost inflated a CONDOR's score against its own nominal fade direction — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | 0DTE — Vector ↔ 0DTE commit boost / Iron Condor |
+| **Severity** | P2 (structural correctness defect that feeds a hard gate; live magnitude not separately measured, see below) |
+| **Status** | FIXED |
+| **Files** | `src/lib/zerodte/vector-commit-boost.ts`, `src/lib/zerodte/vector-commit-boost.test.ts`, `src/lib/zerodte/scan.ts` |
+
+### Root cause
+
+Found while investigating the sibling Cortex-layer defect
+(`docs/audit/findings-staging/2026-09-17-cortex-condor-nominal-direction-misread.md`) — same
+audit pass, same commit loop in `scan.ts`, one call earlier.
+
+`condor.ts` stamps a CONDOR setup's `direction` as **nominal fade provenance only**
+(`// nominal provenance only — the condor is delta-neutral`), but `scan.ts`'s commit loop called
+`computeVectorGateBoost(s.direction, s.score, pulse)` **unconditionally for every setup**,
+condors included, in two places that feed the score used for hard-gate evaluation:
+
+```ts
+const boost = computeVectorGateBoost(s.direction, s.score, pulse);
+let gateScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
+if (boost.score_bump > 0) s.score = gateScore;
+...
+const postBoost = computeVectorGateBoost(s.direction, gateScore, pulse);
+```
+
+`computeVectorGateBoost` asks "does Vector's live directional pulse for this ticker agree with
+this setup's direction?" and, if so, adds +8 (winner) or +4 (runner) to the score and grants a
+G-17/G-8 exemption. For a condor, "agreement" with a nominal fade direction the structure was
+never actually betting on is coincidence, not corroboration — but the bump was applied anyway,
+and **the inflated score feeds `evaluateZeroDteGates`'s G-3 score-floor and G-18 early-window
+floor, neither of which is condor-exempt** (unlike G-17, which the gate stack itself already
+skips for condors — `gates.ts`: `if (!isCondor && input.score >= 65 && input.score < 70)`). The
+bump is purely additive (only ever raises the score, never lowers it), so the practical effect
+was always in one direction: a condor could clear G-3/G-18 on evidence about a direction it
+structurally does not hold.
+
+### Why it wasn't caught in the earlier condor-direction sweep
+
+Same reason as the Cortex sibling finding: `vector-commit-boost.ts` has zero
+`condor`/`is_condor`/`play_type` references anywhere in the file, so nothing signaled it needed
+condor awareness without reading the actual call-site arguments in `scan.ts`'s commit loop.
+`gates.ts` is carefully condor-aware at nearly every gate (`isCondor` guards on G-1, G-7, G-14,
+G-17, the G-8/G-9/G-10 liquidity-gate swap) — but the SCORE fed into those gates is computed
+*before* `evaluateZeroDteGates` runs, in a separate module the gate-level condor-awareness sweep
+never touched.
+
+### What was checked and left alone (scope discipline)
+
+Two further `computeVectorGateBoost(s.direction, ...)` call sites remain in `scan.ts`
+(the post-commit A-tier-upgrade / `runnerConfluenceCount` block, ~line 1830/1836). These run
+*after* the commit/reject decision, feed only `exit_policy_at_commit`/`runner_profile` metadata,
+and condor exit management is entirely separate (`condor.ts`'s own `gradeCondorFromBars`, which
+never reads `exit_policy_at_commit`) — per `scan.ts`'s own comments elsewhere ("the condor path
+never reaches this block"), this metadata is structurally inert for a condor row. Left unfixed
+deliberately to keep this PR scoped to the one call path that actually affects a real gate
+decision; not itself a live bug, just adjacent dead-for-condor code already following the
+established "condor fields are permanently null/unused" pattern documented elsewhere in
+`scan.ts`.
+
+`regimeScoreBump`/`planChaseContextFromSetup` (regime-commit-relief.ts) were also checked: this
+bump requires `tapeBacked(discovery_origin)` (FLOW or BREAKOUT only), and a condor's only
+discovery origin is PIN — so this bump structurally can never fire for a condor regardless of
+direction. No fix needed there.
+
+### Fix
+
+Added `computeVectorGateBoostForPlayType(playType, direction, score, pulse)` to
+`vector-commit-boost.ts` — wraps `computeVectorGateBoost`, returning a zero/no-op boost
+(`{score_bump: 0, g17_exempt: false, confluence_credit: 0, reason: null}`) when
+`playType === "CONDOR"`, otherwise delegating unchanged. `scan.ts`'s two gate-score-feeding call
+sites now use the wrapper. Put the check in a small reusable helper (rather than inlining the
+condition twice in `scan.ts`) so every future call site gets it for free and the test coverage
+lives next to the function it guards.
+
+### Blast radius
+
+Two call sites in `scan.ts`'s commit loop, both fixed. The two post-commit call sites are
+structurally inert for condors (see above) and left unchanged.
+
+### Regression test
+
+`src/lib/zerodte/vector-commit-boost.test.ts` — two new tests: a CONDOR gets zero boost even
+with a perfectly aligned Vector winner, and a DIRECTIONAL setup (or `null`/`undefined` play type)
+is byte-identical to calling `computeVectorGateBoost` directly. RED→GREEN proven via `git stash`
+on `vector-commit-boost.ts`/`scan.ts` only (2 fail pre-fix, 0 fail post-fix). `tsc --noEmit`
+clean. Full `scan.test.ts` + `vector-commit-boost.test.ts` + `condor.test.ts` (97 tests) green
+on Node 20.
+
+### Live impact — not separately measured
+
+Same caveat as the sibling Cortex finding: the separate 0-condor-commits-in-90-days
+investigation traced the near-total rejection rate to the hard-gate funnel (condor
+liquidity/range gates + G-13), not to this score-inflation path specifically. This fix corrects
+a real defect for whatever slice of condor candidates reach G-3/G-18 with a Vector-aligned
+nominal direction, but its magnitude on the live commit count was not separately quantified —
+consistent with this audit pass's discipline of not overstating live impact beyond what was
+actually measured.
+
+## An open 0DTE iron condor got a fabricated "Thesis Health" score on the live command-deck and in Largo — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | 0DTE deep-dive (architecture trace of every directional-vote aggregation in the engine) |
+| **Severity** | P1 (member-facing on the LIVE production command-deck `ThesisHealthPanel`, not just a Largo tool — a delta-neutral credit structure was scored and displayed as if it had a directional thesis, health %, and pillar breakdown) |
+| **Files** | `src/lib/zerodte/thesis-health.ts` (`computeThesisHealth`) |
+| **Found by** | Tracing every consumer of a 0DTE setup's `direction` field for condor-safety, after confirming `attachContractPlans` already explicitly guards condor rows out of the single-leg contract-attach path (`scan.ts`'s own comment: *"forcing it through buildOcc/buildContractPlan would fabricate a one-legged plan"*) — the same discipline was missing here |
+
+### Root cause
+
+`computeThesisHealth` (`zerodte-service.ts` calls it unconditionally for every OPEN/HOLD/TRIM
+ledger row, condor or not) scores five pillars — flow, tape (SPY bias alignment), VWAP, market
+alignment, confluence — all keyed off `live.direction`. For a real directional play that IS the
+play's actual stance. For a committed 0DTE iron condor, `direction` is only the pin's nominal fade
+side (`condor.ts`'s `buildCondorSetup`: *"UNUSED by the neutral structure's gates/grader"*) — the
+same fact already established and fixed twice elsewhere this session (the Largo cross-product
+adapter and the session governor). `computeThesisHealth` had no guard at all: it happily scored a
+condor's nominal side as if it were a real directional thesis, producing a fabricated "Thesis
+Health" percentage, rung (INTACT/DEGRADED/BROKEN), and pillar breakdown for a delta-neutral,
+credit-sold structure that has no directional thesis to be intact or broken.
+
+This is the highest-visibility instance of the pattern found this session: unlike the Largo-only
+adapters, this value is rendered directly on the member's **live command-deck**
+(`ThesisHealthPanel`/`PlayTerminal`/`CommandDeck`/`ZeroDteCommandPanel`, via
+`zerodte-sources.ts`'s `thesis_health` field) for a real, currently-open condor position, in
+addition to reaching Largo through the same `zerodte-service.ts` payload.
+
+### Evidence
+
+RED before the fix (`git stash` proof, Node 20, `--experimental-test-module-mocks`,
+`thesis-health.test.ts`): 1 failure — a condor-shaped `entry_context`
+(`{ ...baseCtx, play_type: "CONDOR", condor: {...} }`) on an OPEN row returned a real computed
+thesis-health object (non-null, with pillars) instead of the honest `null` this function already
+returns for other "not applicable" cases (a non-working status, a missing `entry_context`).
+
+GREEN after: 8/8 pass in `thesis-health.test.ts`; `npx tsc --noEmit` clean; full `npm test` on
+Node 20 green (see PR).
+
+### Fix rationale
+
+Added one guard clause returning `null` for a condor row (`ec.play_type === "CONDOR" ||
+Boolean(ec.condor)`, the same structural check used in `governor.ts`'s `isCondorLedgerRow`),
+placed immediately alongside the function's two EXISTING "not applicable" `null` returns
+(non-working status, missing `entry_context`) — `null` is already this function's established
+contract for "no thesis health to show," and every consumer already handles it correctly:
+`CommandDeck.tsx`, `PlayTerminal.tsx`, and `ZeroDteCommandPanel.tsx` all gate on
+`thesisHealth != null` today (with existing tests asserting the section never renders when it's
+absent — e.g. `ZeroDteCommandPanel.test.ts`'s *"never renders the Thesis integrity section when
+thesisHealth is absent"*), and `PlayTerminal.tsx` already falls back to an "entry-quality score"
+display for rows with no thesis health wired (the same path a WATCH/Legacy row already takes).
+So this degrades safely with **zero new UI plumbing** — a condor's "Thesis integrity" section
+simply stops rendering, which is the honest state (there is no thesis to measure), rather than
+needing a bespoke condor-aware panel.
+
+Considered and rejected as a first cut: building a condor-specific thesis-health variant (e.g.
+scoring "is the range still intact" against the condor's own breach levels) — that is a genuine,
+real enhancement idea (see the accompanying report), but it is new product surface, not a bug fix,
+and is out of scope for this finding; `null` (an honest "not applicable," matching the codebase's
+own established convention) is the correct and minimal fix for the immediate correctness defect.
+
+## 2026-09-17 — [FINDING, P4 docs-hygiene, re-verification of old FINDINGS.md claims] Fifth stale-`OPEN` entry this session — `SDLC_AUTOMATION_PLAN.md` deprecation-notice finding was fixed the very next day by PR #3396, entry never updated
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | Same staleness pattern found four times already this session (Meridian ESTIMATES/HISTORY, SPX Slayer Largo, `summarizeGroupGreekFlow`, `earnings_week_analytics` duplicate) — continuing the "re-verify old FINDINGS.md claims" sweep per the standing DISCOVERY-lane brief. Not hand-editing `FINDINGS.md` directly (repo policy); flagging for the next fold cycle. |
+| **The stale entry** | `## 2026-09-02 — [FINDING, P4 docs/onboarding] SDLC_AUTOMATION_PLAN.md describes a superseded local-Windows-cron automation scheme, still linked from ONBOARDING.md with no deprecation notice — OPEN, write-up only`. Its own "Why not fixed directly this cycle" field explicitly deferred: *"is the described automation fully retired... partially superseded... or does some of it still run... That's a real editorial decision... belongs to whoever owns onboarding/operating docs."* Its "Suggested next step" named the minimum bar: *"add the same kind of header disclaimer `CLOUDFLARE_SETUP.md`/`PGBOUNCER-SETUP.md` already carry."* |
+| **Confirmed fixed** | `docs/SDLC_AUTOMATION_PLAN.md` lines 3-9 now carry exactly that disclaimer, added by PR #3396 (`06388efaf`, "docs: add deprecation notice to SDLC_AUTOMATION_PLAN.md's superseded local-cron scheme") — merged **2026-09-03, one day after** the 2026-09-02 finding that asked for it. The banner names the local-Windows-cron scheme, the Railway decommission, and explicitly points at the cloud-based replacement (`this repo's own DISCOVERY lane — 24/7 new-work sweep`, and `.github/workflows/spx-platform-backlog-agent.yml`) — going further than the minimum ask (a bare disclaimer) by also answering the "what replaced it" half of the original editorial question. `ONBOARDING.md` still lists `SDLC_AUTOMATION_PLAN.md` in its Infra doc list (line 355) alongside `CLOUDFLARE_CONFIG.md`/`CLOUDFLARE_SETUP.md`/`PGBOUNCER-SETUP.md` — which is now correct, since all four docs in that list carry their own deprecation/staleness banner, the exact parity the original finding said was missing. |
+| **What I did NOT do** | Did not edit `FINDINGS.md` directly, per standing policy. Did not re-audit the rest of the file's content for accuracy beyond the deprecation banner itself — only the specific gap the original finding named. |
+| **Suggested next step** | Whoever next folds staged findings should mark the 2026-09-02 entry FIXED with a pointer to PR #3396 (merged 2026-09-03), same as the other four stale-status entries flagged this session. |
+| **Status** | Re-verification finding — not itself a fix. No code or FINDINGS.md changed. |
+
+## 2026-09-17 — [FINDING, FIXED] A trade print silently refreshed a stale WS option mark's timestamp, defeating staleness detection
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 — live position management: a genuinely stale mark can read as fresh indefinitely, letting `getLiveOptionMarkSync`'s staleness gate silently pass data it exists to reject |
+| **Lane** | Night Hawk Legacy (found during the outcome-honesty/marks-correctness sweep; the defect lives in the shared `options-socket.ts` WS layer, so it also affects every other consumer of `getLiveOptionMarkSync`/`getLiveOptionMark`, not just Legacy) |
+| **Files** | `src/lib/ws/options-socket.ts`, `src/lib/ws/options-socket-trade-merge.test.ts` |
+| **PR** | (see PR link in commit trailer) |
+
+### Root cause
+
+`OptionMark.ts` is documented as "epoch ms when this mark was received/updated," and every
+staleness check downstream (`isWsUpdatedAtFresh`, `isZeroDteMarkStale`) trusts it to mean exactly
+that — "how old is this mark." `handleQuote` (a real "Q" NBBO frame) correctly stamps `ts: now`
+alongside a freshly-computed `mark`. But `handleTrade` (a "T" print) did NOT:
+
+```ts
+// BEFORE
+const entry: OptionMark = {
+  bid: prev?.bid ?? null,
+  ask: prev?.ask ?? null,
+  mark: prev?.mark ?? last,
+  last,
+  ts: now,           // <-- always "now", even when mark/bid/ask are untouched
+};
+```
+
+When a prior quote-derived mark already existed, `mark`/`bid`/`ask` were carried forward
+byte-for-byte unchanged — only `ts` moved to `Date.now()`. A contract can print trades (even
+sporadically) for a long stretch with no accompanying fresh NBBO quote update — a resting
+two-sided market that simply isn't re-quoting — and each such trade would re-stamp `ts` to "now"
+even though nothing about the mark itself had changed. `isWsUpdatedAtFresh`/`isZeroDteMarkStale`
+then read that manufactured recency as real freshness, so a mark that was actually minutes old
+could report `stale: false` indefinitely as long as trade prints kept trickling in.
+
+This is the exact same root-cause shape as the already-fixed 2026-09-13 defect in
+`legacy-option-mark-row.ts` ("the REST branch used to prefer `snap.observedAtMs` — our own fetch
+clock — over `snap.quoteUpdatedMs` — the real market clock"), just on the WS ingestion side
+instead of the REST fetch side, and left unaddressed by that fix and the four subsequent
+staleness-threshold fixes to the same pipeline (PRs #5073, #5084, #4914, #4970) because none of
+them touched `handleTrade`.
+
+### Why this wasn't just cosmetic
+
+`getLiveOptionMarkSync`/`getLiveOptionMark` are the WS read path for BOTH:
+- `GET /api/market/nighthawk/legacy-marks` — the member-facing marks API.
+- `legacy-option-marks-server.ts`'s `fetchLegacyOptionMarksServer` — the **legacy-live-sync cron's
+  own mark read**, which drives `runLegacyLiveSync`'s peak/trough tracking and scale-out/close
+  evaluation for real Chief Trade Alert Bot positions.
+
+A falsely-fresh mark isn't merely a display quirk here: `buildLegacyOptionMarkRow`'s own
+staleness check (already correctly bar'd at `LEGACY_QUOTE_STALE_MS`) is only as honest as the
+`asofMs` it's given. If `ts` has been artificially kept current by trade-print noise, a mark that
+should have been excluded/flagged stale is instead treated as live input to real position
+management.
+
+### Evidence
+
+Traced structurally (not yet caught live at the healthcheck layer, since B_marks currently reads
+correctly stale post-close): `handleMessage` dispatches `"T"` frames to `handleTrade` for every
+subscribed contract (`sendSubscribe` subscribes both `Q.<sym>` and `T.<sym>` channels). Confirmed
+`OptionMark.ts`'s own doc comment ("epoch ms when this mark was received/updated") is the
+contract every caller relies on, and that `handleTrade` was the one code path violating it —
+`handleQuote` was already correct (stamps `ts` alongside a freshly-computed `mark`).
+
+### Fix
+
+Extracted the merge logic into a pure, exported `mergeTradeIntoOptionMark(prev, last, now)` so it
+could be unit-tested directly without instantiating the private `OptionsShard` class (same
+pure-decision-extraction pattern already used elsewhere in this file's test suite, e.g.
+`stocks-socket.test.ts`'s `isLuldHaltSourceStaleForState`). `ts` now only advances to `now` when
+this trade is the thing that actually established the mark (no prior quote-derived mark existed,
+so `mark` falls back to the trade's own `last`); when a real mark already exists, carrying it
+forward carries its own timestamp forward too. `last` (the raw trade print) is still updated
+either way — it never claimed to be a staleness signal on its own, only `mark`/`ts` are.
+
+### Fix rationale
+
+The alternative — leaving `ts` at `now` always — was the original (buggy) behavior. Never
+advancing `ts` at all on a trade would also be wrong: when NO quote has ever established a mark
+yet (`prev` is `undefined`, or a prior quote resulted in a crossed/invalid book so `mark` stayed
+`null`), the trade print IS genuinely new information and its timestamp should count. The fix
+distinguishes those two cases via `prev?.mark != null`, matching exactly the same condition
+`mark: prev?.mark ?? last` already used to decide whether the trade contributes a new mark at all
+— `ts` now tracks the same boundary `mark` already does, instead of tracking neither.
+
+### Blast radius
+
+- `getLiveOptionMarkSync`/`getLiveOptionMark` (`options-socket.ts`) — the shared WS mark-read
+  layer; this fix benefits every consumer, not only Legacy.
+- `legacy-marks/route.ts` and `legacy-option-marks-server.ts` (Legacy) — the two Legacy-specific
+  consumers named in this lane's own standing mandate.
+- `vector/contract-picks/live/route.ts` and `vector-pick-sweep.ts` (Vector/0DTE) — also read
+  through `getLiveOptionMarkSync`, so they benefit from the same correction; not otherwise
+  touched, no behavior of theirs is changed beyond marks now aging correctly.
+- `handleQuote` was already correct and is untouched by this fix.
+
+### Regression test
+
+`options-socket-trade-merge.test.ts` (new file) tests the extracted pure function directly:
+1. A trade print carrying forward an already-established mark must NOT refresh `ts`.
+2. A trade print that establishes the FIRST mark (no prior quote) DOES stamp `ts` to now.
+3. A trade print following a quote that resulted in a null mark (crossed book) also stamps `ts`
+   to now.
+4. A chain of repeated trade-only updates all stay anchored to the original quote's `ts` (no
+   creeping drift).
+
+RED→GREEN proven via `git stash push -u -- src/lib/ws/options-socket.ts`: 4/4 new tests fail
+pre-fix (`mergeTradeIntoOptionMark is not a function`), 4/4 pass post-fix. Full suite +
+`tsc --noEmit` both clean post-fix.
+
+## 2026-09-17 — [FINDING, P3 tooling/automation gap] `ops-auto-fix.yml` has no code path to close an issue once its condition resolves — closing is entirely delegated to the already-documented-broken Cursor Cloud Agent dispatch
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What triggered this** | Issue #5083 (`[ops-auto] P0: zerodte-warm`) sat open for ~10 hours after the underlying incident was fully resolved and repeatedly re-confirmed healthy (see #5086/#5088/#5090). Investigated why the automation never closed it, rather than just closing it and moving on. |
+| **Root cause** | `.github/workflows/ops-auto-fix.yml`'s "Dispatch GitHub issue + Cloud Agent" step runs `if: steps.collect.outputs.count != '0'` — it has **no `else` branch and no code path at all for a GREEN scan** (`count == 0`). When the underlying condition clears, the workflow's `Collect action items` step still runs (on its 20-min schedule) and correctly computes `count=0`, but nothing downstream ever touches the previously-opened issue — no comment, no close, nothing. `scripts/ops-dispatch-agent.mjs` (lines ~87, ~156) DOES instruct the dispatched agent to "close the issue when all items are cleared" — but that's an instruction embedded in the Cloud Agent's own prompt, executed only if a Cloud Agent run actually happens. Per this repo's own documented finding (#4987, referenced elsewhere in this file), the Cursor Cloud Agent dispatch mechanism has been failing 100% of the time since 2026-09-07. So the one path that could close a resolved ops-auto issue never fires, and there is no fallback. |
+| **Consequence** | Once opened, an `[ops-auto]` issue is permanently open unless a human (or another agent) closes it by hand — regardless of how quickly or thoroughly the underlying condition actually resolves. This isn't specific to #5083; any other open `[ops-auto]` issue (e.g. #5038, still open from 2026-09-15) may be equally stale without anyone knowing, because "still open on GitHub" carries no information about whether the condition is still true. |
+| **Action taken this pass** | Closed #5083 directly (`state: closed, state_reason: completed`) with a comment explaining both the resolution and this structural gap, since I had already independently verified and documented the resolution multiple times over the preceding hours. Did NOT close #5038 — checked CloudWatch for `swing-discovery` cron activity both right now and during yesterday's RTH window and got zero hits either way, which is inconclusive (the route may simply not log a success line to CloudWatch at all, same pattern zerodte-warm's DB-only `logCronRun` skip path has) rather than evidence of continued failure. Didn't want to close an issue I couldn't actually verify. |
+| **What this does NOT do** | Did not touch `ops-auto-fix.yml`, `ops-dispatch-agent.mjs`, or the Cursor dispatch mechanism itself — the underlying dispatch-is-broken problem is already tracked (#4987) and is an infra/tooling fix outside a DISCOVERY-lane docs/small-fix pass. |
+| **Suggested next step** | (1) Whoever eventually fixes the Cursor Cloud Agent dispatch (#4987) should verify the "close when GREEN" instruction actually works once agents run again. (2) Independently of that fix, consider adding an explicit close-on-GREEN step directly in the workflow (no Cloud Agent dependency) — e.g. on a GREEN scan, search for open issues carrying any `ops-fingerprint:` marker whose underlying check now passes and close them directly via `gh issue close`, rather than relying entirely on a downstream agent that may not run. (3) Worth a periodic manual sweep of open `[ops-auto]` issues until either fix lands, since none of them can be trusted to reflect current state. |
+| **Status** | Structural gap documented, not fixed (infra/workflow change, judgment call for the owning lane/operator). One resolved instance (#5083) closed directly as a one-off cleanup. |
+
+## 2026-09-17 — [FINDING, FIXED] Two independent re-derivations of `stop_data_unavailable` used AND where the canonical grader uses OR
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — a latent grading-honesty inconsistency with no currently-observable live impact (the sole writer never produces the partial-data shape that would trigger it), but a real divergence between three independent copies of "the same" check |
+| **Lane** | Night Hawk Legacy |
+| **PR** | fix/nighthawk-stop-data-unavailable-and-vs-or |
+
+### Root cause
+
+`play-outcomes.ts`'s `resolveOutcome` — the canonical Night Hawk outcome grader — computes:
+
+```ts
+const hasIntraday = high != null && low != null;
+const stop_data_unavailable = stop != null && !hasIntraday;
+```
+
+which by De Morgan's law is `stop != null && (high == null || low == null)` — an **OR**:
+either field missing is enough to distrust the row's intraday-based verdict, because a
+LONG's target-hit check needs `high` and its stop-hit check needs `low` (and vice versa
+for a SHORT) — both checks matter for the row's grade, so either missing field taints it.
+
+Two independent re-derivations of this same concept — `analytics.ts`'s
+`isStopDataUnavailable` (feeds the member-facing `/record` route's exclusion accounting)
+and `track-record-page.ts`'s `nhStopDataUnavailable` (feeds the public track-record page)
+— both instead required **BOTH** fields to be null:
+
+```ts
+return r.stop != null && r.session_high == null && r.session_low == null;
+```
+
+This is not equivalent: a row with, say, `session_high` present but `session_low` null
+(or vice versa) would be graded `stop_data_unavailable: true` by the canonical grader
+(and its `outcome` could still land on `"target"` via the close-only fallback path in
+that branch) but would be treated as fully scoreable by both downstream re-derivations,
+letting an unreliable close-only "target" grade count as a real win in the public/member
+win-rate.
+
+### Why this is disclosed as low-current-impact, not zero-value
+
+The sole writer of `session_high`/`session_low` (`resolvePendingNighthawkOutcomes`,
+same file) sources both fields from one Polygon daily OHLC bar object, which is either
+fully present or entirely absent — so the partial-null shape this divergence depends on
+does not currently occur. This is fixed defensively rather than left to depend on that
+writer never changing, per this codebase's own standing discipline (`OUTCOME-GRADING-SPEC.md`)
+that two independent copies of "the same" check must never be allowed to drift, checked or not.
+
+### Fix
+
+Changed both `analytics.ts`'s `isStopDataUnavailable` and `track-record-page.ts`'s
+`nhStopDataUnavailable` from AND to OR, matching `resolveOutcome`'s actual semantics
+exactly. No behavioral change for any row with a fully-present or fully-absent bar
+(the only shape ever currently written) — only the previously-unreachable partial case
+now excludes correctly.
+
+### Blast radius
+
+Two functions, both private/internal to their files. `analytics.ts`'s
+`isStopDataUnavailable` feeds `buildRecordSegment` (the admin/member `/record` route).
+`track-record-page.ts`'s `nhStopDataUnavailable` feeds `isNighthawkOutcomeScoreable` →
+`nhFromRows` (the public `/track-record` page). No other consumers of either private
+function exist.
+
+### Tests
+
+Added a regression test in each file's existing test suite: a 3-row fixture with one
+row missing only `session_high`, one missing only `session_low`, and one fully graded —
+asserting only the fully-graded row is scoreable/counted. RED confirmed via `git stash`
+isolating just each source fix (both failed pre-fix); GREEN confirmed after restoring
+(9/9 and 11/11 passing respectively). `tsc --noEmit` clean.
+
+## Largo cross-product read: Night Hawk's vote was never actually about the ticker being asked about — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | 0DTE / Night Hawk deep-dive (Largo product contract compliance) |
+| **Severity** | P1 (a Largo-facing tool silently answered the wrong question — real member-facing wrong-answer risk) |
+| **Files** | `src/lib/largo/contract/product-adapters.ts` (`nighthawkContribution`), `src/lib/largo/contract/cross-product-read.ts` |
+| **Found by** | Open-ended 0DTE engine audit (operator-requested deep dive), 2026-09-17 |
+
+### Root cause
+
+`crossProductRead(ticker, ...)` (`cross-product-read.ts`) fans out to six product tools and joins
+their answers into one "does everyone agree on this ticker" read (`docs/audit/LARGO-PRODUCT-CONTRACT.md`'s
+"identity" point: every product read must be about the ticker actually queried). Five of the six
+tools take the ticker as an input and their adapters trust the tool already scoped the answer.
+Night Hawk's tool, `get_zerodte_plays`, is different: it always returns the **whole multi-ticker
+0DTE board** (`SOURCES` entry: `input: () => ({})` — no ticker is ever passed to the tool), because
+that tool exists to answer "what is the 0DTE desk doing today", not "what is it doing on ticker X".
+
+`nighthawkContribution` never accounted for that difference. It counted calls vs. puts across
+**every** committed play on the whole board (up to 10, regardless of ticker) and reported the
+aggregate as if it were a read of the one ticker the cross-product question was actually about.
+Concretely: asking Largo "does everyone agree on TSLA" when TSLA has no 0DTE play today, but SPX/
+NVDA/QQQ do, still produced a confident `bullish`/`bearish`/`neutral` "Night Hawk" vote sourced
+entirely from those unrelated tickers — a vote that could align with or contradict Helix/Vector's
+real TSLA reads for reasons that had nothing to do with TSLA.
+
+It compounded the mislabeling: the signal's own `ticker` field was set from `p.ticker`, a field the
+real `get_zerodte_plays` payload never carries at the top level (there is no single ticker on a
+whole-board response — only a `plays: [...]` array, each play carrying its own ticker). So in
+production every Night Hawk signal silently carried `ticker: ""`. This is the exact "hardcoded
+ticker_class" shape a prior fix in the same file already caught and corrected for helix/vector
+(see the comment above `tickerClassFor`) — it was never closed here because it manifests as an
+always-empty string rather than an always-wrong constant, so it never showed up as an obviously
+wrong value in a spot check.
+
+The existing regression test (`product-adapters.test.ts`, "night hawk votes from what the desk
+actually committed") actually *encoded* the bug: it built a payload with SPX+NVDA+QQQ plays and
+asserted the aggregate direction, treating "borrow every other ticker's committed play into one
+ticker's vote" as correct behavior.
+
+### Evidence
+
+RED before the fix (`git stash` proof, `npx tsx --experimental-test-module-mocks --test
+product-adapters.test.ts`): 2 failures —
+- `nighthawkEquity.signal?.ticker_class` mismatch (signal's `ticker` was `""`, so
+  `tickerClassFor("")` never resolved to `"equity"` for a queried TSLA).
+- the new identity regression test: querying `TSLA` against a board holding only SPX/NVDA/QQQ
+  plays returned a non-null `bullish`/`bearish` signal instead of an honest absence, and querying
+  `NVDA` against a board where NVDA itself is a lone call (plus two unrelated SPX puts) returned
+  `bearish` instead of `bullish`.
+
+GREEN after: 33/33 pass in `product-adapters.test.ts` + `cross-product-read.test.ts` +
+`cross-product.test.ts`; `npx tsc --noEmit` clean; full `npm test` on Node 20 green (see PR).
+
+### Fix
+
+`nighthawkContribution(payload, queriedTicker)` now takes the queried ticker (mirroring the
+`spxContribution(payload, queriedTicker)` shape that already existed in the same file), filters
+`plays` down to rows whose own `ticker` matches the one being asked about, and votes **only** off
+those. No committed play for that ticker is now an honest, explained absence
+(`missingReason: "no committed 0DTE play on <TICKER> this session"`), never a borrowed board-wide
+vote. `cross-product-read.ts`'s join loop special-cases `nighthawk` exactly the way it already
+special-cased `spx`, so the ticker actually threads through.
+
+### Blast radius
+
+Only one call site outside tests (`cross-product-read.ts`'s `SOURCES` fan-out) and it is the only
+production consumer of `nighthawkContribution`. No other adapter shares this bug — every other
+adapter's underlying tool already takes `ticker` as an input and is scoped by the tool itself
+(confirmed by reading each one during this pass); Night Hawk was the one tool whose contract is
+"whole board, no ticker filter", which is exactly why this identity gap could exist here and
+nowhere else.
+
+### Fix rationale — what was deliberately left unchanged
+
+- Did not add ticker-filtering to `get_zerodte_plays` itself — that tool intentionally answers
+  "board state", and other callers (system prompt guidance, `zeroDtePlaysForLargo` consumers) rely
+  on the whole-board shape. The fix belongs at the adapter boundary, where the cross-product join's
+  contract (one ticker) meets the tool's contract (whole board) — same shape as `spxContribution`'s
+  own SPX/SPXW scoping already living in the adapter, not in the SPX tool.
+- Deliberately did NOT also change how a CONDOR play's `direction` field is voted on once matched
+  to the queried ticker (it is still counted as a directional call/put vote) — condor.ts's own doc
+  says that field is "UNUSED by the neutral structure's gates/grader" (nominal fade-side provenance
+  only for a delta-neutral 4-leg structure), so a condor row voting directionally in this
+  cross-product read may itself be a second, narrower issue. Left out of this PR to keep it
+  single-issue; raised as a follow-up idea in this session's report instead.
+
+## 2026-09-17 — [FINDING, FIXED] `legacyPrimaryTroughPct` fell back to `null` where `legacyPrimaryPeakPct` correctly fell back to the live P&L
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — a real member-facing display gap (a populated "Best" next to a blank "Worst" on a freshly-opened Legacy position), no financial-calculation or grading impact |
+| **Lane** | Night Hawk Legacy |
+| **PR** | fix/legacy-trough-pnl-fallback-asymmetry |
+
+### Root cause
+
+`legacy-primary-pnl.ts`'s two excursion helpers are meant to be mirror images of each
+other — "best move so far" and "worst move so far" — but their fallback chains diverged:
+
+```ts
+export function legacyPrimaryPeakPct(play: TerminalPlay): number | null {
+  if (play.pnlPct != null && Number.isFinite(play.pnlPct)) {
+    return play.peak ?? play.pnlPct;   // <-- falls back to the live P&L
+  }
+  return play.stockPeakPct ?? play.peak ?? null;
+}
+
+export function legacyPrimaryTroughPct(play: TerminalPlay): number | null {
+  if (play.pnlPct != null && Number.isFinite(play.pnlPct)) {
+    return play.trough ?? null;        // <-- falls back to null, NOT play.pnlPct
+  }
+  return play.stockTroughPct ?? play.trough ?? null;
+}
+```
+
+For a freshly-opened option-based Legacy position, `pnlPct` is live (computed on every
+read) but `peak`/`trough` are persisted state set by the live-sync cron
+(`peak_premium`/`trough_premium` in `discord_live_state`) — there is a real window, right
+after BTO and before the first live-sync tick, where `pnlPct` is populated but `peak`/
+`trough` are not yet. In that window, `legacyPrimaryPeakPct` correctly reasons "nothing
+better has been seen yet, so the best-so-far is the current P&L" and returns `pnlPct`.
+`legacyPrimaryTroughPct` should reason identically for the worst-so-far, but instead
+returned `null` — an honest "no data" answer for a value the current P&L already answers.
+
+### Evidence
+
+Grepped real consumers: `TerminalPremiumPanels.tsx:285-286` computes `worst =
+legacyPrimaryTroughPct(play)` and `best = legacyPrimaryPeakPct(play)` side by side for
+the same play object, and `LegacyPlayDetailPanel.tsx` imports both. For a fresh position
+this rendered a populated "Best" next to a blank "Worst" — the same underlying
+data-availability state answered two different ways depending on which side of the
+best/worst pair it was.
+
+No existing test exercised the "no peak/trough latched yet" branch of either function
+(the two existing tests both passed an explicit `peak` value), and `legacyPrimaryTroughPct`
+had zero test coverage at all before this fix.
+
+### Fix
+
+Changed `legacyPrimaryTroughPct`'s fallback to `play.trough ?? play.pnlPct`, mirroring
+`legacyPrimaryPeakPct` exactly. No other behavior changes — a play that already has a
+latched `trough` is unaffected.
+
+### Blast radius
+
+Single function, two real UI consumers (`TerminalPremiumPanels.tsx`,
+`LegacyPlayDetailPanel.tsx`) and one internal consumer
+(`play-card-lifecycle.ts` only imports the peak helper, not trough, so it is
+unaffected).
+
+### Tests
+
+Added four tests: the RED case (trough falls back to `pnlPct` when unlatched — failed
+against the original source with `null !== -8`), a matching peak-fallback test that
+was previously untested, a latched-trough case, and a no-option-P&L stock-fallback case.
+RED confirmed via `git stash` isolating just the source fix; GREEN confirmed after
+restoring it (6/6 passing). `tsc --noEmit` clean.
+
+## 2026-09-17 — [FINDING, P2 Largo, closes an open WATCH LIST question + a new latency finding] `largo-stress-nightly` run #37: Mode 1's 429-header-capture WATCH LIST question is now answered (headers don't identify the upstream) — and the real driver of the timeout is 40-98s per-question latency, not the 429s themselves
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What triggered this** | Auto-created issue #5134 (`ops-auto-fix: Largo nightly stress failed`), run 35218508362, `conclusion: cancelled` (hit the 45-min job timeout). Per the standing Ask Largo × Night Hawk Swings ownership mandate's "keep digging every cycle" discipline, investigated the actual job logs rather than accepting the auto-issue's own boilerplate ("timeout-minutes: 45 reached is the common case"). |
+| **Part 1 — closes an open question from `docs/audit/MARKET-OPEN-VALIDATION.md`'s WATCH LIST** | The 2026-09-14 entry left Mode 1 (PR #4926, 429 rate-limit header capture) explicitly **unconfirmed**: "this run didn't hit one [a 429]... watch the next run that actually hits a 429 to see whether the captured `x-ratelimit-*` headers identify the upstream." Today's run hit **22 real 429s** (full list captured in the job log, one `[429 source details] {...}` line per skip). **Answer: the headers do NOT identify the upstream.** Every single one of the 22 captured detail objects contains only `cf-ray` (a Cloudflare edge trace ID) — zero `x-ratelimit-limit`/`x-ratelimit-remaining`/`x-ratelimit-reset` fields across all 22. Mode 1's fix works exactly as coded (it captures whatever headers exist on a 429 response), but the diagnostic goal it was built for — telling an operator *which* upstream (Largo API / Anthropic API / Clerk FAPI / Cloudflare itself) is doing the limiting — is not achievable from this data. A bare `cf-ray` with no rate-limit metadata is most consistent with **Cloudflare's own edge-level rate limiting** (which doesn't echo standard `x-ratelimit-*` headers the way an app-level limiter would), rather than the app or Anthropic API, but this is inference from absence, not a confirmed identification — stated as a hypothesis, not a finding. |
+| **Part 2 — the actual driver of the 45-min timeout: severe per-question latency, not the 429 burst** | The 22 429s are clustered entirely in the **last ~4 minutes** of the run (12:39:54–12:43:26 UTC, out of a run that started 11:58:51). Before that cluster, **every one of the prior ~90 questions succeeded** (OK/WARN, zero 429s) — but at latencies far outside what an interactive assistant should take: sampled real values from this run's own log — `53135ms`, `61831ms`, `65566ms`, `72935ms`, `98276ms`, `83999ms`, `82957ms`, `80490ms` (40-98 **seconds** per single question, repeatedly, throughout the whole run, not just a few outliers). At concurrency=2, a sustained ~50-60s average per question is what actually consumes the 45-minute budget on its own — the run was on pace to time out from latency alone even before the 429 burst appeared at the end. The 429s are better read as a **consequence** of the run's own long wall-clock duration (some Cloudflare edge window tied to sustained request volume from one client over ~40+ minutes) than as an independent cause. |
+| **Comparison to the last confirmed-clean baseline (2026-09-14, `MARKET-OPEN-VALIDATION.md`)** | `live_ok: 84, live_bad: 0, live_warn: 16, live_skipped_transport: 9, live_quality_pct: 84` → today: `live_ok: 69, live_bad: 0, live_warn: 30, live_skipped_transport: 22, live_quality_pct: 69.7`. `live_bad` staying at 0 across both runs is the reassuring part — nothing is being answered *wrong*, per Mode 2's honesty-check gate. But `live_warn` (mostly flagged `bloated` — answers running long/verbose) nearly doubled (16→30) and `live_skipped_transport` more than doubled (9→22), and the quality denominator dropped ~14 points. Whether this specific run's latency is itself a new regression or normal day-to-day variance for a live-network stress test is NOT established here — this write-up has one data point against one prior baseline, not a trend. |
+| **What I did NOT do** | Did not touch `scripts/largo-stress-run.mjs`, `largo-stress-nightly.yml`, or any Largo response-latency code — diagnosing *why* individual Largo answers take 40-98s (tool-call fan-out, Anthropic API latency, cold caches, or something else) is a real architecture/product investigation for whoever owns Largo's response pipeline, not something to guess at from one stress-test's aggregate log. Did not close #5134 — the underlying latency pattern needs a second data point (another run) before anyone can say whether it's a trend or noise. |
+| **Suggested next steps** | (1) Whoever owns Largo response latency should pull a small sample of today's slow (50s+) questions and profile where the time actually goes (tool-call count, Anthropic API latency, DB reads) — the stress-test log alone can't distinguish "Largo got slower" from "today's question mix happened to hit more tool-heavy paths." (2) For Mode 1 specifically: since standard rate-limit headers aren't present on these 429s, identifying the true upstream needs a different instrument than header capture — e.g., correlating the 429 timestamps against Cloudflare's own dashboard/logs for this zone, or checking whether the SAME client IP/session hitting the SAME endpoint at a lower sustained rate avoids the 429 (would confirm edge-level, volume-based throttling rather than a per-endpoint app limit). (3) Watch the next 2-3 nightly runs' `live_quality_pct`/`live_skipped_transport` before treating today's numbers as a trend rather than one noisy run. |
+| **Status** | WATCH LIST question (Mode 1 header identification) answered — inconclusive by design (headers don't carry upstream identity). New latency observation logged for pattern-tracking, not yet actionable as a fix. No code changed. |
+
+## Ask Largo lane rank silently excluded every floor-cleared WATCH candidate from its own peer pool — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Swings / Ask Largo |
+| **Severity** | P2 — the WATCH lane's real leader was invisible to every peer's rank narrative, and the excluded candidate's own brief rendered a confidently-wrong self-rank |
+| **File** | `src/lib/swing/play-brief-lane-rank.ts` (`rowInBucket`) |
+| **Found by** | Standing "Ask Largo × Night Hawk Swings" mandate, aggressive-mode improvement hunt |
+
+### Root cause
+
+`rowInBucket` distinguished "open position" vs "WATCH candidate" peers by reading
+`HorizonPlay.status` (`"COMMIT" | "WATCH"`) directly:
+
+```ts
+if (bucket === "open") return row.status === "COMMIT";
+return row.status === "WATCH";
+```
+
+But `status` is **not** a lifecycle/section field — `serving.ts`'s own
+`observablesFromHorizonPlay` documents it plainly: `aboveFloor: play.status === "COMMIT"`, the
+**mechanical floor-gate result** (has this candidate's score cleared `scoreFloor`?), orthogonal to
+whether it is an actually-open position. `sectionForSwingPlay`'s own doc comment confirms the
+design: a pre-entry candidate whose score clears the floor legitimately keeps `status: "COMMIT"`
+while its **serving section** still reads `"WATCH"` (e.g. `FORMING`, or `TRIGGERED` that later
+un-triggers back to `PRE_TRIGGER`) — floor-clearance and trigger-firing are two separate,
+orthogonal gates, by design.
+
+So any WATCH candidate whose score cleared the floor was invisible to **both** branches at once:
+excluded from `"watch"` (its `status` isn't literally `"WATCH"`), and never actually counted in
+`"open"` either, since real open positions are additionally distinguished by a genuine
+`liveStatus`. This is exactly the trap this repo's own standing mandate warns about (CLAUDE.md's
+"VERIFIED CORRECTIONS": *"Lifecycle field: `HorizonPlay.status` (COMMIT/WATCH) is likely the real
+lifecycle stage... verify against a real API response before building logic on this distinction"*)
+— `rowInBucket` fell into precisely the trap that warning exists to prevent.
+
+### Evidence
+
+Live repro, 2026-09-17, real WATCH lane (XOM 52.7 / TSM 49.6 / AAPL 25.5 / **LITE 71**, LITE the
+real leader by a wide margin, `status: "COMMIT"` / `serving: "WATCH"` confirmed via direct API
+field dump):
+
+- XOM's own brief: *"**Lane leader** — **#1 of 3** on WATCH (score **52.7**)"* — despite LITE
+  (71) genuinely outscoring it, XOM computed itself as the leader of a 3-peer pool that silently
+  excluded LITE entirely.
+- AAPL's own brief: *"**Below lane median** — **#3/3** (score **25.5**, -24.1 vs median). Leader:
+  **XOM** @ **52.7**"* — same 3-peer pool, same blind spot.
+- LITE's own brief: *"**Top-tier setup** — **#3/3** on WATCH · **+21.4** vs median."* — LITE's own
+  row, excluded from `sorted` (`idx = -1`), fell back to `rank = sorted.length + 1` (4), then got
+  silently clamped by `computeLaneRank`'s own `Math.min(rank, sorted.length)` down to 3 — so a play
+  whose row couldn't even be **found** in its peer set rendered as a confident dead-last ranking,
+  which still satisfied `laneRankCoaching`'s `rank <= 3` "Top-tier setup" condition despite the
+  pool never actually including it.
+
+Regression tests added to `src/lib/swing/play-brief-lane-rank.test.ts`: a fence-shaped repro
+(`row("LITE", 71, "COMMIT", undefined, undefined, undefined, null)` — status COMMIT, no
+liveStatus) confirmed RED pre-fix (`3 !== 4`, XOM's own peer-pool total), GREEN after (XOM ranks
+#2 once LITE is correctly counted, LITE itself ranks #1); a companion test proves a genuinely open
+position (`status COMMIT` **with** `liveStatus`) is still correctly excluded from WATCH-bucket
+comparisons, so the fix doesn't let real positions leak into WATCH-lane rank math either.
+
+### Blast radius
+
+Both `laneRankSection` (`play-brief-intel.ts:1466`, standalone "Lane rank" section) and
+`laneRankCoaching` (`play-brief-narrative-coaching.ts:852`, folded into "Trade manager read") call
+`computeLaneRank`, so both were affected identically — every WATCH-lane rank line on every
+current WATCH candidate was computed against an incomplete peer pool whenever *any* floor-cleared
+candidate existed alongside them. The same shape applies symmetrically to the `"open"` bucket
+(a real open position was never at risk of leaking into `"open"`, since `liveStatus` is only ever
+set on genuine live positions — verified by the companion test above), but the WATCH side was
+silently broken any time a floor-cleared, not-yet-triggered candidate coexisted with others.
+
+Fixing `play-brief-narrative-coaching.test.ts`'s own local `laneRow()` fixture was required too —
+its default `liveStatus: "OPEN"` was hardcoded regardless of `status`, which harmlessly matched
+production shape before this fix (since `rowInBucket` never read `liveStatus`) but became a
+fixture bug once the field started being used: every `status: "WATCH"` row from that helper
+carried a phantom `liveStatus: "OPEN"`, silently misclassifying it out of the WATCH bucket in the
+test's own peer computation. Now conditioned on the row's own `status`, matching the sibling
+fixture in `play-brief-lane-rank.test.ts`.
+
+### Fix rationale
+
+Switched `rowInBucket` to read `HorizonPlay.liveStatus?: "OPEN" | "HOLD" | "TRIM"` instead —
+`serving.ts`'s own authoritative live-vs-pre-entry signal, the exact field
+`sectionForSwingPlay`/`observablesFromHorizonPlay` already use as the first, defining check for
+"is this a live position." A row is `"open"` only when it actually **is** a live position
+(`liveStatus != null`), `"watch"` whenever it is a pre-entry candidate regardless of floor state
+(`liveStatus == null`) — no behavior change to rank/median/leader logic beyond which rows are
+admitted as peers in the first place.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-lane-rank.test.ts` — 26/26 pass (Node 20); new test confirmed RED (`3 !== 4`) before the fix.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/*.test.ts src/features/nighthawk/command-deck/*.test.ts` — 1648/1648 pass (Node 20) — this also caught and required fixing the `play-brief-narrative-coaching.test.ts` fixture bug described above.
+- `npx tsc --noEmit` — clean.
+- Checked the rest of the `.status === "COMMIT"|"WATCH"` call sites repo-wide (20 files) for the same misuse; the only other swing/play-brief hit (`play-brief-intel.ts:188`) reads `TerminalPlay.status` (the correctly-adapted DeckStatus lifecycle field), a genuinely different, correct usage — not in scope for this fix.
+
+## Session governor counted an open iron condor's nominal fade side as real directional exposure — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | 0DTE deep-dive (architecture trace of every directional-vote aggregation in the engine) |
+| **Severity** | P1 (live production risk-gating: could either wrongly BLOCK a genuinely uncorrelated directional commit, or under-report real concentration risk — a financial-consequence bug in the session governor, not just a display/narrative one) |
+| **Files** | `src/lib/zerodte/governor.ts` (`GovernorOpenPlan`, `evaluateZeroDteGovernor`, `concentrationReasonForCandidate`, `freezeConcentrationState`, `deriveGovernorFromLedger`), `src/lib/zerodte/gates.ts` (`refreshGovernorCycleBlocks` + both `evaluateZeroDteGovernor` call sites), `src/lib/zerodte/scan.ts` (four `GovernorOpenPlan`-shaped construction sites) |
+| **Found by** | Architectural trace of the governor's directional concentration/conflict checks, per the task's explicit prompt to check whether the governor's directional concentration logic excludes condors the way its P&L-sign handling already does |
+
+### Root cause
+
+`governor.ts` already special-cases committed CONDOR rows in three places — `ledgerRowStopped`
+(a condor's trough is the *winning* direction, so directional stop math inverts),
+`ledgerRowRealizedPnlPct` (seller-framed P&L sign), and `riskContribution`
+(condor risk = `max_loss`, not `entry_premium`) — proving the module's author was actively
+reasoning about the condor's structural difference. One more place was missed: the two
+DIRECTIONAL governor checks, **B-3 correlated-conflict** and **Q9 same-direction concentration**.
+
+Both checks compare `direction` fields across `GovernorOpenPlan` entries built from
+`deriveGovernorFromLedger`'s `openPlans.push({ ticker, direction: r.direction })` — unconditionally,
+with no condor exclusion. A condor's `direction` is only the pin's nominal fade side
+(`condor.ts`'s `buildCondorSetup`: *"UNUSED by the neutral structure's gates/grader"*), never a
+real directional stance. `CORRELATION_GROUPS`'s broad index/ETF group explicitly includes both
+`SPX`/`NDX` (the two condor-eligible cash-settled roots) alongside `SPY`/`QQQ`/`IWM`/`DIA` — so a
+real, live scenario is directly affected: an open SPX or NDX condor whose nominal fade side happens
+to be, say, "short" could (a) get flagged as **"opposing"** a genuine, uncorrelated SPY/QQQ/IWM/DIA
+long candidate and wrongly BLOCK it (`correlated_conflict`), and (b) inflate the same-direction
+concentration count (`governor_concentration`, Q9) with a structure that carries no real
+directional risk to concentrate. The same false-directional-stance shape also let a *fresh CONDOR
+candidate itself* be wrongly blocked as "opposing" a real open directional play with no actual
+conflict.
+
+`freezeConcentrationState` (the frozen `entry_context.concentration` evidence pinned at every
+commit, used by the calibration loop to ask "how concentrated was the book when this played
+committed?") had the identical gap — its `gross_directional_count`/`same_direction_open_count`
+fields would silently include condors, corrupting the very evidence a future calibration pass would
+read as "directional."
+
+### Evidence
+
+RED before the fix (`git stash` proof of `governor.ts`+`gates.ts`+`scan.ts`, Node 20,
+`--experimental-test-module-mocks`, `governor.test.ts`): 4 failures —
+- an open SPX condor (nominal `direction: "short"`) wrongly produced a `correlated_conflict` block
+  against a genuine, uncorrelated QQQ long candidate;
+- two open condors (SPX/NDX, nominal `long`) alongside one real SPY long wrongly tripped the Q9
+  concentration cap on a 3rd real correlated long candidate;
+- a fresh CONDOR *candidate* itself was wrongly blocked as opposing a real open SPY long;
+- a pre-existing `summarizeGovernorForBoard` deep-equal assertion needed updating to include the
+  new (correct) `is_condor: false` field on a real directional open plan.
+
+GREEN after: 58/58 pass in `governor.test.ts`; `npx tsc --noEmit` clean; full `npm test` on Node 20
+green (see PR).
+
+### Blast radius
+
+Every construction site of a `GovernorOpenPlan`-shaped object needed the new `is_condor` field
+stamped so the exclusion is real everywhere, not just at one call site:
+`deriveGovernorFromLedger` (ledger-derived open plans), `scan.ts`'s `governorAccurate` (thesis-first
+reconcile lane), `committedThisCycle` (the ordinary fresh-commit lane), and `acceptedThisTxn` (the
+atomic transactional recount lane) — plus both `evaluateZeroDteGovernor` call sites in `gates.ts`
+(the live gate pass and the thesis-first `refreshGovernorCycleBlocks` re-apply pass) needed
+`is_condor` threaded onto the *candidate* side too, so a fresh condor candidate skips the two
+directional checks entirely rather than only being protected once already committed.
+
+### Fix rationale
+
+Added `is_condor?: boolean` to `GovernorOpenPlan` (and to `evaluateZeroDteGovernor`'s candidate
+shape), computed once via a new shared `isCondorLedgerRow` helper (replacing three previously
+duplicated inline `ec?.play_type === "CONDOR" || Boolean(ec?.condor)` checks with one). Both
+directional checks now operate on a `directionalExposure` list with condor entries filtered out,
+and are skipped entirely when the candidate itself is a condor. **Left deliberately unchanged**:
+the plain concurrency cap (`governor_max_concurrent`) and every other non-directional governor
+check (session-stop halt, realized-loss halt, premium budget, gamma budget) — a condor is still
+real open risk/bandwidth, just not *directional* risk, so it correctly still counts toward those.
+This is a strict correctness fix, not a loosening: every existing REAL directional conflict/
+concentration test in the suite still fires exactly as before (verified in the regression tests
+added alongside the condor-specific ones).
+
+## `flat_theta_bleed` exit narrative claims "never left the ±10% band" on plays that genuinely breached it — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk 0DTE |
+| **Severity** | P2 (member-facing false claim in a live exit's own explanation — trust/correctness, not a live-trading-decision change) |
+| **File** | `src/lib/zerodte/exit-engine.ts` (`decideTrimScale`, `evaluateExitState`'s ratchet-mode `flat_theta_bleed` branch), `src/lib/zerodte/exit-sync.ts` (`evaluateLedgerRowExit`) |
+| **Found by** | Standing Night Hawk 0DTE 15-min forensic cadence, aggressive-mode dig on an already-open PR #4076 thread finding (CORZ single instance, below the 3-instance noise threshold) |
+
+### Root cause
+
+`ExitEngineInput` (exit-engine.ts) carried `peakPremium` (latched high-water mark) but no trough
+field at all. The `flat_theta_bleed` condition in both exit-mode branches only checks:
+
+```ts
+input.ageMinutes >= EXIT_RULES.flat_timeout_min &&
+(peakPnlPct ?? 0) < EXIT_RULES.flat_band_pct &&   // upside: peak never escaped the band
+pnlPct > -EXIT_RULES.flat_band_pct                 // downside: CURRENT mark only
+```
+
+— and unconditionally wrote `"...the play never left the ±10% band..."` into the exit detail
+whenever it fired. That claim is true only if the play's price path never dipped below the band
+at *any* point; the condition never checks that, only the current mark at the moment the 25-min
+clock fires. A play that dipped below −10% and recovered back inside the band before the timeout
+got the same "never left" sentence as a play that genuinely sat flat the whole time — the two are
+different trades wearing the same explanation.
+
+`row.trough_premium` (`src/lib/db.ts` `ZeroDteSetupLogRow`) already exists and is already
+DB-latched (`LEAST`) on the same schedule `peak_premium` is `GREATEST`-latched — it is the trusted
+source `closedStopReason`/the governor already use for stop determination elsewhere in this same
+directory (`marks-math.ts`, `governor.ts`). `exit-sync.ts`'s `evaluateLedgerRowExit` (the sole live
+caller of `evaluateExitState`) simply never read it when building the engine's input.
+
+### Evidence
+
+Pulled the live `GET /api/admin/zerodte/tier-export?days=10` row for every `flat_theta_bleed` exit
+in `GET /api/market/zerodte/record?days=10` (2026-09-08…2026-09-16) and compared each row's own
+`trough_premium` against `entry_premium` — a genuine DB fact, not a reconstruction:
+
+| Ticker | Session | entry | trough | trough_pct | Narrative claim |
+|---|---|---|---|---|---|
+| CORZ | 2026-09-16 | 0.22 | 0.19 | **−13.64%** | "never left the ±10% band (peak 0%, now 0%)" |
+| IONQ | 2026-09-14 | 1.30 | 1.04 | **−20.00%** | "never left the ±10% band (peak +4.23%, now −7.31%)" |
+| AAPL | 2026-09-11 | 4.33 | 3.88 | **−10.39%** | "never left the ±10% band (peak +3.93%, now −8.78%)" |
+| RDDT | 2026-09-10 | 1.16 | 0.81 | **−30.17%** | "never left the ±10% band (peak 0%, now −8.19%)" |
+| ASTS | 2026-09-08 | 1.04 | 0.71 | **−31.73%** | "never left the ±10% band (peak 0%, now −9.62%)" |
+
+Five confirmed instances across five separate trading days in a single week — well past the
+standing 3-instance noise threshold. Cross-checked against the six `flat_theta_bleed` exits in the
+same window whose trough genuinely never crossed −10% (SMTC, ALAB, SLS, OKTA, QBTS, FIGR) — all
+correctly narrated "never left the band", confirming this is not a wholesale-broken feature, only
+the specific breach-and-recover shape.
+
+### Blast radius
+
+Both `flat_theta_bleed` code paths carry the identical bug (same condition, same hardcoded
+sentence): `decideTrimScale` (the default `trim_scale` exit mode) and `evaluateExitState`'s own
+ratchet-mode branch. Both fixed with one shared helper (`flatTimeoutDetail`) so they can't drift
+apart again.
+
+### Fix rationale
+
+Deliberately **narrative-only** — does not touch the exit *condition* (still fires on the exact
+same age/peak/current-pnl check) or the exit *action/reason* (`flat_theta_bleed`, `EXIT`). Only the
+`detail` sentence changes, and only when the DB's own `trough_premium` disagrees with the blanket
+claim. This was the explicit reason the original CORZ instance was held rather than shipped
+(2026-09-15 journal note): "the more thorough fix would change which plays get exited (a
+live-trading-decision change, not just cosmetic)" — that concern applied to a *behavior* change
+(e.g. exiting earlier on a trough breach), not to correcting the text of an exit that already
+fires unchanged. Once confirmed systemic (5 instances) via real DB data, the safe half of the fix
+(the narrative) no longer needed to wait for the harder, behavior-changing half (whether a trough
+breach should itself trigger an earlier protective exit — left as a separate, still-open question,
+not addressed here).
+
+Added `troughPremium?: number | null` to `ExitEngineInput`, widened with the current mark via
+`Math.min` (mirroring the existing `peakPremium` → `Math.max` widening and the DB's own `LEAST`
+latch), and wired `troughPremium: row.trough_premium` into `exit-sync.ts`'s `evaluateExitState`
+call — the field was already sitting on the row, unused for this purpose. When the trough breached
+the band, the sentence becomes `"...dipped to X% intraday but recovered back inside the ±10% band
+(peak Y%, now Z%)..."`; otherwise the original "never left the ±10% band" sentence is unchanged
+byte-for-byte. Rows/callers that omit `troughPremium` (none live, since `exit-sync.ts` is the only
+caller and now always passes it) fall back to the pre-fix sentence — a deliberate missing-data-safe
+default, tested explicitly.
+
+### Tests
+
+`src/lib/zerodte/exit-engine.test.ts` — 5 new cases: trim_scale-mode narrative unchanged when the
+trough never breaches, trim_scale-mode narrative corrected when it does, trim_scale-mode fallback
+with `troughPremium` omitted (old sentence, no regression), and the same unchanged/corrected pair
+for ratchet mode. All verified RED (fail without the exit-engine.ts/exit-sync.ts fix, PASS with
+just the test-only stash reverted) → GREEN via `git stash` isolating the source fix from the test
+file. Full `npm test` + `npx tsc --noEmit` run clean.
+
+## `findings-fold-staging.mjs` mistook quoted `## ` headings inside evidence code fences for real sub-headings — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Shared audit tooling (`scripts/audit/`, used by every lane) |
+| **Severity** | P3 (tooling — findings silently never reach `FINDINGS.md`, not a product defect) |
+| **File** | `scripts/audit/findings-fold-staging.mjs` (`normalizeEntry`) |
+| **Found by** | Standing "Ask Largo × Night Hawk Swings" mandate — discovered while folding my own staged findings after a merge wave |
+
+### Root cause
+
+`normalizeEntry`'s multi-heading guard exists to catch a real defect: a staged finding that writes
+its own body using `## `-level sub-headings (`## Root cause` / `## Fix` / `## Evidence`) at the
+SAME heading level `FINDINGS.md` reserves for entry boundaries — folding one of those in raw
+fragments a single finding into several headless sub-"entries." The guard counted every line
+starting with `## ` in the whole file to detect this.
+
+But it never distinguished a real, structural `## ` heading from one that is merely **quoted**
+inside a fenced code block (` ``` `) as evidence — and quoting a live product's own markdown
+output is a normal, encouraged evidence pattern per this repo's own PR write-up policy ("Evidence:
+live numbers, header captures... whatever actually proved the bug"). A finding whose Evidence
+section quotes an Ask Largo play-brief's own markdown (which itself contains real `## Why this
+setup` / `## Entry` / `## Trade manager read` headings) has exactly one REAL heading but multiple
+literal `## ` lines once the fenced quote is counted — indistinguishable, to the old scanner, from
+the genuine multi-heading defect it exists to catch.
+
+### Evidence
+
+Live repro: two well-formed, single-real-heading swing findings never folded across multiple runs
+of the fold script (2026-09-17), both because their own Evidence section quotes a live play-brief
+excerpt inside a fence:
+
+- `2026-09-17-lane-rank-score-precision-mismatch.md` — one real heading (`## Ask Largo "Lane rank"
+  section...`), plus a fenced quote containing `## Why this setup` and `## Trade manager read`.
+- `2026-09-17-watch-entry-geometry-duplication.md` — one real heading, plus a fenced quote
+  containing `## Entry` and `## Watch levels`.
+
+Running `node scripts/audit/findings-fold-staging.mjs` reported both under "Skipping — ... more
+than one '## ' line" alongside the genuinely malformed files, with no way to tell the two cases
+apart from the script's own output short of reading each skipped file by hand.
+
+Regression tests added to `src/findings-fold-staging.test.ts`: `"a '## ' heading inside a fenced
+code block does not count as a real sub-heading"` (confirmed RED — the pre-fix script skipped the
+fixture with the exact same "more than one '## ' line" message) and a companion `"a real '## '
+sub-heading OUTSIDE any fence still trips the multi-heading guard"` proving the fix didn't also
+blind the guard to the genuine defect it exists to catch.
+
+### Blast radius
+
+Single function (`normalizeEntry`), the only place in the script that scans for headings. Affects
+every lane, not just Swing — any staged finding whose evidence quotes markdown/code containing a
+`## `-level line was silently stuck in staging forever, with no error distinguishing it from a
+genuinely malformed file. Given this lane's own convention of quoting live Ask Largo brief output
+as evidence (used in nearly every recent swing finding), this was actively blocking real findings
+from ever reaching `FINDINGS.md`.
+
+### Fix rationale
+
+Added a `realLineMask` helper that tracks fenced-code-block state (toggled by any line whose
+trimmed content starts with three backticks) and marks every line inside a fence as not counting
+toward heading/kind detection — the fence delimiter line itself never counts either way. Applied
+consistently to `headingIdx`, `kindIdx`, `headingCount`, and the post-reorder `newHeadingIdx`
+lookup (factored into a shared `findRealHeadingIdx` helper) so the fix is uniform across every
+place the script looks for a heading. The genuine multi-heading guard (unfenced `## ` sub-sections)
+is untouched — it still rejects those files exactly as before.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/findings-fold-staging.test.ts` — 11/11 pass (Node 20); new fence test confirmed RED before the fix (same "more than one '## ' line" skip message as a genuinely malformed file).
+- `npx tsc --noEmit` — clean.
+
+## Fence-aware heading detection was fixed in the fold script but not in four other independent reimplementations of the same split — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Shared audit tooling (`scripts/audit/`, used by every lane) |
+| **Severity** | P3 (tooling — findings can fold cleanly yet still be silently fragmented by downstream tools) |
+| **Files** | `scripts/audit/lib/findings-entry-set.mjs`, `findings-reconcile.mjs`, `findings-verify-stale.mjs`, `findings-resolve-prs.mjs`, `src/findings-hygiene.test.ts` |
+| **Found by** | Standing "Ask Largo × Night Hawk Swings" mandate — discovered immediately after PR #5136 (the fold-script fence fix) merged, while attempting to actually fold the two findings that fix unblocked |
+
+### Root cause
+
+PR #5136 fixed `findings-fold-staging.mjs`'s own multi-heading guard to ignore a `## ` line quoted
+inside a ``` evidence fence. But folding the two findings that fix unblocked
+(`2026-09-17-lane-rank-score-precision-mismatch.md`, `2026-09-17-watch-entry-geometry-duplication.md`
+— each quotes a live Ask Largo play-brief's own markdown, containing real `## Why this setup` /
+`## Entry` headings, as evidence) immediately broke `findings-hygiene.test.ts`'s "every entry
+declares a kind" and "the reconciler is idempotent" tests.
+
+Root cause: `findings-entry-set.mjs`'s own header comment describes itself as "Shared entry-level
+reasoning about `docs/audit/FINDINGS.md`" — but nothing actually shared it. A repo-wide grep found
+**five** independent reimplementations of "split FINDINGS.md into entries at `## ` boundaries,"
+none importing the others:
+
+1. `findings-entry-set.mjs`'s own `splitEntries` (the intended canonical one).
+2. `findings-hygiene.test.ts`'s bespoke `entries()` — `src.split(/\n(?=## )/)`.
+3. `findings-reconcile.mjs` — same naive split, twice (main entry loop + RUN-LOG dedup).
+4. `findings-verify-stale.mjs` — same naive split.
+5. `findings-resolve-prs.mjs` — same naive split.
+
+Every one of them counted/split on every `## `-starting line unconditionally, so the SAME fenced-
+heading bug PR #5136 fixed in the fold script was independently present in all five — fixing only
+the fold script moved the failure one step downstream (from "silently never folds" to "folds, then
+gets fragmented by the next tool that reads the file") instead of eliminating it.
+
+### Evidence
+
+Folding the two unblocked findings and re-running the hygiene suite:
+
+- `"every entry declares a kind"` failed, reporting 7 fake headless entries — the quoted section
+  titles (`## Entry`, `## Watch levels`, `## Why this setup`, `## Trade manager read`, etc.) from
+  inside the two findings' evidence fences, each misread as its own entry with no kind tag.
+- `"the reconciler is idempotent — a second --apply is a no-op"` failed (`11 !== 4` UNRECONCILED
+  count), because `findings-reconcile.mjs`'s own naive split saw the same fake entries.
+
+Regression tests added to `scripts/audit/lib/findings-entry-set.test.mjs`: `splitAtHeadingBoundaries`
+verified byte-identical to native `text.split(/\n(?=## )/)` on five plain-text cases (confirms it's
+a safe drop-in replacement, not just "doesn't crash"), plus a fenced-quote case proving it does NOT
+split on a `## ` line inside a fence; `splitEntries` verified to keep a fence-quoting entry as one
+entry, not fragments.
+
+A second, unrelated false positive surfaced while re-testing the full 41-file staging batch:
+`"entry headings are never glued onto the end of another line"` flagged
+`2026-09-16-stale-open-summarizegroupgreekflow-fixed.md` (a different lane's staged finding), which
+quotes an old entry's heading text inline in single backticks (an inline code span, not a fenced
+block) — e.g. `` `## 2026-08-29 — [FINDING, ...] summarizeGroupGreekFlow...` `` inside a markdown
+table cell. That is a genuinely different defect class (inline-backtick quoting vs. triple-backtick
+fencing) in a different detector, pre-existing and unrelated to this fix's scope — NOT addressed
+here. To avoid taking on someone else's unrelated bug in this PR, only the two swing findings this
+fix was built to unblock were folded directly (verified clean); the other 39 pending staged files,
+including the one that trips the inline-backtick false positive, are left in staging for a
+follow-up pass.
+
+### Blast radius
+
+Affects every lane that stages a finding whose evidence quotes markdown containing a `## `-level
+line — a pattern this lane (Ask Largo swing) uses constantly. Before this fix, such a finding could
+pass the fold script's own guard (post-#5136) yet still corrupt `findings-hygiene.test.ts`'s entry
+count and `findings-reconcile.mjs`'s classification the moment it landed in `FINDINGS.md`, with no
+warning until a human happened to run the hygiene suite.
+
+### Fix rationale
+
+Added `splitAtHeadingBoundaries` (fence-aware, drop-in replacement for
+`text.split(/\n(?=## )/)`, verified byte-identical to the native split on non-fenced input so
+existing callers' non-fence behavior is unchanged) to the shared `findings-entry-set.mjs` module,
+and made `splitEntries` itself fence-aware the same way. Migrated all five sites — `entries()`
+in `findings-hygiene.test.ts`, both split sites in `findings-reconcile.mjs`,
+`findings-verify-stale.mjs`, and `findings-resolve-prs.mjs` — to import and use the shared
+function instead of their own copy of the regex, so this class of bug can no longer drift back in
+independently at any one of them. A single source of truth rather than patching five call sites
+identically and separately.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/findings-hygiene.test.ts src/findings-no-loss.test.ts src/findings-fold-staging.test.ts scripts/audit/lib/findings-entry-set.test.mjs` — 32/32 pass (Node 20).
+- `npx tsc --noEmit` — clean.
+- `node --check` on all three migrated `.mjs` scripts — clean.
+- The two previously-blocked findings folded cleanly into `FINDINGS.md`, verified against the full hygiene suite (11/11) with the fold actually applied.
+
+## 2026-09-17 — [FINDING, P4 docs-hygiene, re-verification of old FINDINGS.md claims] Sixth stale-status entry this session — Discord-digest cron watchdog finding contradicts itself (heading `OPEN`, own Status row `FIXED`), fix confirmed still live
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | Sixth instance of the same staleness/self-contradiction family found this session (five stale-`OPEN`-superseded-by-a-later-fix entries already staged today: Meridian ESTIMATES/HISTORY, SPX Slayer Largo, `summarizeGroupGreekFlow`, `earnings_week_analytics` duplicate, `SDLC_AUTOMATION_PLAN.md`). This one is a different shape of the same family: not a separate FIXED entry sitting nearby, but a single entry whose OWN heading and OWN status row disagree. |
+| **The entry** | `## 2026-09-04 — [FINDING, P2 observability] Three LIVE, ENABLED production Discord-digest crons are invisible to the cron-staleness watchdog and admin health board — OPEN, write-up only` — but its own `| **Status** |` table row, directly below, reads `FIXED — three CRON_JOBS entries added 2026-09-04 (stale_after_min 10/45/45 from deployed EventBridge schedules */2, */15, */15).` The entry's own "Fix (follow-up pass, same day)" field describes the exact change in full: three new `CRON_JOBS` entries in `src/lib/cron-registry.ts` for `darkpool-discord`, `thermal-discord`, `helix-discord-digest`. |
+| **Confirmed the fix is real and current** | `grep -n 'key: "darkpool-discord"\|key: "thermal-discord"\|key: "helix-discord-digest"' src/lib/cron-registry.ts` — all three present today (lines 621, 635, 649). `buildCronHealthSnapshot()` maps over `CRON_JOBS` directly (per the entry's own Evidence field, confirmed by the entry's own grep, not re-verified live again here since the registry presence is the whole mechanism), so all three are visible to the admin cron-health board and `cron-staleness-watchdog` today, exactly as the entry's own Fix field describes. |
+| **Why this is worth flagging even though the content is internally complete** | Unlike the other five instances this session, this entry does NOT need a new correction — it already documents its own fix in full, correctly. The only defect is the H2 heading text (`— OPEN, write-up only`) disagreeing with the table immediately below it, which reads as unresolved to anyone skimming just the heading (the same skim-the-heading failure mode #3154 originally identified for the SPX Slayer Largo entry, flagged again in this session's own earlier finding). |
+| **What I did NOT do** | Did not edit `FINDINGS.md` directly, per standing policy. Did not re-verify `stale_after_min` calibration or live Discord-post behavior — out of scope for a heading-text correction; the entry's own Evidence/Fix fields already carry that detail and nothing here contradicts them. |
+| **Suggested next step** | Whoever next folds staged findings should simply retitle the 2026-09-04 entry's heading to end `— FIXED` (dropping `OPEN, write-up only`) to match its own Status row and Fix field — no new content needed, just heading/status agreement. |
+| **Status** | Re-verification finding — not itself a fix. No code or FINDINGS.md changed. |
+
+## Cortex veto layer read a CONDOR's nominal fade direction as real directional evidence — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | 0DTE — Night Hawk Cortex layer / Iron Condor |
+| **Severity** | P2 (structural correctness defect; not yet proven to change live commit counts, since condors barely survive the hard-gate funnel to reach Cortex at all — see below) |
+| **Status** | FIXED |
+| **Files** | `src/lib/zerodte/cortex-gate.ts`, `src/lib/zerodte/scan.ts`, `src/lib/zerodte/cortex-gate.test.ts` |
+
+### Root cause
+
+`condor.ts` stamps a CONDOR setup's `direction` field explicitly as **nominal-only**:
+
+```ts
+direction: regime.fadeDirection, // nominal provenance only — the condor is delta-neutral
+```
+
+but `scan.ts`'s commit loop called `evaluateCortexForCommit(s.ticker, s.direction, ...)`
+**unconditionally for every gate-surviving setup**, condors included. Cortex's entire evidence
+model (vetoes, supports, opposes across gex-walls / wall-trend / darkpool-confluence /
+catalyst-news / etc.) reasons about whether dealer/whale positioning supports or fights a
+LONG/SHORT directional bet. Feeding it a condor's nominal fade direction lets it VETO /
+NET_NEGATIVE / OPPOSE_UNRESOLVED-block (or, just as wrongly, PASS) a delta-neutral credit
+structure on evidence that argues about a direction the condor was never actually betting on.
+
+This is the same root cause already found and fixed at **four other surfaces** during this same
+audit pass (2026-09-17 session, PRs #5106-#5109): the Largo cross-product read
+(`product-adapters.ts` / `consensus-read-extract.ts`), the session governor's correlated-
+conflict/concentration checks (`governor.ts`'s `is_condor` field), live Thesis Health
+(`thesis-health.ts`, now returns `null` for a condor), and live confluence scoring
+(`confluence.ts`, now returns `null` for a condor). Cortex — arguably the most consequential of
+the five, since it is a hard BLOCK on the actual commit decision, not just a display/read
+surface — was missed in that sweep.
+
+### Why it wasn't caught earlier
+
+The four prior fixes were each found and fixed independently, in different files, by tracing the
+"is this consumer condor-aware?" question through each of Largo's read layer, the governor, and
+the two live scoring surfaces. `cortex-gate.ts`/`scan.ts` were not part of that sweep because the
+Cortex call site sits inside `scan.ts`'s large commit loop rather than a small standalone module,
+and `cortex-gate.ts` itself has zero `condor`/`is_condor` references — nothing signaled "this
+file needs condor awareness" without reading the call site's actual arguments.
+
+### Evidence
+
+- `condor.ts:557` — the explicit nominal-direction comment quoted above.
+- `scan.ts` (pre-fix) — `s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, ...)`
+  ran with no `play_type` branch, confirmed by reading the commit loop directly (grep for
+  `evaluateCortexForCommit` in `scan.ts` showed exactly one call site, unconditional).
+- `cortex-vector-relief.ts`'s `applyCortexCommitRelief` already no-ops on `assessment.abstained`
+  (`if (assessment.abstained || assessment.decision === "PASS") return assessment;`), and
+  `cortex-veto-dwell.ts`'s dwell latch already treats a non-VETO fresh decision (which ABSTAIN
+  always is) as clearing/no-op — so bypassing with ABSTAIN composes cleanly with both downstream
+  consumers without any further changes needed there.
+
+### Fix
+
+Added `cortexAbstainForCondor()` to `cortex-gate.ts` — an honest `ABSTAIN` (never a fabricated
+`PASS`, which would falsely claim clean evidence that was never evaluated) with a reason string
+naming the nominal-direction mismatch. `scan.ts`'s commit loop now branches on
+`s.play_type === "CONDOR"` before calling `evaluateCortexForCommit`, using the bypass instead.
+A condor's commit decision now rests entirely on its own liquidity/range gates (`gates.ts`'s
+condor-specific G-8/G-9/G-10 replacement, already condor-aware) and never on directional Cortex
+evidence that structurally does not apply to it.
+
+### Blast radius
+
+Single call site (`scan.ts`'s commit loop) — no other file calls `evaluateCortexForCommit` with
+a condor setup's direction. `s.cortex` still flows through `applyCortexVetoDwell` and
+`applyCortexCommitRelief` unchanged; both already handle ABSTAIN as a pass-through, verified by
+reading their source (see Evidence) rather than assumed.
+
+### Why this fix and not an alternative
+
+Considered making Cortex condor-aware (e.g. a condor-specific evidence composition using
+`regime.offset` / wall proximity instead of a directional support/oppose model) — rejected as
+out of scope for this fix: it would require designing a genuinely new evidence model for a
+delta-neutral structure, not just correcting a misread. ABSTAIN is the minimal, honest fix that
+matches the pattern already established at the other four surfaces (skip/null rather than
+fabricate), and leaves the door open for a real condor-specific Cortex read as separate,
+deliberately-scoped future work.
+
+### Live impact — deliberately NOT overstated
+
+This audit pass's separate investigation (`docs/audit/INTENTIONAL-DESIGN.md` items #9/#10, PR
+#5112) found 0/411 committed 0DTE plays in 90 days are condors, traced to the hard-gate funnel
+(the condor liquidity/range gates + G-13 flow-accumulation-conflict) rejecting nearly all condor
+candidates before they ever reach the Cortex layer this fix touches. So this fix is a genuine
+correctness defect (a condor that DOES survive the hard gates was being judged on evidence that
+doesn't apply to it), but is **not** claimed to be a primary driver of the 0-condor-commit count —
+that funnel-level bottleneck remains the leading, still-open hypothesis for that separate finding.
+
+### Regression test
+
+`src/lib/zerodte/cortex-gate.test.ts` — three new tests: the ABSTAIN is honest (not a fabricated
+PASS, reason names the nominal-direction mismatch), it never produces a gate block (same as any
+other ABSTAIN), and `cortexEntryContextFor` round-trips it the same way any other ABSTAIN
+persists. RED→GREEN proven via `git stash` on `cortex-gate.ts`/`scan.ts` only (3 fail pre-fix,
+0 fail post-fix, full 36/36 file pass).
+
+## computeConfluence scored a committed condor's nominal fade side, fabricating a live confluence tier — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | 0DTE deep-dive (architecture trace of every directional-vote aggregation in the engine) |
+| **Severity** | P1 (member-facing on the LIVE production command-deck — `ZeroDteCommandPanel.tsx`'s `confluence N/2` line renders this value directly for an open condor position, and it also feeds `computeThesisHealth`'s confluence pillar) |
+| **Files** | `src/lib/zerodte/confluence.ts` (`computeConfluence`) |
+| **Found by** | Continuing the same trace that found the `computeThesisHealth` condor gap (this session) — `computeThesisHealth`'s own confluence pillar reads `computeConfluence(setup, ...)` live, so the same nominal-direction defect was one layer upstream of the fix already shipped there |
+
+### Root cause
+
+`computeConfluence` (`src/lib/zerodte/confluence.ts`) scores `vwap_ok` (price vs VWAP on the
+setup's side) and folds it with `market_ok` into a `triple`/`double`/`weak` tier — all keyed off
+`setup.direction`. For a real directional play that IS the play's actual stance. For a committed
+0DTE iron condor, `direction` is only the pin's nominal fade side (`condor.ts`'s
+`buildCondorSetup`: *"UNUSED by the neutral structure's gates/grader"*) — the same fact fixed
+twice already this session in `product-adapters.ts`/`consensus-read-extract.ts` (#5106),
+`governor.ts` (#5107), and `computeThesisHealth` itself. `attachConfluence` runs unconditionally
+on every setup (condor included), so a condor's nominal side got scored as if it were a real
+directional stance, producing a fabricated `"triple-confirmed"`/`"VWAP+market confirmed"` label.
+
+This reaches TWO live surfaces: `ZeroDteCommandPanel.tsx` renders `play.confluence != null ? \`
+· confluence ${play.confluence}/2\` : ""` directly for the member (a delta-neutral condor showing
+"confluence 2/2" implies a directional agreement that doesn't exist), and `computeThesisHealth`'s
+own confluence pillar reads the SAME live confluence off the setup — though that pillar is now
+moot for condors after this session's `computeThesisHealth` fix (which returns `null` outright for
+a condor row), this field can still be read directly by any other consumer of `setup.confluence`,
+so fixing it at the source (rather than only downstream) closes the gap for good.
+
+### Evidence
+
+RED before the fix (`git stash` proof, Node 20, `--experimental-test-module-mocks`,
+`confluence.test.ts`): 2 failures — a condor setup (`play_type: "CONDOR"`) returned a real
+`triple`-tier confluence object instead of `null`, and `attachConfluence` on a batch containing one
+condor stamped it with the same fabricated tier as its real directional sibling.
+
+GREEN after: 11/11 pass in `confluence.test.ts`; `npx tsc --noEmit` clean; full `npm test` on
+Node 20 green (see PR).
+
+### Fix rationale
+
+`computeConfluence`'s return type widens to `ZeroDteConfluence | null` and returns `null`
+immediately for `setup.play_type === "CONDOR"`, before any of the VWAP/market scoring runs.
+`null` is already this field's established shape
+(`EnrichedZeroDteSetup.confluence?: ZeroDteConfluence | null`) and BOTH real consumers already
+null-guard it: `gates.ts`'s G-12 confluence gate already treats `confluence == null` as a real,
+handled case (and already separately exempts condor rows from G-12 entirely via its own
+`!isCondor` check, so gating behavior is unaffected either way), and `thesis-health.ts` already
+optional-chains `liveConf?.vwap_ok`. So this degrades safely with zero new plumbing — the same
+discipline as the sibling `computeThesisHealth` condor fix in this same PR wave.
+
+## A committed 0DTE iron condor cast a fabricated bullish/bearish vote in TWO Largo-facing aggregations — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | 0DTE deep-dive (Largo product contract compliance) — continuation of the #5104 cross-product identity fix, per the operator's "keep digging into every design and architecture of 0dte" directive |
+| **Severity** | P1 (Largo-facing: a delta-neutral premium-selling structure was represented to the model as a directional bet, corrupting both a single-ticker cross-product read and the whole-ecosystem consensus matrix) |
+| **Files** | `src/lib/largo/contract/product-adapters.ts` (`nighthawkContribution`), `src/lib/largo/consensus-read-extract.ts` (`extractNightHawkRead`) |
+| **Found by** | Architectural trace of every place the 0DTE engine aggregates a "vote"/"direction"/"signal" across sources, starting from the operator-flagged condor-direction gap in the prior audit pass |
+
+### Root cause
+
+A committed 0DTE iron condor (`condor.ts`) is a delta-neutral 4-leg structure SOLD for a credit.
+Its `direction` field is explicitly documented as nominal-only: `buildCondorSetup`'s own comment —
+*"`direction` carries the pin's nominal fade side for provenance but is UNUSED by the neutral
+structure's gates/grader."* Two Largo-facing aggregations read that field as if it were a real
+directional stance anyway:
+
+1. **`nighthawkContribution`** (the Night Hawk adapter feeding `crossProductRead`, the "does
+   everyone agree on this ticker" cross-product join) counted every committed play's
+   `option_type ?? side ?? direction` toward a calls/puts tally. A condor row carries no
+   `option_type`/`side` — only the nominal `direction` — so it fell straight through to the same
+   bullish/bearish tally a real directional play uses.
+2. **`extractNightHawkRead`** (the whole-board "NIGHT_HAWK: 0DTE plays are bullish/bearish" system
+   read feeding `buildConsensusMatrix`'s ecosystem-wide agreement verdict — HELIX/THERMAL/VECTOR/
+   SPX/NIGHT_HAWK/MERIDIAN) had the exact same shape of bug: it counted every play's `direction`
+   toward `bullishCount`/`bearishCount` regardless of structure.
+
+Net effect: a board holding only a condor (no real directional 0DTE plays at all) could still
+report a confident directional Night Hawk vote into BOTH the per-ticker cross-product read and the
+whole-ecosystem consensus matrix — fabricating agreement or disagreement with Helix/Vector/etc. off
+a structure that has no directional thesis to agree or disagree with. This is the exact same
+"neutral evidence miscounted as directional" shape `thermalContribution` (dealer gamma) and
+`meridianContribution` (symmetric expected move) already guard against in the same adapter file —
+the condor case was simply never closed.
+
+### Evidence
+
+RED before the fix (`git stash` proof, Node 20, `--experimental-test-module-mocks`):
+- `product-adapters.test.ts`: 1 failure — a lone committed condor (`is_condor: true, play_type:
+  "CONDOR", direction: "short"`) on SPX returned `signal.direction: "short"`→`"bearish"` instead of
+  an honest non-directional absence.
+- `consensus-read-extract.test.ts`: 1 failure — a board holding only that same condor read
+  `NIGHT_HAWK: bearish` into the consensus matrix instead of `neutral`.
+
+GREEN after: both suites pass in full (18/18 and 7/7 respectively); `npx tsc --noEmit` clean; full
+`npm test` on Node 20 green (see PR).
+
+### Fix rationale
+
+Exclude condor rows from the directional tally entirely at both sites, mirroring the existing
+`meridianContribution`/`thermalContribution` pattern: when every committed play on the
+ticker/board is a condor, report an honest non-directional absence naming the condor count and WHY
+it doesn't vote, rather than fabricating a direction. When a real directional play is ALSO present
+alongside a condor, the condor is excluded from the tally but still surfaced as context evidence
+("N committed iron condor(s), neutral, excluded from this vote") so the information isn't silently
+dropped — it just isn't miscounted as a directional signal. This is strictly additive: no existing
+correct directional vote changes; only the previously-fabricated condor vote is removed.
+
+Considered and rejected: silently dropping the condor from the response with no mention at all —
+rejected because the contract's own "absence must be explained" principle
+(`docs/audit/LARGO-PRODUCT-CONTRACT.md`) requires naming why a system that could have voted didn't.
+
+## 2026-09-16 — [FINDING, P0 RESOLUTION of #5083/#5086/#5088] `zerodte-warm` stall + DB-connectivity timeouts resolved after 102 minutes
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this closes out** | The live incident tracked across issue #5083 and its escalation PRs #5086 (`buildAndPublishBoard()` hang trace) and #5088 (correlated ECS DB-connectivity timeouts). Recording the resolution point so a future session doesn't have to re-derive it. |
+| **Resolution timeline** | Stall onset: last successful `[cron/zerodte-warm] background done` before the gap was **17:49:54 UTC**. First completion after the gap: **19:32:00 UTC**, `elapsed=12079ms` — back to a healthy, FAST runtime (the four completions since are 12-29s each, well under even the original "slow" 4-6min measurements from earlier in the incident). **Total stall duration: 102.1 minutes.** |
+| **All three correlated symptoms cleared together** | Checked at 19:46 UTC: (1) `zerodte-warm` completing normally and fast. (2) `[ready] database ping failed after retries` — **zero** in the last 20 minutes (was 15-19 per 20-min window during the incident). (3) `[polygon] rate-limiter queue budget exceeded` — **zero** in the last 15 minutes (was 200-450/min sustained during the incident). All three cleared in the same window, which is corroborating (not conclusive) evidence for #5088's working hypothesis that the DB-connectivity timeouts and the board-build hang shared a root trigger (the Polygon congestion) rather than being two independent incidents. |
+| **The new alert never fired** | #5085's "Polygon rate-limiter queue timeouts surging" alert was live (fully deployed) for the back half of this incident (roughly 19:07 UTC onward) but never logged a fire — worth noting honestly rather than claiming it proved itself. Two explanations are consistent with the evidence and this write-up cannot distinguish them: (a) the alert's admission-side hook (`polygonTrackedFetch`'s `acquirePolygonSlot()` catch) genuinely never saw 5 timeouts in its own 60s rolling window even while `[polygon-gex]` was logging failures at very high volume — plausible if most of the volume was going through a different call path than the one the alert instruments, or (b) the underlying congestion pattern doesn't route through the exact code path the alert watches as cleanly as assumed. This is a legitimate follow-up: the next real Polygon surge is the actual test of whether #5085 pages ops as intended. |
+| **No root cause fix shipped** | Consistent with this session's own discipline throughout this incident: the actual mechanism (why `buildAndPublishBoard()` hung instead of erroring/timing out, and why fresh ECS replicas couldn't reach the DB during the same window) was never identified at the code level — only the symptom's resolution timing. If it recurs, #5086's trace (which narrowed the hang to `refreshZeroDteBoardSnapshot()` → `buildAndPublishBoard()` specifically) is the starting point, not this entry. |
+| **Status** | RESOLVED as of 19:32 UTC (verified clean at 19:46 UTC, 14 minutes later, across all three symptoms). Root cause remains unconfirmed — #5086's hypothesis is the leading candidate for whoever picks this up next if it recurs. |
+
+## 0DTE scanner (`warmZeroDteBoard`/`persistZeroDteScan`) silently stalled ~35min live today — nothing in the health pipeline could have caught it — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (this PR) — wired the existing-but-unread scanner heartbeat into cron health, and corrected the writer-target-freshness probe that was masking exactly this failure. |
+| **Lane** | Night Hawk 0DTE (Ask 0DTE deep-dive, 2026-09-16, operator directive: "only focus on 0dte from today... fix up all shit and make it the best system") |
+| **Severity** | P1 — the discovery/commit ledger (the path that actually opens real positions) can go dark for tens of minutes with zero alerting, and this is directly the shape of the operator's original complaint ("the best winners are always on watch... something is wrong"). |
+| **Files** | `src/lib/admin-cron-health.ts`, `src/lib/cron-writer-target-fresh.ts` (+ their `*.test.ts`) |
+
+### Root cause
+
+Investigating why LITE (score 80 at one point) and other setups never got promoted today led to a much bigger finding than a single ticker. Pulling LITE's and HOOD's full event timeline off `GET /api/admin/zerodte/funnel?date=2026-09-16` (the route built earlier this session, PR #5079) showed **zero discovery-events for ANY ticker between 15:29:58 and 16:10:52 UTC (11:29–12:10 ET) — a 41-minute total silence**, confirmed system-wide via a full-day gap scan (`events strictly inside 15:30-16:10 window: 0`).
+
+Cross-referencing live CloudWatch Logs (`/ecs/blackout-production`) pinned the mechanism precisely:
+- `[zerodte-scan]` log lines (the pure computation inside `scanZeroDteBoard()`) kept firing every ~1–5 min throughout the "gap" — the scan itself, and the **live board members see, was never down**. Candidate pool even grew (rail-mix total 165→188) during the window.
+- But `[cron/zerodte-warm] background done` — logged only once `warmZeroDteBoard()`'s persist chain (`persistZeroDteScan` → ledger write → `zerodte_discovery_events`) actually completes — appeared only **twice** in this whole window: at 15:29:57 (a 282s run) and 16:11:00 (a 368s run). In between, `rth-warm-leader` dispatched the cron's HTTP route roughly every 1–5 min and every call returned `ok` fast — but the heavy background chain those calls kick off never logged a single completion (`background done`) or rejection (`background warm REJECTED`) for ~35 straight minutes.
+- This is **not a new failure mode** — `src/app/api/cron/zerodte-warm/route.ts`'s own code comment already documents an *identical* incident from 2026-09-08 ("only 2 real `[cron/zerodte-warm] background done` completions in an 8-hour window against ~36 route 'ok' responses") and describes the fix already applied (moving off `after()` to a bare fire-and-forget dispatch as the "PRIMARY" path). **That fix did not hold** — the exact same symptom recurred today, over a week later, live.
+
+### Why nothing caught it
+
+Two independent gaps in the health/alerting pipeline, both traced and both fixed here:
+
+1. **`cron_job_runs` (the handshake `admin-cron-health.ts` normally checks) can never go stale for this cron**, because `logCronRun("zerodte-warm", accepted)` fires on the route's FAST synchronous path — auth, the cooldown/lock gate, and the cheap `warmGridEarnings()` warm — all of which complete in milliseconds regardless of whether the heavy background chain ever finishes. So by the time the handshake is checked, it always looks "on schedule."
+2. **The one signal that WOULD catch this already existed and was completely unread.** `warmZeroDteBoard()` calls `recordZeroDteScanTick("cron")` (scan.ts:2442, `play-engine-heartbeat.ts`) right after `scanZeroDteBoard()` returns — its own code comment says this exists specifically because "a silent stall here is the same class of blind spot the SPX play engine heartbeat was built to catch." But unlike the SPX play-engine heartbeat (which IS cross-checked against `spx-evaluate`'s cron health in `admin-cron-health.ts`), `getZeroDteScanHeartbeat()`/`loadZeroDteScanHeartbeat()` had **zero callers outside `play-engine-heartbeat.ts` itself** — grep confirmed no route, no admin dashboard, nothing ever read it. Write-only instrumentation.
+3. **Worse: even a naive staleness check would have been actively suppressed.** `admin-cron-health.ts`'s `TARGET_FRESH_OVERRIDE_KEYS` includes `"zerodte-warm"` — when the handshake looks stale, it re-checks a "real target" via `probeWriterTargetFresh` and flips back to healthy if that target is fresh. But the `"zerodte-warm"` case in `cron-writer-target-fresh.ts` probed the **earnings-match cache** (`ZERODTE_EARNINGS_KEY`) — the SAME fast synchronous sub-task from point 1, unrelated to whether the scanner/persist chain is alive. During today's real 35-minute stall, that cache stayed fresh the entire time (it's warmed on every fast handshake), so this override would have actively reported "target fresh" and suppressed any staleness flag, had one ever fired.
+
+### Fix
+
+- `src/lib/admin-cron-health.ts`: added a `zerodte-warm` heartbeat cross-check mirroring the existing `spx-evaluate` pattern, reading `loadZeroDteScanHeartbeat()` directly. Deliberately does **not** gate on the `cron_job_runs` handshake also looking stale first (the way `spx-evaluate`'s does via its `cronStale` condition) — that handshake is the known-unreliable signal here per root cause #1, so the scan heartbeat's own `stale`/`critical_stale` (5min/10min age thresholds, already defined in `play-engine-heartbeat.ts`) is authoritative in-window.
+- `src/lib/cron-writer-target-fresh.ts`: changed the `"zerodte-warm"` case to probe the same scan heartbeat instead of the earnings cache, so `TARGET_FRESH_OVERRIDE_KEYS` can no longer contradict the new cross-check above with a stale proxy.
+- Regression tests added to both files' `*.test.ts` (source-level assertions, matching this file's existing testing convention for probes that need dynamic imports) plus full `play-engine-heartbeat.test.ts` coverage (pre-existing, unaffected) — `npm test` full suite: 0 failures.
+
+### What this does NOT fix
+
+This makes the stall **detectable** (an admin dashboard status flip to `stale`/`warning` within 5–10 minutes of a real recurrence, instead of silent for 35+ minutes). It does **not** fix the underlying cause of why `warmZeroDteBoard()`'s background chain stops completing — that root cause is still unknown (candidates worth checking on the next live recurrence, now that it will be visible in real time: Node event-loop starvation from the heavy synchronous GEX full-chain-escalation work competing with the background promise's continuations; Postgres connection-pool contention during the same window; or something specific to `runWithBackgroundUwSweep`'s concurrency reservation). Per the standing escalation policy, guessing at that mechanism without live evidence from a caught-in-the-act recurrence would risk a wrong fix; this PR makes the NEXT recurrence catchable and diagnosable instead.
+
+### Evidence
+
+```
+raw_events (GET /api/admin/zerodte/funnel?date=2026-09-16): 1652 events total
+events strictly inside 15:30-16:10 window: 0
+
+CloudWatch /ecs/blackout-production, "zerodte-warm" filter:
+15:25:16  [rth-warm-leader] backup warm 'zerodte-warm' ok (1441ms)
+15:26:35  [rth-warm-leader] backup warm 'zerodte-warm' ok (6ms)
+15:29:57  [cron/zerodte-warm] background done — warmed=3 failed=0 elapsed=282251ms
+15:30:37  [rth-warm-leader] backup warm 'zerodte-warm' ok (2094ms)
+...(11 more "backup warm ok" dispatches, none producing a completion log)...
+16:10:10  [rth-warm-leader] backup warm 'zerodte-warm' ok (780ms)
+16:11:00  [cron/zerodte-warm] background done — warmed=3 failed=0 elapsed=368355ms
+
+"[zerodte-scan]" filter, same window (proves the SCAN itself, not persistence, kept running):
+15:33:38 / 15:38:29 / 15:39:10 / 15:46:17 / 15:47:54 / 15:48:36 / 15:48:37 / 15:51:50 / 15:54:24
+  discovery rail mix total=165→188 (growing candidate pool throughout)
+```
+
+### Next-session market-open validation
+
+Logged in `docs/audit/MARKET-OPEN-VALIDATION.md` — check the admin cron-health dashboard for `zerodte-warm` during RTH; a `stale`/`warning` status with label `"Scanner stale · last scan tick Nm ago"` proves the fix surfaces a real recurrence, and its `meta.zerodte_scan_heartbeat` field should carry a real, non-null `last_tick_at`.
+
+## 2026-09-16 — [FINDING, P0 live RTH incident, ESCALATION of #5083/2026-09-16-polygon-rate-limiter-queue-timeout-surge] `zerodte-warm` went from "severely slow" to a **full 71+ minute stall** — root cause narrowed to a hung `buildAndPublishBoard()`, not just Polygon queue pressure
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this updates** | Same-day escalation of the P0 already staged this cycle (`2026-09-16-polygon-rate-limiter-queue-timeout-surge-p0-zerodte-warm-stale.md`, issue #5083), which measured `zerodte-warm` running 4.6–5.9 minutes per run (still completing). Re-checked ~70 minutes later: it is no longer completing at all. |
+| **Live evidence, checked 2026-09-16 ~19:01 UTC** | Last real `[cron/zerodte-warm] background done` completion: **17:49:54 UTC — 71+ minutes ago**, still ongoing at time of writing, live during RTH (market closes 20:00 UTC). `cron-staleness-watchdog` self-heal has fired **every ~5 minutes since**, always logging `status 200` — but a 200 here only means the route's fast synchronous handshake returned; it says nothing about whether the deferred work ran (same trap the route's own code comments already document from a 2026-09-08 incident). Zero `[cron/zerodte-warm] background warm REJECTED` and zero `previous zerodte warm still in flight` log lines in the same 90-minute window — the failure is a silent hang, not a caught/rejected error. |
+| **Root cause narrowed via `Promise.allSettled` semantics** | The route's background dispatch is `Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])` (`src/app/api/cron/zerodte-warm/route.ts`). `allSettled` only resolves once **every** input settles — so the "background done" log missing for 71 minutes means at least one of the two never settles. `[zerodte-scan]` log lines (the internal signature of `warmZeroDteBoard()`'s own scan tick) **are** appearing regularly throughout the window, most recently 18:48:55 UTC — so `warmZeroDteBoard()` itself is not the hung one. That leaves `refreshZeroDteBoardSnapshot()` → `buildAndPublishBoard()` (`src/lib/platform/zerodte-service.ts:995`) as the one not settling. |
+| **Why a single hang cascades into a full fleet stall** | `buildAndPublishBoard()` de-dupes concurrent calls via an **in-process** `coldBuildInflight` promise (module-level, per-ECS-replica, `zerodte-service.ts:920`) — any later call on the SAME replica just awaits the same stuck promise forever. Separately, the route itself holds a **cross-replica** Redis lock (`OVERLAP_LOCK_KEY = "zerodte-warm:running"`, 900s TTL, `sharedCacheSetNx`) for the whole duration of the background dispatch chain — so while one replica is stuck, every OTHER replica's cron/self-heal/rth-warm-leader call sees the lock held and skips with `"previous zerodte warm still in flight"` (fast 200, no work done). The 900s TTL should eventually free a different replica to try again, but if the underlying trigger (see below) is still present when it does, the new attempt hangs too — which matches the observed pattern of a stall that doesn't self-heal despite dozens of retries. |
+| **What's driving the hang — same live event as #5083, worse now** | Polygon rate-limiter queue-timeout volume in the identical 90-minute window: **18,045** `[polygon] rate-limiter queue budget exceeded` errors (vs #5083's own hourly measurement of ~9,002 taken earlier the same day) — the underlying congestion did not ease, it roughly doubled. `[polygon-gex]` chain-fetch failures are the dominant contributor, same shape as #5083. This write-up does not claim to have found the exact unbounded-await inside `buildAndPublishBoard()`'s call graph that fails to propagate a rejection/timeout — that is the concrete next investigation (see below) — but the correlation (queue-timeout volume roughly doubling exactly as the cron goes from "slow" to "never completes") is a strong link, not a guess. |
+| **Corroborating: an ECS deploy landed mid-stall and did NOT clear it** | `blackout-production-web` completed a rolling deploy at 18:01:26 UTC (`aws ecs describe-services`) — fresh replicas, clean in-process state, well inside the window between the last completion (17:49:54) and now. A deploy recycling `coldBuildInflight`'s in-process promise should have given every replica a clean shot. It didn't — the stall continued past the deploy, and is still ongoing 60 minutes after it. This rules out "one stuck replica" as the sole explanation and points at the underlying Polygon congestion itself as the reproducible trigger, not a one-off in-process deadlock. |
+| **What I did NOT do (deliberately left to the owning lane)** | Did not add a timeout/AbortSignal to `buildAndPublishBoard()`'s internal awaits, did not touch `coldBuildInflight`'s dedup logic, did not touch the Polygon `GLOBAL_MAX_RPS` ceiling or the GEX-chain fetch fan-out (the capacity/architecture question #5083 already flagged as out of scope for a DISCOVERY-lane fix). This write-up is read-only investigation + evidence, per this session's standing "write up bigger findings, don't unilaterally build them" discipline — the fix here is a real architecture decision (does `buildAndPublishBoard()`'s internal chain need a hard per-call timeout so a Polygon-congestion event degrades to "board serves stale data" instead of "board never advances," and separately, does the fan-out inside it need the same bounded-concurrency treatment already applied elsewhere in this codebase for this exact bug shape — `vector-dark-pool-warm`, `vector-universe-snapshot`). |
+| **Suggested next steps** | (1) Trace `buildAndPublishBoard()`'s call graph (`zerodte-service.ts:995` → `buildZeroDteBoardPayload` at `:695`) for any `await` without a bounded timeout on a per-ticker/per-chain fetch loop — the `runUwPooled`/`runPolygonPool` primitives already exist in this codebase for exactly this, so the fix is very likely "wire an existing primitive in," not new infrastructure. (2) Once identified, confirm the fix restores `[cron/zerodte-warm] background done` completions at their normal ~34-73s (off-peak) / a few minutes (peak) cadence rather than never appearing. (3) Independently, `docs/audit/findings-staging/2026-09-16-polygon-rate-limiter-queue-timeout-surge-p0-zerodte-warm-stale.md`'s own suggested next step — trace which caller(s) are fanning out GEX-chain fetches across 450+ tickers/hour — remains open and is very likely the same root demand driving both this stall and that finding. |
+| **Status** | Root cause NARROWED (to `buildAndPublishBoard()` specifically, from "the whole cron is slow"), not fixed. This is a live, ongoing P0 at time of writing (issue #5083) — flagging for the owning lane (0DTE/Night Hawk) with the sharpest evidence gathered so far this incident. |
+
+## 0DTE G-1 (`no_market_bias`) shares a per-ticker timeout budget with SPY's own read, concentrating false blocks on QQQ/SPY/SPXW/SPX/DIA — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P1 |
+| **Area** | 0DTE (Night Hawk) — `src/lib/zerodte/scan.ts` |
+| **PR** | fix/zerodte-spy-bias-timeout |
+
+### Trigger
+
+Operator, live, directly: *"Whole day we dont find plays like spx spy qqq iwm .. tsla nvda ..
+Why does the engine not produce plays?"*
+
+### Root cause
+
+`attachIntradayEdge` (scan.ts) computes ONE shared SPY intraday read per scan cycle and hands
+its freshness (`biasAsOfMs`) to G-1 (`no_market_bias`, gates.ts), which hard-blocks EVERY
+index-ETF/SPX-family setup (QQQ/SPY/SPXW/SPX/DIA — `INDEX_ETF_TICKERS`) if that read is missing
+or older than `MARKET_BIAS_MAX_AGE_MS` (15 min). The SPY fetch was wrapped in `within(promise,
+2_500)` — the SAME 2.5s budget given to every OTHER per-ticker read fired in the same
+`Promise.all`, even though a per-ticker miss only softens ONE setup's score adjustment
+(best-effort) while a SPY miss vetoes FIVE major tickers at once for that whole cycle.
+
+### Evidence
+
+Live rejection-export data (`GET /api/admin/zerodte/rejection-export?gate_failed=no_market_bias`,
+2026-09-16): **112 total rejections, 94% (105/112) concentrated on exactly QQQ (44) / SPXW (25) /
+SPY (26) / DIA (8) / IWM (2)** — the only tickers G-1 even applies to, at real RTH timestamps
+(e.g. 16:42, 17:58, 18:32 UTC), not an after-hours artifact.
+
+Live re-run of `scripts/audit/zerodte-gate-compound-funnel.mjs --now-et=11:30` the same day
+caught it in the act: QQQ (score 84), SPY (78), SPXW (68), SPX (66) — the four HIGHEST-scoring
+setups in the whole pool that pass — were all blocked by `no_market_bias` in the SAME scan pass,
+simultaneously.
+
+Traced to `intradayReadFor("SPY", today)` sharing `TICKER_INTRADAY_FETCH_TIMEOUT_MS` (2.5s) with
+every other concurrent per-ticker fetch in the batch — a single slow Polygon response (SPY's
+minute-bar payload is larger than a single name's, up to 1000 one-minute bars for the day) is
+enough to time out and null `bias`/`biasAsOfMs` for the entire cycle.
+
+### Fix
+
+`intradayReadFor` now accepts a `timeoutMs` override (default unchanged, 2.5s). SPY's own read in
+`attachIntradayEdge` is called with a new `SPY_BIAS_FETCH_TIMEOUT_MS` (6s) instead — still well
+under `MARKET_BIAS_MAX_AGE_MS`'s 15-minute staleness ceiling, so a genuinely stale tape still
+fails closed exactly as before. Only the amount of patience given to a single scan cycle's SPY
+fetch changed; no gate logic, no staleness bound, no scoring formula touched.
+
+### What was deliberately NOT done
+
+- Did not touch `MARKET_BIAS_MAX_AGE_MS` (the 15-min staleness ceiling) — that's the correctness
+  bound; this fix only affects how long one cycle waits before giving up and computing a fresh
+  read.
+- Did not touch `score_floor` or any other gate identified in the same investigation
+  (`zerodte-gate-compound-funnel.mjs` reconfirmed it as the dominant chokepoint for single names
+  like TSLA/NVDA) — that's a calibrated, evidence-based floor per its own code comment, not a
+  bug, and needs a real backtest before any threshold change, per the standing "measure before
+  guessing" discipline.
+- Did not widen the per-ticker (non-SPY) timeout — a miss there is low-stakes (one setup's score
+  adjustment only) and widening it would only slow every scan cycle for no benefit.
+
+### Test
+
+`src/lib/zerodte/scan.test.ts` — three new regression tests (RED before the fix, verified via
+`intradayReadFor(ticker, today)` without the timeout override still returning `null` on a
+simulated 4s-slow Polygon response; GREEN after, passing `SPY_BIAS_FETCH_TIMEOUT_MS` explicitly):
+1. a per-ticker read still times out fast on a slow response (unchanged default budget stays
+   tight — no regression on the low-stakes path)
+2. SPY's read survives the identical slow response when given the wider SPY-bias budget
+3. SPY given the OLD default budget still reproduces the original bug (proves the fix is the
+   timeout override itself, not an incidental change to fetching/caching)
+
+Full suite: 14402 pass / 0 fail / 3 skipped (expected) on Node 20. `tsc --noEmit` clean.
+
+## 0DTE G-18 (`early_window_prime_score`) is forgoing winners at a ~71% rate over a real 30-45 day window — needs an operator/product decision, not a unilateral fix
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | OPEN — holding per the standing escalation policy for a gate change with real capital-risk impact ("ambiguous/live-picks-logic → report, hold"). This changes what commits in the [10:00, 10:45) ET window; it should not be resolved by flipping a hard gate without a fresh, targeted decision. |
+| **Lane** | Night Hawk 0DTE (Ask 0DTE deep-dive, 2026-09-16, operator directive: "only focus on 0dte... fix up all shit") |
+| **Severity** | P2 (a hard-block gate appears to be materially miscalibrated against its own stated rationale — real forgone EV, not a crash) |
+| **File** | `src/lib/zerodte/gates.ts` (G-18, `early_window_prime_score`), measured via `scripts/audit/g18-g19-counterfactual.mjs` (already-shipped tool, BO-P1-0004, never previously run live during RTH per its own staged-finding status) |
+
+### Root cause / what's measured
+
+G-18 unconditionally rejects every non-condor FLOW/BREAKOUT/PIN setup scoring below 75 inside the
+`[10:00, 10:45) ET` window — no corroboration or Vector-alignment exemption (deliberately removed
+2026-09-09, operator-approved CTO gate-architecture review). The gate's own code comment states the
+rationale: *"the early window is the SPECIFIC replay-measured worst-timed slice of the session"* —
+i.e., sub-75 scores in this window are assumed to be clearly negative EV.
+
+Running the already-built, never-previously-executed-live counterfactual tool
+(`npm run counterfactual:0dte-g18-g19`, which calls the real production
+`POST /api/market/zerodte/calibration?grade_skips=1` skip-grading endpoint —
+`src/lib/zerodte/skip-grading.ts`, the same `gradePlanFromBars` grader used everywhere else in this
+codebase, not a reimplementation) against live production data:
+
+- **14-day window (2026-09-02 → 2026-09-16): n=6 graded, 5 would_have_won (83.3%).**
+- **30-day window (2026-08-17 → 2026-09-16): n=14 graded, 10 would_have_won (71.4%).**
+- **45-day window: identical n=14/10 (71.4%)** — the skip-grading backfill scans a fixed 200-row
+  cap, so 30d and 45d hit the same underlying population; 30 days is effectively the full currently
+  reachable sample, not an artifact of a narrow window.
+
+The tool's own built-in interpretation (`interpretGate` in `g18-g19-counterfactual.mjs`) fires
+`REVIEW — gate may be forgoing too many winners in early window` for any rate above 55%; both runs
+clear that bar by a wide margin, and n=14 clears the codebase's own `LOW_N_THRESHOLD` (5) for a
+"not low_n" reading.
+
+### Why this isn't a simple flip
+
+This is the SAME shape as the Legacy fillability finding held OPEN in this directory
+(2026-09-13): a real, well-measured, evidence-backed signal that a gate might be wrong — but:
+1. The gate's unconditional design was a **deliberate, recent (2026-09-09), CTO-approved decision**
+   that specifically REMOVED a prior Vector-alignment exemption, because that exemption "was never
+   itself measured as curing the early-window effect." Reintroducing any exemption without fresh,
+   targeted evidence about what actually distinguishes these winners would risk repeating the same
+   mistake in reverse.
+2. **No per-candidate detail is currently retrievable** to design a smart, narrow fix. The
+   `calibration` route's `blockedValueLines()` (`calibration.ts`) only returns aggregated
+   `BlockedValueLine` counts (n / would_have_won / rate), not the underlying tickers, scores,
+   corroboration, or origin of the 14 graded candidates — there is no admin export route for
+   `zerodte_scan_rejections` counterfactual rows (checked: no route under `src/app/api/admin`
+   references skip-grading or scan-rejections), and raw Postgres is blocked from this sandbox.
+   Without knowing WHY these 10 winners won (score band, origin, corroboration, market regime),
+   loosening the gate blindly is exactly the kind of unilateral, ungrounded change this repo's
+   issue-handling discipline warns against.
+3. n=14 is real and clears `LOW_N_THRESHOLD`, but is still well below the ~30 this codebase treats
+   as a comfortable bar for other gate-calibration decisions in `0DTE-RESEARCH.md` — worth
+   re-checking as the reachable population grows (the 200-row scan cap means this needs either a
+   wider skip-grading fetch or more elapsed trading days, not just a wider `--days` flag).
+
+### Recommended next step (not yet built)
+
+Build a small admin export route (mirroring `tier-export.ts`'s pattern) that surfaces the raw
+`zerodte_scan_rejections` counterfactual rows for `gate_failed='early_window_prime_score'` with
+their frozen score/origin/corroboration context, so any future fix can target the SPECIFIC shape
+of setup this gate is wrongly rejecting (e.g., "only exempt triple-confluence BREAKOUT setups,"
+mirroring G-17's own three-band conditional-admission restructure) rather than a blanket
+loosen/revert. Flagging for the 0DTE-owning lane / operator decision; re-run
+`npm run counterfactual:0dte-g18-g19 --days=30` as the population grows.
+
+### Evidence
+
+```
+window: 2026-08-17 .. 2026-09-16 (30d)
+skip-grade backfill: scanned=200 graded=183 ungradeable=17
+
+G-18 — early_window_prime_score (sub-prime in [10:00, 10:45) ET)
+graded: 14  ungradeable: 0  would_have_won: 10
+false-block rate (would-have-won %): 71.4
+→ REVIEW — gate may be forgoing too many winners in early window.
+```
+
+No gate changed by this finding. G-19 (`score_top_band`) remains INSUFFICIENT_DATA — consistent
+with it having been downgraded from a hard block to non-blocking telemetry on 2026-09-09 (same PR
+that restructured G-17), so it no longer produces gradeable "blocked" counterfactual rows at all.
+
+## G-18 early-window gate loosened: 70-74 sub-band now conditionally admissible (was unconditional 75+ reject) — FIXED, operator-authorized
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED — shipped with explicit operator authorization ("I am giving you full admin cto rights to make changes to 0dte engine based on your analysis... let it give best plays"), acting on evidence that was previously held OPEN pending an operator decision. |
+| **Lane** | Night Hawk 0DTE (Ask 0DTE deep-dive, 2026-09-16) |
+| **Severity** | P2 — real forgone EV in a hard commit gate (capital-risk-adjacent; this entry exists so the change is traceable and reversible). |
+| **File** | `src/lib/zerodte/gates.ts` (G-18, `early_window_prime_score`) + `src/lib/zerodte/gates.test.ts` |
+
+### Context / why this changed today
+
+This is the resolution of the OPEN finding in `2026-09-16-zerodte-g18-early-window-false-block-rate.md` (same session, earlier today): a live counterfactual backtest (`npm run counterfactual:0dte-g18-g19`, real production skip-grading via `gradePlanFromBars`) measured a **71.4% false-block rate (n=14, 30-45 real days)** for setups G-18 rejected in the `[10:00, 10:45) ET` window — most of what this gate was blocking would have won. That finding was held OPEN specifically because per-candidate detail wasn't available to design a targeted fix and no operator decision had been made on a gate with real capital-risk impact.
+
+The operator then (1) independently flagged today's TSLA as an example of a real winning move the system never captured, and (2) explicitly authorized making 0DTE engine changes based on this session's analysis: *"I am giving you full admin cto rights to make changes to 0dte engine based on your analysis... You should make the system better and best and let it give best plays."* Investigating TSLA's own gate history today (`GET /api/admin/zerodte/funnel?date=2026-09-16`) showed it repeatedly hitting `score_floor`, `single_rail_corroboration`, and `thesis_rank_reject` throughout the session — never `early_window_prime_score` directly, but the same general shape (real setups bouncing off score-band gates all day) that motivated re-examining G-18 with the newly-granted authorization.
+
+### The fix
+
+G-18's block condition (`src/lib/zerodte/gates.ts`) previously fired unconditionally for ANY score `< 75` inside `[10:00, 10:45) ET` — no admission path, deliberately (2026-09-09, prior CTO gate-architecture review removed a Vector-alignment exemption because it "was never itself measured as curing the early-window effect").
+
+Changed the condition from `score < 75` to `score < 70`. This is **not** a blanket threshold drop — it does not create a new exemption. G-17 (`single_rail_corroboration`/`conditional_band_unmet`, restructured 2026-09-09) already has an existing, separately-evidenced, time-of-day-agnostic check for scores in `[70, 75)`: eligible only when confluence confirmations >= 2 AND tape-aligned AND clean VIX regime AND clean execution/safety (G-1/G-4/G-8/G-9/G-21 all clean), evaluated at the very end of `evaluateZeroDteGates`. That check's condition was **never time-gated** — it silently re-evaluated the 70-74 band at every OTHER time of day already; it simply never got a chance to run in the early window because G-18's OLD unconditional 75+ requirement blocked first, before G-17's check could even matter.
+
+So narrowing G-18 to `< 70` means: a 70-74 score in the early window now falls through to G-17's pre-existing, already-proven multi-factor bar — the exact same bar that score band already has to clear at 11am, 1pm, or 3pm. **No new gate logic, no new threshold, no new predicate was invented** — this ports an existing, evidenced admission path into a window that previously had none, rather than reintroducing the discredited single-signal Vector exemption the 2026-09-09 review explicitly removed. The `<70` sub-band remains an unconditional reject in the early window — the backtest evidence doesn't support admitting anything that low this early, and G-17's own `<70` sub-band is unconditional for the identical reason.
+
+### Blast radius
+
+- G-18's `early_window_prime_score` block now only fires for `score < 70` (was `< 75`).
+- A 70-74 score in the early window that fails G-17's conditional bar now gets `conditional_band_unmet` instead of `early_window_prime_score` — the attribution changes, not just the verdict, for that specific band. Any downstream consumer keying off the `early_window_prime_score` code specifically (rather than `BLOCKED` generally) for that score range needs to also handle `conditional_band_unmet` — checked: no such narrow consumer exists (`grep` for `early_window_prime_score` outside gates.ts/gates.test.ts/board.ts's type union/gates-replay test turned up nothing else).
+- `docs/audit/INTENTIONAL-DESIGN.md` and the `g18-g19-counterfactual.mjs` tool's own staged-finding history should be re-read against `main` before citing G-18 as "unconditional 75+" again — that description is now only true for the `<70` sub-band.
+
+### Tests
+
+- `src/lib/zerodte/gates.test.ts`: updated 2 pre-existing tests whose fixture score of exactly 70 no longer hits the unconditional block (moved to 69, with a comment explaining why); added 4 new tests covering the new 70-74 conditional-admission behavior (clean criteria → COMMIT, unmet criteria → `conditional_band_unmet` not `early_window_prime_score`, `<70` still unconditional, `75+` unaffected).
+- `src/lib/zerodte/gates-replay-2026-07-13.test.ts`: QQQ (score 65) and META (score 67) both remain correctly blocked by `early_window_prime_score` — both are in the still-unconditional `<70` sub-band, unaffected by this change. No edits needed; re-ran to confirm (9/9 pass).
+- `npx tsc --noEmit -p .` — clean.
+- Full `npm test` — run alongside this PR (see PR checklist for the result).
+
+### What was deliberately NOT done
+
+- Did not touch the `<70` sub-band, `75+` prime band, or G-17's own logic — only G-18's own boundary moved.
+- Did not build a NEW conditional-admission predicate specific to the early window (e.g. requiring stricter confluence than G-17's existing `>=2`) — no per-candidate evidence supports a stricter early-window-specific bar over reusing G-17's already-validated one, and inventing one would be exactly the "unilateral, ungrounded change" the original OPEN finding warned against.
+- Did not act on TSLA specifically — TSLA's real gate history today shows it being blocked by `score_floor`/`single_rail_corroboration`/`thesis_rank_reject`, not `early_window_prime_score`, so this fix does not directly explain why TSLA didn't commit today. It is the concrete, evidence-backed, in-scope fix the newly-granted authorization made actionable this session; TSLA's own case is a separate, not-yet-root-caused thread (its underlying only moved ~2.9% low-to-high today per Polygon daily bars — real, but the "100-200% winner" would have been at the OPTION level via leverage/IV, not requiring TSLA to be a huge stock mover).
+
+### Next-session market-open validation
+
+Add to `docs/audit/MARKET-OPEN-VALIDATION.md`: during the next live `[10:00, 10:45) ET` window, check whether any 70-74-scored setup now commits that previously would have been rejected — confirm its `entry_context.gate` shows it cleared via the conditional-band path (no `early_window_prime_score`/`conditional_band_unmet` block), and that its confluence/tape/VIX/execution readings at commit time genuinely satisfy G-17's bar (this is provable after the fact from the frozen `entry_context`, not just trusted). Re-run `npm run counterfactual:0dte-g18-g19 --days=30` again in a few weeks — the false-block-rate measurement should now show a materially smaller residual population once the 70-74 sub-band is excluded from what G-18 itself blocks.
+
+## `GET /api/market/swing/record`'s `summary.opens` was structurally guaranteed to always read 0 — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Swings — Ask Largo (coordinator sweep) |
+| **Severity** | P2 (a member/Largo-facing field presented as measured, but incapable of ever reporting anything but a fabricated zero) |
+| **File** | `src/app/api/market/swing/record/route.ts`, `src/lib/swing/record.ts` |
+
+### Root cause
+
+`buildSwingRecordSummary` correctly computes `opens = records.length - resolved.length` (an
+already-tested formula — `record.test.ts:148` asserts `opens === 1` when the input `records`
+array includes one genuinely unresolved chain). The bug was one layer up, in how the route built
+that `records` array in the first place:
+
+```ts
+const rows = await fetchSwingPositionsRange(since, ...);  // no status filter — includes OPEN rows
+const roots = new Set<number>();
+for (const row of rows) {
+  if (!row.graded_at) continue;               // <-- excludes every ungraded row
+  roots.add(row.root_position_id ?? row.id);
+}
+```
+
+Grading only happens once a leg CLOSES or ROLLS (`fetchUngradedSwingPositions`'s own doc comment:
+"a leg is graded once it is CLOSED/ROLLED and its forward bars exist"), so a currently live,
+committed OPEN/HOLD/TRIM position — with no prior roll history — has `graded_at: null` by
+definition. The `if (!row.graded_at) continue` line therefore excluded EVERY such position from
+ever seeding a chain root, so it could never enter `records`, so `records.length` could never
+exceed `resolved.length`, so `opens` could never be anything but 0 — a dead counter that reads as
+a real, live measurement but is mathematically incapable of ever reporting a nonzero value for
+this entire class of position (a fresh, un-rolled, still-open swing play — very likely the MOST
+common shape of "open" a member would expect this field to count).
+
+`buildSwingRecord`'s own `chainResolved = lastLeg != null && lastLeg.graded` already handles an
+unresolved chain correctly (an ungraded single-leg chain reports `outcome: "open"`,
+`chainResolved: false`) — the pure record-building logic was never the problem; only the caller's
+root-selection filter was.
+
+### Evidence
+
+Live repro, 2026-09-16 (`GET /api/market/swing/record?days=90`, authenticated): three real,
+currently committed swing positions — CRWD #39 (HOLD), AAPL #38 (HOLD), AAPL #37 (HOLD) — none
+ever graded or rolled (confirmed absent from `closedDeck` too), yet `summary.opens: 0` on every
+call, `summary.chains === summary.resolved_chains` (35 === 35) every time regardless of how many
+positions are actually open right now.
+
+Two RED tests (`git stash` proven — failed against the pre-fix `if (row.graded_at)` -only
+selection logic, passed once the OPEN/HOLD/TRIM branch was added):
+- `selectSwingRecordRootIds includes a live OPEN/HOLD/TRIM row even though it has never been graded`
+- `selectSwingRecordRootIds does not seed a root for a PENDING (not-yet-committed) or already-graded-via-other-row root`
+
+Full `src/lib/swing/*.test.ts` suite: 1200/1200 pass (was 1198 before the 2 new tests).
+`tsc --noEmit` clean.
+
+### Blast radius
+
+Single call site — the root-selection loop only existed in this one route handler. Extracted into
+a new pure, exported, unit-tested helper (`selectSwingRecordRootIds` in `record.ts`) rather than
+patched inline, so any future caller building the same chain population gets the correct behavior
+by construction instead of re-deriving it.
+
+`summary.opens` is currently unused elsewhere in the codebase (grep confirms no other reader), so
+the blast radius of the wrong number was limited to whatever surfaces `/record`'s raw JSON
+directly (an admin/Largo tool reading the summary) rather than a rendered member panel — still a
+real correctness defect (Largo Product Contract point on absence/precision: a fabricated zero is
+worse than an honestly omitted field), just not yet a visibly broken UI number.
+
+### Fix rationale
+
+Extend the root-selection predicate to also seed a root from a row that is currently
+OPEN/HOLD/TRIM (the same three "live, committed" statuses already used elsewhere in this codebase
+— e.g. `play-brief-resolve.ts`'s own `WORKING` set), in addition to the existing graded-row
+branch. A `PENDING` (not-yet-committed) row is deliberately left excluded, matching prior
+behavior — only a genuinely committed, live position should seed a root. Once such a row seeds a
+root, `fetchSwingPositionChain`/`buildSwingRecord` already build and grade its chain correctly
+(no changes needed there) — it will show as `chainResolved: false`, `outcome: "open"`, correctly
+counted in `opens` and excluded from `resolved_chains`/`wins`/`losses`.
+
+### Tests
+
+`src/lib/swing/record.test.ts` — 2 new tests (RED→GREEN, `git stash` proven), full swing suite
+1200/1200 pass, `tsc --noEmit` clean.
+
+## Ask Largo swing play-brief's HELIX flow anomaly line read as a flat self-contradiction of the tape line right above it — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Swings — Ask Largo (coordinator sweep, standing ownership mandate) |
+| **Severity** | P2 (a Largo-facing narrative reads as internally contradictory — Largo Product Contract point 1, time) |
+| **File** | `src/lib/swing/play-brief-narrative.ts`, `src/lib/swing/play-brief-intel.ts`, `src/lib/swing/play-brief-absence.ts` |
+
+### Root cause
+
+`flowNarrative()` (`play-brief-narrative.ts`) builds the "Trade manager read" section's HELIX tape
+sentence from `trustedHelixFlow(ctx.ecosystem)` — a **6-hour** rolling window (`flow.window_hours`)
+— then immediately appends a second, unrelated fact in the same sentence:
+`ctx.ecosystem?.recent_anomalies?.[0]`, which `ecosystem-context.ts`'s own doc comment
+(`recent_anomalies: "Pattern-detected flow anomalies ... from the last 24h."`) declares is a
+**24-hour** feed. The two reads can legitimately disagree in direction — the last 6h can be
+call-heavy while an anomaly detected earlier in the same 24h window was a put surge — without
+either being wrong. Concatenated with no time label, the two clauses read as one flat, undated
+statement about "the tape," which presents as a direct contradiction rather than two different
+reads at two different times. `play-brief-intel.ts`'s "Flow anomalies" bullet list carried the
+same gap — `a.detected_at` was available on every `EcosystemAnomaly` row but never rendered.
+
+### Evidence
+
+Live repro, 2026-09-16 (`GET /api/market/swing/play-brief?playId=SWING:CRWD&ticker=CRWD&positionId=39&status=HOLD`,
+authenticated, real committed HOLD position): the "Trade manager read" section rendered —
+
+> **HELIX tape** (6h) — **call-heavy** · calls $376K · puts $0 · 1 prints. Flow stepping in on the
+> call side **supports** the long swing. Latest anomaly: **DIRECTIONAL_FLOW_SKEW** — CRWD:
+> one-sided put flow — $0.7M puts vs no call premium.
+
+Read literally: "call-heavy, $376K calls, $0 puts, supports the long" immediately followed by
+"one-sided PUT flow, $0.7M puts, no call premium" for the same ticker with no indication these are
+two different measurement windows. A member (or Largo, reasoning over this text) has no way to
+tell the anomaly is a stale, separate-in-time signal rather than the tape flatly contradicting
+itself one sentence later.
+
+### Blast radius
+
+Two call sites read `recent_anomalies` without its `detected_at`: `flowNarrative()`
+(`play-brief-narrative.ts:326-329`, the "Trade manager read" tape sentence) and the "Flow
+anomalies" bullet list in `play-brief-intel.ts:573-580`. Both fixed with the same new helper
+rather than two divergent inline date-math implementations.
+
+### Fix rationale
+
+Added `relativeAgeLabel(isoTimestamp, nowMs?)` to `play-brief-absence.ts` beside the existing
+`ageSecondsLabel` — same null-safety/clock-skew discipline (`null` for missing/unparseable,
+`"clock-skewed"` for a negative age), but renders "Nm ago"/"Nh ago" rather than raw seconds, since
+`recent_anomalies` spans up to 24h and a seconds label would be unreadable at that scale.
+`flowNarrative()` now labels the anomaly line `Earlier anomaly (Nh ago): ...` (renamed from
+"Latest anomaly" — "latest" implied currency the 24h-old fact doesn't have) so it reads as a
+distinct, dated read rather than a live contradiction of the sentence before it.
+`play-brief-intel.ts`'s bullet list appends `[Nh ago]` per anomaly for the same reason. Did not
+attempt to reconcile or filter conflicting anomalies against the tape's own bias — cross-product
+disagreement is supposed to be represented, not reconciled by the lane itself (Largo Product
+Contract), so the fix is purely presentational: give the reader (or Largo) what it needs to tell
+the two reads apart, not decide which one wins.
+
+### Tests
+
+`src/lib/swing/play-brief-absence.test.ts` — 4 new tests for `relativeAgeLabel` (null/undefined/
+unparseable → null, sub-hour → "Nm ago", hour-plus → "Nh ago", future/clock-skewed → "clock-skewed").
+Full `src/lib/swing/*.test.ts` suite: 1215/1215 pass (was 1211 before). `tsc --noEmit` clean.
+
+## Ask Largo "Data freshness" section reimplemented partial staleness checks instead of the shared helpers — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Swings — Ask Largo |
+| **Severity** | P3 (narrative correctness / internal consistency, same shape as the just-shipped #5069 Largo C2 fix) |
+| **File** | `src/lib/swing/play-brief-intel.ts` — `dataFreshnessSection` |
+
+### Root cause
+
+`dataFreshnessSection`'s Vector-age and GEX-age lines each reimplemented a raw comparison
+against a field the codebase already has a shared, tested staleness helper for
+(`vectorAgeStale` / `gexMatrixStale`, both in `play-brief-absence.ts`), and both reimplementations
+missed a case the shared helper handles correctly:
+
+1. **Vector**: `if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000)` then
+   `` `${Math.round(vec.dataAgeMs / 1000)}s` ``. `vec.dataAgeMs` is stamped
+   `Number.POSITIVE_INFINITY` by `withReadContext()` on future clock skew — `Infinity > 120_000`
+   still trips the branch, but `Math.round(Infinity / 1000)` is `Infinity`, so the template
+   literal renders the string **"Vector data \*\*Infinitys\*\* old"**. Separately, a `null`
+   `dataAgeMs` (unparseable `asOf`) skipped the line entirely even when `vec.freshness === "stale"`
+   or a parseable `vec.asOf` would correctly flag it via `vectorAgeStale`'s own fallback paths —
+   a silent omission the shared helper doesn't have.
+2. **GEX**: `if (gexAgeMs != null && gexAgeMs > GEX_MATRIX_STALE_MS)`. A future-skewed
+   (negative) `gexAgeMs` reads as `false` here — silently "fresh" — while the shared
+   `gexMatrixStale` helper explicitly fails closed on `ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS`
+   (the exact guard `gexMatrixStale` already applies at every other call site in this same file:
+   lines 429/458/706/765/802/1213).
+
+This is the same root-cause shape as the just-shipped #5069 (Largo C2, `optionMarkIsStale`):
+a shared, already-tested staleness helper exists in `play-brief-absence.ts` and is used correctly
+elsewhere in this same file, but one narrative line reinvented its own partial version instead of
+calling it.
+
+### Evidence
+
+Two RED tests (failed against the pre-fix code, `git stash` proven):
+- `dataFreshnessSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys'` — pre-fix rendered `"Vector data **Infinitys** old"`.
+- `dataFreshnessSection: null Vector dataAgeMs still flags staleness via vec.freshness` — pre-fix rendered no Vector line at all (section still non-null from other lines, but this specific caveat silently missing).
+- `dataFreshnessSection: future-skewed GEX matrix age fails closed instead of silently reading as fresh` — pre-fix rendered no GEX line at all for a `matrix_age_sec: -500` fixture.
+
+All three fail pre-fix, pass post-fix; full `src/lib/swing/*.test.ts` suite: 1198/1198 pass; `tsc --noEmit` clean.
+
+### Blast radius
+
+Single function, single file (`dataFreshnessSection`). No other call site duplicates this specific
+comparison — `gexMatrixStale`/`vectorAgeStale` are already the correctly-used helpers everywhere
+else in `play-brief-intel.ts`; this was the one narrative line that didn't call them.
+
+### Fix rationale
+
+Replace both raw comparisons with the shared boolean helpers (`vectorAgeStale`, `gexMatrixStale`)
+to gate whether the line renders at all — matching every other staleness check in this file — while
+keeping the raw age value only for the seconds label, falling back to a `"clock-skewed"` label when
+the raw age is non-finite or negative (future-skewed) rather than rendering a nonsensical number.
+`GEX_MATRIX_STALE_MS` import was removed as it became unused once the raw `>` comparison was
+replaced by the helper call.
+
+### Tests
+
+`src/lib/swing/play-brief-intel.test.ts` — 3 new tests, all passing; full swing suite 1198/1198.
+
+## Play-brief lane-wide sweep: "Last snapshot (~Ns old)" narrative pattern rendered garbage on clock-skewed ages in 6 more call sites — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Swings — Ask Largo |
+| **Severity** | P3 (narrative correctness — same shape as #5069/#5070) |
+| **Files** | `src/lib/swing/play-brief-intel.ts` (4 call sites), `src/lib/swing/play-brief-narrative.ts` (1), `src/lib/swing/play-brief-narrative-coaching.ts` (1 Vector functional gap + 1 GEX display), `src/lib/swing/play-brief-absence.ts` (new shared helper) |
+
+### Root cause
+
+After #5070 fixed `dataFreshnessSection`'s Vector/GEX age lines, a deliberate sweep of the rest of
+`src/lib/swing/*.ts` for the same anti-pattern (`Math.round(ageMs / 1000)` applied to a raw
+millisecond age without checking whether the gate that decided "stale" also fails closed on
+non-finite/negative ages) found **six more instances**, all sharing the identical root cause:
+
+- `chartTechnicalsSection` (play-brief-intel.ts) — Vector, `Infinity` render risk.
+- `vectorDeskSection` (play-brief-intel.ts) — Vector, `Infinity` render risk.
+- `gexPostureSection` (play-brief-intel.ts) — GEX, negative-number render risk.
+- `meridianCatalystSection` (play-brief-intel.ts) — Meridian, negative-number render risk.
+- `dealerPostureLine` (play-brief-narrative.ts, via `tradeManagerNarrativeSection`) — Vector,
+  `Infinity` render risk.
+- `dataHonestyCoaching` (play-brief-narrative-coaching.ts) — Vector: not even gated on the shared
+  `vectorAgeStale` helper (identical functional gap to #5070's pre-fix `dataFreshnessSection`:
+  `if (vec?.dataAgeMs != null && vec.dataAgeMs > 120_000)` misses both the `Infinity` render and
+  the null-with-`freshness:"stale"` silent-omission case). GEX in the same function was already
+  correctly gated on `gexMatrixStale` but still had the negative-number display risk.
+
+All six are the "Last snapshot (~Ns old)" / "warns Ns stale" narrative pattern, all downstream of
+the same two provider behaviors already documented in #5070: Vector's `dataAgeMs` is stamped
+`Number.POSITIVE_INFINITY` on future clock skew (`withReadContext()`), and GEX/Meridian ages can
+be genuinely negative (future-skewed `as_of`/`matrix_age_sec`).
+
+### Fix rationale
+
+Rather than patch six call sites with six more one-off inline fixes (which is exactly how the
+pattern proliferated to six copies in the first place), added one shared helper —
+`ageSecondsLabel(ageMs)` in `play-brief-absence.ts` — and switched every call site to it:
+returns `` `${Math.round(ageMs / 1000)}s` `` for a finite non-negative age, `"clock-skewed"` for
+non-finite or negative, `null` for `null`/`undefined` (so the optional-suffix callers can omit the
+parenthetical entirely, matching their pre-existing behavior for the harmless null case).
+`dataHonestyCoaching`'s Vector check was additionally re-gated on the shared `vectorAgeStale`
+helper (was previously a raw, ungated comparison) to close the functional gap, not just the
+display gap.
+
+### Evidence
+
+7 new RED→GREEN tests (one per call site, plus a paired null-with-freshness-stale test for
+`dataHonestyCoaching`), plus 4 direct unit tests for `ageSecondsLabel` itself. All fail against
+the pre-fix code (`git stash` proven), all pass post-fix. Full `src/lib/swing/*.test.ts`: 1209/1209
+pass. `tsc --noEmit` clean.
+
+### Blast radius
+
+Confirmed via `grep` across `src/lib/swing/` for the `Math.round(.*ge.*\/\s*1000)` shape — six
+call sites found and fixed, none missed. `v2/gates.ts` and `legacy-calibration/gates-pr5.ts` have
+superficially similar `Math.round(age / 1000)` patterns but those ages are always
+non-negative-by-construction quote-freshness deltas (not Vector's Infinity-on-skew field or a
+provider `as_of` that can be genuinely future-skewed), so they're a different shape and out of
+scope here.
+
+### Tests
+
+`src/lib/swing/play-brief-intel.test.ts`, `play-brief-narrative.test.ts`,
+`play-brief-narrative-coaching.test.ts`, `play-brief-absence.test.ts` — 11 new tests total, all
+passing. Full `src/lib/swing/*.test.ts`: 1209/1209.
+
+## 2026-09-16 — [FINDING, P3 docs-hygiene, re-verification of old FINDINGS.md claims] `summarizeGroupGreekFlow` field-mismatch entry is stale `OPEN` — fixed 2026-09-01 by PR #3290
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | Continuing this session's "re-verify old FINDINGS.md claims" sweep (see the same-shape finding filed earlier this session for the Meridian ESTIMATES/HISTORY and SPX Slayer Largo entries). Not hand-editing `FINDINGS.md` directly (repo policy) — flagging for the owning lane / next fold cycle to confirm and correct. |
+| **The stale entry** | `## 2026-08-29 — [FINDING, P2 SPX Slayer/Largo data-correctness] summarizeGroupGreekFlow reads field names that don't exist in the real UW response — always returns null — OPEN`. The entry's own text explicitly deferred the fix as "a product decision... belonging to whichever lane owns `mag7_greek_flow`'s meaning" — specifically, what `net_gamma` should honestly report given the UW group-flow endpoint has no gamma field at all. |
+| **Confirmed fixed** | `src/lib/group-greek-flow-summary.ts` now reads `dir_delta_flow` (with the exact reasoning the finding called for — a code comment distinguishes it from `total_delta_flow`, a magnitude/activity sum, not a signed net) and reports `net_gamma: number \| null` — `null` specifically when the row carries no gamma field, via a new `numPresent()` helper, rather than fabricating a `0`. The in-code comment explicitly cites the exact failure mode the original finding named: *"an all-absent gamma column silently accumulates to 0, which reads as 'measured, dealer gamma flat' instead of 'this data source cannot calibrate gamma'... Omission is honest; a fabricated 0 is not."* This is the precise design decision the finding said was needed, made and shipped. `git log`: fixed by `7c2b4d86e` — `fix(desk): group/ticker greek-flow summarizers read UW field names that don't exist — always returned null (#3290)`, merged 2026-09-01 (15 days before this write-up). A regression test file, `src/lib/group-greek-flow-summary.test.ts`, exists and is part of the fix. |
+| **What I did NOT do** | Did not edit `FINDINGS.md` directly, per standing policy. Did not re-run the live UW-backed test myself (no live UW call made this pass) — confirmation here is from source + test-file inspection, which is strong but not a live end-to-end re-probe. |
+| **Suggested next step** | Whoever next folds staged findings or touches this entry should mark it FIXED with a pointer to PR #3290, same as the other two stale-status entries flagged this session. |
+| **Status** | Re-verification finding — not itself a fix. No code or FINDINGS.md changed. |
+
+## 2026-09-16 — [FINDING, P3 docs-hygiene, re-verification of old FINDINGS.md claims] Two `OPEN`/inconsistent FINDINGS.md entries appear to already be fixed in source — flagging for the owning lanes to confirm and correct the status
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | Per this session's standing "re-verify old FINDINGS.md claims" brief. Not a new bug — two existing entries whose recorded status looks stale against the current source. Not hand-editing `FINDINGS.md` directly (repo policy) — flagging for the owning lane / next fold cycle to confirm live and correct. |
+| **1. Meridian ESTIMATES/HISTORY empty on every mega-cap (2026-08-18, P1, marked `OPEN`)** | The entry's root-cause hypothesis was a six-way `Promise.all` in `loadMeridianEarningsEnrichment` where `.catch(() => ({ rows: [], entitled: true, error: "cache_error" }))` silently turned a fetch failure into an empty, then-cached, result — making a real failure indistinguishable from "no data." Current source (`src/lib/meridian/meridian-earnings-enrich.ts`) no longer has that pattern: `loadMeridianEarningsPrintHistory`, `loadBenzingaTickerEarnings`, and `loadBenzingaTickerGuidance` are called unguarded (no `.catch`) inside the `Promise.all` — only the unrelated catalysts/news calls still swallow errors into `[]`. Separately, `src/lib/meridian/meridian-earnings-history.ts` now carries an explicit `history_error: string | null` field with a comment distinguishing "empty + no error = genuinely no prints" from "empty + error = could not look" — exactly the fix the original finding called for ("The fix has to surface the failure... and must not cache a failed result"). `grep`'d the whole 24h of CloudWatch logs for the finding's own `"cache_error"` string marker: **zero hits**. This is strong source-level evidence the defect is already fixed, but I did not do a live authenticated check of the actual `/dashboard` ESTIMATES/HISTORY tabs today (would need a Clerk session or cron-bearer hit against a Meridian route, out of scope for a docs-hygiene pass) — so this is "very likely already fixed, please confirm live and update the status," not a confirmed resolution. |
+| **2. SPX Slayer Largo full desk coverage (2026-08-20, P2, heading still says `OPEN PR #2382`)** | Internally inconsistent entry: the `> **status:**` line right under the heading already reads `FIXED — merged #2382; post-deploy prod audit 69 scenarios: 47 PASS / 20 WARN / 1 FAIL`, but the heading itself and the bottom `| **Status** |` table row still say `OPEN — merge + full prod audit after deploy`. Confirmed via the GitHub API: PR #2382 (`SPX Slayer Largo — full desk coverage (14 submodules + audit harness)`) is `state: closed, merged: true`. This reads as a partially-applied status update — someone added the accurate status line after the merge but never touched the heading/bottom-row text that predates it. Low severity (the correct information is already present one line down), but worth a clean pass so the heading doesn't mislead a skim-reader. |
+| **What I did NOT do** | Did not edit `docs/audit/FINDINGS.md` directly, per this repo's standing policy (concurrent-lane edit conflicts at the same anchor). Did not do a live/authenticated re-check of the Meridian ESTIMATES/HISTORY tabs (item 1) — that's the one piece of confirmation still needed before marking it FIXED for real. |
+| **Suggested next step** | Whoever next runs `scripts/audit/meridian-data-validator.mjs` (the same script that originally caught item 1) or otherwise touches Meridian live should re-run it against a mega-cap ticker and, if clean, correct item 1's status; item 2 just needs its heading/bottom-row text brought in line with its own already-correct status line. Both are single-line text corrections, not code changes. |
+| **Status** | Re-verification finding — not itself a fix. No code or FINDINGS.md changed. |
+
+## 2026-09-16 — [FINDING, P3 docs-hygiene, re-verification of old FINDINGS.md claims] Fourth stale-`OPEN` entry — `earnings_week_analytics` silent-swallow bug is duplicated by an adjacent `FIXED` entry for the same bug
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | Fourth instance of the same staleness pattern found this session (Meridian ESTIMATES/HISTORY, SPX Slayer Largo, `summarizeGroupGreekFlow` — all previously flagged in staged findings this session). This one has a different shape: not a missed status update, but a genuine duplicate. |
+| **The duplicate** | `docs/audit/FINDINGS.md` has two adjacent entries, same date (2026-08-30), same bug (`earnings_week_analytics`'s historical-prints fetch silently swallowed on failure): the first titled `...— OPEN` ("flagged for the Meridian lane, no code change made"), immediately followed by a second titled `...— FIXED` describing the exact same root cause fixed via a new `earnings_week_analytics_error` field threaded through the bundle. A reader skimming the file sees two nearly-identical headings in a row with contradictory status, which reads as confusing/stale even though the FIXED entry is the accurate, later one. |
+| **Confirmed the fix is real and current** | `src/lib/meridian/meridian-benzinga-earnings.ts` carries `earnings_week_analytics_error: string \| null` on the bundle type (line 56), sets it from `hist.error` after the historical-prints fetch (lines 94-107), and threads it through the return (line 143) — exactly the shape both the OPEN entry's "Suggested fix shape" and the FIXED entry's "Fix" description call for. The OPEN entry is simply obsolete, superseded in-place by the entry directly below it. |
+| **Why this one's slightly different from the other three** | The prior three stale entries were "fixed elsewhere, status never touched." This one is "fixed and correctly logged as FIXED, but the superseded OPEN entry was never removed" — likely because whoever fixed it appended a new FIXED entry rather than editing the existing OPEN one in place (understandable given this repo's own "don't hand-edit FINDINGS.md, append via staging" discipline — but that discipline is for NEW findings, and leaves a genuinely resolved OPEN entry sitting unresolved-looking right next to its own fix). |
+| **What I did NOT do** | Did not edit `FINDINGS.md` directly, per standing policy. Did not re-run a live Meridian check — confirmation is from source inspection, which directly matches both entries' own described fix shape. |
+| **Suggested next step** | Whoever next folds staged findings should either delete the stale OPEN entry (its content is fully superseded by the FIXED one directly below it) or retitle it `— SUPERSEDED, see entry below` so the duplication reads as intentional history rather than an open item. |
+| **Status** | Re-verification finding — not itself a fix. No code or FINDINGS.md changed. |
+
+## 2026-09-16 — [FINDING, P1 CI/infra, RESOLUTION of an escalating REPORTED finding] RTH-hour scheduled workflow silence ended after 18h14m — first fire back at 17:43-17:44 UTC, still failing on the separate, already-known Cursor Cloud Agent cause
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | Closes the loop on the escalation chain tracked this session: the original ~3h silence (PR #5034, 2026-09-15) grew to ~15h (this session's own follow-up) and then continued growing past that measurement. This entry records the actual resolution point so a future session doesn't have to re-derive it. |
+| **Evidence** | `Grid RTH all-day agent` and `SPX RTH all-day agent` last fired (and failed) at 23:30:05Z / 23:27:25Z on 2026-09-15. Checked again at 18:15 UTC today (2026-09-16) and both had fired at **17:44:05Z / 17:43:31Z** — the scheduler resumed dispatching them. Total silence duration: **18h14m**, measured start-to-start between the last pre-silence fire and the first post-silence fire. |
+| **Still failing, but for the already-documented reason** | Both fresh runs still show `conclusion: failure` — this is NOT a new problem. It is the separate, already-tracked #4987 Cursor Cloud Agent outage (`curl -sf -X POST https://api.cursor.com/v1/agents` failing) that has been the steady-state failure mode for these two workflows all session, independent of whether the scheduler dispatches them on time. The scheduling gap and the Cursor outage are two different, already-distinguished problems — this entry only closes out the scheduling-silence half. |
+| **What this confirms about the pattern** | GitHub Actions `schedule:` dispatch drift for this repo's RTH-hour cluster is, once again, self-resolving rather than permanent — consistent with every prior instance of this phenomenon documented in CLAUDE.md and this file. 18h14m is the longest measured instance so far (prior instances: the original ~3h, and an earlier ~"few hours late" pattern referenced in the original finding). Worth keeping as a data point on the upper end of observed severity, not as evidence the mechanism has changed. |
+| **No code changed** | Same disposition as the findings this closes out — GitHub Actions' own scheduler behavior, not application code. |
+| **Status** | RESOLVED (the scheduling-silence portion only). The Cursor Cloud Agent failure these workflows hit once they DO fire remains open under #4987 and is unrelated to this entry. |
+
+## 2026-09-16 — [FINDING, P1 CI/infra, escalation of an existing REPORTED finding] RTH-hour scheduled-workflow silence is now ~15 hours, not ~3 — spans all of last night and 45+ minutes into today's RTH, while non-RTH scheduled workflows fired normally the whole time
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | A direct, evidenced follow-up on `FINDINGS.md`'s existing entry *"Multiple RTH-hour scheduled workflows have not fired even once today, ~3 hours into RTH"* (2026-09-15, from PR #5034), whose own "Suggested next step" #3 asked exactly this: *"treat 'hasn't fired yet today' as itself an actionable signal worth checking each cycle for these four workflows specifically."* This DISCOVERY cycle did that check, today, and found the silence has not merely repeated — it has grown substantially worse. |
+| **Evidence** | Pulled live per-workflow run history via the REST API (not trusting the failure list alone, same discipline as the original finding): `Grid RTH all-day agent` (id 307677541) and `SPX RTH all-day agent` (id 307668307) last ran at **2026-09-15T23:30:05Z / 23:27:25Z respectively — both failures** — and have not fired even once since, as of this check at **2026-09-16T14:16Z**. That is **14h47m of continuous silence**, spanning the rest of yesterday evening, the entire overnight session, and **45+ minutes into today's live RTH session** (market opened 13:30 UTC). `RTH deep audit` (id 304327124) shows the same pattern: last run 2026-09-15T23:34:32Z, silent since. Confirmed this is NOT a blanket GitHub Actions outage: two non-RTH-specific scheduled workflows in the same repo fired normally throughout the entire window — `Cron audit query` (id 304333651) ran at 22:51 UTC (9/15), 04:29 UTC and **11:18 UTC today**; `Off-hours health` (id 305060388) ran at 20:55 UTC (9/15), 03:40 UTC and **10:56 UTC today**. Other workflow types (`BLACKOUT PR webhook`, `BLACKOUT Autopilot dispatch`, `Deploy smoke`, `CodeQL`, `CI`, `Ops auto-fix`) were all actively firing at the exact moment of this check (14:15-14:16 UTC today) — the repo's Actions pipeline as a whole is healthy; only this specific RTH-hour cluster is dark. |
+| **Why this is an escalation, not a repeat** | The original finding measured ~3 hours of silence during ONE trading session and explicitly framed it as a severity escalation over "prior instances were hours-late, not zero-fire." Today's measurement is ~5x that duration and crosses a session boundary entirely — the workflows didn't just start late today, they never resumed from yesterday's last (failing) run. If the fleet-commit-velocity correlation the original finding proposed (more concurrent lane activity → GitHub Actions `schedule:` dispatch suppression) is the real mechanism, last night's extremely high commit velocity (dozens of lane PRs merging across the overnight session, visible in `git log`) is consistent with — though not proof of — a worse suppression event than the original 3-hour one. |
+| **Impact** | Unchanged in kind from the original finding, just longer: no `Grid RTH all-day agent`/`SPX RTH all-day agent` Cloud Agent verify/fix pass has run in nearly 15 hours (compounding, not caused by, the separately-documented #4987 Cursor Cloud Agent outage), and no `RTH deep audit` pass has validated the live board/deploy/Postgres/socket-health surface for the same span — including the first 45+ minutes of today's actual live trading session, the highest-value window for exactly this kind of health check. |
+| **Not fixed here** | Same disposition as the original finding: this is GitHub Actions' own `schedule:` dispatch behavior, not application code, and not something to guess at or patch from this sandbox. Whoever owns CI scheduling infrastructure still needs to decide whether these RTH-sensitive workloads should move off `schedule:` (e.g. to `workflow_dispatch` triggered by an external cron caller, or the same EventBridge→Lambda pattern the application's own crons already use) — this entry adds evidence to that decision, it doesn't make it. |
+| **Suggested next step** | Keep checking each DISCOVERY cycle as the original finding asked, but now also track total elapsed silence duration explicitly (not just yes/no "fired today") — 3h vs 15h is a materially different severity, and a future session should be able to tell at a glance whether this is trending better or worse without re-deriving the whole history. If it crosses into a SECOND full trading session with zero fires, that's a strong enough signal to stop treating it as "drift" and escalate to the operator directly. |
+| **Status** | REPORTED — escalation of an existing REPORTED finding, not newly fixed or newly root-caused. Still ongoing as of this write-up. |
+
+## 2026-09-16 — [FINDING, FIXED] `pull-overlay.ts`'s header comment said only INVALIDATED engages the pull latch — PR-N6's severe-degradation pull path was undocumented
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P4 — documentation-only; zero behavioral impact |
+| **Lane** | Night Hawk Legacy |
+| **PR** | fix/pull-overlay-stale-invalidated-only-comment |
+
+### Root cause
+
+`pull-overlay.ts`'s module header stated: "An INVALIDATED morning-confirm verdict latches
+`pulled` on the play's outcome row." Read while reviewing this file ahead of tomorrow's
+pre-market morning-confirm run (found immediately after fixing a similarly-stale comment in
+`debrief-aggregate.ts` this same cycle — same defect class: a comment describing an earlier,
+narrower version of a mechanism that has since grown a second trigger path).
+
+Traced the real write path: `morning-verdict-persist.ts:166-173` computes
+`shouldPull = invalidated || degradedSevere`, where `degradedSevere` comes from
+`isDegradedSevere` (PR-N6, same file, lines 51-58) — a DEGRADED (not INVALIDATED) verdict is
+ALSO pulled when it's a gap-away entry or carries `>= DEGRADED_SEVERE_REASON_COUNT` distinct
+stacked reasons. So a play can be pulled without ever having been INVALIDATED, which the
+header comment didn't describe.
+
+Also verified, while tracing this, that the generic fallback reason string in
+`applyNighthawkPullOverlay` (`row.pulled_reason ?? "Pulled pre-open by the morning
+confirmation check"`) is a pure defensive backstop rather than the common path — the single
+real writer (`morning-verdict-persist.ts:179-181`) always constructs a specific
+`Pulled pre-open...: <status.reason>` string whenever `shouldPull` is true, so
+`pulled_reason` is never actually null in the live write path. No fix needed there; this is
+just now stated in the comment rather than left to be re-derived.
+
+### Fix
+
+Rewrote the header comment to name both pull triggers (INVALIDATED and PR-N6's
+severe-degradation path) and to state the fallback-string observation above. No behavioral
+change — comment only.
+
+### Blast radius
+
+Single comment, single file. `pull-overlay.ts` has no other doc comments describing the pull
+trigger condition.
+
+### Tests
+
+None added — pure comment change. `tsc --noEmit` clean post-edit.
+
+## 2026-09-16 — [FINDING, P0 performance, live RTH incident] Polygon rate-limiter queue-timeout surge (9000+/hour, 450+ tickers) traced to a real P0 — zerodte-warm reported stale during live RTH trading
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What triggered this** | `[ops-auto] P0` issue #5083, auto-created 18:37 UTC today: *"RTH stale cron: zerodte-warm — market_hours_stale during RTH — live data warmer may be down."* Investigated live rather than waiting for the (already-documented-broken, #4987) Cursor Cloud Agent auto-fix dispatch to pick it up. |
+| **zerodte-warm is not "down" — it is severely slow** | `[cron/zerodte-warm] background done` log lines at 17:40 and 17:49 UTC today show `elapsed=354681ms` and `elapsed=278575ms` — **4.6 to 5.9 minutes** per run, both still `failed=0` (it does eventually succeed). Compare to this session's own earlier overnight measurement of the same cron: 34-73 seconds. The cron watchdog's staleness threshold is being blown not because the job crashed, but because it now routinely takes 4-6x longer than its own scheduling interval to complete. `cron-staleness-watchdog`'s own self-heal is actively firing every few minutes (`self-heal re-warmed stale cron 'zerodte-warm' (status 200)`, observed 5+ times in one 20-minute window) — existing infrastructure is fighting this in real time, not fast enough to prevent the watchdog from also filing the P0. |
+| **Root cause: the Polygon rate limiter, not UW** | This session already tracked a UW-side (`uw-rate-limiter.ts`) queue-wait incident overnight (PR #5045/#5048/#5063). This is a DIFFERENT, separate provider limiter: `polygon-rate-limiter.ts`. Searched CloudWatch Logs for the last hour: **9002 `[polygon] rate-limiter queue budget exceeded` errors total**, of which **7689 are specifically `[polygon-gex]` chain-fetch failures**, spread across **454 distinct tickers** (RBLX, SFL, AVAH, BULL, SBSW, NXPI... each individually failing 15-43 times, consistent with retry attempts). **82% of these (6315/7689) fail at the `global_rps` stage** — the cluster-wide ceiling itself, not a per-replica local-pacing artifact. `polygon-rate-limiter.ts`'s own module header describes `GLOBAL_MAX_RPS=150` as "PERMISSIVE... effectively unlimited... the self-cap exists only to bound a runaway loop, not to respect a provider quota" — yet real demand is blowing through it at scale, hourly, right now. |
+| **Corroborating evidence — this is a live, ongoing, platform-wide contention event, not one runaway cron** | Sampled 20 minutes of `[cron/*]` completion logs during the same window: `vector-pick-sweep` 83-237s, `vector-full-state-snapshot` 70-141s, `vector-dark-pool-warm` still at its documented 330-390s/high-failure pattern (this session's own PR #5045 finding — unresolved, still live), `bie-full-state-snapshot` 26-73s, `meridian-warm` 20-38s, `desk-warm` (which does its own `gex=true` fetch) 59-89s — every UW/Polygon-backed background warming cron running far slower than its own schedule interval, concurrently, during live RTH. The 454-ticker breadth of the Polygon-gex failures is close to whole-market scope, not one cron's narrow fan-out — consistent with several of these crons' GEX-fetching paths all competing for the same 150 RPS ceiling at once. |
+| **Fix shipped this cycle (small, self-contained, purely observational)** | `uw-rate-limiter.ts` already has a sustained-surge Discord alert (`noteQueueTimeoutForAlert`/`alertQueueTimeoutSurgeOnce`, shipped this session in PR #5048) that this exact Polygon incident would have paged on immediately had it existed here — it did not, because that PR deliberately scoped the alert to UW only, noting Polygon "has... a much larger, not-measured-exhausted GLOBAL_MAX_RPS=150 ceiling — left untouched... a natural follow-up if Polygon ever shows the same symptom." That trigger condition is now met, at a far larger scale than UW's own incident (9002 real timeouts/hour vs UW's near-misses that never actually crossed the timeout line). Ported the identical, already-proven pattern to `polygon-rate-limiter.ts`: rolling 60s window, pages ops once ≥5 timeouts land in the window, re-arms once the rate drops back under threshold, wired into `polygonTrackedFetch`'s `acquirePolygonSlot()` call exactly as `throttleUw` wraps `acquireSlot()`. Zero change to admission/throttling behavior — purely additive observability. 5 new regression tests mirroring the UW file's own coverage, RED→GREEN proven via `git stash` (5/8 fail pre-fix, 8/8 pass post-fix). `tsc`/`eslint` clean. |
+| **What this fix does NOT do** | Does not raise `GLOBAL_MAX_RPS`, does not add concurrency bounding to whatever is fetching GEX chains across 450+ tickers, does not touch `zerodte-warm` or the cron-staleness-watchdog's self-heal logic. The actual capacity/architecture question — is 150 RPS now genuinely under-provisioned for real platform demand, or is there a genuine unbounded-fan-out bug (same shape as the already-fixed `vector-dark-pool-warm`/`vector-universe-snapshot` incidents) somewhere in the GEX-chain-fetching call graph that's newly hammering 450+ tickers at once — is exactly the kind of design/capacity decision this session's own discipline reserves for the owning lane, not something to guess at mid-incident. |
+| **Suggested next steps (not implemented here)** | (1) Now that the alert exists, the next real Polygon surge will page ops immediately instead of silently degrading until a cron watchdog notices collateral damage — confirm it actually fires in production (`DISCORD_OPS_WEBHOOK_URL`/`DISCORD_PLAY_WEBHOOK_URL` must be set; this sandbox has neither, confirmed via the test run's own `[notify] ops alert DROPPED` line, so this was validated structurally, not end-to-end against a real webhook). (2) Trace which specific caller(s) are fetching GEX chains for 450+ distinct tickers within an hour — `desk-warm`'s own `gex=true` step is one plausible contributor given its co-occurring elevated elapsed time, but this write-up did not trace the exact call site; that's the natural next investigation. (3) Once the caller is identified, apply the SAME fix shape already proven twice this session for exactly this bug class (`runUwPool`/`runPolygonPool` bounded concurrency) if it turns out to be an unbounded fan-out, or raise `GLOBAL_MAX_RPS` if the demand is genuinely legitimate platform growth. |
+| **Status** | Alert FIXED and merged (observational only). Root cause of the underlying demand/capacity mismatch MEASURED, not fixed — flagged for the owning lane. Live incident was still ongoing at time of writing (9002 timeouts measured in the hour immediately preceding this write-up). |
+
+## 2026-09-16 — [FINDING, FIXED] Legacy play-explainer's required "Why ranked #N" section never received the real, already-computed score-component breakdown
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 (product-quality/enhancement, not a correctness defect — no wrong data shown, just a real signal left out of a narrative section that promises to cover it) |
+| **Lane** | Night Hawk Legacy |
+| **Files** | `src/features/nighthawk/lib/play-explainer.ts`, `src/features/nighthawk/lib/play-explainer-fallback.ts`, `src/features/nighthawk/lib/play-explainer.test.ts` |
+| **PR** | (see PR link in commit trailer) |
+
+### Root cause
+
+`play-explainer.ts`'s system prompt requires a **"Why ranked #N"** section, and further instructs
+the model to "Cover every dimension present in the data" across Options flow, Positioning/GEX,
+Technicals, News. `PlaybookPlay.factor_breakdown` exists precisely to answer this: it is a real,
+already-computed per-component composite-score contribution map (`flow`, `tech`, `positioning`,
+`news`, `smart_money`, etc. — `scorer.ts`), and its own type comment says it was added "so the
+terminal can show real factor bars … instead of only iv_rank/rr_ratio." `PlaybookBriefingPanel.tsx`
+already renders it as "Score components" chips in the member-facing terminal, sorted by magnitude.
+
+But `formatPlayBlock` (the LLM's data block, `play-explainer.ts`) and
+`buildGroundedPlayExplanationFallback` (the no-LLM deterministic fallback,
+`play-explainer-fallback.ts`) never included it. So the one section explicitly promising to explain
+"why ranked #N" across flow/technicals/positioning/etc. could only draw on qualitative dossier
+prose, never the actual quantified score drivers already computed for that exact play — the same
+numbers a member sees two clicks away in the "Score components" tab.
+
+This is the same defect class as the 2026-09-13 fix for `earnings_risk`/`gate_promoted` (see
+`docs/audit/findings-staging/2026-09-13-play-explainer-risk-signals-not-surfaced.md`): a real,
+already-computed signal silently absent from a narrative section that explicitly claims to cover it.
+
+### Fix
+
+Added `factorBreakdownLines()` to `play-explainer-fallback.ts` — non-zero `factor_breakdown`
+entries, sorted by magnitude descending, `"key: +N"`/`"key: -N"` — deliberately matching
+`PlaybookBriefingPanel.tsx`'s own `scoreComponents()` filter/sort exactly, so the narrative cites
+the same ranked-by-impact ordering a member already sees in the UI rather than an independent
+re-derivation that could drift.
+
+Wired into both:
+- `formatPlayBlock` (LLM data block) — a new `Score components (largest impact first):` line.
+  Since `factor_breakdown` is a genuinely computed fact (not invented), this only *widens* the
+  known-numbers set the grounding guard checks the LLM's output against — it cannot weaken the
+  fabrication guard, same property the 2026-09-13 fix already established for risk lines.
+- `buildGroundedPlayExplanationFallback` (no-LLM fallback) — a `Score drivers (largest impact
+  first): …` line appended to the "Why ranked #N" section.
+
+### Evidence / regression tests
+
+4 new tests in `play-explainer.test.ts`: `factorBreakdownLines` correctly drops zero-contribution
+entries and sorts by magnitude; sign formatting (`+14` / `-5`); the fallback's "Why ranked" section
+includes the score-drivers line when `factor_breakdown` is present and omits it entirely when
+absent (never a fabricated empty line).
+
+RED→GREEN proven via `git stash` of the fix-only diff (`play-explainer.ts` +
+`play-explainer-fallback.ts`, test file kept): 9/13 pass pre-fix (4 new tests fail), 13/13 pass
+post-fix. `tsc --noEmit` clean.
+
+### Blast radius
+
+- Both the LLM "Full Hawk Intel" briefing and its no-LLM fallback now have access to the same
+  quantified score drivers already shown in the terminal's "Score components" UI — no other
+  consumer of `factor_breakdown` (scorer.ts, deterministic-edition.ts, adapters.ts,
+  PlaybookBriefingPanel.tsx, containers.tsx, ZeroDteBoard.tsx) is touched.
+- `resolveDossierContext`/`formatMarketRecapBlock` unchanged.
+
+### What was deliberately left unchanged
+
+`factor_breakdown`'s own computation (`scorer.ts`) and the terminal's "Score components" chip UI
+(`PlaybookBriefingPanel.tsx`) are untouched — this fix only makes the narrative-generation layer
+aware of data that already existed and was already trusted elsewhere.
+
+## 2026-09-16 — [FINDING, FIXED] Read-time outcome overlay silently undid the gate-promote conviction cap on every edition read
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 — a mechanically-rescued gate-promoted play could display as top-tier ("A") merit to members, exactly the class of misleading conviction `capGatePromotedConviction` exists to prevent |
+| **Lane** | Night Hawk Legacy |
+| **PR** | fix/legacy-outcome-overlay-gate-promote-cap |
+
+### Root cause
+
+`publish-gates.ts`'s `promoteTopBlocked` rescues the top-scoring gate-blocked plays with
+`gate_promoted:true` when the organic count is below the ops minimum, and immediately calls
+`capGatePromotedConviction` to cap any A+/A rescue down to "B" — the function's own comment states
+the intent directly: "a mechanically blocked A does not read as top-tier overnight merit." This cap
+is applied **once**, at build time, before the edition is persisted.
+
+Separately, `publish-context.ts` pins `publish_context.tier` from the **raw tier-engine assignment**
+(`assignNighthawkTier(nhTierInputFromScored(scored))`) — computed from the scored candidate alone,
+with no knowledge of whether the play was later gate-promoted. The same pinned object also carries
+`gate_promoted: play.gate_promoted === true` right alongside `tier`, but nothing downstream read it.
+
+`edition-outcome-overlay.ts`'s `applyEditionOutcomeOverlay` runs on **every** `GET
+/api/market/nighthawk/edition` request (`edition/route.ts`'s `withOutcomeOverlay`), reading that
+pinned `publish_context.tier` back out and unconditionally setting `next.conviction =
+overlay.tier.tier` — with no check against `gate_promoted`. For a gate-promoted play whose raw tier
+engine assignment was "A" (capped to "B" at publish time), every subsequent live read of the
+edition silently re-inflated `conviction` back to "A", defeating the cap on the very same request
+path members actually see.
+
+### Evidence
+
+Repo-wide trace: `edition-outcome-overlay.test.ts` had zero coverage of the `gate_promoted`
+interaction (confirmed via grep — no `gate_promoted`/`gatePromoted` reference anywhere in the test
+file). Traced the call chain live: `edition/route.ts` → `withOutcomeOverlay` →
+`applyEditionOutcomeOverlay`, confirmed it runs on the read path, not just at build. Confirmed
+`publish_context.tier` is populated independently of `gate_promoted` (`publish-context.ts:267-272`
+gates only on `scored` being non-null, which a gate-promoted play's dossier carries same as any
+other).
+
+### Fix
+
+`applyEditionOutcomeOverlay` now pipes its tentative `conviction` assignment through the same
+`capGatePromotedConviction` (`publish-gates.ts`) the build-time path already uses, rather than
+re-deriving the cap logic inline or ignoring gate-promote status. Reusing the existing, tested
+capping function means both paths (build-time publish, read-time overlay) can never drift apart —
+a future change to the cap's threshold or letter automatically applies to both.
+
+### Blast radius
+
+Single call site (`edition-outcome-overlay.ts`'s only consumer, `edition/route.ts`). No other
+readers of `overlay.tier`/`next.conviction` exist (grepped `applyEditionOutcomeOverlay`/
+`buildOutcomeOverlayMap` repo-wide — only the route and the test file).
+
+### Tests
+
+New regression test constructs a gate-promoted play already capped at "B" and a tier pin whose raw
+assignment is "A", asserting the merged play stays at "B". RED confirmed pre-fix via `git stash`
+(new test fails against the original source), GREEN confirmed post-fix. `tsc --noEmit` clean.
+
+## 2026-09-16 — [FINDING, FIXED] Legacy option-mark WS-freshness gate used 0DTE's 5s bar, not Legacy's own 30s bar
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 — real positions can silently skip peak/trough tracking + trim/close evaluation for a full live-sync cron cycle; member-facing marks flicker stale on liquid names |
+| **Lane** | Night Hawk Legacy |
+| **PR** | fix/legacy-marks-ws-stale-threshold |
+
+### Root cause
+
+Earlier the same day, PR #5073 fixed `legacy-option-mark-row.ts`'s own `stale` computation, which
+had been calling `isZeroDteMarkStale(asofMs, nowMs)` with no third argument — silently defaulting
+to `ZERODTE_MARK_STALE_MS` (5s, calibrated for 0DTE's sub-second-relevant intraday scalping)
+instead of `LEGACY_QUOTE_STALE_MS` (30s, the bar the client (`CommandDeck.tsx`/`PlayTerminal.tsx`)
+already correctly applies for Legacy's next-day-digest, overnight-held positions).
+
+That fix was correct but incomplete: it fixed the *final* staleness check, not an *earlier* gate
+in the same pipeline that decides whether a cached WS tick is even considered "live" input in the
+first place. Both real callers of `buildLegacyOptionMarkRow` —
+
+- `src/app/api/market/nighthawk/legacy-marks/route.ts` (the member-facing marks API, read by
+  `useLegacyOptionMarks`)
+- `src/features/nighthawk/lib/legacy-option-marks-server.ts` (`fetchLegacyOptionMarksServer`, the
+  function the **legacy-live-sync cron** calls directly to mark-and-manage real Chief Trade Alert
+  Bot positions)
+
+— call `getLiveOptionMarkSync(occ, ZERODTE_MARK_STALE_MS)` to fetch the cached WS tick. That
+function (`src/lib/ws/options-socket.ts`) returns `null` — as if there were no WS tick at all —
+whenever the cached tick is older than the `maxAgeMs` argument. Passing `ZERODTE_MARK_STALE_MS`
+(5s) here meant any WS tick 5–30s old was silently discarded and the row fell through to the REST
+snapshot fallback (`fetchOptionsUnifiedSnapshot`) — even when that REST snapshot's own quote clock
+(`quoteUpdatedMs`) reflected an **equally or more stale** market quote than the WS tick that was
+just thrown away. `buildLegacyOptionMarkRow`'s own (already-fixed, `LEGACY_QUOTE_STALE_MS`-based)
+staleness check then correctly judged the row against the *older* of the two possible timestamps,
+because the fresher one had already been discarded one layer up.
+
+### Evidence
+
+Live audit, 2026-09-16 ~18:36–18:38 UTC (mid-RTH, well within market hours): `GET
+/api/market/nighthawk/legacy-marks?occs=CRWD260918C00242500,RIG260918C00006000,SWKS260918C00090000`
+repeatedly returned `stale:true` for **CRWD** — a normal, liquid underlying, not a thin-liquidity
+name like RIG — with `asof` lagging real time by 70–90 seconds across three consecutive polls
+~1 minute apart (`18:36:10.475Z`, `18:37:32.965Z`, still climbing at the next poll), while SWKS in
+the same response read fresh (`stale:false`, `asof` 1–4s old). The one-sided pattern — a liquid
+name intermittently reading stale while a genuinely thin name (SWKS, sometimes RIG) reads fresh in
+the same call — is the signature of a WS tick being discarded upstream of the staleness check,
+not of the underlying quote genuinely going quiet.
+
+### Blast radius
+
+Two real call sites share the exact same defect (the duplicated `getLiveOptionMarkSync(occ,
+ZERODTE_MARK_STALE_MS) ?? getLiveOptionMarkSync(legacyOccForSnapshot(occ), ZERODTE_MARK_STALE_MS)`
+pattern), both fixed in this PR:
+
+1. `legacy-marks/route.ts` — member-facing display; a falsely-stale mark flickers the live P&L
+   panel and excursion graphic even when a fresh quote was actually available.
+2. `legacy-option-marks-server.ts` — the **live-sync cron's own read path**. A falsely-stale row
+   here is dropped entirely by `fetchLegacyOptionMarksServer`'s stale filter (unless the caller
+   passes `includeStale`), and `runLegacyLiveSync` calls it *without* that flag — so a falsely-stale
+   row causes `if (mark == null) { noQuote += 1; continue; }`, skipping peak/trough latching and
+   trim/close evaluation for that real position for that entire ~5-minute cron cycle. This is the
+   more serious half of the blast radius: it can under-report a position's true excursion and delay
+   a mechanical exit decision, not just flicker a display.
+
+Confirmed no other callers of `getLiveOptionMarkSync` are in scope: `vector/contract-picks/live/route.ts`
+and `vector-pick-sweep.ts` are correctly 0DTE/Vector-scoped and correctly keep `ZERODTE_MARK_STALE_MS`.
+
+### Fix
+
+Both call sites now pass `LEGACY_QUOTE_STALE_MS` (30s) instead of `ZERODTE_MARK_STALE_MS` (5s) to
+`getLiveOptionMarkSync`, consistent with the bar `buildLegacyOptionMarkRow`'s own staleness check
+already uses. Both modules are Legacy-only (no horizon branching needed — same reasoning PR #5073
+used for `legacy-option-mark-row.ts` itself).
+
+### Fix rationale
+
+The alternative — leaving the WS gate at 5s and only trusting `buildLegacyOptionMarkRow`'s final
+check — silently prefers REST over WS whenever WS is 5–30s old, discarding the freshest available
+signal for no reason grounded in this product's actual staleness tolerance. Matching the gate to
+`LEGACY_QUOTE_STALE_MS` everywhere in the Legacy mark-assembly pipeline removes that asymmetry.
+
+### Tests
+
+`legacy-marks/route.test.ts` extended (source-level regression, matching the file's existing
+`roundFloats` assertion convention — a Next.js route handler isn't easily invoked in this harness
+without mocking auth/WS internals) + a new `legacy-option-marks-server.test.ts` (this module had no
+prior dedicated test file). Both assert the `LEGACY_QUOTE_STALE_MS` import and call sites, and the
+absence of a `ZERODTE_MARK_STALE_MS` import/call site. RED confirmed pre-fix (both new tests fail
+against the original source via `git stash`), GREEN confirmed post-fix.
+
+## 2026-09-16 — [FINDING, FIXED] Legacy option marks used 0DTE's 5s staleness bar instead of Legacy's own 30s one, silently dropping live-sync updates
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 (live position management, no wrong money moved, but a correctness/precision defect that silently delayed real live-sync updates) |
+| **Lane** | Night Hawk Legacy |
+| **Files** | `src/features/nighthawk/lib/legacy-option-mark-row.ts`, `src/features/nighthawk/lib/legacy-option-mark-row.test.ts` |
+| **PR** | (see PR link in commit trailer) |
+
+### Root cause
+
+`buildLegacyOptionMarkRow` (`legacy-option-mark-row.ts`) computes each mark row's `stale` flag via:
+
+```ts
+const stale = ... || isZeroDteMarkStale(asofMs, nowMs);
+```
+
+`isZeroDteMarkStale`'s third argument (the staleness threshold) is optional and defaults to
+`ZERODTE_MARK_STALE_MS` (5 seconds) — a bar calibrated for 0DTE's intraday scalping horizon, where
+a 5-second-old quote genuinely is stale. `legacy-option-mark-row.ts` is **exclusively** a Legacy
+module (its own file header: "Shared Legacy option mark assembly ... Used by the legacy-marks API
+route, server live-sync, and unit tests") — Legacy is an overnight/next-day digest product, not an
+intraday one, and the client UI has already recognized this exact distinction:
+`CommandDeck.tsx:741` and `PlayTerminal.tsx:204` both explicitly branch on `horizon === "LEGACY"`
+to apply the far more generous `LEGACY_QUOTE_STALE_MS` (30 seconds) instead of
+`ZERODTE_MARK_STALE_MS`. The server-side assembly never made that same distinction and fell
+through to the 5s default.
+
+### Why this wasn't just cosmetic
+
+`legacy-option-marks-server.ts`'s `fetchLegacyOptionMarksServer` — used by "Legacy live-sync and
+EOD grading" per its own header — **drops any row whose `stale` flag is true** unless the caller
+passes `{ includeStale: true }`:
+
+```ts
+if (!opts?.includeStale && row.stale) continue;
+```
+
+`src/app/api/cron/legacy-live-sync/route.ts:64` calls it **without** that flag. This cron
+(~every 5 min during RTH) drives `runLegacyLiveSync`, which mark-and-manages real, live Chief
+Trade Alert Bot positions — peak/trough premium tracking, scale-out trim latches, target/stop
+close detection. When a mark is absent from the map for a row, `runLegacyLiveSync` does:
+
+```ts
+const mark = marks.get(row.contract_occ);
+if (mark == null || ...) { noQuote += 1; continue; }
+```
+
+— skipping that position's peak/trough update and every downstream trim/close check **for the
+entire cron cycle**, not just its display. A thinly-traded Legacy contract (observed live and
+repeatedly this segment on RIG, a ~$0.10 single-digit-underlying contract) can easily go 10–25
+seconds between real quote ticks — perfectly fresh by a 30-second overnight-product standard, but
+flagged stale and dropped under the mismatched 5-second bar, silently delaying live position
+management by a cron cycle purely due to the wrong threshold, not any real data problem.
+
+### Evidence
+
+Live-observed this segment (multiple healthcheck cycles, 2026-09-16 RTH): RIG's raw
+`GET /api/market/nighthawk/legacy-marks` mark repeatedly read `stale: true` with a real two-sided
+quote only ~10–30s old, while CRWD/SWKS (more liquid names) read `stale: false` at similar ages —
+the split tracked liquidity/tick-cadence, not any actual staleness by the product's own 30s
+standard. `LEGACY_QUOTE_STALE_MS = 30_000` confirmed at `src/lib/zerodte/marks-math.ts:42`;
+`ZERODTE_MARK_STALE_MS = 5_000` at the same file's line 39; `isZeroDteMarkStale`'s default
+parameter confirmed at line 209.
+
+### Fix
+
+Pass `LEGACY_QUOTE_STALE_MS` explicitly as `isZeroDteMarkStale`'s third argument in
+`buildLegacyOptionMarkRow`. No horizon branch is needed (unlike the client components) because
+this module only ever serves Legacy — both of its real callers (`/api/market/nighthawk/legacy-marks`
+route, `legacy-option-marks-server.ts`) are Legacy-specific.
+
+### Regression test
+
+Added `legacy-option-mark-row.test.ts`: a quote 15 seconds old (between the two thresholds) must
+read `stale: false` under Legacy's 30s bar. RED→GREEN proven via `git stash` of the fix-only diff:
+10/11 pass pre-fix (the new test fails), 11/11 pass post-fix.
+
+### Blast radius
+
+- `GET /api/market/nighthawk/legacy-marks` — the raw API payload's `stale` field is now correctly
+  scoped to Legacy's product cadence (this lane's own healthcheck, `legacy-e2e-healthcheck.mjs`,
+  reads this field directly for its B_marks stage).
+- `legacy-option-marks-server.ts`'s `fetchLegacyOptionMarksServer` — no longer silently drops
+  fresh-but->5s-old Legacy marks, so the legacy-live-sync cron sees a mark for these rows every
+  cycle instead of intermittently skipping them.
+- `legacy-discord-trade-notify.ts` already passed `{ includeStale: true }` for its one call site
+  (a single-OCC lookup for an already-known position), so it was structurally unaffected by the
+  drop behavior either way — not part of this fix's blast radius, noted for completeness.
+- Client-side `CommandDeck.tsx`/`PlayTerminal.tsx` already recomputed their own `stale` locally
+  from `markAsOf` using the correct 30s threshold, so the visible staleness badge in the terminal
+  UI was never wrong — this fix corrects the SERVER's own `stale` field (consumed by the API
+  payload and the live-sync cron), which is a distinct, real defect from the display layer.
+
+## 2026-09-16 — [FINDING, FIXED] legacy-e2e-healthcheck's own verdict logic swallowed a degraded-fallback read into the wrong evidence message
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 (audit tooling correctness — the production edition API itself was never wrong; this lane's own healthcheck misreported which kind of AMBER it was) |
+| **Lane** | Night Hawk Legacy |
+| **Files** | `scripts/audit/lib/legacy-healthcheck-eval.mjs`, `scripts/audit/lib/legacy-healthcheck-eval.test.mjs` |
+| **PR** | (see PR link in commit trailer) |
+
+### Root cause
+
+`src/app/api/market/nighthawk/edition/route.ts`'s `timeoutFallbackEdition` is served when the
+real edition computation blows past its time budget — a **transient read failure**, not a
+confirmed "nothing published" result. Its own extensive header comment explains exactly why this
+distinction matters (citing a real 2026-09-08 incident where a mid-session timeout read looked
+identical to a genuinely quiet day). When no `lastGoodEdition` is cached for the process, it
+returns:
+
+```ts
+return { ...emptyEdition(editionFor), degraded: true };
+```
+
+`emptyEdition()` always sets `available: false`. So this payload carries **both** `available:
+false` and `degraded: true` at once — not one or the other.
+
+`verdictForEdition` (`legacy-healthcheck-eval.mjs`) checked `available === false` *before*
+`degraded`:
+
+```js
+if (available === false) return { verdict: "AMBER", evidence: "no edition published yet (honest empty state)" };
+if (degraded) return { verdict: "AMBER", evidence: "edition served from degraded fallback source" };
+```
+
+Since the timeout-fallback payload always matches the first branch, `degraded` was **never
+reached** for that exact shape — silently collapsing "a transient read failure happened" into "a
+genuinely quiet day, nothing to see," precisely the confusion the route's own `degraded` flag
+exists to prevent.
+
+### Evidence
+
+Live-reproduced 2026-09-16, 16:07 UTC (~noon ET, well before market close): a healthcheck run
+reported Stage A as `"no edition published yet (honest empty state)"` for `edition_for:
+2026-09-17`. A direct re-fetch of the same live endpoint (no explicit `?date=`) moments later
+returned `available: true, edition_for: "2026-09-16"` with 3 real, correctly carried-forward
+plays — the exact transient-timeout signature the route's `timeoutFallbackEdition` mechanism is
+designed to produce and the `degraded` flag is designed to label honestly.
+
+The existing test suite had a real gap that let this ship: it exercised `degraded: true` only
+alongside `available: true` (a play-book-with-a-degraded-note case), never the actual
+`available: false` + `degraded: true` combination `timeoutFallbackEdition` produces.
+
+### Fix
+
+Reordered the checks: `degraded` before `available === false`. A genuine not-yet-published state
+(`available: false` with no `degraded` flag, from `emptyEdition()` called directly, not via the
+timeout fallback) still correctly falls through to the "honest empty state" message unchanged —
+this fix only changes behavior for the payload shape that carries both flags together.
+
+### Regression tests
+
+Two new tests in `legacy-healthcheck-eval.test.mjs`:
+- `available:false` + `degraded:true` together → reports "degraded fallback", not "honest empty
+  state".
+- `available:false` alone (no `degraded`) → still reports the genuine "honest empty state"
+  message, confirming the fix didn't just flip the message unconditionally.
+
+RED→GREEN proven via `git stash` of the fix-only diff (eval file only, test file kept): 44/45
+pass pre-fix (the new degraded-ordering test fails), 45/45 pass post-fix. `tsc --noEmit` clean.
+Full suite run in progress.
+
+### Blast radius
+
+Only `verdictForEdition`'s Stage A judgment changes. `legacy-e2e-healthcheck.mjs`'s runner
+already correctly extracted `degraded` from the live JSON response and passed it through — the
+defect was purely inside the pure eval function's check order, nothing upstream needed touching.
+No production API behavior is affected; this is audit-tooling-only.
+
+### What was deliberately left unchanged
+
+The production `/api/market/nighthawk/edition` route's own `timeoutFallbackEdition`/
+`resolveNighthawkEdition`/carry-forward logic is untouched and was never the source of the
+confusion — it already does exactly what its own comments describe. This fix only corrects how
+the healthcheck's own verdict function interprets the payload it already receives correctly.
+
+## 2026-09-16 — [FINDING, FIXED] Dead placeholder `legacyEditionCalendarBuckets` removed from legacy-board-calendar.ts
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — dead code, zero runtime impact, but a real name-collision footgun |
+| **Lane** | Night Hawk Legacy |
+| **PR** | fix/legacy-board-calendar-dead-bucket-fn |
+
+### Root cause
+
+`legacyEditionCalendarBuckets` (`legacy-board-calendar.ts`) was written as an always-zero PnL
+placeholder — its own doc comment says so verbatim: "Calendar buckets for edition browsing — PnL
+fields are placeholders until record overlay lands." The record overlay it was waiting for did
+land, but as a differently-named, fully real, actively-maintained sibling instead:
+`legacyBoardCalendarBuckets` (note: "Board", not "Edition") in `legacy-board-table-utils.ts` — the
+one actually wired into `LegacyPickLogBoard.tsx`, computing real per-day win/loss/net-premium
+buckets from live record rows (with its own documented bug-fix history: excluding
+never-entered-pull rows from the blended average, handling stock-only null premiums honestly).
+
+The old placeholder was simply never deleted once its replacement shipped under a different name.
+
+### Evidence
+
+Repo-wide grep: `legacyEditionCalendarBuckets` had **zero callers anywhere in the app** and **zero
+test coverage** (not referenced in its own file's test suite, `legacy-board-calendar.test.ts`,
+which only exercises the file's other export, `legacyEditionSessionDates`). Confirmed the real,
+wired-up implementation is `legacyBoardCalendarBuckets` (`legacy-board-table-utils.ts:174`), used
+by `LegacyPickLogBoard.tsx` via `useMemo(() => legacyBoardCalendarBuckets(allRows, calendarDates), ...)`.
+
+### Fix rationale
+
+Not a correctness bug (nothing calls the dead function, so it changes no live behavior), but a
+real hazard: the two names differ by one word ("Edition" vs "Board") and share an identical
+purpose description, making it easy for a future reader or a search to wire up the wrong one and
+silently ship an always-zero PnL calendar strip. Deleted per CLAUDE.md's standing guidance —
+"if you are certain something is unused, you can delete it completely" — rather than left to rot.
+
+### Blast radius
+
+None — confirmed zero real callers before deleting. `VectorBoardCalendarBucket` (the dead
+function's return-type import) also removed since it becomes unused.
+
+### Tests
+
+Added a source-level regression asserting the dead export and its now-unused type import are both
+gone. RED confirmed pre-fix (fails against the original file via `git stash`), GREEN confirmed
+post-fix. `tsc --noEmit` clean (no broken references to the deleted export anywhere in the
+codebase). Full suite run in progress.
+
+## 2026-09-16 — [FINDING, P0 live RTH incident, NEW angle on the same #5083 incident window] Fresh ECS replicas failing DB connectivity on boot, correlated with the same Polygon-congestion window as the `zerodte-warm` stall — elevated CPU + steadily climbing memory across the whole web fleet
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | A second, distinct symptom discovered while checking on the deploy that was meant to ship #5085's Polygon queue-timeout alert. Not yet proven to share a root cause with the `zerodte-warm` stall (#5083, `2026-09-16-zerodte-warm-full-stall-71min-buildandpublishboard-hang.md`), but the timing correlation is strong enough to flag together rather than separately. |
+| **Live evidence** | `Deploy smoke` CI (run 35138729292, 19:08 UTC) failed on `/api/ready → 503` while every other smoke-tested endpoint (`/api/health`, `/api/market/regime`, `/api/public/track-record`, `/`, `/robots.txt`, `/api/market/spx/desk`, etc.) returned expected 200/401. CloudWatch confirms this is not a one-off: `[ready] database ping failed after retries: Connection terminated due to connection timeout` fired **15 times in the last 30 minutes alone** (checked 19:19 UTC), spanning multiple ECS tasks, going back to at least 18:50 UTC and still occurring as of this write-up. `/api/ready`'s own code (`src/app/api/ready/route.ts`) retries the DB ping 6× over up to 24s before giving up — these are exhausting all 6 attempts, not a single slow connect. |
+| **RDS/RDS Proxy themselves report healthy** | `blackout-production-postgres`: `available`. `blackout-production-proxy`: `available`, target `AVAILABLE`. RDS instance CPU ~10%, DatabaseConnections flat/low (~26) over the same window — the database side shows no sign of saturation. This points the failure at the network path or the ECS container's own ability to complete a new outbound TCP/TLS handshake, not at the DB itself being overloaded or down. |
+| **The web fleet is under real, climbing resource pressure over the identical window** | `AWS/ECS` `CPUUtilization` (Maximum, per-task) for `blackout-production-web`: 62-92% throughout the last 90 minutes, no relief. `MemoryUtilization` (Maximum): **climbing steadily and monotonically from 48.4% at 17:49 UTC to 70.2% at 19:14 UTC — never once dropping** in 17 consecutive 5-min datapoints. The onset of this climb (17:49 UTC) is the exact same timestamp as the last successful `zerodte-warm` completion in #5083's escalation write-up — i.e., the memory growth starts exactly where the stall begins, not before. |
+| **A plausible (not yet confirmed) unifying mechanism** | #5083 already measured **18,000+ Polygon rate-limiter queue-timeout errors per 90-min window** — an enormous volume of outbound HTTP attempts and retries happening concurrently across the fleet. A container issuing that many failing outbound connection attempts per minute could plausibly saturate its own local ephemeral-port pool, its Node.js event loop, or the ECS host's shared network path — any of which could delay or fail an unrelated NEW outbound connection (a fresh replica's first DB handshake) even though the DB itself is idle and healthy. The monotonic memory climb is also consistent with the already-identified hung `buildAndPublishBoard()` promise (per #5083's escalation) piling up retained references with no GC path, one per replica, since it never settles. Neither of these is confirmed here — both are the natural next things to check, not established fact. |
+| **Live member impact, as far as this write-up can tell** | Existing/already-running tasks continue serving normal traffic fine (`/api/public/track-record`, `/`, `/api/market/spx/desk` all returned correct responses during the same smoke run that saw `/api/ready` fail) — this looks like it specifically hits FRESH connection setup (new replica boot), not established connections already in the pool. That's a meaningfully narrower blast radius than "the site is down," but it does mean **the ongoing ECS rolling deploy is degraded**: new tasks are taking longer and failing health probes before eventually succeeding (the deploy is still completing, just slower and noisier than normal), which extends deploy risk windows during an already-live incident. |
+| **What I did NOT do** | Read-only investigation only — did not touch DB pool sizing, RDS Proxy config, ECS task CPU/memory allocation, or any retry/backoff logic. Did not confirm the "network path saturation" hypothesis with a packet-level trace (not possible from this sandbox — direct TCP is blocked per this repo's own sandbox notes) or by directly inspecting the hung promise's memory retention (would need an ECS exec session or heap snapshot, also not available here). This is evidence + a working hypothesis for the owning lane, not a diagnosis to act on directly. |
+| **Suggested next steps** | (1) Whoever picks up #5083's `buildAndPublishBoard()` trace should check whether fixing that hang also resolves the memory climb and the `/api/ready` timeouts — if so, this confirms the unifying mechanism and this becomes one incident, not two. (2) Independently worth checking: does the container have a local outbound connection/ephemeral-port ceiling that 18k+/90min failing Polygon attempts could exhaust? (3) If the memory climb continues past whatever `buildAndPublishBoard()` fix lands, that's evidence of a second, independent leak and should be treated as its own P1. |
+| **Status** | Live, ongoing at time of writing (19:19 UTC) — flagged on issue #5083 alongside the existing escalation since the timing correlation is too strong to file separately, pending confirmation of a shared root cause. |
+
+## 2026-09-16 — [FINDING, FIXED] `debrief-aggregate.ts`'s `by_tier` field comment was stale — claimed "no NH tier engine yet" after PR-N7 shipped one
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P4 — documentation-only; zero behavioral impact, but actively misleading to anyone (human or agent) deciding whether tier-calibration work on Legacy is possible |
+| **Lane** | Night Hawk Legacy |
+| **PR** | fix/debrief-aggregate-stale-tier-comment |
+
+### Root cause
+
+`NighthawkDebriefReport.by_tier`'s doc comment read: `/** Empty until a tier is ever pinned in
+publish_context (no NH tier engine yet). */`. PR-N7 (`nighthawk-tiers.ts`'s `assignNighthawkTier`)
+has been wired into `publish-context.ts` since this repo's earliest commit in this checkout
+(`git log -S`, both the tier engine file and this exact comment string trace to the same
+2026-07-17 import commit) — `publish-context.ts:266-272` unconditionally pins `tier: { tier,
+factors }` onto every published play whenever `scored` is non-null (i.e. every normal publish
+path). Confirmed live this session: tonight's edition (2026-09-16) shows the tier engine actively
+assigning A/B letters (RVTY score 53→"A", SMTC score 78→"B" — the measured-evidence-driven score
+bands, not a naive score-ordinal mapping). So `by_tier` (fed by `readPinnedTier`/`byTier` reading
+that same pinned field) has never actually been the empty array the comment describes for any
+edition in this codebase's history — the comment describes a pre-tier-engine state that, as far as
+this repo's history shows, never existed here.
+
+### Why this matters enough to fix
+
+This is Legacy's outcome-honesty aggregate layer (`debrief-aggregate.ts`) — the exact module a
+future audit pass reads to decide whether per-tier win-rate calibration is worth pursuing. A
+reader trusting the stale comment could wrongly conclude "there's no tier data to look at yet" and
+skip a genuinely live signal, or waste a cycle re-discovering that the field is in fact populated
+(which is exactly what happened this cycle before the comment was traced against
+`publish-context.ts`).
+
+### Fix
+
+Replaced the stale comment with one describing the actual pinning mechanism (PR-N7's
+`assignNighthawkTier`, wired since 2026-07-17) and the two real reasons `by_tier` can still read
+empty for a given query window: an all-pre-pinning row population (not reproducible in this
+repo's visible history, but the honest general case), or the `current`-methodology anti-blend
+filter (#333) dropping every row that carries a tier. No behavioral change — the field's actual
+values are unaffected; only the comment describing them changed.
+
+### Blast radius
+
+Single comment, single file. Grepped repo-wide for the exact stale phrase ("no NH tier engine
+yet") and its close variants — no other occurrence.
+
+### Tests
+
+None added — pure comment change, nothing computational to assert. `tsc --noEmit` clean
+post-edit.
+
+## 2026-09-16 — [FINDING, P3 infra/docs-hygiene] `staging.blackouttrades.com` DNS record is dangling — resolves via Cloudflare but its origin ALB no longer exists
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What's wrong** | `docs/CLOUDFLARE_CONFIG.md` (a live reference doc — its own header says "Reference this before touching CF settings") lists `staging.blackouttrades.com` as a proxied CNAME to `blackout-staging-alb-*.elb.amazonaws.com`, noted "Staging ECS (if enabled)" — phrasing that implies the stack might be toggled on/off. It isn't toggleable: `CLAUDE.md`'s own Vector-validation note states the entire staging stack (ECS, RDS, RDS Proxy, all 27 crons, Cognito, ALB, VPC/NAT, secrets, IAM, log groups, ACM cert) was fully decommissioned 2026-07-25. |
+| **Verified live, 2026-09-16** | `staging.blackouttrades.com` still resolves through Cloudflare's proxy (public DNS returns Cloudflare anycast IPs), but `curl https://staging.blackouttrades.com/` returns **HTTP 530** — Cloudflare's own "origin DNS error" code, meaning the CNAME's target (the deleted ALB) no longer resolves. The record is a dangling reference to a resource that was intentionally destroyed almost two months ago. |
+| **Fix applied this pass** | Corrected `docs/CLOUDFLARE_CONFIG.md`'s table row in place — replaced the misleading "if enabled" note with the actual state (dangling, verified 530, origin ALB gone) so a future session reading this doc before touching CF settings doesn't treat it as a real, toggleable record. Pure doc correction, no DNS/infra change. |
+| **What this does NOT do** | Did not delete the DNS record itself. Removing a live Cloudflare DNS record is a more consequential, less-reversible action than the cache-purge/cache-ruleset edits this repo's own sandbox notes document as routine — CLAUDE.md doesn't extend standing authorization to DNS record deletion, and a CF API token scope check here returned an authentication error on the DNS-records read endpoint (consistent with the token being scoped only for cache purge/rulesets, per the existing sandbox notes), so deletion wasn't attempted either way. |
+| **Impact / severity** | Low — the dangling record doesn't affect any real traffic (nothing legitimately targets `staging.blackouttrades.com` anymore), but it's a small, free piece of attack-surface/confusion (a 530 response is a minor information leak about infra history, and any future session or operator skimming the CF config doc could be misled into thinking staging is one flag away from live). |
+| **Suggested next step** | Whoever next has Cloudflare DNS-write access (or the operator directly) should either delete the `staging.blackouttrades.com` CNAME record, or — if a staging revival is actually planned — update the doc to say so explicitly rather than leaving the ambiguous "if enabled." |
+| **Status** | Docs corrected (this PR). DNS record itself left untouched, flagged for the operator/owning lane. |
+
+## 2026-09-12 — [FINDING, P2 product-quality/trust] Four Ask Largo swing-brief sections rendered TODAY's live market data for a CLOSED position with zero "as-of" disclosure
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 (trust — not a wrong number, but a closed-position post-mortem brief silently presenting current market data as if it described the trade's own conditions) |
+| **Area** | `src/lib/swing/play-brief-intel.ts` — `chartTechnicalsSection`, `chartLevelsSection`, `gexPostureSection`, `wallDynamicsSection` |
+| **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — 2026-09-12 cycle, live `GET /api/market/swing/play-brief` audit |
+
+### What was found
+
+Live `GET /api/market/swing/play-brief?playId=SWING:AAPL:36&ticker=AAPL&positionId=36&status=CLOSED`
+(2026-09-12) — a real closed AAPL swing position (327.5C, closed **2026-09-04 09:45 ET**, -56.2%
+stopped) — rendered, 8 days after the trade closed and with no framing whatsoever:
+
+```
+## Chart technicals
+Spot: 332.58
+EMA 9/21/50 stack: down
+VWAP 333.37 — price below session VWAP
+RSI: 52
+MACD: bull
+...
+
+## Levels on chart
+Call wall (GEX): 340.00 — +2.2% ...
+Put wall (GEX): 332.50 — -0.0% ...
+Gamma flip: 323.17 — -2.8% ...
+...
+
+## GEX posture
+Gamma posture: dealers long gamma — dips tend to get bought, range/pin behavior
+Net GEX: 1632.7M
+...
+```
+
+All of these are **today's live numbers** (spot 332.58 as of the 2026-09-12 read), not the market
+conditions this already-closed position actually traded under. Nothing in any of these four
+sections says so — a member reviewing a "what did we learn" post-mortem brief has no way to tell
+these are current-market noise, not historical fact, and could easily read "Chart technicals:
+Spot 332.58" as describing the trade itself.
+
+The SAME envelope already carries the fix for this exact defect class in three other places,
+proving it is a known, deliberate contract (Largo identity/freshness, C1/C2) that these four
+sections simply never received:
+- `vectorDeskSection`'s closed-bucket branch: "Current Vector read: grade A · conviction 77
+  **(since this play closed)**" — forced neutral bias, no live directives.
+- `watchForSection`'s closed-bucket branch (its own title becomes "Since it closed"): "Now trades
+  332.58 vs gamma flip 323.17 — **where the dealer regime sits since this play closed**".
+- `dataFreshnessSection`'s `isClosed` gate (fixed the same day, per that section's own comment):
+  scan/Vector/GEX/HELIX staleness lines are suppressed entirely once a play is CLOSED, because
+  "today's data is stale" stops being a meaningful claim about a historical record.
+
+`chartTechnicalsSection`, `chartLevelsSection`, `gexPostureSection`, and `wallDynamicsSection` were
+the one place this bucket-awareness was missed — they render unconditionally regardless of
+`bucket`, duplicating (unlabeled) the exact spot/gamma-flip/wall numbers `watchForSection`'s
+"Since it closed" section already discloses honestly a few sections later in the same brief.
+
+### Root cause
+
+`buildIntelSections` (the section assembler) already threads `bucket: "watch"|"open"|"closed"`
+into `tradeManagerNarrativeSection`, `vectorDeskSection`, and (via `ctx.play`) `watchForSection` —
+but called `chartTechnicalsSection(vec, ctx.sessionDate)` and `wallDynamicsSection(vec,
+ctx.sessionDate)` with no bucket argument at all (the functions didn't accept one), and
+`chartLevelsSection(ctx)` / `gexPostureSection(ctx)` — which DO receive the full `ctx` (and
+therefore `ctx.play`) — never checked `statusBucket(ctx.play)` despite every other section in the
+file doing exactly that for the identical reason.
+
+### Blast radius
+
+Every CLOSED-bucket swing play brief (`status=CLOSED`), for every swing position that ever
+resolves — i.e. this fires on every real historical trade a member reviews, not an edge case.
+`chartTechnicalsSection` additionally forced a directional bias badge (bullish/bearish) from
+today's technicals onto a closed position's envelope-level bias field, the same "live guidance on
+an already-resolved trade" violation `vectorDeskSection`'s comment already documents for its own
+old behavior.
+
+### Fix
+
+- `chartTechnicalsSection(vec, sessionDate, bucket = "open")` — new optional third param
+  (default preserves every existing call site's behavior exactly). When `bucket === "closed"` and
+  the section has real content, prepends `"_Current chart read — not the technicals this trade
+  closed under._"` and forces `bias: "neutral"`. Content is computed BEFORE the disclosure is
+  added so a genuinely-empty section still returns `null` rather than a disclosure with nothing to
+  disclose.
+- `wallDynamicsSection(vec, sessionDate, bucket = "open")` — same shape: `"_Current wall activity
+  — not what this trade traded under._"` prepended only when there are real wall events to show.
+- `chartLevelsSection(ctx)` / `gexPostureSection(ctx)` — no signature change needed (both already
+  receive `ctx`); each now checks `statusBucket(ctx.play) === "closed"` internally and prepends
+  `"_Current levels — not what this trade traded under._"` / `"_Current dealer posture — not what
+  this trade traded under._"` respectively, again only after confirming real content exists.
+- `buildIntelSections` now passes `bucket` through to `chartTechnicalsSection` and
+  `wallDynamicsSection` (the two that needed the new param); the other two already had what they
+  needed via `ctx`.
+
+Deliberately NOT suppressing these sections entirely for closed plays: `chartTechnicalsSection`
+carries fields (RSI, MACD, structure, golden pocket) that `watchForSection`'s narrower "Since it
+closed" section doesn't cover, so dropping the section would lose real information a member
+reviewing the setup's current state might want — the fix discloses instead of hides, matching
+`vectorDeskSection`'s own precedent (kept the grade/conviction line, added the caveat) rather than
+`dataFreshnessSection`'s (suppressed entirely) — the right choice depends on whether the
+information has any residual value once disclosed, and here it does.
+
+### Tests
+
+`src/lib/swing/play-brief-intel.test.ts` — five new tests:
+- `gexPostureSection: CLOSED bucket prefixes a current-not-as-traded disclosure` (+ open-bucket
+  unchanged check)
+- `chartLevelsSection: CLOSED bucket prefixes a current-not-as-traded disclosure` (+ open-bucket
+  unchanged check)
+- `chartTechnicalsSection: CLOSED bucket prefixes a current-not-as-traded disclosure and forces
+  neutral bias` (+ default-arg and open-bucket unchanged checks)
+- `chartTechnicalsSection: CLOSED bucket returns null rather than a disclosure-only section when
+  there is no real content`
+- `wallDynamicsSection: CLOSED bucket prefixes a current-not-as-traded disclosure` (+ default-arg
+  and open-bucket unchanged checks)
+
+Verified RED before the fix (`git stash` on `play-brief-intel.ts` only, keeping the new tests):
+4 failing / 100 passing. GREEN after: 104/104. Full existing suite for this file (99 pre-existing
+tests) unaffected — every pre-existing call site relies on the new params' default value
+(`"open"`), so behavior for watch/open buckets is provably unchanged.
+
+`npx tsc --noEmit` clean; full `npm test` (Node 20) run alongside this change.
+
 ## Ask Largo WATCH brief duplicated "Entry geometry" across two sections — FIXED
 
 > **kind:** `FINDING`

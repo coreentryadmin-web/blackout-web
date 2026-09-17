@@ -243,11 +243,20 @@ test("entry headings are never glued onto the end of another line", () => {
   // Matching on the full `## <date> — [` entry-heading shape rather than a bare "## " keeps
   // the prose in "How to read this file" out of it — that section legitimately quotes
   // `## … — FIXED` inside code spans, mid-line, and is not a heading.
+  //
+  // A SECOND legitimate mid-line shape (found 2026-09-17, folding a staged-findings backlog):
+  // a later entry citing an EARLIER one's exact stale heading as evidence — e.g. "The stale
+  // entry | `## 2026-09-02 — [FINDING, ...] ... — OPEN`." — is a real, full date-shaped
+  // heading, backtick-quoted, mid-line, and is likewise not a glued heading. A genuinely glued
+  // heading (this test's own example above: "FIXED. |## 2026-08-21 — [FINDING, ...") is never
+  // immediately preceded by a backtick — a dropped newline produces raw adjacent markdown, not
+  // a code span — so excluding only the backtick-preceded case keeps the real-bug detection
+  // intact while allowing verbatim quotation of a prior entry's heading as evidence.
   const src = readFileSync(FINDINGS, "utf8");
   const glued: string[] = [];
   src.split("\n").forEach((line, i) => {
     const idx = line.indexOf("## 2");
-    if (idx > 0 && /^## \d{4}-\d{2}-\d{2} — \[/.test(line.slice(idx))) {
+    if (idx > 0 && line[idx - 1] !== "`" && /^## \d{4}-\d{2}-\d{2} — \[/.test(line.slice(idx))) {
       glued.push(`line ${i + 1}: …${line.slice(Math.max(0, idx - 30), idx + 80)}`);
     }
   });
