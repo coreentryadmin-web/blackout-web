@@ -113,18 +113,55 @@ test("meridian sizes risk but does not point a direction — an expected move is
   assert.match(String(none.missingReason), /no earnings or catalyst event/);
 });
 
-test("night hawk votes from what the desk actually committed", () => {
-  const c = nighthawkContribution({
-    ticker: "SPX",
+test("night hawk votes from what the desk actually committed ON THE QUERIED TICKER", () => {
+  const c = nighthawkContribution(
+    {
+      plays: [
+        { ticker: "SPX", option_type: "PUT" },
+        { ticker: "NVDA", option_type: "PUT" },
+        { ticker: "QQQ", option_type: "CALL" },
+      ],
+    },
+    "SPX"
+  );
+  assert.equal(c.signal?.direction, "bearish");
+  assert.equal(c.signal?.ticker, "SPX");
+  const empty = nighthawkContribution({ plays: [] }, "SPX");
+  assert.match(String(empty.missingReason), /no committed 0DTE play on SPX/);
+});
+
+test("night hawk IDENTITY (regression): a whole-board vote must never be borrowed for an unrelated ticker", () => {
+  // get_zerodte_plays returns the WHOLE multi-ticker board (no ticker filter at the tool layer —
+  // cross-product-read.ts's `input: () => ({})`). Before this fix, nighthawkContribution ignored
+  // the queried ticker entirely and voted off EVERY play on the board — asking about a ticker with
+  // no 0DTE play today (TSLA) still returned a confident direction sourced from unrelated names
+  // (here: 2 puts on SPX/NVDA vs 1 call on QQQ -> "bearish"), and the signal's own `ticker` field
+  // read `p.ticker`, which the real board payload never carries, so it silently defaulted to "".
+  const board = {
     plays: [
       { ticker: "SPX", option_type: "PUT" },
       { ticker: "NVDA", option_type: "PUT" },
       { ticker: "QQQ", option_type: "CALL" },
     ],
-  });
-  assert.equal(c.signal?.direction, "bearish");
-  const empty = nighthawkContribution({ plays: [] });
-  assert.match(String(empty.missingReason), /no committed plays/);
+  };
+  const tsla = nighthawkContribution(board, "TSLA");
+  assert.equal(tsla.signal, null, "no committed play on TSLA -- must be an honest absence, never a borrowed board vote");
+  assert.match(String(tsla.missingReason), /no committed 0DTE play on TSLA/);
+
+  // A ticker that DOES have a play on the board must vote off ONLY its own row(s), not the board.
+  const nvda = nighthawkContribution(
+    {
+      plays: [
+        { ticker: "NVDA", option_type: "CALL" },
+        { ticker: "SPX", option_type: "PUT" },
+        { ticker: "SPX", option_type: "PUT" },
+      ],
+    },
+    "NVDA"
+  );
+  assert.equal(nvda.signal?.direction, "bullish", "NVDA's own play is a call; the two unrelated SPX puts must not flip it bearish");
+  assert.equal(nvda.signal?.ticker, "NVDA");
+  assert.equal(nvda.signal?.native && (nvda.signal.native as { play_count?: number }).play_count, 1);
 });
 
 test("spx votes from the play-engine direction on SPX/SPXW only", () => {
@@ -174,10 +211,10 @@ test("ticker_class is derived from the actual ticker, not a hardcoded per-produc
     "vector hardcoded index — must read equity for TSLA"
   );
 
-  const nighthawkEquity = nighthawkContribution({
-    ticker: "TSLA",
-    plays: [{ ticker: "TSLA", option_type: "CALL" }],
-  });
+  const nighthawkEquity = nighthawkContribution(
+    { plays: [{ ticker: "TSLA", option_type: "CALL" }] },
+    "TSLA"
+  );
   assert.equal(
     nighthawkEquity.signal?.ticker_class,
     "equity",
@@ -197,7 +234,7 @@ test("END TO END — a real split, with honest coverage", () => {
   // vector has no baseline, meridian has no event.
   const read = joinProductSignals("SPX", [
     helixContribution({ ticker: "SPX", session: { call_pct: 71, alert_count: 140 } }),
-    nighthawkContribution({ ticker: "SPX", plays: [{ ticker: "SPX", option_type: "PUT" }] }),
+    nighthawkContribution({ plays: [{ ticker: "SPX", option_type: "PUT" }] }, "SPX"),
     thermalContribution({ thermal: { gamma_posture: "short", volatility_regime: "amplifying" } }),
     vectorContribution({ ticker: "SPX", has_baseline: false, signals: [] }),
     meridianContribution({ events: [] }),

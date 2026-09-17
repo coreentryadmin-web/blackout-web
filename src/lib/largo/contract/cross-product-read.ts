@@ -89,7 +89,12 @@ export async function crossProductRead(
         missingReason: `${s.tool} failed: ${why.slice(0, 160)}`,
       };
     }
-    return s.label === "spx" ? spxContribution(r.value, ticker) : s.adapt(r.value);
+    if (s.label === "spx") return spxContribution(r.value, ticker);
+    // Same identity fix as spx above: get_zerodte_plays returns the WHOLE multi-ticker board, so
+    // nighthawkContribution must be told which ticker the read is actually about — see its own
+    // doc comment (product-adapters.ts) for the bug this closes.
+    if (s.label === "nighthawk") return nighthawkContribution(r.value, ticker);
+    return s.adapt(r.value);
   });
 
   const joined = joinProductSignals(ticker, contributions);
