@@ -73,6 +73,21 @@ function sleep(ms: number) {
 }
 
 /**
+ * Strips CR/LF and other control characters so an interpolated field can never forge a
+ * fake `[api-queue-timing]` line or inject extra log fields (CodeQL log-injection guard,
+ * #990). None of today's callers can actually reach this — `endpoint`/`correlationId` are
+ * either internal literals or already pass through an allowlist sanitizer (safeTicker/
+ * safePathSegment) before being interpolated into a path, and no caller supplies a
+ * `cancelReason` yet — but `cancelReason` and `endpoint` are both externally-typed `string`
+ * parameters on `TrackedFetchOptions`/`trackedFetch`'s own signature with no such guarantee
+ * enforced AT THIS FUNCTION, so a future caller could add one without ever revisiting this
+ * log line. Cheap to close now rather than rely on every future caller getting it right.
+ */
+function sanitizeForLogLine(value: string): string {
+  return value.replace(/[\r\n\t\x00-\x1f\x7f]/g, " ");
+}
+
+/**
  * One structured line per attempt, ONLY when the caller passed queue-timing
  * (today: only uw-rate-limiter.ts's callers) — a plain Polygon/Benzinga call
  * with no queueing concept never emits this, so it adds no log volume for
@@ -98,12 +113,14 @@ function logQueueTiming(fields: {
   const totalElapsedMs =
     (fields.queueWaitMs ?? 0) + fields.httpDurationMs;
   console.info(
-    `[api-queue-timing] provider=${fields.provider} endpoint=${fields.endpoint} ` +
-      `correlation_id=${fields.correlationId} attempt=${fields.attempt} ` +
+    `[api-queue-timing] provider=${sanitizeForLogLine(fields.provider)} ` +
+      `endpoint=${sanitizeForLogLine(fields.endpoint)} ` +
+      `correlation_id=${sanitizeForLogLine(fields.correlationId)} attempt=${fields.attempt} ` +
       `queue_enter=${fields.queueEnterAt ?? "-"} queue_admit=${fields.queueAdmitAt ?? "-"} ` +
       `queue_wait_ms=${fields.queueWaitMs ?? "-"} http_start=${fields.httpStartAt} ` +
       `http_end=${fields.httpEndAt} http_duration_ms=${fields.httpDurationMs} ` +
-      `status=${fields.status ?? "-"} cancel_reason=${fields.cancelReason ?? "-"} ` +
+      `status=${fields.status ?? "-"} ` +
+      `cancel_reason=${fields.cancelReason ? sanitizeForLogLine(fields.cancelReason) : "-"} ` +
       `total_elapsed_ms=${totalElapsedMs}`
   );
 }

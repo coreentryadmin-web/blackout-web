@@ -158,6 +158,91 @@ test("trackedFetch: a caller-supplied queueWaitMs is recorded on the event AND l
   }
 });
 
+// CodeQL log-injection guard (#990, found via PR #5111's own scan): logQueueTiming's
+// [api-queue-timing] line interpolates several caller-influenced string fields
+// (endpoint/correlationId/cancelReason) with no length/type guarantee enforced at that
+// function's own boundary. A value containing CR/LF could forge a fake extra log line or
+// inject bogus fields into CloudWatch. None of today's real callers can actually reach this
+// (endpoint segments already pass safeTicker/safePathSegment, no caller sets cancelReason
+// yet), but the guard belongs at the log call site itself, not at every future caller.
+test("trackedFetch: a newline-bearing endpoint/correlationId cannot forge extra log lines or fields", async () => {
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const base = await listen(server);
+  const originalInfo = console.info;
+  const infoLines: string[] = [];
+  console.info = (...args: unknown[]) => {
+    infoLines.push(String(args[0]));
+  };
+  try {
+    await trackedFetch("unusual_whales", "/api/darkpool/AAPL\nfake_field=injected", `${base}/ok`, {
+      timeoutMs: 5000,
+      correlationId: "corr-1\n[api-queue-timing] forged_line=true",
+      queueWaitMs: 100,
+    });
+    const line = infoLines.find((l) => l.includes("[api-queue-timing]"));
+    assert.ok(line, "expected a queue-timing log line");
+    assert.ok(!line!.includes("\n"), "the logged line must never contain a raw newline");
+    assert.ok(
+      line!.includes("endpoint=/api/darkpool/AAPL fake_field=injected"),
+      `expected the newline replaced with a space, got: ${line}`
+    );
+    assert.ok(
+      line!.includes("correlation_id=corr-1 [api-queue-timing] forged_line=true"),
+      `expected the newline replaced with a space, got: ${line}`
+    );
+    // Exactly one real [api-queue-timing] entry was emitted — the payload never became a
+    // second, attacker-authored log line of its own.
+    assert.equal(
+      infoLines.filter((l) => l.includes("[api-queue-timing]")).length,
+      1,
+      "the malicious payload must not have produced a second log call"
+    );
+  } finally {
+    console.info = originalInfo;
+    server.close();
+  }
+});
+
+test("trackedFetch: a newline-bearing caller-supplied cancelReason cannot forge extra log lines or fields", async () => {
+  const server = createServer(() => {
+    // Never responds — trackedFetch's own internal timeout fires, taking the abort path
+    // that's the only place a caller-supplied cancelReason is actually read.
+  });
+  const base = await listen(server);
+  const originalInfo = console.info;
+  const infoLines: string[] = [];
+  console.info = (...args: unknown[]) => {
+    infoLines.push(String(args[0]));
+  };
+  try {
+    await assert.rejects(() =>
+      trackedFetch("polygon", "/test", `${base}/hang`, {
+        timeoutMs: 30,
+        queueWaitMs: 50,
+        cancelReason: "ticker_wall_timeout\n[api-queue-timing] forged_line=true",
+      })
+    );
+    const line = infoLines.find((l) => l.includes("[api-queue-timing]"));
+    assert.ok(line, "expected a queue-timing log line");
+    assert.ok(!line!.includes("\n"), "the logged line must never contain a raw newline");
+    assert.ok(
+      line!.includes("cancel_reason=ticker_wall_timeout [api-queue-timing] forged_line=true"),
+      `expected the newline replaced with a space, got: ${line}`
+    );
+    assert.equal(
+      infoLines.filter((l) => l.includes("[api-queue-timing]")).length,
+      1,
+      "the malicious payload must not have produced a second log call"
+    );
+  } finally {
+    console.info = originalInfo;
+    server.close();
+  }
+});
+
 test("trackedFetch: an AbortError with no caller-supplied cancelReason records the generic default_fetch_timeout reason (today's only real abort path, now labeled)", async () => {
   const server = createServer(() => {
     // Never responds — trackedFetch's own internal timeout fires.
