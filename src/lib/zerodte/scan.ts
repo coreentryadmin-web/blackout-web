@@ -174,7 +174,7 @@ import {
   ensureChainsForSetups,
   type LiquidStrikeCandidate,
 } from "./liquid-strike-fallback";
-import { computeVectorGateBoost } from "./vector-commit-boost";
+import { computeVectorGateBoost, computeVectorGateBoostForPlayType } from "./vector-commit-boost";
 import {
   effectiveChasePct,
   planChaseExempt,
@@ -1122,7 +1122,12 @@ async function attachGateVerdicts(
   for (const s of setups) {
     if (committed.has(s.ticker.toUpperCase())) continue;
     const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
-    const boost = computeVectorGateBoost(s.direction, s.score, pulse);
+    // CONDOR BYPASS: see computeVectorGateBoostForPlayType's doc (vector-commit-boost.ts) — a
+    // CONDOR's `direction` is nominal fade provenance only (delta-neutral), so Vector's
+    // directional-alignment boost must not inflate the score fed to G-3/G-18 (neither is
+    // condor-exempt) or grant a directional gate exemption. Same root-cause family as the
+    // Cortex layer's own condor-direction misread fixed alongside this in the same audit pass.
+    const boost = computeVectorGateBoostForPlayType(s.play_type, s.direction, s.score, pulse);
     let gateScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
     if (boost.score_bump > 0) s.score = gateScore;
     const reliefCtx = planChaseContextFromSetup({
@@ -1141,7 +1146,7 @@ async function attachGateVerdicts(
       s.score = gateScore;
       reliefCtx.score = gateScore;
     }
-    const postBoost = computeVectorGateBoost(s.direction, gateScore, pulse);
+    const postBoost = computeVectorGateBoostForPlayType(s.play_type, s.direction, gateScore, pulse);
     const runnerOtmRelax = vectorRunnerOtmRelax(s.direction, gateScore, pulse);
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
