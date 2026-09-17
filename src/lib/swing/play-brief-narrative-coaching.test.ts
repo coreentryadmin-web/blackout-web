@@ -868,12 +868,19 @@ test("catalystCoaching: earnings within 14d", () => {
 // later expiry that IS exposed. Before this fix both briefs got the identical "size down or exit
 // before report" instruction regardless of which contract each was actually about.
 function laneRow(overrides: Partial<HorizonPlay> = {}): HorizonPlay {
+  // liveStatus defaults off the effective status (matching real production shape and the sibling
+  // fixture in play-brief-lane-rank.test.ts): a genuinely open position (status "COMMIT") defaults
+  // to liveStatus "OPEN"; a pre-entry WATCH row defaults to no liveStatus. rowInBucket keys off
+  // liveStatus, not status (status "COMMIT" is the floor-gate flag, not a lifecycle field — see its
+  // own doc comment) — a hardcoded "OPEN" default regardless of status used to make every WATCH-
+  // status fixture row here silently mismatch the WATCH bucket once that fix landed.
+  const status = overrides.status ?? "COMMIT";
   return {
     ticker: "NRG",
     direction: "LONG",
     horizon: "SWING",
     score: 64,
-    status: "COMMIT",
+    status,
     contract: {
       ticker: "O:NRG260910C00050000",
       strike: 50,
@@ -893,7 +900,7 @@ function laneRow(overrides: Partial<HorizonPlay> = {}): HorizonPlay {
     scoreFloor: 60,
     reason: "flow",
     entryPremium: 2.1,
-    liveStatus: "OPEN",
+    liveStatus: status === "COMMIT" ? "OPEN" : undefined,
     ...overrides,
   };
 }

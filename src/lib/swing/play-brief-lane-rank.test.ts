@@ -27,6 +27,12 @@ function row(
   contract?: { strike: number; right: "C" | "P" },
   manageAction?: HorizonPlay["manageAction"],
   setupState?: HorizonPlay["setupState"],
+  // Defaults to "OPEN" when status is "COMMIT", matching every pre-existing call site's real
+  // intent ("this is a live open position") — rowInBucket now keys off liveStatus, not status
+  // (status is the floor-gate flag, not a lifecycle field; see rowInBucket's own doc comment).
+  // Pass `null` explicitly to build a floor-cleared-but-still-pre-entry WATCH row (status COMMIT,
+  // no liveStatus) — the live LITE repro this fix addresses.
+  liveStatus: HorizonPlay["liveStatus"] | null = status === "COMMIT" ? "OPEN" : undefined,
 ): HorizonPlay {
   const c = contract ?? { strike: 100, right: "C" as const };
   return {
@@ -39,6 +45,7 @@ function row(
     factors: [],
     manageAction,
     setupState,
+    liveStatus: liveStatus ?? undefined,
   };
 }
 
@@ -319,4 +326,49 @@ test("computeLaneRank: playScore falls back to TerminalPlay.score when the play'
   ]);
   assert.ok(snap);
   assert.equal(snap!.playScore, 26, "no matching laneRows row for AAPL — falls back to play.score");
+});
+
+test("computeLaneRank: a WATCH peer whose score cleared the floor (status COMMIT, no liveStatus) still counts as a WATCH peer", () => {
+  // Live repro (LITE, 2026-09-17): status "COMMIT" on a HorizonPlay row is the FLOOR-GATE flag
+  // (serving.ts's observablesFromHorizonPlay: `aboveFloor: play.status === "COMMIT"`), not a
+  // lifecycle/section field — a pre-entry candidate whose score clears scoreFloor legitimately
+  // keeps status "COMMIT" while its serving section is still "WATCH" (sectionForSwingPlay: FORMING
+  // or below-floor-trigger both serve WATCH regardless of the floor flag). The old rowInBucket
+  // checked `row.status === "WATCH"` literally, so a floor-cleared WATCH candidate was invisible
+  // to every OTHER WATCH peer's rank computation — live: XOM (score 52.7) and AAPL (score 25.5)
+  // both computed themselves against a 3-peer pool that excluded LITE (score 71, the real leader),
+  // so XOM's own brief read "Lane leader — #1 of 3" despite not actually being the highest score
+  // among real WATCH candidates. `row("LITE", 71, "COMMIT", ..., null)` reproduces the exact shape:
+  // status COMMIT, no liveStatus (the `null` 7th arg overrides the helper's OPEN default).
+  const lanes = [
+    row("XOM", 52.7, "WATCH"),
+    row("TSM", 49.6, "WATCH"),
+    row("AAPL", 25.5, "WATCH"),
+    row("LITE", 71, "COMMIT", undefined, undefined, undefined, null),
+  ];
+  const xomSnap = computeLaneRank(play({ ticker: "XOM", score: 52.7, status: "WATCH" }), lanes);
+  assert.ok(xomSnap);
+  assert.equal(xomSnap!.total, 4, "LITE must be counted as a real WATCH peer");
+  assert.equal(xomSnap!.rank, 2, "XOM ranks #2 once LITE (71) is correctly included, not #1");
+
+  const liteSnap = computeLaneRank(play({ ticker: "LITE", score: 71, status: "WATCH" }), lanes);
+  assert.ok(liteSnap);
+  assert.equal(liteSnap!.total, 4);
+  assert.equal(liteSnap!.rank, 1, "LITE (the real highest score) must rank #1, not fall through to a clamped last-place");
+  assert.equal(liteSnap!.playScore, 71);
+});
+
+test("computeLaneRank: a genuinely open position (status COMMIT + liveStatus) is never counted as a WATCH peer", () => {
+  // Companion to the test above — proves the fix didn't also let a REAL open position leak into a
+  // WATCH-bucket comparison just because it too carries status "COMMIT". Only 1 real WATCH peer
+  // (NRG itself) remains once BYND (a real open position) is correctly excluded, and
+  // computeLaneRank requires >= 2 peers to return a snapshot at all — so this must read null, not
+  // silently include BYND to reach the 2-peer minimum.
+  const play1 = play({ ticker: "NRG", score: 45, status: "WATCH" });
+  const lanes = [
+    row("NRG", 45, "WATCH"),
+    row("BYND", 90, "COMMIT"), // real open position (liveStatus defaults to "OPEN" for status COMMIT)
+  ];
+  const snap = computeLaneRank(play1, lanes);
+  assert.equal(snap, null, "BYND must not count as a WATCH peer, leaving only 1 real peer (< 2 minimum)");
 });
