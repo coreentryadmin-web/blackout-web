@@ -758,6 +758,22 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS discord_live_state JSONB;
   `);
+  // Night Hawk Legacy Signal Intelligence Phase 1.7: the OPTION-PREMIUM MFE/MAE observed by
+  // the live Chief Trade Alert Bot (discord_live_state.peak_premium/trough_premium) relative
+  // to entry_premium, computed and written every time resolveOutcome grades a row
+  // (play-outcomes.ts's premiumExcursionFromLiveState). ADDITIVE and non-authoritative: it
+  // never feeds hit_target/hit_stop/outcome above, which stay purely stock-price-based, same
+  // as before this column existed — a distinct-basis measurement, not a replacement grade
+  // (docs/audit/OUTCOME-GRADING-SPEC.md's "intentionally different views" discipline). Direct
+  // overwrite on every grade write (no COALESCE pin) — it reflects the premium excursion AS OF
+  // THE MOST RECENT grading pass, not a lifetime-final claim, since discord_live_state can keep
+  // updating on later live-sync polls after this row's stock-based outcome already resolved.
+  await p.query(`
+    ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS premium_mfe_pct NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS premium_mae_pct NUMERIC;
+  `);
   // PR-N2 boot backfill: a resolved row with no methodology stamp was, by construction,
   // graded before stamping existed (every post-PR-N2 grade write stamps at write time), so
   // its provenance is unprovable from the row — tag it LEGACY. Deliberately conservative:
@@ -9243,6 +9259,12 @@ export type NighthawkPlayOutcomeRow = {
   scale_out_grade?: Record<string, unknown> | null;
   /** Live Chief Trade Alert Bot management state (trims, scale-out latch, closed flag). */
   discord_live_state?: LegacyDiscordLiveState | null;
+  // Night Hawk Legacy Signal Intelligence Phase 1.7 additive fields — same optionality
+  // convention as the blocks above. The live-managed OPTION-premium MFE/MAE (relative to
+  // entry_premium), written by resolveOutcome/premiumExcursionFromLiveState every grade pass.
+  // NULL until first graded, or when entry_premium/discord_live_state can't resolve one.
+  premium_mfe_pct?: number | null;
+  premium_mae_pct?: number | null;
 };
 
 export type LegacyDiscordLiveState = {
@@ -9288,6 +9310,8 @@ function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow 
     debrief: (r.debrief as Record<string, unknown>) ?? null,
     scale_out_grade: (r.scale_out_grade as Record<string, unknown>) ?? null,
     discord_live_state: (r.discord_live_state as LegacyDiscordLiveState) ?? null,
+    premium_mfe_pct: r.premium_mfe_pct != null ? Number(r.premium_mfe_pct) : null,
+    premium_mae_pct: r.premium_mae_pct != null ? Number(r.premium_mae_pct) : null,
   };
 }
 
@@ -9667,6 +9691,11 @@ export async function updateNighthawkPlayOutcome(
     hit_target: boolean;
     hit_stop: boolean;
     outcome: "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled";
+    // Night Hawk Legacy Signal Intelligence Phase 1.7 — optional so pre-existing callers
+    // (and every prior test fixture) keep compiling; direct-overwrite like the other grade
+    // fields above (see the column's own migration comment for why this is not pinned).
+    premium_mfe_pct?: number | null;
+    premium_mae_pct?: number | null;
   }
 ): Promise<void> {
   await ensureSchema();
@@ -9686,6 +9715,8 @@ export async function updateNighthawkPlayOutcome(
         -- back to 'pending' (no verdict yet) does not stamp: an ungraded row has no
         -- methodology to claim.
         grade_methodology = CASE WHEN $8 = 'pending' THEN grade_methodology ELSE '${GRADE_METHODOLOGY_CURRENT}' END,
+        premium_mfe_pct = $9,
+        premium_mae_pct = $10,
         updated_at = NOW()
     WHERE id = $1 AND outcome = 'pending'
     `,
@@ -9698,6 +9729,8 @@ export async function updateNighthawkPlayOutcome(
       patch.hit_target,
       patch.hit_stop,
       patch.outcome,
+      patch.premium_mfe_pct ?? null,
+      patch.premium_mae_pct ?? null,
     ]
   );
 }
