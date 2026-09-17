@@ -241,6 +241,58 @@ test("flat timeout does NOT fire below the band — the stop rules own the losin
   assert.equal(d.action, "HOLD");
 });
 
+// ── 3b. Flat timeout narrative correctness (2026-09-17 fix): the "never left the
+// ±10% band" claim is measured off peak (upside) and the CURRENT mark (downside)
+// alone — a play that DIPPED below the band and recovered before the 25-min clock
+// fired used to get that sentence anyway, false. trough_premium (already DB-latched
+// for stop determination elsewhere) now corrects it. Narrative only — action/reason
+// stay identical either way. ──────────────────────────────────────────────────────
+
+test("trim_scale flat timeout: narrative unchanged when the trough never actually breached the band", () => {
+  const d = evaluateExitState(
+    input({ ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, troughPremium: 3.7 }) // trough −7.5%, inside band
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "flat_theta_bleed");
+  assert.match(d.detail, /never left the ±10% band/);
+  assert.doesNotMatch(d.detail, /dipped to/);
+});
+
+test("trim_scale flat timeout: narrative corrects to a recovery sentence when the trough DID breach the band", () => {
+  const d = evaluateExitState(
+    input({ ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, troughPremium: 3.5 }) // trough −12.5%, breached
+  );
+  assert.equal(d.action, "EXIT", "narrative-only fix — the exit still fires on the same condition");
+  assert.equal(d.reason, "flat_theta_bleed");
+  assert.doesNotMatch(d.detail, /never left the ±10% band/);
+  assert.match(d.detail, /dipped to -12\.5% intraday but recovered back inside the ±10% band/);
+});
+
+test("trim_scale flat timeout: missing troughPremium falls back to the old unconditional claim (no regression for rows without the field)", () => {
+  const d = evaluateExitState(input({ ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8 })); // troughPremium omitted
+  assert.equal(d.action, "EXIT");
+  assert.match(d.detail, /never left the ±10% band/);
+});
+
+test("ratchet flat timeout: narrative unchanged when the trough never actually breached the band", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "ratchet", ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, troughPremium: 3.7 })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "flat_theta_bleed");
+  assert.match(d.detail, /never left the ±10% band/);
+});
+
+test("ratchet flat timeout: narrative corrects to a recovery sentence when the trough DID breach the band", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "ratchet", ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, troughPremium: 3.5 })
+  );
+  assert.equal(d.action, "EXIT", "narrative-only fix — the exit still fires on the same condition");
+  assert.equal(d.reason, "flat_theta_bleed");
+  assert.doesNotMatch(d.detail, /never left the ±10% band/);
+  assert.match(d.detail, /dipped to -12\.5% intraday but recovered back inside the ±10% band/);
+});
+
 // ── 4. Plan stop/target stay authoritative ────────────────────────────────────────
 
 test("plan stop: mark at/below the printed stop exits with plan_stop when no floor is armed", () => {

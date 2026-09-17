@@ -202,10 +202,44 @@ export type ExitEngineInput = {
    *  cortex-vector-relief.ts's `gexWallsVetoWasRelieved`; live-monitor finding 2026-09-09,
    *  SHOP/MSTR both closed within 1 second of entry on this exact veto). */
   entryGexWallsVetoRelieved?: boolean;
+  /** Latched trough premium since flag (DB GREATEST/LEAST-latched watermark, same
+   *  source `closedStopReason`/governor already trust for stop determination —
+   *  db.ts ZeroDteSetupLogRow.trough_premium). Used ONLY to correct the
+   *  flat_theta_bleed narrative below: without it, that exit's "never left the
+   *  ±band" claim is measured off peak (upside) and the CURRENT mark (downside)
+   *  alone, so a play that dipped BELOW the band and recovered before the 25-min
+   *  clock fired gets a false "never left the band" sentence. Never changes WHEN
+   *  the exit fires (same age/peak/current-pnl condition) — narrative only. */
+  troughPremium?: number | null;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const fmtPct = (n: number | null) => (n == null ? "?" : `${n > 0 ? "+" : ""}${round2(n)}%`);
+
+/**
+ * The flat_theta_bleed exit detail — shared by both exit modes (2026-09-17 fix). The
+ * exit condition only checks peak (upside) and the CURRENT mark (downside), so a play
+ * that dipped below -flat_band_pct and recovered before the timeout fired used to get
+ * the blanket "never left the ±band" sentence regardless — false whenever a real trough
+ * breach happened. Live-evidence trough_premium (already DB-latched for stop
+ * determination elsewhere) tells the true story: say so when it disagrees with the
+ * "never left" claim, otherwise keep the original sentence unchanged.
+ */
+function flatTimeoutDetail(
+  ageMinutes: number,
+  peakPnlPct: number | null,
+  pnlPct: number,
+  troughPnlPct: number | null
+): string {
+  const breachedBand = troughPnlPct != null && troughPnlPct <= -EXIT_RULES.flat_band_pct;
+  const bandClaim = breachedBand
+    ? `dipped to ${fmtPct(troughPnlPct)} intraday but recovered back inside the ±${EXIT_RULES.flat_band_pct}% band`
+    : `never left the ±${EXIT_RULES.flat_band_pct}% band`;
+  return (
+    `${Math.floor(ageMinutes)}min in and the play ${bandClaim} ` +
+    `(peak ${fmtPct(peakPnlPct)}, now ${fmtPct(pnlPct)}) — on 0DTE flat is losing; a small scratch beats theta decay.`
+  );
+}
 
 /**
  * The monotonic protective floor (P&L %) for a given PEAK P&L. Pure function of the
@@ -467,9 +501,15 @@ export function detectThesisBreak(
  */
 function decideTrimScale(
   input: ExitEngineInput,
-  ctx: { entryPremium: number; currentMark: number; pnlPct: number; peakPnlPct: number | null }
+  ctx: {
+    entryPremium: number;
+    currentMark: number;
+    pnlPct: number;
+    peakPnlPct: number | null;
+    troughPnlPct: number | null;
+  }
 ): ExitDecision {
-  const { currentMark, pnlPct, peakPnlPct } = ctx;
+  const { currentMark, pnlPct, peakPnlPct, troughPnlPct } = ctx;
   const regime: ZeroDteRegime = input.regime ?? "neutral";
   const thresholds = TRIM_SCALE_RULES.tranches_by_regime[regime];
   // How many thirds the caller has already banked (clamped/floored — the latch is 0/1/2).
@@ -649,9 +689,7 @@ function decideTrimScale(
       action: "EXIT",
       floorPnlPct: null,
       reason: "flat_theta_bleed",
-      detail:
-        `${Math.floor(input.ageMinutes)}min in and the play never left the ±${EXIT_RULES.flat_band_pct}% band ` +
-        `(peak ${fmtPct(peakPnlPct)}, now ${fmtPct(pnlPct)}) — on 0DTE flat is losing; a small scratch beats theta decay.`,
+      detail: flatTimeoutDetail(input.ageMinutes, peakPnlPct, pnlPct, troughPnlPct),
     };
   }
 
@@ -704,6 +742,14 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       : (input.peakPremium ?? currentMark);
   const pnlPct = pinnedLivePnlPct(entryPremium, currentMark);
   const peakPnlPct = pinnedLivePnlPct(entryPremium, peakPremium);
+  // Trough widened with the current mark the same way peak is (Math.min, mirroring
+  // the DB's own LEAST-latch) — flat_theta_bleed's narrative-correctness check below
+  // needs the true low-water mark, not one that ignores this tick's dip.
+  const troughPremium =
+    input.troughPremium != null && currentMark != null
+      ? Math.min(input.troughPremium, currentMark)
+      : (input.troughPremium ?? currentMark);
+  const troughPnlPct = pinnedLivePnlPct(entryPremium, troughPremium);
   // The ratchet floor only exists in ratchet mode; trim_scale banks profit in tranches
   // and rides the plan stop, so it has no ratchet floor to report (null).
   const floor = mode === "ratchet" ? ratchetFloorPct(peakPnlPct, input.trimmed) : null;
@@ -721,7 +767,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
   // ratchet's floor-exit. Shared guards + no-mark guard above still apply; only the
   // profit-taking family differs. mark/entry/pnl are all non-null past this point.
   if (mode === "trim_scale") {
-    return decideTrimScale(input, { entryPremium, currentMark, pnlPct, peakPnlPct });
+    return decideTrimScale(input, { entryPremium, currentMark, pnlPct, peakPnlPct, troughPnlPct });
   }
 
   // ── 1. Protective exits: plan stop vs ratchet floor — the HIGHER mark wins. ────
@@ -801,9 +847,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       action: "EXIT",
       floorPnlPct: floor,
       reason: "flat_theta_bleed",
-      detail:
-        `${Math.floor(input.ageMinutes)}min in and the play never left the ±${EXIT_RULES.flat_band_pct}% band ` +
-        `(peak ${fmtPct(peakPnlPct)}, now ${fmtPct(pnlPct)}) — on 0DTE flat is losing; a small scratch beats theta decay.`,
+      detail: flatTimeoutDetail(input.ageMinutes, peakPnlPct, pnlPct, troughPnlPct),
     };
   }
 
