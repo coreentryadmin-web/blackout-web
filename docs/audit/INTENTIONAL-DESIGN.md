@@ -606,3 +606,78 @@ POSITIONING/CATALYST/BANGER/VECTOR origins to remove that bias.
 ```
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-gate-compound-funnel.mjs --days=5 --max-tickers=101 --json
 ```
+
+## 9. Cortex `gex-walls` regime-style-oppose applied to CONDOR commits — measured 2026-09-17, INSUFFICIENT DATA (0 condor commits in 90d), no fix shipped
+
+**Where this came from.** The same 2026-09-17 0DTE architecture deep-dive that shipped four fixes
+for "a committed condor cast a false directional vote" (product-adapters.ts/
+consensus-read-extract.ts, governor.ts, thesis-health.ts, confluence.ts — each a mechanical,
+zero-risk "return an honest absence instead of scoring a condor's nominal fade side as directional"
+fix) surfaced a FIFTH instance that is NOT a mechanical fix: `scan.ts` calls
+`evaluateCortexForCommit(ticker, direction, ...)` unconditionally for every gate-surviving setup,
+CONDOR included, passing the condor's nominal `direction`. `src/lib/nighthawk/cortex/sources/
+gex-walls.ts`'s own file header states an assumption that does not hold for a condor: *"Every 0DTE
+Command commit is momentum-style by construction... so posture 'long' opposes any direction."*
+`deriveGexWallsEvidence` has an unconditional `if (gex.regimePosture === "long")` oppose (weight
+0.6, detail *"mean-reversion regime opposes trend-following entries"*) — and `condorSellRegime`
+(condor.ts) ONLY EVER routes a condor to sell in exactly that long-gamma/mean-reverting regime. On
+paper, this looks backwards: the regime that makes a condor safe to sell is the same regime this
+source treats as automatic evidence against the trade. `docs/audit/NIGHTHAWK-CORTEX-DESIGN.md` has
+zero mentions of "condor" anywhere, confirming this was never a deliberate integration — Cortex was
+applied to condor commits as an accidental side effect of the unconditional `scan.ts` call, not a
+designed one. condor.ts's own comment already asks for a proper "Cortex range-intact read... called
+out as a follow-up" — this item is that follow-up's measurement half.
+
+**Why this did NOT get the same mechanical fix as the other four.** Unlike thesis-health/confluence
+(which safely degrade to an existing, already-null-safe "not applicable" state with zero new
+plumbing), skipping Cortex entirely for condor commits would ALSO remove `catalyst-news`'s veto
+power — arguably still a legitimate protective check for a condor (a real news catalyst threatens a
+sold range regardless of which nominal direction the row is framed around). Patching only the
+regime-style-oppose line leaves `wallPathCheck`'s veto/support (also nominal-direction-framed) and
+three other direction-keyed sources (`wall-trend.ts`, `flow-quality.ts`, `catalyst-news.ts`,
+plus `darkpool-confluence.ts` which rides `wallPathCheck` directly) untouched. This needs a real
+product decision, not a mechanical correctness fix — so the standing "measure before guessing"
+discipline applies before anything is touched.
+
+**The measurement, not the hunch.** `scripts/audit/cortex-condor-oppose-measure.mjs` reads the SAME
+already-pinned `entry_context.cortex` blob every committed row carries off
+`GET /api/market/zerodte/record?days=N` — nothing reimplemented, nothing recomputed except a pure
+counterfactual (`score_without_regime_oppose = score + oppose.weight`, checked against compose.ts's
+own A/B/C conviction-band floors) computed from the row's own persisted evidence. Classification
+helpers are mirrored (not imported — the usual `@/` path-alias reason every `scripts/audit/lib/*.mjs`
+helper here follows) in `scripts/audit/lib/cortex-condor-oppose-eval.mjs`, 9 unit tests. Three
+questions: (1) how often does the regime-style-oppose fire on a real committed condor row, (2) does
+it ever suppress the conviction band (A/B/C) for a condor specifically, (3) same question for
+`wallPathCheck`'s veto/support framing (a gex-walls VETO on a row that committed anyway would itself
+be an anomaly worth investigating, since a veto should structurally block commit outright). Never
+gates anything — read-only, same discipline as `cortex-oppose-magnitude-ab.mjs`/
+`veto-flicker-rate.mjs` above.
+
+**First real run, 90-day window: `INSUFFICIENT DATA` — 0 committed condor rows.** Of 411 total
+committed 0DTE plays in the window, every single one carries `entry_context.play_type ===
+"DIRECTIONAL"` (or an older, unset value) — **not one is a CONDOR.** This is itself the actual
+finding this run produced, and it reframes the whole question: the mislabeled regime-oppose cannot
+currently be doing measurable real-world harm, because the condor engine appears to not be
+committing AT ALL in production over this window (`condorSellRegime`'s combined thresholds —
+`CORROBORATION_MIN_BRACKET_DOM_PCT`-class dominance ≥6%, band width ≤3%, offset ≤0.6 — plus the
+cash-settled-root restriction to SPX/NDX only — may simply be rare enough in practice that zero
+qualifying sessions occurred in 90 days; a `discovery_health` spot-check same-day showed PIN
+reporting `status: "off_hours", setups: 0`, consistent with — but not proof of — a genuinely thin
+qualifying population rather than a flag being off). **This is a separate, prior-order open question
+this item surfaces but does not answer**: is the condor engine's near-total absence from the real
+ledger a genuine reflection of how rare a "deep long-gamma pin" qualifying regime is, or is
+something upstream (a flag, a PIN-source health issue, or — worth checking given this very item —
+the Cortex layer's own mislabeled oppose making every candidate that DOES reach commit harder to
+pass) suppressing it further? The regime-oppose question in THIS item cannot be answered without a
+real committed-condor population to measure against.
+
+**What was NOT done.** No gate/source touched (per the operator's explicit instruction for this
+pass). No fix shipped — this is a measurement tool + a documented open question, not a finding with
+an outcome. The tool is ready and should be re-run whenever the condor-commit population is
+non-trivial (or pointed at the PIN-source health / flag-state question first, since that's the
+actual blocker to answering the original question at all).
+
+**Re-run:**
+```
+node scripts/audit/cortex-condor-oppose-measure.mjs --days=90 --json
+```
