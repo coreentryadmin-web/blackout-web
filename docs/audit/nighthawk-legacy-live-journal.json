@@ -3525,6 +3525,12 @@
       "trigger": ":36 cycle -- play-outcomes.ts finished (lines 700-843/843); PR #5101 verify still running",
       "healthcheck": "Steady: A_edition GREEN, B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
       "codeReview": "Finished play-outcomes.ts's remaining ~140 lines: the Discord STC-close notify hook (fire-and-forget, correctly gated on `!alreadyClosed` so a resolved-but-already-closed position doesn't double-notify), resolveBangerScaleOutGrades (STEP-6b -- the banger population's OPTION-basis scale-out grading, deliberately separate from the stock-outcome pass: different data source, different expiry-gated timing, per-row try/catch isolation so a single grading failure can never corrupt or block the headline sync), and nighthawkOutcomesRunHealth (PR-N1's cron-honesty fix -- errors with content always fail the run's health verdict, closing the class of bug where 4 straight days of H-1 constraint violations sat silently in meta.errors while cron-health showed green). All clean, no new issue. This completes a full read of play-outcomes.ts across this cycle and the :21 cycle -- the file's real defect (stop_data_unavailable AND-vs-OR drift into analytics.ts/track-record-page.ts) is already shipped as PR #5101, still awaiting CI (verify still in_progress, checked 3x this cycle)."
+    },
+    {
+      "at": "2026-09-17T02:52:06Z",
+      "trigger": ":51 cycle -- PR #5101 merged clean, verified against origin/main",
+      "healthcheck": "Steady: A_edition GREEN, B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
+      "codeReview": "PR #5101 (stop_data_unavailable AND-vs-OR fix across analytics.ts and track-record-page.ts) merged (07a923c1d) -- full suite had gone green (14418 pass). Verified both fixed sources directly against origin/main: both now use OR, matching resolveOutcome exactly. Local branch deleted (remote delete 403'd as usual). This closes out this hour's second shipped fix. Summary for the hour: PR #5100 (trough-fallback asymmetry) + PR #5101 (stop-data-unavailable AND-vs-OR) both merged clean, plus continued deep tracing/escalation of the open rank-vs-conviction REPORT-AND-HOLD finding (empirically verified against live CloudWatch logs from last night's build)."
     }
   ],
   "knownOpenItems": {
