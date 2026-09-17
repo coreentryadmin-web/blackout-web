@@ -753,10 +753,15 @@ export async function scanZeroDteBoard(flags?: {
             governorPremiumAtRisk,
             governorShortGammaOpen,
             committedThisCycle: governorAccurate,
+            play_type: s.play_type,
           });
         }
         if (s.gate.verdict === "COMMIT") {
-          governorAccurate.push({ ticker: s.ticker.toUpperCase(), direction: s.direction });
+          governorAccurate.push({
+            ticker: s.ticker.toUpperCase(),
+            direction: s.direction,
+            is_condor: s.play_type === "CONDOR",
+          });
         }
       }
     }
@@ -1113,7 +1118,7 @@ async function attachGateVerdicts(
   // Setups arrive score-ranked, so the concurrency budget goes to the best finds:
   // committedThisCycle carries earlier accepted fresh commits within this same pass
   // (both for the cap and the correlated-conflict check).
-  const committedThisCycle: Array<{ ticker: string; direction: "long" | "short" }> = [];
+  const committedThisCycle: Array<{ ticker: string; direction: "long" | "short"; is_condor?: boolean }> = [];
   for (const s of setups) {
     if (committed.has(s.ticker.toUpperCase())) continue;
     const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
@@ -1292,7 +1297,7 @@ async function attachGateVerdicts(
       s.gate = { ...s.gate, verdict: "BLOCKED", blocks: cortexBlocks };
       continue;
     }
-    committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
+    committedThisCycle.push({ ticker: s.ticker, direction: s.direction, is_condor: s.play_type === "CONDOR" });
   }
   return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
 }
@@ -2141,6 +2146,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
             direction: setup.direction,
             entry_premium: row.entry_premium ?? setup.plan?.entry_max ?? setup.plan?.mark ?? null,
             gamma_regime: setup.gamma_regime ?? null,
+            is_condor: setup.play_type === "CONDOR",
           },
           snap,
           committedAtMs,
@@ -2155,7 +2161,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
           );
           continue;
         }
-        acceptedThisTxn.push({ ticker: setup.ticker.toUpperCase(), direction: setup.direction });
+        acceptedThisTxn.push({
+          ticker: setup.ticker.toUpperCase(),
+          direction: setup.direction,
+          is_condor: setup.play_type === "CONDOR",
+        });
         survivors.push(row);
       }
       return survivors;

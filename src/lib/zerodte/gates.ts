@@ -1287,6 +1287,9 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
           direction: input.direction,
           entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null,
           gamma_regime: input.gamma_regime ?? null,
+          // A CONDOR candidate's `direction` is the pin's nominal fade side, not a real
+          // directional stance — see evaluateZeroDteGovernor's own doc on is_condor.
+          is_condor: input.play_type === "CONDOR",
         },
         input.governor,
         input.nowMs,
@@ -2119,6 +2122,10 @@ export function refreshGovernorCycleBlocks(
     governorPremiumAtRisk: number;
     governorShortGammaOpen: number;
     committedThisCycle: GovernorOpenPlan[];
+    /** Optional — a CONDOR candidate's `direction` is nominal-only (see evaluateZeroDteGovernor's
+     *  own doc); omitted defaults to false (directional), matching every pre-existing caller that
+     *  predates this field. */
+    play_type?: PlayType;
   }
 ): ZeroDteGateVerdict {
   const nonGov = gate.blocks.filter((b) => !GOVERNOR_CYCLE_GATE_CODES.has(b.code));
@@ -2130,6 +2137,7 @@ export function refreshGovernorCycleBlocks(
         direction: input.direction,
         entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null,
         gamma_regime: input.gamma_regime,
+        is_condor: input.play_type === "CONDOR",
       },
       input.governor,
       input.nowMs,
