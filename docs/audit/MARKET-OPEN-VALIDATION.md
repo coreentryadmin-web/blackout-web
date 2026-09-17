@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-17 gate-calibration `days=N` window-truncation fix (PR pending)
+
+**What was fixed:** `GET /api/market/zerodte/calibration?days=N`'s `blocked_value` (the per-gate
+counterfactual outcome evidence `zerodte-gate-primary-ablation.mjs` and
+`gate-calibration-live-report.mjs` both read) silently ignored any `days` wider than ~14 days —
+`fetchGradedSkips`'s hardcoded `LIMIT 2000` (most-recent-first) was reached well inside 14 days of
+live volume, so `days=14/30/60/90` all returned the byte-identical total. Found while re-running
+today's gate-floor-audit TOP-3 item #1 (`zerodte-gate-primary-ablation.mjs --days=90`, watching
+G-13/`flow_accumulation_conflict`) and seeing its reported blocked-n drop (12 → 10 → 5) across three
+re-runs minutes apart with no explanation until the window-sweep isolated the cause. Fixed by scaling
+`fetchGradedSkips`'s limit to the requested window (`days * 300`, raised internal ceiling to 30,000)
+instead of a flat, silently-reused 2000. Full write-up:
+`docs/audit/findings-staging/2026-09-17-zerodte-calibration-graded-skips-window-truncation.md`.
+
+**Specific thing to check once this deploys and RTH is live:** re-run the exact
+`days=7/14/30/60/90` sweep against `GET /api/market/zerodte/calibration` (or just re-run
+`zerodte-gate-primary-ablation.mjs --days=90` two or three times a few minutes apart) and confirm
+(1) `days=30/60/90` now report DIFFERENT (larger) totals than `days=14`, proportional to the wider
+window, and (2) a single gate's reported blocked-n (G-13 is the one that surfaced this) is now
+STABLE across repeated same-session re-runs rather than drifting down run-to-run. If either check
+fails post-deploy, the fix didn't actually reach the deployed calibration report — re-verify against
+`origin/main` per this repo's own "a merge is not a verification" discipline, not just that the PR
+merged clean.
+
 ## WATCH LIST — 2026-09-17 RTH FLOW-vs-PIN gate-compound-funnel comparison — CLOSES item 1's open check from the entry below (COMPLETE, evidence-only, no gate changed)
 
 **What this closes:** the entry directly below (2026-09-17 condor-directional-vote fix wave, item

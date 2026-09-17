@@ -419,6 +419,18 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
   return summary;
 }
 
+// Absolute safety ceiling on fetchGradedSkips's row fetch. Raised from a flat 2000 (2026-09-17,
+// docs/audit/findings-staging/2026-09-17-zerodte-calibration-graded-skips-window-truncation.md):
+// observed live volume was already ~2000 graded+ungradeable rows inside 14 days alone, so the old
+// `Math.min(2000, ...)` silently re-clamped EVERY caller-requested limit back down to 2000 no
+// matter what was asked for — a days=14/30/60/90 calibration read all returned the IDENTICAL
+// most-recent-2000-rows slice (`ORDER BY observed_at DESC LIMIT 2000`), so any "days" wider than
+// ~14 was reading the same window it claimed to widen, never the older data it implied. Raised
+// with real headroom above that observed density so a genuine days=90 window (calibration.ts
+// scales its own request to the window — see GRADED_SKIPS_PER_DAY_BUDGET there) can actually be
+// read in full at current volume, while still bounding a pathological blowup.
+export const MAX_GRADED_SKIPS_LIMIT = 30_000;
+
 /** Read the already-graded skips for the calibration report's blocked-value lines.
  *  Fail-soft: any failure (missing column included — pre-first-run deployments)
  *  returns [], never a throw into the report builder. */
@@ -446,7 +458,7 @@ export async function fetchGradedSkips(opts: {
           AND session_date <= $2
         ORDER BY observed_at DESC
         LIMIT $3`,
-      [opts.sinceYmd, opts.throughYmd, Math.min(2000, Math.max(1, opts.limit ?? 2000))]
+      [opts.sinceYmd, opts.throughYmd, Math.min(MAX_GRADED_SKIPS_LIMIT, Math.max(1, opts.limit ?? 2000))]
     );
     return res.rows.map((r) => ({
       gate_failed: String(r.gate_failed),
