@@ -22,6 +22,20 @@ fails post-deploy, the fix didn't actually reach the deployed calibration report
 `origin/main` per this repo's own "a merge is not a verification" discipline, not just that the PR
 merged clean.
 
+**CONFIRMED LIVE, 2026-09-17 (same day, post-deploy, RTH):** ran
+`gate-calibration-live-report.mjs --days={14,30,60,90} --no-grade --json` against
+`GET /api/market/zerodte/calibration` and summed `n + ungradeable` across every `blocked_value[]`
+gate code (the actual row count `fetchGradedSkips` pulled from Postgres for that window) —
+**days=14 → 4200 rows, days=30 → 9000, days=60 → 18000, days=90 → 22222.** The first three land
+exactly on `days * 300` (the new `GRADED_SKIPS_PER_DAY_BUDGET` formula from PR #5140); days=90
+comes in under `90*300=27000` only because the DB doesn't hold that many real rows for the period
+— not because of a cap. Pre-fix, every one of these would have been flatlined at the old hardcoded
+`2000`. Check (2) also passes: G-13/`flow_accumulation_conflict`'s graded `n` held at a flat **24**
+across all four window widths (only `ungradeable` grew with window, exactly as expected since older
+rejections are less likely to still have a matching Polygon bar) — no drift, unlike the pre-fix
+12→10→5 pattern that surfaced this bug in the first place. Both watch-list checks pass; this entry
+is resolved, no further action needed.
+
 ## WATCH LIST — 2026-09-17 RTH FLOW-vs-PIN gate-compound-funnel comparison — CLOSES item 1's open check from the entry below (COMPLETE, evidence-only, no gate changed)
 
 **What this closes:** the entry directly below (2026-09-17 condor-directional-vote fix wave, item

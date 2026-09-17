@@ -4664,3 +4664,18 @@ against the shared UW/Polygon limiter) was already shipped in PR #5145 before th
 fully resolved. Logged here, not as a staged finding, because there is no bug to fix: the
 alerting, the ECS self-heal, and the rate limiters themselves all did exactly what they were
 built to do.
+
+## 2026-09-17 (RTH) — [DISCOVERY] PR #5140's gate-calibration `days=N` truncation fix confirmed live, post-deploy
+
+Re-ran `scripts/audit/gate-calibration-live-report.mjs --days={14,30,60,90} --no-grade --json`
+against production per `docs/audit/MARKET-OPEN-VALIDATION.md`'s open WATCH LIST item for PR #5140
+(the `fetchGradedSkips` hardcoded-`LIMIT 2000` fix). Summed `n + ungradeable` across every
+`blocked_value[]` gate code (the real Postgres row count fetched for that window):
+**days=14 → 4200, days=30 → 9000, days=60 → 18000, days=90 → 22222** — the first three land
+exactly on the new `days * 300` formula; days=90 comes in under `90*300=27000` only because the DB
+doesn't hold that many real rows for the period, not a cap. Pre-fix, all four would have flatlined
+at 2000. G-13/`flow_accumulation_conflict`'s graded `n` also held flat at 24 across all four window
+widths (only `ungradeable` grew, as expected) — no drift, unlike the pre-fix 12→10→5 pattern.
+
+Both watch-list checks pass. No code change — this is the post-deploy confirmation the fix actually
+reached production, not just that the PR merged clean. GREEN pass, no follow-up needed.
