@@ -98,13 +98,28 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
   if (peers.length < 2) return null;
 
   const sorted = [...peers].sort((a, b) => b.score - a.score);
-  const playScore = play.score ?? 0;
   const contractMatches = sorted.filter((r) => laneRowMatchesPlay(r, play));
   const idx =
     contractMatches.length === 1
       ? sorted.findIndex((r) => r === contractMatches[0])
       : sorted.findIndex((r) => r.ticker.toUpperCase() === play.ticker.toUpperCase());
   const rank = idx >= 0 ? idx + 1 : sorted.length + 1;
+  // BUG FIX (2026-09-17, Ask Largo standing mandate): `play.score` is TerminalPlay's own field,
+  // which every adapter that builds a play-brief's `play` (terminalPlayFromHorizon, adapters.ts)
+  // rounds to the nearest INTEGER for board display (`score: Math.round(src.score)`) — but
+  // `medianScore`/`topScore` below are computed from `laneRows: HorizonPlay[]`, which retain the
+  // raw score to one decimal. Live repro, AAPL WATCH brief, 2026-09-17: TerminalPlay.score read
+  // 26 (Math.round(25.5)) while the SAME brief's own "Why this setup" pillar breakdown (Catalyst
+  // 19.4 + Regime 4.2 + Flow 1.9) sums to the true 25.5 three sections earlier — "Below lane
+  // median — score 26 (-23.6 vs median)" used the rounded 26, landing the delta 0.5pt off the
+  // true -24.1 and silently contradicting the brief's own pillar sum a few sections up. `sorted`
+  // (built from the SAME laneRows array feeding medianScore/topScore) already contains the play's
+  // own row at `idx` whenever it's found — reuse ITS raw score instead of re-deriving one from a
+  // differently-rounded type, so playScore and medianScore are always compared at the same
+  // precision. Falls back to play.score only when the play's own row isn't present in laneRows
+  // (shouldn't happen in production — laneRows is expected to include every open/WATCH row — but
+  // keeps the function total for a caller that passes a partial list, e.g. tests).
+  const playScore = idx >= 0 ? (sorted[idx]?.score ?? play.score ?? 0) : (play.score ?? 0);
 
   const scores = sorted.map((r) => r.score);
   // Standard even/odd median, not just "the middle sorted element" — for an EVEN peer count,

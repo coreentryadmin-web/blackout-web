@@ -288,3 +288,35 @@ test("computeLaneRank: median for a 4-peer (even) lane averages the two middle s
   // Sorted desc: 80, 60, 40, 20 — middle two are 60 and 40, average 50 (not scores[2]=40).
   assert.equal(snap!.medianScore, 50);
 });
+
+test("computeLaneRank: playScore uses the raw laneRows precision, not a pre-rounded TerminalPlay.score", () => {
+  // Live repro (AAPL WATCH brief, 2026-09-17): terminalPlayFromHorizon (adapters.ts) rounds
+  // TerminalPlay.score to the nearest integer for board display (Math.round(25.5) === 26), but
+  // laneRows (HorizonPlay[]) retains the raw 25.5. Passing the rounded `play.score` straight
+  // through made "score 26 (-23.6 vs median)" disagree with the SAME brief's own "Why this
+  // setup" pillar sum (19.4 + 4.2 + 1.9 = 25.5) three sections earlier — same fact, two
+  // different numbers, in one document. `play.score` is deliberately set to the ROUNDED 26 here
+  // (what the real adapter produces) while the matching laneRows row carries the raw 25.5, so a
+  // regression back to reading play.score directly fails this test.
+  const snap = computeLaneRank(play({ ticker: "AAPL", score: 26, status: "WATCH" }), [
+    row("XOM", 52.7, "WATCH"),
+    row("TSM", 49.6, "WATCH"),
+    row("AAPL", 25.5, "WATCH"),
+  ]);
+  assert.ok(snap);
+  assert.equal(snap!.playScore, 25.5, "must read the raw laneRows score (25.5), not the rounded TerminalPlay.score (26)");
+  assert.equal(snap!.medianScore, 49.6);
+  assert.equal(snap!.deltaFromMedian, -24.1, "delta must be computed from the raw score (25.5 - 49.6), not the rounded one (26 - 49.6 = -23.6)");
+});
+
+test("computeLaneRank: playScore falls back to TerminalPlay.score when the play's own row is absent from laneRows", () => {
+  // Defensive fallback only — production laneRows is expected to always include the play's own
+  // row, but a caller passing a partial list (or a test) must still get a sane playScore rather
+  // than undefined/NaN.
+  const snap = computeLaneRank(play({ ticker: "AAPL", score: 26, status: "WATCH" }), [
+    row("XOM", 52.7, "WATCH"),
+    row("TSM", 49.6, "WATCH"),
+  ]);
+  assert.ok(snap);
+  assert.equal(snap!.playScore, 26, "no matching laneRows row for AAPL — falls back to play.score");
+});
