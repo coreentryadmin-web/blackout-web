@@ -299,6 +299,33 @@ export function buildRankFinalSnapshotRows(
 }
 
 /**
+ * Pure row-builder for candidates the cross-edition governor CUT entirely (loss-streak halt,
+ * repeat-ticker cooldown, sector-concentration cap) — Night Hawk Legacy Signal Intelligence,
+ * Phase 1. Complements, does not duplicate, the existing recordNighthawkStageRejectedAuditTrail
+ * write at this same call site: that one is the durable alert_audit_log row (rich decision_trace,
+ * queryable by the get_nighthawk_dossier Largo tool); this is the nighthawk_candidate_snapshot
+ * row, so a query against that ONE table sees every candidate at every stage, cut ones included,
+ * without needing to join across two different tables. Same "extract for testability" rationale
+ * as the other builders in this file.
+ */
+export function buildGovernorCutSnapshotRows(
+  editionFor: string,
+  cut: Array<{ ticker: string; scored: ScoredCandidate; reasons: string[] }>
+): ScoringStageSnapshotRow[] {
+  return cut.map((c) => ({
+    edition_for: editionFor,
+    ticker: c.ticker,
+    stage: "rejected",
+    rank: null,
+    score: c.scored.score,
+    gov_penalty: null,
+    rejection_reason: `cross_edition_governor: ${c.reasons.join("; ")}`,
+    selected_for_publish: false,
+    snapshot_json: scoredCandidateSnapshotPayload(c.scored),
+  }));
+}
+
+/**
  * RECAP-ONLY FALLBACK (audit P0 / #77). When the candidate→play funnel legitimately collapses to
  * zero (no flow candidates, no scored dossiers, all candidates fundamentally blocked, Claude/critic
  * returns nothing), we STILL publish a real edition row — a genuine market recap with `plays: []` —
@@ -653,6 +680,7 @@ export async function buildEveningEdition(opts?: {
         let completed = alreadyDone.length;
         const total = candidates.length;
 
+        const dossierSessionCtx = { today: ctx.today, tomorrow: ctx.tomorrow, tomorrow_earnings: ctx.tomorrow_earnings ?? [] };
         await fetchAllDossiers(remaining, DOSSIER_BATCH_SIZE, regime, async (dossier) => {
           completed += 1;
           await saveDossierStaging(
@@ -667,20 +695,31 @@ export async function buildEveningEdition(opts?: {
             "stage_dossiers",
             `Dossier ${dossier.ticker} done (${completed}/${total})`
           );
-        });
+        }, dossierSessionCtx);
       }
 
       dossiers = stagedToDossierMap(await fetchStagedDossiers(editionFor));
     } else {
       console.info(`[nighthawk/edition] dossiers for ${candidates.length} tickers (no checkpointing)`);
-      dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE, regime);
+      dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE, regime, undefined, {
+        today: ctx.today,
+        tomorrow: ctx.tomorrow,
+        tomorrow_earnings: ctx.tomorrow_earnings ?? [],
+      });
     }
 
-    // Session-aware re-score (audit fix): buildTickerDossier scores WITHOUT the session
-    // context, so the earnings-proximity −6 penalty ("expiry into earnings") and the
-    // analyst-PT nudge were dead code on the edition path — only the hunt path passed
-    // earnings_date/today/tomorrow. Re-score every dossier with the same helper the
-    // hunt uses (deterministic + idempotent, safe on checkpoint-resumed dossiers too).
+    // Session-aware re-score (audit fix, historical + belt-and-suspenders): fetchAllDossiers
+    // above now ALSO threads sessionCtx into its own initial scoreCandidate pass (Night Hawk
+    // Legacy Signal Intelligence Phase 1 — dossier.ts's fetchTickerDossier gained an optional
+    // 4th sessionCtx param specifically so ANY caller of buildTickerDossier/fetchAllDossiers,
+    // not just the edition path, gets a correct earnings_date/today_ymd/tomorrow_ymd, since two
+    // real non-edition callers — zerodte/scan.ts's own dossier borrow and play-explainer.ts's
+    // fallback narrative path — read dossier.scored straight from that first pass with no
+    // subsequent rescore at all). This loop is now redundant FOR THE EDITION PATH SPECIFICALLY
+    // (both passes compute the identical correct value) but is kept exactly as-is rather than
+    // removed: it's still the one deterministic, idempotent, checkpoint-resume-safe re-score
+    // this path has always relied on, and removing it is an unrelated optimization, not part of
+    // this data-completeness fix.
     for (const d of Object.values(dossiers)) {
       try {
         rescoreDossier(d, regime, 1, {
@@ -790,6 +829,13 @@ export async function buildEveningEdition(opts?: {
           } catch (err) {
             console.warn("[nighthawk/edition] governor audit-trail write failed:", err);
           }
+        }
+        if (govResult.cut.length) {
+          void insertNighthawkCandidateSnapshots(buildGovernorCutSnapshotRows(editionFor, govResult.cut)).catch(
+            (err) => {
+              console.warn("[nighthawk/edition] governor-cut candidate snapshot write failed:", err);
+            }
+          );
         }
 
         if (govResult.notes.length) {
