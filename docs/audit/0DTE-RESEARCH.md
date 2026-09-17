@@ -159,6 +159,20 @@ make up the difference even with 29 `doubled` hits. See
 **No gate changed** — `resolveExitModeForTier`'s C-tier/untiered→ratchet default is now empirically
 supported rather than merely inherited, and a single 90-day sample argues to LEAVE IT, not flip it.
 
+**Update 2026-09-17 — RE-OPENED, ordering REVERSED on a fresh re-run, no gate changed.** Re-ran
+`tier-exit-mode-ab.mjs --days=90 --json` live (90-day window, n=100 graded, population=115 — the
+same tool, same mechanics as the 2026-08-29 run above). The win-rate ordering flipped: **ratchet
+31.0% WR / −7.0% avg P&L vs trim_scale 38.0% WR / −7.7% avg P&L** — trim_scale is now +7.0pp ahead
+on win rate (was −7.1pp), and the avg-P&L gap that was ratchet's main justification (+12.8pp)
+collapsed to a noise-level +0.7pp. Driver: ratchet reached a true `doubled` close on only 12/100
+rows this run (vs 29/100 for trim_scale banking a `runner_close` partial), with 35/100 rows giving
+back gains via the trailing-stop `ratchet` exit instead. **Still no gate changed** — n=100 with a
+near-zero P&L gap cannot separate either ordering from noise on its own, same single-sample-caution
+discipline as the 2026-08-29 update above; this is a re-opened question, not a reversed decision.
+See `docs/audit/findings-staging/2026-09-17-zerodte-tier-exit-mode-ab-reversed.md`. Next step: a
+third re-run in a few more weeks — if the reversal holds or deepens, that's the trigger to revisit
+`resolveExitModeForTier`'s default, not this run alone.
+
 **Follow-up (2026-09-04): the regime-conditioned trend dead-zone — MEASURED, INSUFFICIENT DATA, no
 gate changed.** `decideTrimScale`'s own dead-zone-guard comment (`exit-engine.ts`, ~line 300) names a
 residual gap its 2026-08-27 fix (`trimAvailable = armed > taken`) does not close: the shared
