@@ -167,7 +167,11 @@ export function LegacyPlayDetailPanel({ play }: { play: TerminalPlay }) {
                   play.rrRatio < 1 && "nh-deck-neg",
                 )}
               >
-                {play.rrRatio.toFixed(1)}:1
+                {/* Floor to 1 decimal, not round-to-nearest: toFixed(1) rounds e.g. 0.96 up to
+                    "1.0", printing "1.0:1 (tight)" — self-contradicting, since the label ladder
+                    treats 1.0 as the "favorable" cutoff. Same fix/rationale as PlayTerminal.tsx's
+                    R:R rows and deterministic-edition.ts's (PR #4813). */}
+                {(Math.floor(play.rrRatio * 10 + 1e-9) / 10).toFixed(1)}:1
                 {play.rrRatio >= 2 ? " (strong)" : play.rrRatio >= 1 ? " (favorable)" : " (tight)"}
               </span>
             </div>

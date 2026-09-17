@@ -249,6 +249,34 @@ than 0-3 real trend samples. **Re-run `npm run ab:regime-dead-zone -- --days=90`
 `session_regime`-stamped trend rows have accumulated — the script is built, live-auth-tested, and ready;
 it just needs a population that doesn't exist yet.
 
+### Range-regime sub-+15%-peak dead zone — live same-day observation, 2026-09-17, NOT YET MEASURED
+
+Distinct from the trend-regime dead zone above (that one is about peaks in [20%, 40%) that armed
+the shared breakeven floor but not trend's own +40% first tranche). This is the analogous gap for
+**range regime's own +15% first-tranche trigger**: for range, +15% sits BELOW the shared ratchet
+arm point (+20%), so per `inTrimScaleDeadZone`'s own doc, "range... crosses AT OR BEFORE the arm
+point" — meaning a range peak that never clears +15% gets **zero protection of any kind**, not
+even the half-of-peak dead-zone floor `trimScaleFloorPct` gives trend. By design, not a bug: a
+peak below the tranche trigger simply hasn't earned a floor.
+
+Live same-day forensic pass on 2026-09-17's ledger (Night Hawk 0DTE 15-min audit cadence) found
+all 3 of the day's `thesis_break`-exited plays (TEM, SMCI, CMPS — the 4th, SNDK, was a plain
+`plan_stop`) shared the identical shape: real double-digit peaks (TEM +14.32%, SMCI +12.67%, CMPS
++11.84%) — all clustered just under range's +15% trigger, none reached it, none armed anything —
+followed by a `thesis_break:gex-walls` veto that exited the remaining position at a materially
+worse mark (TEM -25.95%, SMCI -26%, CMPS -27.63%), a 38-40pp round-trip from peak to exit on every
+one. 3/3 same shape, same session — clears the standing 3-instance noise threshold for *naming*
+the pattern, but is a single session day and cannot itself justify a threshold change (exactly the
+caution the trend dead-zone item above already states for its own, better-populated case).
+
+**Open question, not yet measured:** would a lower first-tranche trigger for range (or a
+trend-style partial dead-zone floor extended below +15%) have banked something on these three
+without materially hurting range-regime plays that go on to hit their real target? Needs the same
+rigor as `regime-dead-zone-ab.mjs` above — real historical range-regime rows via
+`GET /api/admin/zerodte/tier-export`, re-graded through the shipped `evaluateExitState` at a
+candidate lower trigger, over enough sessions to separate signal from one day's regime. **No gate
+changed.** Re-check as the range-regime population accumulates; do not act on this single day.
+
 ### E6 — thesis-first `thesis_rank_reject` outcome A/B (whole-market BREAKOUT/BREAKDOWN, 2026-09-10)
 
 `ZERODTE_THESIS_FIRST` is live. On 2026-09-09 its `thesis_rank_reject` gate (the archetype/rank

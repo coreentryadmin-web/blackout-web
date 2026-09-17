@@ -268,6 +268,30 @@ test("Thesis tab: R:R ratio appears in technicals when expanded (CLOSED play)", 
   assert.match(html, /2\.4:1/);
 });
 
+test("Thesis tab: R:R display floors instead of rounding — 1.96 must NOT display as the 2.0 threshold it hasn't reached", async () => {
+  const html = await render(play({ rrRatio: 1.96, status: "CLOSED" }));
+  assert.match(html, /1\.9:1/);
+  assert.doesNotMatch(html, /2\.0:1/);
+});
+
+// ZeroDtePreEntryContext (the !has && play.mark != null branch) lives inside PnlPanel, mounted on
+// the "pnl" tab — and only for a horizon that falls through to the tabbed layout at all (ZERO_DTE/
+// SWING/LEGACY all divert to their own single-panel components before the tab bar is reached), so
+// LEAPS + initialTab:"pnl" (the SSR test-only escape hatch — no click simulation under
+// renderToStaticMarkup) is what actually exercises it in this test file.
+test("pre-entry (not-yet-committed), PnL tab: R:R display floors instead of rounding — 0.96 must NOT display as the 1.0 'favorable' threshold, label still reads 'acceptable'", async () => {
+  const html = await render(play({ horizon: "LEAPS", entry: null, mark: 2.6, rrRatio: 0.96 }), { initialTab: "pnl" });
+  assert.match(html, /Risk : Reward/);
+  assert.match(html, /0\.9:1\s*\(acceptable\)/);
+  assert.doesNotMatch(html, /1\.0:1/);
+});
+
+test("pre-entry (not-yet-committed), PnL tab: R:R display floors instead of rounding — 1.96 must NOT display as the 2.0 'strong' threshold, label still reads 'favorable'", async () => {
+  const html = await render(play({ horizon: "LEAPS", entry: null, mark: 2.6, rrRatio: 1.96 }), { initialTab: "pnl" });
+  assert.match(html, /1\.9:1\s*\(favorable\)/);
+  assert.doesNotMatch(html, /2\.0:1/);
+});
+
 test("OCC copy: absent OCC → no control rendered (graceful, no dead button)", async () => {
   const html = await render(play({ occ: null }));
   assert.doesNotMatch(html, /nh-deck-occcopy/);

@@ -365,7 +365,14 @@ export function ZeroDteCommandPanel({
                         play.rrRatio < 1 && "nh-deck-neg",
                       )}
                     >
-                      {play.rrRatio.toFixed(1)}:1
+                      {/* Floor to 1 decimal, not round-to-nearest: toFixed(1) rounds e.g. 1.96 up
+                          to "2.0" while the color class still reads the raw (uncolored) rr < 2, so
+                          a member would see "2.0" printed in the neutral color instead of the
+                          green the number implies. Same fix/rationale as PlayTerminal.tsx's R:R
+                          rows and deterministic-edition.ts's (PR #4813); the epsilon guards a
+                          clean multiple of 0.1 from landing on the wrong side of Math.floor due to
+                          binary floating-point representation. */}
+                      {(Math.floor(play.rrRatio * 10 + 1e-9) / 10).toFixed(1)}:1
                     </span>
                   </div>
                 )}

@@ -4,7 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-17 (16:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, near window close
+## 2026-09-17 (18:20 UTC) — [SEO] Lane heartbeat: flagged a green-draft (#5151, not SEO-lane), CLS/og validated, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Back to normal work (14:17 ET, past RTH). Purged Cloudflare edge (HTML only) and re-measured
+homepage desktop CLS: **0.0003 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200
+`image/png`.
+
+PR sweep found `#5151` (coordinator/0DTE-lane, green CI) stuck as a draft. Attempted
+`agent-pr-sweep.mjs --mark-ready` — FAILED (same no-GitHub-MCP-undraft-tool limitation as the
+6-PR jam earlier today). Posted a coordinator comment on #5151 requesting it be marked ready.
+
+GSC opportunity scan: byte-identical to the prior cycle — no new opportunities.
+
+No defects found.
 
 **Severity.** — (no defect found)
 
@@ -4664,3 +4678,18 @@ against the shared UW/Polygon limiter) was already shipped in PR #5145 before th
 fully resolved. Logged here, not as a staged finding, because there is no bug to fix: the
 alerting, the ECS self-heal, and the rate limiters themselves all did exactly what they were
 built to do.
+
+## 2026-09-17 (RTH) — [DISCOVERY] PR #5140's gate-calibration `days=N` truncation fix confirmed live, post-deploy
+
+Re-ran `scripts/audit/gate-calibration-live-report.mjs --days={14,30,60,90} --no-grade --json`
+against production per `docs/audit/MARKET-OPEN-VALIDATION.md`'s open WATCH LIST item for PR #5140
+(the `fetchGradedSkips` hardcoded-`LIMIT 2000` fix). Summed `n + ungradeable` across every
+`blocked_value[]` gate code (the real Postgres row count fetched for that window):
+**days=14 → 4200, days=30 → 9000, days=60 → 18000, days=90 → 22222** — the first three land
+exactly on the new `days * 300` formula; days=90 comes in under `90*300=27000` only because the DB
+doesn't hold that many real rows for the period, not a cap. Pre-fix, all four would have flatlined
+at 2000. G-13/`flow_accumulation_conflict`'s graded `n` also held flat at 24 across all four window
+widths (only `ungradeable` grew, as expected) — no drift, unlike the pre-fix 12→10→5 pattern.
+
+Both watch-list checks pass. No code change — this is the post-deploy confirmation the fix actually
+reached production, not just that the PR merged clean. GREEN pass, no follow-up needed.
