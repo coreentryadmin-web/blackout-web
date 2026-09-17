@@ -47,10 +47,13 @@ function MetricPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Same visual grammar as the 0DTE record section's LowNChip (ZeroDteBoard.tsx) — amber,
- *  mono, explicit threshold. Duplicated rather than imported: that chip is a private
- *  detail of a 1000+-line client board, and the styling contract (gold/amber, n<THRESHOLD
- *  copy) is what's shared, not the component instance. */
+/** Same visual grammar as the 0DTE record section's low-n badge (NighthawkAnalyticsPanel.tsx,
+ *  gated on LOW_N_THRESHOLD from lib/zerodte/record.ts) — amber, mono, explicit threshold.
+ *  Duplicated rather than imported: that badge is a private detail of its own panel, and the
+ *  styling contract (gold/amber, n<THRESHOLD copy) is what's shared, not the component
+ *  instance. (This file, HawkRecordStrip.tsx, is itself dead code — no live import renders
+ *  it anymore; the current /nighthawk UI is NightHawkFeed's ZERO_DTE/SWING/LEGACY tab set,
+ *  see src/lib/learn/guides/instruments/night-hawk.ts for the current member-facing layout.) */
 function LowNChip() {
   return (
     <span
