@@ -1,3 +1,36 @@
+## WATCH LIST — 2026-09-17 RTH FLOW-vs-PIN gate-compound-funnel comparison — CLOSES item 1's open check from the entry below (COMPLETE, evidence-only, no gate changed)
+
+**What this closes:** the entry directly below (2026-09-17 condor-directional-vote fix wave, item
+1) named this exact re-run as tomorrow's open-question check. Run today at real RTH, same session,
+back-to-back: `node --import tsx scripts/audit/zerodte-gate-compound-funnel.mjs` (FLOW) and
+`node --import tsx scripts/audit/pin-gate-compound-funnel.mjs` (PIN), both with
+`env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY`.
+
+**First pass (09:35-09:36 ET) landed inside G-2's opening-window transient** (blocks all commits
+before 10:00 ET by design — self-expiring, not a finding): FLOW's `opening_window` isolated-failed
+30/30. Re-ran clean at **10:02-10:03 ET**, past the unlock:
+
+- **FLOW: 3168 raw alerts → 29 setups → 0/29 (0.0%) joint commit.** Isolated:
+  `early_window_prime_score` 93.1% (27/29 — G-18's real 10:00-10:45 unconditional-75+ band),
+  `score_floor` 82.8% (24/29), `confluence_floor` 51.7% (15/29).
+- **PIN: 30-ticker universe → 1/30 cleared `evaluatePinRegime` → 0/1 (0.0%) joint commit.** The
+  ONE pin-regime-qualified candidate failed the SAME THREE gates FLOW fails: `score_floor`,
+  `early_window_prime_score`, `confluence_floor` — all 100% (1/1).
+
+**Reading it honestly:** n=1 for PIN is not statistically powerful (PIN's real base rate is
+~15-16 candidate builds/day per item #10's CloudWatch evidence, so a single snapshot landing 1
+qualifier is expected, not an anomaly) — but it IS a genuine same-session, same-clock corroborating
+data point for the leading hypothesis (PIN dies in the identical hard-gate bottleneck FLOW already
+dies in, not a PIN-specific defect): the one PIN candidate that qualified hit the exact same gate
+trio dominating FLOW this same run. **No gate/threshold changed** — this is evidence, not a
+mechanical bug; touching a threshold on an n=1 PIN sample would be exactly the discipline this repo
+forbids. Full write-up: `docs/audit/INTENTIONAL-DESIGN.md` item #10's "SECOND UPDATE" section.
+
+**Nothing to check live on the member-facing board from this entry** — it's a diagnostic/research
+measurement (offline harnesses replaying the real gate functions against real live data), not a
+code change with a rendered surface. The natural next step (not done this pass): repeated PIN
+snapshots across multiple RTH sessions to build a real joint-pass-rate sample size beyond n=1.
+
 ## WATCH LIST — 2026-09-17 0DTE condor-directional-vote fix wave (PRs #5106/#5107/#5108/#5109) + open condor-commit/G-13 measurements
 
 **What was fixed (all shipped, live on `main`):** a committed 0DTE iron condor's `direction` field
