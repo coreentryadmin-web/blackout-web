@@ -155,9 +155,36 @@ with VIX/confluence/governor/Cortex).
    the floor's specific cutoff) may be underscoring or mis-ranking tradeable setups, and deserves a
    fast follow-up rather than sitting for another 8 weeks the way the 2026-09-10 run did.
 
+### Update 2026-09-17 (same day) — entry-time follow-up: partially resolves, but not the G-17-specific comparison
+
+The confluence-floor sibling check (built the same day) found its own INVERTED verdict was an
+artifact of grading from a mistimed 10:00 ET entry rather than E3's own 11:00 ET — re-running this
+score-floor backtest with `--entry=11:00` on the identical 28-session population tests whether the
+same explanation applies here.
+
+| | @10:00 ET | @11:00 ET |
+|---|---|---|
+| Overall verdict (n≥30 bands) | `INVERTED`, ρ=−1 | `SPREAD WITHOUT ORDER`, ρ=0 |
+| Cross-floor (55-64 blocked vs. 70-74 admitted, both n=13/88) | −12.8pp | **−3.7pp** (narrows) |
+| G-17 band-split (70-74 vs. 65-69, n=13/49) | −6.6pp | **−14.8pp** (widens) |
+
+**Partial answer, in two directions:**
+- The **overall clean monotonic inversion does NOT survive** at the correct entry time (same
+  finding shape as confluence-floor) — real evidence the original `INVERTED` verdict was at least
+  partly inflated by mistimed-entry grading, not proof the score formula itself ranks backwards.
+- The **G-17-specific 70-74-vs-65-69 comparison is NOT explained away** — it gets WORSE at the
+  correct entry time (−14.8pp vs −6.6pp), the opposite of what a pure timing-artifact explanation
+  would predict. This specific comparison remains the standing concern and should NOT be
+  down-weighted just because the broader trend resolved.
+
+**Status stays OPEN, no gate changed.** Recommended next step is narrower now than step 2 above:
+prioritize the real-premium re-run specifically on the 70-74-vs-65-69 comparison (G-17's own stated
+rationale for treating them differently) rather than the whole score band sweep, since that is the
+part entry-time correction did not resolve.
+
 ### Evidence
 
-Full run detail, both the 2026-09-10 and 2026-09-17 numbers side by side:
+Full run detail, both the 2026-09-10 and 2026-09-17 (10:00 and 11:00 ET) numbers side by side:
 `docs/audit/0DTE-RESEARCH.md`, E6 section ("does `score_floor` (65) actually rank forward outcome?").
 
 ## `confluence_floor` (G-12) outcome re-check: verdict is entry-time sensitive (INVERTED@10:00 → SPREAD WITHOUT ORDER@11:00), but the 2-conf "edge bucket" claim fails to reproduce at either time

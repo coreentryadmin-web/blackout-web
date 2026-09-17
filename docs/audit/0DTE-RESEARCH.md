@@ -675,6 +675,48 @@ write-up and recommended follow-up (grow the 70-74/75-84 samples past n=30, and 
 own stated scope limit — a real-premium re-run of F-2's original methodology at today's larger
 sample size, still the standing open item from the 2026-09-10 entry above).
 
+**Update 2026-09-17 (same day) — the open entry-time question above IS answered: partially resolves,
+same shape as confluence-floor's own finding, but the G-17-specific comparison gets WORSE, not
+better. No gate changed.** Re-ran with `--entry=11:00` (E3's own entry time, the same correction
+applied to the confluence-floor sibling above) on the identical 28-session population:
+
+```
+score band                              @10:00 ET   @11:00 ET
+0-39            (n=60)                    25.0%       15.0%
+40-54           (n=224)                   23.3%       25.4%
+55-64 (blocked) (n=88)                    20.5%       11.4%
+65-69 (reject)  (n=49)                    14.3%       22.4%
+70-74 (admit)   (n=13, excluded)           7.7%        7.7%
+75-84           (n=3,  excluded)          66.7%       33.3%
+```
+
+**Overall verdict changes, same direction as confluence-floor:** `INVERTED` (ρ=−1) at 10:00 →
+`SPREAD WITHOUT ORDER` (ρ=0) at 11:00 — the clean monotonic decline does not survive grading from
+the correct entry time; 40-54 and 65-69 both grade BETTER at 11:00 than 55-64 does, breaking the
+monotonic ordering. Same as the confluence-floor finding: **grading from a fixed 10:00 ET entry — a
+documented negative-EV entry point per E2, independent of any gate — measurably distorts this
+comparison too.**
+
+But unlike confluence-floor, where the specific concerning sub-comparison (1-conf vs 0-conf)
+resolved favorably at 11:00, **this backtest's two specific sub-comparisons split**:
+- **Cross-floor (55-64 blocked vs. 70-74 admitted) narrows substantially**: −12.8pp at 10:00 →
+  **−3.7pp** at 11:00 (n=13 both times, thin) — the "blocked setups beat admitted ones" concern
+  shrinks a lot at the correct entry time, similar in direction to confluence-floor's narrowing.
+- **G-17's own band-split rationale (70-74 vs. 65-69) gets WORSE, not better**: −6.6pp at 10:00 →
+  **−14.8pp** at 11:00 (n=13 vs n=49) — the conditional-admission band (70-74) now underperforms
+  the unconditional-reject band (65-69) by an even wider margin at the timing G-17's own gate logic
+  is supposed to matter for. This is the opposite of what a pure mistimed-entry explanation would
+  predict for this specific comparison.
+
+**Reading, per this toolkit's single-sample-caution discipline:** the OVERALL score-outcome trend
+was likely inflated by the same 10:00-ET mistiming that affected confluence-floor — real evidence
+this is at least partly a backtest-methodology artifact, not proof the score formula itself ranks
+backwards. But the G-17-specific 70-74-vs-65-69 comparison is NOT explained away by entry timing —
+if anything it strengthens — so the standing recommendation to re-run this specific comparison with
+real option premium at a larger 70-74 sample (rather than dismissing it as a timing artifact) still
+stands. Full write-up appended to
+`docs/audit/findings-staging/2026-09-17-zerodte-score-floor-inverted.md`.
+
 ---
 
 ## Part 2 — Whole-market weekly BANGER engine
