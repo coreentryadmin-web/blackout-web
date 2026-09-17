@@ -4,7 +4,26 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-17 (13:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good
+## 2026-09-17 (14:09 UTC) — [SEO] Daily growth cycle: mixed trend (avgpos up, clicks/CTR dipped), no new opportunities
+
+**Severity.** — (no defect found; mixed movement noted, within noise)
+
+1. Opportunity scan: same window as the last cycle (GSC reporting lag), same 3 striking-distance
+   queries, CTR-gap 0 — nothing new.
+2. Live re-verify: skipped — CLS confirmed live this morning's RTH wake (13:35 UTC), robots.txt/
+   entity JSON-LD confirmed live yesterday (12:19 UTC) — both within the 3-day window.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-18→09-14): clicks=16,
+   impressions=1520, CTR=1.05%, avgpos=**29.5** — vs the last recorded pull (window 2026-08-17→09-13:
+   clicks=18, impressions=1596, CTR=1.13%, avgpos=30.4): **avgpos improved again** (continuing the
+   multi-cycle uptick), but clicks/impressions/CTR all dipped slightly this pull. At this traffic
+   volume (single-digit click deltas) a 2-click dip reads as normal noise, not a reversal — the
+   underlying avgpos trend (36.5→...→30.4→29.5 across ~7 pulls) keeps moving the same direction.
+4. Housekeeping: PR sweep shows 1 open agent PR (`#5137`, 0DTE-lane docs, CI-RUNNING, not blocked)
+   — not SEO-lane. The 6-PR green-draft jam flagged yesterday (12:19 UTC, comment on #5114) is
+   clearing: #5116 merged since. No SEO-lane PRs conflicted on `FINDINGS.md`.
+
+No code changed this cycle. Backlink/authority work remains out-of-lane, escalated in
+`SEO-GROWTH-STRATEGY.md` §5.
 
 **Severity.** — (no defect found)
 
