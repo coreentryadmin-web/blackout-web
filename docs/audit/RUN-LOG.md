@@ -4,7 +4,20 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-17 (14:09 UTC) — [SEO] Daily growth cycle: mixed trend (avgpos up, clicks/CTR dipped), no new opportunities
+## 2026-09-17 (15:34 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, PR jam cleared
+
+**Severity.** — (no defect found)
+
+Second RTH fire today (11:33 ET, market confirmed open/trading day). Live gamma-snapshot API:
+spot moving (7627.54→7627.49), age 6-30s (well within the 90s tolerance), `degraded` false
+throughout; cross-checked against Massive `I:SPX` ground truth (7628.26) — matches closely.
+Purged Cloudflare edge (HTML only) and re-measured homepage CLS live: desktop **0.0002 GOOD**,
+mobile **0.0319 GOOD**.
+
+PR sweep: **0 open agent PRs fleet-wide** — the 6-PR green-draft jam flagged yesterday (12:19 UTC)
+has fully cleared.
+
+No defects found.
 
 **Severity.** — (no defect found; mixed movement noted, within noise)
 
