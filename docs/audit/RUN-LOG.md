@@ -4,7 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-17 (16:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, near window close
+## 2026-09-17 (18:20 UTC) — [SEO] Lane heartbeat: flagged a green-draft (#5151, not SEO-lane), CLS/og validated, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Back to normal work (14:17 ET, past RTH). Purged Cloudflare edge (HTML only) and re-measured
+homepage desktop CLS: **0.0003 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200
+`image/png`.
+
+PR sweep found `#5151` (coordinator/0DTE-lane, green CI) stuck as a draft. Attempted
+`agent-pr-sweep.mjs --mark-ready` — FAILED (same no-GitHub-MCP-undraft-tool limitation as the
+6-PR jam earlier today). Posted a coordinator comment on #5151 requesting it be marked ready.
+
+GSC opportunity scan: byte-identical to the prior cycle — no new opportunities.
+
+No defects found.
 
 **Severity.** — (no defect found)
 
