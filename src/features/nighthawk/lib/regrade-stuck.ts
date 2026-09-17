@@ -204,6 +204,8 @@ export async function regradeStuckNighthawkOutcomes(
           hit_target: verdict.hit_target,
           hit_stop: verdict.hit_stop,
           outcome: verdict.outcome,
+          premium_mfe_pct: verdict.premium_mfe_pct,
+          premium_mae_pct: verdict.premium_mae_pct,
         });
         result.regraded += 1;
       }
