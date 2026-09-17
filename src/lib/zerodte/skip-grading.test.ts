@@ -465,3 +465,37 @@ test("runSkipGrading / fetchGradedSkips fail soft — a dead DB is a structured 
     dbState.configured = true;
   }
 });
+
+// REGRESSION (2026-09-17, docs/audit/findings-staging/
+// 2026-09-17-zerodte-calibration-graded-skips-window-truncation.md). Live-measured: GET
+// /api/market/zerodte/calibration?days=14, ?days=30, ?days=60 and ?days=90 all returned the
+// IDENTICAL total (1777 graded + 223 ungradeable = exactly 2000) — proving the old
+// `Math.min(2000, ...)` clamp silently overrode any caller-requested limit, so a "90-day" read
+// was actually only ever reading the same most-recent-2000-rows slice a 14-day read already saw.
+// This pins the fix: a wide caller-supplied limit (as calibration.ts now computes from `days`)
+// must reach the SQL LIMIT parameter, not be re-clamped back down to the old flat ceiling.
+test("fetchGradedSkips: a wide caller-supplied limit reaches the SQL LIMIT param, not silently reclamped to the old flat 2000", async () => {
+  const { fetchGradedSkips, MAX_GRADED_SKIPS_LIMIT } = await mod();
+  dbState.queries = [];
+  dbState.selectRows = [];
+  await fetchGradedSkips({ sinceYmd: "2026-06-19", throughYmd: "2026-09-17", limit: 27_000 });
+  const selects = dbState.queries.filter((q) => /^\s*SELECT gate_failed/.test(q.text));
+  assert.equal(selects.length, 1);
+  assert.equal(
+    selects[0]!.values![2],
+    27_000,
+    "a days=90-scaled limit (calibration.ts: days * GRADED_SKIPS_PER_DAY_BUDGET) must reach the query, not be clamped to 2000"
+  );
+
+  // Still bounded against a pathological request — MAX_GRADED_SKIPS_LIMIT is the real ceiling now.
+  dbState.queries = [];
+  await fetchGradedSkips({ sinceYmd: "2026-06-19", throughYmd: "2026-09-17", limit: 999_999 });
+  const selects2 = dbState.queries.filter((q) => /^\s*SELECT gate_failed/.test(q.text));
+  assert.equal(selects2[0]!.values![2], MAX_GRADED_SKIPS_LIMIT);
+
+  // Unspecified callers keep the historical default (2000) — behavior-preserving for anyone else.
+  dbState.queries = [];
+  await fetchGradedSkips({ sinceYmd: "2026-06-19", throughYmd: "2026-09-17" });
+  const selects3 = dbState.queries.filter((q) => /^\s*SELECT gate_failed/.test(q.text));
+  assert.equal(selects3[0]!.values![2], 2000);
+});

@@ -159,6 +159,20 @@ make up the difference even with 29 `doubled` hits. See
 **No gate changed** — `resolveExitModeForTier`'s C-tier/untiered→ratchet default is now empirically
 supported rather than merely inherited, and a single 90-day sample argues to LEAVE IT, not flip it.
 
+**Update 2026-09-17 — RE-OPENED, ordering REVERSED on a fresh re-run, no gate changed.** Re-ran
+`tier-exit-mode-ab.mjs --days=90 --json` live (90-day window, n=100 graded, population=115 — the
+same tool, same mechanics as the 2026-08-29 run above). The win-rate ordering flipped: **ratchet
+31.0% WR / −7.0% avg P&L vs trim_scale 38.0% WR / −7.7% avg P&L** — trim_scale is now +7.0pp ahead
+on win rate (was −7.1pp), and the avg-P&L gap that was ratchet's main justification (+12.8pp)
+collapsed to a noise-level +0.7pp. Driver: ratchet reached a true `doubled` close on only 12/100
+rows this run (vs 29/100 for trim_scale banking a `runner_close` partial), with 35/100 rows giving
+back gains via the trailing-stop `ratchet` exit instead. **Still no gate changed** — n=100 with a
+near-zero P&L gap cannot separate either ordering from noise on its own, same single-sample-caution
+discipline as the 2026-08-29 update above; this is a re-opened question, not a reversed decision.
+See `docs/audit/findings-staging/2026-09-17-zerodte-tier-exit-mode-ab-reversed.md`. Next step: a
+third re-run in a few more weeks — if the reversal holds or deepens, that's the trigger to revisit
+`resolveExitModeForTier`'s default, not this run alone.
+
 **Follow-up (2026-09-04): the regime-conditioned trend dead-zone — MEASURED, INSUFFICIENT DATA, no
 gate changed.** `decideTrimScale`'s own dead-zone-guard comment (`exit-engine.ts`, ~line 300) names a
 residual gap its 2026-08-27 fix (`trimAvailable = armed > taken`) does not close: the shared
@@ -544,6 +558,59 @@ own methodology at today's larger achievable sample size before anyone touches t
 **No gate changed.** Evidence-gathering only, same discipline as every other calibration A/B in this
 toolkit (`cortex-oppose-magnitude-ab.mjs`, `tier-exit-mode-ab.mjs`, etc.) — this reports a verdict and
 leaves the decision to a human reading it.
+
+**Update 2026-09-17 — RE-RUN with the buckets split to match G-17's real live boundary, verdict
+ESCALATED from `SPREAD WITHOUT ORDER` to `INVERTED`. No gate changed.** G-17 was restructured
+2026-09-09 (the day AFTER this backtest's last graded session, 2026-09-08) from a flat 65-74
+admission rule into two sub-bands with different real admission paths — 65-69 now rejects
+UNCONDITIONALLY (`single_rail_corroboration`), 70-74 is CONDITIONAL (needs confluence≥2 + clean
+tape/VIX/execution) — so the old merged "65-74 (clears today)" bucket could no longer say whether
+an ordering problem sits in 65-69, in 70-74, or both. Split `SCORE_BUCKETS` in
+`scripts/audit/lib/score-floor-backtest-eval.mjs` to match (`65-69 (G-17 unconditional reject)` /
+`70-74 (G-17 conditional admission)`), then re-ran with `--sessions=28` (up from 18) to include
+sessions after the 2026-09-09 restructure:
+
+```
+score band                              n     win%      avg maxRet%
+0-39                                    60    25.0%      0.79%
+40-54                                  223    23.3%      0.75%
+55-64 (blocked today)                   88    20.5%      0.69%
+65-69 (G-17 unconditional reject)       49    14.3%      0.63%
+70-74 (G-17 conditional admission)      13     7.7%      0.38%   (excluded from verdict, n<30)
+75-84                                    3    66.7%      1.46%   (excluded, n<30)
+```
+
+**Headline comparison (55-64 blocked vs 70-74, the band that actually clears live today):**
+70-74 graded **7.7%** vs 55-64's **20.5%** — a **−12.8pp delta AGAINST the floor's implied
+ordering**, similar direction to the 2026-09-10 run but now measured against the population G-17
+ACTUALLY admits (not the old merged 65-74 mix). Thin at n=13 — read as directional, not conclusive,
+on this comparison alone.
+
+**G-17 band-split check — does 70-74 (conditional admission) actually grade better than 65-69
+(unconditional reject), justifying treating them differently?** No: 70-74 graded **7.7%** vs
+65-69's **14.3%** — a further **−6.6pp**, the OPPOSITE of what G-17's own 2026-09-09 restructuring
+comment argues ("a genuinely well-confirmed 70-74 setup should NOT be equally weak EV as an
+unconfirmed 65-69 one"). Both bands thin (n=13, n=49) but the direction is consistent with the
+rest of this run, not a one-off.
+
+**Verdict (same RANKS / SPREAD WITHOUT ORDER / INVERTED / FLAT discipline, minN=30): `INVERTED`**
+— among the four bands with n≥30 (0-39 n=60, 40-54 n=223, 55-64 n=88, 65-69 n=49), win rate falls
+monotonically as score rises: 25.0% → 23.3% → 20.5% → 14.3%. Spread 10.7pp, **rank correlation
+ρ = −1** (perfect negative rank agreement across the four usable bands — the strongest, cleanest
+signal this backtest has produced, an escalation from the 2026-09-10 run's ρ = −0.20 `SPREAD
+WITHOUT ORDER`). This is no longer "the bands differ but don't trend" — the trend is real, and it
+runs backwards.
+
+**Still no gate changed** — same scope caveats as the 2026-09-10 entry above apply unchanged
+(favorable-first underlying proxy, not real premium P&L; `score` alone, not jointly gated with
+VIX/confluence/governor/Cortex), and the two bands nearest the live floor boundary (70-74, 75-84)
+are both n<30 and excluded from the ρ calculation — so this does NOT by itself prove the 70-74
+conditional-admission path is wrong, only that the broader trend across the well-powered bands
+(n=49 to n=223) now runs the opposite direction from what the floor assumes, more cleanly than
+before. See `docs/audit/findings-staging/2026-09-17-zerodte-score-floor-inverted.md` for the full
+write-up and recommended follow-up (grow the 70-74/75-84 samples past n=30, and — per this run's
+own stated scope limit — a real-premium re-run of F-2's original methodology at today's larger
+sample size, still the standing open item from the 2026-09-10 entry above).
 
 ---
 

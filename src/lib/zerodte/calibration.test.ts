@@ -3,6 +3,7 @@
 // graduation boundary (n=9 vs 10, 14.9 vs 15.1 pts) is pinned exactly.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   analyzeGateCalibration,
@@ -922,4 +923,31 @@ test("WS-10 #3: bucketOf reads the OFFICIAL executable lane (entry_context.execu
   assert.equal(bucket.losses, 1);
   // avg reads the executable lane for A (−5) and the mid column for the legacy row B (+100).
   assert.equal(bucket.avg_pnl_pct, 47.5); // (−5 + 100) / 2
+});
+
+// REGRESSION (2026-09-17, docs/audit/findings-staging/
+// 2026-09-17-zerodte-calibration-graded-skips-window-truncation.md). buildZeroDteCalibrationReport
+// used to call fetchGradedSkips with NO limit at all, falling through to that function's own flat
+// default (2000) regardless of the requested `days` — live-measured: days=14/30/60/90 all returned
+// the IDENTICAL capped-at-2000 total, so a "90-day" calibration read was silently only ever reading
+// the same most-recent-2000-rows slice a 14-day read already saw. buildZeroDteCalibrationReport
+// itself has no hermetic behavioral test in this file (it touches ../db and ./skip-grading via
+// dynamic relative imports with no DB-mock harness here — see skip-grading.test.ts for that
+// harness and the behavioral pin on fetchGradedSkips's own limit-clamping). This asserts on SOURCE,
+// the same idiom skip-grading.test.ts already uses for an order-of-operations invariant that a
+// behavioral test can't easily isolate: the call must pass an explicit `limit` computed FROM
+// `days`, never call fetchGradedSkips bare (which is exactly the shape of the bug).
+test("buildZeroDteCalibrationReport calls fetchGradedSkips with a days-scaled limit, never bare (the exact shape of the 2026-09-17 truncation bug)", () => {
+  const src = readFileSync(new URL("./calibration.ts", import.meta.url), "utf8");
+  const fnStart = src.indexOf("export async function buildZeroDteCalibrationReport");
+  assert.ok(fnStart > 0, "buildZeroDteCalibrationReport must exist");
+  const body = src.slice(fnStart, fnStart + 2000);
+  const callAt = body.indexOf("skipMod.fetchGradedSkips(");
+  assert.ok(callAt > 0, "buildZeroDteCalibrationReport must call fetchGradedSkips");
+  const callSite = body.slice(callAt, callAt + 200);
+  assert.match(
+    callSite,
+    /limit:\s*days\s*\*\s*GRADED_SKIPS_PER_DAY_BUDGET/,
+    "the call must pass an explicit limit scaled to the requested window, not fetchGradedSkips's own flat default"
+  );
 });

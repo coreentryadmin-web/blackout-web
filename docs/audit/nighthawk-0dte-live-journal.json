@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-17T14:16Z",
+  "updated_at": "2026-09-17T15:16Z",
   "watch_stage_tracking": {
     "2026-09-14T20:07Z_session_closed_summary": {
       "note": "SESSION CLOSED 2026-09-14 (session.heat.state=CLOSED at 20:05 UTC). Full-day summary: 11 plays committed, all closed. 7 winners / 3 losers / 1 breakeven (63.6% win rate): SLS 0%, IONQ -6.92%, CRWD +5.35%, ZS +100.57% (days standout, hit +100% trim target cleanly), S +16.28%, OKTA +1.56%, SAIL -6.67%, QBTS +5%, MARA -13.95%, FIGR +5.71%, W +31.87%. Sum of individual position P&Ls ~+139pp across the day. Early-window [10:00,11:00 ET) commits (SLS/MARA/IONQ) were the weakest cohort, consistent with the already-documented E2 research finding -- confirmatory, not new. No stop-miss, no grading anomaly, no exit-engine bug found in any position checked this session. Board-upstream degradation recurred 5 CONFIRMED times today (+1 uncounted single-pull blip) -- all self-resolved within 5-27min, DB/record path unaffected throughout, real positions never at risk. Reported with full evidence + timeline on PR #4076; root cause still unknown (no CloudWatch access this session), flagged for whoever has AWS access. One real fix shipped: PR #4973 (merged) -- Cortex sector-heat evidence rendered a tickers own directional % without a sign, could misread as same-signed as an oppositely-signed sector; fixed with new fmtSigned helper, RED->GREEN proven, full suite clean. Also investigated and ruled out (not bugs): session_stats.top_block_code session-aggregate-vs-live-setups discrepancy, governor.time_of_day_label last directional commit window bucket definition. Tomorrow: continue standing mandate, watch for a 6th board-upstream instance to further characterize the pattern, no other open threads."
@@ -191,6 +191,60 @@
       "board_upstream_ok": true,
       "commits_today": 0,
       "observation": "NVDA (long, C-tier, score 80, O:NVDA260918C00215000) briefly showed gate.verdict=COMMIT / session_stats.commit_ready=1 at scan-observed committed_at_et=10:13, but never appeared in board.ledger or /record, and by the very next poll (~65s later, 10:16 ET) its own gate had reverted to BLOCKED / commit_ready=0 -- the setup was re-scanned and re-gated before any execution step ever picked it up. Not yet calling this a bug (1st instance, below 3-instance threshold) -- plausible innocent explanation is gate re-evaluation cadence (quotes/VIX/spread refresh) simply outpacing whatever cadence actually executes a commit_ready setup into the ledger, i.e. legitimate flicker on fresh live data rather than a stuck/lost commit. Watching for recurrence: if a setup repeatedly clears commit_ready and reverts to BLOCKED without ever landing in committed_open, that would suggest the execution step is missing a real, if brief, commit window -- worth escalating at 3 instances."
+    },
+    "2026-09-17T14:33Z": {
+      "cycle": ":30 offset, RTH",
+      "session_state": "RTH, 164 setups scanned",
+      "board_upstream_ok": true,
+      "commits_today": 0,
+      "note": "TEM (long, score 79) commit_ready since 10:29 ET, still not in ledger after ~90s of polling -- traced this to session-board-stats.ts + zerodte-warm cron cadence (see known_explained_patterns, newest entry). Expected behavior, not a bug. Watching TEM specifically for whether it actually lands within the next warm cycle."
+    },
+    "2026-09-17T14:57Z_first_commits": {
+      "event": "FIRST COMMITS OF THE DAY -- 4 plays committed within the same minute (~10:54-10:55 ET), pinged operator per standing keep-watching request",
+      "plays": [
+        {
+          "ticker": "TEM",
+          "direction": "long",
+          "entry": 1.85,
+          "strike": 81,
+          "expiry": "2026-09-18",
+          "score": 87,
+          "flagged_et": "10:55"
+        },
+        {
+          "ticker": "SMCI",
+          "direction": "long",
+          "entry": 0.75,
+          "strike": 41,
+          "expiry": "2026-09-18",
+          "score": 83,
+          "flagged_et": "10:54"
+        },
+        {
+          "ticker": "CMPS",
+          "direction": "long",
+          "entry": 0.38,
+          "strike": 15,
+          "expiry": "2026-09-18",
+          "score": 76,
+          "flagged_et": "10:54"
+        },
+        {
+          "ticker": "SNDK",
+          "direction": "long",
+          "entry": 29.87,
+          "strike": 1620,
+          "expiry": "2026-09-18",
+          "score": 75,
+          "conviction": "C",
+          "flagged_et": "10:54"
+        }
+      ],
+      "note": "session_stats.gate_blocked dropped from 141-164 (pre-commit stretch) to 13 as the scanned pool shrank to 14 post-commit -- consistent, not anomalous (fewer fresh candidates once 4 already committed this pass)."
+    },
+    "2026-09-17T15:16Z": {
+      "cycle": ":15 offset, RTH",
+      "note": "All 4 committed plays still open/holding, no exits yet. TEM -21.1% (peak was +14.3%), SMCI -8.0% (peak +12.7%), CMPS +13.2% (peak +11.8%, currently AT its own peak), SNDK -20.3% (never positive, peak=trough so far). Nothing anomalous -- normal early-hold volatility. Watching TEM and SNDK for how they manage given they are both showing meaningful drawdown from entry."
     }
   },
   "sessions": {
@@ -353,6 +407,18 @@
       },
       "why_logged_not_fixed_here": "Out of this session's scope (Legacy-only mandate; 0DTE is a separate parallel lane) and this file is 0DTE command-deck surface -- logging for the 0DTE lane to pick up and apply the same proven fix, rather than risk an unowned edit on shared command-deck code another lane may be actively working.",
       "found_by": "Night Hawk Legacy lane, 23:51 UTC 2026-09-11 cycle, during blast-radius grep for other toFixed(1)+threshold-ladder pairs after shipping the Legacy-side fix."
+    },
+    {
+      "id": "2026-09-17-flat-theta-bleed-trough-narrative",
+      "status": "MERGED -- PR #5139 merged 2026-09-17T15:09Z (commit fe16eb637), verified present on origin/main. Full npm test 14467 pass / 0 fail / 3 skipped, tsc clean.",
+      "summary": "flat_theta_bleed exit narrative unconditionally claimed \"never left the \u00b110% band\" even when the play genuinely breached it and recovered before the 25-min timeout fired. Escalated from a single held instance (CORZ, PR #4076 thread, below 3-instance threshold) to CONFIRMED SYSTEMIC this cycle: pulled GET /api/admin/zerodte/tier-export for every flat_theta_bleed exit in the last 10 days and compared real trough_premium vs entry_premium -- 5 confirmed breaches across 5 separate days (CORZ -13.64%, IONQ -20.00%, AAPL -10.39%, RDDT -30.17%, ASTS -31.73%), all narrated as never-left-band. 6 other flat_theta_bleed exits in the same window correctly narrated (trough genuinely stayed in band) -- confirms this is the specific breach-and-recover shape, not a wholesale feature break.",
+      "fix": "Narrative-only (exit condition/action/reason unchanged). Added troughPremium to ExitEngineInput, wired row.trough_premium (already DB-latched, already used for stop determination elsewhere, just never read for this) into exit-sync.ts, corrected the flat_theta_bleed detail sentence in both exit-engine.ts branches (trim_scale + ratchet) via a shared flatTimeoutDetail() helper. 5 new regression tests, RED->GREEN verified via git stash, tsc clean, targeted 154-test run (exit-engine+exit-sync+scan) clean.",
+      "root_cause_files": [
+        "src/lib/zerodte/exit-engine.ts (decideTrimScale, evaluateExitState ratchet branch, flatTimeoutDetail)",
+        "src/lib/zerodte/exit-sync.ts (evaluateLedgerRowExit)"
+      ],
+      "evidence_ref": "docs/audit/findings-staging/2026-09-17-flat-theta-bleed-trough-narrative-false-claim.md",
+      "next_step": "Watch PR #5139 CI, merge per standing auto-merge policy once green. Full npm test run was in progress (long-running) at PR-open time -- confirm clean before/after merge."
     }
   ],
   "win_loss_taxonomy": {
@@ -415,6 +481,11 @@
       "pattern": "instant (<4s) thesis_break exit with cortex narrative saying 'BLOCKED by 1 veto' while decision=PASS/vetoes=[]",
       "status": "resolved_by_pr_4656_merged_2026-09-09T16:43:45Z",
       "note": "applyCortexCommitRelief strips a veto at commit when Vector confirms direction; live exit-time thesis check recomposed evidence fresh with no memory of the relief and immediately fired thesis_break. All 4 instances observed in the 2026-09-09 ledger (SHOP, MSTR, RKLB, ASTS) are timestamped BEFORE the fix merged -- consistent with, not contradicting, the fix. Watch for a recurrence AFTER 2026-09-09T16:43:45Z on a future cycle; that would mean the fix has a gap."
+    },
+    {
+      "pattern": "commit_ready=1 in session_stats persisting for 30-90+ seconds (or briefly flickering back to BLOCKED) without the setup appearing in board.ledger or /record",
+      "status": "explained_2026-09-17T14:33Z",
+      "note": "NOT a bug -- by design. session_stats.commit_ready is computed live per API read by tallySetupGateLanes() (session-board-stats.ts) against the CURRENT setups[] gate.verdict -- a fresh, continuously-recomputed snapshot. Actual execution into the ledger happens on the zerodte-warm cron (cron-registry.ts: schedule_label ~every 5 min market hours, in-app leader fills sub-5m gaps), which runs warmZeroDteBoard on its own cadence, independent of any single board read. So a setup can legitimately show commit_ready=1 for up to ~5 minutes (or briefly revert to BLOCKED on fresh quotes/VIX before the warm tick ever runs) without indicating a stuck or lost commit window. First observed as NVDA flicker at the 14:15Z cycle, then TEM sitting commit_ready 90s+ at 14:33Z -- traced same cycle. Would still flag if a specific setup sits commit_ready past ~2 warm-cron cycles (~10min) without ever committing or reverting to blocked -- that would be the actual anomalous shape."
     }
   ],
   "_pruned_note": "Pruned 54 entries older than 2026-09-15 on 2026-09-17 cold-start (kept per-day session_closed_summary checkpoints where present). Per the standing mandate: prune >~2 trading days."

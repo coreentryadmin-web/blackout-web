@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-17 gate-calibration `days=N` window-truncation fix (PR pending)
+
+**What was fixed:** `GET /api/market/zerodte/calibration?days=N`'s `blocked_value` (the per-gate
+counterfactual outcome evidence `zerodte-gate-primary-ablation.mjs` and
+`gate-calibration-live-report.mjs` both read) silently ignored any `days` wider than ~14 days —
+`fetchGradedSkips`'s hardcoded `LIMIT 2000` (most-recent-first) was reached well inside 14 days of
+live volume, so `days=14/30/60/90` all returned the byte-identical total. Found while re-running
+today's gate-floor-audit TOP-3 item #1 (`zerodte-gate-primary-ablation.mjs --days=90`, watching
+G-13/`flow_accumulation_conflict`) and seeing its reported blocked-n drop (12 → 10 → 5) across three
+re-runs minutes apart with no explanation until the window-sweep isolated the cause. Fixed by scaling
+`fetchGradedSkips`'s limit to the requested window (`days * 300`, raised internal ceiling to 30,000)
+instead of a flat, silently-reused 2000. Full write-up:
+`docs/audit/findings-staging/2026-09-17-zerodte-calibration-graded-skips-window-truncation.md`.
+
+**Specific thing to check once this deploys and RTH is live:** re-run the exact
+`days=7/14/30/60/90` sweep against `GET /api/market/zerodte/calibration` (or just re-run
+`zerodte-gate-primary-ablation.mjs --days=90` two or three times a few minutes apart) and confirm
+(1) `days=30/60/90` now report DIFFERENT (larger) totals than `days=14`, proportional to the wider
+window, and (2) a single gate's reported blocked-n (G-13 is the one that surfaced this) is now
+STABLE across repeated same-session re-runs rather than drifting down run-to-run. If either check
+fails post-deploy, the fix didn't actually reach the deployed calibration report — re-verify against
+`origin/main` per this repo's own "a merge is not a verification" discipline, not just that the PR
+merged clean.
+
 ## WATCH LIST — 2026-09-17 RTH FLOW-vs-PIN gate-compound-funnel comparison — CLOSES item 1's open check from the entry below (COMPLETE, evidence-only, no gate changed)
 
 **What this closes:** the entry directly below (2026-09-17 condor-directional-vote fix wave, item
@@ -5663,3 +5687,9 @@ this file documents).
 - **What was broken:** `computeLaneRank`'s `playScore` was read straight off `TerminalPlay.score`, which `terminalPlayFromHorizon` (adapters.ts) rounds to the nearest integer for board display (`Math.round(src.score)`), while `medianScore`/`topScore` are computed from `laneRows: HorizonPlay[]`, which retain the raw score to one decimal. Live repro, AAPL WATCH brief, 2026-09-17: "Why this setup"'s pillar breakdown summed to the true raw score 25.5 three sections earlier, while "Below lane median" three sections later showed "score 26 (-23.6 vs median)" — the rounded 26, giving a delta 0.5pt off the true -24.1 and silently contradicting the brief's own pillar sum.
 - **What changed:** `computeLaneRank` now reuses the play's own row (already present in `sorted`, the same array `medianScore`/`topScore` are computed from) for `playScore` instead of re-deriving one from the differently-rounded `TerminalPlay.score`, falling back to `play.score` only when the play's own row isn't present in `laneRows`.
 - **RTH check:** pull a live swing WATCH or OPEN play-brief for a ticker whose raw entry score carries a decimal fraction that rounds up/down (e.g. any current WATCH name — check the score in `GET /api/market/nighthawk/horizons?view=swings` first) and confirm the "Lane rank"/"Below lane median" score matches the raw value, and that its sum against the "Why this setup" pillar breakdown is now consistent, rather than reading a rounded integer that disagrees with the pillar sum shown elsewhere in the same brief.
+
+### 253. `flat_theta_bleed` exit narrative claimed "never left the ±10% band" on plays that genuinely breached it — fix/flat-theta-bleed-trough-narrative — 2026-09-17
+
+- **What was broken:** the 0DTE exit engine's flat-timeout scratch (both `trim_scale` and `ratchet` exit modes) only checked the latched PEAK (upside) and the CURRENT mark at the moment the 25-min clock fired (downside) — never whether price dipped below the ±10% band and recovered before the timeout. `ExitEngineInput` had no trough field at all, so the detail sentence unconditionally read "...the play never left the ±10% band..." regardless. Confirmed against the DB's own `trough_premium` (already latched for stop determination elsewhere, just never read here) on 5 real `flat_theta_bleed` exits across 5 separate trading days in the 2026-09-08..09-16 window — CORZ (-13.64% trough), IONQ (-20.00%), AAPL (-10.39%), RDDT (-30.17%), ASTS (-31.73%) — every one narrated as "never left the band" while genuinely breaching it, some by a wide margin.
+- **What changed:** added `troughPremium` to `ExitEngineInput`, wired `row.trough_premium` into `exit-sync.ts`'s `evaluateExitState` call (the field already existed on the row, just wasn't read for this purpose), and both `flat_theta_bleed` branches now say "dipped to X% intraday but recovered back inside the ±10% band" when the trough actually breached, otherwise the original sentence unchanged. Narrative-only — the exit condition and action/reason are byte-identical to before; does not change which plays exit or when.
+- **RTH check:** during the next live session, watch for a `flat_theta_bleed` exit (`GET /api/market/zerodte/record` or the live board's `ledger`) whose `entry_context.exit.detail` — confirm the sentence correctly reflects a trough breach when one occurred (cross-check against the row's own `trough_premium` via `GET /api/admin/zerodte/tier-export`) rather than defaulting to "never left the band" on every occurrence. A play that genuinely stays flat the whole hold should still read "never left the band" — only the breach-and-recover shape should show the new sentence.
