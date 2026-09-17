@@ -299,6 +299,33 @@ export function buildRankFinalSnapshotRows(
 }
 
 /**
+ * Pure row-builder for candidates the cross-edition governor CUT entirely (loss-streak halt,
+ * repeat-ticker cooldown, sector-concentration cap) — Night Hawk Legacy Signal Intelligence,
+ * Phase 1. Complements, does not duplicate, the existing recordNighthawkStageRejectedAuditTrail
+ * write at this same call site: that one is the durable alert_audit_log row (rich decision_trace,
+ * queryable by the get_nighthawk_dossier Largo tool); this is the nighthawk_candidate_snapshot
+ * row, so a query against that ONE table sees every candidate at every stage, cut ones included,
+ * without needing to join across two different tables. Same "extract for testability" rationale
+ * as the other builders in this file.
+ */
+export function buildGovernorCutSnapshotRows(
+  editionFor: string,
+  cut: Array<{ ticker: string; scored: ScoredCandidate; reasons: string[] }>
+): ScoringStageSnapshotRow[] {
+  return cut.map((c) => ({
+    edition_for: editionFor,
+    ticker: c.ticker,
+    stage: "rejected",
+    rank: null,
+    score: c.scored.score,
+    gov_penalty: null,
+    rejection_reason: `cross_edition_governor: ${c.reasons.join("; ")}`,
+    selected_for_publish: false,
+    snapshot_json: scoredCandidateSnapshotPayload(c.scored),
+  }));
+}
+
+/**
  * RECAP-ONLY FALLBACK (audit P0 / #77). When the candidate→play funnel legitimately collapses to
  * zero (no flow candidates, no scored dossiers, all candidates fundamentally blocked, Claude/critic
  * returns nothing), we STILL publish a real edition row — a genuine market recap with `plays: []` —
@@ -790,6 +817,13 @@ export async function buildEveningEdition(opts?: {
           } catch (err) {
             console.warn("[nighthawk/edition] governor audit-trail write failed:", err);
           }
+        }
+        if (govResult.cut.length) {
+          void insertNighthawkCandidateSnapshots(buildGovernorCutSnapshotRows(editionFor, govResult.cut)).catch(
+            (err) => {
+              console.warn("[nighthawk/edition] governor-cut candidate snapshot write failed:", err);
+            }
+          );
         }
 
         if (govResult.notes.length) {
