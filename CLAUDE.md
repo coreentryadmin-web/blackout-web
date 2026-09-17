@@ -706,6 +706,25 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
 - **Direct Postgres (raw TCP) is blocked**, same as WebSockets — only HTTP(S) egress through the agent proxy works. So `pg_stat_activity`/lock/row-count probes against prod are **not possible from this sandbox** — root-causing a live DB-side issue (lock contention, slow query, table bloat) needs either an AWS ECS exec session or a temporary HTTP-exposed debug endpoint in the app itself. Don't spend time retrying a raw `pg.Client` connection here.
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
 - Clerk instance requires a **phone number** on user creation; rapid sign-in/token cycles get **FAPI-rate-limited** — authenticate once per run.
+- **UW flow-alert audit backtests share the SAME production rate limiter as live discovery — pace
+  them, never stack them, especially mid-RTH (incident 2026-09-17).** `UW_GLOBAL_MAX_RPS` (default
+  2, `src/lib/providers/uw-rate-limiter.ts`) is a Redis-backed (`blackout:uw:rps`) ceiling shared by
+  every caller authenticated with `UW_API_KEY` — this sandbox's audit scripts (`zerodte-score-floor-
+  outcome-backtest.mjs`, `zerodte-confluence-floor-outcome-backtest.mjs`,
+  `zerodte-gate-primary-ablation.mjs`'s backfill, and any script paging `fetchMarketFlowAlertRows`
+  back N calendar days) draw from the exact same pool as production's own discovery/commit cron.
+  Running several 25-28-session backtests back-to-back (each pages up to ~220×200-row batches) live
+  RTH-saturated it: the `#🌩️website-logs` ops channel fired "discovery/commit path stalled" (16min
+  since last scan tick, self-heal `zerodte-warm` dispatched) plus repeated "UW rate-limiter queue
+  timeouts surging... requests are being DROPPED, not just slow" within the same ~60-90s window one
+  such backtest (mid-pagination at page 70+, 14k+ rows fetched) was actively running. Killing the
+  script and a single lightweight `GET /api/market/zerodte/board` check immediately after showed
+  `upstream_ok:true` with a fresh `as_of` — recovered fast once the load stopped, so no lasting
+  damage, but the causal link (my own tooling starving the exact production path it was trying to
+  audit) is the lesson: **do not run more than one large UW-paginating backtest at a time, and leave
+  real gaps between them during RTH** — the sandbox's queue timeouts are cheap to ignore ("queue
+  wait 2400ms" lines just slow the script down); production's are not, because it's a real member
+  board going stale.
 
 ## GitHub API: FOUR separate budgets, do not conflate them (measured 2026-08-21)
 
