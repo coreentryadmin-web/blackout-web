@@ -1350,6 +1350,16 @@ const MAX_WINDOW_DAYS = 90;
 // committed rows/session, so days*20 comfortably covers the window without an
 // unbounded fetch.
 const MAX_LEDGER_ROWS = 2000;
+// Graded-skip (rejection-log) volume runs far denser than the committed-ledger row above —
+// observed live 2026-09-17: ~2000 graded+ungradeable rows inside 14 days alone (~140+/day), so
+// reusing the ledger's days*20 budget here would still silently truncate. Below this line used to
+// call fetchGradedSkips with NO limit at all, falling through to its own flat default (2000) —
+// meaning every days>~14 request read the identical most-recent-2000-rows slice regardless of the
+// requested window (days=14/30/60/90 all returned the SAME total; see
+// docs/audit/findings-staging/2026-09-17-zerodte-calibration-graded-skips-window-truncation.md).
+// Scale the request to the window instead; fetchGradedSkips's own MAX_GRADED_SKIPS_LIMIT is the
+// final safety ceiling against a pathological blowup.
+const GRADED_SKIPS_PER_DAY_BUDGET = 300;
 
 /**
  * Fetch + analyze. `nowMs` is a parameter (no Date.now() inside the lib — the route
@@ -1380,7 +1390,11 @@ export async function buildZeroDteCalibrationReport(opts: {
   }
   try {
     const skipMod = await import("./skip-grading");
-    gradedSkips = await skipMod.fetchGradedSkips({ sinceYmd: since, throughYmd: through });
+    gradedSkips = await skipMod.fetchGradedSkips({
+      sinceYmd: since,
+      throughYmd: through,
+      limit: days * GRADED_SKIPS_PER_DAY_BUDGET,
+    });
   } catch {
     // Skip grades unreadable — the gate buckets still stand on their own.
   }
