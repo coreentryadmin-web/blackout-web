@@ -799,3 +799,53 @@ natural next step, not the "here is PIN's joint pass rate" half. No gate/thresho
 ```
 node --import tsx scripts/audit/pin-gate-compound-funnel.mjs --json
 ```
+
+**SECOND UPDATE (2026-09-17, RTH, ~30 min after the note above) — the genuine same-session
+FLOW-vs-PIN joint-pass-rate comparison this item's own "natural next step" asked for, now run.**
+Both `zerodte-gate-compound-funnel.mjs` and `pin-gate-compound-funnel.mjs` run back-to-back, real
+RTH clock, same session, `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY`. Two passes: an
+initial 09:35-09:36 ET pass landed inside G-2's opening-window transient (unlocks 10:00 ET, so
+`opening_window` isolated-failed 30/30 FLOW setups — a known, self-expiring gate, not a real
+finding), so a second, clean pass was run at 10:02-10:03 ET, past the unlock, for the number that
+actually answers this item's question:
+
+```
+FLOW (zerodte-gate-compound-funnel.mjs, 10:02 ET):
+  3168 raw UW alerts -> 29 setups survived evidence gates -> 0/29 (0.0%) joint commit
+  isolated: early_window_prime_score 93.1% (27/29, G-18's 10:00-10:45 unconditional-75+ band —
+            itself a real gate, not a transient like opening_window), score_floor 82.8% (24/29),
+            confluence_floor 51.7% (15/29), single_rail_corroboration 10.3%, tape_alignment 3.4%
+
+PIN (pin-gate-compound-funnel.mjs, 10:03 ET):
+  30-ticker universe -> 1/30 tickers cleared evaluatePinRegime -> 0/1 (0.0%) joint commit
+  isolated (the ONE pin-regime-qualified candidate): score_floor 100% (1/1),
+            early_window_prime_score 100% (1/1), confluence_floor 100% (1/1)
+```
+
+**Reading this honestly, not overclaiming n=1.** PIN's real base rate (item #10's own CloudWatch
+evidence: ~15-16 candidate builds/day) means a single RTH snapshot landing only 1 qualifying
+ticker is unsurprising, not a defect in the harness — `evaluatePinRegime` is a narrow, genuinely
+selective test by design (item #10's earlier `pin-condor-funnel-measure.mjs` run independently
+found the same narrowness: 0/30 or 1/30-ish clean-regime tickers is the normal shape of a single
+snapshot, not an anomaly). n=1 cannot produce a statistically powerful joint-pass-rate number the
+way FLOW's n=29 can. **But what it CAN show, and does show: the one PIN candidate that DID qualify
+failed the EXACT SAME THREE gates FLOW-origin setups fail almost universally** —
+`score_floor`/`early_window_prime_score`/`confluence_floor`, the identical trio dominating the
+FLOW side this same run, in the same session, under the same market conditions. That is a real,
+same-session, same-clock data point directly supporting this item's leading hypothesis (PIN dies
+in the same hard-gate funnel bottleneck as FLOW, not a PIN-specific defect) — it is corroborating
+evidence, not proof at scale, and is reported as exactly that.
+
+**No gate/threshold/flag changed by this measurement.** Consistent with every other entry in this
+file: this is evidence-gathering, not a mechanical bug with a provable fix. The hard-gate stack
+(`score_floor`/`early_window_prime_score`/`confluence_floor`) is calibrated FLOW-origin-first —
+whether PIN-origin candidates *should* be held to the identical thresholds, or whether a PIN-aware
+recalibration is warranted, is a genuinely open product/calibration question this measurement
+informs but does not settle; touching those thresholds on an n=1 PIN sample would be exactly the
+"threshold change on a hunch" this repo's standing discipline forbids.
+
+**What would close this out properly:** repeated PIN snapshots across multiple RTH sessions
+(`pin-gate-compound-funnel.mjs` re-run daily/on a cron capture, same pattern as
+`gex-wall-snapshot-poll.mjs`'s intraday capture for the temporal-stability item) to accumulate a
+PIN sample size large enough to report a real joint-pass-rate percentage rather than a single
+corroborating data point. Flagged as the natural next step, not done this pass.
