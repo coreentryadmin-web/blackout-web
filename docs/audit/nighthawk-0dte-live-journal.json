@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-17T14:11Z",
+  "updated_at": "2026-09-17T14:16Z",
   "watch_stage_tracking": {
     "2026-09-14T20:07Z_session_closed_summary": {
       "note": "SESSION CLOSED 2026-09-14 (session.heat.state=CLOSED at 20:05 UTC). Full-day summary: 11 plays committed, all closed. 7 winners / 3 losers / 1 breakeven (63.6% win rate): SLS 0%, IONQ -6.92%, CRWD +5.35%, ZS +100.57% (days standout, hit +100% trim target cleanly), S +16.28%, OKTA +1.56%, SAIL -6.67%, QBTS +5%, MARA -13.95%, FIGR +5.71%, W +31.87%. Sum of individual position P&Ls ~+139pp across the day. Early-window [10:00,11:00 ET) commits (SLS/MARA/IONQ) were the weakest cohort, consistent with the already-documented E2 research finding -- confirmatory, not new. No stop-miss, no grading anomaly, no exit-engine bug found in any position checked this session. Board-upstream degradation recurred 5 CONFIRMED times today (+1 uncounted single-pull blip) -- all self-resolved within 5-27min, DB/record path unaffected throughout, real positions never at risk. Reported with full evidence + timeline on PR #4076; root cause still unknown (no CloudWatch access this session), flagged for whoever has AWS access. One real fix shipped: PR #4973 (merged) -- Cortex sector-heat evidence rendered a tickers own directional % without a sign, could misread as same-signed as an oppositely-signed sector; fixed with new fmtSigned helper, RED->GREEN proven, full suite clean. Also investigated and ruled out (not bugs): session_stats.top_block_code session-aggregate-vs-live-setups discrepancy, governor.time_of_day_label last directional commit window bucket definition. Tomorrow: continue standing mandate, watch for a 6th board-upstream instance to further characterize the pattern, no other open threads."
@@ -184,6 +184,13 @@
       "ledger_count": 0,
       "commits_today": 0,
       "note": "No commits yet today (2026-09-17). Checked all 118 board setups gate verdicts: 100% BLOCKED, 0 cleared. Near-miss single-block setups: GNRC/IREN (max_itm_pct), MARA (conditional_band_unmet), SPXW (cortex_net_negative), TEM (cortex_gex_walls_oppose_unresolved) -- all legitimate, no anomaly. discovery_health BREAKOUT/PIN both ok. Still watching for next commit per operator standing request (\"keep watching, ping me on the next commit\")."
+    },
+    "2026-09-17T14:15Z": {
+      "cycle": ":15 offset, RTH",
+      "session_state": "RTH, 142-150 setups scanned",
+      "board_upstream_ok": true,
+      "commits_today": 0,
+      "observation": "NVDA (long, C-tier, score 80, O:NVDA260918C00215000) briefly showed gate.verdict=COMMIT / session_stats.commit_ready=1 at scan-observed committed_at_et=10:13, but never appeared in board.ledger or /record, and by the very next poll (~65s later, 10:16 ET) its own gate had reverted to BLOCKED / commit_ready=0 -- the setup was re-scanned and re-gated before any execution step ever picked it up. Not yet calling this a bug (1st instance, below 3-instance threshold) -- plausible innocent explanation is gate re-evaluation cadence (quotes/VIX/spread refresh) simply outpacing whatever cadence actually executes a commit_ready setup into the ledger, i.e. legitimate flicker on fresh live data rather than a stuck/lost commit. Watching for recurrence: if a setup repeatedly clears commit_ready and reverts to BLOCKED without ever landing in committed_open, that would suggest the execution step is missing a real, if brief, commit window -- worth escalating at 3 instances."
     }
   },
   "sessions": {
