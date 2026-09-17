@@ -2026,6 +2026,87 @@ test("tradeManagerNarrativeSection: SELL with unknown reason and no detected the
   assert.doesNotMatch(section!.body, /thesis or ladder fired/i);
 });
 
+// BUG FIX (2026-09-17, Ask Largo standing mandate): TRIM had the exact same "generic label
+// regardless of the real rung" defect the SELL-side tests above were built to catch (FINDINGS
+// 2026-09-10), just unfixed on this branch — "Desk says TRIM — next rail at +X%" fired for EVERY
+// TAKE_PARTIAL rung, including the four that have nothing to do with the profit ladder. Live repro,
+// 2026-09-17: CRWD SWING:CRWD:39 (manageReason catalyst_shift, peak +39.2%, nowhere near the +100%
+// rail) and both AAPL SWING:AAPL:38/:37 (manageReason rel_strength_loss) all rendered the rail-only
+// line with no disclosure of the real reason.
+test("tradeManagerNarrativeSection: TRIM from catalyst_shift states the real reason, not just the untouched rail", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        recommendation: "TRIM",
+        manageReason: "catalyst_shift",
+        pnlPct: -16.3,
+        peak: 39.2,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 17.675, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Desk says TRIM\*\* — catalyst shifted against the thesis — next rail at \*\*\+100%\*\*/);
+});
+
+test("tradeManagerNarrativeSection: TRIM from rel_strength_loss states the real reason, not just the untouched rail", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        recommendation: "TRIM",
+        manageReason: "rel_strength_loss",
+        pnlPct: -8,
+        peak: 8.4,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 6.125, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Desk says TRIM\*\* — lost relative strength vs its benchmark — next rail at \*\*\+100%\*\*/);
+});
+
+test("tradeManagerNarrativeSection: TRIM from the profit ladder itself keeps the original rail-only line (no redundant reason clause)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        recommendation: "TRIM",
+        manageReason: "profit_ladder",
+        pnlPct: 105,
+        peak: 129.7,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 200,
+          trim_levels: [{ trigger_pct: 200, fraction: 0.5, premium: 33.3, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  // Exactly one " — " clause (the rail itself) directly after "Desk says TRIM" — no reasonClause
+  // inserted ahead of it for profit_ladder, which the rail text already fully explains.
+  assert.match(section!.body, /\*\*Desk says TRIM\*\* — next rail at \*\*\+200%\*\*\./);
+});
+
 test("tradeManagerNarrativeSection: never-rolled position gets no roll-history line (Largo C6 omission)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
