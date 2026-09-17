@@ -4,7 +4,26 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-17 (06:19 UTC) — [SEO] Lane heartbeat: PR queue empty, GSC unchanged
+## 2026-09-17 (12:19 UTC) — [SEO] Lane heartbeat: flagged a 6-PR green-draft jam (not SEO-lane), CLS/og validated, GSC unchanged
+
+**Severity.** — (no defect found; unblocked another lane's stuck work)
+
+Pre-market heartbeat (08:17 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0006 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`.
+
+PR sweep found a real jam: **6 coordinator-branch PRs (#5130, #5120, #5119, #5118, #5116, #5114)
+green-CI and still draft** — finished work outside the merge pipeline. Not SEO-lane work, but per
+the standing "never sit idle" / chase-other-lanes discipline, attempted
+`agent-pr-sweep.mjs --mark-ready --limit=6` — all 6 FAILED (left as draft), the same
+no-GitHub-MCP-undraft-tool limitation documented earlier this session (PR #4796 incident).
+Posted a consolidated coordinator comment on #5114 (rather than 6 redundant ones) naming all 6,
+the failed mark-ready attempt, and the sweep's file-overlap/ordering note (#5120∩#5119 on
+`api-tracked-fetch.ts`, #5120∩#5116 on `polygon-largo.ts` — trial merge says all 6 are safe to
+release together regardless), asking the coordinator to undraft them.
+
+GSC opportunity scan: byte-identical to the prior cycle — no new opportunities.
+
+No defects found.
 
 **Severity.** — (no defect found)
 
