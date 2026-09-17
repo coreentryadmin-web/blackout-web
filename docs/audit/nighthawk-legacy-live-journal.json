@@ -3507,6 +3507,12 @@
       "trigger": ":06 cycle (new hour) -- legacy-publish-fields.ts + legacy-board-detail-copy.ts read; PR #5100 verify still running",
       "healthcheck": "Steady: A_edition GREEN, B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
       "codeReview": "legacy-publish-fields.ts (50 lines) -- three-tier fallback (final_output -> ctx top-level -> editionPlay) for options_play/entry_premium/exit_style, consistently ordered, clean. legacy-board-detail-copy.ts (48 lines) -- legacyWhyPickedSummary/legacyMorningHeadline/legacyTopFactors/legacyScorecardLine/legacyMarkAgeLabel all correct; morning-headline status strings match morning-confirm-verdict.ts's PlayConfirmStatus union exactly; mark-age-label boundary transitions (60s->1m, 60m->1h) checked by hand, correct rounding behavior (nearest-unit, not floor) is a minor UX choice not a bug. Briefly opened deck-empty-hint.ts by directory-proximity mistake -- caught it's 0DTE-scoped (file's own header: 'The 0DTE deck's empty-state sentence'), out of this lane's mandate (Legacy only, not 0DTE/Swings) -- stopped without further review, no time wasted beyond the initial read. No new bug found this cycle. PR #5100 (trough-fallback fix) still has `verify` running in CI, checked twice this cycle, not yet green."
+    },
+    {
+      "at": "2026-09-17T02:22:04Z",
+      "trigger": ":21 cycle -- PR #5100 merged clean, verified against origin/main",
+      "healthcheck": "Steady: A_edition GREEN, B_marks amber (post-close, expected), C_record GREEN, D_pull_status correctly SKIPPED.",
+      "codeReview": "PR #5100 (legacy-primary-pnl.ts trough-fallback asymmetry fix) merged (00ceb5784) between cycles -- full suite had gone green (14416 pass). Verified the fixed source directly against origin/main: legacyPrimaryTroughPct now correctly falls back to play.pnlPct, mirroring legacyPrimaryPeakPct exactly. Local branch deleted (remote delete 403'd as usual, not retried). This closes out this cycle's shipped fix."
     }
   ],
   "knownOpenItems": {
