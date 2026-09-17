@@ -134,8 +134,11 @@ export function buildTechnicalSummary(trendStack: string, setupTags: string[]): 
   return setupTags.length ? `${trendStack} · ${setupTags.slice(0, 4).join(" · ")}` : trendStack;
 }
 
-export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard | null> {
-  const mtf = await fetchPolygonMtfTechnicals(ticker);
+export async function buildTechnicalCard(
+  ticker: string,
+  signal?: AbortSignal
+): Promise<TechnicalCard | null> {
+  const mtf = await fetchPolygonMtfTechnicals(ticker, signal);
   if (mtf?.price == null) return null;
 
   const dailyBars = mtf.daily_bars?.length ? mtf.daily_bars : [];
