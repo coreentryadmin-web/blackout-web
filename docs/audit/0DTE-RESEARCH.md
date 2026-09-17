@@ -336,7 +336,7 @@ stays advisory and accrues evidence.
   ENFORCE_MIN_DELTA) before it sizes or gates real risk. The measurement loop — not any single parameter —
   is the moat.
 
-### Gate-overlap ablation, PRIMARY-CODE ONLY (G-1/G-4/G-10/G-12/G-13) — built 2026-09-09/10, still INSUFFICIENT DATA
+### Gate-overlap ablation, PRIMARY-CODE ONLY (G-1/G-4/G-10/G-12/G-13) — built 2026-09-09/10, re-run 2026-09-17 (G-13 now MEASURABLE)
 
 **Why this was built.** The operator's CTO review (2026-09-09) asked whether G-1 (tape alignment), G-4
 (VIX regime), G-10 (intraday structure), G-12 (confluence floor) and G-13 (flow-accumulation conflict)
