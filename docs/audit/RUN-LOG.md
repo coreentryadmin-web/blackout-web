@@ -4,7 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-16 (18:20 UTC) — [SEO] Lane heartbeat: PR queue empty (SEO-lane), GSC unchanged
+## 2026-09-17 (00:20 UTC) — [SEO] Lane heartbeat: PR queue empty, GSC window advanced, no new opportunities
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0006 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`. PR
+sweep: **0 open agent PRs fleet-wide.** GSC opportunity scan: window advanced (2026-06-16→09-13 to
+2026-06-17→09-14), same 3 striking-distance queries (`dealer gamma`, `gamma three trading`,
+`is 0dte gambling`) — no new query entered striking distance. CTR-gap 0, deep-demand unchanged.
+
+No defects found.
 
 **Severity.** — (no defect found)
 
