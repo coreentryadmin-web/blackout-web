@@ -520,7 +520,7 @@ export async function buildEveningEdition(opts?: {
     if (!candidates?.length) {
       if (checkpointing) await upsertNighthawkJob(editionFor, { status: "running", current_stage: "stage_candidates" });
       console.info("[nighthawk/edition] stage_candidates: selection");
-      candidates = await extractMultiSourceCandidates(ctx, MAX_CANDIDATES);
+      candidates = await extractMultiSourceCandidates(ctx, MAX_CANDIDATES, editionFor);
       if (!candidates.length) {
         const reason = `No candidates from any source (flows ${ctx.stock_flows.length}, OI ${ctx.market_oi_change.length}, unusual ${ctx.unusual_trades.length}, movers ${ctx.market_movers.length}).`;
         console.warn(`[nighthawk/edition] stage_candidates zeroed — recap-only fallback: ${reason}`);
