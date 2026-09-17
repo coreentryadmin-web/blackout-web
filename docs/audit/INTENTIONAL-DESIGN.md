@@ -681,3 +681,90 @@ actual blocker to answering the original question at all).
 ```
 node scripts/audit/cortex-condor-oppose-measure.mjs --days=90 --json
 ```
+
+## 10. PIN discovery builds real candidates but NONE ever commit — 0 flags off, real evidence points at the already-known gate-compound funnel, not a PIN/condor-specific bug (measured 2026-09-17)
+
+**Where this came from.** Item #9 (above, PR #5110) found 0 of 411 committed 0DTE plays over 90
+days carry `play_type: "CONDOR"` and stopped there, INSUFFICIENT DATA. Per the operator's follow-up
+instruction, this item investigates the sharper question: WHY. Three hypotheses, checked against
+real data, not a hunch — flag misconfiguration, a structurally unreachable threshold, or Cortex's
+own regime-style-oppose (item #9) suppressing the few candidates that qualify.
+
+**Hypothesis 1 — flags wrongly off: RULED OUT.** Read `blackout-production/app/env` directly
+(Secrets Manager, AWS creds present this session) for every PIN/CONDOR-relevant key. None of
+`ZERODTE_CONDOR`, `ZERODTE_SRC_PIN`, `ZERODTE_WHOLE_MARKET`, `ZERODTE_CONDOR_ROOTS`,
+`ZERODTE_PIN_UNIVERSE` is set at all — every one of them runs its documented default (all default
+ON / SPX,NDX / the built-in 30-name universe). Confirmed the code side too:
+`condorFlagEnabled()`/`pinSourceEnabled()` both read `true` when run in this same default-env state.
+`PIN_TEMPORAL_STABILITY` IS explicitly set to `1` (a real, deliberate DEFAULT-OFF-until-armed flag
+per `pin-temporal-stability.ts`'s own header — production has armed it).
+
+**Hypothesis 2 — PIN discovery itself is silently dead: RULED OUT, with real production evidence.**
+CloudWatch (`/ecs/blackout-production`, 14-day window) grepped for `[zerodte-pin]` (pin-discovery.ts's
+own log lines): **5998 events**, including **221 "built N pin setup(s)" events** (203×1, 16×2, 2×3 —
+roughly 15-16 candidate builds/day), alongside 1049 "no clean pin regime" skips and 4728 before/after-
+window skips (expected — most cron ticks fall outside the ~5.5h combined RTH+late-condor window).
+**PIN discovery is a live, working, regularly-firing source.** It is NOT silent, NOT broken, and NOT
+gated off — it genuinely finds candidates most trading days.
+
+A live single-snapshot check (`scripts/audit/pin-condor-funnel-measure.mjs`, built this pass, runs
+the REAL unmodified `evaluatePinRegime`/`condorSellRegime` against REAL live `/api/market/gex-heatmap`
+data for the 30-name universe) confirms the underlying regime condition really is narrow: at the
+moment measured, every readable ticker read `posture: "short"` (dealer short-gamma / momentum) except
+one (INTC, long-gamma but still failed on other PIN criteria) — 0/30 cleared a clean PIN. Consistent
+with — though on its own not sole proof of — genuine rarity, not a broken read.
+
+**The real gap: candidates are BUILT but NONE ever COMMIT.** 221 real pin setups over 14 days, 0
+PIN-origin (condor or directional) rows anywhere in the 90-day committed ledger (`GET
+/api/market/zerodte/record`'s `entry_context.discovery_origin` breakdown over the same window:
+`BREAKOUT` 232, `FLOW` 53, `BREAKOUT+FLOW` 15, legacy/none 111 — **zero** carry `PIN` in any
+combination). That gap sits strictly AFTER `discoverPinSetups` returns candidates: the merge onto the
+board (`mergeSameTickerDiscovery`), then the SAME hard-gate stack (G-1..G-19) + Cortex layer every
+origin must clear. `zerodte_scan_rejections` (the admin rejection-export route) could not settle
+where they die — that table only records the FLOW screen's OWN 4 evidence gates (min_gross/
+min_aggr_share/min_dominance/max_itm_pct), never the post-merge hard-gate/Cortex stack a PIN-origin
+candidate goes through — 9 real SPX rejections found there over 90 days, all FLOW-evidence-gate
+codes, none informative about a PIN-origin candidate's fate. CloudWatch also carries zero
+condor-specific log lines beyond the routing-window skip (`buildCondorFromChain`/`priceCondorLegs`
+emit no success/failure log of their own), so whether the 221 builds ever routed to CONDOR
+specifically (vs staying the directional fade) is not determinable from logs alone.
+
+**Most likely explanation, not yet fully proven: this is the SAME already-measured gate-compound
+funnel, not a new PIN/condor-specific defect.** `zerodte-gate-compound-funnel.mjs` (2026-09-08/09)
+already measured a **0% joint pass rate** for FLOW-origin setups against the real hard-gate stack
+(`score_floor` 84.6% isolated failure, `confluence_floor` 50%, compounding to zero survivors even at
+RTH, n=26) — and its own header explicitly discloses **"BREAKOUT/PIN origins (FLOW only this pass)"**
+as never measured. A PIN-origin candidate runs through the exact same `score_floor`/`confluence_floor`/
+`single_rail_corroboration`/`tape_alignment` gates FLOW-origin ones already fail almost universally —
+there is no evident reason PIN-origin candidates would clear a stack that near-zero-percent of
+FLOW-origin candidates clear. Item #9's Cortex regime-style-oppose (a real, separately-documented
+defect) could ALSO be contributing on top of this for the SPX/NDX subset that reaches Cortex, but
+given the gate-compound funnel alone already explains a ~0% survival rate for every origin measured
+so far, it is very unlikely to be the DOMINANT cause of PIN/condor's absence specifically.
+
+**What was NOT done.** No gate/threshold/flag changed — nothing here is a proven, provable
+mechanical bug the way the four condor-vote fixes (#5106-#5109) were; it is a real, evidence-backed
+architectural explanation that stops short of a definitive joint-pass-rate number for PIN origin
+specifically. Per the operator's standing "measure before guessing, don't touch a threshold on a
+hunch" discipline, `condorSellRegime`'s thresholds and `PIN_TEMPORAL_STABILITY`'s tolerance are left
+exactly as they are — there is no evidence yet that either is miscalibrated rather than genuinely
+selective, and the gate-compound funnel (if it is the real cause, as the evidence above suggests) is
+a pre-existing, already-documented, cross-origin issue, not something specific to condor at all.
+
+**Natural next step (not done this pass, scoped for a follow-up):** extend
+`zerodte-gate-compound-funnel.mjs`'s methodology (real `evaluateZeroDteGates` fed real inputs) to
+PIN-origin setups specifically — closing the exact gap that tool's own header names — to get a real
+joint-pass-rate number for PIN the way FLOW already has one, and to settle definitively whether PIN
+candidates die at the same `score_floor`/`confluence_floor` chokepoints or somewhere PIN-specific
+(e.g. the temporal-stability gate this session could not directly measure, needing either a live
+intraday multi-snapshot capture during real RTH — `gex-wall-snapshot-poll.mjs` already exists for
+exactly this and has never been run for a long-enough live window — or CloudWatch instrumentation
+added to `pinPassesTemporalStabilityGate`'s own HOLD branch, which currently only logs failures with
+a `temporal.reason` string that was never observed firing at all in the 14-day CloudWatch sample
+checked here — worth checking directly whether that means it never rejects, or simply never gets
+FAR ENOUGH to be reached under real conditions).
+
+**Re-run:**
+```
+node --import tsx scripts/audit/pin-condor-funnel-measure.mjs --json
+```
