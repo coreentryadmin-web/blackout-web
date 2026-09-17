@@ -44,6 +44,41 @@ live by-ToD ledger (`record.ts by_time_of_day`).
   confirmation, `timeOfDayFactor` ≈ timing. The system scores these **additively** today; the win is
   to require their **CONFLUENCE** as a premium tier.
 
+**Update 2026-09-17 — independent re-check (`zerodte-confluence-floor-outcome-backtest.mjs`),
+G-12's own live `confluence_floor` gate. Entry-time sensitivity confirmed real; the 2-conf "edge
+bucket" claim does NOT reproduce at either entry time. No gate changed.** Built the confluence-floor
+sibling of the score-floor re-check (same shape: real `deriveZeroDteSetups` per historical session
+day, a REAL confluence read via `computeIntradayRead`/`marketBias`/`computeConfluence` — the exact
+functions `scan.ts`'s own `attachConfluence` calls — computed AS-OF a fixed entry time, graded on
+real Polygon minute bars with the favorable-first underlying-continuation proxy). First run used
+10:00 ET (matching the score-floor script's own default, chosen for G-2's unlock, not E3's own entry
+time) and came back **INVERTED** (18 sessions, n=415: 0-conf 32.7% WR, 1-conf 17.9%, 2-conf 13.4%,
+ρ=−1.00) — but re-running at **11:00 ET (E3's own actual entry time)** materially changed the
+picture:
+
+```
+                              0-conf   1-conf (standard)   2-conf (early-window/E3 edge)
+@10:00 ET (n=415):            32.7%        17.9%                 13.4%    -> INVERTED, rho=-1.00
+@11:00 ET (n=415):             24.3%        24.8%                  9.6%    -> SPREAD WITHOUT ORDER, rho=-0.50
+```
+
+Two distinct findings fall out of comparing the two runs:
+1. **The 2026-09-08 loosening's own justification (1-conf should be ~flat vs 0-conf, not negative)
+   HOLDS UP at the correct entry time** — at 11:00 ET the delta is +0.6pp (vs a concerning −14.7pp
+   at the mistimed 10:00 ET run). Grading from a fixed 10:00 ET entry — a documented negative-EV
+   entry point per E2 above, independent of any gate — measurably distorts this specific comparison.
+2. **The 2-conf bucket (E3's own claimed +15.9% EV edge, also today's `ZERODTE_CONFLUENCE_MIN_EARLY`
+   requirement) grades WORST at BOTH entry times** (13.4% @10:00, 9.6% @11:00) — this part is
+   entry-time-INDEPENDENT and does not reproduce E3's original edge claim under this proxy at all.
+
+**Same scope caveats as the score_floor re-check apply**: favorable-first underlying-continuation
+proxy, not real option premium P&L (E3's own methodology); FLOW-origin setups only. **No gate
+changed** — same single-sample-caution discipline as every other calibration A/B in this toolkit.
+This also raises an open, not-yet-answered question for the score_floor INVERTED result logged in
+this doc's E6 section below (also graded from a 10:00 ET entry): does IT also partly resolve at
+11:00 ET? A re-run is in progress; results will be appended to E6 once it lands. Full write-up:
+`docs/audit/findings-staging/2026-09-17-zerodte-confluence-floor-entry-time-sensitivity.md`.
+
 ### 0DTE decision
 Take fewer, **triple-confirmed** trades (post-open timing + VWAP-side + market-aligned), +1 OTM, on the
 **let-it-run −50/+100** geometry → ~40% win / +16% EV. Gate the rest out. Ship the confluence tier
