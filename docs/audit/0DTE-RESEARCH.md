@@ -545,6 +545,59 @@ own methodology at today's larger achievable sample size before anyone touches t
 toolkit (`cortex-oppose-magnitude-ab.mjs`, `tier-exit-mode-ab.mjs`, etc.) — this reports a verdict and
 leaves the decision to a human reading it.
 
+**Update 2026-09-17 — RE-RUN with the buckets split to match G-17's real live boundary, verdict
+ESCALATED from `SPREAD WITHOUT ORDER` to `INVERTED`. No gate changed.** G-17 was restructured
+2026-09-09 (the day AFTER this backtest's last graded session, 2026-09-08) from a flat 65-74
+admission rule into two sub-bands with different real admission paths — 65-69 now rejects
+UNCONDITIONALLY (`single_rail_corroboration`), 70-74 is CONDITIONAL (needs confluence≥2 + clean
+tape/VIX/execution) — so the old merged "65-74 (clears today)" bucket could no longer say whether
+an ordering problem sits in 65-69, in 70-74, or both. Split `SCORE_BUCKETS` in
+`scripts/audit/lib/score-floor-backtest-eval.mjs` to match (`65-69 (G-17 unconditional reject)` /
+`70-74 (G-17 conditional admission)`), then re-ran with `--sessions=28` (up from 18) to include
+sessions after the 2026-09-09 restructure:
+
+```
+score band                              n     win%      avg maxRet%
+0-39                                    60    25.0%      0.79%
+40-54                                  223    23.3%      0.75%
+55-64 (blocked today)                   88    20.5%      0.69%
+65-69 (G-17 unconditional reject)       49    14.3%      0.63%
+70-74 (G-17 conditional admission)      13     7.7%      0.38%   (excluded from verdict, n<30)
+75-84                                    3    66.7%      1.46%   (excluded, n<30)
+```
+
+**Headline comparison (55-64 blocked vs 70-74, the band that actually clears live today):**
+70-74 graded **7.7%** vs 55-64's **20.5%** — a **−12.8pp delta AGAINST the floor's implied
+ordering**, similar direction to the 2026-09-10 run but now measured against the population G-17
+ACTUALLY admits (not the old merged 65-74 mix). Thin at n=13 — read as directional, not conclusive,
+on this comparison alone.
+
+**G-17 band-split check — does 70-74 (conditional admission) actually grade better than 65-69
+(unconditional reject), justifying treating them differently?** No: 70-74 graded **7.7%** vs
+65-69's **14.3%** — a further **−6.6pp**, the OPPOSITE of what G-17's own 2026-09-09 restructuring
+comment argues ("a genuinely well-confirmed 70-74 setup should NOT be equally weak EV as an
+unconfirmed 65-69 one"). Both bands thin (n=13, n=49) but the direction is consistent with the
+rest of this run, not a one-off.
+
+**Verdict (same RANKS / SPREAD WITHOUT ORDER / INVERTED / FLAT discipline, minN=30): `INVERTED`**
+— among the four bands with n≥30 (0-39 n=60, 40-54 n=223, 55-64 n=88, 65-69 n=49), win rate falls
+monotonically as score rises: 25.0% → 23.3% → 20.5% → 14.3%. Spread 10.7pp, **rank correlation
+ρ = −1** (perfect negative rank agreement across the four usable bands — the strongest, cleanest
+signal this backtest has produced, an escalation from the 2026-09-10 run's ρ = −0.20 `SPREAD
+WITHOUT ORDER`). This is no longer "the bands differ but don't trend" — the trend is real, and it
+runs backwards.
+
+**Still no gate changed** — same scope caveats as the 2026-09-10 entry above apply unchanged
+(favorable-first underlying proxy, not real premium P&L; `score` alone, not jointly gated with
+VIX/confluence/governor/Cortex), and the two bands nearest the live floor boundary (70-74, 75-84)
+are both n<30 and excluded from the ρ calculation — so this does NOT by itself prove the 70-74
+conditional-admission path is wrong, only that the broader trend across the well-powered bands
+(n=49 to n=223) now runs the opposite direction from what the floor assumes, more cleanly than
+before. See `docs/audit/findings-staging/2026-09-17-zerodte-score-floor-inverted.md` for the full
+write-up and recommended follow-up (grow the 70-74/75-84 samples past n=30, and — per this run's
+own stated scope limit — a real-premium re-run of F-2's original methodology at today's larger
+sample size, still the standing open item from the 2026-09-10 entry above).
+
 ---
 
 ## Part 2 — Whole-market weekly BANGER engine

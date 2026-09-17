@@ -6,6 +6,7 @@ import {
   gradeDirection,
   summarizeByBucket,
   crossFloorComparison,
+  g17BandSeparation,
   scoreSeparation,
 } from "./score-floor-backtest-eval.mjs";
 
@@ -16,14 +17,17 @@ const bar = (hhmmUtc, o, h, l, c) => {
   return { t: d.getTime(), o, h, l, c };
 };
 
-test("buckets straddle the shipped 65 floor exactly", () => {
+test("buckets straddle the shipped 65 floor exactly, and split at G-17's real 65-69/70-74 boundary", () => {
   assert.equal(bucketForScore(64.999), "55-64 (blocked today)");
-  assert.equal(bucketForScore(65), "65-74 (clears today)");
+  assert.equal(bucketForScore(65), "65-69 (G-17 unconditional reject)");
+  assert.equal(bucketForScore(69.999), "65-69 (G-17 unconditional reject)");
+  assert.equal(bucketForScore(70), "70-74 (G-17 conditional admission)");
+  assert.equal(bucketForScore(74.999), "70-74 (G-17 conditional admission)");
   assert.equal(bucketForScore(54.999), "40-54");
   assert.equal(bucketForScore(0), "0-39");
   assert.equal(bucketForScore(100), "85-100");
   // Every band must be reachable, or the histogram silently hides a population.
-  const reached = new Set([10, 45, 60, 70, 80, 95].map(bucketForScore));
+  const reached = new Set([10, 45, 60, 67, 72, 80, 95].map(bucketForScore));
   assert.equal(reached.size, SCORE_BUCKETS.length);
 });
 
@@ -90,18 +94,18 @@ test("summarizeByBucket counts only graded rows, skips unbucketable, preserves b
     { score: null, graded: { win: true, maxRet: 0.09 } }, // unbucketable — skipped
   ];
   const s = summarizeByBucket(rows);
-  assert.deepEqual(s.map((x) => x.bucket), ["0-39", "65-74 (clears today)"]);
-  const clears = s.find((x) => x.bucket.startsWith("65-74"));
-  assert.equal(clears.n, 2, "the ungraded row must not be counted");
-  assert.equal(clears.wins, 1);
-  assert.equal(clears.winRate, 50);
-  assert.ok(Math.abs(clears.avgMaxRetPct - 1.25) < 1e-9);
+  assert.deepEqual(s.map((x) => x.bucket), ["0-39", "70-74 (G-17 conditional admission)"]);
+  const conditional = s.find((x) => x.bucket.startsWith("70-74"));
+  assert.equal(conditional.n, 2, "the ungraded row must not be counted");
+  assert.equal(conditional.wins, 1);
+  assert.equal(conditional.winRate, 50);
+  assert.ok(Math.abs(conditional.avgMaxRetPct - 1.25) < 1e-9);
 });
 
-test("crossFloorComparison names the exact 55-64 vs 65-74 delta this backtest exists to answer", () => {
+test("crossFloorComparison names the exact 55-64 vs 70-74 delta this backtest exists to answer", () => {
   const summary = [
     { bucket: "55-64 (blocked today)", n: 40, winRate: 30 },
-    { bucket: "65-74 (clears today)", n: 40, winRate: 55 },
+    { bucket: "70-74 (G-17 conditional admission)", n: 40, winRate: 55 },
   ];
   const c = crossFloorComparison(summary);
   assert.equal(c.deltaPp, 25);
@@ -111,6 +115,21 @@ test("crossFloorComparison names the exact 55-64 vs 65-74 delta this backtest ex
 
 test("crossFloorComparison is null (not zero) when a band is entirely absent", () => {
   assert.equal(crossFloorComparison([{ bucket: "0-39", n: 5, winRate: 40 }]), null);
+});
+
+test("g17BandSeparation names the 65-69 (unconditional reject) vs 70-74 (conditional admission) delta", () => {
+  const summary = [
+    { bucket: "65-69 (G-17 unconditional reject)", n: 20, winRate: 28 },
+    { bucket: "70-74 (G-17 conditional admission)", n: 20, winRate: 52 },
+  ];
+  const g = g17BandSeparation(summary);
+  assert.equal(g.deltaPp, 24);
+  assert.equal(g.rejectBand.winRate, 28);
+  assert.equal(g.conditionalBand.winRate, 52);
+});
+
+test("g17BandSeparation is null (not zero) when a band is entirely absent", () => {
+  assert.equal(g17BandSeparation([{ bucket: "0-39", n: 5, winRate: 40 }]), null);
 });
 
 test("scoreSeparation is re-exported unchanged from helix-score-eval.mjs (same verdict language)", () => {
