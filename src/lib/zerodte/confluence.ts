@@ -64,8 +64,22 @@ export type ZeroDteConfluence = {
   label: string;
 };
 
-/** Compute the confluence read for one enriched setup at the current ET minute-of-day. */
-export function computeConfluence(setup: EnrichedZeroDteSetup, nowEtMinutes: number): ZeroDteConfluence {
+/**
+ * Compute the confluence read for one enriched setup at the current ET minute-of-day. Returns
+ * `null` for a CONDOR setup — this whole read (`vwap_ok`, `market_ok`, the triple/double/weak
+ * tier) is scored against `setup.direction`, which for a delta-neutral condor is only the pin's
+ * nominal fade side (condor.ts's `buildCondorSetup`: "UNUSED by the neutral structure's
+ * gates/grader"), never a real directional stance. Before this fix a condor could be attached a
+ * fabricated "triple-confirmed"/"VWAP+market confirmed" read off that nominal side — surfaced live
+ * on the command-deck (`ZeroDteCommandPanel.tsx`'s `confluence N/2` line) for a structure with no
+ * directional thesis to confirm. `null` is already this field's established shape
+ * (`EnrichedZeroDteSetup.confluence?: ZeroDteConfluence | null`) and both consumers already
+ * null-guard it (`gates.ts`'s G-12 already treats `confluence == null` as a real, handled case;
+ * `thesis-health.ts` already optional-chains `liveConf?.vwap_ok`) — this degrades safely with no
+ * new plumbing, the same discipline as the sibling `computeThesisHealth` condor fix.
+ */
+export function computeConfluence(setup: EnrichedZeroDteSetup, nowEtMinutes: number): ZeroDteConfluence | null {
+  if (setup.play_type === "CONDOR") return null;
   const timing_ok = nowEtMinutes >= POST_OPEN_ET_MINUTES && nowEtMinutes < ENTRY_CUTOFF_ET_MINUTES;
 
   const vwap = setup.intraday?.vwap ?? null;
