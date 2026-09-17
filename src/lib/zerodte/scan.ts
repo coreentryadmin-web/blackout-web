@@ -122,7 +122,12 @@ import {
   exitPolicyGraderParams,
 } from "./strategy-version";
 import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy, playRailsFromRow } from "./exit-sync";
-import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
+import {
+  cortexAbstainForCondor,
+  cortexEntryContextFor,
+  cortexGateBlocks,
+  evaluateCortexForCommit,
+} from "./cortex-gate";
 import { applyCortexCommitRelief, gexWallsVetoWasRelieved } from "./cortex-vector-relief";
 import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
@@ -1275,9 +1280,18 @@ async function attachGateVerdicts(
     // evaluateCortexForCommit never throws. failClosedOnVetoBlind:true detects when BOTH
     // veto-capable sources (gex-walls + flow-quality) failed to read → VETO_BLIND hard HOLD
     // (fresh commit blocked with cortex_veto_blind) — see cortex-gate.ts for the WHY.
-    s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
-      failClosedOnVetoBlind: true,
-    });
+    //
+    // CONDOR BYPASS: a CONDOR's `direction` is nominal fade provenance only (delta-neutral,
+    // condor.ts) — Cortex's whole evidence model is directional, so feeding it a condor's
+    // nominal direction would let it VETO/block a neutral structure on evidence that argues
+    // about a direction the condor never actually bet on. Same defect already fixed for the
+    // Largo read, governor, Thesis Health and confluence — see cortexAbstainForCondor's doc.
+    s.cortex =
+      s.play_type === "CONDOR"
+        ? cortexAbstainForCondor()
+        : await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
+            failClosedOnVetoBlind: true,
+          });
     s.cortex = await applyCortexVetoDwell(today, s.ticker, s.cortex);
     s.cortex = applyCortexCommitRelief(
       s.cortex,

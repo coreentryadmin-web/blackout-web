@@ -378,6 +378,40 @@ export function cortexGateBlocks(assessment: ZeroDteCortexAssessment | null): Ze
   ];
 }
 
+/**
+ * CONDOR BYPASS (added 2026-09-17). A CONDOR's `direction` field is nominal fade
+ * provenance only — condor.ts stamps it explicitly: `direction: regime.fadeDirection,
+ * // nominal provenance only — the condor is delta-neutral`. Cortex's entire evidence
+ * model (vetoes, supports, opposes — gex-walls, wall-trend, darkpool-confluence,
+ * catalyst-news, ...) reasons about whether dealer/whale positioning supports or
+ * fights a LONG/SHORT directional bet. scan.ts previously fed that nominal fade
+ * direction into evaluateCortexForCommit for EVERY setup unconditionally, including
+ * CONDOR ones, so Cortex could VETO / NET_NEGATIVE / OPPOSE_UNRESOLVED-block a
+ * delta-neutral credit structure on evidence that argues about a direction the condor
+ * was never actually betting on — the exact same "condor's nominal direction misread
+ * as real directional evidence" defect already fixed at four other surfaces this same
+ * audit pass: the Largo cross-product read (product-adapters.ts /
+ * consensus-read-extract.ts), the session governor's correlated-conflict/concentration
+ * checks (governor.ts's `is_condor` field), live Thesis Health (thesis-health.ts,
+ * returns null for a condor) and live confluence scoring (confluence.ts, returns null
+ * for a condor). Cortex is the fifth. Fixed the same way: bypass with an honest
+ * ABSTAIN — never a fabricated PASS, which would silently claim clean evidence that
+ * was never actually evaluated — so a condor's commit decision rests entirely on its
+ * own liquidity/range gates (gates.ts's condor-specific G-8/G-9/G-10 replacement) and
+ * never on directional Cortex evidence that structurally does not apply to it.
+ */
+export function cortexAbstainForCondor(): ZeroDteCortexAssessment {
+  return {
+    decision: "ABSTAIN",
+    abstained: true,
+    reason:
+      "Cortex evidence (gex-walls/wall-trend/darkpool-confluence/catalyst-news/...) reasons " +
+      "about a LONG/SHORT directional thesis; a CONDOR's direction is nominal fade provenance " +
+      "only (delta-neutral structure) — Cortex does not evaluate condor setups, which commit " +
+      "on their own liquidity/range gates instead.",
+  };
+}
+
 /** Compact verdict summary for board/Largo payloads: enough for a member-facing
  *  card (score, conviction, veto list, top-3 supports/opposes one-liners) without
  *  shipping the full evidence vector on every poll. */
