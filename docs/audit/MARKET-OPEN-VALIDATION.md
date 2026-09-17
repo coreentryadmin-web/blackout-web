@@ -5538,6 +5538,23 @@ than an end-of-session patch.
 - **What changed:** dropped the duplicate render in `watchForSection`. Unlike `gateBlocks` (a list, where a count-plus-pointer sentence is still useful), `entryStatus` is a single scalar already shown verbatim in the Entry section — nothing worth preserving, so the line is removed outright rather than replaced with a pointer.
 - **RTH check:** pull a live swing WATCH play-brief (`GET /api/market/swing/play-brief?ticker=<any current WATCH name>`) and confirm "Entry geometry" appears exactly once, in the "## Entry" section, not again under "## Watch levels" — previously every WATCH brief carrying a non-null `entryStatus` showed it twice.
 
+### WATCH ITEM (not a fix): `single_rail_corroboration` co-occurring with `no_market_bias` on QQQ/SPY/SPXW — 2026-09-17
+
+Operator asked directly to re-check both #248 (G-1 `no_market_bias`) AND this gate live during tomorrow's RTH.
+A `zerodte-gate-compound-funnel.mjs --now-et=11:00` run at 2026-09-16 23:49 ET (after hours, real
+data) showed QQQ/SPY/SPXW still blocked by `no_market_bias` — expected off-hours (SPY's real intraday
+read IS genuinely stale when the market's been closed for hours; the #248 fix only widened the fetch
+timeout during live trading, it doesn't fake freshness after close) — but the SAME three tickers were
+ALSO blocked by `single_rail_corroboration`, a gate not investigated this session. Unknown whether
+that's a genuine second chokepoint on indices or an off-hours artifact (fewer real independent flow
+signals at midnight). **Next-session action:** during live RTH tomorrow, (1) sweep
+`GET /api/admin/zerodte/rejection-export?gate_failed=no_market_bias` and confirm the QQQ/SPY/SPXW/SPX/DIA
+concentration has dropped vs the 2026-09-16 baseline (112 total, 94% on those 5 tickers) per #248's own
+RTH check; (2) separately pull `?gate_failed=single_rail_corroboration` for the same tickers and check
+whether it's still a live chokepoint on indices specifically during real RTH hours — if so, trace its
+logic before touching anything (same "measure before guessing" discipline as every other gate fix
+this file documents).
+
 ### 250. Legacy Command Deck showed a populated "Best" next to a blank "Worst" on freshly-opened positions — fix/legacy-trough-pnl-fallback-asymmetry — 2026-09-17
 
 - **What was broken:** `legacy-primary-pnl.ts`'s `legacyPrimaryPeakPct`/`legacyPrimaryTroughPct` are meant to mirror each other (best-so-far / worst-so-far), but their fallbacks diverged: when a position has live option P&L (`pnlPct`) but no `peak`/`trough` latched yet (the real window between BTO and the live-sync cron's first tick), peak correctly fell back to the current `pnlPct` ("nothing better seen yet") while trough fell back to `null` instead of the same `pnlPct`. `TerminalPremiumPanels.tsx` renders `best`/`worst` from these two functions side by side for the same play, so a freshly-opened position showed a real "Best" number next to a blank "Worst" for the identical data-availability state.
