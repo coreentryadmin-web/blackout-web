@@ -1,3 +1,61 @@
+## WATCH LIST — 2026-09-17 0DTE condor-directional-vote fix wave (PRs #5106/#5107/#5108/#5109) + open condor-commit/G-13 measurements
+
+**What was fixed (all shipped, live on `main`):** a committed 0DTE iron condor's `direction` field
+is nominal-only (the pin's fade side for provenance — `condor.ts`'s own doc: "UNUSED by the
+neutral structure's gates/grader"), but four places were reading it as if it were a real directional
+stance, fabricating signals for a delta-neutral, credit-sold structure:
+- **#5106** — Largo's `nighthawkContribution`/`extractNightHawkRead` (cross-product read +
+  whole-ecosystem consensus matrix) no longer casts a condor's nominal side as a bullish/bearish vote.
+- **#5107** — the session governor's B-3 correlated-conflict and Q9 concentration checks now exclude
+  condors from directional exposure (an open SPX/NDX condor could previously wrongly block a real
+  uncorrelated SPY/QQQ/IWM/DIA trade, or inflate concentration count).
+- **#5108** — `computeThesisHealth` now returns `null` for a condor row instead of a fabricated
+  Thesis Health %/rung/pillar breakdown — **this is the one that reaches the live member command-deck**
+  (`ThesisHealthPanel`/`PlayTerminal`/`CommandDeck`/`ZeroDteCommandPanel`).
+- **#5109** — `computeConfluence` now returns `null` for a condor setup instead of a fabricated
+  "triple-confirmed" tier — also reaches the live command-deck (`ZeroDteCommandPanel`'s
+  "confluence N/2" line).
+
+**Check at tomorrow's open, ONLY if a condor actually commits** (per the finding below, this has
+not happened once in the last 90 days as of 2026-09-17, so this may stay unobserved for a while —
+that's expected, not a sign the fix didn't work): pull up any live OPEN/HOLD/TRIM row where
+`entry_context.play_type === "CONDOR"` (or `is_condor: true`) on the command-deck. It should show
+**no Thesis Health card and no confluence line** (both silently omitted, not a broken/blank render),
+and the governor's board summary (`GET /api/market/zerodte/board`'s `governor` block) should NOT
+list that condor's nominal direction as contributing to `same_direction_open_count` or
+`correlated_conflict` against a real directional candidate on a correlated ticker (SPX/NDX/SPY/QQQ/
+IWM/DIA). If a condor is open and any of these show a fabricated directional read, the fix did not
+actually reach production — flag immediately, this is a regression, not a known gap.
+
+**Open, NOT fixed — genuine measurements in progress, do not "fix" these from this note alone:**
+1. **0 of 411 committed 0DTE plays in the last 90 days are condors** (measured live 2026-09-17,
+   `PR #5112`) — the condor engine is not committing in production at all right now. Root cause
+   traced (not fixed) to the same hard-gate funnel already measured at ~0% joint pass rate for
+   FLOW-origin setups; `scripts/audit/pin-gate-compound-funnel.mjs` (merged, `PR #5113`) was built
+   to get a real PIN-origin number but only ran off-hours so far (0/30, expected — pre-open, no
+   qualifying PIN regime). **Check at/after tomorrow's open:** re-run
+   `node --import tsx scripts/audit/pin-gate-compound-funnel.mjs --json` and
+   `node --import tsx scripts/audit/zerodte-gate-compound-funnel.mjs --json` back-to-back during real
+   RTH for a same-session FLOW-vs-PIN joint-pass-rate comparison — this is the actual open question,
+   not something this fix wave already answered.
+2. **G-13 (`flow_accumulation_conflict`) gate ablation** (`PR #5117`, 2026-09-17 re-run post the
+   2026-09-12 skip-grading fix): the population G-13 blocks graded **75.0% WR (n=12, 95% CI
+   [46.8%, 91.1%])** vs the desk's real committed WR of 30.8% over the same 90-day window — a 44.2pt
+   gap in the wrong direction for a filter gate. **n=12 is thin and no gate was changed on this
+   evidence** — this is flagged for a dedicated re-run as G-13's rejection volume grows, not
+   something to act on from one 90-day sample. Do not loosen or tighten G-13 off this note alone.
+3. **Cortex `gex-walls` regime-style-oppose looks structurally mismatched for condors** (traced,
+   not fixed) — it fires "momentum-style {direction} in a long-gamma tape opposes trend-following
+   entries" on essentially every real condor commit, since `condorSellRegime` only sells in exactly
+   that long-gamma regime. Not actioned because item 1 above means there's currently no live condor
+   population for this to measurably harm — re-visit once condors start committing again.
+
+Full write-ups: `docs/audit/INTENTIONAL-DESIGN.md` items #9 and #10;
+`docs/audit/findings-staging/2026-09-17-condor-false-directional-vote-largo.md`,
+`2026-09-17-governor-condor-directional-concentration.md`,
+`2026-09-17-thesis-health-condor-fabricated-score.md`,
+`2026-09-17-confluence-condor-fabricated-tier.md`.
+
 ## WATCH LIST — 2026-09-16 SPX `/play` session_phase flapping across the market-open boundary — NEEDS ISOLATED RE-TEST, no fix shipped (root cause ambiguous)
 
 **What was observed:** live at 2026-09-16 market open (~9:30-9:45 ET), 8 consecutive
