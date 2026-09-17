@@ -768,3 +768,34 @@ FAR ENOUGH to be reached under real conditions).
 ```
 node --import tsx scripts/audit/pin-condor-funnel-measure.mjs --json
 ```
+
+**UPDATE (2026-09-17, same day) — the natural next step above is now built: `scripts/audit/
+pin-gate-compound-funnel.mjs`.** Closes the exact gap this item named: it takes a PIN candidate
+through the SAME REAL `evaluateZeroDteGates` hard-gate stack `zerodte-gate-compound-funnel.mjs`
+already measured for FLOW-origin setups (isolated per-gate failure + joint pass rate), instead of
+stopping at `evaluatePinRegime` the way `pin-condor-funnel-measure.mjs` does. Real
+`evaluatePinRegime`/`pinScore` (pin-source.ts) build the candidate's direction/score from real live
+`/api/market/gex-heatmap` data (same route, same auth pattern as the sibling tool above — 
+`gexPositioningFromHeatmap`/`discoverPinSetups` remain unreachable here via their `server-only`
+import), then real `computeIntradayRead`/`computeConfluence` (same recipe the FLOW section already
+uses) feed the real, unmodified `evaluateZeroDteGates`. Confirmed `discovery_origin: ["PIN"]`
+correctly routes through `scoreFloorForOrigins` to the PIN-specific `ZERODTE_SCORE_FLOOR_PIN=65`
+(gates.ts), not the FLOW/BREAKOUT floor — the harness exercises the real PIN-specific gate path, not
+a generic one. Wiring verified against a synthetic input before trusting the live run (real
+`evaluateZeroDteGates` call, sensible verdict/blocks returned, no exception) — the same "prove the
+harness itself works" discipline `depth-live-check.mjs` and others in this toolkit already apply.
+
+**First live run, 2026-09-17 02:14 ET (off-hours): 0/30 tickers cleared `evaluatePinRegime` this
+snapshot — funnel ends before the hard-gate stack is ever reached, same result as
+`pin-condor-funnel-measure.mjs`'s own run minutes earlier.** Traced directly to `pin-discovery.ts`'s
+own operating window (`RTH_OPEN_ET_MINUTES` gate, confirmed via its `"before RTH open — SKIP"` log
+line matching the exact CloudWatch evidence item #10 above already cites) — 02:14 ET is genuinely
+outside the window PIN discovery itself runs in, so an empty snapshot here is expected, not a defect
+in this new tool. **This measurement genuinely needs an RTH re-run to produce a real hard-gate joint-
+pass-rate number** — until then this closes the "tool exists and is wired correctly" half of the
+natural next step, not the "here is PIN's joint pass rate" half. No gate/threshold changed.
+
+**Re-run (during RTH for a non-empty candidate population):**
+```
+node --import tsx scripts/audit/pin-gate-compound-funnel.mjs --json
+```
