@@ -4,6 +4,169 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Ask Largo WATCH brief duplicated "Entry geometry" across two sections — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Swings / Ask Largo |
+| **Severity** | P3 (narrative quality — no wrong numbers, just repeated/inconsistent text) |
+| **File** | `src/lib/swing/play-brief-intel.ts` (`watchForSection`) |
+| **Found by** | Standing "Ask Largo × Night Hawk Swings" mandate, aggressive-mode improvement hunt |
+
+### Root cause
+
+`composeSwingPlayBrief` (`src/lib/swing/play-brief.ts`) renders two sections for a WATCH play, in
+this fixed order: `watchEntrySection` ("## Entry") first, then `buildIntelSections` → `watchForSection`
+("## Watch levels") later. Both functions independently read `play.entryStatus` and both rendered
+it as an `Entry geometry: **...**` bullet:
+
+- `watchEntrySection` (play-brief.ts:314): `Entry geometry: **${play.entryStatus}**` — raw enum,
+  e.g. `AT_TRIGGER`.
+- `watchForSection` (play-brief-intel.ts:738, before this fix): `Entry geometry:
+  **${play.entryStatus.replace(/_/g, " ")}**` — humanized, e.g. `AT TRIGGER`.
+
+Same fact, printed twice in the same brief, three sections apart, with two different formattings
+of the same enum value — a trader reading top-to-bottom sees the same claim stated slightly
+differently and has no reason to believe they're the same fact.
+
+This is the exact duplication shape already found and fixed in the same function for
+`gateBlocks` on 2026-09-12 (see the `BUG FIX (2026-09-12)` comment directly above the removed
+line) — the `entryStatus` line sitting one line below the gateBlocks line was never given the
+same treatment, and no existing test exercised `play.entryStatus` in `watchForSection`'s fixtures
+(`fixturePlay()` never set it), so nothing caught the gap.
+
+### Evidence
+
+Live repro, TSM WATCH brief (`GET /api/market/swing/play-brief?ticker=TSM`), 2026-09-17:
+
+```
+## Entry
+...
+Entry geometry: **AT_TRIGGER**
+...
+
+## Watch levels
+**Before entry, clear:** 1 gate — see Entry section above.
+
+Entry geometry: **AT TRIGGER**
+...
+```
+
+Also reproduced in three separate scratch captures of the same TSM brief taken on different scan
+passes (`brief-TSM.json`, `brief-TSM-watch.json`, `brief-WATCH-TSM_dump.txt`) — not a one-off
+render glitch, present on every WATCH brief carrying a non-null `entryStatus`.
+
+Regression test added: `src/lib/swing/play-brief-intel.test.ts` —
+`"watchForSection: entry geometry is not duplicated — its one home is the Entry section above"`.
+Confirmed RED before the fix (`doesNotMatch(/Entry geometry:/)` failed, actual: `'Entry geometry:
+**AT TRIGGER**'`), GREEN after.
+
+### Blast radius
+
+Single call site — `watchForSection`'s `bucket === "watch"` branch is the only place
+`play.entryStatus` was read in this file. `watchEntrySection` (play-brief.ts) is untouched and
+remains the fact's one home, matching the same "one home" convention the 2026-09-12 gateBlocks fix
+established in the same function.
+
+### Fix rationale
+
+Mirror the gateBlocks fix directly above it: drop the duplicate render. Unlike gateBlocks (a list,
+where a count-plus-pointer is still useful information), `entryStatus` is a single scalar already
+shown verbatim earlier in the same brief — there is nothing left to add by repeating it, so the
+line is removed outright rather than replaced with a pointer sentence.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts` — 142/142 pass (Node 20).
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts` — 565/565 pass (Node 20).
+- `npx tsc --noEmit` — clean.
+
+## Ask Largo "Lane rank" section compared a rounded score to raw peer scores — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Swings / Ask Largo |
+| **Severity** | P3 (narrative quality — the ranking/gate logic itself is unaffected, only the displayed score/delta text) |
+| **File** | `src/lib/swing/play-brief-lane-rank.ts` (`computeLaneRank`) |
+| **Found by** | Standing "Ask Largo × Night Hawk Swings" mandate, aggressive-mode improvement hunt |
+
+### Root cause
+
+`computeLaneRank(play, laneRows)` builds its "Below lane median" narrative from two different
+score sources at two different precisions:
+
+- `medianScore`/`topScore` are computed from `laneRows: HorizonPlay[]` — fetched fresh, retaining
+  the raw discovery/entry score to one decimal place.
+- `playScore` was read straight off `play.score` (`TerminalPlay`) — but every adapter that builds
+  a play-brief's `play` (`terminalPlayFromHorizon`, `src/features/nighthawk/command-deck/adapters.ts:966`)
+  rounds the score to the nearest **integer** for board display: `score: Math.round(src.score)`.
+
+So the section compared an integer-rounded value against decimal-precision peers/median, and the
+"vs median" delta was computed from the rounded value too — silently different from the play's own
+true score shown elsewhere in the same brief.
+
+### Evidence
+
+Live repro, AAPL WATCH brief (`GET /api/market/swing/play-brief?playId=SWING:AAPL&ticker=AAPL&status=WATCH`),
+2026-09-17, real WATCH-lane scores XOM 52.7 / TSM 49.6 / AAPL 25.5:
+
+```
+## Why this setup
+**Score pillars:**
+• **Catalyst** — +19.4 pts
+• **Regime** — +4.2 pts
+• **Flow** — +1.9 pts
+```
+(sums to the true raw score, 25.5)
+
+```
+## Trade manager read
+• **Below lane median** — **#3/3** (score **26**, -23.6 vs median). Leader: **XOM** @ **52.7**
+```
+
+Two different numbers for the identical quantity, three sections apart, in the same document —
+the same "same fact, different section, different value" defect class this file has already fixed
+repeatedly (IEEE754 median artifact, median-of-even-set, `Entry geometry`/put-wall/pillar-breakdown
+duplication). The true delta is `25.5 - 49.6 = -24.1`, not the displayed `-23.6`
+(`26 - 49.6 = -23.6`, i.e. computed from the rounded display value).
+
+Regression tests added: `src/lib/swing/play-brief-lane-rank.test.ts` —
+`"computeLaneRank: playScore uses the raw laneRows precision, not a pre-rounded TerminalPlay.score"`
+(confirmed RED before the fix: `26 !== 25.5`) and a companion fallback test
+(`"computeLaneRank: playScore falls back to TerminalPlay.score when the play's own row is absent
+from laneRows"`) covering the defensive path.
+
+### Blast radius
+
+Single function, two call sites, both fixed by the one change: `laneRankSection` (used directly by
+`play-brief-intel.ts:1466`) and `computeLaneRank` (also called directly by
+`play-brief-narrative-coaching.ts:853` for the "Lane leader"/"Below lane median" bullet folded into
+"Trade manager read"). Both read `snap.playScore`/`snap.deltaFromMedian` from the same
+`LaneRankSnapshot`, so both were wrong the same way and both are fixed by the same source change.
+
+### Fix rationale
+
+`sorted` (built from the same `laneRows` array that already feeds `medianScore`/`topScore`) already
+contains the play's own row at `idx` whenever a match is found — that row carries the play's score
+at the SAME raw precision as every peer being compared against it. Reusing `sorted[idx].score`
+instead of re-deriving a value from the differently-rounded `TerminalPlay.score` keeps `playScore`
+and `medianScore` always at matching precision, with no behavior change to rank/median/leader logic.
+Falls back to `play.score` only when the play's own row isn't present in `laneRows` (shouldn't
+happen in production — `laneRows` is expected to include every open/WATCH row — kept for a caller
+passing a partial list).
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-lane-rank.test.ts` — 24/24 pass (Node 20), confirmed RED (`26 !== 25.5`) before the fix.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts` — 567/567 pass (Node 20).
+- `npx tsc --noEmit` — clean.
+
 ## 2026-09-16 — [FINDING, P1 performance] UW rate-limiter queue-wait spike overnight (07:18-08:00 UTC) was 97% live traffic, not background sweeps — refines the RTH-only capacity hypothesis, and shows a gap in the just-shipped surge alert
 
 > **kind:** `FINDING`

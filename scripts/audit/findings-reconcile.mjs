@@ -17,6 +17,7 @@
  *   node scripts/audit/findings-reconcile.mjs --apply    # rewrites FINDINGS.md + RUN-LOG.md
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { splitAtHeadingBoundaries } from "./lib/findings-entry-set.mjs";
 
 // Overridable so the idempotency test can drive the real script over a throwaway UNTAGGED fixture.
 // Pointing it at the live FINDINGS.md instead would prove nothing: that file is already tagged, so
@@ -147,7 +148,13 @@ const STALE_STATUS = new RegExp(
 );
 
 const src = readFileSync(FINDINGS, "utf8");
-const parts = src.split(/\n(?=## )/);
+// Fence-aware split (2026-09-17, Ask Largo standing mandate) — a naive text.split(/\n(?=## )/)
+// treats a `## ` line quoted inside a ``` evidence fence (e.g. a finding quoting a live product's
+// own markdown output) as a real entry boundary, fragmenting one finding into several headless
+// sub-"blocks". See findings-entry-set.mjs's splitAtHeadingBoundaries doc comment for the full
+// live repro (broke findings-hygiene.test.ts when a swing finding quoting an Ask Largo brief was
+// folded in).
+const parts = splitAtHeadingBoundaries(src);
 const preamble = parts[0].startsWith("## ") ? "" : parts.shift();
 // Skip the file's own legend. It quotes the pass-log phrasing while explaining that pass logs
 // belong elsewhere, so a naive pass would classify the documentation as the thing it documents and
@@ -258,7 +265,7 @@ try {
   existing = runlogHeader;
 }
 const alreadyLogged = new Set(
-  existing.split(/\n(?=## )/).filter((b) => b.startsWith("## ")).map((b) => b.split("\n")[0])
+  splitAtHeadingBoundaries(existing).filter((b) => b.startsWith("## ")).map((b) => b.split("\n")[0])
 );
 const fresh = moved.filter((r) => !alreadyLogged.has(r.head));
 writeFileSync(RUNLOG, existing.replace(/\s+$/, "") + (fresh.length ? "\n\n" + fresh.map((r) => r.block).join("\n") : "") + "\n");

@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { splitAtHeadingBoundaries } from "../scripts/audit/lib/findings-entry-set.mjs";
 
 /**
  * Keeps FINDINGS.md answerable.
@@ -21,8 +22,11 @@ const KINDS = ["FINDING", "NEGATIVE-RESULT", "OPS-NOTE"];
 
 function entries(): { head: string; body: string }[] {
   const src = readFileSync(FINDINGS, "utf8");
-  return src
-    .split(/\n(?=## )/)
+  // Fence-aware split (2026-09-17, Ask Largo standing mandate) — see findings-entry-set.mjs's
+  // splitAtHeadingBoundaries doc comment: a naive split fragments a finding whose Evidence section
+  // quotes a `## `-heading inside a ``` fence (a normal evidence pattern — findings quote a live
+  // product's own markdown output as proof).
+  return splitAtHeadingBoundaries(src)
     .filter((b) => b.startsWith("## ") && !/^## How to read this file/.test(b))
     .map((b) => ({ head: b.split("\n")[0], body: b }));
 }
