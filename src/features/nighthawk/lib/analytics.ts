@@ -530,9 +530,22 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
  * Returns true for plays where a stop is defined but intraday data is missing.
  * These plays cannot have stop outcomes reliably determined and must be excluded
  * from win/loss tallies to avoid silently inflating the win rate.
+ *
+ * BUG FIX (2026-09-17): this required BOTH session_high AND session_low to be null
+ * (AND), but play-outcomes.ts's resolveOutcome — the canonical grader this predicate
+ * mirrors — computes `hasIntraday = high != null && low != null`, so its own
+ * stop_data_unavailable is `stop != null && (high == null || low == null)` (OR):
+ * a LONG's target-hit check needs `high` and its stop-hit check needs `low`, so
+ * EITHER field missing already makes the row's intraday-based verdict untrustworthy.
+ * The two predicates only diverge on a partial bar (one field present, one missing),
+ * which the sole writer (a Polygon daily OHLC bar, always complete-or-absent) doesn't
+ * currently produce — but a re-derivation of "the same" check drifting from its
+ * canonical definition is exactly the class of bug this codebase's outcome-grading
+ * cross-check discipline exists to catch (see OUTCOME-GRADING-SPEC.md), so fixed here
+ * defensively rather than left to depend on the writer never changing.
  */
 function isStopDataUnavailable(r: NighthawkPlayOutcomeRow): boolean {
-  return r.stop != null && r.session_high == null && r.session_low == null;
+  return r.stop != null && (r.session_high == null || r.session_low == null);
 }
 
 export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMetrics> {
