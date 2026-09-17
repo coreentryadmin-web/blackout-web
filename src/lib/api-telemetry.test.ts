@@ -2,6 +2,42 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { endpointTemplate, recordApiCall, getApiTelemetrySnapshot } from "./api-telemetry";
 
+// Phase 1 instrumentation (queue-wait vs. HTTP-execution split, cancel reason) —
+// purely additive fields on ApiCallEvent. These tests lock in that omitting them
+// (every pre-existing caller) behaves exactly as before, and that a caller which
+// does supply them gets them recorded faithfully.
+
+test("recordApiCall: queue_wait_ms/cancel_reason default to null when the caller omits them (pre-instrumentation behavior, unchanged)", () => {
+  const event = recordApiCall({
+    provider: "unusual_whales",
+    endpoint: "/api/darkpool/AAPL",
+    method: "GET",
+    status: 200,
+    ok: true,
+    latency_ms: 250,
+  });
+  assert.equal(event.queue_wait_ms, null);
+  assert.equal(event.cancel_reason, null);
+});
+
+test("recordApiCall: queue_wait_ms/cancel_reason are recorded verbatim when a caller supplies them", () => {
+  const event = recordApiCall({
+    provider: "unusual_whales",
+    endpoint: "/api/darkpool/AAPL",
+    method: "GET",
+    status: null,
+    ok: false,
+    latency_ms: 15000,
+    error: "aborted",
+    queue_wait_ms: 18234,
+    cancel_reason: "dossier_ticker_wall_timeout",
+  });
+  assert.equal(event.queue_wait_ms, 18234);
+  assert.equal(event.cancel_reason, "dossier_ticker_wall_timeout");
+  // Existing fields this instrumentation must not perturb:
+  assert.equal(event.latency_ms, 15000, "latency_ms stays HTTP-only, unaffected by queue_wait_ms");
+});
+
 // Locks the audit §3.1 fix: the endpointStats Map was UNBOUNDED because Polygon paths embed the
 // ticker / OCC / date in the key, so every distinct symbol leaked a permanent entry. The fix
 // templates the key (per-symbol → one bounded key) with an LRU cap backstop.

@@ -40,6 +40,25 @@ export type ApiCallEvent = {
    * still surfacing in counts and the incident/error feeds.
    */
   synthetic?: boolean;
+  /**
+   * Milliseconds spent waiting for shared-rate-limiter admission BEFORE the
+   * network request in `latency_ms` began — e.g. uw-rate-limiter.ts's
+   * `acquireSlot()` result. `latency_ms` already measures only the actual
+   * `fetch()` call (trackedFetch starts its clock after admission), so this
+   * field is additive instrumentation, not a redefinition of an existing one:
+   * total elapsed for the caller is `(queue_wait_ms ?? 0) + latency_ms`.
+   * `null`/`undefined` for callers with no shared-limiter concept (most
+   * providers) — never fabricated as 0 to mean "measured and found zero".
+   */
+  queue_wait_ms?: number | null;
+  /**
+   * Why a request was aborted/cancelled, when it was — e.g.
+   * "dossier_ticker_wall_timeout", "dossier_fetch_local_timeout",
+   * "default_fetch_timeout" (trackedFetch's own internal AbortSignal.timeout
+   * firing with no caller-supplied reason). `null` for a call that completed
+   * (successfully or with a real HTTP error) without ever being cancelled.
+   */
+  cancel_reason?: string | null;
 };
 
 export type ApiEndpointStats = {

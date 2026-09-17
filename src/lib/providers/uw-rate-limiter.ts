@@ -14,6 +14,7 @@ import {
   type BreakerSubscriptionState,
 } from "./provider-rate-limiter-shared";
 import { QueueBudget, resolveQueueBudgetMs, isQueueTimeout } from "./queue-budget";
+import { createCoalescedRequestGroup, type CoalescedRequestGroup } from "./coalesced-abort-group";
 
 export { computeDegradedLocalRps, computeDegradedLocalConcurrency } from "./provider-rate-limiter-shared";
 
@@ -179,7 +180,7 @@ function ensureBreakerSubscription(): void {
   });
 }
 
-const coalescedInflight = new Map<string, Promise<unknown>>();
+const coalescedInflight = new Map<string, CoalescedRequestGroup<unknown>>();
 
 type RedisClient = RateLimiterRedisClient;
 
@@ -360,31 +361,62 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   }
 }
 
-async function waitForCircuit(budget: QueueBudget): Promise<void> {
+/** DOMException a caller sees when its own signal aborts while queued for admission —
+ *  distinct from RateLimiterQueueTimeoutError (the budget itself expiring). */
+function abortedWhileQueuedError(signal: AbortSignal): DOMException {
+  return signal.reason instanceof DOMException
+    ? signal.reason
+    : new DOMException("Aborted while waiting for UW admission", "AbortError");
+}
+
+/**
+ * Sleep that resolves early — REJECTING, not silently resolving — the instant `signal`
+ * aborts, instead of only being checked at the top of the NEXT loop iteration. This is
+ * what makes every polling loop below abort-aware to within one microtask, rather than
+ * bounded by whatever sleep duration that loop happens to be mid-wait on (up to 500ms in
+ * `waitForCircuit`, up to 50ms in `acquireLocalSlot`) — see
+ * uw-rate-limiter-abort-latency.test.ts for the deterministic bound this gives.
+ */
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortedWhileQueuedError(signal));
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(abortedWhileQueuedError(signal!));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function waitForCircuit(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   for (;;) {
+    if (signal?.aborted) throw abortedWhileQueuedError(signal);
     const now = Date.now();
     if (now >= circuitOpenUntil) return;
     // Bounded: the breaker pause is measured in tens of seconds, so an unbudgeted
     // wait here alone could burn most of the ALB's 120s before the fetch timeout
     // in trackedFetch even begins to count.
     budget.assertWithinBudget("circuit");
-    await new Promise((r) =>
-      setTimeout(r, budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)))
-    );
+    await sleepAbortable(budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)), signal);
   }
 }
 
-async function waitMinSpacing(): Promise<void> {
+async function waitMinSpacing(signal?: AbortSignal): Promise<void> {
   if (MIN_SPACING_MS <= 0) return;
   const now = Date.now();
   const wait = MIN_SPACING_MS - (now - lastStartMs);
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  if (wait > 0) await sleepAbortable(wait, signal);
   lastStartMs = Date.now();
 }
 
-async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
+async function acquireLocalSlot(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   const concurrencyCap = effectiveMaxConcurrency();
   for (;;) {
+    if (signal?.aborted) throw abortedWhileQueuedError(signal);
     // Checked BEFORE the admission test, never after reserving, so a caller that
     // would have been admitted this iteration still is -- the budget only ever
     // truncates waiting, never a successful acquisition.
@@ -396,7 +428,7 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
       tokens -= 1;
       inFlight += 1;
       try {
-        await waitMinSpacing();
+        await waitMinSpacing(signal);
       } catch (err) {
         // Release concurrency on failure; do NOT refund the token (rate budget is
         // consumed per admitted call, mirroring releaseSlot which never refunds tokens).
@@ -406,7 +438,7 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
       return;
     }
     const delay = inFlight >= concurrencyCap ? 50 : waitMsForToken();
-    await new Promise((r) => setTimeout(r, budget.clampSleepMs(delay)));
+    await sleepAbortable(budget.clampSleepMs(delay), signal);
   }
 }
 
@@ -436,26 +468,32 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
  * was the slow part.
  *
  * @throws {RateLimiterQueueTimeoutError} when the queue budget is exhausted.
+ * @throws {DOMException} named "AbortError" when `signal` fires while still queued —
+ *   checked at the top of every loop iteration AND races every sleep inside them
+ *   (`sleepAbortable`), so cancellation latency is bounded by microtask scheduling,
+ *   not by whichever loop's sleep interval happens to be in flight.
  */
-async function acquireSlot(): Promise<number> {
+async function acquireSlot(signal?: AbortSignal): Promise<number> {
   ensureBreakerSubscription();
+  if (signal?.aborted) throw abortedWhileQueuedError(signal);
   const budget = new QueueBudget("unusual_whales", queueBudgetMs());
-  await waitForCircuit(budget);
+  await waitForCircuit(budget, signal);
   if (process.env.REDIS_URL?.trim()) {
     for (;;) {
+      if (signal?.aborted) throw abortedWhileQueuedError(signal);
       if (!(await acquireGlobalRedisSlot())) {
         budget.assertWithinBudget("global_rps");
-        await new Promise((r) => setTimeout(r, budget.clampSleepMs(40)));
+        await sleepAbortable(budget.clampSleepMs(40), signal);
         continue;
       }
       if (!(await acquireGlobalRedisConcurrencySlot())) {
         budget.assertWithinBudget("global_concurrency");
-        await new Promise((r) => setTimeout(r, budget.clampSleepMs(40)));
+        await sleepAbortable(budget.clampSleepMs(40), signal);
         continue;
       }
       redisConcurrencyHeld = true;
       try {
-        await acquireLocalSlot(budget);
+        await acquireLocalSlot(budget, signal);
       } catch (err) {
         // The cluster concurrency slot is already HELD at this point, but callers
         // only run their `finally { releaseSlot() }` after acquireSlot RESOLVES --
@@ -469,7 +507,7 @@ async function acquireSlot(): Promise<number> {
       return budget.waitedMs();
     }
   }
-  await acquireLocalSlot(budget);
+  await acquireLocalSlot(budget, signal);
   return budget.waitedMs();
 }
 
@@ -659,8 +697,20 @@ export function noteQueueAdmissionRecoveryForAlert(now: () => number = Date.now)
   }
 }
 
-/** Pace a single UW HTTP call through local + optional Redis-global buckets. */
-export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
+/**
+ * Pace a single UW HTTP call through local + optional Redis-global buckets.
+ *
+ * `onAdmitted`, when supplied, receives the real ms this call waited for a slot
+ * (`acquireSlot()`'s own return value — the same number `formatQueueWaitLog` already
+ * logs) BEFORE `fn` runs, so a caller can thread queue-wait time into its own
+ * telemetry (e.g. unusual-whales.ts's `uwGet` -> trackedFetch's `queueWaitMs`).
+ * Purely additive: every existing call site omits it and behaves identically.
+ */
+export async function throttleUw<T>(
+  fn: (signal?: AbortSignal) => Promise<T>,
+  signal?: AbortSignal,
+  onAdmitted?: (waitedMs: number) => void
+): Promise<T> {
   // Hunt-budget gate (cache-reader rule): when a Night Hawk hunt is running, a GENUINE
   // live UW call must first claim a token from the per-hunt budget. Once spent, throw
   // BEFORE touching acquireSlot() so an exhausted hunt never queues on — let alone
@@ -672,7 +722,7 @@ export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   }
   let waitedMs: number;
   try {
-    waitedMs = await acquireSlot();
+    waitedMs = await acquireSlot(signal);
   } catch (err) {
     if (isQueueTimeout(err)) noteQueueTimeoutForAlert();
     throw err;
@@ -680,23 +730,55 @@ export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   noteQueueAdmissionRecoveryForAlert();
   const logLine = formatQueueWaitLog(waitedMs, isBackgroundUwSweep());
   if (logLine) console.warn(logLine);
+  onAdmitted?.(waitedMs);
   try {
-    return await fn();
+    return await fn(signal);
   } finally {
     releaseSlot();
   }
 }
 
-/** Dedup identical in-flight GETs and pace through throttleUw. */
-export async function throttleUwCoalesced<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const existing = coalescedInflight.get(key);
-  if (existing) return existing as Promise<T>;
-
-  const promise = throttleUw(fn).finally(() => {
-    coalescedInflight.delete(key);
-  });
-  coalescedInflight.set(key, promise);
-  return promise;
+/**
+ * Dedup identical in-flight GETs and pace through throttleUw.
+ *
+ * Multiple callers can share ONE in-flight request for the same `key` (e.g. two Night
+ * Hawk Legacy candidates, or two entirely different products, both wanting the same
+ * ticker's data at once) — `signal` is therefore NOT wired straight into a single
+ * AbortController the way `throttleUw`'s own is. Instead this uses
+ * `createCoalescedRequestGroup` (coalesced-abort-group.ts): the underlying request is
+ * only actually aborted once every attached caller has detached (via its own
+ * cancellation, or by the request settling), so one caller's timeout can never yank the
+ * response out from under a different, still-active caller sharing the same key.
+ *
+ * `onAdmitted` is forwarded to throttleUw ONLY for the caller that actually creates the
+ * group (a cache miss on `coalescedInflight`). A caller that instead joins an
+ * already-in-flight request never itself calls acquireSlot() — there is no meaningful
+ * "this caller's own queue wait" to report for it, so `onAdmitted` is simply not invoked
+ * in that case rather than reporting someone else's wait time as this caller's own.
+ */
+export async function throttleUwCoalesced<T>(
+  key: string,
+  fn: (signal?: AbortSignal) => Promise<T>,
+  signal?: AbortSignal,
+  onAdmitted?: (waitedMs: number) => void
+): Promise<T> {
+  let group = coalescedInflight.get(key) as CoalescedRequestGroup<T> | undefined;
+  if (!group) {
+    group = createCoalescedRequestGroup<T>((groupSignal) => throttleUw(fn, groupSignal, onAdmitted));
+    coalescedInflight.set(key, group);
+    // Cleanup runs regardless of HOW the group settled (success, real rejection, or an
+    // abort-triggered rejection once the last caller detached) — a settled group must
+    // never linger in the map for a future caller to mistakenly join.
+    void group.promise.catch(() => {}).finally(() => {
+      if (coalescedInflight.get(key) === group) coalescedInflight.delete(key);
+    });
+  }
+  const detach = group.attach(signal);
+  try {
+    return await group.promise;
+  } finally {
+    detach();
+  }
 }
 
 /** Run UW tasks one-at-a-time (desk refresh / macro fetches). */
