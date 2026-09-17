@@ -2385,6 +2385,34 @@ test("watchForSection: gate-block bullet is a count + pointer, not a second full
   assert.doesNotMatch(section.body, /Cortex preflight vetoed/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-09-17): `watchForSection`'s "Watch levels" section
+// re-rendered `play.entryStatus` as its own "Entry geometry" bullet — but `watchEntrySection`
+// (play-brief.ts, "Entry" section, which composeSwingPlayBrief always places BEFORE this section
+// for a WATCH play) already renders the IDENTICAL fact as its own "Entry geometry" bullet. Live
+// repro: TSM WATCH brief 2026-09-17, "## Entry" printed "Entry geometry: **AT_TRIGGER**" and
+// "## Watch levels" printed it again three sections later as "Entry geometry: **AT TRIGGER**" —
+// same fact, inconsistent formatting (raw enum vs humanized), exactly the duplication shape the
+// gate-block bullet above was already fixed to avoid. Unlike gateBlocks there is no count worth
+// preserving here (it's a single scalar, not a list), so the second copy is dropped outright
+// rather than replaced with a pointer.
+test("watchForSection: entry geometry is not duplicated — its one home is the Entry section above", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", entryStatus: "AT_TRIGGER" }),
+      asOf: "2026-09-17 10:00 ET",
+      sessionDate: "2026-09-17",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /Entry geometry:/);
+});
+
 test("chartLevelsSection: stale GEX-only walls, flip, and king omitted (Largo C2)", () => {
   const section = chartLevelsSection({
     play: fixturePlay(),
