@@ -281,8 +281,14 @@ test("runWithBackgroundUwSweep does not leak into a concurrent call outside its 
 // callback so a caller (unusual-whales.ts's uwGet) can thread the real queue-wait time into
 // its own telemetry. Purely additive — every pre-existing 1-arg/2-arg call site above this
 // point in the file (and every real production call site) is unaffected.
+//
+// Phase 2 (2026-09-17) inserted `signal?: AbortSignal` BETWEEN `fn` and `onAdmitted` on both
+// functions (`throttleUw(fn, signal?, onAdmitted?)`, `throttleUwCoalesced(key, fn, signal?,
+// onAdmitted?)`) to carry per-caller cancellation. Phase 1 had not yet shipped/merged when
+// this happened, so these tests are updated in place to the new position rather than kept
+// as a stale snapshot of an intermediate signature.
 
-test("throttleUw: the legacy 1-arg call site behaves exactly as before (no onAdmitted)", async () => {
+test("throttleUw: the legacy no-signal/no-onAdmitted call site behaves exactly as before", async () => {
   const { throttleUw } = await import("./uw-rate-limiter");
   const result = await throttleUw(async () => "legacy-ok");
   assert.equal(result, "legacy-ok");
@@ -297,6 +303,7 @@ test("throttleUw: onAdmitted receives the real admission wait (a number >= 0) BE
       order.push("fn");
       return "ok";
     },
+    undefined, // no signal for this test
     (waitedMs) => {
       waitedMsSeen = waitedMs;
       order.push("onAdmitted");
@@ -311,7 +318,7 @@ test("throttleUw: onAdmitted receives the real admission wait (a number >= 0) BE
 test("throttleUw: fn's own rejection is not swallowed by adding onAdmitted", async () => {
   const { throttleUw } = await import("./uw-rate-limiter");
   await assert.rejects(
-    () => throttleUw(async () => { throw new Error("boom"); }, () => {}),
+    () => throttleUw(async () => { throw new Error("boom"); }, undefined, () => {}),
     /boom/
   );
 });
@@ -324,8 +331,8 @@ test("throttleUwCoalesced: onAdmitted fires for the caller that triggers the fet
 
   // Both calls fire synchronously (no await between them) so the second observes the
   // first's promise already registered in coalescedInflight — the real coalescing path.
-  const p1 = throttleUwCoalesced("phase1-test-key", () => inFlight, () => admittedCallers.push(1));
-  const p2 = throttleUwCoalesced("phase1-test-key", () => inFlight, () => admittedCallers.push(2));
+  const p1 = throttleUwCoalesced("phase1-test-key", () => inFlight, undefined, () => admittedCallers.push(1));
+  const p2 = throttleUwCoalesced("phase1-test-key", () => inFlight, undefined, () => admittedCallers.push(2));
 
   resolveFirst("shared-result");
   const [r1, r2] = await Promise.all([p1, p2]);
@@ -342,9 +349,55 @@ test("throttleUwCoalesced: onAdmitted fires for the caller that triggers the fet
 test("throttleUwCoalesced: a distinct key after the first resolves triggers a fresh admission (no stale coalescing)", async () => {
   const { throttleUwCoalesced } = await import("./uw-rate-limiter");
   const admittedCallers: number[] = [];
-  const r1 = await throttleUwCoalesced("phase1-test-key-2a", async () => "one", () => admittedCallers.push(1));
-  const r2 = await throttleUwCoalesced("phase1-test-key-2b", async () => "two", () => admittedCallers.push(2));
+  const r1 = await throttleUwCoalesced("phase1-test-key-2a", async () => "one", undefined, () => admittedCallers.push(1));
+  const r2 = await throttleUwCoalesced("phase1-test-key-2b", async () => "two", undefined, () => admittedCallers.push(2));
   assert.equal(r1, "one");
   assert.equal(r2, "two");
   assert.deepEqual(admittedCallers, [1, 2], "distinct keys each get their own admission");
+});
+
+// THE ORPHANED-ENTRY REGRESSION THIS GUARDS: `coalescedInflight` (the Map throttleUwCoalesced
+// keys its groups by) only cleans itself up via `void group.promise.catch(() => {}).finally(() =>
+// { if (coalescedInflight.get(key) === group) coalescedInflight.delete(key) })`. If that cleanup
+// never ran — or ran against the wrong group after a key was reused — a caller aborting the ONLY
+// in-flight request for a key would leave that key permanently pointing at a dead, already-
+// rejected group, and every future caller for that same key would join it and instantly re-reject
+// with the FIRST caller's stale abort reason instead of ever running a fresh admission again.
+test("throttleUwCoalesced: aborting the only caller cleans up the key's coalescedInflight entry — a later call for the SAME key gets its own fresh admission, not a dead group's stale rejection", async () => {
+  const { throttleUwCoalesced } = await import("./uw-rate-limiter");
+  const key = `orphan-test-${Date.now()}`;
+
+  const controller = new AbortController();
+  const first = throttleUwCoalesced(
+    key,
+    (signal) =>
+      new Promise((_, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason));
+      }),
+    controller.signal
+  );
+  first.catch(() => {});
+
+  controller.abort();
+  await assert.rejects(first);
+
+  // Let the group's own settle-triggered cleanup run (a separate microtask chain off the same
+  // settled promise — see coalesced-abort-group.ts). A real caller always has at least this much
+  // of a gap between one ticker's abort and the next ticker's own call for the same key.
+  await new Promise((r) => setImmediate(r));
+
+  // If the key were still occupied by a dead group, this would join it and instantly re-reject
+  // with the first call's stale abort reason (never calling onAdmitted, never running its own
+  // fetcher) instead of getting its own fresh admission.
+  let secondGotOwnAdmission = false;
+  const second = await throttleUwCoalesced(
+    key,
+    async () => "second-value",
+    undefined,
+    () => {
+      secondGotOwnAdmission = true;
+    }
+  );
+  assert.equal(second, "second-value", "REGRESSION: a leaked coalescedInflight entry would instead re-reject with the first call's abort reason");
+  assert.equal(secondGotOwnAdmission, true, "the second call must get its OWN fresh admission — the key must not still be occupied by a dead group");
 });

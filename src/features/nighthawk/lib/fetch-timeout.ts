@@ -2,36 +2,40 @@
  * Wrap a fetch-like factory function with a timeout, racing it against a deadline that
  * returns `fallback` when it fires.
  *
- * `fn` RECEIVES an AbortSignal, and the signal IS aborted when the deadline fires — but
- * whether that actually stops the underlying HTTP connection depends entirely on `fn`
- * passing it down to `fetch()` (or another AbortSignal-aware API). **As of 2026-09-14, no
- * caller in this codebase does**: every `dossierFetch(...)` call site in `dossier.ts` (14
- * direct calls + 10 more inside its `runUwPooled` second wave) passes a bare `() => someFetch(...)`
- * that ignores the `signal` argument entirely, and none of the ~20 wrapped provider functions
- * (`fetchMarketFlowAlertRows`, `fetchPositioningSummary`, `buildTechnicalCard`,
- * `fetchPolygonNews`, `fetchBenzingaCatalysts`, the `fetchUw*` family, etc.) accept an
- * AbortSignal parameter at all — confirmed by grepping every call site and a sample of the
- * wrapped functions' own signatures. So today this function's real behavior is "stop WAITING
- * on `fn` and use `fallback`", not "stop the underlying request" — the abandoned request keeps
- * running to completion in the background, still holding a connection and consuming upstream
- * quota/CPU, exactly the dangling-connection cost this function's name and original doc
- * promised to prevent. See `docs/audit/findings-staging/2026-09-14-dossier-fetch-timeout-no-abort-wiring.md`
- * for the full write-up (held, not fixed — threading real cancellation through ~20 provider
- * functions across multiple files is an architectural change, not a local one). Wiring a real
- * caller's `fn` to actually use `signal` restores the original intended behavior for that one
- * call site; until then, don't assume timing out here frees the underlying resource.
+ * `fn` RECEIVES an AbortSignal, and the signal IS aborted when the deadline fires OR when
+ * `outerSignal` fires (e.g. dossier.ts's per-ticker 45s wall) — combined via `AbortSignal.any`
+ * so either trigger cancels the same underlying work.
+ *
+ * FIXED 2026-09-17 (was HELD as `dossierFetch's abort contract is unwired everywhere it's
+ * used` in FINDINGS.md, 2026-09-14): every `dossierFetch(...)` call site in `dossier.ts`
+ * used to pass a bare `() => someFetch(...)` that discarded the `signal` argument entirely,
+ * and none of the wrapped provider functions accepted one — so timing out here only ever
+ * meant "stop WAITING on `fn`", not "stop the underlying request": the abandoned fetch kept
+ * running to completion in the background, still holding a connection and still consuming
+ * the shared UW rate-limiter's scarce admission slot after this ticker had already been
+ * given up on. Every dossier.ts call site now threads its own `fn`'s real `signal` down to
+ * the wrapped provider (fetchUwDarkPool, uwGetSafe, trackedFetch, ...), which DOES pass it
+ * to the real `fetch()` call — so aborting here now genuinely terminates the connection.
  */
 export function dossierFetch<T>(
   fn: (signal: AbortSignal) => Promise<T>,
   fallback: T,
-  ms = 8000
+  ms = 8000,
+  outerSignal?: AbortSignal
 ): Promise<T> {
   const controller = new AbortController();
   let timerId: ReturnType<typeof setTimeout>;
 
+  if (outerSignal?.aborted) {
+    controller.abort(outerSignal.reason);
+    return Promise.resolve(fallback);
+  }
+  const onOuterAbort = () => controller.abort(outerSignal!.reason);
+  outerSignal?.addEventListener("abort", onOuterAbort, { once: true });
+
   const timeout = new Promise<T>((resolve) => {
     timerId = setTimeout(() => {
-      controller.abort();
+      controller.abort(new DOMException(`dossierFetch ${ms}ms local timeout`, "AbortError"));
       resolve(fallback);
     }, ms);
   });
@@ -39,7 +43,10 @@ export function dossierFetch<T>(
   const work = fn(controller.signal).catch(() => fallback);
 
   return Promise.race([
-    work.finally(() => clearTimeout(timerId)),
+    work.finally(() => {
+      clearTimeout(timerId);
+      outerSignal?.removeEventListener("abort", onOuterAbort);
+    }),
     timeout,
   ]);
 }
