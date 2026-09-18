@@ -16,7 +16,9 @@ import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 // so the record route and the full admin debrief report can never disagree on a count.
 import {
   summarizeDebriefPins,
+  summarizePulledByRule,
   type NighthawkDebriefRecordSummary,
+  type PullRuleBreakdown,
 } from "@/features/nighthawk/lib/debrief-aggregate";
 
 // Task #145: funnel/rejection-rate stats. Reverse-indexes REJECTION_TRIGGER_REASON (the single
@@ -230,6 +232,11 @@ export type NighthawkMetrics = {
   /** PR-N10: failure-mode counts from the pinned per-play debriefs (current-methodology
    *  rows only, mirroring the headline's anti-blend rule; low_n-flagged). */
   debrief: NighthawkDebriefRecordSummary;
+  /** Signal Intelligence Phase 2B: pulled_wrongly/pulled_correctly broken down by WHICH
+   *  morning-confirm rule caused the pull (pull-rule-taxonomy.ts) — answers "which
+   *  cancellation rule is destroying positive expectancy", not just "how many pulls were
+   *  wrong". Same current-methodology filter + low_n discipline as `debrief` above. */
+  pulled_rule_breakdown: PullRuleBreakdown;
   by_conviction: Array<{ conviction: string } & NighthawkRecordCut>;
   by_direction: Array<{ direction: "LONG" | "SHORT" } & NighthawkRecordCut>;
   by_sector: Array<{ sector: string } & NighthawkRecordCut>;
@@ -522,6 +529,7 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
       legacy: buildRecordSegment(GRADE_METHODOLOGY_LEGACY, []),
     },
     debrief: summarizeDebriefPins([]),
+    pulled_rule_breakdown: summarizePulledByRule([]),
     funnel: buildNighthawkFunnel(windowDays, 0, []),
   };
 }
@@ -653,6 +661,9 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
     // PR-N10: all resolved rows in — summarizeDebriefPins applies the same current-
     // methodology filter internally AND reports the legacy quarantine count honestly.
     debrief: summarizeDebriefPins(rows),
+    // Signal Intelligence Phase 2B: same all-resolved-rows-in contract as debrief above —
+    // summarizePulledByRule applies its own current-methodology filter internally.
+    pulled_rule_breakdown: summarizePulledByRule(rows),
     // WIN RATE = wins / DECIDED (wins + losses), NOT wins / scoreable. `scoreable` still
     // carries every 'open' row — a play whose one-session horizon expired without touching
     // target or stop. Those plays were never decided, so counting them as non-wins made a

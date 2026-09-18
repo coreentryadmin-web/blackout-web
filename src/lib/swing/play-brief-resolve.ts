@@ -82,6 +82,7 @@ export function horizonRowToDeckSource(
     factors: p.factors,
     entryPresentPillars: p.entryPresentPillars ?? null,
     archetypeNearTie: p.archetypeNearTie ?? null,
+    topFlowProvenance: p.topFlowProvenance ?? null,
     regime: p.regime ?? null,
     setupState: p.setupState ?? null,
     entryStatus: p.entryStatus ?? null,

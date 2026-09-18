@@ -116,6 +116,22 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   if (play.entryPresentPillars != null) {
     lines.push(`**Evidence at entry:** thin read — **${play.entryPresentPillars}/7** pillars grounded`);
   }
+  // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the entry-time contract pick (chosen
+  // independently by tradability×thesisFit, contract-ranker.ts) is checked at commit against the
+  // multi-day flow's own magnet strike, and the raw flow strike is pinned onto every committed
+  // row's `top_flow_strike` column — but neither the number nor the match/mismatch was ever
+  // surfaced. Both directions are informative: agreement is corroboration (the strike flow was
+  // piling into is the same one the independent ranker picked on its own terms); a mismatch is a
+  // real, disclosed divergence worth a member's attention (the held contract sits at a DIFFERENT
+  // strike than where the accumulation flow was concentrated), not something to silently drop.
+  if (play.topFlowProvenance) {
+    const { topFlowStrike, matchedPick } = play.topFlowProvenance;
+    lines.push(
+      matchedPick
+        ? `**Strike vs flow:** this contract's strike (**$${topFlowStrike}**) matches the accumulation flow's own magnet strike — corroborating.`
+        : `**Strike vs flow:** the accumulation flow's magnet strike was **$${topFlowStrike}**; this pick landed at a different strike (chosen independently on tradability/fit).`,
+    );
+  }
   // "Today's regime read" (not the old bare "Discovery read") — `play.regime` is re-derived FRESH on
   // every scan (attachThesisExplanation, serving-lane.ts) while `play.archetype` right above stays
   // PINNED from commit day. The two are independent classifier reads of the same dossier at different
