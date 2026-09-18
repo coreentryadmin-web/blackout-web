@@ -325,6 +325,16 @@ export interface TerminalPlay {
    *  anywhere in the serving/brief layer. Null when either strike is unknown — never a guessed
    *  provenance. See live-plays.ts's `topFlowProvenanceFromRow` for the full gap this closes. */
   topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
+  /** SWING only, live (OPEN/HOLD/TRIM) positions: the UNDERLYING's own signed favorable/adverse
+   *  excursion (%) since entry (manage-sync.ts's `signedExcursionPct`, dedicated
+   *  `running_mfe`/`running_mae` snapshot columns, written every management tick) — distinct from
+   *  the OPTION premium peak/P&L this brief already surfaces: a position can carry modest premium
+   *  P&L while the underlying quietly ran hard favorable and gave most of it back, or the reverse
+   *  under IV effects. Was pinned to the DB every tick and, until now, never read back out of it
+   *  anywhere in the serving/brief layer — see HorizonPlay.underlyingExcursion for the full gap
+   *  this closes. Null whenever the latest snapshot hasn't computed a usable excursion yet — never
+   *  a fabricated 0%. */
+  underlyingExcursion?: { mfePct: number; maePct: number } | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;

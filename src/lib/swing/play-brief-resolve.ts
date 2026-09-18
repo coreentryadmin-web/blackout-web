@@ -108,6 +108,7 @@ export function horizonRowToDeckSource(
     manageAction: p.manageAction ?? null,
     manageReason: p.manageReason ?? null,
     rollCandidate: p.rollCandidate ?? null,
+    underlyingExcursion: p.underlyingExcursion ?? null,
     thesisBreak:
       p.thesisLevel != null ? { level: p.thesisLevel, note: p.thesisNote ?? undefined } : undefined,
     sectorLeadershipFacts: p.sectorLeadershipFacts ?? null,

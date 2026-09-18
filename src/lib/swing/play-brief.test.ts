@@ -2261,6 +2261,54 @@ test("composeSwingPlayBrief: play.rollCandidate absent -> no Roll watch line (ho
   assert.doesNotMatch(management!.body, /Roll watch/, `got: ${management!.body}`);
 });
 
+// ─── Underlying excursion (Ask Largo standing mandate, 2026-09-18): manage-sync.ts's
+// signedExcursionPct computes the UNDERLYING's own signed favorable/adverse excursion since entry
+// on every management tick (running_mfe/running_mae) — distinct from the OPTION premium peak/P&L
+// this section already shows — and it never reached the brief until now.
+
+test("composeSwingPlayBrief: play.underlyingExcursion present -> Management section shows both the favorable and adverse read", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      manageAction: "HOLD",
+      underlyingExcursion: { mfePct: 8.24, maePct: -3.11 },
+    }),
+    asOf: "2026-09-18T20:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(
+    management!.body,
+    /Underlying excursion since entry: \*\*\+8\.2% favorable\*\* \/ \*\*-3\.1% adverse\*\*\./,
+    `got: ${management!.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: play.underlyingExcursion absent -> no Underlying excursion line (honest absence, never a fabricated 0%)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD", manageAction: "HOLD" }),
+    asOf: "2026-09-18T20:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.doesNotMatch(management!.body, /Underlying excursion/, `got: ${management!.body}`);
+});
+
 test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD", direction: "LONG" }),

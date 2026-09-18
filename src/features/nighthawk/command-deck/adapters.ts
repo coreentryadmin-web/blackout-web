@@ -684,6 +684,9 @@ export interface HorizonDeckSource {
   /** Entry-time contract-pick provenance against the flow magnet strike — see TerminalPlay's own
    *  field / live-plays.ts's `topFlowProvenanceFromRow` for the full gap this closes. */
   topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
+  /** The underlying's own signed favorable/adverse excursion since entry — see TerminalPlay's own
+   *  field / manage-sync.ts's `signedExcursionPct` for the full gap this closes. */
+  underlyingExcursion?: { mfePct: number; maePct: number } | null;
   /** Regime read (archetype label ± normalized regime pillar), or null when absent. */
   regime?: string | null;
   /** Thesis-health read from the swing thesis; when omitted it is DERIVED from `setupState` below. */
@@ -984,6 +987,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     manageAction: src.manageAction ?? null,
     manageReason: src.manageReason ?? null,
     rollCandidate: src.rollCandidate ?? null,
+    underlyingExcursion: src.underlyingExcursion ?? null,
     // De-hardcoded (PR-12): the swing serving meta feeds the REAL factors/regime/thesis. Each falls back to
     // the exact pre-PR-12 literal ([] / null / {intact}) when the caller supplies nothing, so LEAPS and any
     // un-enriched caller render identically — the change is additive, never a regression to those lanes.
@@ -1339,6 +1343,10 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     entryPresentPillars: src.entryPresentPillars ?? null,
     archetypeNearTie: src.archetypeNearTie ?? null,
     topFlowProvenance: src.topFlowProvenance ?? null,
+    // underlyingExcursion (manage-sync.ts's signedExcursionPct) is a LIVE per-tick management read
+    // (swing_position_snapshots.running_mfe/mae) — a CLOSED chain has no ongoing management tick,
+    // so SwingClosedDeckSource deliberately carries no such field; TerminalPlay's own field stays
+    // honestly null here rather than pretending a closed position still has one.
     firstSeenAt: src.firstSeenAt ?? null,
     committedAt: src.committedAt ?? null,
     entryPremium: src.entryPremium ?? null,

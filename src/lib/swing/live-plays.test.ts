@@ -382,6 +382,54 @@ test("livePlayFromSwingPosition: no manage snapshot yet, or dte_migration/roll_i
   );
 });
 
+// ─── Underlying excursion (Ask Largo standing mandate, 2026-09-18): manage-sync.ts's
+// `signedExcursionPct` computes the UNDERLYING's own signed favorable/adverse excursion since
+// entry on every management tick and persists it as `running_mfe`/`running_mae` — dedicated
+// `swing_position_snapshots` columns db.ts's `fetchLatestSwingSnapshotEvents` now selects and
+// merges into the same event blob `manageObservablesFromEvent` reads. See
+// HorizonPlay.underlyingExcursion's own doc comment for the full gap this closes.
+
+test("livePlayFromSwingPosition: running_mfe/running_mae on the snapshot -> underlyingExcursion surfaces both", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "hold",
+    action: "HOLD",
+    running_mfe: 8.24,
+    running_mae: -3.11,
+  });
+  assert.ok(p);
+  assert.deepEqual(p!.underlyingExcursion, { mfePct: 8.24, maePct: -3.11 });
+});
+
+test("livePlayFromSwingPosition: no manage snapshot, or running_mfe/running_mae absent/non-finite -> underlyingExcursion stays honestly null", () => {
+  assert.equal(livePlayFromSwingPosition(row())!.underlyingExcursion, null, "no snapshot at all");
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, { rung: "hold", action: "HOLD" })!
+      .underlyingExcursion,
+    null,
+    "snapshot present but carries neither field (older snapshot shape)",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "hold",
+      action: "HOLD",
+      running_mfe: "not a number",
+      running_mae: -3.11,
+    })!.underlyingExcursion,
+    null,
+    "malformed running_mfe never fabricates a half-populated excursion",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "hold",
+      action: "HOLD",
+      running_mfe: 8.24,
+      running_mae: Number.NaN,
+    })!.underlyingExcursion,
+    null,
+    "non-finite running_mae never fabricates a half-populated excursion",
+  );
+});
+
 test("Q40: markAsOf prefers ledger last_mark_at over manage snapshot quote.asOf", () => {
   const play = livePlayFromSwingPosition(
     row({ last_mark_at: "2026-09-05T14:00:00.000Z" }),
