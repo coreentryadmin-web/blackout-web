@@ -72,6 +72,23 @@ test("buildPostureBacktestReport: a genuinely bearish pin (2-of-3 signals) reads
   assert.equal(report.sessions[0]!.gate_short_but_book_all_long, true, "gate said SHORT but the book stayed all-LONG");
 });
 
+test("buildPostureBacktestReport: reports the raw regime values the verdict was computed from, so a 0%-fire-rate result is auditable without a second lookup", () => {
+  const rows: Row[] = [
+    row({
+      edition_for: "2026-09-15",
+      publish_context: marketBlock({ tide_bias: "BEARISH", composite_regime: "RISK_OFF", breadth: { pct_advancing: 20 } }),
+    }),
+  ];
+  const report = buildPostureBacktestReport(rows);
+  assert.deepEqual(report.sessions[0]!.regime, { tide_bias: "BEARISH", advance_pct: 20, composite_regime: "RISK_OFF" });
+});
+
+test("buildPostureBacktestReport: a regime-unavailable session reports regime: null, distinct from a genuinely neutral pin", () => {
+  const rows: Row[] = [row({ edition_for: "2026-09-15", publish_context: null })];
+  const report = buildPostureBacktestReport(rows);
+  assert.equal(report.sessions[0]!.regime, null);
+});
+
 test("buildPostureBacktestReport: a single bearish signal alone stays NEUTRAL (the deliberate 2-of-3 floor)", () => {
   const rows: Row[] = [
     row({

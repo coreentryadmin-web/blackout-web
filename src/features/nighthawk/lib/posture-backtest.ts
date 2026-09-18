@@ -69,6 +69,14 @@ export type PostureBacktestSession = {
   /** What detectBookPosture() would say given that evening's PINNED regime read. */
   gate_posture: BookPosture;
   gate_reasons: string[];
+  /** The raw signal values the gate verdict above was actually computed from — reported
+   *  alongside the verdict specifically so a 0%-fire-rate result (or any surprising verdict) is
+   *  auditable without a second lookup: a session with tide_bias/composite_regime consistently
+   *  null/NEUTRAL across the whole window is evidence of an upstream data-capture gap, while a
+   *  session with real bearish-looking values that still read NEUTRAL is evidence the 2-of-3
+   *  threshold itself is (or isn't) the limiting factor. Never fabricated — mirrors exactly what
+   *  regimeContextFromPersistedMarket derived, including its own nulls. */
+  regime: { tide_bias: string; advance_pct: number | null; composite_regime: string | null } | null;
   /** What the book actually published that evening. */
   published_long: number;
   published_short: number;
@@ -127,6 +135,9 @@ export function buildPostureBacktestReport(
         edition_for,
         gate_posture: gate.posture,
         gate_reasons: gate.reasons,
+        regime: regime
+          ? { tide_bias: regime.tide_bias, advance_pct: regime.advance_pct ?? null, composite_regime: regime.composite_regime ?? null }
+          : null,
         published_long,
         published_short,
         gate_short_but_book_all_long: gate.posture === "SHORT" && published_short === 0,
