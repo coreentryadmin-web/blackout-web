@@ -65,7 +65,8 @@ actual latest `origin/main`, which already includes #5178):
 - Reapplied. Re-ran the same two files plus the directly-related sweep (`closed-plays.test.ts`,
   `play-brief-resolve.test.ts`, `adapters.test.ts`): **365/365 pass**.
 - `npx tsc --noEmit -p .` on Node 20: clean.
-- Full `npm test` suite (Node 20): result appended below once complete.
+- Full `npm test` suite (Node 20) against this branch: **14670/14673 pass, 0 fail, 3 skipped**
+  (448486ms).
 
 ### Blast radius
 
