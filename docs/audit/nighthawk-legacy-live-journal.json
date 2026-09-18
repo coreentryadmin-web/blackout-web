@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T08:34:00Z",
+  "lastUpdated": "2026-09-18T08:42:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3705,6 +3705,14 @@
       "productionOrShadow": "PRODUCTION plumbing fix (the gate itself runs unconditionally in the real edition-build pipeline); the DATA it now captures is SHADOW (candidate_snapshot rows are never member-facing).",
       "result": "Once merged, EVERY rejection reason in the funnel (all 8: confluence_gate, geometry x2 call sites now, premium_cap, illiquid_strike, ungrounded, sector_concentration, publish_gate, cross_edition_governor) has a durable record in both alert_audit_log and nighthawk_candidate_snapshot -- closes the shadow-tracking coverage gap completely, not just the 6-of-7 PR #5184 closed.",
       "nextAction": "Check both PR #5187 and PR #5188 at the 08:40Z check-in, merge whichever are green. Continue holding the full-RTH-continuous-tracking half of priority #7 pending confirmation."
+    },
+    {
+      "at": "2026-09-18T08:42:00Z",
+      "trigger": "PR #5187 check-in fired -- merged; PR #5188 still CI-pending, fresh check-in armed",
+      "prStatus": "PR #5187 (candidate leaderboard, safe half) merged clean, sha 492c49b4e, verified live on origin/main. Unsubscribed. Task #26 marked completed for the safe half -- reader wiring (admin export route or Largo dossier tool) remains open follow-on, not yet scoped. PR #5188 (final geometry gate durable record, task #24) verify still in_progress as of this check-in -- fresh 8-min check-in armed (trig_01WVbp7TY5v9wJLFdWM9TMtq, fires 08:50Z).",
+      "healthcheck": "Re-confirmed steady at 08:37:05Z this cycle (AMBER, same pre-market pattern, no new issue) -- not re-running again this check-in, nothing would have changed in 5 minutes.",
+      "result": "Priority order status: items 1,2,3,4 fully shipped/verified; item 7's safe half (overnight rank trajectory) shipped; item 5 (rejection/pull rule attribution) substantially covered. Once #5188 merges, EVERY rejection reason in the funnel gets a durable shadow-gradeable record -- closes the shadow-tracking coverage gap completely.",
+      "nextAction": "Check PR #5188 at 08:50Z check-in, merge if green. Continue holding the full-RTH-continuous half of priority #7 pending confirmation. Items 6/8 (Phase 2C winner-DNA, Phase 2B-part-2 regime WHY-classification) remain correctly blocked on trading-day sample accumulation -- both capture paths only started today, 2026-09-18."
     }
   ],
   "knownOpenItems": {
