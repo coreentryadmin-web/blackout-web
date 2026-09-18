@@ -798,6 +798,28 @@ export function counterThesisLine(
  * as plain text; deliberately never blended with the terminal leg's price/peak/trough numbers in
  * the same clause, which is exactly the pairing that caused the original bug.
  */
+/**
+ * Extra calendar-day runway the most recent roll bought — `curr.expiry` minus `prev.expiry`,
+ * both plain YYYY-MM-DD date-only strings (no ET-offset ambiguity, unlike `committedAt`). Null
+ * when either expiry is missing/unparseable, or when the delta isn't POSITIVE — `roll-plan.ts`'s
+ * own module header states the design intent plainly ("A ROLL BUYS TIME") and `buildRollChild`
+ * hard-gates every live roll on `pick.dte > parentDte + buffer` (DEFAULT_MIN_ROLL_BUFFER_DAYS),
+ * so a non-positive delta should never occur for a roll this function ever sees in production —
+ * but a defensive null-honest floor costs nothing and protects a pre-gate historical chain leg
+ * (or a malformed date) from ever printing a fabricated or backwards "extra days" claim.
+ */
+export function rollRunwayExtensionDays(
+  prevExpiry: string | null,
+  currExpiry: string | null,
+): number | null {
+  if (!prevExpiry || !currExpiry) return null;
+  const prevMs = Date.parse(`${prevExpiry}T00:00:00Z`);
+  const currMs = Date.parse(`${currExpiry}T00:00:00Z`);
+  if (!Number.isFinite(prevMs) || !Number.isFinite(currMs)) return null;
+  const days = Math.round((currMs - prevMs) / 86_400_000);
+  return days > 0 ? days : null;
+}
+
 function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
   const rh = ctx.rollHistory;
   if (!rh || rh.rollCount <= 0 || rh.legs.length < 2) return null;
@@ -818,7 +840,15 @@ function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
       ? etSessionDate(Date.parse(curr.committedAt))
       : null;
   const times = rh.rollCount === 1 ? "once" : `${rh.rollCount} times`;
-  const rollSentence = `**Rolled ${times}** — most recently from the ${fmtLeg(prev)} to the ${fmtLeg(curr)}${dateStr ? ` on ${dateStr}` : ""}.`;
+  // Ask Largo round 18 (2026-09-18): `expiry` has sat unread on every SwingRollHistoryLeg since the
+  // roll-history disclosure shipped — the narrative named WHAT was rolled (strike/right) but never
+  // WHY, i.e. the runway a roll exists to buy in the first place (see the module header on
+  // `roll-plan.ts`: "A ROLL BUYS TIME... never roll flat/nearer"). Surfacing the day-count, not the
+  // raw expiry dates, keeps this additive and terse rather than duplicating `fmtLeg`'s own strike
+  // disclosure with a second date clause.
+  const runwayDays = rollRunwayExtensionDays(prev.expiry, curr.expiry);
+  const runwayClause = runwayDays != null ? `, buying **${runwayDays}d** of extra runway` : "";
+  const rollSentence = `**Rolled ${times}** — most recently from the ${fmtLeg(prev)} to the ${fmtLeg(curr)}${dateStr ? ` on ${dateStr}` : ""}${runwayClause}.`;
   const composite = rh.chainComposite;
   if (!composite || composite.compoundedReturnPct == null) return rollSentence;
   const compoundedStr = `${composite.compoundedReturnPct >= 0 ? "+" : ""}${composite.compoundedReturnPct.toFixed(1)}%`;

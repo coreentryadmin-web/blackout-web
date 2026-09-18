@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T09:54:00Z",
+  "lastUpdated": "2026-09-18T10:09:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3775,6 +3775,12 @@
       "evidence": "3 of 5 rapid-fire requests returned real 200 JSON; ECS state showed 5/8 tasks already on the new task def at check time. count=0 for edition_for=2026-09-18 is CORRECT, not a bug -- today's edition was built overnight BEFORE PR #5184 (candidate_snapshot rejection capture) and PR #5185 (levels/R-multiple capture) merged (~08:05-08:38 UTC this morning), so no candidate rows with the new schema exist for today's edition yet. Tonight's edition build (edition_for=2026-09-19) will be the first to populate real leaderboard data end-to-end.",
       "result": "CONFIRMED WORKING. All 3 PRs from this session's continuous-learning mandate build (#5187 primitive, #5188 durable rejection record, #5189 reader) are verified live and correct, not just unit-tested. Session's shipped-feature verification is now complete -- 8 PRs merged and independently confirmed live today (2026-09-18): #5176/#5177 (Phase 2A), #5181 (Phase 2B pt.1), #5183 (Phase 2E), #5184, #5185, #5187, #5188, #5189.",
       "nextAction": "No further verification needed on today's shipped work. Tomorrow's first cycle after the overnight edition build (edition_for=2026-09-19) should spot-check /api/admin/nighthawk/candidate-leaderboard for real non-zero data as the first live proof the whole capture pipeline works on a real new edition, not just structurally. Continue holding Phase 2C/2B-part-2 (blocked on trading-day sample accumulation) and the full-RTH-continuous-tracking half of priority #7 (held pending confirmation) as the two known open items."
+    },
+    {
+      "at": "2026-09-18T10:09:00Z",
+      "trigger": ":06 cycle -- full v3 brief refresh",
+      "healthcheck": "First check at 10:07:43Z hit the already-known transient degraded-fallback pattern (A_edition AMBER 'served from degraded fallback source', editionFor jumped to 2026-09-21) -- this is the SAME timeoutFallbackEdition scenario already investigated/fixed in this lane's own eval ordering (PR #5078, 2026-09-16) and observed 6 times total in this journal's history; self-resolved within 21 seconds (re-ran at 10:08:04Z: back to editionFor=2026-09-18, A_edition GREEN 4 plays). Not a new finding, not re-escalating -- well past the 3-instance threshold and already understood/documented as an inherent transient fail-safe, not a bug to chase further.",
+      "result": "Clean cycle otherwise -- no new bugs or gaps found. All 8 PRs from today's continuous-learning mandate build remain verified live (confirmed last cycle). No open PRs, no pending follow-ups beyond the two already-tracked open items (Phase 2C/2B-part-2 sample accumulation, full-RTH-continuous half of priority #7)."
     }
   ],
   "knownOpenItems": {
