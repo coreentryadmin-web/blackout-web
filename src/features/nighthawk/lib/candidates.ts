@@ -11,6 +11,7 @@ import { dbConfigured, fetchTickersAvgDailyPremium, insertNighthawkCandidateSnap
 import { fetchTickersFlowStreaks } from "./flow-streak";
 import type { MarketWideContext } from "./market-wide";
 import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
+import { classifyMarketRegime, type MarketRegimeTag } from "./market-regime";
 
 function safeFloat(v: unknown): number {
   const n = Number(String(v ?? 0).replace(/[$,]/g, ""));
@@ -680,7 +681,8 @@ export function buildDiscoveryStageSnapshotRows(
   editionFor: string,
   rows: MultiSourceCandidateRow[],
   selectedRows: MultiSourceCandidateRow[],
-  extras: DiscoveryStageExtras
+  extras: DiscoveryStageExtras,
+  marketRegime: MarketRegimeTag | null = null
 ): DiscoveryStageSnapshotRow[] {
   const selectedTickers = new Set(selectedRows.map((r) => r.ticker));
   const snapshotRows: DiscoveryStageSnapshotRow[] = [];
@@ -699,6 +701,9 @@ export function buildDiscoveryStageSnapshotRows(
       streak_multiplier: extra?.streak_multiplier ?? null,
       unusualness: extra?.unusualness ?? null,
       confluence_admitted: selectedTickers.has(row.ticker),
+      // Phase 2A part 2: one market-regime read shared by every candidate this edition build
+      // (a fact about the WHOLE market that session, not a per-ticker one) -- see market-regime.ts.
+      market_regime: marketRegime,
     };
     snapshotRows.push({
       edition_for: editionFor,
@@ -741,9 +746,10 @@ function recordDiscoveryStageSnapshots(
   editionFor: string,
   rows: MultiSourceCandidateRow[],
   selectedRows: MultiSourceCandidateRow[],
-  extras: DiscoveryStageExtras
+  extras: DiscoveryStageExtras,
+  marketRegime: MarketRegimeTag | null
 ): void {
-  const snapshotRows = buildDiscoveryStageSnapshotRows(editionFor, rows, selectedRows, extras);
+  const snapshotRows = buildDiscoveryStageSnapshotRows(editionFor, rows, selectedRows, extras, marketRegime);
   if (!snapshotRows.length) return;
   void insertNighthawkCandidateSnapshots(snapshotRows).catch((err) => {
     console.warn(`[nighthawk/candidates] failed to write discovery-stage candidate snapshots:`, err);
@@ -874,7 +880,14 @@ export async function extractMultiSourceCandidates(
 
   const selectedRows = applyConfluenceGate(rows, maxTickers);
   const selected = selectedRows.map((r) => r.ticker);
-  recordDiscoveryStageSnapshots(editionFor, rows, selectedRows, captureExtras);
+  // Phase 2A part 2: classify once per edition build from data ctx already fetched -- zero new I/O.
+  const marketRegime = classifyMarketRegime({
+    spx_bars: ctx.spx_bars,
+    vix_bars: ctx.vix_bars,
+    spx_gap: ctx.spx_gap,
+    macro_events: ctx.macro_events,
+  });
+  recordDiscoveryStageSnapshots(editionFor, rows, selectedRows, captureExtras, marketRegime);
   const multiSourceCount = rows.filter((r) => r.source_count >= 2).length;
   const singleLaneSelected = selectedRows.filter((r) => r.source_count < CONFLUENCE_MIN_SOURCES).length;
   console.info(
