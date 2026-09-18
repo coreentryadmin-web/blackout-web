@@ -1083,6 +1083,41 @@ test("lessonsSection: omits the trim-rail advice and stop-loss advice when Trade
   assert.match(suppressed!.body, /pullback continuation/i);
 });
 
+test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Trade manager read already stated the identical capture>=75 fact", () => {
+  // Live repro 2026-09-18 (CRWD:19, CLOSED/target, real production play-brief): "Trade manager
+  // read" (closedCoaching, play-brief-narrative-coaching.ts capture>=75 branch) rendered
+  // "**Strong discipline** — captured **85.7%** of peak; replicate trim timing." — "Lessons"
+  // (this function) then independently restated the SAME fact one section later: "MFE capture:
+  // 85.7% of peak move" + "**Strong exit discipline** — banked most of the move; replicate trim
+  // ladder timing." Today's roundTripAlreadyNoted/adviceAlreadyNoted/stopAdviceAlreadyNoted fixes
+  // only covered the round_trip kind (and the capture<35 "gave back" branch, which already reuses
+  // adviceAlreadyNoted's exact string) — this capture>=75 "Strong discipline" branch, arguably the
+  // MOST common closed-play outcome (any well-managed winner), was never gated at all.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 161.3,
+    exitPnlPct: 138.3,
+    mfeCapturePct: 85.7,
+    closedReason: "target",
+    archetype: "SECTOR_ROTATION",
+  });
+
+  const withoutSuppression = lessonsSection(play, false, false, false, false);
+  assert.ok(withoutSuppression);
+  assert.match(withoutSuppression!.body, /strong exit discipline/i);
+  assert.match(withoutSuppression!.body, /MFE capture/i);
+
+  const suppressed = lessonsSection(play, false, false, false, true);
+  assert.ok(suppressed);
+  assert.doesNotMatch(suppressed!.body, /strong exit discipline/i);
+  // Independent evidence must survive: peak/exit line, the raw MFE-capture percentage, exit
+  // reason, and archetype tag — only the restated verdict sentence is suppressed.
+  assert.match(suppressed!.body, /Peak was/i);
+  assert.match(suppressed!.body, /MFE capture/i);
+  assert.match(suppressed!.body, /mechanical exit fired as designed/i);
+  assert.match(suppressed!.body, /sector rotation leadership/i);
+});
+
 // Live repro 2026-09-13 (EWZ:29, CLOSED, real production play-brief): lessonsSection's own archetype
 // tag used the same underscore-replace-only transform already fixed in play-brief.ts's Verdict line
 // and play-brief-intel.ts's whyThisSetupSection (PR #4896) -- a third, missed call site. The SAME

@@ -1147,12 +1147,26 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
  *  `adviceAlreadyNoted`/`stopAdviceAlreadyNoted` close the same gap the same way: the call site
  *  checks whether "Trade manager read" already carries the identical advice text and, only then,
  *  skips restating it here — every OTHER independent lesson (MFE capture number, archetype tag,
- *  exec-vs-mid slippage, "strong exit discipline"/"partial capture" verdicts) is untouched. */
+ *  exec-vs-mid slippage, "partial capture" verdicts) is untouched.
+ *
+ *  BUG FOUND (2026-09-18, Ask Largo standing mandate, live repro CRWD:19 CLOSED/target): the three
+ *  flags above only ever gate the round_trip kind (plus the capture<35 "gave back" branch, which
+ *  happens to reuse the identical advice string). The capture>=75 "Strong exit discipline" branch
+ *  — arguably the MOST common closed-play outcome, since it fires on any well-managed winner — had
+ *  no suppression flag at all: "Trade manager read" (closedCoaching, capture>=75 branch) rendered
+ *  "**Strong discipline** — captured 85.7% of peak; replicate trim timing." and this section
+ *  independently restated the same verdict one section later: "MFE capture: 85.7% of peak move" +
+ *  "**Strong exit discipline** — banked most of the move; replicate trim ladder timing." Same
+ *  disconnected-bullet-dump pattern as the round_trip fix, on the one branch it didn't cover.
+ *  `captureAlreadyNoted` closes it the same way — only the restated VERDICT sentence is
+ *  suppressed; the raw "MFE capture: X% of peak move" line (independent, and asserted by an
+ *  existing test to survive analogous suppression, same as "Peak was") is untouched. */
 export function lessonsSection(
   play: TerminalPlay,
   roundTripAlreadyNoted?: boolean,
   adviceAlreadyNoted?: boolean,
   stopAdviceAlreadyNoted?: boolean,
+  captureAlreadyNoted?: boolean,
 ): RichSection | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
@@ -1170,7 +1184,9 @@ export function lessonsSection(
       const capture = outcome.capturePct;
       lines.push(`MFE capture: **${fmtPct(capture)}** of peak move`);
       if (capture >= 75) {
-        lines.push("**Strong exit discipline** — banked most of the move; replicate trim ladder timing.");
+        if (!captureAlreadyNoted) {
+          lines.push("**Strong exit discipline** — banked most of the move; replicate trim ladder timing.");
+        }
       } else if (capture < 35 && play.peak > 20) {
         if (!adviceAlreadyNoted) {
           lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
@@ -1699,7 +1715,16 @@ export function buildIntelSections(
     const adviceAlreadyNoted = narrative?.body?.includes("tighten at first trim rail next time") ?? false;
     const stopAdviceAlreadyNoted =
       narrative?.body?.includes("check if entry was extended past invalidation") ?? false;
-    const lessons = lessonsSection(play, roundTripAlreadyNoted, adviceAlreadyNoted, stopAdviceAlreadyNoted);
+    // Closes the capture>=75 "Strong exit discipline" gap the flags above left open — see
+    // lessonsSection's own doc comment (2026-09-18) for the live repro (CRWD:19).
+    const captureAlreadyNoted = narrative?.body?.includes("replicate trim timing") ?? false;
+    const lessons = lessonsSection(
+      play,
+      roundTripAlreadyNoted,
+      adviceAlreadyNoted,
+      stopAdviceAlreadyNoted,
+      captureAlreadyNoted,
+    );
     if (lessons) out.push(lessons);
   }
 
