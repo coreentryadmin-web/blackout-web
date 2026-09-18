@@ -148,20 +148,38 @@ function pastEntryDeadline(input: SwingEntryEnterabilityInput, nowMs: number): b
 /**
  * Short reason a WATCH play's entry mechanics are already moot, independent of any gate state —
  * null while the play is still genuinely enterable. `evaluateSwingEntryEnterability`'s own
- * if-chain checks INVALIDATED/past-deadline BEFORE gate-blocked (this file, above), so a play can
- * be both expired/invalidated AND gate-blocked at once — entry-verdict.ts deliberately keeps the
- * gate evidence attached in that case (see its own comment) rather than dropping it, but every
- * renderer of that gate text must know the gate is secondary: clearing it would NOT make the play
- * enterable, because the deadline/invalidation check fires first regardless. Narrow structural
- * type (not the full `TerminalPlay`) so this stays a dependency-free leaf export any brief-render
- * module can import without a cycle risk back through play-brief-narrative.ts/play-brief-intel.ts.
+ * if-chain checks INVALIDATED/past-deadline/contract-expired/extended-chase BEFORE gate-blocked
+ * (this file, above), so a play can be both dead-for-one-of-those-reasons AND gate-blocked at
+ * once — entry-verdict.ts's `dont_buy` branch deliberately keeps the gate evidence attached in
+ * that case (see its own comment: "regardless of which dont_buy reason fired (deadline-expired,
+ * contract-expired, extended-chase)") rather than dropping it, but every renderer of that gate
+ * text must know the gate is secondary: clearing it would NOT make the play enterable, because
+ * one of these checks fires first regardless.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-09-18): this function only ever recognized 2 of the
+ * 4 dead-entry states `evaluateSwingEntryEnterability` can return `dont_buy` for — INVALIDATED and
+ * deadline-expired (`watchEntryExpired`) — leaving CONTRACT-EXPIRED (`entryStatus === "EXPIRED"`)
+ * and EXTENDED-CHASE (`setupState === "EXTENDED"` or `entryStatus === "EXTENDED_CHASE"`) silently
+ * uncovered, even though entry-verdict.ts's own comment (quoted above) names them explicitly as
+ * cases where `gateBlocks` stays populated. Both fields are already rendered as raw facts by
+ * `watchEntrySection` ("Setup: **EXTENDED**" / "Entry geometry: **EXPIRED**"), so a WATCH brief
+ * could show those alongside an un-qualified "**Gates blocking entry:**" header — the exact same
+ * "clearing the gate would reopen entry" false implication this function was written to prevent,
+ * just for the two dead-reasons nobody had added yet. Narrow structural type (not the full
+ * `TerminalPlay`) so this stays a dependency-free leaf export any brief-render module can import
+ * without a cycle risk back through play-brief-narrative.ts/play-brief-intel.ts.
  */
 export function deadPlayReason(play: {
   setupState?: string | null;
+  entryStatus?: string | null;
   watchEntryExpired?: boolean | null;
 }): string | null {
   if (play.setupState === "INVALIDATED") return "thesis already invalidated";
   if (play.watchEntryExpired === true) return "entry-validity window expired";
+  if (play.entryStatus === "EXPIRED") return "contract expired";
+  if (play.setupState === "EXTENDED" || play.entryStatus === "EXTENDED_CHASE") {
+    return "extended past the valid entry window";
+  }
   return null;
 }
 
