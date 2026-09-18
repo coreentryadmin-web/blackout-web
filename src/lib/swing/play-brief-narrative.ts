@@ -348,13 +348,26 @@ function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string |
 function sellReasonClause(
   reason: TerminalPlay["manageReason"] | undefined,
   thesisLevel: TerminalPlay["thesisBreak"] | undefined,
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): manage.ts's `evaluateSwingManagement`
+  // computes a full, SPECIFIC prose reason for every verdict (the exact breached level, e.g.
+  // "underlying 145.20 ≤ structural stop 148.00 — LONG thesis broken in underlying terms") and
+  // manage-sync.ts persists it verbatim every tick (event_json.reason) — but until now nothing
+  // between that write and this narrative function ever read it back out, so a member reading
+  // "thesis broke" had no way to see WHAT broke or at WHAT level, even though the desk had computed
+  // and stored exactly that on the same tick that fired the SELL. See TerminalPlay.manageReasonDetail
+  // for the full plumbing. Used ONLY for the two cases below that previously had no specifics at
+  // all (structural_stop/thesis_stop, and the unmatched-rung fallback) — the other rungs already
+  // carry deliberately-curated, member-clean wording (expiry_risk/time_stop's "thesis still intact"
+  // framing in particular must NOT be replaced by the raw internal reason string, which reads very
+  // differently) and are left untouched.
+  reasonDetail?: TerminalPlay["manageReasonDetail"],
 ): string {
   switch (reason) {
     case "expiry_risk":
       return " — time-based: DTE nearing the lane's theta cliff (thesis still intact)";
     case "structural_stop":
     case "thesis_stop":
-      return " — thesis broke";
+      return reasonDetail ? ` — ${reasonDetail}` : " — thesis broke";
     case "premium_stop":
       return " — premium stop hit";
     case "catalyst_shift":
@@ -370,9 +383,12 @@ function sellReasonClause(
       // position can be sitting on a real premium gain (leverage/IV) while still time-stopping here.
       return " — time-based: held long enough that the underlying has stalled toward its target (thesis still intact)";
     default:
-      // No manage-sync rung yet — fall back to the spot-detected structural break when that's
-      // what actually drove the EXIT (structuralBreakFromSpot in live-plays.ts), otherwise say
-      // nothing rather than guess at a mechanism the data doesn't actually confirm.
+      // No matching rung (or none yet). Prefer the specific persisted reason when the caller has
+      // one (an unmapped/future rung whose prose is still real and honest); otherwise fall back to
+      // the spot-detected structural break when that's what actually drove the EXIT
+      // (structuralBreakFromSpot in live-plays.ts), or say nothing rather than guess at a
+      // mechanism the data doesn't actually confirm.
+      if (reasonDetail) return ` — ${reasonDetail}`;
       return thesisLevel?.level === "break" ? " — thesis broke" : "";
   }
 }
@@ -509,7 +525,9 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
           : ""),
     );
   } else if (rec === "SELL") {
-    lines.push(`**Exit now**${sellReasonClause(play.manageReason, play.thesisBreak)}. Flatten per manage engine.`);
+    lines.push(
+      `**Exit now**${sellReasonClause(play.manageReason, play.thesisBreak, play.manageReasonDetail)}. Flatten per manage engine.`,
+    );
   } else {
     lines.push(
       `**Hold the line**${health != null ? ` — thesis health **${health}%**` : ""}. ` +

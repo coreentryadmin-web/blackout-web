@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T09:23:00Z",
+  "lastUpdated": "2026-09-18T09:38:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3758,6 +3758,13 @@
       "result": "CONFIRMED CLEAN -- no infra incident, no stuck deployment, no code defect. The earlier 404 smoke-test result is fully explained by deploy queueing + a slow-but-healthy sequential rollout, nothing more. Worth noting as a genuine LATENCY observation (not a bug): an 8-task service replaced one-at-a-time takes ~20-25 min end to end when two deploys queue back to back, which is slower than a batched/parallel rolling update would be -- a real, measured data point if the standing performance mandate ever looks at deploy-pipeline latency specifically, not urgent, not actioned here (deploy config is infra, out of this lane's scope and CLAUDE.md's own terraform-drift warnings apply).",
       "sampleSize": "N/A -- single observed deploy, not a statistical claim.",
       "nextAction": "Re-verify the live /api/admin/nighthawk/candidate-leaderboard route once BOTH queued deploys (#5188 then #5189) finish -- should be within the next 1-2 cycles given #5188 is at 7/8 tasks now. If it still 404s after both are confirmed COMPLETED (not just started), that becomes a real finding to root-cause."
+    },
+    {
+      "at": "2026-09-18T09:38:00Z",
+      "trigger": ":36 cycle -- healthcheck steady, deploy progress check",
+      "healthcheck": "Re-ran fresh at 09:36:38Z: steady, unchanged (same pre-market pattern).",
+      "result": "#5188's deploy is now COMPLETED/success (confirmed via GH Actions). #5189's own deploy is now IN_PROGRESS (was 'pending' last cycle) -- re-smoke-tested /api/admin/nighthawk/candidate-leaderboard, still 404 as expected since that deploy hasn't finished yet. Not a new finding -- consistent with last cycle's diagnosis, just progressing through the queue as predicted.",
+      "nextAction": "Re-verify the leaderboard route next cycle once #5189's own deploy run shows completed/success in GH Actions."
     }
   ],
   "knownOpenItems": {
