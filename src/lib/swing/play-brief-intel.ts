@@ -91,9 +91,18 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   // classifier's own call was — see live-plays.ts's `archetypeNearTieFromFeatureVector` for the full
   // trace. Only rendered when the entry-time classification was genuinely a near-tie (the classifier's
   // own MARGIN_EPS bar); a decisive call (the overwhelming common case) adds nothing here.
-  if (play.archetypeNearTie) {
+  //
+  // BUG FOUND (2026-09-18, same standing mandate, live repro NN:32 CLOSED brief): this used to fire
+  // off `play.archetypeNearTie` alone, with a `whyArchetypeLabel ?? "the winning archetype"` fallback
+  // for when `play.archetype` was itself null (a real, reachable thin-evidence-commit case —
+  // `archetypeNearTieFromFeatureVector` is now hardened against producing a near-tie in that case too,
+  // see its own doc comment). Requiring `whyArchetypeLabel` here is the second, render-layer half of
+  // that fix: even if a future caller ever constructs a `TerminalPlay` with `archetypeNearTie` set but
+  // no real `archetype`, this line still can't fabricate a "the winning archetype beat X" claim with
+  // no preceding "Archetype:" line to anchor it.
+  if (play.archetypeNearTie && whyArchetypeLabel) {
     lines.push(
-      `**Classification:** near-tie at entry — **${whyArchetypeLabel ?? "the winning archetype"}** beat ` +
+      `**Classification:** near-tie at entry — **${whyArchetypeLabel}** beat ` +
         `**${play.archetypeNearTie.secondaryLabel}** by only ${play.archetypeNearTie.marginPct} pts.`,
     );
   }
