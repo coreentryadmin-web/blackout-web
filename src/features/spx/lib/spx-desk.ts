@@ -152,6 +152,9 @@ let lastGoodStrikeLevels: GexStrikeLevel[] = [];
 let lastGoodNearTermExpiries: string[] | null = null;
 let lastGoodGammaFlip: number | null = null;
 let lastGoodGammaRegime = "unknown";
+let lastGoodGexNet: number | null = null;
+let lastGoodGexKing: number | null = null;
+let lastGoodMaxPain: number | null = null;
 let lastGoodUnifiedTape: SpxTapeItem[] = [];
 let lastGoodSpxFlowBriefs: SpxFlowBrief[] = [];
 let lastPulseForSignals: SpxDeskPulse | null = null;
@@ -254,9 +257,9 @@ function stickyDeskGexFallback(spot: number): CanonicalDeskGexSnapshot {
   const finalWalls = wallsFromLevels.length ? wallsFromLevels : lastGoodGexWalls;
   const gexAgeMs = gexDataAgeMs();
   return {
-    gex_net: null,
-    gex_king: null,
-    max_pain: null,
+    gex_net: lastGoodGexNet,
+    gex_king: lastGoodGexKing,
+    max_pain: lastGoodMaxPain,
     gamma_flip: flip,
     above_gamma_flip: flip != null ? spot > flip : false,
     gamma_regime: gRegime !== "unknown" ? gRegime : lastGoodGammaRegime,
@@ -435,6 +438,13 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
   // undetermined (live 2026-07-28: matrix flip=null, desk gamma_flip≈7596).
   lastGoodGammaFlip = flip;
   if (regime !== "unknown") lastGoodGammaRegime = regime;
+  // Capture GEX numeric values (net, king, max_pain) alongside walls/flip so they can be
+  // preserved in the sticky fallback when the next matrix fetch fails or times out. The
+  // contract states gex_stale:true means these are "sticky last-good, not live"; without
+  // preservation the fallback contradicted the documentation by returning null.
+  lastGoodGexNet = pos.net_gex;
+  lastGoodGexKing = king;
+  lastGoodMaxPain = pos.max_pain;
 
   const asofMs = Date.parse(pos.asof);
   const gexAgeMs = Number.isFinite(asofMs) ? Date.now() - asofMs : gexDataAgeMs();
