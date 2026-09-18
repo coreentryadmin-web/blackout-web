@@ -24,7 +24,7 @@ test("zerodte-warm acquires a cross-replica overlap lock before dispatching", ()
   assert.match(routeSrc, /sharedCacheSetNx/, "must use the shared NX lock, not a read-then-write race");
   assert.match(
     routeSrc,
-    /const acquired = await sharedCacheSetNx\(/,
+    /let acquired = await sharedCacheSetNx\(/,
     "the acquire call must happen before dispatch, not after"
   );
   assert.match(routeSrc, /if \(!acquired\)/, "a lost race must be handled, not ignored");
@@ -88,6 +88,17 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
 });
 
+test("critical_stale scan heartbeat bypasses cooldown and can steal a wedged overlap lock", () => {
+  assert.match(routeSrc, /loadZeroDteScanHeartbeat/);
+  assert.match(routeSrc, /scanHeartbeatCritical/);
+  assert.match(routeSrc, /withinCooldown && !scanHeartbeatCritical/);
+  assert.match(
+    routeSrc,
+    /if \(!acquired && scanHeartbeatCritical\)[\s\S]{0,400}sharedCacheDel\(OVERLAP_LOCK_KEY\)/,
+    "must break a wedged lock when the scan heartbeat is critically stale in RTH"
+  );
+});
+
 // Regression for the 2026-09-04 finding: this test used to assert the OPPOSITE — that
 // zerodte-warm intentionally omitted the UW sweep tag because its work was "platform-local,
 // not a UW REST fan-out". That premise was wrong: warmZeroDteBoard -> scanZeroDteBoard and
@@ -129,7 +140,7 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
   );
 
   const cooldownIdx = routeSrc.indexOf("RERUN_COOLDOWN_KEY,");
-  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const overlapClaimIdx = routeSrc.indexOf("let acquired = await sharedCacheSetNx(");
   const dispatchIdx = routeSrc.indexOf("void dispatchWarm();");
   assert.ok(cooldownIdx > 0 && overlapClaimIdx > 0 && dispatchIdx > 0);
   assert.ok(cooldownIdx < overlapClaimIdx, "cooldown must be checked before the overlap lock");
@@ -137,6 +148,7 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
 
   const skipIdx = routeSrc.indexOf("reason: `rate-limited");
   assert.ok(skipIdx > cooldownIdx && skipIdx < dispatchIdx);
+  assert.match(routeSrc, /withinCooldown && !scanHeartbeatCritical/, "critical_stale may bypass the cooldown floor");
 
   assert.match(
     routeSrc,

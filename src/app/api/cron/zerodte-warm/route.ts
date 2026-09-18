@@ -28,6 +28,8 @@ import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-
 import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
+import { inOptionsMarketHours } from "@/lib/ws/options-socket";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,6 +90,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  let scanHeartbeatCritical = false;
+  try {
+    const hb = await loadZeroDteScanHeartbeat();
+    scanHeartbeatCritical = Boolean(inOptionsMarketHours() && hb.critical_stale);
+  } catch {
+    /* best-effort — never block the warm tick on a heartbeat read failure */
+  }
+
   const effectiveCooldownSec = isEtExtendedWarmHours()
     ? RERUN_COOLDOWN_SEC
     : OFF_WINDOW_FORCE_COOLDOWN_SEC;
@@ -96,7 +106,7 @@ export async function GET(req: NextRequest) {
     { startedAt: started },
     effectiveCooldownSec
   ).catch(() => true));
-  if (withinCooldown) {
+  if (withinCooldown && !scanHeartbeatCritical) {
     const payload = {
       ok: true,
       skipped: true,
@@ -106,11 +116,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const acquired = await sharedCacheSetNx(
+  let acquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  // Live 2026-09-18: a wedged overlap lock + 60s cooldown let cron_job_runs stay "ok/skipped"
+  // while zerodte_scan_heartbeat went 47m without a tick — self-heal could not break through.
+  if (!acquired && scanHeartbeatCritical) {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    acquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
   if (!acquired) {
     const payload = {
       ok: true,
