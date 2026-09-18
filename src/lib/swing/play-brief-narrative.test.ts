@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { describeDarkPoolLevel, counterThesisLine, tradeManagerNarrativeSection } from "./play-brief-narrative";
+import {
+  describeDarkPoolLevel,
+  counterThesisLine,
+  tradeManagerNarrativeSection,
+  rollRunwayExtensionDays,
+} from "./play-brief-narrative";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
@@ -2168,7 +2173,10 @@ test("tradeManagerNarrativeSection: rolled-once position discloses the roll (ope
   );
 
   assert.ok(section);
-  assert.match(section!.body, /\*\*Rolled once\*\* — most recently from the \$100 call to the \$110 call on 2026-08-20\./);
+  assert.match(
+    section!.body,
+    /\*\*Rolled once\*\* — most recently from the \$100 call to the \$110 call on 2026-08-20, buying \*\*35d\*\* of extra runway\./,
+  );
   assert.doesNotMatch(section!.body, /Full chain result/);
 });
 
@@ -2198,7 +2206,7 @@ test("tradeManagerNarrativeSection: roll date is the ET session date, not the ra
   assert.ok(section);
   assert.match(
     section!.body,
-    /on 2026-01-19\./,
+    /on 2026-01-19,/,
     `roll date must be the ET session date (2026-01-19), not the raw UTC calendar day (2026-01-20) — got: ${section!.body}`,
   );
   assert.doesNotMatch(section!.body, /on 2026-01-20/);
@@ -2222,7 +2230,10 @@ test("tradeManagerNarrativeSection: rolled-twice position says 'Rolled 2 times' 
   );
 
   assert.ok(section);
-  assert.match(section!.body, /\*\*Rolled 2 times\*\* — most recently from the \$95 put to the \$100 put on 2026-08-25\./);
+  assert.match(
+    section!.body,
+    /\*\*Rolled 2 times\*\* — most recently from the \$95 put to the \$100 put on 2026-08-25, buying \*\*35d\*\* of extra runway\./,
+  );
   assert.doesNotMatch(section!.body, /\$90/);
   assert.doesNotMatch(section!.body, /Full chain result/);
 });
@@ -2261,7 +2272,10 @@ test("tradeManagerNarrativeSection: rolled-and-resolved chain also cites the REA
   );
 
   assert.ok(section);
-  assert.match(section!.body, /\*\*Rolled once\*\* — most recently from the \$91 put to the \$90 put on 2026-08-20\./);
+  assert.match(
+    section!.body,
+    /\*\*Rolled once\*\* — most recently from the \$91 put to the \$90 put on 2026-08-20, buying \*\*35d\*\* of extra runway\./,
+  );
   assert.match(section!.body, /Full chain result: \*\*-60\.5% compounded\*\* \(loss, worst leg -40\.8%\)/);
 });
 
@@ -2287,4 +2301,67 @@ test("tradeManagerNarrativeSection: rolled but still-open chain (chainComposite 
   assert.ok(section);
   assert.match(section!.body, /\*\*Rolled once\*\*/);
   assert.doesNotMatch(section!.body, /Full chain result/);
+});
+
+// Ask Largo round 18 (2026-09-18): `rollRunwayExtensionDays` — the "a roll buys TIME" gap.
+// `SwingRollHistoryLeg.expiry` has been on the type since the roll-history disclosure first
+// shipped but was never read by `rollHistoryLine` — the narrative said WHAT strike/right the
+// position rolled to but never disclosed the runway gained, despite `roll-plan.ts`'s own module
+// header naming that as the entire point of a roll ("A ROLL BUYS TIME... never roll flat/nearer",
+// enforced live by `buildRollChild`'s `pick.dte > parentDte + buffer` gate).
+
+test("rollRunwayExtensionDays: computes the calendar-day gap between two YYYY-MM-DD expiries", () => {
+  assert.equal(rollRunwayExtensionDays("2026-08-15", "2026-09-19"), 35);
+  assert.equal(rollRunwayExtensionDays("2026-07-18", "2026-08-15"), 28);
+});
+
+test("rollRunwayExtensionDays: null-honest on missing, unparseable, or non-positive input — never fabricates or claims a backwards roll", () => {
+  assert.equal(rollRunwayExtensionDays(null, "2026-09-19"), null);
+  assert.equal(rollRunwayExtensionDays("2026-08-15", null), null);
+  assert.equal(rollRunwayExtensionDays("not-a-date", "2026-09-19"), null);
+  // Same expiry (flat roll) or a nearer one (should never happen live — buildRollChild gates it —
+  // but this function must fail closed, not print a claimed "0d" or negative "extra runway").
+  assert.equal(rollRunwayExtensionDays("2026-08-15", "2026-08-15"), null);
+  assert.equal(rollRunwayExtensionDays("2026-09-19", "2026-08-15"), null);
+});
+
+test("tradeManagerNarrativeSection: roll-history line discloses the runway the roll bought, not just the strike/right change", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "HOLD", pnlPct: 5 }),
+      rollHistory: {
+        rollCount: 1,
+        legs: [
+          { rollSeq: 0, strike: 100, right: "C", expiry: "2026-08-15", committedAt: "2026-08-01T14:00:00.000Z" },
+          { rollSeq: 1, strike: 110, right: "C", expiry: "2026-09-19", committedAt: "2026-08-20T15:30:00.000Z" },
+        ],
+        chainComposite: null,
+      },
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /buying \*\*35d\*\* of extra runway/);
+});
+
+test("tradeManagerNarrativeSection: roll-history line omits the runway clause (never a fabricated day count) when a leg's expiry is missing", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ recommendation: "HOLD", pnlPct: 5 }),
+      rollHistory: {
+        rollCount: 1,
+        legs: [
+          { rollSeq: 0, strike: 100, right: "C", expiry: null, committedAt: "2026-08-01T14:00:00.000Z" },
+          { rollSeq: 1, strike: 110, right: "C", expiry: "2026-09-19", committedAt: "2026-08-20T15:30:00.000Z" },
+        ],
+        chainComposite: null,
+      },
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Rolled once\*\* — most recently from the \$100 call to the \$110 call on 2026-08-20\./);
+  assert.doesNotMatch(section!.body, /extra runway/);
 });
