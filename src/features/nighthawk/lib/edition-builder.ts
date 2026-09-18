@@ -422,6 +422,30 @@ function recordStageRejectionSnapshots(
 }
 
 /**
+ * Pure row-shaper for the "final geometry gate" safety net (task #24/#146/ops #519) — plays
+ * thin-edition backfill or checkpoint-resume introduced fresh, bypassing generateEditionPlays'
+ * own geometry check, caught here right before publish. `partitionPlaysByGeometry`'s `failing`
+ * (play-constraints.ts) carries only `{play, drops}` — no `ticker` at the top level and no
+ * `scored` breakdown (this far downstream, `finalPlays` no longer carries a scored-candidate
+ * reference, so it's honestly omitted here, never guessed) — this reshapes that into the common
+ * `{ticker, drops, play, scored}` / `{ticker, detail, scored, play}` shapes
+ * recordNighthawkRejectedAuditTrail and recordStageRejectionSnapshots both already expect,
+ * separated out purely so the mapping itself is directly unit-testable (same "extract for
+ * testability without mocking @/lib/db" rationale as every other builder in this file).
+ */
+export function buildFinalGeometryGateRejections(
+  failing: Array<{ play: PlaybookPlay; drops: string[] }>
+): Array<{ ticker: string; drops: string[]; detail: NighthawkRejectionDetail; scored: null; play: PlaybookPlay }> {
+  return failing.map((f) => ({
+    ticker: f.play.ticker,
+    drops: f.drops,
+    detail: { stage: "geometry" as const, drops: f.drops },
+    scored: null,
+    play: f.play,
+  }));
+}
+
+/**
  * RECAP-ONLY FALLBACK (audit P0 / #77). When the candidate→play funnel legitimately collapses to
  * zero (no flow candidates, no scored dossiers, all candidates fundamentally blocked, Claude/critic
  * returns nothing), we STILL publish a real edition row — a genuine market recap with `plays: []` —
@@ -1258,6 +1282,17 @@ export async function buildEveningEdition(opts?: {
           "[nighthawk/edition] final geometry gate rejected:",
           failing.map((f) => `${f.play.ticker}: ${f.drops.join("; ")}`)
         );
+        // Durable record (task #24, found while auditing the operator's "verify shadow tracking
+        // captures every rejected candidate" mandate): this gate previously had ZERO durable
+        // record anywhere, not even the older alert_audit_log — the ONLY trace was the
+        // console.warn above, invisible by the next morning. A play dropped here reached this
+        // point specifically because it bypassed generateEditionPlays' own geometry check
+        // (backfill/checkpoint-resume introduced it fresh), so it is otherwise indistinguishable
+        // from a normal geometry rejection to any downstream reader — same fire-and-forget
+        // treatment as every other rejection stage in this file.
+        const geometryGateRejections = buildFinalGeometryGateRejections(failing);
+        recordNighthawkRejectedAuditTrail(geometryGateRejections, editionFor);
+        recordStageRejectionSnapshots(editionFor, geometryGateRejections);
         finalPlays = passing.map((p, i) => ({ ...p, rank: i + 1 }));
         funnel.published = finalPlays.length;
         funnel.critic_passed = finalPlays.length;
