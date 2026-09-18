@@ -595,7 +595,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // staleness, GEX/Vector staleness all reach BOTH the narrative prose AND unavailableSources;
   // news catalysts reached only the former. A member skimming the chip row (rather than reading
   // the full narrative) had no way to know the headlines they're seeing could be up to
-  // `NEWS_CATALYST_STALE_MS` (10min) old. Live-verified 2026-09-18: `arsenal.news.headlines`
+  // `NEWS_CATALYST_STALE_MS` (2min) old. Live-verified 2026-09-18: `arsenal.news.headlines`
   // renders on real committed plays right now, so this omission fires whenever the shared
   // Benzinga read (server-cache.ts stale-while-revalidate) is aged, not a theoretical gap. Same
   // `!isClosed` gate as every other live-desk-state check above (a closed play's citation of

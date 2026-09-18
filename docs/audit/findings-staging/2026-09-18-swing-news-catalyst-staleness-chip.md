@@ -20,7 +20,8 @@ catalyst staleness, option-mark staleness, GEX staleness, Vector staleness) reac
 narrative prose AND `collectBriefUnavailableSources`'s `unavailableSources` array — the one field
 the UI's dedicated `UnavailableChip` component reads from. News-catalyst staleness reached only the
 narrative. A member who skims the chip row (rather than reading the full narrative body) had no way
-to know the headlines they're looking at could be up to `NEWS_CATALYST_STALE_MS` (10 minutes) old.
+to know the headlines they're looking at could be up to `NEWS_CATALYST_STALE_MS` (2 minutes —
+`NEWS_CATALYST_STALE_MS = GEX_MATRIX_STALE_MS = VECTOR_STALE_MS = 120_000`) old.
 
 This is the same "independently-derived-verdict pair" shape flagged elsewhere today (#5205's
 `lessonsSection`/Trade-manager-read duplication, #5208's diff-engine headline check) — two places
