@@ -4,7 +4,19 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-18 (12:19 UTC) — [SEO] Lane heartbeat: PR queue empty (SEO-lane), GSC unchanged, pre-market
+## 2026-09-18 (13:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good
+
+**Severity.** — (no defect found)
+
+Confirmed market open (Fri 2026-09-18, trading day, 09:34 ET) before starting the RTH-scoped job.
+Live gamma-snapshot API: `calculation_id` advancing across 3 polls over ~15s, spot moving
+(7643.20→7643.45), age 3-7s, `degraded` false throughout; cross-checked against Massive `I:SPX`
+ground truth (7640.69) — matches within normal drift. Purged Cloudflare edge (HTML only) and
+re-measured homepage CLS live: desktop **0.0002 GOOD**, mobile **0.0343 GOOD**.
+
+PR sweep: 1 open agent PR fleet-wide, `#5204` (largo lane, CI-RUNNING) — not SEO-lane.
+
+No defects found.
 
 **Severity.** — (no defect found)
 
