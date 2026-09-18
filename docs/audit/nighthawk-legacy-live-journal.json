@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T17:00:00Z",
+  "lastUpdated": "2026-09-18T17:08:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3955,6 +3955,14 @@
       "whatChanged": "Attempted to call the new GET /api/admin/nighthawk/posture-backtest?days=30 route immediately after merge -- 404, not yet deployed. Checked ecr-push-production.yml via GH Actions: my commit's deploy (run 35371718317) is status=pending, queued behind run 35369419785 (PR #5216's swing-lane commit, still in_progress after ~24min, longer than typical today) -- deploys run sequentially, one at a time, not stuck/broken, just queued.",
       "result": "Measurement tool is merged and correct (11/11 tests, tsc clean) but NOT yet live -- the actual measurement (gate fire rate vs real bearish-tape frequency) still hasn't been read. Not idling on this: rest of this cycle's mandate work is otherwise done, board is steady, and re-checking a still-deploying route on a tight loop wastes cycles without new information.",
       "nextAction": "Next cycle: re-check ecr-push-production.yml for my commit's run, and once ECS has rolled it out, call GET /api/admin/nighthawk/posture-backtest?days=30 and record the real measurement here."
+    },
+    {
+      "at": "2026-09-18T17:08:00Z",
+      "trigger": ":06 cycle -- healthcheck steady, checked deploy-queue depth for PR #5217's route",
+      "healthcheck": "Re-ran fresh at 17:07:03Z: steady GREEN/AMBER pattern, no material change (SWKS/SMCI cleared to GREEN, SMTC still the known benign stale pattern). No journal entry needed on the board alone -- also confirms the 16:51Z wrong-future-date edition anomaly has NOT recurred.",
+      "whatChanged": "Investigated whether #5216's still-in-progress ECS deploy (blocking #5217's own deploy queue) was genuinely stuck vs. just slow, per direct boto3 ECS inspection (AWS creds live): blackout-production-web service, 0 failedTasks, 6 of 8 tasks already cycled to the new task def (:1666), events flowing steadily every 1-2 min (start -> register -> drain old -> stop old, repeat) -- a healthy sequential rolling deploy, not stuck. Market-worker roll + Cloudflare purge + static-asset validation steps haven't started yet (still queued after the web roll finishes), and #5217's own ECR-push workflow run is still 'pending' behind this entire workflow completing.",
+      "result": "Confirmed no action needed -- this is normal (if slower than typical today) deploy behavior, not a bug to fix. The posture-backtest route measurement is still not readable yet.",
+      "nextAction": "Next cycle: re-check whether #5216's deploy has finished and #5217's own build-and-push has started/completed, then call GET /api/admin/nighthawk/posture-backtest?days=30 once live."
     }
   ],
   "knownOpenItems": {
