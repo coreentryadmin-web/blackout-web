@@ -4,7 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-18 (15:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, one noisy CLS read resolved on re-check
+## 2026-09-18 (16:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, near window close
+
+**Severity.** — (no defect found)
+
+Third RTH fire today (12:34 ET, near the window's 13:00 close). Live gamma-snapshot API: same
+`calculation_id` across 3 polls but age advancing normally (3→13s, well under the 90s tolerance)
+— a quiet market moment, not a stall; `degraded` false throughout; cross-checked against Massive
+`I:SPX` ground truth (7622.27) — matches closely. Purged Cloudflare edge (HTML only) and
+re-measured homepage CLS live: desktop **0.0002 GOOD**, mobile **0.0324 GOOD** — both back to
+baseline after last cycle's one-off noisy read.
+
+PR sweep: 1 open agent PR fleet-wide, `#5216` (swing lane, CI-RUNNING) — not SEO-lane.
+
+No defects found. Returning to normal search/authority work per the trigger's own 13:00 ET
+boundary once this window closes.
 
 **Severity.** — (no defect found)
 
