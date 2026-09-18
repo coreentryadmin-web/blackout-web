@@ -443,6 +443,56 @@
       "session_state": "RTH, lunch chop",
       "activity": "17:15 UTC (:15-offset) trigger. Board unchanged, 4th consecutive quiet cycle. No new commits, nothing new anywhere. Clean.",
       "findings_this_cycle": "0 -- clean"
+    },
+    "2026-09-18T17:39:00Z": {
+      "session_state": "RTH, lunch chop",
+      "activity": "17:37 UTC (:30-offset) trigger. Board unchanged, 5th consecutive quiet cycle. Used the quiet window for a genuine upside-hunt: investigated whether `mark_honored`/`exit_mark_honored` (exit-engine.ts) was correctly distinguishing an INFERRED floor-fill from an OBSERVED print -- specifically whether RKLB's trim_scale_dead_zone_floor exit (a 'protective floor' exit by name) should have shown honored:true but didn't. Verified against the actual data: RKLB's observed mark (0.94, +6.82%) was ALREADY at/below the +13.64% floor threshold when the tick printed, so mark===mark_observed and honored:false is the mathematically correct value per the field's own documented semantics (honored only fires when the floor price improves on a worse observed print). No bug -- ruled out a real hypothesis with real data rather than guessing.",
+      "findings_this_cycle": "0 -- investigated and ruled out a mark_honored hypothesis"
+    },
+    "2026-09-18T17:47:00Z": {
+      "session_state": "RTH, lunch chop",
+      "activity": "17:45 UTC (:45-offset) trigger. 6th consecutive quiet ledger cycle -- verified the pipeline itself is genuinely alive, not stalled: scanned 203->254, gate_blocked_events 425->987 since last check, discovery actively running. Zero commits is real market conditions (lunch chop, plan_illiquid/thesis_rank_reject dominant), not a stuck system. Clean cycle.",
+      "findings_this_cycle": "0 -- confirmed pipeline healthy and active, quiet is real"
+    },
+    "2026-09-18T18:08:00Z": {
+      "session_state": "RTH, lunch chop",
+      "activity": "18:07 UTC (:00-offset) trigger. Board unchanged, 7th consecutive quiet ledger cycle. Live pass now thinner (scanned:12 vs earlier 254 -- fewer candidates surfacing this exact pass, normal chop variance), top_block_code correctly agrees with live setups (score_floor). Clean.",
+      "findings_this_cycle": "0 -- clean"
+    },
+    "2026-09-18T18:17:00Z": {
+      "session_state": "RTH, lunch chop",
+      "activity": "18:15 UTC (:15-offset) trigger. Board unchanged, 8th consecutive quiet ledger cycle. No new commits. Clean.",
+      "findings_this_cycle": "0 -- clean"
+    },
+    "2026-09-18T18:39:00Z": {
+      "session_state": "RTH, lunch chop",
+      "activity": "18:37 UTC (:30-offset) trigger. Board unchanged, 9th consecutive quiet ledger cycle. Checked the iron-condor lens per the mission brief's explicit callout: 0 condors in the last 3 days (19 total plays, all single-leg) -- condor engine hasn't fired recently, consistent with its conditional range-bound entry criteria, nothing to deep-read there right now. Clean.",
+      "findings_this_cycle": "0 -- confirmed no condor activity to review, ledger unchanged"
+    },
+    "2026-09-18T18:47:00Z": {
+      "session_state": "RTH, lunch chop",
+      "activity": "18:45 UTC (:45-offset) trigger. Board unchanged, 10th consecutive quiet ledger cycle. No new commits. Clean.",
+      "findings_this_cycle": "0 -- clean"
+    },
+    "2026-09-18T19:09:00Z": {
+      "session_state": "RTH, 2nd board-upstream degradation of the day",
+      "activity": "19:07 UTC (:00-offset) trigger. Board shows upstream_ok:false (first observed 19:08:09Z this cycle) -- 2nd instance today (1st was ~16:09-16:16Z, ~7min, self-resolved). Confirmed /record still correct and unaffected (RKLB/TSLA and older plays all show real data). Matches the established recurring pattern exactly. Not escalating yet -- watching for resolution next cycle.",
+      "findings_this_cycle": "0 new -- 2nd board-upstream degradation instance today, matches known pattern, watching"
+    },
+    "2026-09-18T19:19:00Z": {
+      "session_state": "RTH, last directional commit window",
+      "activity": "19:15 UTC (:15-offset) trigger. 2nd degradation resolved: upstream_ok back true by 19:17:28Z (started 19:08:09Z, ~9min, matches the pattern). Two new plays closed: MARA (ratchet floor +9.52%, peak +21.43% protected -- correct) and RDW (thesis_break:oppose at +5.26%, a POSITIVE thesis-break exit -- the risk system protecting a gain, not just cutting a loss, coherent behavior). Governor now shows 'last directional commit window' time-of-day label (new for today, normal afternoon progression). Session pnl improved to -34.79%. Nothing anomalous.",
+      "findings_this_cycle": "0 -- 2nd degradation resolved, 2 new plays coherent"
+    },
+    "2026-09-18T19:39:00Z": {
+      "session_state": "RTH, last directional commit window",
+      "activity": "19:37 UTC (:30-offset) trigger. Board unchanged (same 7 closed plays), upstream_ok true. Clean.",
+      "findings_this_cycle": "0 -- clean"
+    },
+    "2026-09-18T19:47:00Z": {
+      "session_state": "RTH, last directional commit window",
+      "activity": "19:45 UTC (:45-offset) trigger. Board unchanged, same 7 closed plays. Clean.",
+      "findings_this_cycle": "0 -- clean"
     }
   },
   "sessions": {
@@ -763,5 +813,8 @@
       "All 4 of todays plays shared the same underlying shape: real double-digit peaks that never cleared range regimes +15% first-tranche trigger, so none armed protection before a later exit (3 thesis_break, 1 plan_stop) gave back the whole peak plus more"
     ],
     "_note": "Session CLOSED (heat.state=CLOSED). Night Hawk builds tomorrows playbook after close -- next real activity expected at tomorrows RTH open."
+  },
+  "2026-09-18T20:09:00Z_session_closed_summary": {
+    "note": "SESSION CLOSED 2026-09-18 (session.heat.state=CLOSED, ~20:07 UTC). Full-day summary: 7 plays committed, all closed. 3 winners / 2 losers / 2 near-flat scratches: QBTS short flat_theta_bleed 0% (score 97), MARA long ratchet +9.52% (96), RKLB short ratchet +6.82% (84), IONQ short thesis_break -20% (84), PL short flat_theta_bleed -1.04% (83), RDW short thesis_break +5.26% (79, a POSITIVE thesis-break exit -- risk system protecting a gain, not just cutting a loss), TSLA short thesis_break -36.39% (78). Session pnl -34.79%, 2 realized losers, governor never halted. Every exit mechanism checked was coherent: flat_theta_bleed narratives correctly matched real trough data (confirming yesterday's PR #5139 fix), trim_scale_dead_zone_floor correctly locked in two winners off retraced peaks, thesis_break fired on real structural/Cortex evidence each time. No exit-engine bugs found across all 7 plays. Two board-upstream degradations today (~16:09-16:16 UTC ~7min, ~19:08-19:17 UTC ~9min) -- both self-resolved, /record confirmed correct throughout both, matches the established recurring pattern (6th+ instance overall). One board/record propagation-lag instance (QBTS, ~15:08-15:15 UTC, ~7-10min self-correction) -- confirmed as the 5th instance of the standing tracked finding, journal updated with the cache-latency-vs-real-lag discipline it established (verify as_of genuinely advances before calling a stale read a new instance). PRs shipped today: #5157 (R:R display rounding, 5 call sites) and #5207 (top_block_code stale-cumulative-tally fix) -- both merged and verified on main. No open findings requiring next-session follow-up beyond the standing propagation-lag watch (still holding, no code fix -- needs DB/CloudWatch access this sandbox lacks) and the score_floor/confluence_floor entry-timing research thread (owned by a separate session, tracked on PR #4076, not this session's to advance). Tomorrow: continue standing mandate, resume forensic cycles at market open."
   }
 }

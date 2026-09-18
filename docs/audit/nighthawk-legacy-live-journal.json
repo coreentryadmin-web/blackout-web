@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T17:08:00Z",
+  "lastUpdated": "2026-09-18T20:07:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3963,6 +3963,66 @@
       "whatChanged": "Investigated whether #5216's still-in-progress ECS deploy (blocking #5217's own deploy queue) was genuinely stuck vs. just slow, per direct boto3 ECS inspection (AWS creds live): blackout-production-web service, 0 failedTasks, 6 of 8 tasks already cycled to the new task def (:1666), events flowing steadily every 1-2 min (start -> register -> drain old -> stop old, repeat) -- a healthy sequential rolling deploy, not stuck. Market-worker roll + Cloudflare purge + static-asset validation steps haven't started yet (still queued after the web roll finishes), and #5217's own ECR-push workflow run is still 'pending' behind this entire workflow completing.",
       "result": "Confirmed no action needed -- this is normal (if slower than typical today) deploy behavior, not a bug to fix. The posture-backtest route measurement is still not readable yet.",
       "nextAction": "Next cycle: re-check whether #5216's deploy has finished and #5217's own build-and-push has started/completed, then call GET /api/admin/nighthawk/posture-backtest?days=30 once live."
+    },
+    {
+      "at": "2026-09-18T17:23:00Z",
+      "trigger": ":21 cycle -- healthcheck steady, deploy queue progressing (web roll DONE, market-worker roll in flight)",
+      "healthcheck": "Re-ran fresh at 17:22:18Z: same rotating benign mark-staleness pattern (HPE this time), all else steady GREEN. No journal entry warranted on the board alone.",
+      "whatChanged": "Re-checked #5216's blocking deploy: web roll actually COMPLETED at 17:18:06Z (8/8 tasks, steady state) -- the GH Actions workflow-run-level status field was just stale/lagging, job-level step data showed real progress the whole time. Cloudflare purge + static-asset validation also completed by 17:19:48Z. Market-worker roll now in progress (2/2 new tasks started ~17:20-17:21Z, not yet steady-state-confirmed). Once that finishes, #5216's whole workflow completes and #5217's own build-and-push queues next.",
+      "result": "No action needed -- confirmed the deploy pipeline is healthy and progressing normally, just genuinely slower this cycle (web's 8-task rolling deploy took ~29min vs typical faster completions earlier today). Still not yet able to read the real posture-backtest measurement.",
+      "nextAction": "Next cycle: check whether market-worker roll finished, #5217's build-and-push ran, and if so call GET /api/admin/nighthawk/posture-backtest?days=30 and record the actual result."
+    },
+    {
+      "at": "2026-09-18T17:38:00Z",
+      "trigger": ":36 cycle -- healthcheck steady, #5217's own deploy now actively rolling",
+      "healthcheck": "Re-ran fresh at 17:37:13Z: same rotating benign pattern, steady. No journal entry warranted on the board alone.",
+      "whatChanged": "#5216's whole deploy workflow completed at 17:23:36Z. #5217's own build-and-push started immediately after (queue cleared), image built+pushed by 17:28:43Z, ECS web roll now in progress. Tried GET /api/admin/nighthawk/posture-backtest?days=30 at 17:37Z -- still 404, expected (web roll only just started, same ~29min shape as the prior deploy for 8 tasks).",
+      "result": "No action needed, progressing normally. Real measurement still not readable.",
+      "nextAction": "Next cycle (~17:51Z or later): call the posture-backtest route again once the web roll has had time to complete."
+    },
+    {
+      "at": "2026-09-18T17:52:00Z",
+      "trigger": ":51 cycle -- posture-backtest route LIVE, real measurement read: gate fired SHORT 0 of 21 sessions",
+      "healthcheck": "Board steady this cycle (same rotating pattern), no separate entry needed for that.",
+      "whatChanged": "GET /api/admin/nighthawk/posture-backtest?days=30 finally live (deploy completed) and called. REAL RESULT: 21 sessions in the 30-day window, ALL 21 had a valid regime pin (sessions_with_regime=21, no data gap) -- and the bearish-posture gate (detectBookPosture, >=2-of-3 signals) fired SHORT on ZERO of them (gate_fired_short_n=0, gate_fired_short_pct=0%). 20 of the 21 sessions published an entirely-LONG book (all_long_sessions_n=20); only 2026-09-10 had a single SHORT play alongside 2 LONGs. gate_short_but_book_all_long_n=0 (moot -- the gate never fired at all, so that specific disconnect never had a chance to occur).",
+      "why": "This is a stronger, more definitive version of the 16:10Z/16:22Z finding: it's not just 'LONG:SHORT ratio is 47:1 during a down month' anymore, it's 'the dedicated anti-all-LONG safety mechanism read NEUTRAL literally every single session for over a month, including sessions inside a 17-of-22-red-days stretch.' Two very different explanations remain open and this measurement alone can't distinguish them: (a) the tape genuinely never cleared 2-of-3 bearish signals by tide_bias/breadth/composite_regime's specific definitions this whole window (gate correctly conservative), or (b) one or more of those 3 inputs is itself silently never populated as bearish in the pinned publish_context (a data-capture gap upstream of the gate, not a threshold-strictness question). The posture-backtest route as shipped reports the gate's VERDICT per session but not the raw tide_bias/advance_pct/composite_regime values that produced it -- so (a) vs (b) is not yet distinguishable from this tool's current output.",
+      "result": "Real, high-confidence measurement obtained and recorded -- the exact question this tool was built to answer. Still correctly held at REPORT, not acted on (no gate/threshold change). The natural, small, low-risk follow-up: add the raw per-session regime values (tide_bias/advance_pct/composite_regime) to buildPostureBacktestReport's session output (same pure module, same route, no new capture) so (a) vs (b) above becomes distinguishable -- not built this cycle, flagged for the next one.",
+      "evidence": "Full API response: 21/21 sessions_with_regime, gate_fired_short_n=0, gate_fired_short_pct=0, all_long_sessions_n=20/21, gate_short_but_book_all_long_n=0. Route: GET https://blackouttrades.com/api/admin/nighthawk/posture-backtest?days=30."
+    },
+    {
+      "at": "2026-09-18T18:16:00Z",
+      "trigger": ":06 cycle continued -- opened PR #5222 (posture-backtest raw regime values)",
+      "healthcheck": "Board was already steady this cycle (same explained stale-mark pattern); no re-run needed before building.",
+      "whatChanged": "Opened PR #5222 (draft): adds a `regime` field ({tide_bias, advance_pct, composite_regime} | null) to each posture-backtest session -- exactly what the tool already computed internally to run detectBookPosture, now also returned instead of discarded. Directly answers the open question from the 17:52Z measurement: can't yet tell whether the gate's 0/21 SHORT fire rate means the tape genuinely never cleared 2-of-3 bearish signals, or whether one of the 3 inputs is silently never populated as bearish in the pinned data.",
+      "why": "Minimal, additive, read-only follow-up to PR #5217 -- no new capture, no gate logic touched. Flagged as task #29 last cycle specifically to make the (a)-vs-(b) question answerable from the tool's own next call rather than needing a fresh investigation.",
+      "evidence": "2 new unit tests (13/13 total passing in posture-backtest.test.ts). tsc --noEmit clean. Full npm test: 14840/14840 passing, 0 regressions.",
+      "result": "Instrument extended (pending merge/CI). The actual raw-regime read (data-gap vs gate-conservatism) still not done -- that's the check-in's job once deployed.",
+      "prStatus": "PR #5222 opened as draft, subscribed to PR activity, 15-min check-in scheduled (~18:30Z, budgeted for today's slower ~25-30min deploy times).",
+      "nextAction": "At check-in: verify merge, then once deployed call GET /api/admin/nighthawk/posture-backtest?days=30 and read the per-session regime values to resolve the open question."
+    },
+    {
+      "at": "2026-09-18T18:32:00Z",
+      "trigger": "PR #5222 check-in fired -- merged, route not yet redeployed",
+      "prStatus": "PR #5222 (posture-backtest raw regime values) -- verify/CodeQL/Analyze/dispatch/triage all green, undrafted, merged clean (squash) sha 2984853ac, confirmed on origin/main. Auto-unsubscribed by the merge event.",
+      "whatChanged": "Called GET /api/admin/nighthawk/posture-backtest?days=30 immediately after merge (~1min later): 200 OK but sessions still lack the new `regime` field -- old deployed version still serving, expected given today's ~25-30min web-roll pattern.",
+      "result": "Not idling on this -- deferring the actual raw-regime read to a later cycle once the deploy has had time to complete, per the same discipline used for #5217's own rollout.",
+      "nextAction": "Check again in a later cycle (not immediately next -- give the deploy the ~25-30min it's been taking today) for the `regime` field, then read tide_bias/composite_regime/advance_pct across the 21 sessions to resolve data-gap vs gate-conservatism."
+    },
+    {
+      "at": "2026-09-18T18:53:00Z",
+      "trigger": ":51 cycle -- ROOT CAUSE FOUND: bearish-posture's composite_regime signal is structurally dead code, REPORT/HOLD (live-picks-logic)",
+      "healthcheck": "Board steady this cycle (same explained pattern), no separate entry needed.",
+      "whatChanged": "PR #5222's raw-regime field went live and was read across all 21 sessions (30-day window). Found the definitive answer to the (a)-vs-(b) question from the last 2 cycles: tide_bias is NEVER 'BEARISH' in the sample (always NEUTRAL/BULLISH) but IS a genuinely working signal (format.ts's tideBias() correctly returns BEARISH when put premium >55%% dominant -- it just never crossed that threshold this window, plausibly real). advance_pct (breadth) DID show real bearish-looking readings (<35%%) on 7+ of the 21 sessions (e.g. 2026-08-31=29.2, 2026-09-02=21.7, 2026-09-09=32.9, 2026-09-10=21.2, 2026-09-11=21.4, 2026-09-16=25.1, 2026-09-17=34.6) -- a genuinely live, firing signal. composite_regime's real values across the whole sample: NEUTRAL, AMPLIFY_BREAKOUT, MEAN_REVERT_MIXED, AMPLIFY_MIXED -- traced its FULL possible vocabulary to src/app/api/cron/market-regime-detector/derive-composite.ts's deriveComposite(): exactly 7 possible values (MEAN_REVERT_TRENDING_UP/DOWN, AMPLIFY_BREAKOUT/BREAKDOWN/MIXED, MEAN_REVERT_MIXED, NEUTRAL). NONE of these 7 possible values, including the two genuinely-bearish ones (MEAN_REVERT_TRENDING_DOWN, AMPLIFY_BREAKDOWN), contain the substring 'BEARISH' or 'NEGATIVE' anywhere -- bearish-posture.ts's own check (`comp.includes('BEARISH') || comp.includes('NEGATIVE')`) is PROVABLY, PERMANENTLY dead code: it cannot fire on ANY possible composite_regime value the real classifier can ever produce, bearish or not.",
+      "why": "This is not a calibration/threshold-strictness question anymore -- it's a mechanical string-match bug against the wrong vocabulary, confirmed by reading the actual classifier source, not inferred from absence. Effect: with composite_regime permanently inert, the gate's real floor is NOT 'any 2 of 3' as PR-N9's own design intended -- it's effectively 'tide_bias BEARISH AND breadth<35%% simultaneously' (the only 2 live signals), a materially stricter bar. On the 7+ sessions where breadth alone read bearish this window, the gate needed tide_bias to ALSO independently cross its own 45%% threshold to ever reach 2-of-3, which never happened. A correct fix (e.g. matching on 'DOWN' or 'BREAKDOWN', both of which appear in the real bearish labels) would restore the intended any-2-of-3 design -- but per the standing escalation policy this is squarely a live-picks-logic change (it changes which real sessions get re-ranked toward SHORT going forward), so it is NOT fixed here despite the high confidence in the root cause.",
+      "result": "Definitive, high-confidence, root-caused finding -- correctly held at REPORT, not acted on. This closes the (a)-vs-(b) investigative thread with an actual answer: it's neither purely (a) 'tape wasn't bearish enough' nor purely (b) 'no bearish tape ever happened' -- it's a real, provable implementation bug in one of the gate's three signals, compounding with (separately, and not provably a bug) tide_bias's own threshold never being crossed this particular month.",
+      "evidence": "Full 21-session regime dump inspected; derive-composite.ts read in full (30 lines, all 7 branches enumerated); format.ts's tideBias() read to confirm it's a genuinely live signal, not also dead.",
+      "nextAction": "Flagged for explicit operator decision: should bearish-posture.ts's composite_regime check be corrected to match the real vocabulary (e.g. comp.includes('DOWN'))? This is a real bug fix, not a threshold-tuning judgment call, but it does change live discovery/ranking behavior, so it stays held pending confirmation rather than shipped via CARVE-OUT."
+    },
+    {
+      "at": "2026-09-18T20:07:30Z",
+      "trigger": ":06 cycle -- post-RTH-close transition: A_edition stale + all 4 marks stale simultaneously",
+      "healthcheck": "Re-ran fresh at 20:07:02Z, just past 4pm ET close: A_edition flipped GREEN->AMBER ('edition is stale -- served an older date than requested'), all 4 marks (SMTC/SMCI/SWKS/HPE) flagged stale simultaneously. C_record/D_pull_status steady GREEN.",
+      "result": "Not re-investigated in depth -- matches the already-confirmed-benign post-close pattern first verified 2026-09-16T20:08:02Z (quotes stop live-updating after close, edition self-reports stale until tomorrow evening's rebuild). Same shape today, expected end-of-session state, not a bug."
     }
   ],
   "knownOpenItems": {
