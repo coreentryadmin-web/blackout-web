@@ -654,6 +654,25 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   an assertion. Always run scoped ad-hoc checks as `npx tsx --experimental-test-module-mocks --test
   <path>` — there is no scoped npm script that adds the flag for you; plain `npm test` already
   carries it, so a full-suite run was never at risk, only a targeted ad-hoc one.
+- **Plain Node `fetch()` can silently stop honoring `HTTPS_PROXY` mid-session, reading as a live
+  site outage until you check `curl` against the same URL (hit live 2026-09-18).** A routine swing
+  audit script (`scripts/audit/lib/audit-auth-fetch.mjs`, the shared authenticated-fetch helper
+  underneath most of this repo's audit scripts) that had worked all session suddenly hung ~15s then
+  returned a bare `503` on every call — `curl -sS https://blackouttrades.com/api/health` from the
+  SAME shell at the SAME moment returned a clean `200` in under half a second, 4/4 times, which is
+  what ruled out a real production incident (curl auto-respects `HTTPS_PROXY` from the environment;
+  the discrepancy meant Node's `fetch()` specifically wasn't routing through the proxy at all —
+  the request was dying at the proxy boundary, not reaching origin, and the `503` was a proxy-side
+  fallback, not a site-health signal). Confirmed and fixed: `NODE_USE_ENV_PROXY=1 node ...` returned
+  the same call in `~460ms`. Previously this flag was only documented here for Playwright/browser
+  scripts and two post-deploy probes — this instance shows it can also be needed for a PLAIN Node
+  `fetch()` call with no browser involved, and that the failure mode (a real HTTP response, just a
+  slow wrong one) is easy to misread as a genuine upstream 503 rather than a local proxy-routing
+  gap. Cause not fully pinned down (a container restart silently resetting some session-level
+  default is the leading theory, consistent with this section's other restart-related traps) — but
+  the fix is cheap and safe to apply proactively: if ANY Node-based audit script that previously
+  worked starts hanging/erroring while `curl` to the same host succeeds instantly, try
+  `export NODE_USE_ENV_PROXY=1` (or prefix the one invocation) before concluding the site is down.
 - **A container restart can silently revert the checked-out branch to a stale local one — verify,
   don't trust `git branch --show-current` from before the restart (measured 2026-09-02).** The SEO
   lane heartbeat cycle checked out `main` cleanly, then two turns later (after an intervening
