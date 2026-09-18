@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T18:16:00Z",
+  "lastUpdated": "2026-09-18T18:32:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3999,6 +3999,14 @@
       "result": "Instrument extended (pending merge/CI). The actual raw-regime read (data-gap vs gate-conservatism) still not done -- that's the check-in's job once deployed.",
       "prStatus": "PR #5222 opened as draft, subscribed to PR activity, 15-min check-in scheduled (~18:30Z, budgeted for today's slower ~25-30min deploy times).",
       "nextAction": "At check-in: verify merge, then once deployed call GET /api/admin/nighthawk/posture-backtest?days=30 and read the per-session regime values to resolve the open question."
+    },
+    {
+      "at": "2026-09-18T18:32:00Z",
+      "trigger": "PR #5222 check-in fired -- merged, route not yet redeployed",
+      "prStatus": "PR #5222 (posture-backtest raw regime values) -- verify/CodeQL/Analyze/dispatch/triage all green, undrafted, merged clean (squash) sha 2984853ac, confirmed on origin/main. Auto-unsubscribed by the merge event.",
+      "whatChanged": "Called GET /api/admin/nighthawk/posture-backtest?days=30 immediately after merge (~1min later): 200 OK but sessions still lack the new `regime` field -- old deployed version still serving, expected given today's ~25-30min web-roll pattern.",
+      "result": "Not idling on this -- deferring the actual raw-regime read to a later cycle once the deploy has had time to complete, per the same discipline used for #5217's own rollout.",
+      "nextAction": "Check again in a later cycle (not immediately next -- give the deploy the ~25-30min it's been taking today) for the `regime` field, then read tide_bias/composite_regime/advance_pct across the 21 sessions to resolve data-gap vs gate-conservatism."
     }
   ],
   "knownOpenItems": {
