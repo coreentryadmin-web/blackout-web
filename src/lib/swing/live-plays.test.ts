@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  entryPresentPillarsFromFeatureVector,
   livePlayFromSwingPosition,
   livePlaysFromOpenPositions,
   liveQuoteFromEvent,
@@ -450,4 +451,52 @@ test("pinnedFactorsFromFeatureVector: reconstructed factors ALWAYS sum to the pi
 test("pinnedFactorsFromFeatureVector: no pinned pillars (older/pre-fix row) → honest empty, never fabricated", () => {
   assert.deepEqual(pinnedFactorsFromFeatureVector({ evidence_score: 82 }), []);
   assert.deepEqual(pinnedFactorsFromFeatureVector(null), []);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): `dossier.ts`'s commit-time
+// dataQuality.presentPillars/degraded is pinned into feature_vector.present_pillars/dq_degraded
+// (feature-vector.ts) but was never read back out for a committed position anywhere. This is the
+// pure read-back helper, wired into livePlayFromSwingPosition (OPEN) and closedDeckSourceFromRow
+// (CLOSED); see play-brief-intel.test.ts's whyThisSetupSection tests for the rendered line.
+test("entryPresentPillarsFromFeatureVector: surfaces the present-pillar count when the entry read was degraded", () => {
+  assert.equal(entryPresentPillarsFromFeatureVector({ dq_degraded: 1, present_pillars: 2 }), 2);
+});
+
+test("entryPresentPillarsFromFeatureVector: omits (null) when the entry read was healthy — never surfaced unless it mattered", () => {
+  assert.equal(entryPresentPillarsFromFeatureVector({ dq_degraded: 0, present_pillars: 6 }), null);
+});
+
+test("entryPresentPillarsFromFeatureVector: honest null on a missing/pre-fix feature vector, never fabricated", () => {
+  assert.equal(entryPresentPillarsFromFeatureVector(null), null);
+  assert.equal(entryPresentPillarsFromFeatureVector({ evidence_score: 82 }), null);
+});
+
+test("livePlayFromSwingPosition: threads the entry-time thin-read count end to end from the row's own pinned feature_vector", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      feature_vector: {
+        evidence_score: 41,
+        dq_degraded: 1,
+        present_pillars: 2,
+      } as unknown as SwingPositionRow["feature_vector"],
+    }),
+    null,
+    null,
+  )!;
+  assert.equal(play.entryPresentPillars, 2);
+});
+
+test("livePlayFromSwingPosition: a healthy entry read never carries the thin-read count", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      feature_vector: {
+        evidence_score: 88,
+        dq_degraded: 0,
+        present_pillars: 7,
+      } as unknown as SwingPositionRow["feature_vector"],
+    }),
+    null,
+    null,
+  )!;
+  assert.equal(play.entryPresentPillars, null);
 });

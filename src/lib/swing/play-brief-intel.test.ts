@@ -3115,6 +3115,26 @@ test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
   assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18, fresh angle: `dossier.ts`'s commit-time
+// dataQuality.presentPillars/degraded read, pinned into `feature_vector.present_pillars`/
+// `dq_degraded` at commit — feature-vector.ts, commit.ts — but never read back out anywhere in the
+// serving/brief layer for an already-committed OPEN/CLOSED position). A pre-entry WATCH candidate's
+// identical read already surfaces as a "thin read -- N/7 pillars grounded" thesis-health note the
+// moment it degrades (serving-ingest.ts's swingServingMetaFromDossier) -- but that note is computed
+// from the LIVE dossier, which the WATCH->COMMIT transition does not carry forward. A member
+// reviewing an OPEN/CLOSED position never learned it was entered off a thin read. Wired via
+// `entryPresentPillarsFromFeatureVector` (live-plays.ts) through `livePlayFromSwingPosition` (OPEN)
+// and `closedDeckSourceFromRow` (CLOSED) into TerminalPlay.entryPresentPillars.
+test("whyThisSetupSection: surfaces a thin entry-evidence read for an already-committed position", () => {
+  const section = whyThisSetupSection(fixturePlay({ entryPresentPillars: 2 }));
+  assert.match(section.body, /\*\*Evidence at entry:\*\* thin read — \*\*2\/7\*\* pillars grounded/);
+});
+
+test("whyThisSetupSection: omits the thin-entry-evidence line when the entry was well-grounded (never fabricated)", () => {
+  const section = whyThisSetupSection(fixturePlay({ entryPresentPillars: null }));
+  assert.doesNotMatch(section.body, /Evidence at entry/);
+});
+
 // Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the SAME archetype value
 // rendered THREE differently-styled ways within one brief -- Verdict's raw enum ("Archetype:
 // PULLBACK_CONTINUATION"), this section's own underscore-replace-only line ("Archetype: PULLBACK

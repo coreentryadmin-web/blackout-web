@@ -142,6 +142,10 @@ export interface HorizonPlay {
   bucketGraduated?: boolean;
   /** Pillar contributions for the desk (label + points) — optional SWING enrichment. */
   factors?: Array<{ label: string; points: number }>;
+  /** SWING only, committed positions: present-pillar count at commit, ONLY when the entry read was
+   *  degraded (dossier.ts's dataQuality.degraded) — see live-plays.ts's
+   *  `entryPresentPillarsFromFeatureVector` for the full gap this closes. Null on a healthy entry. */
+  entryPresentPillars?: number | null;
   /** Regime / archetype label blend for the desk, or null when absent. */
   regime?: string | null;
   /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal (benchmark ETF/
