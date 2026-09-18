@@ -4,7 +4,36 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-18 (16:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, near window close
+## 2026-09-18 (18:20 UTC) — [SEO] Lane heartbeat: real homepage CLS regression found, root-caused, and fixed — PR #5224 (draft, CI running)
+
+**Severity.** P3 — real, evidence-backed finding, fixed this cycle. Full write-up:
+`docs/audit/findings-staging/2026-09-18-home-gamma-promo-warm-state-cls.md`.
+
+Step 1 (validate shipped): purged Cloudflare edge and measured homepage desktop CLS — first read
+came back **0.132, NEEDS-IMPROVEMENT** (over the 0.1 threshold), a real escalation from the last
+few cycles' pattern of occasional-but-still-GOOD noisy reads (0.0435, 0.0892). Investigated rather
+than dismissing a third time: instrumented the live page with a `PerformanceObserver` capturing
+shift `sources`, caught it directly in 2/5 repeated rounds — `.gamma-promo-cta` (the homepage's
+"Open full snapshot" CTA) and `.gamma-promo-read` consistently moved, one capture showing the CTA's
+own rect going from `height:4` (collapsed) to `height:109` (real size).
+
+**Root cause, fully explained (unlike the still-open `/tools/gamma-snapshot` anomaly from
+2026-09-15):** the homepage is ISR (`revalidate=3600`, cache-only seed per `page.tsx`'s own
+documented 2026-09-03 incident trace), and `HomeGammaPromo.tsx`'s mount-fetch self-heal (already
+covered by an existing test as deliberate behavior) flips `showLevels` from false→true shortly
+after first paint whenever the ISR seed itself lacked live levels — swapping a small "warm"
+placeholder for a much taller full matrix/read block, with no space reserved for the difference.
+
+**Fix (PR #5224, draft, CI running):** `.gamma-promo-warm` now reserves `min-height:14rem` (sized
+from the live-measured ~105-140px delta) plus flex-centering. Added a source-scan regression test
+matching the file's existing style; RED→GREEN confirmed via `git stash`. Full suite 14839 pass / 0
+fail / 3 skipped, `tsc --noEmit` clean. Subscribed to PR activity for CI updates. Not yet
+independently re-verified live (can't be, pre-merge) — flagged in the finding for a follow-up
+cycle once deployed.
+
+`/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png` (unaffected, unrelated to this
+finding). PR sweep: `#5224` (mine, CI-RUNNING) plus 2 other-lane PRs, none stuck. GSC opportunity
+scan: byte-identical to the prior cycle — no new opportunities.
 
 **Severity.** — (no defect found)
 
