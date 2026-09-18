@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T16:54:00Z",
+  "lastUpdated": "2026-09-18T17:00:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3947,6 +3947,14 @@
       "why": "This is a DIFFERENT failure shape than anything logged before this session -- prior A_edition AMBER instances were 'stale' (same date, old data) or 'degraded' with the SAME edition_for; this one served a genuinely WRONG FUTURE date (2026-09-21, the coming Monday) from what its own evidence called a 'degraded fallback source', then self-healed within under 2 minutes without any code change. If a member had loaded /nighthawk during that exact window, they may have seen Monday's board (or an empty one) instead of today's -- worth taking seriously even though it self-resolved, since it's a materially different member-facing symptom than simple staleness.",
       "result": "Single instance, self-healed, not yet reproducible (5 immediate re-fetches all clean) -- does not meet the 3-instance escalation threshold and there's nothing to CARVE-OUT-fix without a reproducible root cause. Logging in full detail specifically so a 2nd occurrence is recognized as the same pattern rather than investigated from scratch.",
       "nextAction": "Watch specifically for 'edition served from degraded fallback source' recurring with an edition_for that does NOT match today's ET date -- that exact signature is the thing to pattern-match on, not just any A_edition AMBER."
+    },
+    {
+      "at": "2026-09-18T17:00:00Z",
+      "trigger": "PR #5217 check-in fired -- merged, route not live yet (deploy queued behind #5216)",
+      "prStatus": "PR #5217 (bearish-posture gate historical fire-rate measurement tool) -- verify/CodeQL/Analyze/dispatch/triage all green, undrafted, merged clean (squash) sha 363e569cc, confirmed on origin/main. Auto-unsubscribed by the merge event.",
+      "whatChanged": "Attempted to call the new GET /api/admin/nighthawk/posture-backtest?days=30 route immediately after merge -- 404, not yet deployed. Checked ecr-push-production.yml via GH Actions: my commit's deploy (run 35371718317) is status=pending, queued behind run 35369419785 (PR #5216's swing-lane commit, still in_progress after ~24min, longer than typical today) -- deploys run sequentially, one at a time, not stuck/broken, just queued.",
+      "result": "Measurement tool is merged and correct (11/11 tests, tsc clean) but NOT yet live -- the actual measurement (gate fire rate vs real bearish-tape frequency) still hasn't been read. Not idling on this: rest of this cycle's mandate work is otherwise done, board is steady, and re-checking a still-deploying route on a tight loop wastes cycles without new information.",
+      "nextAction": "Next cycle: re-check ecr-push-production.yml for my commit's run, and once ECS has rolled it out, call GET /api/admin/nighthawk/posture-backtest?days=30 and record the real measurement here."
     }
   ],
   "knownOpenItems": {
