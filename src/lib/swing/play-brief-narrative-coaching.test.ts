@@ -388,6 +388,84 @@ test("manageLifecycleCoaching: multi-rung ladder keeps the parenthetical recap (
   assert.match(line!, /next trim at \*\*\+50%\*\* \(\+50% · \+100%\)/);
 });
 
+// GAP FOUND (2026-09-18, Ask Largo standing mandate): `next.premium` (the ABSOLUTE dollar level
+// `buildTerminalExitLadder` prices the unfired rung at) and `play.mark` (the live option mark)
+// were both already available here, but only the percent-from-ENTRY `trigger_pct` was rendered --
+// a member had no way to tell how close the position's LIVE mark actually is to the next rung.
+test("manageLifecycleCoaching: 'next trim' discloses the live dollar level and % still needed from the current mark", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 42,
+      mark: 1.7,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.0, fired: false }],
+        stop_premium: 0.8,
+        target_premium: 3.0,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  // premium 2.0 vs mark 1.7 -> (2.0-1.7)/1.7*100 = 17.6% -> rounds to 18%.
+  assert.match(line!, /mark \*\*\$1\.70\*\*, needs \*\*\$2\.00\*\* \(\+18% from here\)/);
+});
+
+// Sibling: once the trigger is already crossed (mark math aside), the "already cleared" framing
+// stays -- the live distance-to-rung disclosure is moot there and must not appear.
+test("manageLifecycleCoaching: 'already cleared' branch does not render the (now-moot) distance disclosure", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "TAKE_PARTIAL",
+      pnlPct: 169.2,
+      mark: 5.4,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.0, fired: false }],
+        stop_premium: 0.8,
+        target_premium: 3.0,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /rail already cleared, not yet banked/);
+  assert.doesNotMatch(line!, /needs \*\*\$/);
+});
+
+// A missing/unusable `mark` (genuinely unsynced quote) must never fabricate a distance figure --
+// same null-honesty discipline as every other absence in this lane.
+test("manageLifecycleCoaching: omits the distance disclosure when mark is unusable, never fabricates one", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 42,
+      mark: null,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.0, fired: false }],
+        stop_premium: 0.8,
+        target_premium: 3.0,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  assert.doesNotMatch(line!, /needs \*\*\$/);
+});
+
 test("manageLifecycleCoaching: DTE > 7 still carries runway context, not just the <=7 urgency line", () => {
   const line = manageLifecycleCoaching(play({ contract: "110C · 9DTE" }), "open");
   assert.match(line!, /9 DTE.*remaining/i);
