@@ -170,6 +170,29 @@ export interface HorizonPlay {
    *  instead of a generic "thesis or ladder fired" that is wrong whenever the real cause is a
    *  theta-cliff/time-based exit with the thesis fully intact. */
   manageReason?: SwingManageRung | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
+   * always computes `dteMigration`/`rollIntent` — theta-vs-thesis-progress disproportion at low
+   * DTE, the SAME signal `roll.ts`'s executor actually acts on to auto-roll a still-valid thesis
+   * — and `manage-sync.ts` persists BOTH into every snapshot's `event_json` (`dte_migration`/
+   * `roll_intent`). But `live-plays.ts`'s `manageObservablesFromEvent`, the sole reader of that
+   * event_json, only ever extracted `action`/`rung`/`thesis_state` — never these two — so a
+   * position already flagged as a roll candidate (DTE inside the lane's migration horizon,
+   * premium decaying faster than thesis progress) gave a member ZERO warning before the roll
+   * executes. Command Deck has no UI for it either (grepped `src/features/nighthawk`: no hit).
+   * Same wiring-gap shape as the FINDINGS 2026-08-06 SEV-3 greeks bug and its Ask-Largo sibling
+   * fix (#5161, `play.greeks`) — data computed and persisted every tick, never read back out.
+   *
+   * `reason` is `rollIntent.roll === true` gating `dteMigration.reason`'s prose (the
+   * post-veto-authoritative "yes" — vetoed by a broken thesis or a hit structural stop, exactly
+   * as `roll.ts`'s own executor vetoes) — never `rollIntent.reason` verbatim, which still reads
+   * "(INTENT ONLY; execution deferred to PR-15)", a stale internal note from before PR-15 wired
+   * up live execution (`manage-sync.ts`'s own header: "PR-15 ROLL WIRING... executes a roll").
+   * Null whenever no snapshot has fired yet or the position isn't currently a roll candidate —
+   * never fabricated, and never shown as a false "not a candidate" line (absence is silence,
+   * matching this file's own null-honesty convention throughout).
+   */
+  rollCandidate?: { reason: string } | null;
   /** True when the thesis was observed this scan but has NOT cleared cross-session persistence. */
   persistenceObserved?: boolean;
   /** Honest reason the persistence gate has not promoted this name to WATCH yet. */

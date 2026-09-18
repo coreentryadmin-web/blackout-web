@@ -277,6 +277,13 @@ export interface TerminalPlay {
    *  intact) vs "structural_stop"/"thesis_stop" (thesis actually broke). Lets narrative text state
    *  the real reason for a SELL/EXIT recommendation instead of a generic guess. */
   manageReason?: SwingManageRung | null;
+  /** SWING only: an active roll-candidate advisory (manage.ts's dte_migration/roll_intent — theta
+   *  decaying faster than thesis progress inside the lane's migration DTE window, vetoed by a
+   *  broken thesis or a hit structural stop, the same veto `roll.ts`'s live executor applies).
+   *  Present ONLY when the position is genuinely an active candidate right now; null otherwise
+   *  (never a fabricated "not a candidate" line — see HorizonPlay.rollCandidate for the full
+   *  history of why this was previously computed every tick and never surfaced). */
+  rollCandidate?: { reason: string } | null;
   /** Member entry label when geometry still allows entry (buy / still_buy) — decoupled from desk OPEN. */
   swingEntryAction?: "buy" | "still_buy" | null;
   /** True when this WATCH row's entry-validity deadline (entry-model.ts's `ENTRY_VALIDITY_DAYS`)

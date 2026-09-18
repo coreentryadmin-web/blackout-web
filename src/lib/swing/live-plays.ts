@@ -186,7 +186,12 @@ export function structuralBreakFromSpot(
 export function manageObservablesFromEvent(
   manageEvent: Record<string, unknown> | null | undefined,
   spotFallback: { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel },
-): { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel; manageReason?: SwingManageRung | null } {
+): {
+  manageAction?: SwingManageAction;
+  thesisLevel?: SwingThesisLevel;
+  manageReason?: SwingManageRung | null;
+  rollCandidate?: { reason: string } | null;
+} {
   if (!manageEvent || typeof manageEvent !== "object") return spotFallback;
 
   let manageAction = spotFallback.manageAction;
@@ -221,7 +226,29 @@ export function manageObservablesFromEvent(
   // reason for a SELL/EXIT recommendation instead of a generic guess — "expiry_risk" in particular
   // is a time-based force-manage with the thesis still intact (manage.ts's own docs on the rung),
   // which a generic "thesis or ladder fired" line would misrepresent as a broken thesis.
-  return { manageAction, thesisLevel, manageReason: rung ?? null };
+  //
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `dte_migration`/`roll_intent` sit right in
+  // this same `manageEvent` blob (manage-sync.ts stamps both every tick) but were never read out —
+  // see HorizonPlay.rollCandidate's own doc comment (horizon-plays.ts) for the full history. Gate
+  // on `roll_intent.roll` (the post-veto authoritative signal `roll.ts`'s executor itself acts on —
+  // vetoed once a thesis actually breaks or hits its structural stop) but SURFACE
+  // `dte_migration.reason`'s prose, which is member-clean; `roll_intent.reason` still carries a
+  // stale "(INTENT ONLY; execution deferred to PR-15)" note from before PR-15 wired up live
+  // execution. Malformed/partial shapes (an older snapshot, a manual DB edit) degrade to null —
+  // never a guessed roll candidate.
+  const dteMigration = manageEvent.dte_migration;
+  const rollIntent = manageEvent.roll_intent;
+  const rollCandidate =
+    rollIntent &&
+    typeof rollIntent === "object" &&
+    (rollIntent as { roll?: unknown }).roll === true &&
+    dteMigration &&
+    typeof dteMigration === "object" &&
+    typeof (dteMigration as { reason?: unknown }).reason === "string"
+      ? { reason: (dteMigration as { reason: string }).reason }
+      : null;
+
+  return { manageAction, thesisLevel, manageReason: rung ?? null, rollCandidate };
 }
 
 const finiteOrNull = (v: unknown): number | null =>
@@ -298,7 +325,10 @@ export function livePlayFromSwingPosition(
     manageAction: broken ? "EXIT" : liveStatus === "TRIM" ? "TAKE_PARTIAL" : undefined,
     thesisLevel: broken ? "break" : "intact",
   });
-  const { manageAction, thesisLevel, manageReason } = manageObservablesFromEvent(manageEvent, spotObs);
+  const { manageAction, thesisLevel, manageReason, rollCandidate } = manageObservablesFromEvent(
+    manageEvent,
+    spotObs,
+  );
 
   const score =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
@@ -357,6 +387,7 @@ export function livePlayFromSwingPosition(
     liveStatus,
     manageAction,
     manageReason: manageReason ?? null,
+    rollCandidate: rollCandidate ?? null,
     thesisLevel,
     firstSeenAt: row.first_seen_at ?? undefined,
     committedAt: row.committed_at ?? undefined,
