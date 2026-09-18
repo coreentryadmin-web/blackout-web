@@ -68,10 +68,14 @@ test("rawForwardReturnPct: unsigned -- a SHORT candidate benefiting from a fall 
 test("computeCandidateForwardReturns: empty bars -> every field honestly null, never fabricated", () => {
   const result = computeCandidateForwardReturns([], "2026-09-17T20:30:00.000Z");
   assert.deepEqual(result, {
-    schema_version: 1,
+    schema_version: 2,
     entry_price: null,
     entry_at: null,
     horizons: { m5: null, m15: null, m30: null, h1: null, eod: null },
+    session_high_pct: null,
+    session_high_at: null,
+    session_low_pct: null,
+    session_low_at: null,
     graded_at: "2026-09-17T20:30:00.000Z",
   });
 });
@@ -119,6 +123,50 @@ test("computeCandidateForwardReturns: direction-agnostic -- the same bars produc
   const result = computeCandidateForwardReturns(bars, "2026-09-17T20:30:00.000Z");
   // a raw negative number -- favorable for a SHORT, adverse for a LONG; this module never decides which
   assert.equal(result.horizons.m5, -10);
+});
+
+// ── session_high_pct / session_low_pct (Phase 2A: shadow-play MFE/MAE primitive) ────────────
+
+test("computeCandidateForwardReturns: session high/low use each bar's h/l, not just closes, and the timestamp of the actual extreme bar", () => {
+  const bars: MinuteBar[] = [
+    bar(0, 100), // entry: open 100, h/l/c all 100
+    { t: BASE_T + 3 * MIN, o: 100, h: 112, l: 99, c: 105 }, // spikes to 112 intrabar, closes 105
+    { t: BASE_T + 7 * MIN, o: 105, h: 106, l: 90, c: 95 }, // dips to 90 intrabar, closes 95
+    bar(10, 100),
+  ];
+  const result = computeCandidateForwardReturns(bars, "2026-09-17T20:30:00.000Z");
+  assert.equal(result.entry_price, 100);
+  assert.equal(result.session_high_pct, rawForwardReturnPct(100, 112));
+  assert.equal(result.session_high_at, new Date(BASE_T + 3 * MIN).toISOString());
+  assert.equal(result.session_low_pct, rawForwardReturnPct(100, 90));
+  assert.equal(result.session_low_at, new Date(BASE_T + 7 * MIN).toISOString());
+});
+
+test("computeCandidateForwardReturns: a flat one-bar session has a defined (zero) high/low, not null", () => {
+  const bars: MinuteBar[] = [bar(0, 100)];
+  const result = computeCandidateForwardReturns(bars, "2026-09-17T20:30:00.000Z");
+  assert.equal(result.session_high_pct, 0);
+  assert.equal(result.session_low_pct, 0);
+  assert.equal(result.session_high_at, new Date(BASE_T).toISOString());
+  assert.equal(result.session_low_at, new Date(BASE_T).toISOString());
+});
+
+test("computeCandidateForwardReturns: a bar with a non-finite timestamp never becomes the recorded high/low extreme", () => {
+  const bars: MinuteBar[] = [
+    bar(0, 100),
+    { t: undefined, o: 100, h: 999, l: 1, c: 100 }, // would dominate high/low if not skipped
+    bar(5, 103),
+  ];
+  const result = computeCandidateForwardReturns(bars, "2026-09-17T20:30:00.000Z");
+  assert.equal(result.session_high_pct, rawForwardReturnPct(100, 103));
+  assert.equal(result.session_low_pct, 0); // entry bar's own low (100) is the lowest usable value
+});
+
+test("computeCandidateForwardReturns: entry-anchor failure (no usable open) leaves session high/low honestly null too", () => {
+  const bars = [bar(0, 100, { o: 0 }), bar(5, 110)];
+  const result = computeCandidateForwardReturns(bars, "2026-09-17T20:30:00.000Z");
+  assert.equal(result.session_high_pct, null);
+  assert.equal(result.session_low_pct, null);
 });
 
 // ── orchestration (source-inspection: fetchAggBars/@/lib/db go through mock.module elsewhere in
