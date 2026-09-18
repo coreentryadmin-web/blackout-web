@@ -62,7 +62,8 @@ actual latest `origin/main`):
 - Reapplied. Re-ran the same two files plus the directly-related sweep (`adapters.test.ts`,
   `horizon-plays.test.ts`, `play-brief-resolve.test.ts`): **300/300 pass**.
 - `npx tsc --noEmit -p .` on Node 20: clean.
-- Full `npm test` suite (Node 20): result appended below once complete.
+- Full `npm test` suite (Node 20) against this branch: **14737/14740 pass, 0 fail, 3 skipped**
+  (449282ms).
 
 ### Blast radius
 
