@@ -62,4 +62,4 @@ convention).
   src/lib/swing/play-brief-narrative-coaching.test.ts src/lib/swing/entry-verdict.test.ts` —
   364/364 pass.
 - `npx tsc --noEmit` — clean.
-- Full `npm test` (Node 20) — pending in background at time of PR open; see PR for final count.
+- Full `npm test` (Node 20) — 14614/14617 pass, 0 fail, 3 pre-existing skips.
