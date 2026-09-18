@@ -118,6 +118,89 @@ test("collectBriefUnavailableSources: CLOSED play does not flag a stale Meridian
   }
 });
 
+// Largo C2/C3 (2026-09-18): #5166 disclosed ticker-news staleness INLINE in the narrative
+// (play-brief-intel.ts's `staleLead`) but never reached unavailableSources — the one signal the
+// UI's `UnavailableChip` reads from. Every sibling freshness check (Meridian catalysts above,
+// option marks, GEX, Vector) reaches BOTH surfaces; this proves news catalysts now do too.
+test("collectBriefUnavailableSources: stale ticker-news read surfaces in unavailableSources (Largo C2/C3, mirrors Meridian catalysts)", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-18",
+    ecosystem: {
+      arsenal: {
+        news: {
+          count: 2,
+          newest: null,
+          headlines: ["Headline A", "Headline B"],
+          as_of: new Date(readMs - 300_000).toISOString(),
+        },
+      },
+    },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(
+      sources.some((s) => s.source === "Ticker news" && s.reason.startsWith("stale")),
+      `expected a stale "Ticker news" absence entry, got: ${JSON.stringify(sources)}`,
+    );
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: fresh ticker-news read does not flag staleness", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-18",
+    ecosystem: {
+      arsenal: {
+        news: {
+          count: 2,
+          newest: null,
+          headlines: ["Headline A", "Headline B"],
+          as_of: new Date(readMs - 5_000).toISOString(),
+        },
+      },
+    },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(!sources.some((s) => s.source === "Ticker news"));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: CLOSED play does not flag stale ticker-news (historical record)", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-18",
+    play: { status: "CLOSED" },
+    ecosystem: {
+      arsenal: {
+        news: {
+          count: 2,
+          newest: null,
+          headlines: ["Headline A", "Headline B"],
+          as_of: new Date(readMs - 300_000).toISOString(),
+        },
+      },
+    },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(!sources.some((s) => s.source === "Ticker news"));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
 test("vectorAgeStale: POSITIVE_INFINITY dataAgeMs from clock skew is stale", () => {
   const vec = {
     spot: 100,
