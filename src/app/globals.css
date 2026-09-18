@@ -3802,6 +3802,10 @@ html.product-shell .nav-mega {
     @apply mt-0.5 text-[9px] font-medium text-sky-300/45;
   }
 
+  .vector-board-pick-scorecard {
+    @apply mt-0.5 text-[9px] font-medium text-sky-300/45;
+  }
+
   .vector-board-pnl {
     @apply text-[11.5px] font-extrabold;
   }
