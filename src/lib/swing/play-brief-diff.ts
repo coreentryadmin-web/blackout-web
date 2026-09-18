@@ -36,6 +36,21 @@ export type BriefSnapshot = {
   flowCallPremium: number | null;
   flowPutPremium: number | null;
   trimsFired: number | null;
+  /**
+   * `play.rollCandidate`'s reason string when the manage engine is CURRENTLY weighing a roll
+   * (theta outpacing thesis inside the migration-DTE window — the same per-tick check
+   * `roll.ts`'s live executor runs before it actually rolls). Null when no roll is being
+   * weighed this tick. GAP FOUND (Ask Largo standing mandate, 2026-09-18): `play-brief.ts`'s
+   * Management section already renders this as a static "Roll watch" line every refresh once
+   * present (#5163), but the diff engine — whose entire job is to narrate what changed since
+   * the LAST refresh — never looked at it, so a position crossing INTO roll-candidate territory
+   * (arguably the most actionable trade-manager fact there is: "the system is now weighing
+   * rolling this position") produced no "What changed" callout at all, silently identical to a
+   * refresh where nothing happened. A member watching the static section alone would only
+   * notice a roll watch by re-reading the whole Management block on every poll, not by the
+   * "Since last read" pulse this diff engine exists to spare them from having to do.
+   */
+  rollCandidateReason: string | null;
   sectionTitles: string[];
 };
 
@@ -238,6 +253,7 @@ export function snapshotFromBrief(
     flowCallPremium: fin(extras?.flowCallPremium),
     flowPutPremium: fin(extras?.flowPutPremium),
     trimsFired: fin(extras?.trimsFired),
+    rollCandidateReason: play?.rollCandidate?.reason ?? null,
     sectionTitles: envelope.sections.map((s) => s.title),
   };
 }
@@ -348,6 +364,21 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     next.trimsFired > prev.trimsFired
   ) {
     lines.push(`Trim rail **banked** (${prev.trimsFired} → ${next.trimsFired} fired)`);
+  }
+  // Roll-candidate transitions (see BriefSnapshot.rollCandidateReason's own doc comment for the
+  // gap this closes). Only the two EDGE crossings are narrated — a candidate reason simply
+  // reading differently tick-to-tick (the same underlying watch, restated) is not a new fact
+  // worth a "What changed" line, only "a roll wasn't being weighed and now is" or the reverse.
+  if (!prev.rollCandidateReason && next.rollCandidateReason) {
+    lines.push(`**Roll watch triggered** — theta outpacing thesis — ${next.rollCandidateReason}.`);
+  } else if (prev.rollCandidateReason && !next.rollCandidateReason) {
+    // Deliberately does NOT assert "theta/thesis balance back in range" — detectRollCandidate()
+    // (manage.ts) returns roll:false for THREE distinct causes: back in range, thesis broken, or
+    // the structural stop hit. The latter two are the capital-preservation gates, where a roll
+    // clears because the position is being CLOSED, not because anything improved — and the
+    // separate "Desk action shifted" rule above already narrates that exit accurately in the same
+    // pulse. Asserting a specific cause here would contradict it. Peer review, PR #5191.
+    lines.push(`**Roll watch cleared** — no longer being weighed.`);
   }
   if (prev.headline !== next.headline) {
     lines.push(`Verdict headline updated`);
