@@ -413,6 +413,11 @@
       "session_state": "RTH, prime continuation window",
       "activity": "15:45 UTC (:45-offset) trigger. Board unchanged from last cycle: same 3 closed plays, no new commits, governor healthy (-29.57% session pnl, 1 realized loser, not halted). 2 setups commit_ready (SNDK long 81, PL short 83) -- nothing anomalous in either. Clean cycle.",
       "findings_this_cycle": "0 -- clean"
+    },
+    "2026-09-18T16:12:00Z": {
+      "session_state": "RTH, board-upstream degradation in progress",
+      "activity": "16:08 UTC (:00-offset) trigger. PL (short, score 83) committed and went OPEN since last cycle -- real new position, no exit yet, nothing anomalous in the commit. BUT: board now shows upstream_ok:false (first observed 16:09:32Z this cycle) -- the recurring board-upstream degradation pattern (5+ prior instances this week, 2026-09-16/17, self-resolving in 5-50min, no real data loss). Confirmed /record still correct and unaffected throughout (PL shows no exit yet, QBTS/RKLB/TSLA all correctly show their real exit reasons) -- matches the established pattern exactly (board goes stale, DB/record path stays sound). Not escalating yet (matches prior practice of only posting once sustained ~30min+ or confirmed causing real member-visible harm) -- watching for resolution over the next 1-2 cycles.",
+      "findings_this_cycle": "0 new -- board-upstream degradation started, matches known recurring pattern, watching"
     }
   },
   "sessions": {
