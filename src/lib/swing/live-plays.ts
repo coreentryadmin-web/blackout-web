@@ -448,7 +448,13 @@ export function livePlayFromSwingPosition(
   const factors = pinnedFactorsFromFeatureVector(row.feature_vector);
   const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
   const archetypeNearTie = archetypeNearTieFromFeatureVector(row.feature_vector);
-  const topFlowProvenance = topFlowProvenanceFromRow(row.top_flow_strike, row.contract_strike);
+  // Gated to the root leg only (roll_seq === 0): a roll re-runs rankSwingContracts fresh against the
+  // CURRENT chain (roll-plan.ts:291) while carrying top_flow_strike forward UNCHANGED from the
+  // original commit (roll-plan.ts:339) — so on a rolled leg, contract_strike and top_flow_strike are
+  // facts from two different points in time, and comparing them would misleadingly read as an
+  // entry-time provenance disagreement when it's actually just a later roll's independent pick.
+  const topFlowProvenance =
+    (row.roll_seq ?? 0) === 0 ? topFlowProvenanceFromRow(row.top_flow_strike, row.contract_strike) : null;
 
   // CORRECTED (live regression found 2026-09-07, prior fix in #4481): `regime` is a DISPLAY string —
   // play-brief.ts's Verdict section pushes `play.regime` verbatim with no label

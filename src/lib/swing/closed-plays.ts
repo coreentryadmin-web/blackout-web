@@ -100,7 +100,11 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
       : 0;
   const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
   const archetypeNearTie = archetypeNearTieFromFeatureVector(row.feature_vector);
-  const topFlowProvenance = topFlowProvenanceFromRow(row.top_flow_strike, row.contract_strike);
+  // Gated to the root leg only (roll_seq === 0) — see live-plays.ts's topFlowProvenanceFromRow call
+  // site for why a rolled leg's contract_strike (freshly re-picked) can't be honestly compared
+  // against top_flow_strike (carried forward unchanged from the original commit).
+  const topFlowProvenance =
+    (row.roll_seq ?? 0) === 0 ? topFlowProvenanceFromRow(row.top_flow_strike, row.contract_strike) : null;
   const exitPnl = fin(row.realized_pnl_pct);
   return {
     positionId: row.id,

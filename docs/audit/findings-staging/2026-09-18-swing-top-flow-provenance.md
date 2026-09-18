@@ -68,6 +68,27 @@ actual latest `origin/main`, which already includes #5178):
 - Full `npm test` suite (Node 20) against this branch: **14670/14673 pass, 0 fail, 3 skipped**
   (448486ms).
 
+### Post-open peer review — roll-seq staleness (fixed pre-merge)
+
+A peer review on this PR (Night Hawk Swings lane) flagged a real, reachable gap this section's
+original fix missed: `roll-plan.ts:291` re-runs `rankSwingContracts` fresh against the CURRENT chain
+on every roll (so a rolled leg's `contract_strike` is freshly re-picked), while `roll-plan.ts:339`
+carries `top_flow_strike` forward UNCHANGED from the original commit. So on any leg with
+`roll_seq >= 1`, the "Strike vs flow" line would have compared the *current roll's* freshly-chosen
+strike against the *original entry's* flow-magnet strike — two facts from different points in time,
+misleadingly framed as an entry-time provenance disagreement when a roll picking a new strike isn't a
+provenance disagreement at all.
+
+Verified independently (grep on `roll-plan.ts` confirmed both claims exactly as described) and fixed
+by gating both call sites (`live-plays.ts`'s `livePlayFromSwingPosition`, `closed-plays.ts`'s
+`closedDeckSourceFromRow`) on `row.roll_seq === 0` — only the root/never-rolled leg's `contract_strike`
+is genuinely contemporaneous with `top_flow_strike`. Added regression coverage: a new
+`live-plays.test.ts` test proving a rolled leg (even one whose strikes would coincidentally match)
+suppresses the line, plus a new `closed-plays.test.ts` test for the CLOSED path. RED→GREEN
+independently reproduced (revert the two-line gating change, keep tests: 2/47 fail across the two
+files with the exact "not equal to null" shape expected; reapply: 367/367 pass across the full
+directly-related sweep). `npx tsc --noEmit -p .`: clean.
+
 ### Blast radius
 
 Same additive plumbing shape as #5175/#5178 (`entryPresentPillars`/`archetypeNearTie`), for a third

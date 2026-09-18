@@ -598,3 +598,30 @@ test("livePlayFromSwingPosition: threads the entry-time flow-strike provenance e
   const unknown = livePlayFromSwingPosition(row({ top_flow_strike: null, contract_strike: 180 }), null, null)!;
   assert.equal(unknown.topFlowProvenance, null);
 });
+
+test("livePlayFromSwingPosition: suppresses flow-strike provenance on a rolled leg — contract_strike was freshly re-picked, top_flow_strike is stale from the original commit", () => {
+  const rolledEvenIfItWouldMatch = livePlayFromSwingPosition(
+    row({ top_flow_strike: 180, contract_strike: 180, roll_seq: 1 }),
+    null,
+    null,
+  )!;
+  assert.equal(
+    rolledEvenIfItWouldMatch.topFlowProvenance,
+    null,
+    "a coincidental strike match on a rolled leg must not render as entry-time provenance",
+  );
+
+  const rolledDiverged = livePlayFromSwingPosition(
+    row({ top_flow_strike: 175, contract_strike: 180, roll_seq: 2 }),
+    null,
+    null,
+  )!;
+  assert.equal(rolledDiverged.topFlowProvenance, null);
+
+  const rootLegStillWorks = livePlayFromSwingPosition(
+    row({ top_flow_strike: 180, contract_strike: 180, roll_seq: 0 }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(rootLegStillWorks.topFlowProvenance, { topFlowStrike: 180, matchedPick: true });
+});

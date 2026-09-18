@@ -93,6 +93,18 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(src?.contract.dte, 3, "2026-08-12 -> 2026-08-15 expiry = 3 dte at grading time");
     assert.equal(src?.exitAt, "2026-08-12T16:05:00Z");
   });
+
+  it("surfaces flow-strike provenance on the root leg but suppresses it on a rolled leg (stale top_flow_strike vs freshly re-picked contract_strike)", () => {
+    const rootMatched = closedDeckSourceFromRow(row({ top_flow_strike: 180, contract_strike: 180, roll_seq: 0 }));
+    assert.deepEqual(rootMatched?.topFlowProvenance, { topFlowStrike: 180, matchedPick: true });
+
+    const rolled = closedDeckSourceFromRow(row({ top_flow_strike: 180, contract_strike: 180, roll_seq: 1 }));
+    assert.equal(
+      rolled?.topFlowProvenance,
+      null,
+      "a rolled leg's re-picked contract_strike must never be compared against the stale original top_flow_strike",
+    );
+  });
 });
 
 describe("closedDeckSourcesFromChains", () => {
