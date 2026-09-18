@@ -3519,6 +3519,41 @@ test("flowIntelSection: two genuinely DIFFERENT anomalies on the same ticker bot
   assert.match(section!.body, /PREMIUM_SPIKE/);
 });
 
+test("flowIntelSection: the print list is labeled honestly (48h/premium-sorted) and carries each print's own age, not 'Recent prints'", () => {
+  // Live reproduction (AAPL #37, 2026-09-18): `eco.flow_full_state.recent` comes from
+  // fetchFlowFullState() -> getFlowTapeSummary({ ticker, limit }) with no since_hours/order, which
+  // defaults to db.ts's 48h window sorted BIGGEST-PREMIUM-FIRST (see the fix's own comment in
+  // play-brief-intel.ts) — NOT the same 6h window as the "HELIX tape (Xh)" aggregate line directly
+  // above it, and not recency-ordered. The header used to read "Recent prints" while showing a
+  // $3.43M print alongside a 6h aggregate claiming only $263K of call premium total — a real,
+  // internally-contradictory read. The header must now disclose the true window/order, and every
+  // print must carry its own age so a reader can see it may fall outside the aggregate's window.
+  const now = Date.now();
+  const oldIso = new Date(now - 40 * 3_600_000).toISOString(); // 40h ago — outside the 6h aggregate
+  const eco = {
+    ticker: "AAPL",
+    flow_feed_fresh: true,
+    recent_flow: { window_hours: 6, print_count: 4, call_premium: 263_000, put_premium: 1_300_000, unknown_premium: 0 },
+    recent_anomalies: [],
+    flow_full_state: {
+      count: 40,
+      total_premium: 9_000_000,
+      top_tickers: [],
+      recent: [{ option_type: "CALL", strike: 350, premium: 3_430_000, alerted_at: oldIso }],
+    },
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as unknown as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay());
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /\*\*Recent prints:\*\*/, "must not claim these are 'recent' — they are premium-sorted over 48h");
+  assert.match(section!.body, /\*\*Notable prints \(48h, largest premium first\):\*\*/);
+  assert.match(section!.body, /CALL 350 \$3430000\.00 \[40h ago\]/, "each print must disclose its own age so a reader can see it falls outside the 6h aggregate window");
+});
+
 test("watchForSection: CLOSED bucket suppresses the live ticker-level thesis note (not this trade's thesis)", () => {
   // serving-ingest.ts computes thesisBreak from a LIVE, present-tense "is there a fresh setup on
   // this ticker right now" read — unrelated to the specific, already-resolved CLOSED position. Live
