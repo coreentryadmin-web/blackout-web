@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T17:23:00Z",
+  "lastUpdated": "2026-09-18T17:38:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3971,6 +3971,14 @@
       "whatChanged": "Re-checked #5216's blocking deploy: web roll actually COMPLETED at 17:18:06Z (8/8 tasks, steady state) -- the GH Actions workflow-run-level status field was just stale/lagging, job-level step data showed real progress the whole time. Cloudflare purge + static-asset validation also completed by 17:19:48Z. Market-worker roll now in progress (2/2 new tasks started ~17:20-17:21Z, not yet steady-state-confirmed). Once that finishes, #5216's whole workflow completes and #5217's own build-and-push queues next.",
       "result": "No action needed -- confirmed the deploy pipeline is healthy and progressing normally, just genuinely slower this cycle (web's 8-task rolling deploy took ~29min vs typical faster completions earlier today). Still not yet able to read the real posture-backtest measurement.",
       "nextAction": "Next cycle: check whether market-worker roll finished, #5217's build-and-push ran, and if so call GET /api/admin/nighthawk/posture-backtest?days=30 and record the actual result."
+    },
+    {
+      "at": "2026-09-18T17:38:00Z",
+      "trigger": ":36 cycle -- healthcheck steady, #5217's own deploy now actively rolling",
+      "healthcheck": "Re-ran fresh at 17:37:13Z: same rotating benign pattern, steady. No journal entry warranted on the board alone.",
+      "whatChanged": "#5216's whole deploy workflow completed at 17:23:36Z. #5217's own build-and-push started immediately after (queue cleared), image built+pushed by 17:28:43Z, ECS web roll now in progress. Tried GET /api/admin/nighthawk/posture-backtest?days=30 at 17:37Z -- still 404, expected (web roll only just started, same ~29min shape as the prior deploy for 8 tasks).",
+      "result": "No action needed, progressing normally. Real measurement still not readable.",
+      "nextAction": "Next cycle (~17:51Z or later): call the posture-backtest route again once the web roll has had time to complete."
     }
   ],
   "knownOpenItems": {
