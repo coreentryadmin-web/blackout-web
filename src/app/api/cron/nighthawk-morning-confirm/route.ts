@@ -69,6 +69,12 @@ export type MorningConfirmResult = {
   prior_close: number | null;
   overnight_gap_pts: number | null;
   regime: string | null;
+  /** deriveComposite()'s authored regime strategy sentence (market_regime.playbook), read
+   *  straight off /api/platform/intel's regime.playbook — a human-readable companion to the
+   *  `regime` enum above, not a replacement for it (computePlayVerdict's gating logic below
+   *  still reads `regime`, untouched). Null whenever the source row is absent/stale, same as
+   *  `regime` itself. */
+  playbook: string | null;
   gex_bias: string | null;
   call_wall: number | null;
   put_wall: number | null;
@@ -101,6 +107,7 @@ async function fetchSpxPremarket(): Promise<number | null> {
 // Fetch platform intel snapshot (regime, anomalies, brief).
 async function fetchPlatformIntel(baseUrl: string): Promise<{
   regime: string | null;
+  playbook: string | null;
   anomalies: Array<{ direction?: string; [key: string]: unknown }>;
   gex_bias: string | null;
   call_wall: number | null;
@@ -116,11 +123,12 @@ async function fetchPlatformIntel(baseUrl: string): Promise<{
         ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
         : undefined,
     });
-    if (!res.ok) return { regime: null, anomalies: [], gex_bias: null, call_wall: null, put_wall: null, prior_close: null };
+    if (!res.ok) return { regime: null, playbook: null, anomalies: [], gex_bias: null, call_wall: null, put_wall: null, prior_close: null };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await res.json() as any;
     return {
       regime: data?.regime?.composite ?? data?.intelligence?.currentRegime ?? null,
+      playbook: typeof data?.regime?.playbook === "string" ? data.regime.playbook : null,
       anomalies: Array.isArray(data?.anomalies) ? data.anomalies : [],
       gex_bias: data?.lastBrief?.gexBias ?? null,
       call_wall: typeof data?.lastBrief?.callWall === "number" ? data.lastBrief.callWall : null,
@@ -129,7 +137,7 @@ async function fetchPlatformIntel(baseUrl: string): Promise<{
       prior_close: null,
     };
   } catch {
-    return { regime: null, anomalies: [], gex_bias: null, call_wall: null, put_wall: null, prior_close: null };
+    return { regime: null, playbook: null, anomalies: [], gex_bias: null, call_wall: null, put_wall: null, prior_close: null };
   }
 }
 
@@ -288,6 +296,7 @@ export async function GET(req: NextRequest) {
             prior_close: null,
             overnight_gap_pts: null,
             regime: null,
+            playbook: null,
             gex_bias: null,
             call_wall: null,
             put_wall: null,
@@ -448,6 +457,7 @@ export async function GET(req: NextRequest) {
       prior_close: priorClose,
       overnight_gap_pts: gapPts,
       regime: intel.regime,
+      playbook: intel.playbook,
       gex_bias: intel.gex_bias,
       call_wall: intel.call_wall,
       put_wall: intel.put_wall,

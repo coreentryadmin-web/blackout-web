@@ -55,6 +55,35 @@ test("morningStatusFromDb: rebuilds status from durable outcome pins", () => {
   assert.equal(result!.summary.invalidated, 1);
 });
 
+// Task #32 (Ask Largo x Night Hawk Legacy standing mandate, 2026-09-18): the live cron's Redis
+// path can carry the desk playbook sentence (regime's authored strategy line), but
+// morning_verdict.metrics never persisted it (only regime/spx_premarket/spx_prior_close/
+// overnight_gap_pts are pinned there) -- so this DB-fallback reconstruction honestly reports it
+// as unavailable, same convention already used for gex_bias/call_wall/put_wall below.
+test("morningStatusFromDb: playbook is honestly null (never fabricated) -- not recoverable from morning_verdict.metrics", () => {
+  const result = morningStatusFromDb({
+    editionFor: "2026-08-07",
+    editionPlays: [{ rank: 1, ticker: "NVDA", direction: "LONG" }],
+    outcomeRows: [
+      {
+        ticker: "NVDA",
+        morning_verdict: {
+          verdict_version: MORNING_VERDICT_VERSION,
+          status: "CONFIRMED",
+          reason: "All checks passed",
+          checked_at: "2026-08-07T13:16:00.000Z",
+          metrics: { regime: "risk_on" },
+        },
+      },
+    ],
+  });
+  assert.ok(result);
+  assert.equal(result!.playbook, null);
+  assert.equal(result!.gex_bias, null);
+  assert.equal(result!.call_wall, null);
+  assert.equal(result!.put_wall, null);
+});
+
 // 2026-09-13 finding: the live cron (nighthawk-morning-confirm/route.ts's
 // `plays.map((play) => ...)`) always emits ONE PlayStatus per edition play, using
 // UNVERIFIED as the honest "could not check this one" status when a per-ticker
