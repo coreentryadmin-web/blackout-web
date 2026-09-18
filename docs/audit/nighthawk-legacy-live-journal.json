@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T09:11:00Z",
+  "lastUpdated": "2026-09-18T09:23:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3748,6 +3748,16 @@
       "productionOrShadow": "N/A -- this was a deploy-pipeline observation, not a data-collection change.",
       "result": "No bug found. Route code is correct (tsc clean, 1205 tests pass, sibling-route auth path proven working) -- production just hasn't caught up to the merge yet, consistent with two production deploys queued back-to-back in the last ~20 minutes.",
       "nextAction": "Re-verify /api/admin/nighthawk/candidate-leaderboard live next cycle once the deploy queue drains (~5-10 more min is a reasonable ECS deploy+drain estimate). No code action needed unless that re-check ALSO 404s once the deploy is confirmed complete -- that would be a real finding, this isn't yet."
+    },
+    {
+      "at": "2026-09-18T09:23:00Z",
+      "trigger": ":21 cycle -- healthcheck steady, dug deeper into the deploy-lag finding from the last cycle (confirmed healthy, not stuck)",
+      "healthcheck": "Re-ran fresh at 09:21:41Z: overall AMBER, unchanged (same pre-market pattern). No new issue.",
+      "whatChanged": "Followed up on the 09:11 entry's deploy-lag diagnosis rather than just waiting blind -- GH Actions still showed #5188's ECR-push run 'in_progress' 22+ min after starting and #5189's run still 'pending', which is longer than this reviewer expected for a normal deploy, so checked the ACTUAL ECS service state directly via boto3 (AWS creds live this session) rather than guessing from the GH Actions summary alone.",
+      "evidence": "ecs.describe_services(blackout-production-cluster, blackout-production-web): desired=8, running=7 (new task def :1654), pending=1, rolloutState=IN_PROGRESS, failedTasks=0. Recent service events show a normal one-task-at-a-time rolling replacement (deregister -> drain -> stop old task -> start new task -> register to target group) at roughly a 2-3 min cadence per task -- 7 of 8 tasks already replaced, zero failures, zero circuit-breaker/rollback signal. This is NOT stuck -- it's a healthy but sequential (single-task-at-a-time) rolling deploy of an 8-task service, which at ~2-3 min/task fully explains the ~23 min elapsed so far. #5189's own ECR-push run is genuinely queued behind #5188's (very likely a `concurrency: group: production-deploy` serialization in the workflow, not investigated further since it's clearly benign) and will start once this one finishes.",
+      "result": "CONFIRMED CLEAN -- no infra incident, no stuck deployment, no code defect. The earlier 404 smoke-test result is fully explained by deploy queueing + a slow-but-healthy sequential rollout, nothing more. Worth noting as a genuine LATENCY observation (not a bug): an 8-task service replaced one-at-a-time takes ~20-25 min end to end when two deploys queue back to back, which is slower than a batched/parallel rolling update would be -- a real, measured data point if the standing performance mandate ever looks at deploy-pipeline latency specifically, not urgent, not actioned here (deploy config is infra, out of this lane's scope and CLAUDE.md's own terraform-drift warnings apply).",
+      "sampleSize": "N/A -- single observed deploy, not a statistical claim.",
+      "nextAction": "Re-verify the live /api/admin/nighthawk/candidate-leaderboard route once BOTH queued deploys (#5188 then #5189) finish -- should be within the next 1-2 cycles given #5188 is at 7/8 tasks now. If it still 404s after both are confirmed COMPLETED (not just started), that becomes a real finding to root-cause."
     }
   ],
   "knownOpenItems": {
