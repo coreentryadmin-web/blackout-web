@@ -3160,6 +3160,24 @@ test("whyThisSetupSection: omits the archetype-near-tie line when the entry clas
   assert.doesNotMatch(section.body, /Classification:/);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro NN:32 CLOSED brief — a real
+// thin-evidence position whose row carries `archetype: null`): the render used to fall back to
+// "**the winning archetype**" when `play.archetype` was null, fabricating a decisive-winner claim
+// with no preceding "Archetype:" line to anchor it, for a position the classifier explicitly never
+// classified. `archetypeNearTieFromFeatureVector` is now hardened against ever producing a
+// near-tie in that case (its own test suite), but this proves the render layer independently
+// refuses to fabricate the line even if `archetypeNearTie` somehow arrives anyway.
+test("whyThisSetupSection: never fabricates the near-tie line when the entry itself was unclassified (archetype null), even if archetypeNearTie is somehow set", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      archetype: null,
+      archetypeNearTie: { secondaryLabel: "Pullback continuation", marginPct: 2 },
+    }),
+  );
+  assert.doesNotMatch(section.body, /Classification:/);
+  assert.doesNotMatch(section.body, /the winning archetype/);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the entry-time contract pick's provenance
 // against the multi-day accumulation flow's own magnet strike (top_flow_strike, pinned at commit)
 // was computed by contract-ranker.ts's rankSwingContracts but never read back out for an
