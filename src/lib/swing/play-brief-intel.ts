@@ -32,6 +32,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
+import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { trustedHelixFlow, zerodteLiveForSession, relativeAgeLabel } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
@@ -261,7 +262,7 @@ export function bookContextSection(
       : `${play.ticker} stacks the same wager rather than diversifying risk.`;
     lines.push(
       `**Concentration** — already holding ${overlap.sameThemeSameDirection.length} same-direction ` +
-        `position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in theme "${overlap.theme}": ${names}. ` +
+        `position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}: ${names}. ` +
         closer,
     );
   }
@@ -270,7 +271,7 @@ export function bookContextSection(
       .map((p) => formatOverlapPosition(p, play.ticker))
       .join(", ");
     lines.push(
-      `**Internal conflict** — theme "${overlap.theme}" already has an OPPOSED position: ${names}. ` +
+      `**Internal conflict** — ${describeThemeOverlap(overlap.theme)} already has an OPPOSED position: ${names}. ` +
         `One leg is structurally betting against the other; this is not a hedge unless intentional.`,
     );
   }

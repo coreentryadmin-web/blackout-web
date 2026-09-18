@@ -150,6 +150,23 @@ test("bookContextSection: two distinct cross-engine siblings on the same ticker 
   );
 });
 
+// Live repro (2026-09-18, Ask Largo standing mandate): BYND is unmapped in sector-map.ts, so
+// resolveTheme() gives it the internal own-cluster sentinel "NAME:BYND" rather than a real theme
+// (theme-cluster.ts's OWN_CLUSTER_PREFIX). Before the fix, bookContextSection interpolated
+// overlap.theme raw into the narrative, so a member holding two concurrent BYND positions saw
+// literal internal-key text: `theme "NAME:BYND"`. Confirmed live via GET /api/market/swing/play-brief
+// (envelope.evidence carried the identical leak) before this test was written.
+test("bookContextSection: an own-cluster (unmapped-ticker) overlap reads as a name, never the raw NAME: sentinel", () => {
+  const book: PortfolioPosition[] = [{ ticker: "BYND", direction: "LONG", positionId: 1148 }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:BYND:9999", ticker: "BYND", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /the same name \(BYND\)/);
+  assert.doesNotMatch(section!.body, /NAME:/, "must never leak the internal own-cluster sentinel into narrative copy");
+});
+
 test("bookContextSection: a cross-engine sibling with no bangerId still falls back to the bare label (never fabricated)", () => {
   const book: PortfolioPosition[] = [{ ticker: "CRWD", direction: "LONG" }];
   const section = bookContextSection(
