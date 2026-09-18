@@ -373,6 +373,16 @@
       "session_state": "OPENING_DRIVE -> post-10:00-ET unlock",
       "activity": "14:08 UTC (:00-offset) trigger. Confirmed live at 10:09 ET: opening_window (G-2) has genuinely lifted -- 0/116 setups now blocked by it, vs 100% blocked by it at the last check (13:37-13:40 UTC). Real-time corroboration of the PR #5207 fix already in flight: the live setups[] show ZERO opening_window blocks this pass, yet session_stats.top_block_code still reads 'opening_window' -- exactly the stale-cumulative-tally bug being fixed, caught live in the act. 3 setups now genuinely commit_ready (QBTS short 86, RGTI short 79, LUNR short 83) but ledger still empty -- watch next cycle for whether they land as real commits (discovery COMMIT verdict vs the separate commit-cron pass can lag by design; not calling this anomalous on n=1). Live block-code mix post-unlock: score_floor(91) and a new-to-me code early_window_prime_score(100) now dominant, plan_illiquid(85) -- consistent with the standing score_floor-dominant-chokepoint research finding, not new. PR #5207 CI still running (2nd merge-conflict resolution pushed last cycle); will merge once green.",
       "findings_this_cycle": "0 new -- watching QBTS/RGTI/LUNR for next-cycle commit confirmation"
+    },
+    "2026-09-18T14:20:00Z": {
+      "session_state": "post-unlock RTH",
+      "activity": "14:15 UTC (:15-offset) trigger. PR #5207 hit a THIRD merge conflict on MARKET-OPEN-VALIDATION.md (same append-point collision pattern, now clearly the expected cost of a high-velocity multi-lane afternoon on this shared-tail file) -- resolved same way, renumbered to #286, tsc clean, session-board-stats.test.ts 4/4, pushed, CI re-running. Board check: the 3 commit_ready setups from last cycle (QBTS/RGTI/LUNR) are no longer commit_ready (0 now) AND never appeared in ledger (still empty) -- they flickered out of COMMIT eligibility without ever committing. NOT escalating on n=1 (3-instance threshold) -- plausibly normal (live quote/score re-evaluation between passes), but noting for pattern-watching: if this repeats (candidates repeatedly reaching COMMIT verdict then reverting before the commit cron picks them up), that would be worth a real trace.",
+      "findings_this_cycle": "0 -- watching for a possible commit_ready-flicker pattern, not yet 3 instances"
+    },
+    "2026-09-18T14:28:00Z": {
+      "session_state": "post-unlock RTH",
+      "activity": "PR #5207 finally green + mergeable:true (clean, no new conflict this pass), undrafted and merged (commit 8ad6d4679). Verified directly against origin/main: session-board-stats.ts carries the fix. Took 3 merge-conflict resolutions total this session due to a very high-velocity afternoon on the shared MARKET-OPEN-VALIDATION.md append point (multiple lanes shipping every few minutes) -- worth noting for future sessions as an expected cost during busy periods, not a sign of anything wrong.",
+      "findings_this_cycle": "1 merged -- PR #5207 (top_block_code precedence fix)"
     }
   },
   "sessions": {
