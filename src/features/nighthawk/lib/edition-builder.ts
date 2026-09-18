@@ -21,6 +21,8 @@ import {
   recordNighthawkRejectedAuditTrail,
   recordNighthawkStageRejectedAuditTrail,
   syncNighthawkPlayOutcomes,
+  confluenceSnapshot,
+  type NighthawkRejectionDetail,
 } from "./play-outcomes";
 import { extractMultiSourceCandidates } from "./candidates";
 import { fetchAllDossiers, resetEditionCongressCache, type TickerDossier } from "./dossier";
@@ -323,6 +325,62 @@ export function buildGovernorCutSnapshotRows(
     selected_for_publish: false,
     snapshot_json: scoredCandidateSnapshotPayload(c.scored),
   }));
+}
+
+/**
+ * Pure row-builder for candidates rejected at any of STAGE-6's OTHER later-funnel rejection
+ * reasons — geometry, premium_cap, illiquid_strike, ungrounded, sector_concentration,
+ * publish_gate (play-outcomes.ts's NighthawkRejectionDetail union, minus cross_edition_governor,
+ * which buildGovernorCutSnapshotRows above already covers). Night Hawk Legacy Signal
+ * Intelligence — closes a real gap found while verifying the operator's "does shadow tracking
+ * capture every rejected/pulled/expired/unfilled/accepted candidate" mandate item (2026-09-18):
+ * nighthawk_candidate_snapshot's own table-header doc comment (db.ts) has claimed since Phase 1.1
+ * that "'rejected' (STAGE 2 confluence gate or STAGE 6 geometry/premium-cap/illiquid/ungrounded/
+ * sector/publish-gate/governor rejection)" was captured, but Phase 1.5 only ever wired 2 of those
+ * 7 reasons (confluence_gate at STAGE 2, cross_edition_governor here) — the other 6 wrote ONLY to
+ * the older `alert_audit_log` table (recordNighthawkStageRejectedAuditTrail /
+ * recordNighthawkRejectedAuditTrail), which has no forward_returns column and is never fed to
+ * candidate-forward-grade.ts's shadow-return grading pass. A play rejected for premium-cap or a
+ * failed geometry check was therefore NEVER shadow-graded for what it actually did afterward —
+ * directly contradicting "pulled_wrongly means our filters may be removing winners" applied to
+ * the analogous REJECTED case, which the operator's mandate explicitly also asks about.
+ *
+ * Same "complements, does not duplicate, the existing alert_audit_log write" relationship
+ * buildGovernorCutSnapshotRows's own doc already establishes for the governor case — this is
+ * that exact treatment, generalized to the other 6 reasons, at the SAME two call sites that
+ * already build the richer alert_audit_log row (so no new rejection-collection logic, just an
+ * additional write of the same already-computed data to the newer table).
+ */
+export function buildStageRejectionSnapshotRows(
+  editionFor: string,
+  rejected: Array<{ ticker: string; detail: NighthawkRejectionDetail; scored?: ScoredCandidate | null }>
+): ScoringStageSnapshotRow[] {
+  return rejected.map((r) => ({
+    edition_for: editionFor,
+    ticker: r.ticker,
+    stage: "rejected",
+    rank: null,
+    score: r.scored?.score ?? null,
+    gov_penalty: null,
+    rejection_reason: r.detail.stage,
+    selected_for_publish: false,
+    snapshot_json: {
+      schema_version: 1,
+      detail: r.detail,
+      confluence: confluenceSnapshot(r.scored ?? null),
+    },
+  }));
+}
+
+function recordStageRejectionSnapshots(
+  editionFor: string,
+  rejected: Array<{ ticker: string; detail: NighthawkRejectionDetail; scored?: ScoredCandidate | null }>
+): void {
+  if (!rejected.length) return;
+  const rows = buildStageRejectionSnapshotRows(editionFor, rejected);
+  void insertNighthawkCandidateSnapshots(rows).catch((err) => {
+    console.warn(`[nighthawk/edition] failed to write rejected-stage candidate snapshots:`, err);
+  });
 }
 
 /**
@@ -1043,6 +1101,17 @@ export async function buildEveningEdition(opts?: {
       if (stageRejected?.length) {
         recordNighthawkStageRejectedAuditTrail(stageRejected, editionFor);
       }
+      // Signal Intelligence: same rejections, ALSO written to nighthawk_candidate_snapshot so
+      // candidate-forward-grade.ts's shadow MFE/MAE/multi-horizon grading reaches them too — see
+      // buildStageRejectionSnapshotRows' own doc for the gap this closes (2026-09-18).
+      recordStageRejectionSnapshots(editionFor, [
+        ...(geometryRejected ?? []).map((r) => ({
+          ticker: r.ticker,
+          detail: { stage: "geometry" as const, drops: r.drops },
+          scored: r.scored ?? null,
+        })),
+        ...(stageRejected ?? []),
+      ]);
       // Stamp grounding counts onto the funnel so EVERY exit (incl. recap-only fallbacks below)
       // reports them. The checks already ran inside generateEditionPlays before any drop took effect.
       groundingSummary = synthGrounding ?? null;
@@ -1179,15 +1248,16 @@ export async function buildEveningEdition(opts?: {
         );
         // Durable rejection rows FIRST — recorded regardless of whether anything publishes
         // below (same unconditional/fire-and-forget semantics as the synthesis-stage rows).
-        recordNighthawkStageRejectedAuditTrail(
-          blocked.map((b) => ({
-            ticker: b.ticker,
-            play: b.play,
-            detail: { stage: "publish_gate" as const, blocks: b.result.blocks },
-            scored: b.scored,
-          })),
-          editionFor
-        );
+        const publishGateRejections = blocked.map((b) => ({
+          ticker: b.ticker,
+          play: b.play,
+          detail: { stage: "publish_gate" as const, blocks: b.result.blocks },
+          scored: b.scored,
+        }));
+        recordNighthawkStageRejectedAuditTrail(publishGateRejections, editionFor);
+        // Signal Intelligence: same rejections, ALSO written to nighthawk_candidate_snapshot —
+        // see buildStageRejectionSnapshotRows' own doc for why (2026-09-18).
+        recordStageRejectionSnapshots(editionFor, publishGateRejections);
         finalPlays = passing;
         funnel.critic_passed = finalPlays.length;
       }

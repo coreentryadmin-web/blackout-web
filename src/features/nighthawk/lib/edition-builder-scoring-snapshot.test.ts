@@ -151,3 +151,57 @@ test("buildGovernorCutSnapshotRows: an empty cut list produces an empty result",
   const { buildGovernorCutSnapshotRows } = await import("./edition-builder");
   assert.deepEqual(buildGovernorCutSnapshotRows("2026-09-17", []), []);
 });
+
+// ── buildStageRejectionSnapshotRows (closes the gap: 6 of 7 STAGE-6 rejection reasons never
+// reached nighthawk_candidate_snapshot despite the table's own header doc claiming they did) ──
+
+test("buildStageRejectionSnapshotRows: a premium_cap rejection gets a 'rejected' row carrying its own rejection_reason and the real gate detail", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const rows = buildStageRejectionSnapshotRows("2026-09-17", [
+    {
+      ticker: "NVDA",
+      detail: { stage: "premium_cap", entry_premium: 900, cap_per_share: 5, entry_cost_per_contract: 900, cap_per_contract: 500 },
+      scored: scored({ ticker: "NVDA", score: 55 }),
+    },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.stage, "rejected");
+  assert.equal(rows[0]!.rejection_reason, "premium_cap");
+  assert.equal(rows[0]!.selected_for_publish, false);
+  assert.equal(rows[0]!.score, 55);
+  assert.equal(rows[0]!.rank, null);
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.detail.stage, "premium_cap");
+  assert.equal(payload.detail.entry_premium, 900);
+});
+
+test("buildStageRejectionSnapshotRows: every one of the 6 non-governor NighthawkRejectionDetail stages produces a distinctly-tagged row", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const rows = buildStageRejectionSnapshotRows("2026-09-17", [
+    { ticker: "A", detail: { stage: "geometry", drops: ["target<=entry"] }, scored: null },
+    { ticker: "B", detail: { stage: "premium_cap", entry_premium: 900, cap_per_share: 5, entry_cost_per_contract: 900, cap_per_contract: 500 }, scored: null },
+    { ticker: "C", detail: { stage: "illiquid_strike", strike: 100, side: "call", expiry: "2026-10-16", open_interest: 5, min_open_interest: 500 }, scored: null },
+    { ticker: "D", detail: { stage: "ungrounded", issues: [{ check: "target", detail: "not on chain" }] }, scored: null },
+    { ticker: "E", detail: { stage: "sector_concentration", sector: "Tech", already_filled: 3, max_per_sector: 3 }, scored: null },
+    { ticker: "F", detail: { stage: "publish_gate", blocks: [{ code: "band_detached", reason: "r", threshold: 3.5, value: 9.1 }] }, scored: null },
+  ]);
+  assert.deepEqual(
+    rows.map((r) => r.rejection_reason).sort(),
+    ["geometry", "illiquid_strike", "premium_cap", "publish_gate", "sector_concentration", "ungrounded"]
+  );
+  for (const r of rows) assert.equal(r.stage, "rejected");
+});
+
+test("buildStageRejectionSnapshotRows: a candidate with no scored breakdown (mechanical-fallback path) captures a null confluence and null score, never fabricated", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const rows = buildStageRejectionSnapshotRows("2026-09-17", [
+    { ticker: "NVDA", detail: { stage: "geometry", drops: ["target<=entry"] } },
+  ]);
+  assert.equal(rows[0]!.score, null);
+  assert.equal((rows[0]!.snapshot_json as any).confluence, null);
+});
+
+test("buildStageRejectionSnapshotRows: an empty rejection list produces an empty result", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  assert.deepEqual(buildStageRejectionSnapshotRows("2026-09-17", []), []);
+});

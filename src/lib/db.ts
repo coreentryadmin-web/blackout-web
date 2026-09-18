@@ -1569,7 +1569,11 @@ async function runMigrations(): Promise<void> {
     -- 'rank_initial'/'rank_governor'/'rank_bearish_posture'/'rank_grounding_merge'/'rank_final'
     -- (STAGE 5's 5 sort passes — see edition-builder.ts/cross-edition-governor.ts/
     -- bearish-posture.ts/deterministic-edition.ts), 'rejected' (STAGE 2 confluence gate or
-    -- STAGE 6 geometry/premium-cap/illiquid/ungrounded/sector/publish-gate/governor rejection),
+    -- STAGE 6 geometry/premium-cap/illiquid/ungrounded/sector/publish-gate/governor rejection —
+    -- ONLY confluence_gate and governor actually wrote here from Phase 1.5 through 2026-09-18;
+    -- the other 5 wrote solely to the older alert_audit_log table, invisible to this table's own
+    -- forward-return shadow grading, despite this comment already claiming full coverage — closed
+    -- by buildStageRejectionSnapshotRows/recordStageRejectionSnapshots, edition-builder.ts),
     -- 'published' (STAGE 7 final decision). rank/score/gov_penalty are nullable because not
     -- every stage produces all three (e.g. a 'discovery' row has no rank yet; a 'rejected' row at
     -- the confluence gate never reached scoring). rejection_reason/selected_for_publish are
