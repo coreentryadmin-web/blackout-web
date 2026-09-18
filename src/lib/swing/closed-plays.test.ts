@@ -64,6 +64,20 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(closedDeckSourceFromRow(row({ graded_at: null })), null);
   });
 
+  // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro PYPL#24): a true flat/breakeven
+  // close (entryPremium === peakPremium === troughPremium) can carry float-division residue in
+  // realized_pnl_pct (e.g. -0.0001, not a real loss) — must round before the sign check, else this
+  // mislabels a scratch exit as "stopped" (implying a stop-loss fired, which it did not).
+  it("labels a float-residue near-zero P&L as 'flat', never 'stopped' (live repro PYPL#24)", () => {
+    const src = closedDeckSourceFromRow(row({ realized_pnl_pct: -0.0001 }));
+    assert.equal(src?.closedReason, "flat");
+  });
+
+  it("still labels a real, rounds-to-nonzero loss as 'stopped'", () => {
+    const src = closedDeckSourceFromRow(row({ realized_pnl_pct: -0.5 }));
+    assert.equal(src?.closedReason, "stopped");
+  });
+
   it("freezes dte to the trade's own exit date, never recomputed against today (FINDINGS 2026-09-06)", () => {
     // Fixture's expiry (2026-08-15) and closed_at (2026-08-10) are both far in this test's
     // past relative to whenever the suite actually runs — a live `calendarDte(today, expiry)`

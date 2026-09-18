@@ -70,8 +70,20 @@ export type SwingClosedDeckSource = {
 function closedReasonFromRow(row: SwingPositionRow): string | null {
   const pnl = fin(row.realized_pnl_pct);
   if (pnl == null) return null;
-  if (pnl > 0) return "target";
-  if (pnl < 0) return "stopped";
+  // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro PYPL#24): a position that closed at
+  // EXACTLY its entry price (entryPremium === peakPremium === troughPremium, a true flat/breakeven
+  // scratch, not a rounding artifact) can still carry a tiny nonzero `realized_pnl_pct` from
+  // float-division residue (e.g. -0.0001), which the unrounded `pnl < 0` check below labeled
+  // "stopped" — factually wrong (a stop never fired; the premium never moved) and misleading in the
+  // play-brief's trade-manager coaching ("Stop fired — check if entry was extended past
+  // invalidation"). The sibling chain-composite mapper (`closedDeckSourcesFromChains` below) was
+  // already fixed for this exact case on 2026-09-13 by rounding before the zero check — this
+  // function was NOT, despite that fix's own comment claiming it already handled it correctly, so
+  // `play-brief-resolve.ts` (which calls this function directly, bypassing the composite path)
+  // still showed the wrong label. Rounding here brings both paths in line.
+  const rounded = round2(pnl);
+  if (rounded > 0) return "target";
+  if (rounded < 0) return "stopped";
   return "flat";
 }
 
