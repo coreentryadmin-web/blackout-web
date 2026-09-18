@@ -60,7 +60,12 @@ actual latest `origin/main`):
 - Reapplied. Re-ran the same two files plus the directly-related sweep (`adapters.test.ts`,
   `db.test.ts`): **301/301 pass**.
 - `npx tsc --noEmit -p .` on Node 20: clean.
-- Full `npm test` suite (Node 20): result appended below once complete.
+- Full `npm test` suite (Node 20) against this branch: a first run showed 1 unrelated failure
+  (`fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying
+  connection` — a network-timing test with no connection to this diff's files) with no reproducing
+  detail captured beyond the single line. An immediate full re-run on the same commit came back
+  **14694/14697 pass, 0 fail, 3 skipped**, 100% clean — matching CI's own independently-green
+  `verify` check on the same SHA. Concluded genuine transient flake, not a real regression.
 
 ### Blast radius
 
