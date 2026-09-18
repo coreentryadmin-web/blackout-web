@@ -681,6 +681,9 @@ export interface HorizonDeckSource {
   /** ONLY when the entry-time archetype classification was a near-tie — see TerminalPlay's own
    *  field / live-plays.ts's `archetypeNearTieFromFeatureVector` for the full gap this closes. */
   archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
+  /** Entry-time contract-pick provenance against the flow magnet strike — see TerminalPlay's own
+   *  field / live-plays.ts's `topFlowProvenanceFromRow` for the full gap this closes. */
+  topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
   /** Regime read (archetype label ± normalized regime pillar), or null when absent. */
   regime?: string | null;
   /** Thesis-health read from the swing thesis; when omitted it is DERIVED from `setupState` below. */
@@ -987,6 +990,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     factors: src.factors ?? [],
     entryPresentPillars: src.entryPresentPillars ?? null,
     archetypeNearTie: src.archetypeNearTie ?? null,
+    topFlowProvenance: src.topFlowProvenance ?? null,
     gates: [],
     regime: src.regime ?? null,
     thesisBreak: thesisBreakResolved,
@@ -1334,6 +1338,7 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     subLane: src.subLane ?? null,
     entryPresentPillars: src.entryPresentPillars ?? null,
     archetypeNearTie: src.archetypeNearTie ?? null,
+    topFlowProvenance: src.topFlowProvenance ?? null,
     firstSeenAt: src.firstSeenAt ?? null,
     committedAt: src.committedAt ?? null,
     entryPremium: src.entryPremium ?? null,

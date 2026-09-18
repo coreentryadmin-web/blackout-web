@@ -375,6 +375,42 @@ export function archetypeNearTieFromFeatureVector(
 }
 
 /**
+ * Read back the ENTRY-TIME contract-pick provenance against the flow magnet strike
+ * (contract-ranker.ts's `topFlowStrike`/`topFlowWasPicked`) from a committed position's own
+ * pinned `top_flow_strike` column (db.ts) — set at commit (commit.ts's `buildCommitInsert`,
+ * discovery.ts) from `SwingDossier.topFlowStrike` (dossier.ts: "provenance for the contract
+ * pick"), but never read back out anywhere in the serving/brief layer until now.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-09-18): `rankSwingContracts` (contract-ranker.ts)
+ * computes `topFlowWasPicked` — whether the INDEPENDENTLY-chosen best contract (by
+ * tradability×thesisFit, never influenced by the flow strike) happens to equal the multi-day
+ * accumulation flow's own magnet strike — and folds it into a `reason` string ("flow strike X =
+ * pick" / "≠ pick") that the commit-time engine logs internally. The position row keeps
+ * `top_flow_strike` (the raw number) permanently, but `topFlowWasPicked` itself is never
+ * persisted or recomputed downstream, so no play-brief consumer (live-plays.ts, closed-plays.ts,
+ * the adapters, play-brief-intel.ts) ever reads `row.top_flow_strike` at all — a real, member-
+ * relevant fact ("the contract you're holding is the exact strike flow was piling into" vs "flow
+ * was piling into a different strike than the one this ranked pick chose") sits on every
+ * committed row and is silently dropped. Recomputes `matchedPick` here (comparing the pinned
+ * `top_flow_strike` to the pinned `contract_strike`) rather than trusting a second persisted
+ * boolean that doesn't exist — same "derive, don't duplicate" discipline as
+ * `structuralBreakFromSpot` a few lines up.
+ *
+ * Null whenever either strike is absent — never a guessed provenance. Deliberately does NOT gate
+ * on "only when interesting" (unlike `entryPresentPillarsFromFeatureVector`'s degraded-only
+ * discipline): both agreement AND disagreement are genuinely informative here (confirmation vs a
+ * real divergence worth flagging), so the caller decides what to render, not this helper.
+ */
+export function topFlowProvenanceFromRow(
+  topFlowStrike: number | null | undefined,
+  contractStrike: number | null | undefined,
+): { topFlowStrike: number; matchedPick: boolean } | null {
+  if (topFlowStrike == null || !Number.isFinite(topFlowStrike)) return null;
+  if (contractStrike == null || !Number.isFinite(contractStrike)) return null;
+  return { topFlowStrike, matchedPick: contractStrike === topFlowStrike };
+}
+
+/**
  * Map one open ledger row (+ optional spot + latest manage snapshot) to a HorizonPlay for the live sections. Returns null when the
  * row is not a live status or lacks a reconstructible contract.
  */
@@ -412,6 +448,7 @@ export function livePlayFromSwingPosition(
   const factors = pinnedFactorsFromFeatureVector(row.feature_vector);
   const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
   const archetypeNearTie = archetypeNearTieFromFeatureVector(row.feature_vector);
+  const topFlowProvenance = topFlowProvenanceFromRow(row.top_flow_strike, row.contract_strike);
 
   // CORRECTED (live regression found 2026-09-07, prior fix in #4481): `regime` is a DISPLAY string —
   // play-brief.ts's Verdict section pushes `play.regime` verbatim with no label
@@ -460,6 +497,7 @@ export function livePlayFromSwingPosition(
     factors,
     entryPresentPillars,
     archetypeNearTie,
+    topFlowProvenance,
     liveStatus,
     manageAction,
     manageReason: manageReason ?? null,

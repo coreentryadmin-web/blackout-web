@@ -7,7 +7,11 @@ import type { SwingPositionRow } from "../db";
 import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
 import { buildSwingRecord } from "./record";
-import { archetypeNearTieFromFeatureVector, entryPresentPillarsFromFeatureVector } from "./live-plays";
+import {
+  archetypeNearTieFromFeatureVector,
+  entryPresentPillarsFromFeatureVector,
+  topFlowProvenanceFromRow,
+} from "./live-plays";
 
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -46,6 +50,9 @@ export type SwingClosedDeckSource = {
    *  live-plays.ts's `archetypeNearTieFromFeatureVector` / horizon-plays.ts's
    *  `HorizonPlay.archetypeNearTie` for the full gap this closes. */
   archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
+  /** Entry-time contract-pick provenance against the flow magnet strike, when both strikes are
+   *  known — see live-plays.ts's `topFlowProvenanceFromRow` for the full gap this closes. */
+  topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
   firstSeenAt?: string | null;
   committedAt?: string | null;
   entryPremium?: number | null;
@@ -93,6 +100,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
       : 0;
   const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
   const archetypeNearTie = archetypeNearTieFromFeatureVector(row.feature_vector);
+  const topFlowProvenance = topFlowProvenanceFromRow(row.top_flow_strike, row.contract_strike);
   const exitPnl = fin(row.realized_pnl_pct);
   return {
     positionId: row.id,
@@ -118,6 +126,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     subLane: row.sub_lane,
     entryPresentPillars,
     archetypeNearTie,
+    topFlowProvenance,
     firstSeenAt: row.first_seen_at,
     committedAt: row.committed_at,
     entryPremium: row.entry_premium,
