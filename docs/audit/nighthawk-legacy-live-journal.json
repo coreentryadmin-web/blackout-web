@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T14:22:00Z",
+  "lastUpdated": "2026-09-18T14:53:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3875,6 +3875,22 @@
       "trigger": ":21 cycle -- transient B_marks AMBER on SWKS (RTH), matches the already-established thin-liquidity pattern",
       "healthcheck": "Re-ran fresh at 14:21:37Z: A_edition/C_record/D_pull_status steady GREEN. B_marks AMBER -- SWKS260925C00090000 'mark flagged stale by the API' (SMTC/SMCI/HPE all GREEN, within band). Single instance, not a 3rd -- checked journal history: this exact pattern (one thin-liquidity name's quote lagging intermittently even during RTH) has been documented 20+ times this week (e.g. 2026-09-16 RIG, 2026-09-15/17 pre-market), including the real bug already found and fixed for it (PR #5073, WS-freshness gate wrong stale threshold). No fresh investigation warranted -- already-understood, already-fixed pattern class recurring in its expected benign form.",
       "result": "No action needed. Watching for a 2nd/3rd consecutive SWKS-specific instance before treating as worth a fresh look (vs. this well-established class)."
+    },
+    {
+      "at": "2026-09-18T14:37:00Z",
+      "trigger": ":36 cycle -- SWKS mark-stale 2nd consecutive cycle (2 of 3 threshold), SMTC newly flagged 1st instance",
+      "healthcheck": "Re-ran fresh at 14:36:55Z: A_edition/C_record/D_pull_status steady GREEN. B_marks AMBER -- SWKS260925C00090000 stale for the 2nd consecutive cycle now (14:21/14:36), SMTC261016C00180000 newly flagged this cycle (1st instance, was GREEN all prior cycles today). SMCI/HPE both GREEN.",
+      "result": "SWKS at 2 of 3 toward the noise threshold -- watching, not yet escalating (same 'watch before escalate' discipline the DELL sequence used 2026-09-16). SMTC is a fresh 1st instance on a different OCC, not yet a pattern of its own. Both consistent with the already-understood thin-liquidity-name-lags-intermittently-during-RTH class (PR #5073's root cause), not treated as a new bug.",
+      "nextAction": "If SWKS hits a 3rd consecutive cycle (~14:51Z) or SMTC repeats, investigate per CARVE-OUT rather than continuing to just watch."
+    },
+    {
+      "at": "2026-09-18T14:53:00Z",
+      "trigger": ":51 cycle -- SWKS hit 3rd consecutive stale-mark instance, investigated per CARVE-OUT",
+      "healthcheck": "Re-ran fresh at 14:52:11Z: SWKS260925C00090000 stale for the 3rd consecutive cycle (14:21/14:36/14:51) -- hit the noise threshold. HPE260925C00061000 also newly flagged this cycle (1st instance). SMTC/SMCI both GREEN.",
+      "whatChanged": "Investigated per CARVE-OUT (small/unambiguous) rather than continuing to watch. Pulled the raw /api/market/nighthawk/legacy-marks payload directly, ~20s after the healthcheck's own fetch: ALL 4 OCCs including SWKS and HPE came back stale:false with fresh asof timestamps (14:52:15-14:52:29Z, i.e. within the same minute). Both the flagged-stale marks had already self-resolved by the time of the independent re-fetch.",
+      "why": "This is a live re-confirmation of the already-diagnosed pattern class (thin-liquidity name's own quote tick lags the freshness window intermittently even during RTH, root-caused once already via PR #5073's threshold fix) -- NOT the systemic-bug shape that WOULD warrant a new fix (that shape is ALL contracts, including the most liquid one, flagged simultaneously across the whole session -- that's what PR #5073 and PR the WS-freshness-gate fix actually addressed). Here it's 1-2 contracts, self-healing within ~20 seconds, rotating between different OCCs cycle to cycle (SWKS now, HPE now, DELL/RIG in past weeks) -- consistent with genuine per-tick quote lag on thinner names, not a config/threshold bug.",
+      "result": "No fix needed -- investigated and confirmed transient/self-healing, not a new or recurring systemic issue. Resetting the SWKS watch counter; this satisfies the 3-instance investigation requirement without finding a new bug to escalate.",
+      "evidence": "Independent fetchAuditJson call to legacy-marks at 14:52:29Z: SWKS asof=14:52:15.180Z stale=false, HPE asof=14:52:27.309Z stale=false -- both fresh well within any reasonable staleness window by the time of re-check."
     }
   ],
   "knownOpenItems": {

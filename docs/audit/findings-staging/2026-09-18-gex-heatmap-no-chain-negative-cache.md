@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-## 287. GEX-heatmap warm path re-fetched Polygon+UW forever for tickers structurally lacking an options chain — a real, measured contributor to the 2026-09-18 UW/Polygon rate-limiter queue-timeout-surge incident — fix/gex-heatmap-no-chain-negative-cache — 2026-09-18
+## GEX-heatmap warm path re-fetched Polygon+UW forever for tickers structurally lacking an options chain — a real, measured contributor to the 2026-09-18 UW/Polygon rate-limiter queue-timeout-surge incident — FIXED
 
 | | |
 |---|---|
