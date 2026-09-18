@@ -338,6 +338,11 @@
       "session_state": "post-close, market closed",
       "activity": "Picked up the 2026-09-11 cross-lane handoff from Legacy (0dte-rr-preentry-display-rounding-boundary): PlayTerminal.tsx's ZeroDtePreEntryContext shared deterministic-edition.ts's already-fixed rr.toFixed(1)-vs-raw-threshold display bug. Root-causing further (not just applying the named fix blindly) found the handoff's named line is currently unreachable for 0DTE horizon (commandSinglePanel routes ZERO_DTE straight to ZeroDteCommandPanel) -- grepped every rrRatio call site and found the REAL live 0DTE instance plus 2 more of the same shape, 5 total. Fixed all 5 with the proven floor-based pattern from PR #4813, added 3 regression tests (RED->GREEN via git stash), full command-deck suite 431/431, tsc clean. Opened PR #5157 (draft), subscribed to activity.",
       "findings_this_cycle": "1 fixed (5 call sites, 1 root cause) -- PR #5157 open"
+    },
+    "2026-09-18T13:11:00Z": {
+      "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
+      "activity": "13:00 UTC offset trigger. Board pulled: upstream_ok true, as_of fresh (13:09:16Z), setups=[] ledger=[] (session hasn't opened yet, nothing forensic to read). Overnight check: no changes to my own open_findings or journal since the 21:10Z close-out yesterday (PR #5157 verified merged). Confirmed via git log that the overnight activity on main was entirely the Swings lane (PRs #5191-5201, promotion ladder / trim-label / roll-narrative / daily-digest work) -- not my surface, correctly left untouched. PR #4076 collaboration thread checked: no new comments since my own 18:38-19:08 UTC posts yesterday (board-degradation escalation + resolution), no Cursor response. Aggressive-mode note: did not force a low-value re-run of a research backtest against an empty pre-market board -- real forensic/upside-hunting work resumes once today's session produces actual WATCH/OPEN plays after the 13:30 UTC open.",
+      "findings_this_cycle": "0 -- quiet pre-market, nothing to report"
     }
   },
   "sessions": {
