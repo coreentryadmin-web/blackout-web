@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T11:27:00Z",
+  "lastUpdated": "2026-09-18T11:40:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3822,6 +3822,13 @@
       "productionOrShadow": "PRODUCTION plumbing (runs inside the real, already-firing cron); posts to the OPS Discord channel only (never member-facing) -- an internal ops artifact, same visibility class as the existing INVALIDATED-play alert.",
       "result": "Phase 2F now has its item #15 half shipped (pending merge). Item #14 (member-facing morning command-center table format) remains separate, larger scope, not started -- it changes actual member UI/output format, deserving its own deliberate look rather than folding into this PR.",
       "nextAction": "Check PR #5200 CI at 11:39Z check-in, merge if green. Once merged, the operator's 15-point mandate has EVERY item either shipped, or explicitly held pending confirmation (items 11/full-2D, priority #7's RTH-continuous half), or correctly blocked on trading-day sample accumulation (items 6/8, Phase 2C/2B-part-2) -- only item #14 (command-center table) remains genuinely not-yet-started with no blocker. Consider scoping that next once capacity allows, or continue the standing healthcheck/aggressive-mode cadence and let it surface naturally."
+    },
+    {
+      "at": "2026-09-18T11:40:00Z",
+      "trigger": "PR #5200 check-in fired -- merged, session tally",
+      "prStatus": "PR #5200 (automatic daily learning digest) merged clean, sha 6ff91740c, verified live on origin/main. Unsubscribed. No open PRs.",
+      "result": "10 PRs merged today (2026-09-18): #5176/#5177 (Phase 2A MFE/MAE), #5181 (Phase 2B pt.1 pull-rule taxonomy), #5183 (Phase 2E shrinkage), #5184 (STAGE-6 rejection capture), #5185 (R-multiple), #5187 (candidate leaderboard), #5188 (final-geometry-gate record), #5189 (leaderboard admin reader), #5197 (promotion status ladder), #5200 (daily learning digest). Every item of the operator's 15-point continuous-learning mandate is now either SHIPPED (1,2,3,4,5,7-safe-half,9,10,12,13,15), HELD pending explicit operator confirmation (11/NO-TRADE-state, 7's full-RTH-continuous half), or correctly BLOCKED on trading-day sample accumulation (6/Phase 2C winner-DNA, 8/Phase 2B-part-2 regime WHY-classification) -- only item #14 (member-facing morning command-center table format) remains genuinely unstarted with no blocker.",
+      "nextAction": "No open PRs, no urgent follow-ups. Continue standard 15-min healthcheck + aggressive-mode cadence. If capacity allows on a future cycle, scope item #14 (command-center table) -- note it's a MEMBER-FACING UI/output-format change (unlike everything else shipped today, which was either shadow data or ops-only), so it deserves the same deliberate look given to the RTH-continuous-tracking cost decision, not a same-cycle build. Otherwise, auto-revisit Phase 2C/2B-part-2 once tonight's edition build (edition_for=2026-09-19) has run and a fresh trading day's worth of schema-v2 candidate_snapshot data exists to measure against."
     }
   ],
   "knownOpenItems": {
