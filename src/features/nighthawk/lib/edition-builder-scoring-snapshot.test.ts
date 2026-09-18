@@ -125,6 +125,21 @@ test("buildRankFinalSnapshotRows: an empty play list produces an empty result", 
   assert.deepEqual(buildRankFinalSnapshotRows("2026-09-17", [], new Map()), []);
 });
 
+test("buildRankFinalSnapshotRows: schema v2 -- snapshot_json carries the play's own parsed trade-geometry levels (candidate-r-multiple.ts's input)", async () => {
+  const { buildRankFinalSnapshotRows } = await import("./edition-builder");
+  const rows = buildRankFinalSnapshotRows(
+    "2026-09-17",
+    [play({ ticker: "NVDA", entry_range: "$100-$104", target: "$112.50", stop: "$96" })],
+    new Map()
+  );
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.schema_version, 2);
+  assert.equal(payload.levels.entry_range_low, 100);
+  assert.equal(payload.levels.entry_range_high, 104);
+  assert.equal(payload.levels.target, 112.5);
+  assert.equal(payload.levels.stop, 96);
+});
+
 test("buildGovernorCutSnapshotRows: a governor-cut candidate gets a 'rejected' row with the real reasons and its full scored breakdown", async () => {
   const { buildGovernorCutSnapshotRows } = await import("./edition-builder");
   const rows = buildGovernorCutSnapshotRows("2026-09-17", [
@@ -204,4 +219,31 @@ test("buildStageRejectionSnapshotRows: a candidate with no scored breakdown (mec
 test("buildStageRejectionSnapshotRows: an empty rejection list produces an empty result", async () => {
   const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
   assert.deepEqual(buildStageRejectionSnapshotRows("2026-09-17", []), []);
+});
+
+test("buildStageRejectionSnapshotRows: schema v2 -- a rejection WITH a play (premium_cap/illiquid_strike/ungrounded/sector_concentration/publish_gate all carry one) captures its parsed levels + direction", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const rows = buildStageRejectionSnapshotRows("2026-09-17", [
+    {
+      ticker: "NVDA",
+      detail: { stage: "premium_cap", entry_premium: 900, cap_per_share: 5, entry_cost_per_contract: 900, cap_per_contract: 500 },
+      scored: scored({ ticker: "NVDA" }),
+      play: play({ ticker: "NVDA", direction: "SHORT", entry_range: "$100-$104", target: "$88", stop: "$110" }),
+    },
+  ]);
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.schema_version, 2);
+  assert.equal(payload.direction, "SHORT");
+  assert.equal(payload.levels.entry_range_low, 100);
+  assert.equal(payload.levels.stop, 110);
+});
+
+test("buildStageRejectionSnapshotRows: a rejection with NO play (a future stage that never has one) captures levels:null/direction:null, never a fabricated geometry", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const rows = buildStageRejectionSnapshotRows("2026-09-17", [
+    { ticker: "NVDA", detail: { stage: "geometry", drops: ["target<=entry"] }, scored: null },
+  ]);
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.levels, null);
+  assert.equal(payload.direction, null);
 });
