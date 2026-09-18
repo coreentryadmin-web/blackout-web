@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T08:44:00Z",
+  "lastUpdated": "2026-09-18T08:54:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3723,6 +3723,18 @@
       "sampleSize": "N/A -- this entry is a session tally, not a statistical finding.",
       "productionOrShadow": "All 7 PRs today are PRODUCTION plumbing/compute-primitive additions; every byte of DATA they capture is SHADOW (never member-facing) by design, per the operator's own explicit 'every play must become training/calibration data' mandate.",
       "nextAction": "No PRs currently open -- next 15-min cycle should: (1) re-run healthcheck fresh (not yet due for re-check since 08:37:05Z), (2) check whether candidate leaderboard / R-multiple primitives need a reader wired (natural candidates: admin export route, or fold into get_nighthawk_dossier for Largo) -- these are real follow-on work, not urgent, (3) continue NOT re-checking Phase 2C/2B-part-2 blocked-on-sample items every cycle (checked once this session, correctly still blocked, will re-check when a new trading day's data exists), (4) if nothing new found, this is a legitimately clean/quiet cycle after a productive session -- stay quiet per noise discipline rather than manufacturing work."
+    },
+    {
+      "at": "2026-09-18T08:54:00Z",
+      "trigger": ":51 cycle -- healthcheck re-confirmed steady, picked up own 08:44 follow-up (wire leaderboard to a reader)",
+      "healthcheck": "Re-ran fresh at 08:52:00Z: overall AMBER, unchanged (A_edition GREEN 4 plays, B_marks AMBER pre-market-stale x4 -- same pattern, not re-escalating, C_record GREEN resolved=24, D_pull_status SKIPPED). No new pattern.",
+      "whatChanged": "Opened PR #5189 (draft): GET /api/admin/nighthawk/candidate-leaderboard -- wires PR #5187's buildCandidateLeaderboard primitive to an actual reader, same admin-export pattern as tier-export/rejection-export. edition_for defaults to the latest PUBLISHED edition (fetchLatestNighthawkEdition) when omitted.",
+      "why": "Own follow-up flagged in the 08:44 session-tally entry -- the leaderboard primitive shipped but had nowhere to surface. Picked up per aggressive-mode ('a signal that exists but isn't surfaced').",
+      "evidence": "No new route-level test needed (consistent with tier-export/rejection-export convention -- the pure row-shaper is already tested). Full nighthawk/lib suite 1205/1205 pass, tsc clean. PR #5189 opened draft, CI running, 12-min check-in armed (trig_0131rTfBahj3ax9G8gL2gE8p, fires 09:07Z).",
+      "sampleSize": "N/A -- code/wiring, not a statistical finding.",
+      "productionOrShadow": "PRODUCTION plumbing (a real, admin-gated route); reads SHADOW data (candidate_snapshot, never member-facing).",
+      "result": "Priority #7's safe half is now genuinely end-to-end: compute primitive (#5187) + a reader that actually surfaces it (#5189), not just an unused function.",
+      "nextAction": "Check PR #5189 at 09:07Z check-in, merge if green. After that, no more known open follow-ups from today's work -- next cycles should default to fresh healthcheck + genuine new-issue hunting per aggressive mode, not manufacturing work when a cycle is legitimately clean. Items 6/8 (Phase 2C, Phase 2B part 2) remain correctly blocked on trading-day sample accumulation, re-check when a new session's data exists rather than every 15 min."
     }
   ],
   "knownOpenItems": {
