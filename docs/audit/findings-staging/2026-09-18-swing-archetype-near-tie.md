@@ -63,8 +63,8 @@ branch off the actual latest `origin/main`, not trusting the originating researc
 - Reapplied (`git stash pop`). Re-ran the same two files plus the directly-related sweep
   (`closed-plays.test.ts`, `play-brief-resolve.test.ts`, `adapters.test.ts`): **358/358 pass**.
 - `npx tsc --noEmit -p .` on Node 20: clean.
-- Full `npm test` suite: kicked off in the background against this branch; result to be folded into
-  this finding's verification once complete (Node 20, `/opt/node20/bin`).
+- Full `npm test` suite (Node 20, `/opt/node20/bin`) against this branch: **14652/14655 pass, 0 fail,
+  3 skipped** (434514ms).
 
 ### Blast radius
 
