@@ -1047,7 +1047,16 @@ test("lessonsSection: a round-trip past breakeven never renders a nonsensical ne
   assert.match(section!.body, /round-tripped past breakeven/i);
 });
 
-test("lessonsSection: omits the round-trip sentence when the Trade manager read section already stated it, but keeps the rest", () => {
+test("lessonsSection: omits the round-trip sentence AND its coupled advice when the Trade manager read section already stated it, but keeps everything else independent", () => {
+  // CORRECTED 2026-09-18 (Ask Largo standing mandate, live repro AAPL:38): this test used to
+  // assert "gave back the move" survives when only roundTripAlreadyNoted=true — that was never
+  // actually achievable in production. `closedCoaching`'s round_trip branch (the only emitter of
+  // "Round-tripped past breakeven" for bucket==="closed" — play-brief-narrative.ts's own
+  // OPEN-flavored version explicitly `return`s null for bucket==="closed") always renders the
+  // round-trip fact and its advice clause (whichever of its two phrasings) as ONE atomic sentence,
+  // never independently. So if roundTripAlreadyNoted is true, the advice was necessarily already
+  // stated too, whichever phrasing it used — see the `!adviceAlreadyNoted && !roundTripAlreadyNoted`
+  // fix in this section's own body for the live repro this correction is paired with.
   const play = fixturePlay({
     status: "CLOSED",
     peak: 1.3,
@@ -1060,13 +1069,15 @@ test("lessonsSection: omits the round-trip sentence when the Trade manager read 
   const withoutSuppression = lessonsSection(play);
   assert.ok(withoutSuppression);
   assert.match(withoutSuppression!.body, /round-tripped past breakeven/i);
+  assert.match(withoutSuppression!.body, /gave back the move/i);
 
   const suppressed = lessonsSection(play, true);
   assert.ok(suppressed);
   assert.doesNotMatch(suppressed!.body, /round-tripped past breakeven/i);
-  // The rest of the post-mortem (peak/exit line, "gave back the move", exit reason, archetype tag)
-  // is independent evidence and must survive the suppression, not just the duplicated sentence.
-  assert.match(suppressed!.body, /gave back the move/i);
+  assert.doesNotMatch(suppressed!.body, /gave back the move/i);
+  // The rest of the post-mortem (peak/exit line, exit reason, archetype tag) is independent
+  // evidence and must survive the suppression.
+  assert.match(suppressed!.body, /Peak was/i);
   assert.match(suppressed!.body, /stop loss/i);
   assert.match(suppressed!.body, /pullback continuation/i);
 });
@@ -1098,6 +1109,47 @@ test("lessonsSection: omits the trim-rail advice and stop-loss advice when Trade
   // Independent evidence must survive: peak/exit line, archetype tag.
   assert.match(suppressed!.body, /Peak was/i);
   assert.match(suppressed!.body, /pullback continuation/i);
+});
+
+test("lessonsSection: omits the round-trip advice line when roundTripAlreadyNoted is true, even for a peak<=20% round-trip whose Trade-manager-read advice used the 'wouldn't have helped' phrasing instead of 'tighten at first trim rail next time'", () => {
+  // Live repro 2026-09-18 (AAPL:38, CLOSED/stopped, real production play-brief): closedCoaching's
+  // round_trip branch (play-brief-narrative-coaching.ts) has TWO advice phrasings depending on
+  // outcome.peakPct -- "tighten at first trim rail next time" when peakPct > 20, or "a trim rail
+  // wouldn't have helped here; review entry timing or thesis strength instead" when peakPct <= 20
+  // -- always in the SAME sentence as "Round-tripped past breakeven". AAPL:38's peak was only
+  // +10.2%, so "Trade manager read" rendered the SECOND phrasing: "...a trim rail wouldn't have
+  // helped here; review entry timing or thesis strength instead." "Lessons" then independently
+  // rendered "**Gave back the move** — next time tighten at first trim rail or thesis fade." --
+  // directly CONTRADICTING advice on the same trade (one section says trimming wouldn't have
+  // helped, the next says the lesson is to trim earlier), not just a restatement. The prior
+  // adviceAlreadyNoted call-site derivation only matched the first phrasing, so it never
+  // suppressed this one. Since closedCoaching always emits the round-trip fact and its advice
+  // (whichever phrasing) as one atomic sentence, roundTripAlreadyNoted=true alone must be enough
+  // to suppress the advice line too.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 10.2,
+    exitPnlPct: -33.2,
+    mfeCapturePct: null,
+    closedReason: "stopped",
+    archetype: "EVENT_DRIVEN",
+  });
+
+  const withoutSuppression = lessonsSection(play, false, false, false);
+  assert.ok(withoutSuppression);
+  assert.match(withoutSuppression!.body, /gave back the move/i);
+
+  // roundTripAlreadyNoted=true, adviceAlreadyNoted=false (simulating the "wouldn't have helped"
+  // phrasing, which the call site's string match does not recognize) -- the advice line must
+  // still be suppressed, since it was already covered by whichever phrasing appeared alongside
+  // the round-trip fact.
+  const suppressed = lessonsSection(play, true, false, false);
+  assert.ok(suppressed);
+  assert.doesNotMatch(suppressed!.body, /gave back the move/i);
+  assert.doesNotMatch(suppressed!.body, /round-tripped past breakeven/i);
+  // Independent evidence must survive.
+  assert.match(suppressed!.body, /Peak was/i);
+  assert.match(suppressed!.body, /event-driven/i);
 });
 
 test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Trade manager read already stated the identical capture>=75 fact", () => {

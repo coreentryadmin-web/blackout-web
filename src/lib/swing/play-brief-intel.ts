@@ -1202,7 +1202,22 @@ export function lessonsSection(
       if (!roundTripAlreadyNoted) {
         lines.push(`**Round-tripped past breakeven** — up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**.`);
       }
-      if (!adviceAlreadyNoted) {
+      // BUG FIX (2026-09-18, Ask Largo standing mandate): `closedCoaching`'s round_trip branch
+      // (play-brief-narrative-coaching.ts) always emits its advice clause IN THE SAME SENTENCE as
+      // the "Round-tripped past breakeven" fact -- never independently -- but has TWO different
+      // phrasings depending on outcome.peakPct: "tighten at first trim rail next time" when
+      // peakPct > 20, or "a trim rail wouldn't have helped here; review entry timing or thesis
+      // strength instead" when peakPct <= 20. `adviceAlreadyNoted`'s call-site derivation
+      // (buildIntelSections) only string-matches the first phrasing, so live repro AAPL:38
+      // (2026-09-18, CLOSED, peak +10.2% <= 20 threshold, real production play-brief): "Trade
+      // manager read" said "a trim rail wouldn't have helped here; review entry timing or thesis
+      // strength instead" while "Lessons" two sections later independently said "next time
+      // tighten at first trim rail or thesis fade" -- directly CONTRADICTING advice on the same
+      // trade, not just a restatement. Since the round-trip fact and its advice are always one
+      // atomic sentence in closedCoaching, `roundTripAlreadyNoted` being true already proves the
+      // advice (whichever phrasing) was also stated -- gate on it directly instead of chasing
+      // every future phrasing `adviceAlreadyNoted`'s string match would need to enumerate.
+      if (!adviceAlreadyNoted && !roundTripAlreadyNoted) {
         lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
       }
     } else if (outcome?.kind === "capture") {
