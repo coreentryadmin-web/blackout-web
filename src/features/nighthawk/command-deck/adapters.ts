@@ -675,6 +675,9 @@ export interface HorizonDeckSource {
   //    reproduce the old literals exactly (see the honest-fallback comments in the adapter body). ──
   /** The dossier's actual pillar contributions (label + points), biggest lever first. */
   factors?: DeckFactor[];
+  /** Present-pillar count at commit, ONLY when the entry read was degraded — see TerminalPlay's
+   *  own field / live-plays.ts's `entryPresentPillarsFromFeatureVector` for the full history. */
+  entryPresentPillars?: number | null;
   /** Regime read (archetype label ± normalized regime pillar), or null when absent. */
   regime?: string | null;
   /** Thesis-health read from the swing thesis; when omitted it is DERIVED from `setupState` below. */
@@ -979,6 +982,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     // the exact pre-PR-12 literal ([] / null / {intact}) when the caller supplies nothing, so LEAPS and any
     // un-enriched caller render identically — the change is additive, never a regression to those lanes.
     factors: src.factors ?? [],
+    entryPresentPillars: src.entryPresentPillars ?? null,
     gates: [],
     regime: src.regime ?? null,
     thesisBreak: thesisBreakResolved,
@@ -1324,6 +1328,7 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     contract: src.contract,
     archetype: src.archetype ?? null,
     subLane: src.subLane ?? null,
+    entryPresentPillars: src.entryPresentPillars ?? null,
     firstSeenAt: src.firstSeenAt ?? null,
     committedAt: src.committedAt ?? null,
     entryPremium: src.entryPremium ?? null,

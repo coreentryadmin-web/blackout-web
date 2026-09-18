@@ -87,6 +87,15 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   const whyArchetypeLabel = archetypeLabelFromRaw(play.archetype);
   if (whyArchetypeLabel) lines.push(`**Archetype:** ${whyArchetypeLabel}`);
   if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
+  // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the pre-entry WATCH note for the identical
+  // fact ("thin read — N/7 pillars grounded", serving-ingest.ts) never survives WATCH→COMMIT — see
+  // `entryPresentPillarsFromFeatureVector`'s own doc comment (live-plays.ts) for the full trace.
+  // `entryPresentPillars` is only ever non-null when the entry read was genuinely thin (same
+  // dataQuality.degraded threshold the WATCH note gates on), so this line is silent on the
+  // overwhelming common case of a healthy entry.
+  if (play.entryPresentPillars != null) {
+    lines.push(`**Evidence at entry:** thin read — **${play.entryPresentPillars}/7** pillars grounded`);
+  }
   // "Today's regime read" (not the old bare "Discovery read") — `play.regime` is re-derived FRESH on
   // every scan (attachThesisExplanation, serving-lane.ts) while `play.archetype` right above stays
   // PINNED from commit day. The two are independent classifier reads of the same dossier at different

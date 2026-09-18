@@ -294,6 +294,19 @@ export interface TerminalPlay {
    *  whenever computable — present whether or not the window has expired, so a WATCH brief can show
    *  the forward-looking "entry window closes on X" fact, not only the EXPIRED badge in hindsight. */
   entryDeadline?: string | null;
+  /** SWING only, committed (OPEN/HOLD/TRIM/CLOSED) positions: how many of the 7 evidence pillars
+   *  (dossier.ts's SwingDossier.dataQuality) were grounded AT COMMIT — pinned into the position's
+   *  `feature_vector.present_pillars`/`dq_degraded` (feature-vector.ts) and, until now, never read
+   *  back out of it anywhere in the serving/brief layer. A pre-entry WATCH candidate's identical
+   *  read (dossier.dataQuality) already surfaces as a "thin read — N/7 pillars grounded" thesis-
+   *  health note (serving-ingest.ts's swingServingMetaFromDossier) the moment it degrades — but that
+   *  note is computed from the LIVE dossier, which the WATCH→COMMIT transition does not carry
+   *  forward (a structural absence, not a staleness gap — same shape as the entryTriggerUnderlyingPx/
+   *  committedAt/firstSeenAt fields live-plays.ts's own comment names as "already-pinned DB columns,
+   *  just not threaded through before now"). Null when the row predates the feature-vector column
+   *  (dq_degraded is honest-null there, per feature-vector.ts's NULL-not-zero law) or the pillar
+   *  count was never degraded enough to be worth surfacing. */
+  entryPresentPillars?: number | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;

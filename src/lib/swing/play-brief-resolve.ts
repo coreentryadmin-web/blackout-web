@@ -80,6 +80,7 @@ export function horizonRowToDeckSource(
       iv: p.contract.iv,
     },
     factors: p.factors,
+    entryPresentPillars: p.entryPresentPillars ?? null,
     regime: p.regime ?? null,
     setupState: p.setupState ?? null,
     entryStatus: p.entryStatus ?? null,

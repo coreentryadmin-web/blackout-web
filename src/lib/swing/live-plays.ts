@@ -303,6 +303,40 @@ export function pinnedFactorsFromFeatureVector(
 }
 
 /**
+ * Read back the ENTRY-TIME evidence-completeness read (dossier.ts's `dataQuality.presentPillars`/
+ * `.degraded`) from a committed position's own pinned `feature_vector.present_pillars`/`dq_degraded`
+ * (feature-vector.ts) — pinned at commit (commit.ts) and echoed on every later manage-sync snapshot,
+ * but never read back out anywhere in the serving/brief layer until now.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-09-18): a pre-entry WATCH candidate's identical
+ * `dataQuality.degraded` read already surfaces as a "thin read — N/7 pillars grounded" thesis-health
+ * note the moment it degrades (serving-ingest.ts's `swingServingMetaFromDossier`) — a member sees it
+ * BEFORE committing. Once committed, that same fact — how thin the evidence actually was when real
+ * capital went in — silently disappears: `livePlayFromSwingPosition`/`closedDeckSourceFromRow` both
+ * already read `row.feature_vector.evidence_score` for the score number, but neither ever read the two
+ * sibling columns sitting right next to it. A member reviewing an open or closed position never learns
+ * it was entered off a thin read (e.g. 2/7 pillars grounded) unless they happen to remember the WATCH
+ * brief from days earlier — the exact same "structural absence, not staleness gap" this file's own
+ * `entryTriggerUnderlyingPx`/`committedAt`/`firstSeenAt` fields were wired in to fix (see their comment
+ * a few lines up).
+ *
+ * Deliberately returns null (never surfaced) unless the read was ACTUALLY thin at commit — same
+ * threshold the WATCH-lane note itself gates on (`dataQuality.degraded`, dossier.ts: <3 present
+ * pillars OR the STRUCTURE pillar missing) — so a normal, well-grounded entry renders nothing extra,
+ * exactly mirroring the pre-entry note's own "only when it matters" discipline rather than cluttering
+ * every brief with a number that is unremarkable 95%+ of the time.
+ */
+export function entryPresentPillarsFromFeatureVector(
+  featureVector: Record<string, unknown> | null | undefined,
+): number | null {
+  if (!featureVector) return null;
+  const degraded = featureVector.dq_degraded === 1;
+  if (!degraded) return null;
+  const present = featureVector.present_pillars;
+  return typeof present === "number" && Number.isFinite(present) ? present : null;
+}
+
+/**
  * Map one open ledger row (+ optional spot + latest manage snapshot) to a HorizonPlay for the live sections. Returns null when the
  * row is not a live status or lacks a reconstructible contract.
  */
@@ -338,6 +372,7 @@ export function livePlayFromSwingPosition(
   // Reconstructed from the SAME pinned feature_vector `score` came from (see the function's own doc for
   // the live bug this closes) — guaranteed to sum to `score` exactly, never a freshly re-run dossier's.
   const factors = pinnedFactorsFromFeatureVector(row.feature_vector);
+  const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
 
   // CORRECTED (live regression found 2026-09-07, prior fix in #4481): `regime` is a DISPLAY string —
   // play-brief.ts's Verdict section pushes `play.regime` verbatim with no label
@@ -384,6 +419,7 @@ export function livePlayFromSwingPosition(
     subLane: (row.sub_lane as SwingSubLane | null) ?? undefined,
     regime,
     factors,
+    entryPresentPillars,
     liveStatus,
     manageAction,
     manageReason: manageReason ?? null,

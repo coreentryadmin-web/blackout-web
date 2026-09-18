@@ -7,6 +7,7 @@ import type { SwingPositionRow } from "../db";
 import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
 import { buildSwingRecord } from "./record";
+import { entryPresentPillarsFromFeatureVector } from "./live-plays";
 
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -38,6 +39,9 @@ export type SwingClosedDeckSource = {
   };
   archetype?: string | null;
   subLane?: string | null;
+  /** Present-pillar count at commit, ONLY when the entry read was degraded — see
+   *  live-plays.ts's `entryPresentPillarsFromFeatureVector` for the full gap this closes. */
+  entryPresentPillars?: number | null;
   firstSeenAt?: string | null;
   committedAt?: string | null;
   entryPremium?: number | null;
@@ -83,6 +87,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
       ? (row.feature_vector.evidence_score as number)
       : 0;
+  const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
   const exitPnl = fin(row.realized_pnl_pct);
   return {
     positionId: row.id,
@@ -106,6 +111,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     },
     archetype: row.archetype,
     subLane: row.sub_lane,
+    entryPresentPillars,
     firstSeenAt: row.first_seen_at,
     committedAt: row.committed_at,
     entryPremium: row.entry_premium,
