@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T06:42:00Z",
+  "lastUpdated": "2026-09-18T06:51:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3619,6 +3619,13 @@
       "healthcheck": "Re-ran scripts/audit/legacy-e2e-healthcheck.mjs fresh at 06:36:41Z: steady, unchanged from prior cycles (4 plays, marks correctly stale pre-market, record GREEN resolved=24). No new findings.",
       "codeReview": "Continued the operator-authorized continuous-learning build. PR #5176 (Phase 2A part 1, session MFE/MAE on forward_returns) went green (verify+CodeQL+Analyze all success) and was undrafted + merged (squash, sha 1db37928) -- re-verified live against origin/main directly (schema_version:2, session_high_pct present in the merged file), not just trusted the merge response. Shipped Phase 2A part 2 immediately after as PR #5177 (draft, CI running, subscribed, 12-min self-check-in scheduled): new market-regime.ts classifyMarketRegime() -- SPX-vs-SMA20 trend (+/-0.5% banded), VIX low/normal/high bucket, gap pattern passed through from the edition build's already-computed SpxGapContext, event_day flag -- computed ONCE per edition build from MarketWideContext fields already fetched (zero new I/O) and stamped into every candidate_snapshot row's market_regime field via buildDiscoveryStageSnapshotRows' new 5th optional param (backward compatible, all 9 pre-existing tests pass unchanged). 9 new classifier tests + 2 new threading tests, tsc clean. Explicitly scoped as 'coarse v1' descriptive tagging only (common VIX/SMA bands, not backtested, gates nothing) -- same posture as the existing regimeFromSpyTrend's own header comment. Deliberately did NOT import swing-lane's regimeFromSpyTrend (wrong shape -- direction-aligned single score, not raw labels) to keep this Legacy-owned rather than crossing lane ownership for a ~10-line calc.",
       "action": "Merged PR #5176 (Phase 2A part 1). Opened PR #5177 (Phase 2A part 2), draft, CI pending. Task list updated (#17 completed, #18 completed)."
+    },
+    {
+      "at": "2026-09-18T06:51:00Z",
+      "trigger": ":51 cycle",
+      "healthcheck": "Re-ran scripts/audit/legacy-e2e-healthcheck.mjs fresh at 06:51:30Z: steady, unchanged (4 plays, marks correctly stale pre-market, record GREEN resolved=24). No new findings.",
+      "codeReview": "PR #5177 (Phase 2A part 2, market regime tagging) went green (verify+CodeQL both success) and was undrafted + merged (squash, sha 8739da330) -- re-verified live against origin/main directly (classifyMarketRegime present in the merged file). Phase 2A is now FULLY shipped, both parts: every nighthawk_candidate_snapshot row (every candidate, published or not) carries session MFE/MAE + a coarse market-regime tag. Starting investigation into Phase 2B (failure-mode root-cause taxonomy) next.",
+      "action": "Merged PR #5177 (Phase 2A part 2). Phase 2A complete. Task list updated (#18 completed)."
     }
   ],
   "knownOpenItems": {
