@@ -290,6 +290,10 @@ export interface TerminalPlay {
    *  has already passed — lets the headline show EXPIRED instead of a generic WAIT pill that reads
    *  identically to a setup that simply hasn't triggered yet. */
   watchEntryExpired?: boolean | null;
+  /** ISO timestamp of the resolved entry-validity deadline (entry-enterability.ts's `deadlineIso`),
+   *  whenever computable — present whether or not the window has expired, so a WATCH brief can show
+   *  the forward-looking "entry window closes on X" fact, not only the EXPIRED badge in hindsight. */
+  entryDeadline?: string | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;

@@ -1018,6 +1018,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     servingSection: src.servingSection ?? null,
     swingEntryAction,
     watchEntryExpired,
+    entryDeadline: swingEnterability?.deadlineIso ?? null,
     detectedAt: src.firstSeenAt ?? null,
     firstFlaggedAt: src.committedAt ?? null,
     committedAt: src.committedAt ?? null,

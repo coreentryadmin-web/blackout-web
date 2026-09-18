@@ -264,6 +264,64 @@ test("composeSwingPlayBrief: WATCH play with detectedAt narrates real days-on-wa
   assert.match(entry!.body, /still on WATCH, not yet graduated to a real position/);
 });
 
+// Gap fix (2026-09-18, Ask Largo standing mandate): entry-enterability.ts always computed the real
+// entry-validity deadline to derive `watchEntryExpired`, then discarded the actual date — a member
+// watching a still-live WATCH play had no forward-looking runway to weigh, only the EXPIRED badge
+// once it was already too late. Mirrors the "First flagged" age line directly above it.
+test("composeSwingPlayBrief: WATCH play with a live entryDeadline narrates the forward-looking entry window (2026-09-18 gap fix)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ entryDeadline: "2026-09-15T14:00:00.000Z", watchEntryExpired: false }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(entry!.body, /Entry window closes \*\*.+\*\* \(\*\*\d+ days?\*\* left\)/);
+});
+
+test("composeSwingPlayBrief: WATCH play already past its entry deadline omits the forward-looking line (EXPIRED badge owns that case)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ entryDeadline: "2026-09-01T14:00:00.000Z", watchEntryExpired: true }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.doesNotMatch(entry!.body, /Entry window closes/);
+});
+
+test("composeSwingPlayBrief: WATCH play without entryDeadline omits the forward-looking line entirely (never fabricated)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ entryDeadline: null, watchEntryExpired: false }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.doesNotMatch(entry!.body, /Entry window closes/);
+});
+
 test("composeSwingPlayBrief: WATCH play without detectedAt omits the age line entirely (never fabricated)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ detectedAt: null }),

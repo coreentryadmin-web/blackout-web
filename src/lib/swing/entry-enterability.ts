@@ -48,6 +48,18 @@ export type SwingEntryEnterability = {
    *  reason (invalidated, extended-chase, gate-blocked, not-yet-triggered), which otherwise all
    *  collapse into the same generic WAIT pill member-facing. */
   expired?: boolean;
+  /**
+   * The resolved entry-validity deadline as an ISO timestamp, whenever it could be computed —
+   * present on EVERY branch (not just the `expired` one), so a caller can show the forward-looking
+   * "entry window closes on X" fact while the setup is still enterable, not only retroactively once
+   * it has already lapsed. Gap found 2026-09-18 (Ask Largo standing mandate): `entryDeadlineMs` was
+   * already computed here (from `entryDeadline` or the `anchoredAt`+sub-lane fallback) to decide
+   * `expired`, then discarded — only the boolean survived to any caller. A member watching a WATCH
+   * play had no way to learn how much runway was left before the setup went stale; the first they'd
+   * hear of it was the EXPIRED badge itself, after the window had already closed. Null when neither
+   * `entryDeadline` nor a resolvable `anchoredAt` was supplied (never fabricated).
+   */
+  deadlineIso?: string | null;
 };
 
 const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
@@ -163,12 +175,17 @@ export function evaluateSwingEntryEnterability(
   const setup = input.setupState ?? null;
   const entry = input.entryStatus ?? null;
   const gateBlocked = resolveCommitGateBlockedBy(input);
+  // Computed once, attached to EVERY branch below (see the `deadlineIso` doc comment on
+  // `SwingEntryEnterability` for why this must not stay expired-only).
+  const deadlineMs = entryDeadlineMs(input);
+  const deadlineIso = deadlineMs != null ? new Date(deadlineMs).toISOString() : null;
 
   if (input.persistenceObserved === true) {
     return {
       action: "dont_buy",
       enterable: false,
       reason: "Below cross-session persistence bar — not served for entry yet.",
+      deadlineIso,
     };
   }
 
@@ -177,6 +194,7 @@ export function evaluateSwingEntryEnterability(
       action: "dont_buy",
       enterable: false,
       reason: "Structure invalidated — no entry recommended.",
+      deadlineIso,
     };
   }
 
@@ -186,6 +204,7 @@ export function evaluateSwingEntryEnterability(
       enterable: false,
       reason: "Entry-validity window expired — wait for a fresh setup.",
       expired: true,
+      deadlineIso,
     };
   }
 
@@ -194,6 +213,7 @@ export function evaluateSwingEntryEnterability(
       action: "dont_buy",
       enterable: false,
       reason: "Contract expired — no entry on this strike/expiry.",
+      deadlineIso,
     };
   }
 
@@ -202,6 +222,7 @@ export function evaluateSwingEntryEnterability(
       action: "dont_buy",
       enterable: false,
       reason: "Extended past the valid entry window — do not chase; wait for a reset.",
+      deadlineIso,
     };
   }
 
@@ -210,6 +231,7 @@ export function evaluateSwingEntryEnterability(
       action: "wait",
       enterable: false,
       reason: "Thesis is still building — track persistence before entry.",
+      deadlineIso,
     };
   }
 
@@ -218,6 +240,7 @@ export function evaluateSwingEntryEnterability(
       action: "wait",
       enterable: false,
       reason: "Below the lane commit floor — watch until conviction clears the bar.",
+      deadlineIso,
     };
   }
 
@@ -236,6 +259,7 @@ export function evaluateSwingEntryEnterability(
         action: "wait",
         enterable: false,
         reason: "At trigger, but commit gates have not cleared — wait before sizing.",
+        deadlineIso,
       };
     }
     const action: SwingEntryAction = input.deskCommitted ? "still_buy" : "buy";
@@ -247,7 +271,7 @@ export function evaluateSwingEntryEnterability(
         : input.deskCommitted
           ? "At trigger with clean geometry — desk is in; members can still enter."
           : "At trigger with clean entry geometry — actionable buy window.";
-    return { action, enterable: true, reason };
+    return { action, enterable: true, reason, deadlineIso };
   }
 
   if (setup === "TRIGGERED" && entry === "PRE_TRIGGER") {
@@ -255,6 +279,7 @@ export function evaluateSwingEntryEnterability(
       action: "wait",
       enterable: false,
       reason: "Waiting for price to reach the trigger — setup has not fired yet.",
+      deadlineIso,
     };
   }
 
@@ -263,6 +288,7 @@ export function evaluateSwingEntryEnterability(
       action: "wait",
       enterable: false,
       reason: "No setup maturity read — track until classified.",
+      deadlineIso,
     };
   }
 
@@ -270,6 +296,7 @@ export function evaluateSwingEntryEnterability(
     action: "wait",
     enterable: false,
     reason: "Thesis is live but entry geometry is not clean yet — wait for a better fill.",
+    deadlineIso,
   };
 }
 

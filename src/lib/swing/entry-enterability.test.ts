@@ -79,6 +79,50 @@ describe("evaluateSwingEntryEnterability", () => {
     assert.equal(r.expired, true);
   });
 
+  // Gap fix (2026-09-18, Ask Largo standing mandate): `deadlineIso` used to only ever be computed
+  // internally to derive the `expired` boolean, then discarded — a caller had no way to show the
+  // forward-looking "entry window closes on X" fact while the setup was still enterable. It must
+  // now be attached on EVERY branch a deadline is resolvable on, not only the already-expired one.
+  it("deadlineIso is populated even on a still-enterable (buy) verdict, from an explicit entryDeadline", () => {
+    const r = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      deskCommitted: false,
+      entryDeadline: "2026-09-20T12:00:00.000Z",
+      nowMs: Date.parse("2026-09-18T12:00:00.000Z"),
+    });
+    assert.equal(r.action, "buy");
+    assert.equal(r.enterable, true);
+    assert.equal(r.deadlineIso, "2026-09-20T12:00:00.000Z");
+  });
+
+  it("deadlineIso is populated on a still-enterable verdict from the anchoredAt+subLane fallback (no explicit entryDeadline)", () => {
+    const r = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "PRE_TRIGGER",
+      aboveFloor: true,
+      subLane: "STANDARD",
+      anchoredAt: "2026-09-15T14:00:00.000Z", // Tuesday
+      nowMs: Date.parse("2026-09-16T14:00:00.000Z"),
+    });
+    assert.equal(r.action, "wait");
+    assert.ok(r.deadlineIso, "expected a resolved deadline from the sub-lane fallback");
+    assert.ok(
+      Date.parse(r.deadlineIso!) > Date.parse("2026-09-15T14:00:00.000Z"),
+      "deadline must be strictly after the anchor",
+    );
+  });
+
+  it("deadlineIso is null when neither entryDeadline nor anchoredAt is supplied (never fabricated)", () => {
+    const r = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+    });
+    assert.equal(r.deadlineIso, null);
+  });
+
   it("expired is NOT set on other dont_buy/wait reasons (invalidated, extended-chase, gate-blocked)", () => {
     const invalidated = evaluateSwingEntryEnterability({
       setupState: "INVALIDATED",
