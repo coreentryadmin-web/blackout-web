@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T17:38:00Z",
+  "lastUpdated": "2026-09-18T17:52:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3979,6 +3979,15 @@
       "whatChanged": "#5216's whole deploy workflow completed at 17:23:36Z. #5217's own build-and-push started immediately after (queue cleared), image built+pushed by 17:28:43Z, ECS web roll now in progress. Tried GET /api/admin/nighthawk/posture-backtest?days=30 at 17:37Z -- still 404, expected (web roll only just started, same ~29min shape as the prior deploy for 8 tasks).",
       "result": "No action needed, progressing normally. Real measurement still not readable.",
       "nextAction": "Next cycle (~17:51Z or later): call the posture-backtest route again once the web roll has had time to complete."
+    },
+    {
+      "at": "2026-09-18T17:52:00Z",
+      "trigger": ":51 cycle -- posture-backtest route LIVE, real measurement read: gate fired SHORT 0 of 21 sessions",
+      "healthcheck": "Board steady this cycle (same rotating pattern), no separate entry needed for that.",
+      "whatChanged": "GET /api/admin/nighthawk/posture-backtest?days=30 finally live (deploy completed) and called. REAL RESULT: 21 sessions in the 30-day window, ALL 21 had a valid regime pin (sessions_with_regime=21, no data gap) -- and the bearish-posture gate (detectBookPosture, >=2-of-3 signals) fired SHORT on ZERO of them (gate_fired_short_n=0, gate_fired_short_pct=0%). 20 of the 21 sessions published an entirely-LONG book (all_long_sessions_n=20); only 2026-09-10 had a single SHORT play alongside 2 LONGs. gate_short_but_book_all_long_n=0 (moot -- the gate never fired at all, so that specific disconnect never had a chance to occur).",
+      "why": "This is a stronger, more definitive version of the 16:10Z/16:22Z finding: it's not just 'LONG:SHORT ratio is 47:1 during a down month' anymore, it's 'the dedicated anti-all-LONG safety mechanism read NEUTRAL literally every single session for over a month, including sessions inside a 17-of-22-red-days stretch.' Two very different explanations remain open and this measurement alone can't distinguish them: (a) the tape genuinely never cleared 2-of-3 bearish signals by tide_bias/breadth/composite_regime's specific definitions this whole window (gate correctly conservative), or (b) one or more of those 3 inputs is itself silently never populated as bearish in the pinned publish_context (a data-capture gap upstream of the gate, not a threshold-strictness question). The posture-backtest route as shipped reports the gate's VERDICT per session but not the raw tide_bias/advance_pct/composite_regime values that produced it -- so (a) vs (b) is not yet distinguishable from this tool's current output.",
+      "result": "Real, high-confidence measurement obtained and recorded -- the exact question this tool was built to answer. Still correctly held at REPORT, not acted on (no gate/threshold change). The natural, small, low-risk follow-up: add the raw per-session regime values (tide_bias/advance_pct/composite_regime) to buildPostureBacktestReport's session output (same pure module, same route, no new capture) so (a) vs (b) above becomes distinguishable -- not built this cycle, flagged for the next one.",
+      "evidence": "Full API response: 21/21 sessions_with_regime, gate_fired_short_n=0, gate_fired_short_pct=0, all_long_sessions_n=20/21, gate_short_but_book_all_long_n=0. Route: GET https://blackouttrades.com/api/admin/nighthawk/posture-backtest?days=30."
     }
   ],
   "knownOpenItems": {
