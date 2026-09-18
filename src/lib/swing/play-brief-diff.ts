@@ -10,9 +10,21 @@ import { roundFloats } from "@/lib/round-floats";
 export type BriefSnapshot = {
   headline: string;
   recommendation: string | null;
-  /** LONG/SHORT — carried through only so the diff engine can tell an "adverse" spot move
-   *  (toward the put wall for a LONG, toward the call wall for a SHORT) from a favorable one.
-   *  Not itself diffed (a play's direction doesn't change mid-life). */
+  /** LONG/SHORT — used both to tell an "adverse" spot move (toward the put wall for a LONG,
+   *  toward the call wall for a SHORT) from a favorable one, AND diffed directly below.
+   *  BUG FIXED 2026-09-18 (Ask Largo round 20): this field used to be documented "not itself
+   *  diffed (a play's direction doesn't change mid-life)" — true for a COMMITTED position (once
+   *  committed, direction is locked to the position, per commit.ts), but false for a WATCH
+   *  candidate: `TerminalPlay.id` for an uncommitted row is `${horizon}:${ticker}` with no
+   *  positionId suffix (adapters.ts ~line 983 — positionId is only appended `if (src.positionId
+   *  != null)`), so the SAME play.id persists across discovery cycles while `src.direction`
+   *  (freshly derived from that cycle's net flow read) can genuinely flip — a ticker's
+   *  accumulated flow can turn from net-bullish to net-bearish (or vice versa) session to
+   *  session before it is ever committed. `diffBriefSnapshots` is keyed by that stable play.id
+   *  (see useSwingPlayBrief.ts's `prevSnapRef`/`briefSnapshotStorageKey`), so a real directional
+   *  reversal on a WATCH ticker was silently un-narrated by "What changed" even though it is the
+   *  single most material fact possible — every other diffed field (thesis health, spot, walls)
+   *  is only meaningful relative to a direction that the diff engine was assuming was constant. */
   direction: TerminalPlay["direction"] | null;
   thesisHealth: number | null;
   pnlPct: number | null;
@@ -250,6 +262,17 @@ export function snapshotFromBrief(
 export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapshot): string[] {
   if (!prev) return [];
   const lines: string[] = [];
+
+  // A direction flip invalidates the meaning of every other diffed field (a "spot drifted lower"
+  // line reads as bearish news for a LONG and bullish news for a SHORT) — checked and narrated
+  // FIRST, ahead of every other rule below, and never suppressed by a synthesis rule the way
+  // recommendation/thesis/pnl can be, since it is not consumed by any of them. Only fires when
+  // both sides have a real direction (a null on either side means one snapshot predates direction
+  // being wired, not a real flip).
+  const directionChanged = !!prev.direction && !!next.direction && prev.direction !== next.direction;
+  if (directionChanged) {
+    lines.push(`**Direction flipped** — ${prev.direction} → **${next.direction}** (net flow reversed)`);
+  }
 
   // ---- raw facts (unchanged thresholds — same gates as before synthesis existed) ----
   const recommendationChanged =

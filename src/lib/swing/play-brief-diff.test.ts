@@ -404,6 +404,41 @@ test("diffBriefSnapshots: detects HELIX put-only flow build when call premium is
   );
 });
 
+test("diffBriefSnapshots: narrates a WATCH-candidate direction flip (same play.id, reversed net flow)", () => {
+  // Same ticker/play.id as a WATCH candidate would keep across discovery cycles (no positionId
+  // suffix pre-commit) — only `direction` differs, exactly what a real net-flow reversal produces.
+  const baseEnvelope = env();
+  const prevSnap = snapshotFromBrief(baseEnvelope, play({ id: "SWING:NVDA", direction: "LONG" }));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play({ id: "SWING:NVDA", direction: "SHORT" }));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    lines.some((l) => l.includes("Direction flipped") && l.includes("LONG") && l.includes("SHORT")),
+    `expected a direction-flip line, got: ${JSON.stringify(lines)}`,
+  );
+});
+
+test("diffBriefSnapshots: does not narrate a direction flip when direction is unchanged", () => {
+  const baseEnvelope = env();
+  const prevSnap = snapshotFromBrief(baseEnvelope, play({ direction: "LONG" }));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play({ direction: "LONG" }));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    !lines.some((l) => l.includes("Direction flipped")),
+    `expected no direction-flip line, got: ${JSON.stringify(lines)}`,
+  );
+});
+
+test("diffBriefSnapshots: does not fabricate a flip when one side's direction is missing", () => {
+  const baseEnvelope = env();
+  const prevSnap = snapshotFromBrief(baseEnvelope, play({ direction: null as unknown as TerminalPlay["direction"] }));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play({ direction: "LONG" }));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    !lines.some((l) => l.includes("Direction flipped")),
+    `expected no direction-flip line when a side is null, got: ${JSON.stringify(lines)}`,
+  );
+});
+
 test("briefContentKey: rounds raw floats — never leaks full-precision numbers past the route's own roundFloats pass", () => {
   // Real repro shape: AAPL closed-play pnlPct computed as mark/entry - 1, e.g. 4.5/10.275 - 1.
   const snap = snapshotFromBrief(env(), play({ pnlPct: -56.18644067796611 }));
