@@ -65,4 +65,4 @@ stale" rather than a false positive — `newsCatalystStale` treats a missing tim
 - `npx tsx --experimental-test-module-mocks --test src/lib/swing/*.test.ts src/lib/bie/*.test.ts` —
   1995/1995 pass.
 - `npx tsc --noEmit` — clean.
-- Full `npm test` (Node 20) — pending in background at time of PR open; see PR for final count.
+- Full `npm test` (Node 20) — 14620/14623 pass, 0 fail, 3 pre-existing skips.
