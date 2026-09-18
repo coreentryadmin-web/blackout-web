@@ -27,6 +27,7 @@ import {
 } from "./debrief";
 import { GATE_BAND_MAX_DISTANCE_PCT, GATE_TARGET_MAX_ATR_MULTIPLE } from "./publish-gates";
 import { targetAtrHistogram, type TargetAtrHistogramBin } from "./target-reachability";
+import { classifyPullRules, type PullRuleTag } from "./pull-rule-taxonomy";
 
 export const NIGHTHAWK_DEBRIEF_METHODOLOGY =
   "Night Hawk session debrief over graded outcome rows (v2 fillability grades only — legacy-" +
@@ -60,6 +61,7 @@ export type DebriefAggregateRow = Pick<
   | "conviction"
   | "outcome"
   | "pulled"
+  | "pulled_reason"
   | "grade_methodology"
   | "publish_context"
   | "entry_range_low"
@@ -169,6 +171,85 @@ export function summarizeDebriefPins(rows: DebriefAggregateRow[]): NighthawkDebr
     unpinned: current.length - debriefed,
     low_n: debriefed < LOW_N_THRESHOLD,
   };
+}
+
+// ── Pull-rule breakdown (Phase 2B — "which cancellation rule is destroying expectancy") ─────
+
+export type PullRuleOutcome = {
+  rule: PullRuleTag;
+  /** Pulled plays whose counterfactual grade would have won — this rule cost a winner. */
+  wrongly: number;
+  /** Pulled plays whose counterfactual grade would NOT have won — this rule avoided a loser. */
+  correctly: number;
+  n: number;
+  /** wrongly / n, as a %. Null when n is 0 (never divide by zero). */
+  wrongly_rate_pct: number | null;
+  low_n: boolean;
+};
+
+export type PullRuleBreakdown = {
+  /** Sorted by n desc, then wrongly_rate_pct desc, then rule asc — biggest/worst first. */
+  rules: PullRuleOutcome[];
+  /** Pulled+debriefed rows whose pulled_reason matched NO known rule (template drift, or a
+   *  reason string that predates this taxonomy) — counted, never silently dropped. */
+  unattributed: number;
+  /** Total pulled_wrongly/pulled_correctly rows this breakdown was built from. NOTE: a single
+   *  pull can attribute to MULTIPLE rules (a severe-DEGRADED pull genuinely had >=2 checks
+   *  fire), so summing every rule's own n can exceed this total — that is co-occurrence, not
+   *  double-counting error. */
+  total_pulled: number;
+  low_n: boolean;
+};
+
+/**
+ * Breaks the already-existing pulled_wrongly/pulled_correctly tags (classifyFailureMode's
+ * counterfactual-grade judgment, unchanged) down by WHICH of computePlayVerdict's rules
+ * actually caused the pull (pull-rule-taxonomy.ts). Answers the operator's standing mandate
+ * item #8 directly: a rule with a high wrongly_rate_pct at real n is a candidate for tuning or
+ * removal; this function only measures and reports — it changes no gate/threshold itself (same
+ * "measure first, shadow-test before flipping anything" discipline the rest of this codebase's
+ * A/B tooling already follows).
+ */
+export function summarizePulledByRule(rows: DebriefAggregateRow[]): PullRuleBreakdown {
+  const graded = rows.filter((r) => r.outcome !== "pending");
+  const current = graded.filter((r) => isCurrentGradeMethodology(r.grade_methodology));
+  const tally = new Map<PullRuleTag, { wrongly: number; correctly: number }>();
+  let unattributed = 0;
+  let totalPulled = 0;
+
+  for (const row of current) {
+    if (row.pulled !== true) continue;
+    const tag = readPinnedDebriefTag(row.debrief ?? null);
+    if (tag !== "pulled_wrongly" && tag !== "pulled_correctly") continue;
+    totalPulled += 1;
+    const matchedRules = classifyPullRules(row.pulled_reason ?? null);
+    if (matchedRules.length === 0) {
+      unattributed += 1;
+      continue;
+    }
+    for (const rule of matchedRules) {
+      const cur = tally.get(rule) ?? { wrongly: 0, correctly: 0 };
+      if (tag === "pulled_wrongly") cur.wrongly += 1;
+      else cur.correctly += 1;
+      tally.set(rule, cur);
+    }
+  }
+
+  const rules: PullRuleOutcome[] = Array.from(tally.entries())
+    .map(([rule, c]) => {
+      const n = c.wrongly + c.correctly;
+      return {
+        rule,
+        wrongly: c.wrongly,
+        correctly: c.correctly,
+        n,
+        wrongly_rate_pct: n > 0 ? round1((c.wrongly / n) * 100) : null,
+        low_n: n < LOW_N_THRESHOLD,
+      };
+    })
+    .sort((a, b) => b.n - a.n || (b.wrongly_rate_pct ?? -1) - (a.wrongly_rate_pct ?? -1) || a.rule.localeCompare(b.rule));
+
+  return { rules, unattributed, total_pulled: totalPulled, low_n: totalPulled < LOW_N_THRESHOLD };
 }
 
 // ── Per-conviction / per-tier records ───────────────────────────────────────────────
