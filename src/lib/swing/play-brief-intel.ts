@@ -42,6 +42,7 @@ import { deadPlayReason } from "./entry-enterability";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
 import { graduatedArchetypeEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
+import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
 import {
   meridianPeerEarningsCoaching,
   pickEarningsForSwingPeer,
@@ -316,6 +317,32 @@ export function archetypeTrackRecordSection(
     );
   }
   return { title: "Track record", body: lines.join("\n\n"), bias: "neutral" };
+}
+
+/**
+ * Ticker track record — cites the ticker's OWN prior trade history (Largo product contract C10,
+ * "historical context"), the sibling of `archetypeTrackRecordSection` above scoped to TICKER
+ * rather than ARCHETYPE (play-brief-ticker-history.ts's file header has the full gap this closes:
+ * the archetype section's own cache is explicitly "not keyed by TICKER at all"). Unlike the
+ * archetype section, this is a plain factual count with no statistical graduation gate — there is
+ * no calibrated score being compared cross-product here, so the Largo C6 confidence-omission
+ * principle governing `archetypeTrackRecordSection` doesn't apply; omission here is purely about
+ * absence of data (zero prior resolved trades on this ticker), never about withholding evidence
+ * that exists but isn't yet trustworthy enough to cite.
+ */
+export function tickerTrackRecordSection(
+  play: TerminalPlay,
+  record: SwingTickerTrackRecord | null | undefined,
+): RichSection | null {
+  if (!record || record.priorClosedTrades <= 0) return null;
+  const { ticker, priorClosedTrades, wins, losses } = record;
+  const plural = priorClosedTrades === 1 ? "time" : "times";
+  const winRatePct = priorClosedTrades > 0 ? Math.round((wins / priorClosedTrades) * 100) : null;
+  const lines = [
+    `The desk has traded **${ticker}** **${priorClosedTrades}** ${plural} before this play: **${wins}W / ${losses}L**` +
+      (winRatePct != null ? ` (${winRatePct}% win rate on this ticker specifically).` : "."),
+  ];
+  return { title: "Ticker track record", body: lines.join("\n\n"), bias: "neutral" };
 }
 
 /**
@@ -1595,6 +1622,9 @@ export function buildIntelSections(
 
   const trackRecord = archetypeTrackRecordSection(play, ctx.archetypeTrackRecord);
   if (trackRecord) out.push(trackRecord);
+
+  const tickerRecord = tickerTrackRecordSection(play, ctx.tickerTrackRecord);
+  if (tickerRecord) out.push(tickerRecord);
 
   const cortexRead = cortexReadSection(play);
   if (cortexRead) out.push(cortexRead);
