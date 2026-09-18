@@ -618,6 +618,23 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
           .join(" · "),
     );
   }
+  // FIX (Ask Largo standing mandate, 2026-09-18): the gamma magnet is narrated in prose via
+  // magnetCoaching (play-brief-narrative-coaching.ts, called from
+  // tradeManagerNarrativeSection/collectCoachingBullets) for OPEN/WATCH plays — but
+  // collectCoachingBullets EARLY-RETURNS `closedCoaching(play)` alone for `bucket === "closed"`
+  // and never reaches magnetCoaching. So a CLOSED play's magnet level exists in the structured
+  // `levels`/"Key levels" array (play-brief.ts) but was narrated in NO prose section anywhere —
+  // confirmed live on two independent CLOSED plays (NRG #34, CG #25, 2026-09-18 audit cycles).
+  // Every OTHER Vector-derived level here (max pain, confluence nodes, dark pool) already narrates
+  // regardless of bucket, so the magnet's absence was the gap, not an intentional superset-feed
+  // design. Scoped to CLOSED only — OPEN/WATCH already get the magnet, with actionable framing,
+  // from magnetCoaching; adding it here unconditionally would duplicate that line, the exact class
+  // of bug this file's own "Nearest wall" dedup comment (above) warns against.
+  if (vec?.magnet?.strike != null && !vectorStaleForLevels && statusBucket(ctx.play) === "closed") {
+    lines.push(
+      `**Gamma magnet:** ${vec.magnet.strike.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, vec.magnet.strike)}` : ""}`,
+    );
+  }
   if (!lines.length) return null;
   if (statusBucket(ctx.play) === "closed") {
     lines.unshift("_Current levels — not what this trade traded under._");

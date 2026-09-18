@@ -2658,6 +2658,70 @@ test("chartLevelsSection: CLOSED bucket prefixes a current-not-as-traded disclos
   assert.doesNotMatch(openSection!.body, /Current levels/, "open/watch buckets are unchanged");
 });
 
+// FINDING (Ask Largo standing mandate, 2026-09-18): the gamma magnet is a structural Vector level
+// (envelope.levels/"Key levels" carries it for EVERY bucket — play-brief.ts's own comment says it
+// was added there specifically because "the gamma magnet is narrated prominently in the 'Trade
+// manager read' section (magnetCoaching)... but was never added to the structured envelope.levels
+// array"). That comment is only true for OPEN/WATCH plays: magnetCoaching is called from
+// collectCoachingBullets, which for `bucket === "closed"` returns ONLY `closedCoaching(play)` (an
+// early return — play-brief-narrative-coaching.ts) and never reaches magnetCoaching at all. So a
+// CLOSED play's magnet level exists in the structured levels array/"Key levels" bullet list but is
+// narrated in NO prose section anywhere — confirmed live on two independent CLOSED plays (NRG #34,
+// CG #25, both 2026-09-18 audit cycles). "Levels on chart" (chartLevelsSection) already narrates
+// every OTHER Vector-derived level (max pain, confluence nodes, dark pool) regardless of bucket, so
+// the magnet's absence there specifically is the gap, not an intentional superset-feed design.
+// Fix: chartLevelsSection now adds a "Gamma magnet" line for the CLOSED bucket only (OPEN/WATCH
+// already get it, with actionable framing, from magnetCoaching — adding it here too would just
+// duplicate that line, the exact class of bug this file's own dedup comments warn about above).
+test("chartLevelsSection: CLOSED bucket narrates the gamma magnet in 'Levels on chart' (magnetCoaching never fires for closed plays)", () => {
+  const closedSection = chartLevelsSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-18 10:00 ET",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({ spot: 40.17, magnet: { strike: 40.63, distancePct: 1.1, pull: "up" } }),
+  });
+  assert.ok(closedSection);
+  assert.match(
+    closedSection!.body,
+    /Gamma magnet.*40\.63/,
+    "the gamma magnet level must be narrated in prose for a CLOSED play, not only in the structured levels array",
+  );
+
+  // OPEN bucket must NOT gain a duplicate line here — magnetCoaching (Trade manager read) already
+  // narrates it there with actionable framing; this section adding the same fact again would be the
+  // exact duplication class play-brief-narrative-coaching.ts's own comments warn against.
+  // maxPain is included alongside the magnet so the section renders non-null on the OPEN bucket
+  // too (a magnet-only vector fixture legitimately produces no section at all for OPEN, since this
+  // fix scopes the magnet line to CLOSED only — that emptiness would otherwise make this half of
+  // the test vacuous rather than a real duplication check).
+  const openSection = chartLevelsSection({
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-09-18 10:00 ET",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      spot: 40.17,
+      maxPain: 45,
+      magnet: { strike: 40.63, distancePct: 1.1, pull: "up" },
+    }),
+  });
+  assert.ok(openSection);
+  assert.doesNotMatch(
+    openSection!.body,
+    /Gamma magnet/,
+    "OPEN/WATCH buckets already narrate the magnet via magnetCoaching in Trade manager read — chartLevelsSection must not duplicate it",
+  );
+});
+
 test("chartLevelsSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
   const section = chartLevelsSection({
     play: fixturePlay(),
