@@ -123,6 +123,21 @@ function managementSection(play: TerminalPlay): RichSection {
   if (play.rollCandidate) {
     lines.push(`Roll watch: **theta outpacing thesis** — ${play.rollCandidate.reason}.`);
   }
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.underlyingExcursion` (manage-sync.ts's
+  // `signedExcursionPct` — the UNDERLYING's own signed favorable/adverse move since entry, computed
+  // and persisted every management tick) is a distinct read from the OPTION premium peak/P&L this
+  // section already shows above: a position can sit on modest premium P&L while the underlying
+  // quietly ran hard favorable and gave most of it back (or the reverse, under IV effects). Pinned
+  // to `swing_position_snapshots.running_mfe`/`.running_mae` on every tick and never read back out
+  // of it anywhere in the serving/brief layer until now — same shape as `entryPresentPillars`/
+  // `archetypeNearTie`/`topFlowProvenance` above. Only rendered once both extremes are known (never
+  // a fabricated 0% when the underlying excursion isn't yet computable).
+  if (play.underlyingExcursion) {
+    const { mfePct, maePct } = play.underlyingExcursion;
+    lines.push(
+      `Underlying excursion since entry: **${fmtPct(mfePct)} favorable** / **${fmtPct(maePct)} adverse**.`,
+    );
+  }
   return { title: "Management", body: lines.join("\n\n") };
 }
 

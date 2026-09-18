@@ -237,6 +237,24 @@ export interface HorizonPlay {
    * strikes, not a second persisted boolean (there isn't one).
    */
   topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `manage-sync.ts`'s `signedExcursionPct`
+   * computes the UNDERLYING's own signed favorable/adverse excursion (%, direction-aware) since
+   * entry on EVERY management tick and persists it as `running_mfe`/`running_mae` — dedicated
+   * columns on `swing_position_snapshots`, also echoed into that tick's `feature_vector` blob
+   * (feature-vector.ts) for the trajectory studies (`studyTwoStagnantSessions`,
+   * `studyIvKillsGoodSetups`) to read. It answers a question distinct from anything already shown:
+   * "how far has the underlying itself moved in my favor / against me since I entered" — separate
+   * from the OPTION premium peak/P&L this brief already surfaces (a position can show modest
+   * premium P&L while the underlying quietly ran hard favorable and gave most of it back, or vice
+   * versa under IV effects). `fetchLatestSwingSnapshotEvents` (db.ts) selects only `event_json`/
+   * `thesis_state` off the latest snapshot row — `running_mfe`/`running_mae` sit right next to
+   * those on the same row and were never selected, so this real per-tick read never reached the
+   * serving/brief layer for a single open position. Null whenever the latest snapshot hasn't
+   * computed a usable excursion yet (fresh position, missing entry/spot) — never a fabricated 0%
+   * (signedExcursionPct's own honest-null convention, mirrored here).
+   */
+  underlyingExcursion?: { mfePct: number; maePct: number } | null;
 }
 
 /** The three lanes a candidate pool fans out into. */

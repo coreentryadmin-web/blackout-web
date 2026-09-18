@@ -192,6 +192,7 @@ export function manageObservablesFromEvent(
   thesisLevel?: SwingThesisLevel;
   manageReason?: SwingManageRung | null;
   rollCandidate?: { reason: string } | null;
+  underlyingExcursion?: { mfePct: number; maePct: number } | null;
 } {
   if (!manageEvent || typeof manageEvent !== "object") return spotFallback;
 
@@ -249,7 +250,21 @@ export function manageObservablesFromEvent(
       ? { reason: (dteMigration as { reason: string }).reason }
       : null;
 
-  return { manageAction, thesisLevel, manageReason: rung ?? null, rollCandidate };
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `running_mfe`/`running_mae` (the
+  // UNDERLYING's own signed favorable/adverse excursion since entry, distinct from the OPTION
+  // premium peak/P&L this brief already shows — see HorizonPlay.underlyingExcursion's own doc
+  // comment) are dedicated `swing_position_snapshots` columns manage-sync.ts writes every tick,
+  // now selected/merged by db.ts's `fetchLatestSwingSnapshotEvents` into this same event blob.
+  // Honest-null whenever the latest snapshot hasn't computed a usable excursion yet (fresh
+  // position, missing entry/spot) — never a fabricated 0%.
+  const rawMfe = manageEvent.running_mfe;
+  const rawMae = manageEvent.running_mae;
+  const underlyingExcursion =
+    typeof rawMfe === "number" && Number.isFinite(rawMfe) && typeof rawMae === "number" && Number.isFinite(rawMae)
+      ? { mfePct: rawMfe, maePct: rawMae }
+      : null;
+
+  return { manageAction, thesisLevel, manageReason: rung ?? null, rollCandidate, underlyingExcursion };
 }
 
 const finiteOrNull = (v: unknown): number | null =>
@@ -433,7 +448,7 @@ export function livePlayFromSwingPosition(
     manageAction: broken ? "EXIT" : liveStatus === "TRIM" ? "TAKE_PARTIAL" : undefined,
     thesisLevel: broken ? "break" : "intact",
   });
-  const { manageAction, thesisLevel, manageReason, rollCandidate } = manageObservablesFromEvent(
+  const { manageAction, thesisLevel, manageReason, rollCandidate, underlyingExcursion } = manageObservablesFromEvent(
     manageEvent,
     spotObs,
   );
@@ -508,6 +523,7 @@ export function livePlayFromSwingPosition(
     manageAction,
     manageReason: manageReason ?? null,
     rollCandidate: rollCandidate ?? null,
+    underlyingExcursion: underlyingExcursion ?? null,
     thesisLevel,
     firstSeenAt: row.first_seen_at ?? undefined,
     committedAt: row.committed_at ?? undefined,

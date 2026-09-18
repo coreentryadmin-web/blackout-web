@@ -7977,7 +7977,7 @@ export async function fetchLatestSwingSnapshotEvents(
   await ensureSchema();
   if (positionIds.length === 0) return new Map();
   const res = await dbQuery<QueryResultRow>(
-    `SELECT DISTINCT ON (position_id) position_id, event_json, thesis_state
+    `SELECT DISTINCT ON (position_id) position_id, event_json, thesis_state, running_mfe, running_mae
        FROM swing_position_snapshots
       WHERE position_id = ANY($1::bigint[])
       ORDER BY position_id, created_at DESC`,
@@ -7988,6 +7988,11 @@ export async function fetchLatestSwingSnapshotEvents(
     const id = Number(r.position_id);
     const event: Record<string, unknown> = { ...(jsonbColumnToObject(r.event_json) ?? {}) };
     if (r.thesis_state != null) event.thesis_state = String(r.thesis_state);
+    // Underlying excursion % (running_mfe/running_mae) — dedicated snapshot columns, not part of
+    // event_json, so they must be selected/merged here explicitly. See HorizonPlay's own
+    // `underlyingExcursion` doc comment for the full gap this closes.
+    if (r.running_mfe != null) event.running_mfe = Number(r.running_mfe);
+    if (r.running_mae != null) event.running_mae = Number(r.running_mae);
     out.set(id, event);
   }
   return out;
