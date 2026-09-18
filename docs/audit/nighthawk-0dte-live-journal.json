@@ -348,6 +348,11 @@
       "session_state": "PRE_MARKET (heat_pct 35, ~11min before RTH open)",
       "activity": "13:15 UTC offset trigger. Board unchanged from 13:11 check: upstream_ok true, setups=[] ledger=[]. Nothing new to forensically read. Skipping a redundant full healthcheck run per cadence guidance -- next real work starts once the 13:30 UTC open produces plays.",
       "findings_this_cycle": "0 -- quiet pre-market, unchanged from last cycle"
+    },
+    "2026-09-18T13:40:00Z": {
+      "session_state": "OPENING_DRIVE (heat_pct 70)",
+      "activity": "13:37 UTC offset trigger. Market open, 41 setups scanned, 0 commit-ready, 0 ledger rows -- entirely explained by G-2 opening_window (blocks all new 0DTE commits before 10:00 ET, unlocks 14:00Z), confirmed on the top setups' own gate.blocks (LITZ/LITE/LITX all show opening_window plus their own independent secondary blocks -- score_floor, plan_moved, plan_illiquid, conditional_band_unmet -- so even post-10:00 several would likely stay blocked on their own merits, not purely the window). This is correct, intentional gating, not a bug. Nothing to escalate.",
+      "findings_this_cycle": "0 -- opening drive behaving as designed"
     }
   },
   "sessions": {
