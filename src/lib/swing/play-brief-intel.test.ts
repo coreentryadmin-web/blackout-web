@@ -1131,6 +1131,72 @@ test("catalystsSection: ancient short-interest as_of is omitted, not presented a
   assert.equal(section, null);
 });
 
+test("catalystsSection: headlines from a stale news read carry a staleness disclosure (Largo C2, 2026-09-18)", () => {
+  // Live gap: `arsenal.news.as_of` (NewsResult.asOf, stamped once inside serverCache's cached
+  // builder at true fetch time) can legitimately stay minutes stale under stale-while-revalidate
+  // — the same exposure meridianCatalystSection already discloses for its own catalyst read.
+  // catalystsSection was the one sibling that read a freshness-bearing field with zero disclosure.
+  const staleAsOf = new Date(Date.now() - 20 * 60_000).toISOString(); // 20m old — well past the bound
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: { count: 1, newest: staleAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: staleAsOf },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Last snapshot\*\*.*old.*headlines may lag/s);
+  assert.match(section!.body, /CrowdStrike stock moves higher/);
+});
+
+test("catalystsSection: headlines from a fresh news read carry NO staleness disclosure", () => {
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString(); // 5s old
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: { count: 1, newest: freshAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: freshAsOf },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Last snapshot/);
+  assert.match(section!.body, /CrowdStrike stock moves higher/);
+});
+
 test("chartTechnicalsSection: bias reads bearish from the technicals on a SHORT play whose tape is entirely bullish (FINDINGS 2026-09-06 #13, INTC shape)", () => {
   // Reproduces the live INTC envelope: SHORT position, but EMA-up/above-VWAP/RSI-bull/CHOCH-up —
   // an entirely bullish technical picture. The badge must say bullish (the tape), not bearish

@@ -839,6 +839,9 @@ test("assembleEcosystemArsenal(single_name): earnings/fundamentals/peers/news po
   assert.deepEqual(ars.related, ["AMD", "AVGO", "MU"]);
   assert.equal(ars.news?.count, 2);
   assert.deepEqual(ars.news?.headlines, ["NVDA guidance raised", "new GPU"]);
+  // Largo C2 (2026-09-18): `NewsResult.asOf` (the real fetch-time stamp) must reach the arsenal
+  // summary, not be dropped at this fold — see EcosystemArsenalNews.as_of's own doc comment.
+  assert.equal(ars.news?.as_of, "2026-07-13T00:00:00Z");
   // Macro/breadth aren't relevant to a single name → plain null, and NOT surfaced as "unavailable".
   assert.equal(ars.macro, null);
   assert.equal(ars.breadth, null);
