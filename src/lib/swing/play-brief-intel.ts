@@ -699,6 +699,28 @@ export function flowIntelSection(
     lines.push("**Flow anomalies:**\n" + anomalies);
   }
 
+  // FIX (Ask Largo standing mandate, 2026-09-18): `eco.flow_full_state.recent` comes from
+  // fetchFlowFullState() -> getFlowTapeSummary({ ticker, limit }) with NO `since_hours`/`order`
+  // passed — so per getFlowTape's own default (`order: opts?.since_hours != null && <=6 ?
+  // "recent" : undefined`) this sorts BIGGEST-PREMIUM-FIRST over `fetchRecentFlows`'s 48h default
+  // window (db.ts `sinceHours = params.since_hours ?? 48`), NOT most-recent-first over the same
+  // 6h window as the `HELIX tape (Xh)` aggregate line directly above it (`trustedHelixFlow`'s
+  // `FLOW_SUMMARY_WINDOW_HOURS = 6`). Rendering that list under the header "Recent prints" is a
+  // real contract violation (precision/freshness): reproduced live on AAPL #37 2026-09-18 — the
+  // aggregate read "calls $263K · puts $1.3M · 4 prints" (6h) while "Recent prints" directly below
+  // it listed 5 individual CALL prints from $1.08M to $3.43M each, none visibly reconcilable with
+  // the 4-print/$263K call aggregate one line up — a member reading both lines together sees an
+  // internal contradiction, not a coherent tape read. tool-defs.ts's own get_flow_tape docstring
+  // is explicit that this field is "last 48h window, sorted biggest-premium-first by default" —
+  // the LLM-facing Largo tool documents the nuance so the MODEL can reason about it correctly, but
+  // this deterministic (no-Anthropic, per route.ts's own comment) swing play-brief renders the
+  // same rows to a MEMBER with a header claiming the opposite. Fix scoped to presentation only
+  // (this file), not to fetchFlowFullState's query (that would also move `count`/`total_premium`/
+  // `top_tickers`, which ARE documented as an intentional 48h/premium-sorted aggregate and are
+  // consumed elsewhere) — relabel honestly and give each print its own age, exactly like the
+  // `Flow anomalies` block two lines up already does via the SAME `relativeAgeLabel` helper, so a
+  // reader can see for themselves that a listed print is outside the 6h aggregate window rather
+  // than being told it's "recent" when it may be up to 48h old.
   const recent = helixFresh ? (eco.flow_full_state?.recent ?? []) : [];
   if (recent.length) {
     const prints = recent
@@ -706,10 +728,12 @@ export function flowIntelSection(
       .map((p) => {
         const prem = p.premium != null ? fmtUsd(p.premium) : "—";
         const gex = p.gex_proximity ? ` @ ${p.gex_proximity.replace(/_/g, " ")}` : "";
-        return `• ${p.option_type ?? "—"} ${p.strike ?? "—"} ${prem}${gex}`;
+        const ageLabel = relativeAgeLabel(p.alerted_at || p.event_at || null);
+        const agePart = ageLabel ? ` [${ageLabel}]` : "";
+        return `• ${p.option_type ?? "—"} ${p.strike ?? "—"} ${prem}${gex}${agePart}`;
       })
       .join("\n");
-    lines.push("**Recent prints:**\n" + prints);
+    lines.push("**Notable prints (48h, largest premium first):**\n" + prints);
   }
 
   const z = zerodteLiveForSession(eco.zerodte_today, sessionDate);
