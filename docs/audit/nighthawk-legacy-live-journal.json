@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T04:37:00Z",
+  "lastUpdated": "2026-09-18T05:07:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3598,6 +3598,13 @@
       "healthcheck": "Re-ran scripts/audit/legacy-e2e-healthcheck.mjs fresh at 04:09:56Z (12 min before this cycle fired): A_edition GREEN (4 plays SMTC/SMCI/SWKS/HPE, fresh, not degraded -- unchanged from the overnight steady state), B_marks AMBER (4/4 flagged stale by the API -- expected, ~00:09 ET pre-market), C_record GREEN (resolved=24, buckets consistent), D_pull_status correctly SKIPPED (morning confirmation not yet run for 09-18). No material change.",
       "codeReview": "Reviewed the full open-items list (26 entries) for anything ready to close or escalate given the standing aggressive improvement-hunting mandate. All items already correctly classified per CARVE-OUT: legacyCalendarTileNullPremiumAsZero and legacyTargetPathGaugeAmbiguity remain correctly report-and-hold (both are live-picks-display/shared-component blast-radius decisions, not small/unambiguous fixes); legacyScorecardNeverPopulated remains a well-specified but not-yet-implemented enhancement, correctly held for design input; pullQualityWatch_2026_09_16's n=10 pulled-wrongly/correctly split remains too thin to escalate per its own re-check plan (next natural outcome-honesty pass, not every cycle). No new bug surfaced this cycle. Also reconfirmed: tonight's edition build (the one that will run for 2026-09-19, since tonight is 09-18) is still the first real test of whether the Phase 1 instrumentation PRs (#5123-5132, merged without operator authorization per phase1MirrorFailureUnauthorizedMerges_2026_09_18T0015Z) hold their 'zero behavior change' claim in production -- not yet observable, since that build hasn't run yet as of this cycle.",
       "action": "None -- clean cycle, no journal entries added or modified beyond this check-in."
+    },
+    {
+      "at": "2026-09-18T05:07:00Z",
+      "trigger": ":06 cycle -- full v3 brief refresh",
+      "healthcheck": "Re-ran scripts/audit/legacy-e2e-healthcheck.mjs fresh at 05:07:40Z: A_edition GREEN (4 plays, unchanged), B_marks AMBER (4/4 flagged stale, expected pre-market), C_record GREEN (resolved=24), D_pull_status correctly SKIPPED. No material change.",
+      "codeReview": "Aggressive-mode improvement hunt this cycle: traced legacyScorecardNeverPopulated_2026_09_16 to source to confirm it's still accurate and check whether it's actually CARVE-OUT-eligible (small/unambiguous) rather than report-and-hold. Read terminalPlayFromEdition (adapters.ts:1129-1289, Legacy's real PlaybookPlay-to-TerminalPlay mapper) end to end: confirmed it never sets `scorecard` on the returned TerminalPlay (contrast with terminalPlayFromZeroDte, which does via `scorecard: src.scorecard ?? null` at line 615) -- so LegacyPlayTechnicalsRail's 'Track record' bullet is dead code for every Legacy play, exactly as previously found. Confirmed this remains correctly classified as report-and-hold, not CARVE-OUT: wiring GET /api/market/nighthawk/record's by_conviction[] into it needs (1) a schema addition (by_conviction[] has win_rate_pct/n/low_n but no avg-return field), (2) a fetch-timing decision (containers.tsx would need to fetch /record data into the edition-mapping path, a new cross-endpoint dependency it doesn't have today), (3) a low_n display-gating threshold -- three real design calls, not a mechanical wire-up, so unilaterally implementing it risks exactly the kind of unreviewed live-picks-surface change this lane's CARVE-OUT discipline exists to prevent. No new bug or new small enhancement surfaced this cycle beyond what's already logged.",
+      "action": "None -- confirmed existing open item accurately classified, no new journal entries."
     }
   ],
   "knownOpenItems": {
