@@ -112,6 +112,24 @@ export function honestyIssues(answer: string, intent?: string | null): string[] 
   ) {
     return issues;
   }
+  // A clarify_read response IS the honest answer to input that maps to no market/desk read at
+  // all -- by definition there is nothing to ground it in, so demanding digits here penalizes
+  // exactly the behavior this check exists to encourage.
+  //
+  // MEASURED 2026-09-18: the nightly `validate:largo-stress-live-all` gate (any single BAD
+  // fails it) flagged the live clarify_read response to the garbage-input stress case
+  // ("asdfghjkl") as `honesty-no-grounded-numbers`, auto-filing issue #5202. The response is
+  // LLM-generated and non-deterministic per call; live-reproduced 3x, one of the three came back
+  // purely qualitative -- "No tools were called this turn... right now looks like a keyboard
+  // mash, not a request" -- honest and correct, but phrased without any of "no data"/"nothing
+  // was pulled"/etc. already exempted below, so it fell through to the digit check. The other
+  // two calls happened to also volunteer live SPX numbers unprompted and passed by accident, not
+  // by design -- proving the check's true gap is INTENT-based (clarify_read has nothing to
+  // ground), not phrasing-based, so enumerating more exemption phrases would only be the next
+  // false positive waiting to happen on the next LLM phrasing variant.
+  if (intent === "clarify_read") {
+    return issues;
+  }
   if (answer.length > 80 && !/\d/.test(answer) && !/\b(none|flat|inactive|scanning)\b/i.test(answer)) {
     issues.push("no-grounded-numbers");
   }
