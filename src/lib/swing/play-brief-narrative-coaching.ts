@@ -22,6 +22,7 @@ import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
+import { formatFixedNonZero } from "./format-nonzero";
 import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
 import { deadPlayReason } from "./entry-enterability";
 import { etStampFromDateOrIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
@@ -293,8 +294,13 @@ export function expectedMoveCoaching(
       : playDirectionHint(spot, b1.low) === "below"
         ? "near lower 1σ — watch for bounce or breakdown"
         : "mid-band — room to run inside envelope";
+  // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro ABTC $10.15 brief): a real
+  // sub-0.05pt half-width (common on lower-priced tickers, where the 1σ band is narrow in dollar
+  // terms) rounded to "±0.0 pts" via a plain toFixed(1) — reading as "no expected move" when a
+  // real, nonzero band still exists. See format-nonzero.ts's own doc comment for the general shape
+  // of this bug (also fixed at play-brief.ts's net-GEX line the same pass).
   return (
-    `**Expected move 1σ** — **${b1.low.toFixed(2)}–${b1.high.toFixed(2)}** (±${b1.movePts.toFixed(1)} pts). ` +
+    `**Expected move 1σ** — **${b1.low.toFixed(2)}–${b1.high.toFixed(2)}** (±${formatFixedNonZero(b1.movePts, 1)} pts). ` +
     `${inside ? "Inside band" : "Outside band"} — ${stretch}.`
   );
 }
